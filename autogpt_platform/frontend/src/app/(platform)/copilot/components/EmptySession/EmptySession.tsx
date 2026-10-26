@@ -1,28 +1,30 @@
 "use client";
 
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
+import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
+import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
+import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
+import { RecipientChip } from "../ChatInput/components/RecipientChip";
+import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
+import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
+import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWelcomeDialog";
+import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
+import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
+import { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
+import { EmptyHero } from "./components/EmptyHero";
+import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
+import { GreetingLoader } from "./components/GreetingLoader";
 import {
   getExpertInputPlaceholder,
   getGreetingName,
   getIntroLine,
 } from "./helpers";
-import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
-import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWelcomeDialog";
-import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
-import { EmptyHero } from "./components/EmptyHero";
-import { GreetingLoader } from "./components/GreetingLoader";
-import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
-import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
-import { RecipientChip } from "../ChatInput/components/RecipientChip";
-import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
-import { useRecipientPicker } from "./useRecipientPicker";
 import { useHomeComposer } from "./useHomeComposer";
+import { useRecipientPicker } from "./useRecipientPicker";
 
 interface Props {
   isCreatingSession: boolean;
@@ -32,6 +34,8 @@ interface Props {
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
   ) => void | Promise<void>;
+  /** Sends a suggested task, resolving to the chat it started. */
+  onStartTask?: (message: string) => Promise<string | undefined>;
   isUploadingFiles?: boolean;
   droppedFiles?: File[];
   onDroppedFilesConsumed?: () => void;
@@ -40,15 +44,23 @@ interface Props {
   expertName?: string;
   /** Expert the new conversation will address; scopes workspace-file pickers. */
   expertId?: string | null;
-  /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
-  voiceToggle?: ReactNode;
+  /** Starts voice mode from the + menu. Absent when the flag is off. */
+  voiceMode?: ComponentProps<typeof ChatInput>["voiceMode"];
   /** The chat's approval-mode selector. Absent when the flag is off. */
   modeSelector?: ReactNode;
+  /** Out of AutoPilot budget with a reset ahead: the composer sets the new
+   *  chat's first message to send at the reset. */
+  atReset?: ComponentProps<typeof ChatInput>["atReset"];
+  /** Shown above the composer while sending is paused. */
+  usageNotice?: ReactNode;
+  /** The running-low hint, shown under the composer. */
+  lowHint?: ReactNode;
 }
 
 export function EmptySession({
   isCreatingSession,
   onSend,
+  onStartTask,
   isUploadingFiles,
   droppedFiles,
   onDroppedFilesConsumed,
@@ -56,14 +68,16 @@ export function EmptySession({
   isKickoffStarting,
   expertName,
   expertId = null,
-  voiceToggle,
+  voiceMode,
   modeSelector,
+  atReset,
+  usageNotice,
+  lowHint,
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
   const intro = useOnboardingIntroCard();
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+
   const {
     options,
     recipient,
@@ -72,22 +86,24 @@ export function EmptySession({
     selectRecipient,
   } = useRecipientPicker();
   const isComposerDisabled = isCreatingSession || !!isInteractionLocked;
+  const suggestions = useSuggestedTasks({
+    surface: intro.isVisible ? "intro" : "home",
+    onSend: onStartTask ?? onSend,
+    enabled: !intro.isAwaitingGreeting,
+  });
   const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
-  const recipientPicker = isExpertsEnabled ? (
+  const recipientPicker = (
     <RecipientChip
       recipient={recipient}
       options={options}
       isLoading={isLoadingRecipient}
       onSelect={selectRecipient}
     />
-  ) : undefined;
+  );
 
   const { inputPlaceholder } = useHomeComposer({
     enabled:
-      isExpertsEnabled &&
-      !intro.isVisible &&
-      !intro.isAwaitingGreeting &&
-      !isKickoffStarting,
+      !intro.isVisible && !intro.isAwaitingGreeting && !isKickoffStarting,
   });
 
   if (isKickoffStarting) {
@@ -106,17 +122,7 @@ export function EmptySession({
         <ConnectionPicker className="ml-0" />
       </div>
       <motion.div
-        className={cn(
-          "relative z-10 w-full text-center",
-          isExpertsEnabled ? "max-w-[1120px]" : "max-w-[52rem]",
-          // The whole greeting flow reads top-down like a letter, so it
-          // anchors to the top from its first visible frame; the regular
-          // hero centers itself. `my-auto` rather than the parent's
-          // `items-center`: auto margins collapse to 0 once the content is
-          // taller than the scroller, where centering would push the top of
-          // the page above the scroll origin and make it unreachable.
-          !intro.anchorTop && !isExpertsEnabled && "my-auto",
-        )}
+        className={cn("relative z-10 w-full text-center", "max-w-[1120px]")}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
@@ -126,10 +132,9 @@ export function EmptySession({
             <OnboardingIntroCard
               name={greetingName}
               greeting={intro.greeting}
-              prompts={intro.prompts}
+              suggestions={suggestions}
               transcript={intro.transcript}
-              onSelectPrompt={onSend}
-              disabled={isComposerDisabled}
+              disabled={isComposerDisabled || !!atReset}
             />
           ) : intro.isAwaitingGreeting ? (
             // Behind the welcome modal's blur and for as long as the
@@ -153,38 +158,41 @@ export function EmptySession({
             <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
               <div
                 className={cn(
-                  isBrainDumpEnabled
-                    ? "text-left transition-colors duration-300 ease-out"
-                    : "w-full px-2",
+                  "text-left transition-colors duration-300 ease-out",
                   // The greeting's prompt card bleeds 1.25rem past the text
                   // (-mx-5); the composer stretches the same amount so their
                   // edges line up. No chrome of its own: the composer card is
                   // the only outline on screen. The regular hero keeps it
                   // centered.
-                  isBrainDumpEnabled &&
-                    (intro.isVisible
-                      ? "-mx-5 max-w-[50.5rem]"
-                      : "mx-auto w-full max-w-[42rem]"),
+                  intro.isVisible
+                    ? "-mx-5 max-w-[50.5rem]"
+                    : "mx-auto w-full max-w-[42rem]",
                 )}
               >
+                {usageNotice && (
+                  <div className="mb-3 text-left">{usageNotice}</div>
+                )}
                 <ChatInput
                   inputId="chat-input-empty"
+                  draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
                   stacked
-                  voiceToggle={voiceToggle}
+                  voiceMode={voiceMode}
                   modeSelector={modeSelector}
                   onSend={onSend}
                   disabled={isComposerDisabled}
+                  atReset={atReset}
                   isUploadingFiles={isUploadingFiles}
                   placeholder={
-                    selectedExpert
-                      ? getExpertInputPlaceholder(selectedExpert.name)
-                      : inputPlaceholder
+                    atReset
+                      ? SEND_AT_RESET_PLACEHOLDER
+                      : selectedExpert
+                        ? getExpertInputPlaceholder(selectedExpert.name)
+                        : inputPlaceholder
                   }
-                  className={
-                    isBrainDumpEnabled
-                      ? "w-full [&_textarea]:min-h-[4.5rem]"
-                      : "w-full"
-                  }
+                  className={cn(
+                    "w-full max-md:[&_[data-slot=input-group-control]]:min-h-16",
+                    "[&_textarea]:min-h-[4.5rem]",
+                  )}
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
                   expertId={expertId}
@@ -193,14 +201,22 @@ export function EmptySession({
                     intro.isVisible ? recipientPicker : undefined
                   }
                 />
+                {lowHint}
               </div>
             </div>
           )}
+
+          {/* These prompts are Otto's, so they go while an expert is the
+              recipient. */}
+          {!intro.isVisible && !intro.isAwaitingGreeting && !selectedExpert && (
+            <SuggestedTasksBlock
+              suggestions={suggestions}
+              disabled={isComposerDisabled || !!atReset}
+            />
+          )}
         </div>
 
-        {!intro.isVisible && !intro.isAwaitingGreeting && isExpertsEnabled && (
-          <HomeRecap />
-        )}
+        {!intro.isVisible && !intro.isAwaitingGreeting && <HomeRecap />}
       </motion.div>
     </div>
   );

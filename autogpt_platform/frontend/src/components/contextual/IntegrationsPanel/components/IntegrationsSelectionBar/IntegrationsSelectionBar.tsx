@@ -22,18 +22,24 @@ export function IntegrationsSelectionBar({
   isDeleting = false,
 }: Props) {
   return (
-    <div className="flex w-full items-center justify-between rounded-[4px] border border-zinc-200 bg-zinc-100 px-4 py-2">
+    <div className="flex w-full items-center justify-between rounded-[4px] border border-border-base bg-surface-hover px-4 py-2">
       <div className="flex items-center gap-5">
-        <Text variant="body" as="span" className="text-zinc-700">
+        <Text variant="body" as="span" className="text-foreground-body">
           {selectedCount} selected
         </Text>
         {!allSelected && (
           <button
             type="button"
             onClick={onSelectAll}
+            // TODO(tokens): no exact role for focus-visible:ring-zinc-800 #3E3E43; #3E3E43 is action, the button fill
             className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
           >
-            <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+            <Text
+              // TODO(tokens): no exact role for text-[#1F1F20]
+              variant="body-medium"
+              as="span"
+              className="text-[#1F1F20]"
+            >
               Select All
             </Text>
           </button>
@@ -41,9 +47,15 @@ export function IntegrationsSelectionBar({
         <button
           type="button"
           onClick={onDeselectAll}
+          // TODO(tokens): no exact role for focus-visible:ring-zinc-800 #3E3E43; #3E3E43 is action, the button fill
           className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
         >
-          <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+          <Text
+            // TODO(tokens): no exact role for text-[#1F1F20]
+            variant="body-medium"
+            as="span"
+            className="text-[#1F1F20]"
+          >
             Deselect
           </Text>
         </button>

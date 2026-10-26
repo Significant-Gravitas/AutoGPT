@@ -12,11 +12,12 @@ which runs a local Chromium instance managed by a persistent daemon.
   is one browser action; the LLM chains them naturally
 
 SSRF protection:
-  Uses the shared validate_url() from backend.util.request, which is the same
-  guard used by HTTP blocks and web_fetch. It resolves ALL DNS answers (not just
-  the first), blocks RFC 1918, loopback, link-local, 0.0.0.0/8, multicast,
-  and all relevant IPv6 ranges, and applies IDNA encoding to prevent Unicode
-  domain attacks.
+  Chromium sends every request through backend.util.egress_proxy, which only
+  connects to public addresses and dials the address it checked. That covers
+  what a URL check cannot see: redirects, link clicks, form posts, scripts,
+  subresources and DNS rebinding. URLs given to browser_navigate are also
+  checked up front with validate_url_host so a refusal comes back as a clear
+  error instead of a failed page load.
 
 Requires:
   npm install -g agent-browser
@@ -30,12 +31,15 @@ import base64
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 from typing import Any
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
+from backend.data.workspace_internal import WORKING_FILE_METADATA
+from backend.util.egress_proxy import egress_proxy_url
 from backend.util.request import validate_url_host
 
 from .base import BaseTool
@@ -53,6 +57,61 @@ logger = logging.getLogger(__name__)
 _CMD_TIMEOUT = 45
 # Accessibility tree can be very large; cap it to keep LLM context manageable.
 _MAX_SNAPSHOT_CHARS = 20_000
+
+# Launch options sent with every command. agent-browser relaunches Chromium
+# when they change, so a single command without them would restart the browser
+# with direct network access. "<-loopback>" stops Chromium sending localhost
+# and link-local requests around the proxy. The proxy carries only TCP: QUIC is
+# switched off here, and a Chromium policy in the backend image keeps WebRTC's
+# UDP from going around it.
+_PROXY_BYPASS = "<-loopback>"
+_CHROMIUM_ARGS = "--disable-quic"
+
+# agent-browser also merges in ~/.agent-browser/config.json and a
+# ./agent-browser.json from its working directory. A file planted at either
+# could load an extension that rewrites the browser's proxy. Given --config it
+# reads that file alone, so it is pointed at an empty one.
+_empty_config_path: str | None = None
+
+
+def _empty_config() -> str:
+    """Path to an empty agent-browser config, recreated if it has gone missing
+    so a cleaned-up /tmp cannot break every later browser command."""
+    global _empty_config_path
+    path = _empty_config_path
+    if path is None or not os.path.exists(path):
+        fd, path = tempfile.mkstemp(prefix="agent-browser-", suffix=".json")
+        with os.fdopen(fd, "w") as f:
+            f.write("{}")
+        _empty_config_path = path
+    return path
+
+
+# agent-browser reads its own options (proxy, executable, profile, ...) from
+# anywhere on its command line; they are lower-case words, some taking
+# "=value", plus -V. Apart from the ones this module passes itself, an argument
+# of that shape came from the model or a web page (a cookie name, say) and
+# could relaunch the browser around the proxy.
+_OWN_OPTIONS = frozenset(
+    {"-i", "-c", "--load", "--json", "--domain", "--path", "--annotate"}
+)
+_OPTION_LIKE = re.compile(r"--?[a-z][a-z-]*(=.*)?|-V", re.DOTALL)
+
+# agent-browser also takes options from AGENT_BROWSER_* variables and the usual
+# proxy variables. Some of them (CDP, provider, auto-connect, extensions, init
+# scripts) attach to or start a browser without the launch options above, so
+# none reach it except the path to the Chromium it should launch.
+_KEPT_AGENT_BROWSER_ENV = frozenset({"AGENT_BROWSER_EXECUTABLE_PATH"})
+_PROXY_ENV = frozenset({"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"})
+
+
+def _agent_browser_env() -> dict[str, str]:
+    return {
+        name: value
+        for name, value in os.environ.items()
+        if (not name.startswith("AGENT_BROWSER_") or name in _KEPT_AGENT_BROWSER_ENV)
+        and name.upper() not in _PROXY_ENV
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -73,13 +132,30 @@ async def _run(
                                browser state leakage)
       --session-name <name>  → persist cookies/localStorage across tool calls within
                                the same session (enables login → navigate flows)
+
+    Chromium's traffic goes through the egress proxy (see the module docstring).
     """
+    if any(_OPTION_LIKE.fullmatch(arg) and arg not in _OWN_OPTIONS for arg in args):
+        return 1, "", "Refused an argument that looks like an agent-browser option."
+    try:
+        proxy = egress_proxy_url()
+    except Exception:
+        logger.exception("[browser] egress proxy failed to start")
+        return 1, "", "The browser's network proxy is unavailable."
     cmd = [
         "agent-browser",
         "--session",
         session_name,
         "--session-name",
         session_name,
+        "--config",
+        _empty_config(),
+        "--proxy",
+        proxy,
+        "--proxy-bypass",
+        _PROXY_BYPASS,
+        "--args",
+        _CHROMIUM_ARGS,
         *args,
     ]
     _touched_sessions.add(session_name)
@@ -89,6 +165,7 @@ async def _run(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=_agent_browser_env(),
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return proc.returncode or 0, stdout.decode(), stderr.decode()
@@ -155,7 +232,7 @@ _session_locks: dict[str, asyncio.Lock] = {}
 _session_locks_mutex = asyncio.Lock()
 
 # Workspace filename for persisted browser state (auto-scoped to session).
-# Dot-prefixed so it is hidden from user workspace listings.
+# Written as a working file, so the user's file lists leave it out.
 _STATE_FILENAME = "._browser_state.json"
 
 # Maximum concurrent subprocesses during cookie/storage restore.
@@ -260,6 +337,7 @@ async def _save_browser_state(
             filename=_STATE_FILENAME,
             mime_type="application/json",
             overwrite=True,
+            metadata=WORKING_FILE_METADATA,
         )
     except Exception:
         logger.warning(
@@ -582,7 +660,7 @@ class BrowserNavigateTool(BaseTool):
                 message="Please provide a URL to navigate to.",
                 error="missing_url",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         try:
             await validate_url_host(url)
@@ -591,7 +669,7 @@ class BrowserNavigateTool(BaseTool):
                 message=str(e),
                 error="blocked_url",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         # Restore browser state from cloud if this is a different pod
         if user_id:
@@ -607,7 +685,7 @@ class BrowserNavigateTool(BaseTool):
                 message="Failed to navigate to URL.",
                 error="navigation_failed",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         # Wait for page to settle (best-effort: some SPAs never reach networkidle)
         wait_rc, _, wait_err = await _run(session_name, "wait", "--load", wait_for)
@@ -630,7 +708,7 @@ class BrowserNavigateTool(BaseTool):
             title=title_out.strip(),
             snapshot=snapshot,
             session_id=session_name,
-        )
+        ).from_outside(snapshot, title_out.strip(), url_out.strip() or url)
 
         # Persist browser state to cloud for cross-pod continuity
         if user_id:
@@ -702,6 +780,7 @@ class BrowserActTool(BaseTool):
                 "target": {
                     "type": "string",
                     "description": "@ref ID (e.g. '@e3'), CSS selector, or text. Required for: click, dblclick, fill, type, hover, check, uncheck, select. For wait: CSS selector or milliseconds string (e.g. '1000').",
+                    "entity": None,
                 },
                 "value": {
                     "type": "string",
@@ -752,7 +831,7 @@ class BrowserActTool(BaseTool):
                 message="Please specify an action.",
                 error="missing_action",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         # Build the agent-browser command args
         if action in _NO_TARGET_ACTIONS:
@@ -767,7 +846,7 @@ class BrowserActTool(BaseTool):
                     message="'press' requires a 'value' (key name, e.g. 'Enter').",
                     error="missing_value",
                     session_id=session_name,
-                )
+                ).from_outside()
             cmd_args = ["press", value]
 
         elif action in _TARGET_ONLY_ACTIONS:
@@ -776,7 +855,7 @@ class BrowserActTool(BaseTool):
                     message=f"'{action}' requires a 'target' element.",
                     error="missing_target",
                     session_id=session_name,
-                )
+                ).from_outside()
             cmd_args = [action, target]
 
         elif action in _TARGET_VALUE_ACTIONS:
@@ -785,7 +864,7 @@ class BrowserActTool(BaseTool):
                     message=f"'{action}' requires both 'target' and 'value'.",
                     error="missing_params",
                     session_id=session_name,
-                )
+                ).from_outside()
             cmd_args = [action, target, value]
 
         elif action in _WAIT_ACTIONS:
@@ -797,7 +876,7 @@ class BrowserActTool(BaseTool):
                     ),
                     error="missing_target",
                     session_id=session_name,
-                )
+                ).from_outside()
             cmd_args = ["wait", target]
 
         else:
@@ -805,7 +884,7 @@ class BrowserActTool(BaseTool):
                 message=f"Unsupported action: {action}",
                 error="invalid_action",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         # Restore browser state from cloud if this is a different pod
         if user_id:
@@ -818,7 +897,7 @@ class BrowserActTool(BaseTool):
                 message=f"Action '{action}' failed.",
                 error="action_failed",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         # Allow the page to settle after interaction (best-effort: SPAs may not idle)
         settle_rc, _, settle_err = await _run(
@@ -838,7 +917,7 @@ class BrowserActTool(BaseTool):
             current_url=url_out.strip(),
             snapshot=snapshot,
             session_id=session_name,
-        )
+        ).from_outside(snapshot, url_out.strip())
 
         # Persist browser state to cloud for cross-pod continuity
         if user_id:
@@ -936,7 +1015,7 @@ class BrowserScreenshotTool(BaseTool):
                     message="Failed to take screenshot.",
                     error="screenshot_failed",
                     session_id=session_name,
-                )
+                ).from_outside()
 
             with open(tmp_path, "rb") as f:
                 png_bytes = f.read()
@@ -965,14 +1044,14 @@ class BrowserScreenshotTool(BaseTool):
                 message="Screenshot taken but failed to save to workspace.",
                 error="workspace_write_failed",
                 session_id=session_name,
-            )
+            ).from_outside()
 
         result = BrowserScreenshotResponse(
             message=f"Screenshot saved to workspace as '{filename}'. Use read_workspace_file with file_id='{write_resp.file_id}' to retrieve it.",
             file_id=write_resp.file_id,
             filename=filename,
             session_id=session_name,
-        )
+        ).from_outside()
 
         # Persist browser state to cloud for cross-pod continuity
         if user_id:

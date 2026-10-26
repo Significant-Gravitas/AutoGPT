@@ -9,9 +9,9 @@ The streaming machinery itself lives in ``turn_stream``; prompt assembly in
 import asyncio
 import logging
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SkipValidation
 
-from backend.platform_linking.models import TurnDenial
+from backend.platform_linking.models import CardTurn, ChatTurnHandle, TurnDenial
 from backend.util.exceptions import LinkAlreadyExistsError
 
 from . import sessions, threads
@@ -22,7 +22,7 @@ from .attachments import (
     upload_attachments,
 )
 from .bot_backend import BotBackend
-from .prompt import build_message_text, build_thread_name
+from .prompt import PendingMessage, build_message_text, build_thread_name
 from .turn_stream import TurnStreamer, send_denial
 
 logger = logging.getLogger(__name__)
@@ -43,8 +43,7 @@ class TargetState(BaseModel):
     """
 
     processing: bool = False
-    # Each entry: (username, user_id, text)
-    pending: list[tuple[str, str, str]] = Field(default_factory=list)
+    pending: list[PendingMessage] = Field(default_factory=list)
     # Workspace file IDs uploaded for messages in `pending`, drained together
     # with them so a batched turn carries every attached file.
     pending_file_ids: list[str] = Field(default_factory=list)
@@ -52,19 +51,33 @@ class TargetState(BaseModel):
     # turn so it uses the same session (not a separate Redis read that could
     # diverge). None for text-only batches, which resolve the session normally.
     session_id: str | None = None
+    # Turns woken by a card answered here, streamed before the next batch.
+    follows: list[ChatTurnHandle] = Field(default_factory=list)
+    # Context of the newest message in `pending`, so a drained batch's header
+    # names where those messages were sent (e.g. the thread the first reply
+    # opened), not where the turn that started processing came from.
+    pending_ctx: SkipValidation[MessageContext | None] = None
+
+
+def _state_key(ctx: MessageContext, target_id: str) -> tuple[str, str]:
+    return ctx.platform, target_id
 
 
 class MessageHandler:
     def __init__(self, api: BotBackend):
         self._api = api
         self._streamer = TurnStreamer(api)
-        self._targets: dict[str, TargetState] = {}
+        # Keyed by (platform, target id): ids from two platforms can collide.
+        self._targets: dict[tuple[str, str], TargetState] = {}
         # Per-target lock serialising session resolution, so two attachment
         # messages racing on a fresh target converge on ONE session instead of
         # each creating its own and splitting the files across them.
-        self._session_locks: dict[str, asyncio.Lock] = {}
+        self._session_locks: dict[tuple[str, str], asyncio.Lock] = {}
 
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
+        if ctx.follow is not None:
+            await self._follow(ctx, ctx.follow, adapter)
+            return
         # Skipped attachments (too large / failed download) count as content:
         # the user sent something and must hear why nothing happened.
         has_content = bool(
@@ -81,13 +94,14 @@ class MessageHandler:
 
         # In a thread we only auto-reply when we own it (= we created it in
         # response to an @mention in a channel). For any other existing
-        # thread we'd been added to, require an explicit @mention each turn
-        # so we don't hijack ongoing team conversations.
+        # thread we'd been added to, require an explicit @mention
+        # (or a reply to the bot) each turn so we don't hijack ongoing team
+        # conversations.
         include_thread_history = False
         if ctx.channel_type == "thread":
             is_subscribed = await threads.is_subscribed(ctx.platform, ctx.channel_id)
             if not is_subscribed:
-                if not ctx.bot_mentioned:
+                if not ctx.bot_mentioned and not ctx.replied_to_bot:
                     return
                 # First time we're @-ed into this thread — pull the recent
                 # thread history into the prompt so AutoGPT has context,
@@ -176,6 +190,28 @@ class MessageHandler:
             ctx, adapter, target_id, message_text, file_ids, session_id
         )
 
+    async def _follow(
+        self, ctx: MessageContext, follow: CardTurn, adapter: PlatformAdapter
+    ) -> None:
+        """A card answered here woke the turn that runs it; its reply belongs
+        where the card was, after any reply already streaming there."""
+        if not await self._ensure_linked(ctx, adapter):
+            return
+        try:
+            turn = await self._api.woken_turn(follow)
+        except Exception:
+            # The answer stands and its turn runs; only the reply here is lost.
+            logger.exception("Could not find the turn a card answer woke")
+            return
+        if turn is None:
+            return
+        target_id = await self._resolve_target(ctx, adapter)
+        if not target_id:
+            return
+        state = self._targets.setdefault(_state_key(ctx, target_id), TargetState())
+        state.follows.append(turn)
+        await self._process(ctx, adapter, target_id, state)
+
     async def _report_skipped_only(
         self, ctx: MessageContext, adapter: PlatformAdapter
     ) -> None:
@@ -194,11 +230,12 @@ class MessageHandler:
 
     # -- Session + target resolution --
 
-    def _session_lock(self, target_id: str) -> asyncio.Lock:
-        lock = self._session_locks.get(target_id)
+    def _session_lock(self, ctx: MessageContext, target_id: str) -> asyncio.Lock:
+        key = _state_key(ctx, target_id)
+        lock = self._session_locks.get(key)
         if lock is None:
             lock = asyncio.Lock()
-            self._session_locks[target_id] = lock
+            self._session_locks[key] = lock
         return lock
 
     async def _resolve_session_for_attachments(
@@ -214,7 +251,7 @@ class MessageHandler:
         ``(None, None)`` on failure — the caller then reports the files as
         un-attachable rather than uploading them somewhere AutoGPT can't see.
         """
-        async with self._session_lock(target_id):
+        async with self._session_lock(ctx, target_id):
             try:
                 result = await self._api.ensure_session(
                     platform=ctx.platform,
@@ -255,6 +292,11 @@ class MessageHandler:
             logger.warning("Thread creation failed, falling back to channel reply")
             return ctx.channel_id
         await threads.subscribe(ctx.platform, thread_id)
+        # The reply goes to the new thread, so "post here" must point there.
+        # Adapters return a thread target in the form post_to_chat_platform
+        # takes; a platform that can't post to channels keeps None.
+        if ctx.post_channel_id is not None:
+            ctx.post_channel_id = thread_id
         return thread_id
 
     # -- Batching --
@@ -269,15 +311,22 @@ class MessageHandler:
 
     async def _stream_batch(
         self,
-        batch: list[tuple[str, str, str]],
+        batch: list[PendingMessage],
         ctx: MessageContext,
         adapter: PlatformAdapter,
         target_id: str,
         file_ids: list[str] | None = None,
         session_id: str | None = None,
+        turn: ChatTurnHandle | None = None,
     ) -> None:
         await self._streamer.stream_batch(
-            batch, ctx, adapter, target_id, file_ids=file_ids, session_id=session_id
+            batch,
+            ctx,
+            adapter,
+            target_id,
+            file_ids=file_ids,
+            session_id=session_id,
+            turn=turn,
         )
 
     async def _enqueue_and_process(
@@ -289,26 +338,41 @@ class MessageHandler:
         file_ids: list[str] | None = None,
         session_id: str | None = None,
     ) -> None:
-        state = self._targets.setdefault(target_id, TargetState())
-        state.pending.append((ctx.username, ctx.user_id, message_text or ctx.text))
+        state = self._targets.setdefault(_state_key(ctx, target_id), TargetState())
+        state.pending.append(PendingMessage.from_context(ctx, message_text or ctx.text))
+        state.pending_ctx = ctx
         if file_ids:
             state.pending_file_ids.extend(file_ids)
         # First attachment message in a batch pins the session; later ones
         # resolved the same session (serialised by _session_lock), so keep it.
         if session_id and state.session_id is None:
             state.session_id = session_id
+        await self._process(ctx, adapter, target_id, state)
 
+    async def _process(
+        self,
+        ctx: MessageContext,
+        adapter: PlatformAdapter,
+        target_id: str,
+        state: TargetState,
+    ) -> None:
         if state.processing:
             # Another invocation is streaming for this target — it will pick
-            # up the message we just appended when its current stream ends.
+            # up what we just queued when its current stream ends.
             return
 
         state.processing = True
         try:
-            while state.pending:
+            while state.pending or state.follows:
+                if state.follows:
+                    turn = state.follows.pop(0)
+                    await self._stream_batch([], ctx, adapter, target_id, turn=turn)
+                    continue
                 batch = list(state.pending)
                 batch_file_ids = list(state.pending_file_ids)
                 batch_session_id = state.session_id
+                batch_ctx = state.pending_ctx or ctx
+                state.pending_ctx = None
                 state.pending.clear()
                 state.pending_file_ids.clear()
                 state.session_id = None
@@ -321,7 +385,7 @@ class MessageHandler:
                     batch_file_ids = batch_file_ids[:MAX_TURN_FILE_IDS]
                 await self._stream_batch(
                     batch,
-                    ctx,
+                    batch_ctx,
                     adapter,
                     target_id,
                     file_ids=batch_file_ids,
@@ -331,8 +395,8 @@ class MessageHandler:
             state.processing = False
             # Drop the empty state so the dict doesn't grow unbounded across
             # the bot's lifetime.
-            if not state.pending:
-                self._targets.pop(target_id, None)
+            if not state.pending and not state.follows:
+                self._targets.pop(_state_key(ctx, target_id), None)
 
     # -- Linking --
 

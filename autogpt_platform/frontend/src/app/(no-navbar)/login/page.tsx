@@ -5,15 +5,21 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
 import AuthFeedback from "@/components/auth/AuthFeedback";
+import { CheckYourInbox } from "@/components/auth/CheckYourInbox/CheckYourInbox";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
+import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { environment } from "@/services/environment";
 import { useSearchParams } from "next/navigation";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { LoginMarketingPanel } from "./components/LoginMarketingPanel";
+import {
+  ACCOUNT_BANNED_NOTICE_COPY,
+  EMAIL_VERIFICATION_NOTICE_COPY,
+} from "./helpers";
 import { useLoginPage } from "./useLoginPage";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +35,10 @@ export default function LoginPage() {
     user,
     form,
     feedback,
+    nextUrl: safeNextUrl,
+    verificationEmail,
+    verificationNotice,
+    showBannedNotice,
     isLoading,
     isGoogleLoading,
     isCloudEnv,
@@ -37,19 +47,47 @@ export default function LoginPage() {
     handleSubmit,
     handleProviderLogin,
     handleCloseNotAllowedModal,
+    handleBackToLogin,
   } = useLoginPage();
 
   if (isUserLoading || user) {
     return <LoadingLogin />;
   }
 
+  if (verificationEmail) {
+    return (
+      <AuthSplitLayout marketing={<LoginMarketingPanel />}>
+        <CheckYourInbox
+          email={verificationEmail}
+          reason="login"
+          next={safeNextUrl}
+          onBack={handleBackToLogin}
+        />
+      </AuthSplitLayout>
+    );
+  }
+
   return (
     <AuthSplitLayout marketing={<LoginMarketingPanel />}>
       <div className="mb-8">
-        <Text variant="h3" as="h1" className="!text-slate-950">
+        <Text variant="h3" as="h1" className="!text-foreground-strong">
           Log in to your account to continue
         </Text>
       </div>
+
+      {showBannedNotice ? (
+        <Alert variant="error" className="mb-6">
+          <AlertDescription>{ACCOUNT_BANNED_NOTICE_COPY}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {verificationNotice ? (
+        <Alert className="mb-6">
+          <AlertDescription>
+            {EMAIL_VERIFICATION_NOTICE_COPY[verificationNotice]}
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <Form {...form}>
         <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
@@ -121,7 +159,7 @@ export default function LoginPage() {
       </Form>
 
       <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
-        <Text variant="body-medium" className="!text-slate-500">
+        <Text variant="body-medium" className="!text-foreground-tertiary">
           Don&apos;t have an account?
         </Text>
         <Link href={signupHref} variant="secondary">

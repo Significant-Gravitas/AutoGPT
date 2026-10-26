@@ -41,7 +41,7 @@ export function TimezoneCard({ value, onChange, index = 0 }: Props) {
       }
       className="flex w-full flex-col"
     >
-      <div className="flex h-fit flex-col justify-center gap-3 rounded-[18px] border border-zinc-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="flex h-fit flex-col justify-center gap-3 rounded-[18px] border border-border-base bg-surface px-4 py-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Text variant="body-medium" as="span" className="text-textBlack">
@@ -52,7 +52,7 @@ export function TimezoneCard({ value, onChange, index = 0 }: Props) {
                 <button
                   type="button"
                   aria-label="Time zone info"
-                  className="flex items-center text-zinc-400 transition-colors hover:text-zinc-600 focus-visible:text-zinc-600 focus-visible:outline-none"
+                  className="flex items-center text-foreground-subtle transition-colors hover:text-foreground-secondary focus-visible:text-foreground-secondary focus-visible:outline-none"
                 >
                   <Icon icon={InformationCircleIcon} size={16} />
                 </button>

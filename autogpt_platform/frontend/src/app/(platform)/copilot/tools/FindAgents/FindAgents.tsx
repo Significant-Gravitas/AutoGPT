@@ -80,14 +80,14 @@ export function FindAgentsTool({ part }: Props) {
         />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 
       {hasAgents && agentsFoundOutput && (
         <ToolAccordion
           icon={<AccordionIcon toolType={part.type} />}
-          title="Agent results"
+          title="Workflow results"
           description={accordionDescription}
         >
           <ContentGrid className="sm:grid-cols-2">

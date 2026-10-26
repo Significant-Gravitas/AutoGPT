@@ -93,16 +93,25 @@ export function EditAgentForm({
           onSubmit={form.handleSubmit(handleFormSubmit)}
           className="flex flex-col gap-5 pb-5"
         >
-          <section className="rounded-[18px] border border-amber-200 bg-amber-50 p-4">
+          <section className="rounded-[18px] border border-warning-border bg-warning-surface p-4">
             <div className="mb-4 flex items-start gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-700 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface text-warning-foreground shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
                 <Icon icon={InformationCircleIcon} size={18} />
               </div>
               <div className="flex min-w-0 flex-col gap-1">
-                <Text variant="body-medium" as="h3" className="text-amber-950">
+                <Text
+                  // TODO(tokens): no exact role for text-amber-950 #451a03
+                  variant="body-medium"
+                  as="h3"
+                  className="text-amber-950"
+                >
                   Update note
                 </Text>
-                <Text variant="small" className="text-amber-800">
+                <Text
+                  // TODO(tokens): no exact role for text-amber-800 #92400e
+                  variant="small"
+                  className="text-amber-800"
+                >
                   Reviewers use this to understand why this submission was
                   edited.
                 </Text>
@@ -139,7 +148,7 @@ export function EditAgentForm({
             collapsible
             value={openAccordion}
             onValueChange={setOpenAccordion}
-            className="overflow-hidden rounded-[14px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)] [&>*+*]:border-t [&>*+*]:border-zinc-200"
+            className="overflow-hidden rounded-[14px] border border-border-base bg-surface shadow-[0_1px_2px_rgba(15,15,20,0.04)] [&>*+*]:border-t [&>*+*]:border-border-base"
           >
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
@@ -147,20 +156,21 @@ export function EditAgentForm({
                   <Icon
                     icon={Store01Icon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-foreground-tertiary"
                   />
                   Listing basics
                   {basicsHasError ? (
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
+                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
                       className="text-rose-500"
                     />
                   ) : basicsComplete ? (
                     <Icon
                       icon={CheckmarkCircle02Icon}
                       size={16}
-                      className="text-purple-500"
+                      className="text-brand"
                     />
                   ) : null}
                 </span>
@@ -177,7 +187,7 @@ export function EditAgentForm({
                         label="Title"
                         labelTooltip="Public name shown on the marketplace listing."
                         type="text"
-                        placeholder="Agent name"
+                        placeholder="Workflow name"
                         error={form.formState.errors.title?.message}
                         {...field}
                       />
@@ -196,7 +206,7 @@ export function EditAgentForm({
                           id={field.name}
                           labelVariant="body"
                           label="Tagline"
-                          labelTooltip="The one-line subtitle shown under the agent name and on preview cards. Start with a verb and name the outcome for the user."
+                          labelTooltip="The one-line subtitle shown under the workflow name and on preview cards. Start with a verb and name the outcome for the user."
                           type="text"
                           placeholder="Find decision-makers at any company in seconds"
                           error={form.formState.errors.subheader?.message}
@@ -216,7 +226,7 @@ export function EditAgentForm({
                       id={field.name}
                       labelVariant="body"
                       label="Category"
-                      labelTooltip="Primary category that helps users discover the agent."
+                      labelTooltip="Primary category that helps users discover the workflow."
                       placeholder={categoryPlaceholder}
                       disabled={categoriesUnavailable}
                       value={field.value}
@@ -235,20 +245,21 @@ export function EditAgentForm({
                   <Icon
                     icon={Album01Icon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-foreground-tertiary"
                   />
                   Thumbnails
                   {thumbnailsHasError ? (
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
+                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
                       className="text-rose-500"
                     />
                   ) : thumbnailsComplete ? (
                     <Icon
                       icon={CheckmarkCircle02Icon}
                       size={16}
-                      className="text-purple-500"
+                      className="text-brand"
                     />
                   ) : null}
                 </span>
@@ -272,20 +283,21 @@ export function EditAgentForm({
                   <Icon
                     icon={SparklesIcon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-foreground-tertiary"
                   />
                   Experience details
                   {experienceHasError ? (
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
+                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
                       className="text-rose-500"
                     />
                   ) : experienceComplete ? (
                     <Icon
                       icon={CheckmarkCircle02Icon}
                       size={16}
-                      className="text-purple-500"
+                      className="text-brand"
                     />
                   ) : null}
                 </span>
@@ -303,10 +315,10 @@ export function EditAgentForm({
                         id={field.name}
                         labelVariant="body"
                         label="Description"
-                        labelTooltip="What the agent does and the outcome users get."
+                        labelTooltip="What the workflow does and the outcome users get."
                         type="textarea"
                         rows={2}
-                        placeholder="Describe the outcome this agent creates"
+                        placeholder="Describe the outcome this workflow creates"
                         error={form.formState.errors.description?.message}
                         {...field}
                       />
@@ -340,7 +352,7 @@ export function EditAgentForm({
                         id={field.name}
                         labelVariant="body"
                         label="Output demo"
-                        labelTooltip="Link showing example output the agent produces."
+                        labelTooltip="Link showing example output the workflow produces."
                         type="url"
                         placeholder="https://youtube.com/watch?v=..."
                         error={form.formState.errors.agentOutputDemo?.message}
@@ -353,7 +365,7 @@ export function EditAgentForm({
             </AccordionItem>
           </Accordion>
 
-          <div className="flex flex-col-reverse gap-3 border-t border-zinc-200 pt-4 sm:flex-row sm:justify-end">
+          <div className="flex flex-col-reverse gap-3 border-t border-border-base pt-4 sm:flex-row sm:justify-end">
             <Button
               type="button"
               onClick={onClose}

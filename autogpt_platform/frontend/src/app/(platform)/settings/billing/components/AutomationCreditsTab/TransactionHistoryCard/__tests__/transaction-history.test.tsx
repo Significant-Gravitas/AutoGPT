@@ -43,7 +43,9 @@ describe("Transaction history receipts", () => {
     expect(statusLabel.closest("div")?.textContent).toContain("Running");
     expect(within(receipt).getByText("Net change so far")).toBeDefined();
     expect(
-      within(receipt).getByText("+$0.03").classList.contains("text-green-700"),
+      within(receipt)
+        .getByText("+$0.03")
+        .classList.contains("text-success-foreground"),
     ).toBe(true);
     expect(
       within(receipt)
@@ -94,7 +96,7 @@ describe("Transaction history receipts", () => {
     fireEvent.click(screen.getByRole("button", { name: /Retry loading more/ }));
     expect(await screen.findByText("Credits added")).toBeDefined();
     expect(
-      screen.getByText("+$20.00").classList.contains("text-green-700"),
+      screen.getByText("+$20.00").classList.contains("text-success-foreground"),
     ).toBe(true);
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: /Load more/ })).toBeNull(),
@@ -121,12 +123,12 @@ describe("Transaction history receipts", () => {
       ),
     );
     render(<TransactionHistoryCard />);
-    await screen.findByText("Agent unavailable");
+    await screen.findByText("Workflow unavailable");
     expect(screen.queryByRole("link")).toBeNull();
     fireEvent.click(
-      screen.getByRole("button", { name: /details for Agent unavailable/i }),
+      screen.getByRole("button", { name: /details for Workflow unavailable/i }),
     );
-    expect(screen.getByText("Agent and run unavailable")).toBeDefined();
+    expect(screen.getByText("Workflow and run unavailable")).toBeDefined();
     expect(screen.queryByRole("link", { name: /View task/ })).toBeNull();
   });
 

@@ -28,7 +28,7 @@ import logging
 import time
 from typing import Any
 
-from backend.copilot.active_turns import running_turn_limit_message
+from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
@@ -45,6 +45,7 @@ from backend.copilot.sdk.session_waiter import (
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 from backend.copilot.tree import SpawnRequest
+from backend.data.workspace_internal import is_internal_workspace_file
 
 from .base import BaseTool
 from .expert_delegation import sent_from_metadata
@@ -55,6 +56,7 @@ from .models import (
     ToolResponseBase,
     WorkspaceFileInfoData,
 )
+from .workspace_files import AGENT_CREATED_METADATA
 
 logger = logging.getLogger(__name__)
 
@@ -98,11 +100,13 @@ class RunSubSessionTool(BaseTool):
                 "prompt": {
                     "type": "string",
                     "description": "The task for the child session to execute.",
+                    "title": "Task",
                 },
                 "system_context": {
                     "type": "string",
                     "description": "Optional context prepended to the prompt.",
                     "default": "",
+                    "title": "Background",
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
@@ -111,6 +115,8 @@ class RunSubSessionTool(BaseTool):
                         "Cheaper when the follow-up builds on what it read."
                     ),
                     "default": "",
+                    "title": "Continues",
+                    "entity": "chat_session",
                 },
                 "wait_for_result": {
                     "type": "integer",
@@ -119,6 +125,8 @@ class RunSubSessionTool(BaseTool):
                         f"Clamped to {MAX_SUB_SESSION_WAIT_SECONDS}."
                     ),
                     "default": 60,
+                    "title": "Waits up to",
+                    "format": "seconds",
                 },
             },
             "required": ["prompt"],
@@ -139,12 +147,12 @@ class RunSubSessionTool(BaseTool):
             return ErrorResponse(
                 message="prompt is required",
                 session_id=session.session_id,
-            )
+            ).from_outside()
         if user_id is None:
             return ErrorResponse(
                 message="Authentication required",
                 session_id=session.session_id,
-            )
+            ).from_outside()
 
         # Resolve the sub's ChatSession id — either resume an owned one or
         # create a fresh session that inherits the parent's dry_run so a
@@ -162,7 +170,7 @@ class RunSubSessionTool(BaseTool):
                         "run_sub_session call of yours."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             if owned.expert_id != session.expert_id:
                 return ErrorResponse(
                     message=(
@@ -171,7 +179,7 @@ class RunSubSessionTool(BaseTool):
                         "fresh sub for this assistant."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             # Only the session that opened a sub may steer it: same scope is
             # not enough, or any sibling — or the sub itself — could queue a
             # prompt into it under its envelope rather than their own.
@@ -193,7 +201,7 @@ class RunSubSessionTool(BaseTool):
                         "sub."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             # Subs are created as automations below, so only a sub may be
             # resumed as one. Otherwise this tool would run a model-authored
             # prompt inside an interactive session the caller happens to own,
@@ -214,7 +222,7 @@ class RunSubSessionTool(BaseTool):
                         "session."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             if (
                 owned.metadata.llm_auth_provider != session.metadata.llm_auth_provider
                 or owned.metadata.llm_credential_id
@@ -223,7 +231,7 @@ class RunSubSessionTool(BaseTool):
                 return ErrorResponse(
                     message="codex_session_route_mismatch",
                     session_id=session.session_id,
-                )
+                ).from_outside()
             inner_session_id = sub_session_param
             opened_here = False
         else:
@@ -297,7 +305,7 @@ class RunSubSessionTool(BaseTool):
             # handles — the same shape handoff_to_expert returns on refusal.
             return ErrorResponse(
                 message=outcome_response.message, session_id=session.session_id
-            )
+            ).from_outside()
         return outcome_response
 
 
@@ -339,7 +347,8 @@ async def list_sub_workspace_files(
     The ``origin=agent-created`` filter means only files the sub persisted via
     ``write_workspace_file`` are listed — transient working-directory artefacts
     (e.g. a ``git clone`` the sub inspects but never persists) are not workspace
-    files and never appear here. When the sub persists more than
+    files and never appear here, and neither do the sub's own working files
+    (its build scratchpad). When the sub persists more than
     ``_WORKSPACE_FILE_MANIFEST_LIMIT`` files, the most recently written ones win
     (the listing is ordered ``createdAt`` descending).
 
@@ -350,7 +359,8 @@ async def list_sub_workspace_files(
         manager = await get_workspace_manager(user_id, inner_session_id)
         files = await manager.list_files(
             limit=_WORKSPACE_FILE_MANIFEST_LIMIT,
-            metadata_equals={"origin": "agent-created"},
+            metadata_equals=AGENT_CREATED_METADATA,
+            include_internal=False,
         )
     except Exception:
         logger.warning(
@@ -396,10 +406,17 @@ def _workspace_files_from_tool_calls(
         if not file_id or not path or file_id in seen_ids:
             continue
         seen_ids.add(file_id)
+        name = payload.get("name") or path.rsplit("/", 1)[-1]
+        # The log does not carry the mark, but this tool's writes are marked by
+        # name and path alone, so the same rule gives the same answer.
+        if is_internal_workspace_file(
+            name=name, path=path, metadata=AGENT_CREATED_METADATA
+        ):
+            continue
         files.append(
             WorkspaceFileInfoData(
                 file_id=file_id,
-                name=payload.get("name") or path.rsplit("/", 1)[-1],
+                name=name,
                 path=path,
                 mime_type=payload.get("mime_type") or "",
                 size_bytes=_coerce_size_bytes(payload.get("size_bytes")),
@@ -510,7 +527,23 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
+
+    if outcome == "queued_for_slot":
+        return SubSessionStatusResponse(
+            message=(
+                f"{actor} is queued: the user's task slots for sub-work are all "
+                "taken, and it starts on its own when one frees. Call "
+                "tool:get_sub_session_result to wait for it or check on it"
+                f"{f', or watch at {link}' if link else ''}."
+            ),
+            session_id=parent_session_id,
+            status="queued",
+            sub_session_id=inner_session_id,
+            sub_autopilot_session_id=inner_session_id,
+            sub_autopilot_session_link=link,
+            elapsed_seconds=round(elapsed, 2),
+        ).from_outside()
 
     if outcome == "running":
         return SubSessionStatusResponse(
@@ -526,7 +559,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
 
     if outcome == "refused":
         # The turn never started; the tree or the target said why.
@@ -538,7 +571,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
 
     if outcome == "rejected_concurrent_turn_cap":
         # No sub-session record / transcript exists yet — the per-user
@@ -546,14 +579,14 @@ def response_from_outcome(
         # Render the actionable message instead of a "see transcript"
         # pointer to nothing.
         return SubSessionStatusResponse(
-            message=running_turn_limit_message(),
+            message=spawn_limit_message(),
             session_id=parent_session_id,
             status="error",
             sub_session_id=inner_session_id,
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
 
     if outcome == "failed":
         return SubSessionStatusResponse(
@@ -564,7 +597,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
-        )
+        ).from_outside()
 
     # completed — prefer the authoritative listing supplied by the caller;
     # fall back to mining the tool-call log when it's unavailable.
@@ -590,4 +623,4 @@ def response_from_outcome(
         sub_tool_call_count=len(result.tool_calls),
         sub_workspace_files=workspace_files or None,
         elapsed_seconds=round(elapsed, 2),
-    )
+    ).from_outside(result.response_text, workspace_files)

@@ -49,6 +49,7 @@ _EXPERT_ID_PARAM = {
         "Whose standing work. Experts act on themselves and omit it. From "
         "personal AutoPilot, name an expert, or omit for the account's own."
     ),
+    "entity": "expert",
 }
 
 
@@ -149,6 +150,7 @@ class ScheduleRoutineTool(BaseTool):
                         "Routine id from list_routines. Omit to create a new "
                         "one from 'title' and 'prompt'."
                     ),
+                    "entity": "routine",
                 },
                 "title": {
                     "type": "string",
@@ -168,6 +170,7 @@ class ScheduleRoutineTool(BaseTool):
                         "proposal with the user's answers. Required when it "
                         "has unanswered 'asks'."
                     ),
+                    "title": "Instructions",
                 },
                 "crons": {
                     "type": "array",
@@ -179,6 +182,8 @@ class ScheduleRoutineTool(BaseTool):
                         "gave an hour rather than a time, so routines do not "
                         "pile up. Not with 'delay_seconds'."
                     ),
+                    "title": "Repeats",
+                    "format": "cron",
                 },
                 "delay_seconds": {
                     "type": "integer",
@@ -187,6 +192,8 @@ class ScheduleRoutineTool(BaseTool):
                         "One-off work: seconds from now. Convert an absolute "
                         "time ('at six') to a delay. Not with 'crons'."
                     ),
+                    "title": "Runs in",
+                    "format": "seconds",
                 },
                 "session_mode": {
                     "type": "string",
@@ -198,6 +205,7 @@ class ScheduleRoutineTool(BaseTool):
                         "one unless 'session_id' names another. FRESH: a new "
                         "chat each time, remembering nothing."
                     ),
+                    "title": "Where runs land",
                 },
                 "session_id": {
                     "type": "string",
@@ -206,6 +214,8 @@ class ScheduleRoutineTool(BaseTool):
                         "this one; its id is in <session_context>. Same user "
                         "and same expert only."
                     ),
+                    "title": "Lands in",
+                    "entity": "chat_session",
                 },
                 "grants_credentials": {
                     "type": "boolean",
@@ -215,6 +225,7 @@ class ScheduleRoutineTool(BaseTool):
                         "touches nothing outside the platform. True only when "
                         "the user agreed to THIS routine using their accounts."
                     ),
+                    "title": "Uses your accounts",
                 },
                 "integrations": INTEGRATIONS_PARAM,
                 "expert_id": _EXPERT_ID_PARAM,

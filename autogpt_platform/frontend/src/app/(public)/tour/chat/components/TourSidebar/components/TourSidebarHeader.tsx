@@ -1,14 +1,15 @@
 "use client";
 
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
-import { SidebarHeader, useSidebar } from "@/components/ui/sidebar";
+import {
+  SidebarHeader,
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-// Mirror of AppSidebarHeader, with the logo pointing back at the tour
-// instead of the (auth-gated) copilot home.
 export function TourSidebarHeader() {
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
@@ -38,7 +39,7 @@ export function TourSidebarHeader() {
         )}
       >
         <Link
-          href="/tour"
+          href="/marketplace"
           aria-label="AutoGPT"
           className={cn(
             "flex items-center",

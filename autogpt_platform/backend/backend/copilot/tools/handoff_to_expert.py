@@ -25,9 +25,10 @@ import logging
 from typing import Any
 
 from backend.api.features.experts.models import Expert
-from backend.copilot.active_turns import running_turn_limit_message
+from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.context import get_current_permissions
+from backend.copilot.gate import child_autopilot_mode
 from backend.copilot.model import (
     ChatSession,
     child_session_origin,
@@ -64,7 +65,7 @@ logger = logging.getLogger(__name__)
 # already picked up, or appended to a turn in flight there. Anything else (the
 # concurrent-turn cap, a failed dispatch) means nothing moved.
 _OWNERSHIP_TAKEN: frozenset[SessionOutcome] = frozenset(
-    {"running", "queued", "completed"}
+    {"running", "queued", "queued_for_slot", "completed"}
 )
 
 
@@ -110,6 +111,7 @@ class HandoffToExpertTool(BaseTool):
                     "description": (
                         "Teammate taking it over, from <team_context>. Not you."
                     ),
+                    "entity": "expert",
                 },
                 "prompt": {
                     "type": "string",
@@ -117,11 +119,13 @@ class HandoffToExpertTool(BaseTool):
                         "The task, written for them. They cannot see this "
                         "conversation or ask you follow-ups."
                     ),
+                    "title": "Task",
                 },
                 "context": {
                     "type": "string",
                     "description": "Optional background; what you already tried.",
                     "default": "",
+                    "title": "Background",
                 },
             },
             "required": ["expert_id", "prompt"],
@@ -179,6 +183,11 @@ class HandoffToExpertTool(BaseTool):
             delegated_by_session_id=session.session_id,
             handed_off_from_expert_id=session.expert_id,
             origin=child_session_origin(session.metadata),
+            # Same cap delegation applies: an Ask-first chat cannot hand its
+            # work to a thread that runs it unsupervised.
+            inherited_autopilot_mode=child_autopilot_mode(
+                session, target.autopilot_mode
+            ),
         )
         outcome, result = await self._queue_task(
             user_id, session, inner.session_id, prompt, context
@@ -204,6 +213,7 @@ class HandoffToExpertTool(BaseTool):
             inner_session_id=inner.session_id,
             parent_session_id=session.session_id,
             target_name=target.name,
+            waiting_for_slot=outcome == "queued_for_slot",
         )
         transferred.message += await build_spawn_state_note()
         return apply_delegated_expert(
@@ -315,6 +325,7 @@ def _transferred_response(
     inner_session_id: str,
     parent_session_id: str | None,
     target_name: str,
+    waiting_for_slot: bool = False,
 ) -> SubSessionStatusResponse:
     """The terminal handoff contract: ownership moved, nothing to poll.
 
@@ -327,8 +338,9 @@ def _transferred_response(
     link = _sub_session_link(inner_session_id)
     return SubSessionStatusResponse(
         message=(
-            f"{target_name} owns this now and will report to the user "
-            f"directly.{f' Follow along at {link}.' if link else ''}"
+            f"{target_name} owns this now and will report to the user directly"
+            f"{', starting when one of their task slots frees' if waiting_for_slot else ''}."
+            f"{f' Follow along at {link}.' if link else ''}"
         ),
         session_id=parent_session_id,
         status="transferred",
@@ -346,7 +358,7 @@ def _refused_transfer_message(
     if outcome == "rejected_concurrent_turn_cap":
         return (
             f"The handoff to {target_name} did not happen — the task is still "
-            f"yours. {running_turn_limit_message()}"
+            f"yours. {spawn_limit_message()}"
         )
     if outcome == "refused" and refusal:
         return (

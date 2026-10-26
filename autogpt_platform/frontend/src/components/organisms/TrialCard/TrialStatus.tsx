@@ -1,45 +1,89 @@
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
 import { CancelTrialDialog } from "./CancelTrialDialog";
 import { formatTrialEnd, formatTrialPrice } from "./helpers";
+import { TrialCancelPending } from "./TrialCancelPending";
 import { TrialRejection } from "./TrialRejection";
-import { TrialTitle } from "./TrialTitle/TrialTitle";
 
 interface Props {
   trial: TrialStatusResponse;
   isCanceling: boolean;
   onCancel: () => void;
+  isResuming: boolean;
+  onResume: () => void;
 }
 
-export function TrialStatus({ trial, isCanceling, onCancel }: Props) {
+export function TrialStatus({
+  trial,
+  isCanceling,
+  onCancel,
+  isResuming,
+  onResume,
+}: Props) {
   if (!trial.offer) return null;
   if (trial.status === "canceled" && trial.rejection_reason)
     return <TrialRejection reason={trial.rejection_reason} />;
+  if (trial.active && trial.cancel_at_period_end)
+    return (
+      <TrialCancelPending
+        trial={trial}
+        offer={trial.offer}
+        isResuming={isResuming}
+        onResume={onResume}
+      />
+    );
   const end = formatTrialEnd(trial.ends_at);
   return (
-    <div className="flex flex-col gap-3">
-      <TrialTitle>
-        {trial.active ? "Your trial" : "Your trial has ended"}
-      </TrialTitle>
-      <Text variant="body" unmask={false} className="!text-zinc-800">
-        {trial.status === "canceled"
-          ? "Cancellation confirmed. Trial access has ended and your trial will not convert to a paid plan."
-          : trial.cancel_at_period_end
-            ? `Cancellation confirmed. Your trial will not convert to a paid plan. Trial access ends ${end}.`
-            : trial.active
-              ? `Your trial ends ${end}. Your saved card will then be charged ${formatTrialPrice(trial.offer)}, plus applicable tax.`
-              : "Paid access requires a successful payment. Review your payment method and plan below."}
-      </Text>
-      {trial.active ? (
-        <Text variant="small" className="!text-zinc-500">
-          Canceling ends trial access immediately.
-        </Text>
-      ) : null}
-      {trial.active && !trial.cancel_at_period_end ? (
-        <div className="mt-1">
-          <CancelTrialDialog isCanceling={isCanceling} onCancel={onCancel} />
+    <div
+      data-slot="trial-status"
+      className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3"
+    >
+      <div
+        data-slot="trial-status-details"
+        className="min-w-0 basis-full space-y-2 sm:flex-1 sm:basis-auto"
+      >
+        <div
+          data-slot="trial-status-header"
+          className="flex flex-wrap items-center gap-2.5"
+        >
+          <Text variant="large-semibold" as="h2">
+            {trial.active ? "Your trial" : "Your trial has ended"}
+          </Text>
+          <Badge variant="info" size="small">
+            {trial.status === "canceled"
+              ? "Canceled"
+              : trial.active
+                ? "Free trial"
+                : "Ended"}
+          </Badge>
         </div>
-      ) : null}
+        <Text
+          variant="small"
+          tone="secondary"
+          className="max-w-[560px] leading-5"
+        >
+          {trial.status === "canceled"
+            ? "Cancellation confirmed. Trial access has ended and your trial will not convert to a paid plan."
+            : trial.cancel_at_period_end
+              ? `Cancellation confirmed. Your trial will not convert to a paid plan. Trial access ends ${end}.`
+              : trial.active
+                ? `Your trial ends ${end}. Your saved card will then be charged ${formatTrialPrice(trial.offer)}, plus applicable tax.`
+                : "Paid access requires a successful payment. Review your payment method and plan below."}
+        </Text>
+        {trial.active && (
+          <Text variant="small" tone="secondary" className="text-xs">
+            Cancel before your trial ends to avoid a charge.
+          </Text>
+        )}
+      </div>
+      {trial.active && !trial.cancel_at_period_end && (
+        <CancelTrialDialog
+          trial={trial}
+          isCanceling={isCanceling}
+          onCancel={onCancel}
+        />
+      )}
     </div>
   );
 }

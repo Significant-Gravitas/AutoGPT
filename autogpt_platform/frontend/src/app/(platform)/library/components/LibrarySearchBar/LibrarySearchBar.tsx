@@ -21,18 +21,18 @@ export function LibrarySearchBar({ setSearchTerm }: Props) {
         icon={Search01Icon}
         width={18}
         height={18}
-        className="absolute left-4 top-[34%] z-20 -translate-y-1/2 text-zinc-800"
+        className="absolute left-4 top-[34%] z-20 -translate-y-1/2 text-foreground-emphasis"
       />
 
       <Input
-        label="Search agents"
+        label="Search workflows"
         id="library-search-bar"
         hideLabel
         onChange={handleSearchInput}
         className="min-w-[18rem] pl-12 lg:min-w-[30rem]"
         type="text"
         data-testid="library-textbox"
-        placeholder="Search agents"
+        placeholder="Search workflows"
       />
     </div>
   );

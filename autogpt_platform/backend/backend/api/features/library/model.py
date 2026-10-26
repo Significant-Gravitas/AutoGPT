@@ -16,7 +16,7 @@ from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
 
 if TYPE_CHECKING:
-    from backend.data.integrations import Webhook
+    from backend.data.integrations import WebhookWithoutSecrets
 
 
 class LibraryAgentStatus(str, Enum):
@@ -42,6 +42,8 @@ class LibraryFolder(pydantic.BaseModel):
     updated_at: datetime.datetime
     agent_count: int = 0  # Direct agents in folder
     subfolder_count: int = 0  # Direct child folders
+    organization_id: str | None = None
+    team_id: str | None = None
 
     @staticmethod
     def from_db(
@@ -61,6 +63,8 @@ class LibraryFolder(pydantic.BaseModel):
             updated_at=folder.updatedAt,
             agent_count=agent_count,
             subfolder_count=subfolder_count,
+            organization_id=folder.organizationId,
+            team_id=folder.teamId,
         )
 
 
@@ -244,6 +248,8 @@ class LibraryAgent(pydantic.BaseModel):
         description="ISO 8601 timestamp of the next scheduled run, if any",
     )
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
+    organization_id: str | None = None
+    team_id: str | None = None
     marketplace_listing: Optional["MarketplaceListing"] = None
 
     @staticmethod
@@ -251,7 +257,6 @@ class LibraryAgent(pydantic.BaseModel):
         agent: prisma.models.LibraryAgent,
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
         store_listing: Optional[prisma.models.StoreListing] = None,
-        profile: Optional[prisma.models.Profile] = None,
         execution_count_override: Optional[int] = None,
         schedule_info: Optional[dict[str, str]] = None,
     ) -> "LibraryAgent":
@@ -307,7 +312,9 @@ class LibraryAgent(pydantic.BaseModel):
                 for e in executions
                 if e.executionStatus == prisma.enums.AgentExecutionStatus.COMPLETED
             )
-            success_rate = (success_count / execution_count) * 100
+            # Over the included runs, not the total: an override counts runs
+            # the include never loaded, so their outcomes are unknown here.
+            success_rate = (success_count / len(executions)) * 100
 
             correctness_scores = []
             for e in executions:
@@ -347,19 +354,25 @@ class LibraryAgent(pydantic.BaseModel):
         can_access_graph = agent.AgentGraph.userId == agent.userId
         is_latest_version = True
 
-        marketplace_listing_data = None
-        if store_listing and store_listing.ActiveVersion and profile:
-            creator_data = MarketplaceListingCreator(
-                name=profile.name,
-                id=profile.id,
-                slug=profile.username,
-            )
-            marketplace_listing_data = MarketplaceListing(
+        active_listing = store_listing.ActiveVersion if store_listing else None
+        creator_profile = store_listing.CreatorProfile if store_listing else None
+        marketplace_listing_info = (
+            MarketplaceListing(
                 id=store_listing.id,
-                name=store_listing.ActiveVersion.name,
+                name=active_listing.name,
                 slug=store_listing.slug,
-                creator=creator_data,
+                creator=MarketplaceListingCreator(
+                    name=creator_profile.name,
+                    id=creator_profile.id,
+                    slug=creator_profile.username,
+                ),
             )
+            if store_listing
+            and active_listing
+            and creator_profile
+            and not store_listing.isDeleted
+            else None
+        )
 
         return LibraryAgent(
             id=agent.id,
@@ -402,6 +415,8 @@ class LibraryAgent(pydantic.BaseModel):
             is_favorite=agent.isFavorite,
             is_hidden=agent.isHidden,
             folder_id=agent.folderId,
+            organization_id=agent.organizationId,
+            team_id=agent.teamId,
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
             is_scheduled=bool(schedule_info and agent.agentGraphId in schedule_info),
@@ -409,7 +424,7 @@ class LibraryAgent(pydantic.BaseModel):
                 schedule_info.get(agent.agentGraphId) if schedule_info else None
             ),
             settings=_parse_settings(agent.settings),
-            marketplace_listing=marketplace_listing_data,
+            marketplace_listing=marketplace_listing_info,
         )
 
 
@@ -543,27 +558,15 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
 
     # Read-only in responses; set server-side via the setup-trigger flow only.
     webhook_id: Optional[str] = None
-    webhook: "Webhook | None"
+    webhook: "WebhookWithoutSecrets | None"
 
     # Expert attribution, resolved server-side at creation; every run this
     # preset fires inherits it.
     expert_id: Optional[str] = None
 
-    @pydantic.field_serializer("webhook")
-    def _redact_webhook_signing_material(
-        self, webhook: "Webhook | None", info: pydantic.FieldSerializationInfo
-    ):
-        # Never expose a webhook's signing secret / provider webhook id to API
-        # clients; callers only need the ingress URL and non-sensitive metadata.
-        if webhook is None:
-            return None
-        return webhook.model_dump(
-            mode=info.mode, exclude={"secret", "provider_webhook_id"}
-        )
-
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
-        from backend.data.integrations import Webhook
+        from backend.data.integrations import WebhookWithoutSecrets
 
         if preset.InputPresets is None:
             raise ValueError("InputPresets must be included in AgentPreset query")
@@ -598,7 +601,11 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             organization_id=preset.organizationId,
             team_id=preset.teamId,
             webhook_id=preset.webhookId,
-            webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
+            webhook=(
+                WebhookWithoutSecrets.from_db(preset.Webhook)
+                if preset.Webhook
+                else None
+            ),
             expert_id=preset.expertId,
         )
 

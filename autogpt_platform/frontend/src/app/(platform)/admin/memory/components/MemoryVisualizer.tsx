@@ -1,6 +1,14 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-amber-100 #FEF3C7, bg-gray-100 #F3F4F6, border-gray-200 #E5E7EB,
+// border-gray-300 #D1D5DB, border-gray-700 #374151, border-red-200 #FAC5C5,
+// text-amber-800 #92400E, text-gray-400 #9CA3AF, text-gray-500 #6B7280,
+// text-gray-600 #4B5563, text-gray-700 #374151.
+
 import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { GraphCanvas } from "./GraphCanvas";
 import { useMemoryVisualizer } from "./useMemoryVisualizer";
 import { DreamOperationsView } from "./DreamOperationsView/DreamOperationsView";
@@ -8,6 +16,7 @@ import { DreamUsageSummary } from "./DreamUsageSummary/DreamUsageSummary";
 import { MemoryScopeSelector } from "./MemoryScopeSelector";
 import { MaintenanceControls } from "./MaintenanceControls";
 import { useMemoryScope } from "./useMemoryScope";
+import type { DreamResult } from "./helpers";
 import type { AnyJobStatus } from "./memoryJobStatus";
 
 export function MemoryVisualizer() {
@@ -50,6 +59,8 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
     ratification,
     triggerRatification,
     triggerNightly,
+    dreamResult,
+    dismissDreamResult,
     force,
     setForce,
     includeEpisodes,
@@ -148,7 +159,9 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
         edgeCount={edges.length}
       />
 
-      {readOnly ? null : <DreamResultPanel status={dreamStatusData} />}
+      {readOnly || !dreamResult ? null : (
+        <DreamResultPanel result={dreamResult} onDismiss={dismissDreamResult} />
+      )}
 
       <div className="grid grid-cols-12 gap-4">
         <Sidebar
@@ -159,13 +172,13 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
           hiddenEdgeTypes={hiddenEdgeTypes}
           setHiddenEdgeTypes={setHiddenEdgeTypes}
         />
-        <div className="col-span-12 rounded-md border bg-white md:col-span-7">
+        <div className="col-span-12 rounded-md border bg-surface md:col-span-7">
           {graph.isLoading ? (
             <div className="flex h-[70vh] items-center justify-center text-sm text-gray-500">
               Loading graph…
             </div>
           ) : graph.error || scopeMismatchError ? (
-            <div className="p-6 text-sm text-red-700">
+            <div className="p-6 text-sm text-error-foreground">
               Failed to load graph: {String(graph.error ?? scopeMismatchError)}
             </div>
           ) : nodes.length === 0 ? (
@@ -214,14 +227,14 @@ interface OverviewStripProps {
 function OverviewStrip({ loading, error, data }: OverviewStripProps) {
   if (loading) {
     return (
-      <div className="rounded-md border bg-white p-3 text-sm text-gray-500">
+      <div className="rounded-md border bg-surface p-3 text-sm text-gray-500">
         Loading overview…
       </div>
     );
   }
   if (error) {
     return (
-      <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+      <div className="rounded-md border border-red-200 bg-error-surface p-3 text-sm text-error-foreground">
         Failed to load overview: {String(error)}
       </div>
     );
@@ -238,7 +251,7 @@ function OverviewStrip({ loading, error, data }: OverviewStripProps) {
       ].map((stat) => (
         <div
           key={stat.label}
-          className="rounded-md border bg-white p-3 text-center"
+          className="rounded-md border bg-surface p-3 text-center"
         >
           <div className="text-xl font-bold">{stat.value}</div>
           <div className="text-xs uppercase tracking-wide text-gray-500">
@@ -301,7 +314,7 @@ function ControlBar({
   const dreamActive = !!dreamActiveJobId;
   const nightlyActive = !!nightlyActiveJobId;
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-md border bg-white p-3 text-sm">
+    <div className="flex flex-wrap items-center gap-3 rounded-md border bg-surface p-3 text-sm">
       {readOnly ? (
         <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600">
           Read-only
@@ -401,7 +414,7 @@ function Sidebar({
   }
   return (
     <div className="col-span-12 space-y-3 md:col-span-3">
-      <div className="rounded-md border bg-white p-3">
+      <div className="rounded-md border bg-surface p-3">
         <h3 className="mb-2 text-xs font-semibold uppercase text-gray-500">
           Labels
         </h3>
@@ -429,7 +442,7 @@ function Sidebar({
             })}
         </div>
       </div>
-      <div className="rounded-md border bg-white p-3">
+      <div className="rounded-md border bg-surface p-3">
         <h3 className="mb-2 text-xs font-semibold uppercase text-gray-500">
           Relationships
         </h3>
@@ -484,31 +497,26 @@ interface DetailPanelProps {
 }
 
 interface DreamResultPanelProps {
-  status: AnyJobStatus | undefined;
+  result: DreamResult;
+  onDismiss: () => void;
 }
 
-function DreamResultPanel({ status }: DreamResultPanelProps) {
-  if (!status || status.state !== "complete") return null;
-  const result = status.result as Record<string, unknown> | null | undefined;
-  if (!result) return null;
-  // Only the sync_baseline path puts operations + usage on the result.
-  // For the anthropic_batch path the callback writes a smaller summary
-  // (pass_id + stats), so we just hide the panel — the graph itself
-  // refreshes via cache invalidation when the job completes.
-  const operations = result.operations as
-    | Parameters<typeof DreamOperationsView>[0]["operations"]
-    | undefined;
-  const usage = result.usage as
-    | Parameters<typeof DreamUsageSummary>[0]["usage"]
-    | undefined;
-  if (!operations || !usage) return null;
+function DreamResultPanel({ result, onDismiss }: DreamResultPanelProps) {
   return (
-    <div
-      className="grid grid-cols-1 gap-3 lg:grid-cols-2"
-      data-testid="dream-result-panel"
-    >
-      <DreamOperationsView operations={operations} />
-      <DreamUsageSummary usage={usage} />
+    <div className="space-y-2" data-testid="dream-result-panel">
+      <div className="flex items-center justify-between gap-2">
+        <Text variant="small-medium" as="span" className="text-gray-700">
+          Last dream pass{" "}
+          <span className="font-mono text-gray-500">{result.passID}</span>
+        </Text>
+        <Button variant="ghost" size="small" onClick={onDismiss}>
+          Dismiss
+        </Button>
+      </div>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <DreamOperationsView operations={result.operations} />
+        <DreamUsageSummary usage={result.usage} />
+      </div>
     </div>
   );
 }
@@ -516,7 +524,7 @@ function DreamResultPanel({ status }: DreamResultPanelProps) {
 function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
   return (
     <div className="col-span-12 md:col-span-2">
-      <div className="rounded-md border bg-white p-3 text-sm">
+      <div className="rounded-md border bg-surface p-3 text-sm">
         {!node ? (
           <div className="text-gray-500">Click a node to inspect.</div>
         ) : (
@@ -539,7 +547,7 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
                 ✕
               </button>
             </div>
-            <div className="mt-2 font-mono text-[10px] text-gray-400">
+            <div className="mt-2 font-mono text-tiny leading-inherit text-gray-400">
               {node.uuid}
             </div>
             {node.summary && (
@@ -562,7 +570,7 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
                   {edge.fact && (
                     <div className="text-gray-600">{edge.fact}</div>
                   )}
-                  <div className="font-mono text-[10px] text-gray-400">
+                  <div className="font-mono text-tiny leading-inherit text-gray-400">
                     → {otherUuid.slice(0, 12)}
                   </div>
                 </li>

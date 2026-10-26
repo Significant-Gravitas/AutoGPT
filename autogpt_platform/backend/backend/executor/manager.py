@@ -17,6 +17,7 @@ from redis.asyncio.lock import Lock as AsyncRedisLock
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from sentry_sdk.api import flush as _sentry_flush
 from sentry_sdk.api import get_current_scope as _sentry_get_current_scope
+from sentry_sdk.tracing import Span
 
 from backend.blocks import get_block, get_blocks
 from backend.blocks._base import BlockSchema
@@ -31,12 +32,15 @@ from backend.data.execution import (
     ExecutionStatus,
     GraphExecution,
     GraphExecutionEntry,
+    GraphExecutionMeta,
     NodeExecutionEntry,
     NodeExecutionResult,
     NodesInputMasks,
 )
 from backend.data.graph import Link, Node
 from backend.data.model import (
+    Credentials,
+    CredentialsMetaInput,
     GraphExecutionStats,
     NodeExecutionStats,
     OAuth2Credentials,
@@ -56,7 +60,7 @@ from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring.instrumentation import record_graph_run_completion
-from backend.util import json, product_analytics
+from backend.util import json, product_analytics, tracing
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_database_manager_async_client,
@@ -80,7 +84,7 @@ from backend.util.exceptions import (
 from backend.util.file import clean_exec_files
 from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
-from backend.util.process import AppProcess, set_service_name
+from backend.util.process import AppProcess, freeze_startup_heap, set_service_name
 from backend.util.retry import (
     continuous_retry,
     func_retry,
@@ -96,6 +100,12 @@ from .activity_status_generator import (
 from .auto_credentials import acquire_auto_credentials
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
+from .node_tracing import (
+    node_transaction,
+    output_trace_headers,
+    output_transaction,
+    record_node_result,
+)
 from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
@@ -113,6 +123,7 @@ from .utils import (
 )
 
 if TYPE_CHECKING:
+    from backend.blocks._base import AnyBlockSchema
     from backend.data.db_manager import (
         DatabaseManagerAsyncClient,
         DatabaseManagerClient,
@@ -133,6 +144,74 @@ def _get_execution_credit_balance(
     if organization_id:
         return db_client.get_org_credits(org_id=organization_id)
     return db_client.get_credits(graph_exec.user_id)
+
+
+RUN_OUTSIDE_ITS_ORG_ERROR = (
+    "This run was stopped because it was queued in an organization or team "
+    "you aren't a member of. New runs go to your own."
+)
+
+
+def _in_the_runners_org(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+) -> bool:
+    """Whether the run is queued in an org (and team) its user belongs to.
+
+    ``add_graph_execution`` makes sure of that when it creates a run, so this
+    only fails for a run queued before it did, or one whose user has left the
+    org or team since it was created, resumed runs included. Such a run is
+    stopped rather than moved, since it may already have started there.
+    Expert runs keep their own tenancy.
+    """
+    context = graph_exec.execution_context
+    if context.expert_id or not context.organization_id:
+        return True
+    organization_id, team_id = db_client.resolve_member_tenancy(
+        graph_exec.user_id, context.organization_id, context.team_id
+    )
+    return (organization_id, team_id) == (context.organization_id, context.team_id)
+
+
+def _stop_outside_its_org(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+    exec_meta: GraphExecutionMeta,
+    exec_stats: GraphExecutionStats,
+    log_metadata: LogMetadata,
+) -> None:
+    """Fail a run that failed ``_in_the_runners_org`` before it runs any
+    further, keeping the record of what it has already done.
+
+    The run's FAILED write fails its running nodes too
+    (``update_graph_execution_stats`` cascades). The ones still waiting are
+    failed here first, so a stop cut short in between leaves the run running,
+    to be picked up and stopped again. Once the run has failed, it's recorded
+    in the user's activity and analytics like any other failed run."""
+    log_metadata.warning(
+        f"Stopped graph execution #{graph_exec.graph_exec_id}: it was queued "
+        "in an org or team its user doesn't belong to."
+    )
+    for node_exec in db_client.get_node_executions(
+        graph_exec.graph_exec_id,
+        statuses=[ExecutionStatus.QUEUED, ExecutionStatus.REVIEW],
+    ):
+        update_node_execution_status(
+            db_client=db_client,
+            exec_id=node_exec.node_exec_id,
+            status=ExecutionStatus.FAILED,
+        )
+    exec_stats.error = RUN_OUTSIDE_ITS_ORG_ERROR
+    if not update_graph_execution_state(
+        db_client=db_client,
+        graph_exec_id=graph_exec.graph_exec_id,
+        status=ExecutionStatus.FAILED,
+        stats=exec_stats,
+    ):
+        return
+    exec_meta.status = ExecutionStatus.FAILED
+    activity_events.handle_run_completed(db_client, graph_exec, exec_meta, exec_stats)
+    product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
 
 def _record_execution_failure(
@@ -179,6 +258,11 @@ KNOWN_GRAPH_EXECUTION_ERRORS = (
 # (VALID_STATUS_TRANSITIONS); a direct QUEUED -> COMPLETED write is rejected
 # and leaves the node QUEUED after its run has finished.
 SKIPPED_NODE_STATUSES = (ExecutionStatus.RUNNING, ExecutionStatus.COMPLETED)
+
+# Rows charged on their first dispatch: the charge precedes the RUNNING write,
+# and a block parks itself in REVIEW mid-run. A resume or a redelivery after a
+# pod died dispatches them without a second charge; gaps: #15327, Known limits.
+BILLED_REDISPATCH_STATUSES = (ExecutionStatus.REVIEW, ExecutionStatus.RUNNING)
 
 
 def _propagate_node_failure(
@@ -358,10 +442,10 @@ async def execute_node(
     # platform's OpenRouter key instead of user credentials).
     _dry_run_creds = get_dry_run_credentials(input_data) if _dry_run_input else None
 
-    # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
-    # changes during execution. ⚠️ This means a set of credentials can only be used by
-    # one (running) block at a time; simultaneous execution of blocks using same
-    # credentials is not supported.
+    # Last-minute fetch credentials. OAuth credentials come with a system-wide lease
+    # that stops them being refreshed or replaced during execution. ⚠️ This means
+    # an OAuth credential can only be used by one (running) block at a time;
+    # simultaneous execution of blocks using the same one is not supported.
     creds_locks: list[AsyncRedisLock] = []
     credential_leases: dict[str, CredentialLease] = {}
     runtime_credential_leases: dict[str, CredentialLease] = {}
@@ -417,7 +501,9 @@ async def execute_node(
                     await enforce_codex_access(user_id)
                 continue
             try:
-                lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)
+                credentials, lease = await _get_node_credentials(
+                    creds_manager, user_id, credentials_meta
+                )
             except ValueError:
                 # Credential was deleted or doesn't exist.
                 # If the field has a default, run without credentials.
@@ -429,8 +515,8 @@ async def execute_node(
                     input_data[field_name] = None
                     continue
                 raise
-            credential_leases[field_name] = lease
-            credentials = lease.credentials
+            if lease is not None:
+                credential_leases[field_name] = lease
             if not (
                 provider_matches(
                     credentials.provider,
@@ -443,8 +529,8 @@ async def execute_node(
                 )
             if provider_matches(credentials.provider, "codex"):
                 await enforce_codex_access(user_id)
-            extra_exec_kwargs[field_name] = lease.credentials
-            if _uses_provider_runtime(lease):
+            extra_exec_kwargs[field_name] = credentials
+            if lease is not None and _uses_provider_runtime(lease):
                 runtime_credential_leases[field_name] = lease
 
         # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
@@ -531,6 +617,32 @@ async def execute_node(
         scope._tags = original_tags
 
 
+async def _get_node_credentials(
+    creds_manager: IntegrationCredentialsManager,
+    user_id: str,
+    credentials_meta: CredentialsMetaInput,
+) -> tuple[Credentials, CredentialLease | None]:
+    """Load a node's credentials, leased only if they can change mid-run.
+
+    Only OAuth credentials change under a running block: a refresh replaces the
+    tokens, and a provider runtime checkpoints rotated ones through the lease.
+    A lease on any other kind would protect nothing, and would make every other
+    node on the same credential wait for this one, up to the lock's 60 s TTL,
+    including the tools an Orchestrator runs on its own API key. The caller
+    checks that the stored type matches ``credentials_meta``, so an OAuth
+    credential never runs unleased.
+    """
+    if credentials_meta.type == "oauth2":
+        lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)
+        return lease.credentials, lease
+    credentials = await creds_manager.get(user_id, credentials_meta.id)
+    if credentials is None:
+        raise ValueError(
+            f"Credentials #{credentials_meta.id} for user #{user_id} not found"
+        )
+    return credentials, None
+
+
 async def _release_credential_leases(
     leases: list[CredentialLease], log_metadata: LogMetadata
 ) -> None:
@@ -580,6 +692,8 @@ async def _enqueue_next_nodes(
             block_id=block_id,
             inputs=data,
             execution_context=execution_context,
+            queued_at=datetime.now(timezone.utc),
+            queued_by="node_output",
         )
 
     async def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
@@ -746,6 +860,30 @@ class ExecutionProcessor:
         graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
         nodes_to_skip: Optional[set[str]] = None,
     ) -> NodeExecutionStats:
+        """Run one node and account for it, as one Sentry ``executor.node``
+        transaction named after its block."""
+        block = get_block(node_exec.block_id)
+        with node_transaction(node_exec, block) as span:
+            return await self._run_node(
+                node_exec,
+                block,
+                node_exec_progress,
+                nodes_input_masks,
+                graph_stats_pair,
+                nodes_to_skip,
+                span,
+            )
+
+    async def _run_node(
+        self,
+        node_exec: NodeExecutionEntry,
+        block: "AnyBlockSchema | None",
+        node_exec_progress: NodeExecutionProgress,
+        nodes_input_masks: Optional[NodesInputMasks],
+        graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
+        nodes_to_skip: Optional[set[str]],
+        span: Span,
+    ) -> NodeExecutionStats:
         log_metadata = LogMetadata(
             logger=_logger,
             user_id=node_exec.user_id,
@@ -753,7 +891,7 @@ class ExecutionProcessor:
             graph_id=node_exec.graph_id,
             node_eid=node_exec.node_exec_id,
             node_id=node_exec.node_id,
-            block_name=b.name if (b := get_block(node_exec.block_id)) else "-",
+            block_name=block.name if block else "-",
         )
         db_client = get_db_async_client()
         node = await db_client.get_node(node_exec.node_id)
@@ -774,6 +912,7 @@ class ExecutionProcessor:
 
         execution_stats.walltime = timing_info.wall_time
         execution_stats.cputime = timing_info.cpu_time
+        record_node_result(span, status, execution_stats)
 
         # Log platform cost + reconcile dynamic billing BEFORE graph/node stats
         # are aggregated and persisted — otherwise the reconciled delta never
@@ -867,8 +1006,11 @@ class ExecutionProcessor:
         nodes_to_skip: Optional[set[str]] = None,
     ) -> ExecutionStatus:
         status = ExecutionStatus.RUNNING
+        outputs = 0
 
         async def persist_output(output_name: str, output_data: Any) -> None:
+            nonlocal outputs
+            outputs += 1
             await db_client.upsert_execution_output(
                 node_exec_id=node_exec.node_exec_id,
                 output_name=output_name,
@@ -884,6 +1026,7 @@ class ExecutionProcessor:
                     node=node,
                     node_exec_id=node_exec.node_exec_id,
                     data=(output_name, output_data),
+                    trace_headers=output_trace_headers(outputs),
                 )
             )
 
@@ -958,6 +1101,7 @@ class ExecutionProcessor:
                 await persist_output(
                     "error", str(stats.error) or type(stats.error).__name__
                 )
+            tracing.set_data("executor.node.output_count", outputs)
         return status
 
     @func_retry
@@ -1045,6 +1189,12 @@ class ExecutionProcessor:
         exec_stats.failure_reason = None
         exec_stats.activity_status = None
         exec_stats.correctness_score = None
+
+        if not _in_the_runners_org(db_client, graph_exec):
+            _stop_outside_its_org(
+                db_client, graph_exec, exec_meta, exec_stats, log_metadata
+            )
+            return
 
         timing_info, status = self._on_graph_execution(
             graph_exec=graph_exec,
@@ -1159,7 +1309,7 @@ class ExecutionProcessor:
                         user_id=graph_exec.user_id,
                         message=(
                             f"At least {required_balance} credit must be available to run "
-                            f"this agent. {INSUFFICIENT_BALANCE_GUIDANCE}"
+                            f"this workflow. {INSUFFICIENT_BALANCE_GUIDANCE}"
                         ),
                         balance=credit_balance,
                         amount=required_balance,
@@ -1196,6 +1346,15 @@ class ExecutionProcessor:
                 node_entry = node_exec.to_node_execution_entry(
                     graph_exec.execution_context
                 )
+                # A REVIEW/RUNNING row was charged when it was first
+                # dispatched, so it must not be charged again (#15272).
+                # A TERMINATED row is charged again: its interrupt settled the
+                # first charge, so a per-run block pays twice. Not reachable:
+                # no caller requeues a TERMINATED run.
+                if node_exec.status in BILLED_REDISPATCH_STATUSES:
+                    node_entry.redispatched_from = node_exec.status
+                node_entry.queued_at = node_exec.queue_time
+                node_entry.queued_by = "graph_start"
                 execution_queue.add(node_entry)
 
             # ------------------------------------------------------------
@@ -1229,9 +1388,14 @@ class ExecutionProcessor:
                     f"for node {queued_node_exec.node_id}",
                 )
 
-                # Charge usage (may raise) — skipped for dry runs
+                # Charge usage (may raise) — skipped for dry runs and for
+                # REVIEW/RUNNING re-dispatches that were already charged.
                 try:
-                    if not graph_exec.execution_context.dry_run:
+                    if queued_node_exec.redispatched_from is not None:
+                        queued_node_exec.pre_flight_charge = (
+                            billing.redispatch_reconcile_baseline(queued_node_exec)
+                        )
+                    elif not graph_exec.execution_context.dry_run:
                         (
                             cost,
                             remaining_balance,
@@ -1508,7 +1672,8 @@ class ExecutionProcessor:
         nodes_input_masks: Optional[NodesInputMasks],
         execution_queue: ExecutionQueue[NodeExecutionEntry],
     ) -> None:
-        """Process a node's output, update its status, and enqueue next nodes.
+        """Process a node's output, update its status, and enqueue next nodes,
+        as one Sentry ``executor.node.output`` transaction.
 
         Args:
             output: The execution output entry to process
@@ -1518,23 +1683,28 @@ class ExecutionProcessor:
             nodes_input_masks: Optional map of node input overrides
             execution_queue: Queue to add next executions to
         """
-        db_client = get_db_async_client()
+        with output_transaction(output, graph_exec) as span:
+            db_client = get_db_async_client()
 
-        log_metadata.debug(f"Enqueue nodes for {node_id}: {output}")
+            log_metadata.debug(f"Enqueue nodes for {node_id}: {output}")
 
-        for next_execution in await _enqueue_next_nodes(
-            db_client=db_client,
-            node=output.node,
-            output=output.data,
-            user_id=graph_exec.user_id,
-            graph_exec_id=graph_exec.graph_exec_id,
-            graph_id=graph_exec.graph_id,
-            graph_version=graph_exec.graph_version,
-            log_metadata=log_metadata,
-            nodes_input_masks=nodes_input_masks,
-            execution_context=graph_exec.execution_context,
-        ):
-            execution_queue.add(next_execution)
+            next_executions = await _enqueue_next_nodes(
+                db_client=db_client,
+                node=output.node,
+                output=output.data,
+                user_id=graph_exec.user_id,
+                graph_exec_id=graph_exec.graph_exec_id,
+                graph_id=graph_exec.graph_id,
+                graph_version=graph_exec.graph_version,
+                log_metadata=log_metadata,
+                nodes_input_masks=nodes_input_masks,
+                execution_context=graph_exec.execution_context,
+            )
+            tracing.set_data(
+                "executor.node.output.enqueued_count", len(next_executions), span=span
+            )
+            for next_execution in next_executions:
+                execution_queue.add(next_execution)
 
 
 class ExecutionManager(AppProcess):
@@ -1627,6 +1797,7 @@ class ExecutionManager(AppProcess):
             f"[{self.service_name}] Loaded {block_count} blocks in "
             f"{time.monotonic() - load_started:.1f}s"
         )
+        freeze_startup_heap()
 
         self.cancel_thread.start()
         self.run_thread.start()

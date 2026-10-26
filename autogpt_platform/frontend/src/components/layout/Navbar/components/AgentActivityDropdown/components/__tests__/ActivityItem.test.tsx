@@ -24,10 +24,11 @@ function makeExecution(
 }
 
 describe("ActivityItem", () => {
-  it("renders a linked item with a nav indicator in the new layout", () => {
-    render(<ActivityItem execution={makeExecution()} newLayout />);
+  it("renders a linked item with a nav indicator", () => {
+    render(<ActivityItem execution={makeExecution()} />);
 
-    const link = screen.getByRole("button");
+    const link = screen.getByRole("link");
+    expect(screen.queryByRole("button")).toBeNull();
     expect(link.getAttribute("href")).toContain("/library/agents/lib-agent-1");
     expect(link.getAttribute("href")).toContain("activeTab=runs");
     expect(screen.getByText("Weather Agent")).toBeDefined();
@@ -37,16 +38,15 @@ describe("ActivityItem", () => {
     render(
       <ActivityItem
         execution={makeExecution({ status: AgentExecutionStatus.REVIEW })}
-        newLayout
       />,
     );
 
-    expect(screen.getByRole("button").getAttribute("href")).toContain(
+    expect(screen.getByRole("link").getAttribute("href")).toContain(
       "activeTab=reviews",
     );
   });
 
-  it("renders a running execution in the classic layout as a link", () => {
+  it("renders a running execution as a link", () => {
     render(
       <ActivityItem
         execution={makeExecution({
@@ -56,7 +56,39 @@ describe("ActivityItem", () => {
       />,
     );
 
-    expect(screen.getByRole("button")).toBeDefined();
+    expect(screen.getByRole("link")).toBeDefined();
+    expect(screen.getByText("Weather Agent")).toBeDefined();
+  });
+
+  it("says a completed run with a failed step completed with errors", () => {
+    render(
+      <ActivityItem
+        execution={makeExecution({ stats: { node_error_count: 1 } })}
+      />,
+    );
+
+    expect(screen.getByText(/^Completed with errors /)).toBeDefined();
+  });
+
+  it("says a clean completed run completed", () => {
+    render(
+      <ActivityItem
+        execution={makeExecution({ stats: { node_error_count: 0 } })}
+      />,
+    );
+
+    expect(screen.getByText(/^Completed /)).toBeDefined();
+    expect(screen.queryByText(/with errors/)).toBeNull();
+  });
+
+  it.each([
+    [AgentExecutionStatus.QUEUED, /^Started .* queued$/],
+    [AgentExecutionStatus.FAILED, /^Failed /],
+    [AgentExecutionStatus.TERMINATED, /^Stopped /],
+  ])("says what a %s run did", (status, line) => {
+    render(<ActivityItem execution={makeExecution({ status })} />);
+
+    expect(screen.getByText(line)).toBeDefined();
     expect(screen.getByText("Weather Agent")).toBeDefined();
   });
 

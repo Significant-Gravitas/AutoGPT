@@ -5,6 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import type { ContextPanelExpert } from "../../store";
 import { DeleteFileDialog } from "../ContextPanel/components/FilesTab/components/DeleteFileDialog";
+import { FilesEmptyState } from "./components/FilesEmptyState";
 import { SessionActivityCard } from "./components/SessionActivityCard";
 import { StackSection } from "./components/StackSection";
 import { WorkspaceFilesContent } from "./components/WorkspaceFilesContent";
@@ -48,18 +49,15 @@ export function WorkspaceFileCards({ sessionId, expert = null }: Props) {
   const hasExpertSection = Boolean(expert);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-6">
       {!showFilesCard && !hasActivity && !hasExpertSection && (
-        <div className="rounded-3xl bg-white/90 px-4 py-3 backdrop-blur smooth-shadow-ring-sm">
-          <p className="py-2 text-center text-sm text-zinc-400">
-            Nothing here yet.
-          </p>
-        </div>
+        <FilesEmptyState />
       )}
       {showFilesCard && (
         <StackSection
           title="Files in this chat"
           icon={File02Icon}
+          plain
           count={files.length || undefined}
           action={
             files.length > 0 && (
@@ -69,7 +67,7 @@ export function WorkspaceFileCards({ sessionId, expert = null }: Props) {
                 onClick={handleDownloadAll}
                 loading={isZipping}
                 aria-label="Download all"
-                className="size-6 rounded-lg !p-0 text-zinc-400"
+                className="size-6 rounded-lg !p-0 text-foreground-subtle"
               >
                 <Icon icon={Download01Icon} size={14} />
               </Button>
@@ -86,6 +84,7 @@ export function WorkspaceFileCards({ sessionId, expert = null }: Props) {
             onRequestDelete={setPendingDelete}
             onDownloadAll={handleDownloadAll}
             showHeader={false}
+            rowStyle="detailed"
           />
         </StackSection>
       )}

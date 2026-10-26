@@ -38,3 +38,9 @@ export function consumePaywallCheckoutCancel() {
     return false;
   }
 }
+
+export function pausedSchedulesText(count: number) {
+  return count === 1
+    ? "Your scheduled workflow is paused until you subscribe."
+    : `Your ${count} scheduled workflows are paused until you subscribe.`;
+}

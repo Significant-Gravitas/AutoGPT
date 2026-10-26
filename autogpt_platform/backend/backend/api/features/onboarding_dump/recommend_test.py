@@ -1,11 +1,12 @@
 """Tests for the provider-recommendation job's parsing and read path.
 
-The LLM call itself is not under test — what matters is that hallucinated
-provider ids never reach storage, and that ``ready`` reflects the job (a
-null column) rather than the greeting pipeline's status.
+What matters is that hallucinated provider ids never reach storage, and
+that ``ready`` reflects the job (a null column) rather than the greeting
+pipeline's status.
 """
 
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
@@ -17,6 +18,35 @@ from backend.api.features.onboarding_dump import recommend, service
 USER_ID = "user-1"
 
 KNOWN = {"slack", "github", "notion", "google"}
+
+
+@pytest.mark.asyncio
+async def test_generation_asks_for_no_reasoning(mocker: MockerFixture):
+    # Haiku 5.5's adaptive thinking spent 753 of the 1000-token budget on a
+    # real brain dump and the JSON came back cut off.
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(
+        return_value=SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content='{"providers": [{"provider": "slack"}]}'
+                    ),
+                    finish_reason="stop",
+                )
+            ]
+        )
+    )
+    mocker.patch.object(recommend, "get_openai_client", return_value=client)
+    mocker.patch.object(
+        recommend, "known_providers", return_value={p: None for p in KNOWN}
+    )
+
+    picks = await recommend.generate_recommendations("We live in Slack.")
+
+    assert [p.provider for p in picks] == ["slack"]
+    kwargs = client.chat.completions.create.await_args.kwargs
+    assert kwargs["extra_body"] == {"reasoning": {"enabled": False}}
 
 
 def test_parse_recommendations_drops_unknown_and_duplicate_providers():

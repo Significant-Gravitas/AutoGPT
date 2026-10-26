@@ -23,6 +23,15 @@ export const FeatureFlagEvent = {
   FEATURE_FLAG_MISMATCHED: "feature_flag_mismatched",
 } as const;
 
+// Marketing email refusals made in the app. `surface` says where; the
+// refusal itself is stored on the user (`marketingOptOutAt`).
+export const MarketingConsentEvent = {
+  // `surface: "signup"`: "opt out" in the legal line under the signup buttons
+  // was clicked (not Undo). Nothing else rides along: there is no user yet,
+  // so it only measures the opt-out rate.
+  MARKETING_OPTED_OUT: "marketing_opted_out",
+} as const;
+
 export const ExpertsFunnelEvent = {
   EXPERTS_SECTION_VIEWED: "experts_section_viewed",
   HOME_VIEWED: "home_viewed",
@@ -33,6 +42,10 @@ export const ExpertsFunnelEvent = {
   BRIEFING_OUTCOME_CLICKED: "briefing_outcome_clicked",
   HOME_ATTENTION_ACTIONED: "home_attention_actioned",
   HOME_TEAM_MEMBER_CLICKED: "home_team_member_clicked",
+  // The greeting's suggested first tasks, on the greeting (`surface: intro`)
+  // or under the Home composer (`surface: home`).
+  HOME_SUGGESTION_CLICKED: "home_suggestion_clicked",
+  HOME_SUGGESTION_DISMISSED: "home_suggestion_dismissed",
 } as const;
 
 export const HireFlowEvent = {
@@ -53,6 +66,9 @@ export const BrainDumpEvent = {
   BRAIN_DUMP_RESTARTED: "brain_dump_restarted",
   BRAIN_DUMP_DOWNLOAD: "brain_dump_download",
   BRAIN_DUMP_PERMISSION_DENIED: "brain_dump_permission_denied",
+  // Every failure to open the microphone, a denial included, with the
+  // browser's `error_name` (NotFoundError, NotReadableError, …).
+  BRAIN_DUMP_MIC_FAILED: "brain_dump_mic_failed",
   BRAIN_DUMP_TYPED_FALLBACK: "brain_dump_typed_fallback",
   // The welcome dialog shown on first copilot landing was closed — the
   // greeting fetch and reveal animation start from this moment.
@@ -75,9 +91,12 @@ export const BrainDumpEvent = {
   // through, or skip straight to the builder.
   EXPERT_RECOMMENDED: "expert_recommended",
   EXPERT_RECOMMENDATION_CLICKED: "expert_recommendation_clicked",
+  // The hire step's primary was clicked to hire every expert still unhired
+  // (or, with `retry`, the ones a batch failed to hire).
+  HIRE_ALL_CLICKED: "hire_all_clicked",
   // The wizard's hire step was left, with how many of the proposed experts
   // were hired, so the funnel can tell "hired a team" from "skipped past it".
-  // The hires themselves are the backend's `expert_hired`.
+  // `via` says how. The hires themselves are the backend's `expert_hired`.
   HIRE_STEP_CONTINUED: "hire_step_continued",
 } as const;
 
@@ -140,6 +159,9 @@ export const CredentialConnectionFailureEvent = {
 
 export const TrialEvent = {
   TRIAL_OFFER_VIEWED: "trial_offer_viewed",
+  TRIAL_CANCEL_POPUP_VIEWED: "trial_cancel_popup_viewed",
+  TRIAL_RESUME_CLICKED: "trial_resume_clicked",
+  TRIAL_SUBSCRIBE_NOW_CLICKED: "trial_subscribe_now_clicked",
 } as const;
 
 export const TourEvent = {
@@ -163,6 +185,7 @@ export const MonetizationEvent = {
 export const PostHogEvent = {
   ...PageEvent,
   ...FeatureFlagEvent,
+  ...MarketingConsentEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
   ...BrainDumpEvent,

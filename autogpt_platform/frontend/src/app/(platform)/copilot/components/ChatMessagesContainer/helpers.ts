@@ -10,6 +10,7 @@ import {
 } from "../CompactionCard/helpers";
 import { COMPACTION_PART_TYPE, isExpertChangePart } from "../ToolChain/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
+import { CHAT_IMAGE_TOKEN_PREFIXES } from "../../helpers/chatImageTokens";
 
 export type MessagePart = UIMessage<
   unknown,
@@ -137,6 +138,8 @@ export function getLastCompactionCallId(parts: MessagePart[]): string | null {
 export const WORKSPACE_FILE_PATTERN =
   /^\/api\/proxy\/api\/workspace\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download$/;
 const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
+// An image token the renderer draws as the file's own link (`WorkspaceLink`).
+const WORKSPACE_LINK_IMAGE_PREFIX = CHAT_IMAGE_TOKEN_PREFIXES.workspaceLink;
 
 export function getTurnMessages(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
@@ -153,68 +156,9 @@ export function getTurnMessages(
   return messages.slice(start, end);
 }
 
-// Special message prefixes for text-based markers (set by backend).
-// The hex suffix makes it virtually impossible for an LLM to accidentally
-// produce these strings in normal conversation.
-const COPILOT_ERROR_PREFIX = "[__COPILOT_ERROR_f7a1__]";
-const COPILOT_RETRYABLE_ERROR_PREFIX = "[__COPILOT_RETRYABLE_ERROR_a9c2__]";
-const COPILOT_SYSTEM_PREFIX = "[__COPILOT_SYSTEM_e3b0__]";
-
-export type MarkerType = "error" | "retryable_error" | "system" | null;
-
 /** Escape all regex special characters in a string. */
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// Pre-compiled marker regexes (avoids re-creating on every call / render).
-// Retryable check must come first since it's more specific.
-const RETRYABLE_ERROR_MARKER_RE = new RegExp(
-  `${escapeRegExp(COPILOT_RETRYABLE_ERROR_PREFIX)}\\s*(.+?)$`,
-  "s",
-);
-const ERROR_MARKER_RE = new RegExp(
-  `${escapeRegExp(COPILOT_ERROR_PREFIX)}\\s*(.+?)$`,
-  "s",
-);
-const SYSTEM_MARKER_RE = new RegExp(
-  `${escapeRegExp(COPILOT_SYSTEM_PREFIX)}\\s*(.+?)$`,
-  "s",
-);
-
-export function parseSpecialMarkers(text: string): {
-  markerType: MarkerType;
-  markerText: string;
-  cleanText: string;
-} {
-  const retryableMatch = text.match(RETRYABLE_ERROR_MARKER_RE);
-  if (retryableMatch) {
-    return {
-      markerType: "retryable_error",
-      markerText: retryableMatch[1].trim(),
-      cleanText: text.replace(retryableMatch[0], "").trim(),
-    };
-  }
-
-  const errorMatch = text.match(ERROR_MARKER_RE);
-  if (errorMatch) {
-    return {
-      markerType: "error",
-      markerText: errorMatch[1].trim(),
-      cleanText: text.replace(errorMatch[0], "").trim(),
-    };
-  }
-
-  const systemMatch = text.match(SYSTEM_MARKER_RE);
-  if (systemMatch) {
-    return {
-      markerType: "system",
-      markerText: systemMatch[1].trim(),
-      cleanText: text.replace(systemMatch[0], "").trim(),
-    };
-  }
-
-  return { markerType: null, markerText: "", cleanText: text };
 }
 
 export function filePartToArtifactRef(
@@ -244,7 +188,7 @@ const FULL_UUID =
 /** Build the default workspace-file URL — used wherever a caller
  *  doesn't supply its own ``fileUrlBuilder``.  Centralising it here
  *  keeps the owner-side default in one place. */
-function defaultWorkspaceFileUrl(fileId: string): string {
+export function defaultWorkspaceFileUrl(fileId: string): string {
   return `/api/proxy${getGetWorkspaceDownloadFileByIdUrl(fileId)}`;
 }
 
@@ -289,6 +233,16 @@ export function extractWorkspaceArtifacts(
   }
 
   return artifacts;
+}
+
+/** The file id a `resolveWorkspaceUrls` link token names, or null. */
+export function workspaceLinkFileID(src: string): string | null {
+  if (!src.startsWith(WORKSPACE_LINK_IMAGE_PREFIX)) return null;
+  try {
+    return decodeURIComponent(src.slice(WORKSPACE_LINK_IMAGE_PREFIX.length));
+  } catch {
+    return null;
+  }
 }
 
 export function getMessageArtifacts(
@@ -408,20 +362,14 @@ export function resolveWorkspaceUrls(
     },
   );
 
-  // Handle regular links: [text](workspace://id) — without the leading "!"
-  // These are blocked by Streamdown's rehype-harden sanitizer because
-  // "workspace://" is not in the allowed URL-scheme whitelist, which causes
-  // "[blocked]" to appear next to the link text.
-  // Use an absolute URL so Streamdown's "Copy link" button copies the full
-  // URL (including host) rather than just the path.
+  // Regular links: [text](workspace://id), without the leading "!". Streamdown
+  // draws a link as a button that keeps no destination, so a click on it can't
+  // say which file it meant; an image token lets the renderer draw the link.
   resolved = resolved.replace(
     /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
     (_match, linkText: string, fileId: string) => {
-      const url = fileUrlBuilder(fileId);
-      const origin =
-        typeof window !== "undefined" ? window.location.origin : "";
-      const absoluteUrl = url.startsWith("/") ? `${origin}${url}` : url;
-      return `[${linkText || "Download file"}](${absoluteUrl})`;
+      // The label is markdown already, valid inside `![…]` as it was in `[…]`.
+      return `![${linkText || "Download file"}](${WORKSPACE_LINK_IMAGE_PREFIX}${encodeURIComponent(fileId)})`;
     },
   );
 

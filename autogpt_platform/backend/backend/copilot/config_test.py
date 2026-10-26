@@ -42,7 +42,6 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_CLAUDE_AGENT_FALLBACK_MODEL",
     "CHAT_TITLE_MODEL",
     "CHAT_SIMULATION_MODEL",
-    "CHAT_RENDER_REASONING_IN_UI",
     "CHAT_STREAM_REPLAY_COUNT",
 )
 
@@ -599,7 +598,7 @@ class TestLocalAuxModels:
             api_key="or-key",
             base_url="https://openrouter.ai/api/v1",
         )
-        assert cfg.title_model == "anthropic/claude-haiku-4-5"
+        assert cfg.title_model == "anthropic/claude-haiku-5.5"
         assert cfg.simulation_model == "google/gemini-2.5-flash-lite"
         assert cfg.fast_advanced_model == "anthropic/claude-opus-5-5"
 
@@ -735,27 +734,10 @@ class TestLocalTransport:
         assert cfg.effective_transport == "local"
 
 
-class TestRenderReasoningInUi:
-    """``render_reasoning_in_ui`` gates reasoning wire events globally."""
-
-    def test_defaults_to_true(self):
-        """Default must stay True — flipping it silences the reasoning
-        collapse for every user, which is an opt-in operator decision."""
-        cfg = ChatConfig()
-        assert cfg.render_reasoning_in_ui is True
-
-    def test_env_override_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("CHAT_RENDER_REASONING_IN_UI", "false")
-        cfg = ChatConfig()
-        assert cfg.render_reasoning_in_ui is False
-
-
 class TestStreamReplayCount:
-    """``stream_replay_count`` caps the SSE reconnect replay batch size."""
+    """``stream_replay_count`` is the SSE reconnect replay batch size."""
 
     def test_default_is_200(self):
-        """200 covers a full Kimi turn after coalescing (~150 events) while
-        bounding the replay storm from 1000+ chunks."""
         cfg = ChatConfig()
         assert cfg.stream_replay_count == 200
 
@@ -1217,3 +1199,12 @@ class TestLangfusePromptCacheTTL:
         # at once, which is the unbounded staleness this field exists to avoid.
         with pytest.raises(ValidationError, match="langfuse_prompt_cache_ttl"):
             ChatConfig(langfuse_prompt_cache_ttl=-1)
+
+
+class TestPosthogBuiltinToolSpans:
+    def test_on_by_default(self):
+        assert ChatConfig.model_fields["posthog_builtin_tool_spans"].default is True
+
+    def test_env_turns_it_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CHAT_POSTHOG_BUILTIN_TOOL_SPANS", "false")
+        assert ChatConfig().posthog_builtin_tool_spans is False

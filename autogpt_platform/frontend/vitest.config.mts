@@ -6,8 +6,16 @@ export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
     environment: "happy-dom",
-    include: ["src/**/*.test.tsx", "src/**/*.test.ts", "scripts/**/*.test.ts"],
+    include: [
+      "src/**/*.test.tsx",
+      "src/**/*.test.ts",
+      "scripts/**/*.test.ts",
+      "scripts/**/*.test.tsx",
+    ],
     setupFiles: ["./src/tests/integrations/vitest.setup.tsx"],
+    // Confirm flows that take 3-4.5 s on a CI runner timed out at 5.3 s against
+    // the 5 s default (#15963); 15 s matches the streaming tests' own limit.
+    testTimeout: 15_000,
     coverage: {
       provider: "v8",
       reporter: ["text", "cobertura"],

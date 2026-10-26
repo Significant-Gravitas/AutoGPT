@@ -8,8 +8,9 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/__legacy__/ui/card";
+} from "@/components/atoms/Card/Card";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 import { InfoIcon } from "lucide-react";
 import { useParams } from "next/navigation";
 import { ShareActions } from "../components/ShareHeader/ShareActions";
@@ -31,6 +32,7 @@ function ExecutionShareChrome({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="container mx-auto px-4 py-8">{children}</div>
       </div>
+      <CookieSettingsLink className="mb-1 shrink-0 self-center" />
     </div>
   );
 }
@@ -65,7 +67,7 @@ export default function SharePage() {
       <ExecutionShareChrome>
         <div className="flex items-center justify-center py-16">
           <div className="mx-auto w-full max-w-md p-6">
-            <Card className="border-dashed">
+            <Card variant="outlined" className="border-dashed">
               <CardContent className="pt-6">
                 <div className="space-y-4 text-center">
                   <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
@@ -108,13 +110,13 @@ export default function SharePage() {
           <Alert>
             <InfoIcon className="h-4 w-4" />
             <AlertDescription>
-              This is a publicly shared agent run result. The person who shared
-              this link can disable access at any time.
+              This is a publicly shared workflow run result. The person who
+              shared this link can disable access at any time.
             </AlertDescription>
           </Alert>
         </div>
 
-        <Card className="mb-6">
+        <Card variant="outlined" className="mb-6">
           <CardHeader>
             <CardTitle className="text-2xl">
               {executionData.graph_name}
@@ -143,7 +145,7 @@ export default function SharePage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card variant="outlined">
           <CardHeader>
             <CardTitle>Output</CardTitle>
           </CardHeader>

@@ -1,4 +1,4 @@
-import type { SuggestedPrompt } from "@/app/api/__generated__/models/suggestedPrompt";
+import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
 import {
   act,
   cleanup,
@@ -21,13 +21,15 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 
-const PROMPTS: SuggestedPrompt[] = [
+const PROMPTS: SuggestedTask[] = [
   {
+    id: "0",
     title: "Summarise my inbox",
     prompt: "Every morning, summarise my unread email and flag what matters.",
     icon: "envelope",
   },
   {
+    id: "1",
     title: "Watch competitor pricing",
     prompt: "Check competitor pricing pages weekly and tell me what moved.",
     icon: "not-a-real-icon-slug",
@@ -37,6 +39,22 @@ const PROMPTS: SuggestedPrompt[] = [
 const GREETING = "You spend most of your week chasing updates.";
 const COPY_LABEL = "Copy your recording's transcript";
 const FOOTER = "Want to do something else? Just write it in the textbox below.";
+const EMPTY_FOOTER =
+  "Tell me what you'd like to start with in the textbox below.";
+
+function makeSuggestions(
+  tasks: SuggestedTask[],
+  sendTask: (task: SuggestedTask) => void = vi.fn(),
+) {
+  return {
+    isStored: true,
+    tasks,
+    sendingId: null,
+    sendTask: async (task: SuggestedTask) => sendTask(task),
+    hideTask: vi.fn(),
+    hideAll: vi.fn(),
+  };
+}
 
 function writeTextMock(impl: () => Promise<void>) {
   const writeText = vi.fn(impl);
@@ -62,8 +80,7 @@ describe("OnboardingIntroCard — content", () => {
       <OnboardingIntroCard
         name="Alex"
         greeting={GREETING}
-        prompts={PROMPTS}
-        onSelectPrompt={vi.fn()}
+        suggestions={makeSuggestions(PROMPTS)}
       />,
     );
 
@@ -81,8 +98,7 @@ describe("OnboardingIntroCard — content", () => {
       <OnboardingIntroCard
         name="Alex"
         greeting={GREETING}
-        prompts={[PROMPTS[1]]}
-        onSelectPrompt={vi.fn()}
+        suggestions={makeSuggestions([PROMPTS[1]])}
       />,
     );
 
@@ -91,30 +107,29 @@ describe("OnboardingIntroCard — content", () => {
     ).toBeDefined();
   });
 
-  it("omits the prompt list entirely when the server sent no prompts", () => {
+  it("omits the list and stops pointing at it once nothing is left", () => {
     render(
       <OnboardingIntroCard
         name="Alex"
         greeting={GREETING}
-        prompts={[]}
-        onSelectPrompt={vi.fn()}
+        suggestions={makeSuggestions([])}
       />,
     );
 
     expect(screen.queryByRole("list")).toBeNull();
-    expect(screen.getByText(FOOTER)).toBeDefined();
+    expect(screen.getByText(EMPTY_FOOTER)).toBeDefined();
+    expect(screen.queryByText(FOOTER)).toBeNull();
   });
 });
 
 describe("OnboardingIntroCard — picking a prompt", () => {
-  it("sends the full prompt, not the short title shown in the row", async () => {
+  it("hands the clicked row's task over to be sent", async () => {
     const onSelectPrompt = vi.fn();
     render(
       <OnboardingIntroCard
         name="Alex"
         greeting={GREETING}
-        prompts={PROMPTS}
-        onSelectPrompt={onSelectPrompt}
+        suggestions={makeSuggestions(PROMPTS, onSelectPrompt)}
       />,
     );
 
@@ -122,7 +137,7 @@ describe("OnboardingIntroCard — picking a prompt", () => {
       screen.getByRole("button", { name: "Summarise my inbox" }),
     );
 
-    expect(onSelectPrompt).toHaveBeenCalledExactlyOnceWith(PROMPTS[0].prompt);
+    expect(onSelectPrompt).toHaveBeenCalledExactlyOnceWith(PROMPTS[0]);
   });
 
   it("does not fire while the composer is disabled", async () => {
@@ -131,8 +146,7 @@ describe("OnboardingIntroCard — picking a prompt", () => {
       <OnboardingIntroCard
         name="Alex"
         greeting={GREETING}
-        prompts={PROMPTS}
-        onSelectPrompt={onSelectPrompt}
+        suggestions={makeSuggestions(PROMPTS, onSelectPrompt)}
         disabled
       />,
     );
@@ -152,8 +166,7 @@ describe("OnboardingIntroCard — transcript copy", () => {
       <OnboardingIntroCard
         name="Alex"
         greeting={GREETING}
-        prompts={PROMPTS}
-        onSelectPrompt={vi.fn()}
+        suggestions={makeSuggestions(PROMPTS)}
       />,
     );
 
@@ -166,9 +179,8 @@ describe("OnboardingIntroCard — transcript copy", () => {
       <OnboardingIntroCard
         name="Alex"
         greeting={GREETING}
-        prompts={PROMPTS}
+        suggestions={makeSuggestions(PROMPTS)}
         transcript="I spend Mondays rebuilding the same report."
-        onSelectPrompt={vi.fn()}
       />,
     );
 
@@ -191,9 +203,8 @@ describe("OnboardingIntroCard — transcript copy", () => {
       <OnboardingIntroCard
         name="Alex"
         greeting={GREETING}
-        prompts={PROMPTS}
+        suggestions={makeSuggestions(PROMPTS)}
         transcript="I spend Mondays rebuilding the same report."
-        onSelectPrompt={vi.fn()}
       />,
     );
 
@@ -218,9 +229,8 @@ describe("OnboardingIntroCard — transcript copy", () => {
       <OnboardingIntroCard
         name="Alex"
         greeting={GREETING}
-        prompts={PROMPTS}
+        suggestions={makeSuggestions(PROMPTS)}
         transcript="I spend Mondays rebuilding the same report."
-        onSelectPrompt={vi.fn()}
       />,
     );
 

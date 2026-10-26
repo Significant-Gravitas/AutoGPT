@@ -145,7 +145,7 @@ class RoutineUnansweredAsksError(ValueError):
     """
 
 
-class GraphNotFoundError(ValueError):
+class GraphNotFoundError(NotFoundError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
 
@@ -155,6 +155,11 @@ class NeedConfirmation(Exception):
 
 class NotAuthorizedError(ValueError):
     """The user is not authorized to perform the requested operation"""
+
+
+class UserBannedError(NotAuthorizedError):
+    """The owner's account is banned. Raised where new work would start for it;
+    background callers skip the run."""
 
 
 class GraphNotAccessibleError(NotAuthorizedError):
@@ -367,4 +372,10 @@ class ExpertRunPausedError(ValueError):
 
 
 class ConflictError(Exception):
-    """The request lost to a concurrent change of the same resource; retrying may succeed."""
+    """The request conflicts with the resource's current state (HTTP 409): a name
+    already taken, or a lost race with a concurrent change, which a retry may win."""
+
+
+class EmailUndeliverableError(ValueError):
+    """The mail provider won't deliver to this address (an earlier hard bounce,
+    spam complaint or suppression), so retrying the send can't succeed."""
