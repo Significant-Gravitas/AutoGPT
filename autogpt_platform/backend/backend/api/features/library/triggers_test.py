@@ -3,7 +3,7 @@ the /presets routes and the copilot preset tools."""
 
 import contextlib
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from fastapi import HTTPException
@@ -640,6 +640,27 @@ async def test_update_reconfigure_reregisters_and_prunes_old():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failing", ["update", "set_webhook"])
+@pytest.mark.parametrize("registered, pruned", [("wh-new", True), ("wh-old", False)])
+async def test_a_failed_update_prunes_only_the_webhook_it_registered(
+    failing, registered, pruned
+):
+    """The new webhook is attached last, so a failure before that would leave
+    it registered with the provider and attached to nothing."""
+    current = _preset(webhook_id="wh-old")
+    with _update_patches(current=current, webhook=MagicMock(id=registered)) as m:
+        m[failing].side_effect = RuntimeError("database down")
+        with pytest.raises(RuntimeError):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"repo": "owner/repo"},
+                credentials={},
+            )
+    assert m["prune"].await_args_list == ([call(_USER, registered)] if pruned else [])
+
+
+@pytest.mark.asyncio
 async def test_reconfiguring_a_trigger_on_someone_elses_workflow_registers_it_in_the_users_org():
     """The webhook moves to the user's own org and still gets only the trigger
     config, with the regular inputs stored beside it."""
@@ -846,9 +867,11 @@ async def test_update_run_template_on_trigger_graph_skips_webhook():
 
 
 @pytest.mark.asyncio
-async def test_update_reconfigure_missing_input_mask_raises():
+@pytest.mark.parametrize("inputs", [{"some_input": "value"}, {}])
+async def test_update_reconfigure_missing_input_mask_raises(inputs):
     """Reconfiguring a nested triggered preset without the
-    ``_node_input_mask_{node_id}`` key is rejected before any webhook work."""
+    ``_node_input_mask_{node_id}`` key is rejected before any webhook work, an
+    update clearing every input included: that would delete the trigger config."""
     current = _preset(webhook_id="wh-old")
     current.inputs = {"_node_input_mask_trigger": {"repo": "owner/repo"}}
     with _update_patches(current=current) as m:
@@ -856,11 +879,31 @@ async def test_update_reconfigure_missing_input_mask_raises():
             await update_triggered_preset(
                 user_id=_USER,
                 preset_id="preset-1",
-                inputs={"some_input": "value"},
+                inputs=inputs,
                 credentials={},
             )
     m["setup"].assert_not_awaited()
     m["update"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_clearing_a_triggers_graph_inputs_keeps_its_trigger_config():
+    current = _preset(webhook_id="wh-old")
+    current.inputs = {
+        "topic": "weather",
+        "_node_input_mask_trigger": {"repo": "owner/repo"},
+    }
+    with _update_patches(current=current) as m:
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"_node_input_mask_trigger": {"repo": "owner/repo"}},
+            credentials={},
+        )
+    assert m["update"].await_args.kwargs["inputs"] == {
+        "_node_input_mask_trigger": {"repo": "owner/repo"}
+    }
+    m["set_webhook"].assert_awaited_once()
 
 
 @pytest.mark.asyncio

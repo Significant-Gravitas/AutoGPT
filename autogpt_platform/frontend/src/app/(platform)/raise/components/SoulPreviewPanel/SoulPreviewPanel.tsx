@@ -69,7 +69,7 @@ export function SoulPreviewPanel({
         <div className="flex flex-col items-center gap-1.5">
           <h2
             className={cn(
-              "text-center text-2xl font-semibold tracking-[-0.02em]",
+              "text-center text-2xl font-semibold tracking-heading",
               name ? `text-foreground ${REVEAL}` : "text-muted-foreground/50",
             )}
           >
@@ -77,7 +77,7 @@ export function SoulPreviewPanel({
           </h2>
           {roleLabel ? (
             <p
-              className={`text-sm uppercase tracking-[0.12em] text-muted-foreground ${REVEAL}`}
+              className={`text-sm uppercase tracking-caps text-muted-foreground ${REVEAL}`}
             >
               {roleLabel}
             </p>

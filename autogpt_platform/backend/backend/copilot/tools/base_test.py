@@ -19,6 +19,7 @@ from backend.copilot.google_data_redaction import (
 )
 from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.model import ChatSession
+from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.base import (
     _DIGEST_PREVIEW_CHARS,
     _DIGEST_THRESHOLD,
@@ -41,6 +42,10 @@ from backend.copilot.tools.workspace_files import (
     ReadWorkspaceFileTool,
     WorkspaceFileContentResponse,
 )
+from backend.copilot.trial_reads import shared_trial_read, trial_reads_shared
+from backend.copilot.usage_activation import get_ready_usage_state
+from backend.data.pro_activation import UsageActivationState
+from backend.data.subscription_trial import TrialState
 
 
 class _HugeOutputTool(BaseTool):
@@ -165,6 +170,7 @@ class TestBaseToolExecuteLargeOutput:
         tool = _HugeOutputTool(output_size=_LARGE_OUTPUT_THRESHOLD + 10_000)
         session = MagicMock()
         session.session_id = "s-1"
+        session.external_caller = False
 
         mock_workspace = MagicMock()
         mock_workspace.id = "ws-1"
@@ -184,6 +190,27 @@ class TestBaseToolExecuteLargeOutput:
         assert "<tool-output-truncated" in str(result.output)
         assert "read_workspace_file" in str(result.output)
         mock_manager.write_file.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("size", [_LARGE_OUTPUT_THRESHOLD + 10_000, 200_000])
+    async def test_an_external_callers_large_output_is_not_persisted(self, size):
+        """An MCP client can't follow a preview to its copy; each one was a
+        scanned write into the caller's workspace, counted against its quota."""
+        tool = _HugeOutputTool(output_size=size)
+        session = MagicMock()
+        session.session_id = "s-1"
+        session.external_caller = True
+
+        with patch(
+            "backend.copilot.tools.base._persist_and_summarize",
+            new_callable=AsyncMock,
+        ) as persist_mock:
+            result = await tool.execute("user-1", session, "tc-mcp")
+
+        persist_mock.assert_not_awaited()
+        assert "<tool-output-truncated" not in str(result.output)
+        # Past what a result keeps, the cut says so.
+        assert ("omitted" in str(result.output)) == (size > 100_000)
 
     @pytest.mark.asyncio
     async def test_no_persistence_without_user_id(self):
@@ -326,6 +353,7 @@ async def _execute_with_flag(tool, flag_on: bool, manager=None):
     assert flag_on
     session = MagicMock()
     session.session_id = "s-1"
+    session.external_caller = False
     db_patch, mgr_patch = _workspace_patches(manager or AsyncMock())
     with db_patch, mgr_patch:
         return await tool.execute("user-1", session, "tc-digest")
@@ -721,6 +749,67 @@ class TestGateEnforcement:
                 return ErrorResponse(message="ran", session_id=session.session_id)
 
         return _Recorder()
+
+
+class TestTrialReads:
+    @pytest.mark.asyncio
+    async def test_a_tool_reads_the_trial_as_it_is_when_the_tool_runs(self):
+        """A turn's setup shares one trial read; a tool run inside that block
+        reads the trial again, so it acts on the trial as it is now."""
+        at_the_start = MagicMock(spec=TrialState)
+        when_the_tool_ran = MagicMock(spec=TrialState)
+        read = AsyncMock(side_effect=[at_the_start, when_the_tool_ran])
+        seen: list[TrialState | None] = []
+
+        class _ReadsTheTrial(_HugeOutputTool):
+            async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+                seen.append(await shared_trial_read(user_id, read))
+                return await super()._execute(user_id, session, **kwargs)
+
+        session = MagicMock()
+        session.session_id = "s-1"
+        with trial_reads_shared():
+            assert await shared_trial_read("user-1", read) is at_the_start
+            await _ReadsTheTrial(output_size=10).execute("user-1", session, "tc-trial")
+
+        assert seen == [when_the_tool_ran]
+
+    @pytest.mark.asyncio
+    async def test_a_tool_reads_the_usage_state_as_it_is_when_the_tool_runs(self):
+        """A turn's setup shares one usage-state read; a tool run inside that
+        block reads it again, so a plan change mid-turn reaches the tool."""
+        at_the_start = UsageActivationState(
+            user_id="user-1", tier=SubscriptionTier.TRIAL, ready=True
+        )
+        when_the_tool_ran = UsageActivationState(
+            user_id="user-1", tier=SubscriptionTier.PRO, ready=True
+        )
+        usage_db = MagicMock()
+        usage_db.get_usage_activation_state = AsyncMock(
+            side_effect=[at_the_start, when_the_tool_ran]
+        )
+        seen: list[UsageActivationState] = []
+
+        class _ReadsTheUsageState(_HugeOutputTool):
+            async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+                seen.append(await get_ready_usage_state(user_id))
+                return await super()._execute(user_id, session, **kwargs)
+
+        session = MagicMock()
+        session.session_id = "s-1"
+        with (
+            patch(
+                "backend.copilot.usage_activation.pro_activation_db",
+                return_value=usage_db,
+            ),
+            trial_reads_shared(),
+        ):
+            assert await get_ready_usage_state("user-1") is at_the_start
+            await _ReadsTheUsageState(output_size=10).execute(
+                "user-1", session, "tc-usage"
+            )
+
+        assert seen == [when_the_tool_ran]
 
 
 class TestPostHogToolSpans:

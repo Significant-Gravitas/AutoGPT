@@ -104,6 +104,7 @@ export function ActivityDropdown({
                   <Icon
                     icon={Cancel01Icon}
                     size={16}
+                    // TODO(tokens): no exact role for text-gray-500 (#6B7280)
                     className="text-gray-500"
                   />
                 </button>
@@ -111,7 +112,10 @@ export function ActivityDropdown({
             </div>
           ) : (
             <div className={`${styles.headerContainer} py-0.5`}>
-              <span className="text-xs font-medium uppercase text-neutral-500">
+              <span
+                // TODO(tokens): no exact role for text-neutral-500 (#737373)
+                className="text-xs font-medium uppercase text-neutral-500"
+              >
                 Workflow Activity
               </span>
               {withSearch ? (
@@ -125,6 +129,7 @@ export function ActivityDropdown({
                   <Icon
                     icon={Search01Icon}
                     size={16}
+                    // TODO(tokens): no exact role for text-gray-600 (#4B5563)
                     className="h-4 w-4 text-gray-600"
                   />
                 </Button>
@@ -151,15 +156,18 @@ export function ActivityDropdown({
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
             <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">
-              <Icon icon={BellIcon} className="h-6 w-6 text-zinc-300" />
+              <Icon
+                icon={BellIcon}
+                className="h-6 w-6 text-foreground-disabled"
+              />
             </div>
             <div className="flex flex-col items-center justify-center">
-              <Text variant="body-medium" className="!text-black">
+              <Text variant="body-medium" className="!text-foreground-base">
                 {searchQuery
                   ? "No matching workflows found"
                   : "No recent runs to show yet"}
               </Text>
-              <Text variant="body" className="!text-zinc-500">
+              <Text variant="body" className="!text-foreground-tertiary">
                 {searchQuery
                   ? "Try another search term"
                   : "Start a workflow to get updates"}

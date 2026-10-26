@@ -61,6 +61,13 @@ class BehaveAs(str, Enum):
     CLOUD = "cloud"
 
 
+class UserNotificationsAudience(str, Enum):
+    """Who product mail (Briefings, Alerts, Verdicts) may reach."""
+
+    SUBSCRIBERS = "subscribers"
+    EVERYONE = "everyone"
+
+
 class FeatureFlagBackend(str, Enum):
     """Which vendor answers a feature flag read.
 
@@ -529,6 +536,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This is necessary to make sure webhooks find their way.",
     )
 
+    trusted_proxy_count: int = Field(
+        # Prod is Cloudflare -> Google LB -> pod, so the client is 3rd from the
+        # right; 1 keys every anonymous caller on the LB's address, one bucket.
+        default=3,
+        ge=0,
+        description="How many X-Forwarded-For entries our own proxies append. "
+        "The client IP is that many entries from the right; everything further "
+        "left is caller-controlled and must not be trusted. The default is the "
+        "hosted platform: Cloudflare appends the client, Google's load balancer "
+        "appends Cloudflare's address and its own. 0 ignores the header and uses "
+        "the socket peer.",
+    )
+
     e2b_egress_proxy_address: str = Field(
         default="",
         description="host:port of the SOCKS5 credential swap proxy every E2B box "
@@ -700,6 +720,22 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "Send notification emails to users: Briefings, Alerts, Verdicts, "
             "subscription and trial mail. When false they are dropped, not "
             "deferred. Auth emails and internal ops mail are unaffected."
+        ),
+    )
+    user_notifications_audience: UserNotificationsAudience = Field(
+        default=UserNotificationsAudience.SUBSCRIBERS,
+        description=(
+            "Who gets Briefings, Alerts and Verdicts: subscribers (a plan or "
+            "trial, or one that ended in the last 7 days) or everyone. "
+            "Subscription and trial mail is sent either way."
+        ),
+    )
+    user_notifications_allowlist: str = Field(
+        default="",
+        description=(
+            "Comma-separated email addresses. When set, only these addresses "
+            "get Briefings, Alerts and Verdicts, whatever the audience: for a "
+            "canary run with team inboxes."
         ),
     )
     owner_email_daily_limit: int = Field(
@@ -1015,6 +1051,22 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "(default), launchdarkly, or dual (evaluate both, serve LaunchDarkly, "
         "log every disagreement).",
     )
+
+    @field_validator("user_notifications_audience", mode="before")
+    @classmethod
+    def _default_unknown_notifications_audience(cls, v):
+        """A typo falls back to the narrower audience rather than stopping
+        the process from booting."""
+        if not isinstance(v, str):
+            return v
+        try:
+            return UserNotificationsAudience(v.strip().lower())
+        except ValueError:
+            logger.warning(
+                f"Unknown USER_NOTIFICATIONS_AUDIENCE {v!r}, falling back to "
+                f"{UserNotificationsAudience.SUBSCRIBERS.value}"
+            )
+            return UserNotificationsAudience.SUBSCRIBERS
 
     @field_validator("feature_flag_backend", mode="before")
     @classmethod

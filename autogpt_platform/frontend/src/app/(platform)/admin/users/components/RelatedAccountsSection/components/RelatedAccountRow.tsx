@@ -33,7 +33,7 @@ export function RelatedAccountRow({ account }: Props) {
           <span translate="no">{account.email}</span>
         </Link>
         {account.name.trim() ? (
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" className="text-foreground-tertiary">
             {account.name}
           </Text>
         ) : null}
@@ -41,8 +41,8 @@ export function RelatedAccountRow({ account }: Props) {
           variant="small"
           className={
             account.payment_status === "past_due"
-              ? "text-amber-700"
-              : "text-zinc-500"
+              ? "text-warning-foreground"
+              : "text-foreground-tertiary"
           }
         >
           {getSubscriptionLabel(account.plan, account.payment_status)}
@@ -70,7 +70,7 @@ export function RelatedAccountRow({ account }: Props) {
           </Badge>
         )}
       </div>
-      <Text variant="small" as="span" className="text-zinc-500">
+      <Text variant="small" as="span" className="text-foreground-tertiary">
         {formatDate(account.created_at)}
       </Text>
       <span className="md:text-right">

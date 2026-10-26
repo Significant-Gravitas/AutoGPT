@@ -323,6 +323,7 @@ async def _files_bucket(
             limit=fetch_limit,
             include_all_sessions=True,
             name_contains=query or None,
+            include_internal=False,
         )
     except Exception as e:
         logger.warning("Failed to list workspace files for %s: %s", user_id, e)

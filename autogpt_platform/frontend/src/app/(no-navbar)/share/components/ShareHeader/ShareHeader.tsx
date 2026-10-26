@@ -34,12 +34,14 @@ export function ShareHeader({ title, subtitle, actions }: Props) {
     >
       <div className="min-w-0 [grid-area:title]">
         {title && (
-          <h1 className="truncate text-sm font-semibold text-zinc-900">
+          <h1 className="truncate text-sm font-semibold text-foreground-strong">
             {title}
           </h1>
         )}
         {subtitle && (
-          <p className="truncate text-xs text-zinc-500">{subtitle}</p>
+          <p className="truncate text-xs text-foreground-tertiary">
+            {subtitle}
+          </p>
         )}
       </div>
       <div className="flex justify-center [grid-area:logo]">

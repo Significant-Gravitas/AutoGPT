@@ -13,7 +13,7 @@ export function StepHeader({ title, description }: Props) {
       <Text variant="body" as="h2" className="text-textBlack">
         {title}
       </Text>
-      <Text variant="small" className="text-zinc-600">
+      <Text variant="small" className="text-foreground-secondary">
         {description}
       </Text>
     </div>

@@ -292,8 +292,15 @@ from ._test_data import make_session
 # longer fits under it:
 #     merged tree                                 77,679 (89 tools)
 #     + headroom                       +300       77,979
+# Re-measured on the v2 External API root merged with dev 8df80022bc, which
+# brings the MCP tools' external schemas and the preset tools back:
+#     merged tree                                 77,510 (89 tools)
+#     + headroom                       +300       77,810
+# Re-measured on #11220 merged with dev b7b75494f4, where the two meet:
+#     merged tree                                 77,688 (89 tools)
+#     + headroom                       +300       77,988
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 77_979
+_CHAR_BUDGET = 77_988
 
 
 @pytest.fixture(scope="module")

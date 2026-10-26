@@ -34,7 +34,7 @@ function BackToMarketplaceLink() {
   return (
     <Link
       href="/marketplace#experts"
-      className="mb-6 inline-flex w-fit items-center gap-1.5 text-[13px] text-zinc-500 transition-colors hover:text-zinc-900"
+      className="mb-6 inline-flex w-fit items-center gap-1.5 text-body-sm leading-inherit text-foreground-tertiary transition-colors hover:text-foreground-strong"
     >
       <Icon icon={ArrowLeft02Icon} size={14} />
       Back to marketplace
@@ -79,7 +79,7 @@ export function ExpertPage() {
           <Skeleton className="h-9 w-28 rounded-full" />
         </div>
         <Skeleton className="mt-5 h-5 w-3/4" />
-        <div className="mt-8 flex flex-col gap-3 border-t border-zinc-200 pt-8">
+        <div className="mt-8 flex flex-col gap-3 border-t border-border-base pt-8">
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-11/12" />
           <Skeleton className="h-4 w-3/4" />

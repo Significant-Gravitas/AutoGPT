@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import React from "react";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 const sizeClassNameMap = {
@@ -11,18 +12,45 @@ const sizeClassNameMap = {
 
 type SpinnerSize = keyof typeof sizeClassNameMap;
 
+// The open-ring spinner the old shadcn `loading` primitive drew (lucide's
+// loader-circle), kept so its callers render exactly as before.
+const CIRCLE_ICON: IconSvgElement = [
+  [
+    "path",
+    {
+      d: "M21 12a9 9 0 1 1-6.219-8.56",
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      key: "0",
+    },
+  ],
+];
+
+const iconMap = {
+  default: Loading03Icon,
+  circle: CIRCLE_ICON,
+} as const;
+
 type LoadingSpinnerProps = {
   size?: SpinnerSize;
+  variant?: keyof typeof iconMap;
   className?: string;
   cover?: boolean;
 } & Omit<React.ComponentPropsWithoutRef<typeof Icon>, "icon" | "size">;
 
 export function LoadingSpinner(props: LoadingSpinnerProps) {
-  const { size = "medium", className, cover = false, ...restProps } = props;
+  const {
+    size = "medium",
+    variant = "default",
+    className,
+    cover = false,
+    ...restProps
+  } = props;
 
   const spinner = (
     <Icon
-      icon={Loading03Icon}
+      data-slot="loading-spinner"
+      icon={iconMap[variant]}
       className={cn(
         "animate-spin text-inherit",
         sizeClassNameMap[size],
@@ -34,7 +62,10 @@ export function LoadingSpinner(props: LoadingSpinnerProps) {
 
   if (cover) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div
+        data-slot="loading-spinner-cover"
+        className="fixed inset-0 z-50 flex items-center justify-center"
+      >
         {spinner}
       </div>
     );

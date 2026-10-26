@@ -10,6 +10,7 @@ copilot worker reuses the exact route logic.
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
 from backend.api.features.library.model import (
@@ -26,6 +27,7 @@ from backend.util.exceptions import (
 )
 
 from .base import BaseTool
+from .external_scope import external_tenant
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -64,6 +66,7 @@ async def _list_scoped_presets(
         graph_id=graph_id,
         expert_id=session.expert_id,
         filter_by_expert=True,
+        organization_id=external_tenant(session),
     )
     scoped = [
         preset for preset in response.presets if _is_in_session_scope(preset, session)
@@ -125,6 +128,10 @@ class ListPresetsTool(BaseTool):
     @property
     def name(self) -> str:
         return "list_presets"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -262,6 +269,19 @@ class UpdatePresetTool(BaseTool):
     @property
     def name(self) -> str:
         return "update_preset"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # An active trigger starts runs, so turning one on, or giving one new
+        # inputs (re-registering its webhook), is a run. The graph isn't known
+        # here, so any new inputs count unless they also turn the preset off.
+        is_active = args.get("is_active")
+        if is_active is True or (args.get("inputs") and is_active is not False):
+            return [APIKeyPermission.RUN_AGENT]
+        return []
 
     @property
     def description(self) -> str:
@@ -417,6 +437,10 @@ class DeletePresetTool(BaseTool):
     @property
     def name(self) -> str:
         return "delete_preset"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:

@@ -36,7 +36,7 @@ function ReasoningStream({ text, live }: ReasoningStreamProps) {
     <div
       ref={viewportRef}
       className={cn(
-        "text-[13px] leading-5 text-zinc-400",
+        "text-body-sm leading-5 text-foreground-subtle",
         live
           ? "max-h-24 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0,black_16px,black_100%)]"
           : "max-h-64 overflow-y-auto scrollbar-none",
@@ -127,7 +127,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
   const hasContent = isReasoning
     ? !!row.reasoningText
     : !row.supersededSubSession &&
-      ((row.output !== undefined && row.output !== "") ||
+      ((row.output !== undefined && row.output !== "" && !row.emptyResult) ||
         liveSubSession ||
         !!row.held?.card ||
         heldShowsOwnCall(row));
@@ -143,12 +143,12 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
       className={cn(
         "max-w-full text-sm transition-colors duration-300",
         row.state === "error"
-          ? "text-red-500"
+          ? "text-error"
           : row.held &&
               row.held.state !== "approved" &&
               row.held.state !== "waiting"
-            ? "text-zinc-400"
-            : "text-zinc-600",
+            ? "text-foreground-subtle"
+            : "text-foreground-secondary",
       )}
     />
   );
@@ -162,7 +162,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
         <div
           className={cn(
             "relative flex size-7 shrink-0 items-center justify-center rounded-full transition-colors duration-300",
-            row.state === "error" ? "bg-red-50" : "bg-zinc-100",
+            row.state === "error" ? "bg-error-surface" : "bg-surface-hover",
           )}
         >
           <ToolStatusBadge state={row.state} label={row.text}>
@@ -174,7 +174,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           </ToolStatusBadge>
         </div>
         {!isLast && (
-          <div className="w-px flex-1 origin-top animate-grow-line bg-zinc-200 motion-reduce:animate-none" />
+          <div className="w-px flex-1 origin-top animate-grow-line bg-surface-active motion-reduce:animate-none" />
         )}
       </div>
       <div className={cn("min-w-0 flex-1", isLast ? "pb-0" : "pb-3")}>
@@ -192,7 +192,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
                 icon={ArrowDown01Icon}
                 size={10}
                 className={cn(
-                  "shrink-0 text-zinc-300 transition-transform duration-300 ease-out-quint group-hover/row:text-zinc-500",
+                  "shrink-0 text-foreground-disabled transition-transform duration-300 ease-out-quint group-hover/row:text-foreground-tertiary",
                   open && "rotate-180",
                 )}
               />
@@ -205,7 +205,10 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           </div>
         )}
         {row.detail && (
-          <p className="animate-fade-in truncate text-xs text-red-400 motion-reduce:animate-none">
+          <p
+            // TODO(tokens): no exact role for text-red-400
+            className="animate-fade-in truncate text-xs text-red-400 motion-reduce:animate-none"
+          >
             {row.detail}
           </p>
         )}
