@@ -914,6 +914,37 @@ class ExecutionProcessor:
         execution_stats.cputime = timing_info.cpu_time
         record_node_result(span, status, execution_stats)
 
+        # A stop cancels this task, even after the block has finished. The
+        # block's charge, its final status and the run's totals must still be
+        # written, so they run shielded: a cancel arriving now waits for them
+        # and then ends the task.
+        settle = asyncio.ensure_future(
+            self._settle_node(
+                node=node,
+                node_exec=node_exec,
+                status=status,
+                execution_stats=execution_stats,
+                graph_stats_pair=graph_stats_pair,
+                db_client=db_client,
+                log_metadata=log_metadata,
+            )
+        )
+        try:
+            return await asyncio.shield(settle)
+        except asyncio.CancelledError:
+            await settle
+            raise
+
+    async def _settle_node(
+        self,
+        node: Node,
+        node_exec: NodeExecutionEntry,
+        status: ExecutionStatus,
+        execution_stats: NodeExecutionStats,
+        graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
+        db_client: "DatabaseManagerAsyncClient",
+        log_metadata: LogMetadata,
+    ) -> NodeExecutionStats:
         # Log platform cost + reconcile dynamic billing BEFORE graph/node stats
         # are aggregated and persisted — otherwise the reconciled delta never
         # lands in `graph_stats.cost` or the persisted node stats. RUN-only
