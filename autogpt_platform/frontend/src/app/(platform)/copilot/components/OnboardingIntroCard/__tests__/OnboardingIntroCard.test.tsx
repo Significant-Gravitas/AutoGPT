@@ -93,6 +93,18 @@ describe("OnboardingIntroCard — content", () => {
     expect(screen.getByText(FOOTER)).toBeDefined();
   });
 
+  it("says Hey there to a user it has no name for", () => {
+    const { container } = render(
+      <OnboardingIntroCard
+        name={null}
+        greeting={GREETING}
+        suggestions={makeSuggestions(PROMPTS)}
+      />,
+    );
+
+    expect(normalizeWhitespace(container)).toContain("Hey there");
+  });
+
   it("renders a row for a prompt whose icon slug the frontend does not know", () => {
     render(
       <OnboardingIntroCard

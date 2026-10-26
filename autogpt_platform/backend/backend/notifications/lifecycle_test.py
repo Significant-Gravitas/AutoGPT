@@ -141,8 +141,14 @@ async def _run(coro_factory, user, claim=True, audience_ok=True):
 
 
 @pytest.mark.asyncio
-async def test_first_subscription_gets_the_welcome_and_the_tour():
+@pytest.mark.parametrize(
+    "name,greeted",
+    # The second is what email sign-up stores: the address's local part.
+    [("Sam Carter", "Sam"), ("sam", "there")],
+)
+async def test_first_subscription_gets_the_welcome_and_the_tour(name, greeted):
     user = _User(welcome_sent_at=None)
+    user.name = name
     with patch(
         "backend.notifications.lifecycle._claim_welcome",
         AsyncMock(return_value=True),
@@ -155,7 +161,7 @@ async def test_first_subscription_gets_the_welcome_and_the_tour():
         )
     queued = calls["notify"].await_args.args[0]
     assert queued.type is NotificationType.SUBSCRIPTION_WELCOME
-    assert queued.data.user_name == "Sam"
+    assert queued.data.user_name == greeted
     calls["audience"].assert_awaited_once()
     assert calls["audience"].await_args.args[0].action.value == "enroll_tour"
 

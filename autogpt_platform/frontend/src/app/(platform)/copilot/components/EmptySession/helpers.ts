@@ -67,25 +67,19 @@ export function getInputPlaceholder(width?: number) {
   return "What's your role and what eats up most of your day? e.g. 'I'm a recruiter and I hate...'";
 }
 
-export function getGreetingName(user?: User | null) {
-  if (!user) return "there";
+export function getGreetingName(user?: User | null): string | null {
+  if (!user) return null;
   const metadata = user.user_metadata as Record<string, unknown> | undefined;
-  // preferred_name is what the user answered to onboarding's "What should I
-  // call you?" — it wins over provider-supplied names, and is used verbatim.
+  // preferred_name is the name the user set with the hero's edit-name button —
+  // it wins over provider-supplied names, and is used verbatim.
   const preferredName = metadata?.preferred_name;
-  const fullName = metadata?.full_name;
-  const name = metadata?.name;
   if (typeof preferredName === "string" && preferredName.trim()) {
     return preferredName.trim();
   }
-  if (typeof fullName === "string" && fullName.trim()) {
-    return fullName.split(" ")[0];
-  }
-  if (typeof name === "string" && name.trim()) {
-    return name.split(" ")[0];
-  }
-  if (user.email) {
-    return user.email.split("@")[0];
-  }
-  return "there";
+  // Email sign-up stores the address's local part as the name; that one was never given.
+  const emailName = user.email?.split("@")[0].toLowerCase();
+  const givenName = [metadata?.full_name, metadata?.name]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .find((value) => value && value.toLowerCase() !== emailName);
+  return givenName ? givenName.split(/\s+/)[0] : null;
 }

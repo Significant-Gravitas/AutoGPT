@@ -21,5 +21,16 @@ async def greeting_name(user_id: str) -> str:
             "Recipient name unavailable; using a neutral greeting", exc_info=True
         )
         return "there"
-    names = (user.name or "").split() if user else []
-    return names[0] if names else "there"
+    return (first_name(user.name, user.email) if user else None) or "there"
+
+
+def first_name(name: str | None, email: str) -> str | None:
+    """The first word of a name the user gave, or None.
+
+    Email sign-up stores the address's local part as the name, so a name equal
+    to it was never given.
+    """
+    words = (name or "").split()
+    if not words or " ".join(words).lower() == email.split("@")[0].lower():
+        return None
+    return words[0]
