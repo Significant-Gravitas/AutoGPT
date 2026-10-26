@@ -30,6 +30,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { noDelegations } from "../../autopilot/__tests__/delegationFixtures";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import ExpertDetailPage from "../page";
 
@@ -180,6 +181,7 @@ beforeEach(() => {
     getGetHomeDashboardMockHandler(
       getGetHomeDashboardResponseMock200({ attention: [] }),
     ),
+    noDelegations(),
     getGetExpertMockHandler(expert),
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     getListExpertRunsMockHandler([]),

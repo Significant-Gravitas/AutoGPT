@@ -13,6 +13,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Callable, cast
 
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
@@ -29,6 +30,8 @@ from backend.copilot.credit_billing import (
     bill_to_credits,
     credit_billing,
 )
+from backend.copilot.delegation_cancel import cancel_delegated_children
+from backend.copilot.delegation_cap import hold_at_cap
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
@@ -36,6 +39,7 @@ from backend.copilot.expert_context import (
     ExpertSessionUnavailableError,
 )
 from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
+from backend.copilot.markers import persist_error_marker
 from backend.copilot.model import maybe_append_user_message
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import (
@@ -69,6 +73,7 @@ from backend.integrations.oauth.microsoft_365_copilot import (
     Microsoft365CopilotDeviceAuthHandler,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.background import spawn_background_task
 from backend.util.decorator import error_logged
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -103,6 +108,13 @@ RATE_LIMIT_UNAVAILABLE_MESSAGE = (
 # waits for normal cleanup so late stream writes do not race the manager, but it
 # must still escape to the sync fail-close safety net if cleanup wedges.
 _CANCEL_GRACE_SECONDS = 5.0
+
+# The cancel marker is written inside that grace, ahead of marking the turn
+# done; a wedged store gives up on the marker, never on ending the turn.
+_CANCEL_MARKER_TIMEOUT_SECONDS = 2.0
+
+# How long a landed turn's teardown waits to hold its thread at the cap.
+_HOLD_AT_CAP_TIMEOUT_SECONDS = 5.0
 
 # How long to wait before logging again that a cancelled turn is still draining.
 _CANCEL_DRAIN_LOG_INTERVAL_SECONDS = 1.0
@@ -299,6 +311,67 @@ async def _closing_at_model_output(
         # ``async for`` doesn't close the engine's stream on cancel or
         # GeneratorExit; its cleanup (the SDK stream lock) must still run.
         await stream.aclose()
+
+
+def _cascade_cancel(entry: CoPilotExecutionEntry, started_at: datetime) -> None:
+    """Stop the threads this cancelled turn, started at *started_at*, handed
+    work to.
+
+    Detached, never awaited here: the caller is the turn's teardown, and a
+    slow or cancelled wait on the children must not keep this turn from
+    releasing its lease and finishing as cancelled. The helper logs failures.
+    """
+    spawn_background_task(
+        cancel_delegated_children(entry.session_id, entry.user_id, started_at),
+        name=f"cancel-children-{entry.session_id[:12]}",
+    )
+
+
+async def _close_on_cancel_marker(
+    session_id: str, log: "CoPilotLogMetadata | TruncatedLogger"
+) -> None:
+    """End a stopped turn's stored thread on the cancel marker.
+
+    The SDK engine writes it when the cancel reaches it as CancelledError;
+    the baseline engine, a stop that closes the stream first, and a stop
+    before any engine ran write nothing, which leaves a reload, and every
+    reader of the thread, taking the stop for a finished or a dead turn.
+    Before the turn is marked done: that wakes the next turn and tells a
+    waiting client to read the thread. Best-effort, as the rest of teardown.
+    """
+    try:
+        await asyncio.wait_for(
+            persist_error_marker(
+                session_id, stream_registry.CANCELLED_MESSAGE, retryable=False
+            ),
+            timeout=_CANCEL_MARKER_TIMEOUT_SECONDS,
+        )
+    except Exception as marker_err:
+        log.error(f"Failed to persist the cancel marker: {marker_err}")
+
+
+async def _hold_at_cap(
+    entry: CoPilotExecutionEntry,
+    cap_usd: float,
+    log: "CoPilotLogMetadata | TruncatedLogger",
+) -> None:
+    """Hold a delegated thread whose turn landed on its hand-off cap, whichever
+    engine ran it, so every reader finds it waiting on the user rather than
+    done: the parent's waiter, a later poll, the lists and the live card.
+
+    Before the turn is marked done, which is what the waiter wakes on.
+    Bounded: a store that never answers costs the hold, not the turn's end;
+    a poll still applies the cap when it reads the thread's spend.
+    """
+    if not entry.user_id:
+        return
+    try:
+        await asyncio.wait_for(
+            hold_at_cap(entry.session_id, entry.user_id, cap_usd),
+            timeout=_HOLD_AT_CAP_TIMEOUT_SECONDS,
+        )
+    except Exception as hold_err:
+        log.error(f"Failed to hold the thread at its cap: {hold_err}")
 
 
 async def _refuse_turn(
@@ -604,6 +677,7 @@ class CoPilotProcessor:
         log: CoPilotLogMetadata,
         turn: TurnTrace,
     ):
+        started_at = datetime.now(UTC)
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
@@ -613,6 +687,8 @@ class CoPilotProcessor:
         cost_context_stack = AsyncExitStack()
         scheduled_watch = ScheduledTurnWatch.for_entry(entry)
         credit_turn: CreditBilledTurn | None = None
+        # The hand-off cap the turn landed on, when a delegated thread did.
+        landed_at_cap: float | None = None
 
         try:
             from backend.copilot.model import get_chat_session
@@ -896,6 +972,8 @@ class CoPilotProcessor:
             try:
                 async for chunk in published_stream:
                     turn.observe(chunk)
+                    if isinstance(chunk, StreamTurnPaused):
+                        landed_at_cap = TurnPause.model_validate(chunk.pause).cap_usd
                     if cancel.is_set():
                         log.info("Cancel requested, breaking stream")
                         break
@@ -935,6 +1013,8 @@ class CoPilotProcessor:
             # If no exception but user cancelled, still mark as cancelled
             if not error_msg and cancel.is_set():
                 error_msg = stream_registry.CANCELLED_MESSAGE
+            if error_msg == stream_registry.CANCELLED_MESSAGE:
+                _cascade_cancel(entry, started_at)
             try:
                 if credential_lease is not None:
                     try:
@@ -953,6 +1033,10 @@ class CoPilotProcessor:
                 )
                 if scheduled_watch is not None:
                     scheduled_watch.report(error_msg)
+                if error_msg == stream_registry.CANCELLED_MESSAGE:
+                    await _close_on_cancel_marker(entry.session_id, log)
+                elif not error_msg and landed_at_cap is not None:
+                    await _hold_at_cap(entry, landed_at_cap, log)
                 try:
                     await stream_registry.mark_session_completed(
                         entry.session_id,

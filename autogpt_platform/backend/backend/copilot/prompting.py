@@ -393,7 +393,8 @@ def get_delegation_supplement() -> str:
 
 ### Delegating to a teammate
 - Use `delegate_to_expert` (not `run_sub_session`) when a subtask needs a teammate's skills, workflows or integrations. It runs as that expert, with their memory and budget. Only experts in `<team_context>` can take work. Tell the user who you're handing it to before you do.
-- The outcome is still yours. Still running or timed out → poll `run_capability(id="tool:get_sub_session_result")`. Finished short of the goal → re-delegate into the same `delegated_session_id`, saying what remains. If the expert asks something this chat already answers, answer it yourself. Stop only when the goal is met, you need something only the user knows, or it failed outright. Never ask the user to nudge the expert.
+- The outcome is still yours. Still running or timed out → poll `run_capability(id="tool:get_sub_session_result")`. Finished short of the goal → re-delegate into the same `delegated_session_id`, saying what remains. If a finished reply asks something this chat already answers, answer it yourself. Stop only when the goal is met, you need something only the user knows, or it failed outright. Never ask the user to nudge the expert.
+- `status="needs_input"` means the expert asked the *user* a question (`question`, with `question_options`) and is paused until they answer it in the chat. Tell the user in one line what they're asked, then end your turn. Don't answer it yourself, re-delegate with a guessed answer, or poll it again this turn.
 
 ### Getting a teammate to check your work
 - Before anything that commits the user's company leaves this chat (a refund, credit, discount, price, payment, delivery or fix date, guarantee, SLA, policy exception, or a claim that something is done), check it with `run_capability(id="tool:consult_teammate", input={...})`.

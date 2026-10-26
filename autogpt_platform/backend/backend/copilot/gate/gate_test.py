@@ -13,6 +13,7 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.context import is_unattended_turn, set_turn_unattended
+from backend.copilot.delegation_settings import DelegationSettings
 from backend.copilot.gate import (
     LINKED_CHAT_PLATFORMS,
     RUN_FILES_KEY,
@@ -317,9 +318,149 @@ async def test_a_chat_platform_post_in_auto_is_judged_as_outward(
 
 
 async def test_unsupervised_runs_outward_actions(gate_on, clean_session_state):
-    decision = await check_action(
-        "post_to_chat_platform", {"text": "hi"}, "u", _session("unsupervised")
+    """With the user's "ask before anything external" toggle off."""
+    with patch(
+        "backend.copilot.gate.delegation_rules.turn_delegation_settings",
+        AsyncMock(return_value=DelegationSettings(ask_before_external=False)),
+    ):
+        decision = await check_action(
+            "post_to_chat_platform", {"text": "hi"}, "u", _session("unsupervised")
+        )
+    assert decision.allowed
+
+
+async def test_unsupervised_still_asks_outward_while_the_toggle_is_on(
+    gate_on, clean_session_state
+):
+    with patch(
+        "backend.copilot.gate.delegation_rules.turn_delegation_settings",
+        AsyncMock(return_value=DelegationSettings()),
+    ):
+        decision = await check_action(
+            "post_to_chat_platform", {"text": "hi"}, "u", _session("unsupervised")
+        )
+    assert not decision.allowed
+
+
+_HAND_OFF = {"expert_id": "alex", "prompt": "Draft the PRD"}
+
+
+def _hand_off_settings(settings: DelegationSettings, hired_at: datetime | None = None):
+    """The user's delegation settings, and Alex hired at *hired_at*."""
+    db = MagicMock()
+    db.get_expert_hired_at = AsyncMock(return_value=hired_at)
+    return (
+        patch(
+            "backend.copilot.gate.delegation_rules.turn_delegation_settings",
+            AsyncMock(return_value=settings),
+        ),
+        patch("backend.copilot.gate.delegation_rules.delegation_db", lambda: db),
+        patch(
+            "backend.copilot.gate.delegation_rules.resolve_expert",
+            AsyncMock(return_value=SimpleNamespace(id="expert-alex", name="Alex")),
+        ),
     )
+
+
+@pytest.mark.parametrize("mode", ["auto", "unsupervised"])
+async def test_ask_first_delegation_holds_otto_s_hand_off_whatever_the_chat_s_mode(
+    gate_on, clean_session_state, mode
+):
+    """Otto's Settings say Ask first proposes each hand-off for approval: the
+    hand-off itself waits, not just the work the teammate does after it."""
+    settings, db, resolve = _hand_off_settings(DelegationSettings(mode="ask_first"))
+    with settings, db, resolve:
+        decision = await check_action(
+            "delegate_to_expert", _HAND_OFF, "u", _session(mode)
+        )
+
+    assert not decision.allowed
+    assert decision.review_id
+    assert "Ask first" in decision.reason
+
+
+async def test_a_hand_off_held_by_the_settings_is_not_labelled_the_chats_mode(
+    gate_on, clean_session_state
+):
+    """Home and the card label a mode hold with the chat's mode ("Auto"). A
+    hand-off the user's delegation settings held is the user's own rule, so
+    its card carries the settings' reason instead of the chat's mode."""
+    settings, db, resolve = _hand_off_settings(DelegationSettings(mode="ask_first"))
+    with settings, db, resolve:
+        await check_action("delegate_to_expert", _HAND_OFF, "u", _session("auto"))
+
+    opened = review_store.open_review
+    assert isinstance(opened, AsyncMock)
+    kwargs = opened.await_args.kwargs
+    assert kwargs["reason_kind"] == "rule"
+    assert "Ask first" in opened.await_args.args[5]
+
+
+async def test_a_hand_off_in_an_ask_first_chat_stays_a_mode_hold(
+    gate_on, clean_session_state
+):
+    settings, db, resolve = _hand_off_settings(DelegationSettings(mode="ask_first"))
+    with settings, db, resolve:
+        await check_action("delegate_to_expert", _HAND_OFF, "u", _session("ask_first"))
+
+    opened = review_store.open_review
+    assert isinstance(opened, AsyncMock)
+    assert opened.await_args.kwargs["reason_kind"] == "mode"
+
+
+@pytest.mark.parametrize("tool", ["delegate_to_expert", "handoff_to_expert"])
+async def test_auto_delegation_lets_otto_s_hand_off_run_in_an_auto_chat(
+    gate_on, clean_session_state, tool
+):
+    settings, db, resolve = _hand_off_settings(DelegationSettings(mode="auto"))
+    with settings, db, resolve:
+        decision = await check_action(tool, _HAND_OFF, "u", _session("auto"))
+
+    assert decision.allowed
+
+
+async def test_a_hand_off_to_a_new_hire_waits_when_new_experts_ask_first(
+    gate_on, clean_session_state
+):
+    hired = datetime.now(UTC)
+    settings, db, resolve = _hand_off_settings(
+        DelegationSettings(new_experts_ask_first=True), hired_at=hired
+    )
+    with settings, db, resolve:
+        decision = await check_action(
+            "delegate_to_expert", _HAND_OFF, "u", _session("unsupervised")
+        )
+
+    assert not decision.allowed
+    assert "Alex" in decision.reason
+
+
+async def test_a_hand_off_to_a_settled_teammate_runs_when_new_experts_ask_first(
+    gate_on, clean_session_state
+):
+    hired = datetime(2025, 1, 1, tzinfo=UTC)
+    settings, db, resolve = _hand_off_settings(
+        DelegationSettings(new_experts_ask_first=True), hired_at=hired
+    )
+    with settings, db, resolve:
+        decision = await check_action(
+            "delegate_to_expert", _HAND_OFF, "u", _session("unsupervised")
+        )
+
+    assert decision.allowed
+
+
+async def test_an_expert_s_own_hand_off_keeps_its_chat_s_mode(
+    gate_on, clean_session_state
+):
+    """Otto's delegation settings cover Otto's hand-offs; an expert's chat
+    keeps the mode it runs in."""
+    session = _session("unsupervised")
+    session.expert_id = "expert-bea"
+    settings, db, resolve = _hand_off_settings(DelegationSettings(mode="ask_first"))
+    with settings, db, resolve:
+        decision = await check_action("delegate_to_expert", _HAND_OFF, "u", session)
+
     assert decision.allowed
 
 

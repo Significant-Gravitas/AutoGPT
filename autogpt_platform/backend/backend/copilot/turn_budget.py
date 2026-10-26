@@ -14,7 +14,7 @@ backstop (see ``governor.cli_budget_usd``).
 
 import math
 from datetime import datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
@@ -28,6 +28,10 @@ from backend.copilot.rate_limit import (
     get_usage_status,
 )
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
+from backend.data.db_accessors import delegation_db
+
+if TYPE_CHECKING:
+    from backend.copilot.model import ChatSession
 
 BudgetWindow = Literal["daily", "weekly", "trial", "task"]
 
@@ -50,6 +54,9 @@ class TurnBudget(BaseModel):
     # allowance is real money with no plan behind it, so the CLI backstop
     # sits exactly on the budget instead of above it.
     hard_cap: bool = False
+    # Set when a delegated thread's per-hand-off cap is what binds: the turn
+    # that lands on it is held at the cap, not just paused.
+    cap_usd: float | None = None
 
 
 async def resolve_turn_budget(user_id: str | None) -> TurnBudget:
@@ -84,6 +91,37 @@ async def resolve_turn_budget(user_id: str | None) -> TurnBudget:
     return TurnBudget(
         usd=remaining, limiting=window, resets_at=resets_at, hard_cap=trial
     )
+
+
+async def within_delegation_cap(
+    budget: TurnBudget | None, user_id: str | None, session: "ChatSession"
+) -> TurnBudget | None:
+    """*budget*, cut to what a delegated thread's per-hand-off cap has left.
+
+    The thread's earlier turns are on the cost log; this turn's spend is the
+    governor's to meter, so it lands the turn with a checkpoint before the
+    cap rather than a later status poll catching the overspend. The cap binds
+    as the task's size limit.
+    """
+    cap = session.metadata.delegation_cap_usd
+    if budget is None or cap is None or not user_id:
+        return budget
+    left = await delegation_cap_left_usd(user_id, session, cap)
+    if left >= budget.usd:
+        return budget
+    # Still the account's money: a trial's hard cap stays a hard cap.
+    return budget.model_copy(
+        update={"usd": left, "limiting": "task", "resets_at": None, "cap_usd": cap}
+    )
+
+
+async def delegation_cap_left_usd(
+    user_id: str, session: "ChatSession", cap_usd: float
+) -> float:
+    """What a delegated thread may still spend under its cap: the cap less its
+    earlier turns, which are on the cost log by the time a new turn starts."""
+    costs = await delegation_db().get_session_costs(user_id, [session.session_id])
+    return max(0.0, cap_usd - costs.get(session.session_id, 0) / 1_000_000)
 
 
 async def _limiting_window(

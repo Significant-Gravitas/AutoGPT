@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
+from backend.copilot.delegation_settings import DelegationSettings
+
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def server():  # type: ignore[override]
@@ -98,3 +100,60 @@ def login_chain_unchanged(request):
         patch("backend.copilot.tools.e2b_sandbox.take_baseline", AsyncMock()),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def stub_sub_session_costs(monkeypatch):
+    """Report no logged spend and default delegation settings unless a test
+    says otherwise.
+
+    The sub-session tools read cost through the ``delegation_db()`` accessor,
+    which falls back to the DatabaseManager RPC client when Prisma is not
+    connected; without a stub every spawn/poll test would wait on that RPC.
+    """
+    client = MagicMock()
+    client.get_session_costs = AsyncMock(return_value={})
+    client.get_delegation_settings = AsyncMock(return_value=DelegationSettings())
+    client.get_delegation_spend_since = AsyncMock(return_value=0)
+    client.get_expert_hired_at = AsyncMock(return_value=None)
+    client.stop_delegation_at_cap = AsyncMock()
+    for module in (
+        "backend.copilot.tools.sub_session_facts",
+        "backend.copilot.tools.delegation_policy",
+        "backend.copilot.gate.delegation_rules",
+        "backend.copilot.delegation_cap",
+    ):
+        monkeypatch.setattr(f"{module}.delegation_db", MagicMock(return_value=client))
+    # The cap writes drop the cached session after their row write.
+    monkeypatch.setattr(
+        "backend.copilot.delegation_cap.invalidate_session_cache", AsyncMock()
+    )
+    # A thread's cap is read fresh from its row; with no row, what the caller
+    # already knows stands.
+    monkeypatch.setattr(
+        "backend.copilot.tools.delegation_policy.get_chat_session_metadata",
+        AsyncMock(return_value=None),
+    )
+    return client
+
+
+@pytest.fixture(autouse=True)
+def external_toggle_off(monkeypatch):
+    """The gate as it was before ``ask_before_external``: the mode table alone
+    decides an outward call. Tests of the toggle itself override this with
+    ``external_toggle_on``, or live in ``gate/delegation_rules_test.py``.
+
+    Patching the per-turn read (not the DB behind it) also keeps a settings
+    cache left by one test from answering the next.
+    """
+    read = AsyncMock(return_value=DelegationSettings(ask_before_external=False))
+    monkeypatch.setattr(
+        "backend.copilot.gate.delegation_rules.turn_delegation_settings", read
+    )
+    return read
+
+
+@pytest.fixture
+def external_toggle_on(external_toggle_off):
+    external_toggle_off.return_value = DelegationSettings(ask_before_external=True)
+    return external_toggle_off

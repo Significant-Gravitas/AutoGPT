@@ -6,6 +6,8 @@ import { server } from "@/mocks/mock-server";
 import { act, render, screen, within } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CopilotPendingReviews } from "../../CopilotPendingReviews/CopilotPendingReviews";
+import { ApprovalQueue } from "../ApprovalQueue";
+import { toApprovalItem } from "../helpers";
 import { CHAT_SESSION, referenceCard } from "./fixtures";
 
 function renderCard(review: PendingHumanReviewModel) {
@@ -238,7 +240,6 @@ test("unresolved agent IDs stay listed beside a resolved folder headline", async
 test.each([
   ["Follow-up in two days", "Runs in", "2 days 3 hours", "183420"],
   ["Weekly follow-up", "Repeats", "Every Monday at 09:00", "0 9 * * 1"],
-  ["Delegate and wait", "Waits up to", "3 minutes", "180"],
 ])(
   "%s: the argument reads as its schema labels and words it",
   async (story, label, text, raw) => {
@@ -250,3 +251,29 @@ test.each([
     expect(view.queryByText(raw)).toBeNull();
   },
 );
+
+// The chat shows a held hand-off as a node on its own chain row, so its
+// queue leaves it out; the card itself still words the arguments wherever
+// the queue does list it.
+test("Delegate and wait: the argument reads as its schema labels and words it", async () => {
+  render(
+    <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>
+      <ApprovalQueue
+        items={[toApprovalItem(referenceCard("Delegate and wait"))]}
+        onAnswered={vi.fn()}
+      />
+    </CopilotChatActionsProvider>,
+  );
+
+  const view = await card();
+  expect(view.getByText("Waits up to")).toBeDefined();
+  expect(view.getByText("3 minutes")).toBeDefined();
+  expect(view.queryByText("180")).toBeNull();
+});
+
+test("the chat's queue leaves a held hand-off to its chain row", async () => {
+  renderCard(referenceCard("Delegate and wait"));
+
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.queryByRole("article")).toBeNull();
+});

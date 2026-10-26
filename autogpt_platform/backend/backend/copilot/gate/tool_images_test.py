@@ -71,7 +71,7 @@ async def test_approved_action_keeps_image_with_non_json_metadata(monkeypatch, i
     consume = AsyncMock(return_value=True)
     monkeypatch.setattr(held.review_store, "consume", consume)
 
-    outcome, output = await held._run("user-1", session, call, tool)
+    outcome, output = await held._run("user-1", session, call, tool, None)
 
     assert outcome == "approved"
     released = HeldImage.model_validate_json(output)

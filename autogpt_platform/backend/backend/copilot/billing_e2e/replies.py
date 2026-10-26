@@ -1,7 +1,9 @@
 """What the fake model answers, read off each request the way a model would.
 
 A user message carrying ``TOOL_MARKER`` gets one tool call; the tool's result
-gets a closing answer; anything else gets a greeting.
+gets a closing answer; anything else gets a greeting. With ``tool_rounds``
+above one, the model calls the tool again after each result until it has
+called it that many times, then answers.
 """
 
 import json
@@ -19,7 +21,7 @@ AFTER_TOOL = "Here is what the lookup found."
 _GATEWAY_TRANSCRIPT_MARKER = "The transcript is JSON:\n"
 
 
-def anthropic_reply(messages: list[dict[str, Any]]) -> Reply:
+def anthropic_reply(messages: list[dict[str, Any]], tool_rounds: int = 1) -> Reply:
     # The CLI can follow the user's message with a system reminder, so the
     # last user message is the one to answer.
     content = _latest(messages, {"user"}).get("content")
@@ -27,15 +29,29 @@ def anthropic_reply(messages: list[dict[str, Any]]) -> Reply:
         isinstance(block, dict) and block.get("type") == "tool_result"
         for block in content
     ):
-        return Reply(kind="text", text=AFTER_TOOL)
+        results = sum(
+            1
+            for message in messages
+            if isinstance(message.get("content"), list)
+            for block in message["content"]
+            if isinstance(block, dict) and block.get("type") == "tool_result"
+        )
+        return _after_tool(results, tool_rounds)
     return _reply_to(json.dumps(content))
 
 
-def chat_reply(messages: list[dict[str, Any]]) -> Reply:
+def chat_reply(messages: list[dict[str, Any]], tool_rounds: int = 1) -> Reply:
     latest = _latest(messages, {"user", "tool"})
     if latest.get("role") == "tool":
-        return Reply(kind="text", text=AFTER_TOOL)
+        results = sum(1 for message in messages if message.get("role") == "tool")
+        return _after_tool(results, tool_rounds)
     return _reply_to(json.dumps(latest.get("content")))
+
+
+def _after_tool(results: int, tool_rounds: int) -> Reply:
+    if results < tool_rounds:
+        return Reply(kind="tool")
+    return Reply(kind="text", text=AFTER_TOOL)
 
 
 def responses_reply(items: list[dict[str, Any]]) -> Reply:

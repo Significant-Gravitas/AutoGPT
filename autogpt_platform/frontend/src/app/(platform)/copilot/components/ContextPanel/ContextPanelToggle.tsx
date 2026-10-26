@@ -15,6 +15,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { useIsMobile } from "../../useIsMobile";
 import { IntegrationsToggle } from "./components/IntegrationsToggle/IntegrationsToggle";
 import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
+import { WorkToggle } from "./components/WorkToggle/WorkToggle";
 
 interface Props {
   sessionId?: string | null;
@@ -30,8 +31,9 @@ interface Props {
 const toggleClass =
   "shrink-0 rounded-full transition-[background-color,transform] duration-150 ease-out hover:bg-surface-hover active:scale-[0.97] motion-reduce:transition-none";
 
-/** The chat's top-right controls: the expert's integrations, the files
- *  toggle and the Computer toggle, each opening its face of the side panel. The
+/** The chat's top-right controls: the expert's integrations, the work handed
+ *  to experts, the files toggle and the Computer toggle, each opening its face
+ *  of the side panel. The
  *  Computer toggle is always there for a chat with a session: the panel's
  *  own "Turn on screen" button lives on that face, so it must be reachable
  *  before any desktop exists. */
@@ -63,6 +65,8 @@ export function ContextPanelToggle({
   // a files button over the chat's top-left corner.
   const showComputerToggle = !!sessionId && !isMobile;
   const showFilesToggle = !isMobile;
+  // On a phone the dock above the composer and each status line open Work.
+  const showWorkToggle = !!sessionId && !isMobile;
   const showIntegrations = !!expert && !(isMobile && hideIntegrationsOnMobile);
 
   function handleComputerToggle() {
@@ -72,7 +76,13 @@ export function ContextPanelToggle({
     else openComputer();
   }
 
-  if (!showIntegrations && !showComputerToggle && !showFilesToggle) return null;
+  if (
+    !showIntegrations &&
+    !showWorkToggle &&
+    !showComputerToggle &&
+    !showFilesToggle
+  )
+    return null;
 
   return (
     // The same translucent pill as the thread chip on the left (ThreadHeader),
@@ -80,6 +90,9 @@ export function ContextPanelToggle({
     <div className="mr-4 mt-3 flex shrink-0 items-center gap-1 rounded-full border border-border-base/70 bg-surface/75 p-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md">
       {showIntegrations && expert && (
         <IntegrationsToggle expert={expert} className={toggleClass} />
+      )}
+      {showWorkToggle && (
+        <WorkToggle sessionId={sessionId} className={toggleClass} />
       )}
       {showFilesToggle && (
         <Tooltip inheritDelay>

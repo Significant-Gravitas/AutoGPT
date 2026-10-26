@@ -32,6 +32,8 @@ from . import chat_rules, held
 from . import review as review_store
 from .card_approval import approved_on_card
 from .classifier import DecidedBy, Judgement, supervise
+from .delegation_rules import hand_off_hold, verdict_for
+from .handoff import is_approved_edit
 from .headline import Headline
 from .policy import (
     DEFAULT_MODE,
@@ -198,6 +200,9 @@ async def check_action(
 
     session_id = session.session_id
     review_id = review_store.review_id_for(session_id, user_id, tool_name, args)
+    if is_approved_edit(review_id):
+        # The user approved this call as they edited it on its card.
+        return Decision(allowed=True, approved=True)
 
     review = await review_store.find_review(review_id, user_id, session_id)
     if review is not None and review.status == ReviewStatus.APPROVED:
@@ -273,8 +278,21 @@ async def check_action(
             outward_judged=outward_judged,
         )
 
+    held_by_settings = (
+        await hand_off_hold(tool_name, args, user_id, session)
+        if effect is Effect.TEAM
+        else None
+    )
     ruling = await rule_on(
-        session, user_id, rule_key, effect, subject, judge, over_ceiling
+        session,
+        user_id,
+        rule_key,
+        effect,
+        subject,
+        judge,
+        over_ceiling,
+        chat_call=True,
+        asks_because=held_by_settings,
     )
     if ruling.run:
         return DECIDED
@@ -309,10 +327,17 @@ async def rule_on(
     over_ceiling: Callable[[], Awaitable[Ruling | None]] | None = None,
     *,
     floor: bool = False,
+    chat_call: bool = False,
+    asks_because: str | None = None,
 ) -> Ruling:
     """The user's rule on the subject in this chat, else the mode's verdict for
     its effect, the supervisor deciding where either says judge. ``floor``
-    turns the mode's run into an ask; a rule still decides."""
+    turns the mode's run into an ask; a rule still decides. ``chat_call``: a
+    call the chat itself makes, which the user's delegation settings also
+    cover (ask before anything external); a workflow's step is not one.
+    ``asks_because`` is a floor with its own reason: the user's delegation
+    settings holding a hand-off. Its card is the user's rule, not the chat's
+    mode, so Home and the card don't label it with the chat's mode."""
     mode = resolve_mode(session)
     # Only a subject that can be parked can carry a rule, so reads and
     # workspace work skip the Redis round trip.
@@ -332,7 +357,16 @@ async def rule_on(
     if rule == "judge" and subject is not None and subject.schedules:
         rule = None
     # A judge rule covers irreversible subjects too: the user chose the supervisor.
-    verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
+    if rule:
+        verdict = _RULE_VERDICTS[rule]
+    elif chat_call:
+        verdict = await verdict_for(mode, effect, user_id, session)
+    else:
+        verdict = verdict_for_effect(mode, effect)
+    if rule is None and verdict is Verdict.RUN and asks_because:
+        # The user's own delegation setting holds it, not the chat's mode: the
+        # card says the setting's reason rather than labelling the chat's mode.
+        return Ruling(run=False, reason=asks_because, reason_kind="rule", by="rule")
     if rule is None and verdict is Verdict.RUN and _mode_asks(mode, subject, floor):
         verdict = Verdict.ASK
     by = "rule" if rule else "mode"
@@ -466,11 +500,11 @@ def _typed_messages(session: ChatSession, upto: int | None = None) -> list[str]:
 
 
 __all__ = [
+    "LINKED_CHAT_PLATFORMS",
     "RUNS_KEY",
     "RUN_FILES_KEY",
     "Decision",
     "Ruling",
-    "LINKED_CHAT_PLATFORMS",
     "active_mode",
     "answerable",
     "check_action",

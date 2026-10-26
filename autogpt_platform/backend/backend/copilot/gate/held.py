@@ -42,6 +42,7 @@ from backend.util.encryption import JSONCryptor
 
 from . import chat_rules
 from . import review as review_store
+from .handoff import approved_edit, edited_args
 from .headline import headline_for
 from .policy import PARKABLE, effect_for
 
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
         PendingHumanReviewModel,
     )
     from backend.copilot.model import ChatMessage
+    from backend.copilot.response_model import StreamToolOutputAvailable
     from backend.copilot.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -435,7 +437,7 @@ async def _resolve(
         return
     with restore_cost_context(user_id, call.cost_context):
         if tool:
-            outcome, output = await _run(user_id, session, call, tool)
+            outcome, output = await _run(user_id, session, call, tool, row)
         else:
             outcome, output = await _settled(user_id, session, call, row)
     shown = _card_copy(row)
@@ -607,10 +609,13 @@ def _headline(call: HeldCall, row: "PendingHumanReviewModel | None") -> str:
 
 
 async def _run(
-    user_id: str, session: ChatSession, call: HeldCall, tool: "BaseTool"
+    user_id: str,
+    session: ChatSession,
+    call: HeldCall,
+    tool: "BaseTool",
+    row: "PendingHumanReviewModel | None",
 ) -> tuple[Outcome, str]:
-    # The gate finds the approval for exactly these arguments and spends it.
-    result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
+    result = await _run_approved(user_id, session, call, tool, row)
     # With the flag switched off since, the gate ran it without spending the
     # approval; spend it here so no later identical call rides on it.
     await review_store.consume(call.review_id, user_id)
@@ -624,6 +629,33 @@ async def _run(
     if isinstance(result.output, str):
         return "approved", result.output
     return "approved", json.dumps(result.output, default=str)
+
+
+async def _run_approved(
+    user_id: str,
+    session: ChatSession,
+    call: HeldCall,
+    tool: "BaseTool",
+    row: "PendingHumanReviewModel | None",
+) -> "StreamToolOutputAvailable":
+    """Run the call the user approved: as made, or as they edited its card."""
+    payload = row.payload if row and isinstance(row.payload, dict) else {}
+    edited = (
+        edited_args(call.tool_name, call.args, payload)
+        if row and row.was_edited
+        else None
+    )
+    if edited is None:
+        # The gate finds the approval for exactly these arguments and spends it.
+        return await tool.execute(user_id, session, call.tool_call_id, **call.args)
+    # No approval exists for the edited arguments: spend the card's, and let
+    # exactly the edited call through while it runs.
+    await review_store.consume(call.review_id, user_id)
+    edited_id = review_store.review_id_for(
+        session.session_id, user_id, call.tool_name, edited
+    )
+    with approved_edit(edited_id):
+        return await tool.execute(user_id, session, call.tool_call_id, **edited)
 
 
 async def _restore(

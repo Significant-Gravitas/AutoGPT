@@ -682,7 +682,11 @@ export function ChatMessagesContainer({
   // (clarifying questions, a hire's onboarding, held calls) lives here too
   // instead of in each host. Read-only viewers receive saved answers only.
   return (
-    <PendingAnswerContexts messages={allMessages} readOnly={readOnly}>
+    <PendingAnswerContexts
+      messages={allMessages}
+      readOnly={readOnly}
+      sessionId={sessionID}
+    >
       {thread}
     </PendingAnswerContexts>
   );

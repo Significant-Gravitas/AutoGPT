@@ -85,7 +85,7 @@ _ENVELOPE_KEY = "envelope"
 # can still go back when a later deploy no longer parses that envelope.
 _ENVELOPE_TREE_ID_KEY = "envelope_tree_id"
 # The assistant row that closes a queued turn the promotion could not start.
-_REFUSED_KEY = "queued_turn_refused"
+QUEUED_TURN_REFUSED_KEY = "queued_turn_refused"
 WAKE_LATER = "Your answer is kept and reaches the assistant with your next message."
 TURN_CANCELLED = "This task was cancelled before it started."
 QUEUE_UNAVAILABLE = "Could not queue this task right now; try again shortly."
@@ -364,7 +364,7 @@ async def _note_cancel(db: Any, session_id: str) -> None:
             role="assistant",
             content=TURN_CANCELLED,
             sequence=await db.get_next_sequence(session_id),
-            metadata={_REFUSED_KEY: True},
+            metadata={QUEUED_TURN_REFUSED_KEY: True},
         )
     except Exception:
         logger.exception(
@@ -735,7 +735,7 @@ async def post_refusal(
             id=message_id,
             role="assistant",
             content=reason,
-            metadata={_REFUSED_KEY: True},
+            metadata={QUEUED_TURN_REFUSED_KEY: True},
         ),
     )
 
@@ -743,7 +743,7 @@ async def post_refusal(
 def queued_turn_refusal(session: ChatSession) -> str | None:
     """Why a waiting turn was not started, if its thread ends that way."""
     last = session.messages[-1] if session.messages else None
-    if last is None or not (last.metadata or {}).get(_REFUSED_KEY):
+    if last is None or not (last.metadata or {}).get(QUEUED_TURN_REFUSED_KEY):
         return None
     return last.content
 

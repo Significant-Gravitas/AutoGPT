@@ -37,6 +37,7 @@ from backend.copilot.turn_queue import cancel_queued_turn, queued_turn_refusal
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
+from .delegation_policy import CapState, cap_state, enforce_cap, read_cap_state
 from .models import (
     DelegatedExpertInfo,
     ErrorResponse,
@@ -50,6 +51,12 @@ from .run_sub_session import (
     apply_delegated_expert,
     list_sub_workspace_files,
     response_from_outcome,
+)
+from .sub_session_facts import (
+    ask_from_pending,
+    run_facts,
+    turn_finished_at,
+    turn_started_at,
 )
 
 logger = logging.getLogger(__name__)
@@ -210,7 +217,11 @@ class GetSubSessionResultTool(BaseTool):
         turn_in_flight = registry_session is not None and (
             getattr(registry_session, "status", "") == "running"
         )
-        terminal_result = None if turn_in_flight else _already_terminal_result(sub)
+        terminal_result = (
+            None
+            if turn_in_flight
+            else _already_terminal_result(sub) or _parked_on_question(sub)
+        )
         refusal = None if turn_in_flight else queued_turn_refusal(sub)
         outcome: SessionOutcome
         result: SessionResult
@@ -230,8 +241,18 @@ class GetSubSessionResultTool(BaseTool):
             )
         else:
             outcome, result = "running", SessionResult()
+        # Only a result read from the record describes a turn that ended
+        # before this poll. A queued thread can still carry the question its
+        # queued answer is about to clear; the turn it waited on is newer.
+        settled_before = not queued and refusal is None and terminal_result is not None
 
         elapsed = time.monotonic() - started_at
+        facts = await run_facts(
+            user_id, inner_session_id, outcome, turn_started_at(sub)
+        )
+        if settled_before:
+            # The turn ended before this poll: its end is on record.
+            facts = facts.model_copy(update={"finished_at": turn_finished_at(sub)})
 
         if outcome == "running" and include_progress and not borrowed:
             # Running + caller wants progress — hand-assemble the response
@@ -239,7 +260,7 @@ class GetSubSessionResultTool(BaseTool):
             # doesn't carry progress, so we build the response here.
             progress = await _build_progress_snapshot(inner_session_id)
             link = _sub_session_link(inner_session_id)
-            return apply_delegated_expert(
+            running = await enforce_cap(
                 SubSessionStatusResponse(
                     message=(
                         f"{actor} still running after {elapsed:.0f}s."
@@ -252,10 +273,15 @@ class GetSubSessionResultTool(BaseTool):
                     sub_autopilot_session_id=inner_session_id,
                     sub_autopilot_session_link=link,
                     elapsed_seconds=round(elapsed, 2),
+                    cost_usd=facts.cost_usd,
+                    started_at=facts.started_at,
                     progress=progress,
                 ).from_outside(progress),
-                delegate,
+                await _cap_state(sub, inner_session_id),
+                actor,
+                user_id,
             )
+            return apply_delegated_expert(running, delegate)
 
         # On completion, read the authoritative workspace-file manifest from the
         # sub's session. This covers the cold-poll / already-terminal path where
@@ -266,18 +292,27 @@ class GetSubSessionResultTool(BaseTool):
             if outcome == "completed"
             else None
         )
-        return apply_delegated_expert(
-            response_from_outcome(
-                outcome=outcome,
-                result=result,
-                inner_session_id=inner_session_id,
-                parent_session_id=session.session_id,
-                elapsed=elapsed,
-                workspace_files=workspace_files,
-                actor=actor,
+        response = response_from_outcome(
+            outcome=outcome,
+            result=result,
+            inner_session_id=inner_session_id,
+            parent_session_id=session.session_id,
+            elapsed=elapsed,
+            workspace_files=workspace_files,
+            actor=actor,
+            facts=facts,
+            # Only a thread idle before this poll has a current parked
+            # question; the copy loaded before a wait predates the turn.
+            pending_ask=(
+                ask_from_pending(sub.metadata.pending_question)
+                if settled_before
+                else None
             ),
-            delegate,
         )
+        response = await enforce_cap(
+            response, await _cap_state(sub, inner_session_id), actor, user_id
+        )
+        return apply_delegated_expert(response, delegate)
 
 
 def _in_caller_scope(sub: ChatSession, session: ChatSession) -> bool:
@@ -379,6 +414,20 @@ def _already_terminal_result(sub: ChatSession) -> SessionResult | None:
             )
         )
     return result
+
+
+async def _cap_state(sub: ChatSession, inner_session_id: str) -> CapState:
+    """The thread's cap as its row holds it now; a thread opened without
+    one has none to read."""
+    if sub.metadata.delegation_cap_usd is None:
+        return CapState(cap_usd=None)
+    return await read_cap_state(inner_session_id, cap_state(sub.metadata))
+
+
+def _parked_on_question(sub: ChatSession) -> SessionResult | None:
+    """An idle thread waiting on the user's answer is settled even when its
+    last row is the question's tool result rather than closing text."""
+    return SessionResult() if sub.metadata.pending_question is not None else None
 
 
 async def _build_progress_snapshot(

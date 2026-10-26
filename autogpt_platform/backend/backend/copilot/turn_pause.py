@@ -54,9 +54,15 @@ class TurnPause(BaseModel):
     # False when the turn was refused before it ran at all (out of budget at
     # the moment it was picked up), so there is nothing to pick back up from.
     started: bool = True
+    # A delegated thread's per-hand-off cap, when that is what it stopped at:
+    # the thread is then held for the user to raise the cap or stop.
+    cap_usd: float | None = None
 
     def as_part(self) -> dict[str, Any]:
-        return self.model_dump(mode="json")
+        # Only a hand-off's cap pause carries the cap; others keep their shape.
+        return self.model_dump(
+            mode="json", exclude={"cap_usd"} if self.cap_usd is None else None
+        )
 
     @property
     def summary(self) -> str:

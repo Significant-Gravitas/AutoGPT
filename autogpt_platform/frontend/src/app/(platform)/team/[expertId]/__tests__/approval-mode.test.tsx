@@ -14,6 +14,7 @@ import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { noDelegations } from "../../autopilot/__tests__/delegationFixtures";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import ExpertDetailPage from "../page";
 
@@ -103,6 +104,7 @@ beforeEach(() => {
     getGetHomeDashboardMockHandler(
       getGetHomeDashboardResponseMock200({ attention: [] }),
     ),
+    noDelegations(),
     getGetExpertMockHandler(() => expertResponse),
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     getListExpertRunsMockHandler([]),
@@ -166,6 +168,7 @@ describe("Expert approval mode", () => {
       releaseRefetch = resolve;
     });
     server.use(
+      noDelegations(),
       getGetExpertMockHandler(async () => {
         if (patchBodies.length > 0) await refetchHeld;
         return expertResponse;

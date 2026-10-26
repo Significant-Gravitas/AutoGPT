@@ -9,16 +9,23 @@ import { BubbleChatIcon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { getExpertCover } from "../../helpers";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
 import { IntegrationIcons } from "../../components/ExpertTeamCard/components/IntegrationIcons";
+import { WorkingForPill } from "../../components/DelegationList/DelegationStatusBadge";
 import { ExpertAvatarButton } from "./ExpertAvatarButton/ExpertAvatarButton";
 import { ExpertBudgetSection } from "./ExpertBudgetSection";
 
 interface Props {
   expert: Expert;
+  isWorkingForOtto?: boolean;
   onEditSoul: () => void;
   onChat: () => void;
 }
 
-export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
+export function ExpertDetailHeader({
+  expert,
+  isWorkingForOtto = false,
+  onEditSoul,
+  onChat,
+}: Props) {
   const cover = getExpertCover(expert);
   const topic = expert.categories?.[0];
 
@@ -48,11 +55,14 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
             nameAlign="baseline"
             areaColor={getCategoryHex(topic)}
           />
-          <div className="mt-2 flex items-center gap-2 empty:hidden">
+          <div className="mt-2 flex flex-wrap items-center gap-2 empty:hidden">
             <IntegrationIcons
               expertName={expert.name}
               providers={expert.credential_providers ?? []}
             />
+            {isWorkingForOtto ? (
+              <WorkingForPill>Working for Otto</WorkingForPill>
+            ) : null}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">

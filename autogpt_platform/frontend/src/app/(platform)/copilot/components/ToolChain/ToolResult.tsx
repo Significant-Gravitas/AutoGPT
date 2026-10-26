@@ -63,6 +63,7 @@ import {
   str,
   stripBaseFields,
 } from "./resultHelpers";
+import { isDelegatedRow } from "./delegationRow";
 import { SubSessionPendingCard } from "./SubSessionLive";
 import {
   FileCard,
@@ -380,28 +381,18 @@ function toolCard(
       );
     }
     case "run_sub_session":
-    case "get_sub_session_result":
-    case "delegate_to_expert":
-    case "handoff_to_expert": {
-      // A teammate's thread is their own workspace: delegated cards stay
-      // minimal (who, status, elapsed, link) — no response preview, no live
-      // step feed. Only the model's own run_sub_session shows its work here,
-      // and it always will: `expert` is written solely by the backend's
-      // apply_delegated_expert, which run_sub_session never calls (its subs
-      // are same-scope by construction, so the identity is None anyway).
-      const delegated =
-        row.tool === "delegate_to_expert" ||
-        row.tool === "handoff_to_expert" ||
-        !!(output && asObject(output.expert));
+    case "get_sub_session_result": {
+      // Hand-offs to a teammate never reach here (see isDelegatedRow): only
+      // the model's own run_sub_session shows its work as a card.
       if (output && str(output, "status"))
-        return <SubSessionCard output={output} minimal={delegated} />;
-      // A blocking delegate has no output while the teammate works — show
-      // who's on it and what they were asked from the tool input instead.
-      // Not for result polls: the delegation card above is already showing
-      // this sub-session live, a second identical card would stack under it.
+        return <SubSessionCard output={output} />;
+      // A blocking sub-session has no output while it works — show what it
+      // was asked from the tool input instead. Not for result polls: the
+      // card above is already showing this sub-session live, a second
+      // identical card would stack under it.
       return row.state === "running" &&
         row.tool !== "get_sub_session_result" ? (
-        <SubSessionPendingCard input={row.input} minimal={delegated} />
+        <SubSessionPendingCard input={row.input} />
       ) : null;
     }
     case "consult_teammate":
@@ -601,6 +592,8 @@ export function ToolResult({ row, readOnly = false }: Props) {
 
 function ToolOutput({ row, readOnly }: Required<Props>) {
   const output = asObject(row.output);
+  if (isDelegatedRow(row)) return null;
+
   const target = capabilityTargetRow(row);
   const card =
     toolCard(target, output, readOnly) ??

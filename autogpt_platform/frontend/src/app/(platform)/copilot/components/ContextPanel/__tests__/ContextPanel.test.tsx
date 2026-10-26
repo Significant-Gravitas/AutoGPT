@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import { getListExpertCredentialsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { useCopilotUIStore } from "../../../store";
 import { ContextPanel } from "../ContextPanel";
 
@@ -46,6 +47,55 @@ describe("ContextPanel", () => {
       expect(container.querySelector("[data-context-panel]")).not.toBeNull(),
     );
     expect(await screen.findByText("Nothing to preview yet.")).toBeDefined();
+  });
+
+  test("docks for the work tab and shows the chat's hand-offs", async () => {
+    server.use(
+      getGetV2GetSessionMockHandler200({
+        id: "session-1",
+        created_at: "2026-09-28T00:00:00Z",
+        updated_at: "2026-09-28T00:00:00Z",
+        user_id: "u-1",
+        chat_status: "idle",
+        messages: [],
+      }),
+    );
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, activeTab: "work" },
+    }));
+    const { container } = render(<ContextPanel sessionId="session-1" />);
+    await waitFor(() =>
+      expect(container.querySelector("[data-context-panel]")).not.toBeNull(),
+    );
+    expect(await screen.findByText("Nothing delegated yet")).toBeDefined();
+  });
+
+  test("opens the Work tab in the mobile sheet when the status line or dock asks", async () => {
+    server.use(
+      getGetV2GetSessionMockHandler200({
+        id: "session-1",
+        created_at: "2026-09-28T00:00:00Z",
+        updated_at: "2026-09-28T00:00:00Z",
+        user_id: "u-1",
+        chat_status: "idle",
+        messages: [],
+      }),
+    );
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, isOpen: false },
+    }));
+    render(<ContextPanel sessionId="session-1" mobile />);
+    expect(screen.queryByText("Nothing delegated yet")).toBeNull();
+
+    act(() => useCopilotUIStore.getState().openWorkTab());
+
+    expect(await screen.findByText("Nothing delegated yet")).toBeDefined();
+    expect(screen.getByRole("dialog").textContent).toContain("Work");
+    expect(
+      screen.getByRole("dialog", {
+        description: "Work Otto handed to experts from this chat.",
+      }),
+    ).toBeDefined();
   });
 
   test("docks for the files tab and lists the chat's files", async () => {

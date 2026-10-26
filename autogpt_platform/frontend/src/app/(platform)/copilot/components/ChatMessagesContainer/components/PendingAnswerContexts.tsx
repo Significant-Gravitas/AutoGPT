@@ -13,11 +13,15 @@ import { getPendingQuestions } from "../../QuestionDock/helpers";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
 import { CurrentPauseContext } from "../../TurnPausedCard/CurrentPauseContext";
 import { getCurrentPause } from "../../TurnPausedCard/helpers";
+import { getChatDelegations, getSupersededCallIds } from "../../../delegations";
+import { SupersededDelegationsContext } from "../../../supersededDelegationsContext";
+import { ChatSessionContext } from "./ChatSessionContext";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   children: React.ReactNode;
   readOnly?: boolean;
+  sessionId?: string | null;
 }
 
 const NO_HELD_OUTCOMES: ReadonlyMap<string, HeldOutcome> = new Map();
@@ -31,6 +35,7 @@ export function PendingAnswerContexts({
   messages,
   children,
   readOnly = false,
+  sessionId = null,
 }: Props) {
   // The questions and held outcomes are rebuilt as new objects on every call,
   // and `messages` changes on every streamed flush, so each one keeps the
@@ -41,27 +46,37 @@ export function PendingAnswerContexts({
   const pendingQuestions = useEqualValue(getPendingQuestions(messages));
   const answeredQuestions = useEqualValue(getAnsweredQuestions(messages));
   const heldOutcomes = useEqualValue(getHeldOutcomesOrNone(messages));
+  // A re-delegated hand-off counts once; the share viewer shows it the same.
+  const superseded = useEqualValue(
+    getSupersededCallIds(getChatDelegations(messages, heldOutcomes)),
+  );
   if (readOnly) {
     return (
       <AnsweredQuestionsContext.Provider value={answeredQuestions}>
-        {children}
+        <SupersededDelegationsContext.Provider value={superseded}>
+          {children}
+        </SupersededDelegationsContext.Provider>
       </AnsweredQuestionsContext.Provider>
     );
   }
   return (
-    <PendingQuestionsContext.Provider value={pendingQuestions}>
-      <AnsweredQuestionsContext.Provider value={answeredQuestions}>
-        <PendingOnboardingContext.Provider
-          value={getPendingOnboardingCallId(messages)}
-        >
-          <HeldOutcomesContext.Provider value={heldOutcomes}>
-            <CurrentPauseContext.Provider value={getCurrentPause(messages)}>
-              {children}
-            </CurrentPauseContext.Provider>
-          </HeldOutcomesContext.Provider>
-        </PendingOnboardingContext.Provider>
-      </AnsweredQuestionsContext.Provider>
-    </PendingQuestionsContext.Provider>
+    <ChatSessionContext.Provider value={sessionId}>
+      <PendingQuestionsContext.Provider value={pendingQuestions}>
+        <AnsweredQuestionsContext.Provider value={answeredQuestions}>
+          <PendingOnboardingContext.Provider
+            value={getPendingOnboardingCallId(messages)}
+          >
+            <HeldOutcomesContext.Provider value={heldOutcomes}>
+              <SupersededDelegationsContext.Provider value={superseded}>
+                <CurrentPauseContext.Provider value={getCurrentPause(messages)}>
+                  {children}
+                </CurrentPauseContext.Provider>
+              </SupersededDelegationsContext.Provider>
+            </HeldOutcomesContext.Provider>
+          </PendingOnboardingContext.Provider>
+        </AnsweredQuestionsContext.Provider>
+      </PendingQuestionsContext.Provider>
+    </ChatSessionContext.Provider>
   );
 }
 

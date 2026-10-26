@@ -6,6 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { formatGroupCounts, getActorChip } from "../helpers";
 import { ActorMark } from "./ActorMark";
+import { DelegationWorkRow } from "./DelegationWorkRow";
 import { OutcomeRow } from "./OutcomeRow";
 import { WorkItemRow } from "./WorkItemRow";
 
@@ -19,6 +20,7 @@ export function WorkGroup({ group, timezone }: Props) {
   const chip = getActorChip(actor.kind);
   const runs = group.runs ?? [];
   const items = group.items ?? [];
+  const delegations = group.delegations ?? [];
   const header = (
     <div className="flex min-w-0 items-center gap-2">
       <ActorMark actor={actor} />
@@ -77,6 +79,17 @@ export function WorkGroup({ group, timezone }: Props) {
               timezone={timezone}
               showAgentName={actor.kind === "expert"}
             />
+          ))}
+        </div>
+      ) : null}
+      {delegations.length > 0 ? (
+        <div
+          role="group"
+          className="divide-y divide-zinc-100 px-4"
+          aria-label={`Hand-offs to ${actor.name}`}
+        >
+          {delegations.map((item) => (
+            <DelegationWorkRow key={item.id} item={item} />
           ))}
         </div>
       ) : null}

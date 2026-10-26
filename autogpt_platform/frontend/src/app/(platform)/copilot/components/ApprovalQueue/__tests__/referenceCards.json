@@ -81,6 +81,7 @@
           "object_key": "folder_id"
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "delete_folder",
@@ -301,8 +302,8 @@
           }
         ],
         "reference_totals": {
-          "folder_id": 1,
-          "agent_ids": 7
+          "agent_ids": 7,
+          "folder_id": 1
         },
         "tool_call_id": "call-move_agents_to_folder",
         "turn": 1,
@@ -325,6 +326,7 @@
           "object_key": "folder_id"
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "move_agents_to_folder",
@@ -414,6 +416,7 @@
           "object_key": "schedule_id"
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "pause_schedule",
@@ -503,6 +506,7 @@
           "object_key": "session_id"
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "message_session",
@@ -614,6 +618,7 @@
           "object_key": "credential_id"
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "grant_expert_credential",
@@ -703,6 +708,7 @@
           "object_key": "agent_id"
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "edit_agent",
@@ -780,6 +786,7 @@
           "object_key": "preset_id"
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "update_preset",
@@ -857,6 +864,7 @@
           "object_key": "preset_id"
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "delete_preset",
@@ -934,6 +942,7 @@
           "object_key": "routine_id"
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "schedule_routine",
@@ -1051,6 +1060,7 @@
           "object_key": null
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "install_expert_workflow",
@@ -1121,6 +1131,7 @@
           "object_key": "workflow_id"
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "remove_expert_workflow",
@@ -1209,6 +1220,7 @@
           "object_key": "confirmation_id"
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "confirm_expert_change",
@@ -1310,6 +1322,7 @@
           "object_key": "path"
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "delete_workspace_file",
@@ -1380,6 +1393,7 @@
           "object_key": null
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "delete_preset",
@@ -1475,6 +1489,7 @@
           "object_key": null
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "schedule_followup",
@@ -1534,6 +1549,7 @@
           "object_key": null
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "schedule_followup",
@@ -1623,6 +1639,7 @@
           "object_key": "expert_id"
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "delegate_to_expert",

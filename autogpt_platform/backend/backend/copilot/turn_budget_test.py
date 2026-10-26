@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -9,7 +9,11 @@ from backend.copilot.rate_limit import (
     SubscriptionTier,
     UsageWindow,
 )
-from backend.copilot.turn_budget import TurnBudget, resolve_turn_budget
+from backend.copilot.turn_budget import (
+    TurnBudget,
+    resolve_turn_budget,
+    within_delegation_cap,
+)
 
 _MOD = "backend.copilot.turn_budget"
 NOW = datetime(2026, 10, 14, 15, 0, tzinfo=UTC)
@@ -192,3 +196,59 @@ async def test_a_paid_budget_is_not_a_hard_cap(limits):
     _, remaining_mock, _ = limits
     remaining_mock.return_value = 15.0
     assert (await resolve_turn_budget("u-1")).hard_cap is False
+
+
+def _thread(cap_usd: float | None):
+    session = MagicMock(session_id="sub-1")
+    session.metadata.delegation_cap_usd = cap_usd
+    return session
+
+
+@pytest.mark.asyncio
+async def test_a_hand_off_turn_may_spend_only_what_its_cap_has_left():
+    """$2 cap, $1.50 already spent by earlier turns: this turn gets $0.50,
+    so the governor lands it before the cap instead of a poll catching the
+    overspend afterwards."""
+    budget = TurnBudget(usd=20.0, limiting="task")
+    db = MagicMock(get_session_costs=AsyncMock(return_value={"sub-1": 1_500_000}))
+    with patch(f"{_MOD}.delegation_db", return_value=db):
+        capped = await within_delegation_cap(budget, "alice", _thread(2.0))
+    assert capped.usd == pytest.approx(0.5)
+    assert capped.limiting == "task"
+    db.get_session_costs.assert_awaited_once_with("alice", ["sub-1"])
+
+
+@pytest.mark.asyncio
+async def test_a_spent_cap_leaves_nothing_and_a_loose_cap_changes_nothing():
+    budget = TurnBudget(usd=3.0, limiting="daily", resets_at=DAILY_RESET)
+    over = MagicMock(get_session_costs=AsyncMock(return_value={"sub-1": 2_500_000}))
+    with patch(f"{_MOD}.delegation_db", return_value=over):
+        assert (await within_delegation_cap(budget, "alice", _thread(2.0))).usd == 0
+    fresh = MagicMock(get_session_costs=AsyncMock(return_value={}))
+    with patch(f"{_MOD}.delegation_db", return_value=fresh):
+        # The account's daily window is tighter than a $10 cap: it still binds.
+        assert await within_delegation_cap(budget, "alice", _thread(10.0)) == budget
+
+
+@pytest.mark.asyncio
+async def test_a_thread_without_a_cap_keeps_its_budget():
+    budget = TurnBudget(usd=20.0, limiting="task")
+    db = MagicMock(get_session_costs=AsyncMock())
+    with patch(f"{_MOD}.delegation_db", return_value=db):
+        assert await within_delegation_cap(budget, "alice", _thread(None)) == budget
+        assert await within_delegation_cap(None, "alice", _thread(2.0)) is None
+    db.get_session_costs.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_trial_hand_off_keeps_its_hard_cap_when_the_cap_binds():
+    """A trial's allowance is real money with no plan behind it, so its
+    backstop sits exactly on the budget. Cut to the hand-off's cap, the
+    budget is still the trial's: the backstop must not gain headroom."""
+    budget = TurnBudget(usd=5.0, limiting="trial", hard_cap=True)
+    db = MagicMock(get_session_costs=AsyncMock(return_value={}))
+    with patch(f"{_MOD}.delegation_db", return_value=db):
+        capped = await within_delegation_cap(budget, "alice", _thread(2.0))
+    assert (capped.usd, capped.limiting, capped.cap_usd) == (2.0, "task", 2.0)
+    assert capped.hard_cap is True
+    assert capped.resets_at is None

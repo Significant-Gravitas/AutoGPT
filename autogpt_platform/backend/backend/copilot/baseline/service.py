@@ -35,6 +35,7 @@ from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
 )
+from backend.copilot.baseline.cap_guard import cap_guard_for
 from backend.copilot.baseline.image_context import prune_image_context
 from backend.copilot.baseline.reasoning import (
     BaselineReasoningEmitter,
@@ -129,6 +130,7 @@ from backend.copilot.response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
     StreamUsage,
     ToolDisplayData,
 )
@@ -185,6 +187,7 @@ from backend.copilot.transcript import (
     validate_transcript,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.copilot.turn_pause import TurnPause, append_pause_marker
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
 from backend.util.llm.provider_billing import (
@@ -2001,6 +2004,11 @@ async def stream_chat_completion_baseline(
             active_model,
         )
 
+    # A delegated thread stops at what its hand-off cap has left. Read before
+    # the box is set up and counted: a read that fails ends the turn here,
+    # with nothing on the box for the turn's finally to release.
+    cap_guard = await cap_guard_for(user_id, session)
+
     # --- E2B sandbox setup (feature parity with SDK path) ---
     e2b_sandbox = None
     e2b_api_key = config.active_e2b_api_key
@@ -2635,6 +2643,8 @@ async def stream_chat_completion_baseline(
     # the current binding lazily so the executor always sees the latest session.
     _session_holder: list[ChatSession] = [session]
     final_checkpoint: StreamCheckpoint | None = None
+    landed_at_cap: list[bool] = [False]
+    cap_pause: TurnPause | None = None
 
     async def _bound_tool_executor(
         tool_call: LLMToolCall, tools: Sequence[Any]
@@ -2724,6 +2734,15 @@ async def stream_chat_completion_baseline(
                 )
                 if is_final_yield:
                     continue
+                # Past the cap: no further round. A final round that crossed
+                # it finished the task, so only a turn with more to do lands.
+                if cap_guard is not None and cap_guard.reached(state.cost_usd):
+                    logger.info(
+                        f"[Baseline] {session_id[:12]} reached its "
+                        f"${cap_guard.cap_usd:.2f} hand-off cap; ending the turn"
+                    )
+                    landed_at_cap[0] = True
+                    break
                 # Non-final yield: the next round may be the last one, so
                 # record where ``assistant_text`` ends now.  If that next
                 # round hits the budget without adding any text, the outer
@@ -2910,6 +2929,9 @@ async def stream_chat_completion_baseline(
             for evt in fallback_events:
                 yield evt
             state.assistant_text += fallback_text
+        if landed_at_cap[0] and cap_guard is not None:
+            cap_pause = cap_guard.pause()
+            yield StreamTurnPaused(pause=cap_pause.as_part())
     except Exception as e:
         _stream_error = True
         out_of_credits = _is_platform_out_of_credits(
@@ -3142,6 +3164,9 @@ async def stream_chat_completion_baseline(
                     llm_credential_id=state.llm_credential_id,
                 )
             )
+        if cap_pause is not None:
+            # After the turn's own rows, so a reload ends on the Paused card.
+            append_pause_marker(session, cap_pause)
         stamp_turn_trace_id(session.messages, turn_start)
         try:
             await upsert_chat_session(session)

@@ -162,9 +162,11 @@ class TurnGovernor:
         resets_at = None
         if reason in ("daily", "weekly") and self.budget is not None:
             resets_at = self.budget.resets_at
+        at_cap = self.budget is not None and reason == self.budget.limiting
         return TurnPause(
             reason=reason,
             resets_at=resets_at,
             steps=self.meter.main_calls if reason == "steps" else None,
             checkpoint_saved=checkpoint_saved,
+            cap_usd=self.budget.cap_usd if at_cap and self.budget else None,
         )

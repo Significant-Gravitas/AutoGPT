@@ -13,7 +13,9 @@ import {
 } from "@/components/molecules/TabsLine/TabsLine";
 import {
   Calendar03Icon,
+  Settings01Icon,
   SparklesIcon,
+  TaskDone01Icon,
   UserIcon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
@@ -26,8 +28,11 @@ import {
   PROFILE_TABS_TRIGGER_CLASS,
 } from "../helpers";
 import { AutopilotAboutSection } from "./components/AutopilotAboutSection";
+import { AutopilotDelegationsSection } from "./components/AutopilotDelegationsSection/AutopilotDelegationsSection";
+import { DelegationSettingsSection } from "./components/DelegationSettingsSection/DelegationSettingsSection";
 import { AutopilotHeader } from "./components/AutopilotHeader";
 import { AutopilotSkillsSection } from "./components/AutopilotSkillsSection";
+import { useAutopilotDelegations } from "./useAutopilotDelegations";
 import { useAutopilotPage } from "./useAutopilotPage";
 import { useAutopilotTab } from "./useAutopilotTab";
 
@@ -36,15 +41,18 @@ const MAIN_CLASS =
 
 const TABS = [
   { value: "basics", label: "Basics", icon: UserIcon },
+  { value: "delegations", label: "Delegations", icon: TaskDone01Icon },
   { value: "schedules", label: "Schedules", icon: Calendar03Icon },
   { value: "workflows", label: "Workflows", icon: WorkflowSquare01Icon },
   { value: "skills", label: "Skills", icon: SparklesIcon },
+  { value: "settings", label: "Settings", icon: Settings01Icon },
 ] as const;
 
 export default function AutopilotPage() {
   const { activeTab, onTabChange } = useAutopilotTab();
   const { schedules, workflows, skills, isLoading, isError, refetch } =
     useAutopilotPage();
+  const delegations = useAutopilotDelegations();
 
   if (isLoading) {
     return (
@@ -72,7 +80,7 @@ export default function AutopilotPage() {
   return (
     <main className={MAIN_CLASS}>
       <BackToTeamLink />
-      <AutopilotHeader />
+      <AutopilotHeader delegationsToday={delegations.todayCount} />
 
       <Text variant="body" tone="muted">
         Built in, always on your team.
@@ -100,6 +108,15 @@ export default function AutopilotPage() {
           <AutopilotAboutSection />
         </TabsLineContent>
 
+        <TabsLineContent value="delegations">
+          <AutopilotDelegationsSection
+            pages={delegations}
+            todayCount={delegations.todayCount}
+            mode={delegations.mode}
+            onChangeMode={() => onTabChange("settings")}
+          />
+        </TabsLineContent>
+
         <TabsLineContent value="schedules">
           <ExpertSchedulesSection
             title="Team schedules"
@@ -120,6 +137,10 @@ export default function AutopilotPage() {
 
         <TabsLineContent value="skills">
           <AutopilotSkillsSection skills={skills} />
+        </TabsLineContent>
+
+        <TabsLineContent value="settings">
+          <DelegationSettingsSection />
         </TabsLineContent>
       </TabsLine>
     </main>

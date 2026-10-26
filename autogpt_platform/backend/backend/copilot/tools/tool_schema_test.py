@@ -279,11 +279,24 @@ from ._test_data import make_session
 # re-measured on that merged tree (89 tools), with the stack's margin:
 #     merged tree                                 77,301 (89 tools)
 #     + headroom                       +300       77,601
+# Bumped 77_601 -> 78_014 for delegate_to_expert's optional ``reason``
+# argument (the "why this teammate" line on the hand-off card) and the
+# ``status=needs_input`` sentence telling the delegator to wait for the
+# user (#14995). No tool was added (89 either side). Measured on that
+# branch merged with dev 1ffb0becc:
+#     dev 1ffb0becc                               77,501 (89 tools)
+#     + the two descriptions           +213       77,714 (89 tools)
+#     + headroom                       +300       78,014
+# The same deliberate margin as the notes above, for the same reason.
 # Re-measured on the v2 External API root merged with dev 8df80022bc, which
 # brings the MCP tools' external schemas and the preset tools back:
 #     merged tree                                 77,510 (89 tools)
 #     + headroom                       +300       77,810
-_CHAR_BUDGET = 77_810
+# Both met in #14995's merge with dev b7b75494f; re-measured on that tree:
+#     dev b7b75494f                               77,510 (89 tools)
+#     + #14995's two descriptions      +213       77,723 (89 tools)
+#     + headroom                       +300       78,023
+_CHAR_BUDGET = 78_023
 
 
 @pytest.fixture(scope="module")

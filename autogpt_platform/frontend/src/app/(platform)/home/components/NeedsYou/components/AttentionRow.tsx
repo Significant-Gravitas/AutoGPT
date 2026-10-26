@@ -12,6 +12,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { attentionReason } from "@/app/(platform)/copilot/components/ApprovalQueue/helpers";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { cn } from "@/lib/utils";
+import { getKindTag, isHandoffApproval } from "../helpers";
 import { AttentionRowActions } from "./AttentionRowActions";
 import { HeldPassageQuote } from "./HeldPassageQuote";
 
@@ -61,6 +63,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
             <Text variant="body-medium" tone="primary" className="text-pretty">
               <AttentionTitle item={item} />
             </Text>
+            <KindTag kind={item.kind} />
             {item.priority === "high" ? (
               <Text
                 variant="small-medium"
@@ -102,10 +105,25 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
   );
 }
 
-// A held call's object is set in semibold, as on its card in the chat.
+function KindTag({ kind }: { kind: HomeAttentionItem["kind"] }) {
+  const tag = getKindTag(kind);
+  if (!tag) return null;
+  return (
+    <Text
+      variant="small-medium"
+      as="span"
+      className={cn("rounded px-1.5 py-px ring-1 ring-inset", tag.className)}
+    >
+      {tag.label}
+    </Text>
+  );
+}
+
+// A held call's object is set in semibold, as on its card in the chat; a
+// hand-off keeps its own title, which names the task and the teammate.
 function AttentionTitle({ item }: { item: HomeAttentionItem }) {
   const headline = item.headline;
-  if (!headline?.object) return <>{item.title}</>;
+  if (!headline?.object || isHandoffApproval(item)) return <>{item.title}</>;
   return (
     <>
       {headline.ask}{" "}

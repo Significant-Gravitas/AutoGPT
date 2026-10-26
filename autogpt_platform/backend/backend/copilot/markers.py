@@ -22,7 +22,12 @@ from backend.copilot.constants import (
     STREAM_INCOMPLETE_MARKER,
 )
 from backend.copilot.continuation import KICKOFF_NOTES
-from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.model import (
+    ChatMessage,
+    ChatSession,
+    append_and_save_message,
+    get_chat_session,
+)
 
 
 def is_error_marker(message: ChatMessage) -> bool:
@@ -90,6 +95,25 @@ def append_error_marker(
         )
     )
     return True
+
+
+async def persist_error_marker(
+    session_id: str, display_message: str, *, retryable: bool
+) -> bool:
+    """Close a stored thread on a marker, unless it already ends on one.
+    Returns whether a row was added.
+
+    For a turn that ended where its engine wrote nothing: a stop that caught
+    the baseline engine, or the executor before any engine ran. Called once
+    the engine has let go of the session, so nothing else writes to it
+    between the check and the append.
+    """
+    session = await get_chat_session(session_id)
+    if session is None or has_trailing_marker(session):
+        return False
+    prefix = COPILOT_RETRYABLE_ERROR_PREFIX if retryable else COPILOT_ERROR_PREFIX
+    marker = ChatMessage(role="assistant", content=f"{prefix} {display_message}")
+    return await append_and_save_message(session_id, marker) is not None
 
 
 def provider_failure_of(message: ChatMessage) -> dict[str, Any] | None:

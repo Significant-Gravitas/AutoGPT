@@ -11,7 +11,12 @@ from backend.data.activity_event import ActivityEvent
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
 
-from .service import _get_pending_questions, _get_work_events, build_home_dashboard
+from .service import (
+    _get_delegations,
+    _get_pending_questions,
+    _get_work_events,
+    build_home_dashboard,
+)
 
 
 def _execution() -> GraphExecutionMeta:
@@ -98,6 +103,14 @@ def home_dependencies(mocker: MockerFixture):
     )
     mocker.patch(
         "backend.api.features.home.service.activity_db.list_activity_events",
+        AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.delegations.delegated_questions",
+        AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.delegations.recent_delegations",
         AsyncMock(return_value=[]),
     )
     mocker.patch(
@@ -459,6 +472,20 @@ class TestPooledOrgBalanceGate:
 
         assert dashboard.week.credits_balance == 100
         get_credit_model.assert_awaited_once_with("user-1", "personal-org")
+
+
+@pytest.mark.asyncio
+async def test_a_broken_hand_off_read_costs_its_rows_not_the_page(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    """Hand-off rows load for everyone now the expert team is always on
+    (#15799); a failed read leaves them out instead of failing Home."""
+    load = AsyncMock(return_value=[])
+    assert await _get_delegations("user-1", load) == []
+    load.assert_awaited_once_with("user-1")
+
+    load.side_effect = RuntimeError("db down")
+    assert await _get_delegations("user-1", load) == []
 
 
 def _file_event(event_id: str, name: str, file_id: str) -> ActivityEvent:

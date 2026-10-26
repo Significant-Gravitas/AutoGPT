@@ -2,6 +2,8 @@ import { useContext, type ComponentProps } from "react";
 import { AnsweredQuestionsContext } from "../../QuestionDock/AnsweredQuestionsContext";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
 import { PendingOnboardingContext } from "../../ExpertOnboardingCard/PendingOnboardingContext";
+import { SupersededDelegationsContext } from "../../../supersededDelegationsContext";
+import { ChatSessionContext } from "../components/ChatSessionContext";
 import { act } from "@testing-library/react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
@@ -91,6 +93,8 @@ vi.mock("../components/ChainMessageParts", () => ({
     const answered = useContext(AnsweredQuestionsContext);
     const pending = useContext(PendingQuestionsContext);
     const onboarding = useContext(PendingOnboardingContext);
+    const sessionId = useContext(ChatSessionContext);
+    const superseded = useContext(SupersededDelegationsContext);
     return (
       <div
         data-testid="chain-message-parts"
@@ -101,6 +105,8 @@ vi.mock("../components/ChainMessageParts", () => ({
         )}
         data-pending={String(pending !== null)}
         data-onboarding={onboarding ?? ""}
+        data-session={sessionId ?? ""}
+        data-superseded={JSON.stringify([...superseded])}
       />
     );
   },
@@ -284,6 +290,65 @@ describe("ChatMessagesContainer — assistant rendering", () => {
       expect(row.getAttribute("data-pending")).toBe("false");
       expect(row.getAttribute("data-onboarding")).toBe("");
     }
+  });
+
+  it("tells every row its chat and the hand-offs a later one superseded", () => {
+    function delegate(toolCallId: string, prompt: string) {
+      return {
+        type: "tool-delegate_to_expert",
+        toolCallId,
+        state: "output-available",
+        input: { expert_id: "exp-alex", prompt },
+        output: { status: "running", sub_session_id: "sub-1" },
+      } as Message["parts"][number];
+    }
+    const thread: Message[] = [
+      { id: "first", role: "assistant", parts: [delegate("call-1", "Draft")] },
+      { id: "again", role: "assistant", parts: [delegate("call-2", "Again")] },
+    ];
+
+    render(<ChatMessagesContainer {...baseProps} messages={thread} />);
+
+    for (const row of screen.getAllByTestId("chain-message-parts")) {
+      // A held hand-off's card looks its review up in this chat.
+      expect(row.getAttribute("data-session")).toBe("sess-123");
+      expect(JSON.parse(row.getAttribute("data-superseded") ?? "[]")).toEqual([
+        "call-1",
+      ]);
+    }
+  });
+
+  it("gives a read-only viewer the superseded hand-offs but no chat to answer in", () => {
+    const thread: Message[] = [
+      {
+        id: "first",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-delegate_to_expert",
+            toolCallId: "call-1",
+            state: "output-available",
+            input: { expert_id: "exp-alex" },
+            output: { status: "running", sub_session_id: "sub-1" },
+          } as Message["parts"][number],
+          {
+            type: "tool-delegate_to_expert",
+            toolCallId: "call-2",
+            state: "output-available",
+            input: { expert_id: "exp-alex" },
+            output: { status: "running", sub_session_id: "sub-1" },
+          } as Message["parts"][number],
+        ],
+      },
+    ];
+
+    render(<ChatMessagesContainer {...baseProps} readOnly messages={thread} />);
+
+    const row = screen.getByTestId("chain-message-parts");
+    expect(row.getAttribute("data-session")).toBe("");
+    expect(JSON.parse(row.getAttribute("data-superseded") ?? "[]")).toEqual([
+      "call-1",
+    ]);
   });
 
   it("renders assistant messages through the chain renderer", () => {

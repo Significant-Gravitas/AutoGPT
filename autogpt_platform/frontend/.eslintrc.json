@@ -203,7 +203,6 @@
         "src/app/(platform)/copilot/components/NotificationBanner/NotificationBanner.tsx",
         "src/app/(platform)/copilot/components/OnboardingIntroCard/useOnboardingIntroCard.ts",
         "src/app/(platform)/copilot/components/RateLimitResetDialog/useRateLimitRefresh.ts",
-        "src/app/(platform)/copilot/components/ToolChain/ChainRowView.tsx",
         "src/app/(platform)/copilot/components/TurnPausedCard/components/LivePausedCard/useNow.ts",
         "src/app/(platform)/copilot/sharing/useShareChatDialog.ts",
         "src/app/(platform)/copilot/tools/RunAgent/components/AgentDetailsCard/AgentDetailsCard.tsx",

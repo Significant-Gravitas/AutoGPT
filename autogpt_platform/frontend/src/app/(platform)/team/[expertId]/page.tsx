@@ -47,6 +47,8 @@ import { ExpertOverview } from "./components/ExpertOverview/ExpertOverview";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
 import { ExpertSettingsSection } from "./components/ExpertSettingsSection";
 import { ExpertSkillsSection } from "./components/ExpertSkillsSection";
+import { ExpertHandoffsSection } from "./components/ExpertHandoffsSection/ExpertHandoffsSection";
+import { useExpertHandoffs } from "./components/ExpertHandoffsSection/useExpertHandoffs";
 import { ExpertSoulSection } from "./components/ExpertSoulSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
@@ -107,6 +109,7 @@ export default function ExpertDetailPage() {
   } = useExpertDetailPage({
     expertId,
   });
+  const { isWorkingForOtto } = useExpertHandoffs(expertId);
 
   if (isLoading) {
     return (
@@ -139,6 +142,7 @@ export default function ExpertDetailPage() {
         <BackToTeamLink />
         <ExpertDetailHeader
           expert={expert}
+          isWorkingForOtto={isWorkingForOtto}
           onEditSoul={toggleSoul}
           onChat={toggleChat}
         />
@@ -179,13 +183,17 @@ export default function ExpertDetailPage() {
             ))}
           </TabsLineList>
 
-          <TabsLineContent value="basics">
+          <TabsLineContent value="basics" className="space-y-8">
             <ExpertOverview
               expert={expert}
               activity={activity}
               isActivityLoading={isActivityLoading}
               isActivityError={isActivityError}
               onChat={toggleChat}
+            />
+            <ExpertHandoffsSection
+              expertId={expert.id}
+              expertName={expert.name}
             />
           </TabsLineContent>
 

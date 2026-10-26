@@ -63,6 +63,7 @@
           "object_key": null
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "Gmail Send",
@@ -254,6 +255,7 @@
           "object_key": null
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "Google Sheets Update Row",
@@ -478,6 +480,7 @@
           "object_key": null
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "Execute Code Step",
@@ -632,6 +635,7 @@
           "object_key": null
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "Send Web Request",
@@ -780,6 +784,7 @@
           "object_key": null
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "Post To X",
@@ -1130,6 +1135,7 @@
           "object_key": null
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "Gmail Send",
@@ -1306,6 +1312,7 @@
           "object_key": null
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "Morning digest",
@@ -1366,6 +1373,7 @@
           "object_key": null
         },
         "spend": null,
+        "handoff": null,
         "workflow": null
       },
       "instructions": "Run a command in the sandbox",
@@ -1438,6 +1446,7 @@
           "object_key": null
         },
         "spend": null,
+        "handoff": null,
         "workflow": {
           "graph_exec_id": "run-digest",
           "node_exec_id": "node-exec-send",

@@ -39,6 +39,7 @@ import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
 import { useCopilotUIStore } from "./store";
+import { useChatPrefillParam } from "./useChatPrefillParam";
 import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotPendingChips } from "./useCopilotPendingChips";
@@ -129,6 +130,8 @@ function useCopilotPageSession() {
     if (!shouldClearKickoffParam(hasExpertsSettled, kickoffExpertId)) return;
     void setKickoffParam(null, { history: "replace" });
   }, [hasExpertsSettled, kickoffExpertId, kickoffParam, setKickoffParam]);
+
+  useChatPrefillParam();
 
   const copilotLlmModel = useCopilotUIStore((s) => s.copilotLlmModel);
   const isDryRun = useCopilotUIStore((s) => s.isDryRun);

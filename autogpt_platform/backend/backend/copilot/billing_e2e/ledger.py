@@ -137,7 +137,8 @@ class PlatformLedger:
         cost-log row is written by one; both must land under the turn that
         started them.
         """
-        while pending := _deferred_tasks():
+        loop = asyncio.get_running_loop()
+        while pending := [t for t in deferred_tasks() if t.get_loop() is loop]:
             await asyncio.gather(*pending)
 
     async def record_spend(
@@ -160,13 +161,13 @@ class PlatformLedger:
         )
 
 
-def _deferred_tasks() -> list[asyncio.Task]:
+def deferred_tasks() -> list[asyncio.Task]:
+    """The writes turns deferred past their own end that have not landed yet."""
     with token_tracking._pending_log_tasks_lock:
         logs = list(token_tracking._pending_log_tasks)
-    loop = asyncio.get_running_loop()
     tasks = [
         *logs,
         *sdk_service._background_tasks,
         *baseline_service._background_tasks,
     ]
-    return [task for task in tasks if task.get_loop() is loop and not task.done()]
+    return [task for task in tasks if not task.done()]

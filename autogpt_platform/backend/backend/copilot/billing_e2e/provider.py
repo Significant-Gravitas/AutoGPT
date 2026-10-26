@@ -38,6 +38,8 @@ class FakeProvider:
         # The name the model calls its tool by on the Messages API. The SDK
         # engine serves the copilot's tools over MCP, as mcp__copilot__<name>.
         self.tool_name = wire.TOOL_NAME
+        # How many times the model calls its tool before it answers.
+        self.tool_rounds = 1
         self.url = ""
         self._runner: web.AppRunner | None = None
         self._requests_per_turn: dict[int, int] = {}
@@ -95,7 +97,7 @@ class FakeProvider:
         sse = wire.anthropic_messages(
             message_id=generation_id or f"msg_{uuid.uuid4().hex}",
             model=body["model"],
-            reply=anthropic_reply(body["messages"]),
+            reply=anthropic_reply(body["messages"], self.tool_rounds),
             usage=usage,
             ttl=ttl,
             tool_name=self.tool_name,
@@ -111,7 +113,7 @@ class FakeProvider:
         call = self._bill(route, body["model"], usage, ttl, None)
         sse = wire.chat_completion_chunks(
             model=body["model"],
-            reply=chat_reply(body["messages"]),
+            reply=chat_reply(body["messages"], self.tool_rounds),
             usage=usage,
             cost=call.invoice_usd if route == "openrouter" else None,
             cache_write_field={

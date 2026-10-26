@@ -1,5 +1,6 @@
 import { File01Icon, PlugIcon, RepeatIcon } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import type { HomeDelegationItemStatus } from "@/app/api/__generated__/models/homeDelegationItemStatus";
 import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBriefingOutcome";
 import type { HomeRecentWorkGroup } from "@/app/api/__generated__/models/homeRecentWorkGroup";
 import type { HomeRecentWorkItemCategory } from "@/app/api/__generated__/models/homeRecentWorkItemCategory";
@@ -73,6 +74,7 @@ export function formatWorkTime(
 export function formatGroupCounts(group: HomeRecentWorkGroup): string {
   return [
     countLabel(group.run_count ?? 0, "run"),
+    countLabel(group.delegation_count ?? 0, "hand-off"),
     countLabel(group.file_count ?? 0, "file"),
     countLabel(group.integration_count ?? 0, "action"),
     countLabel(group.schedule_count ?? 0, "schedule"),
@@ -84,4 +86,17 @@ export function formatGroupCounts(group: HomeRecentWorkGroup): string {
 function countLabel(count: number, noun: string): string | null {
   if (count === 0) return null;
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+const DELEGATION_BADGES: Record<
+  HomeDelegationItemStatus,
+  { label: string; variant: "success" | "error" | "info" }
+> = {
+  completed: { label: "Done", variant: "success" },
+  failed: { label: "Failed", variant: "error" },
+  cancelled: { label: "Stopped", variant: "info" },
+};
+
+export function getDelegationStatusBadge(status: HomeDelegationItemStatus) {
+  return DELEGATION_BADGES[status] ?? DELEGATION_BADGES.cancelled;
 }

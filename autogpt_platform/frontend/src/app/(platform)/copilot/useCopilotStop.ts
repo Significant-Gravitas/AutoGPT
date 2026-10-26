@@ -33,6 +33,11 @@ interface UseCopilotStopArgs {
  *   3. asynchronously tell the backend executor to actually stop the task,
  *      surfacing a toast when the cancel was published but not yet
  *      confirmed (the task should stop shortly) or failed outright.
+ *
+ * The experts this turn handed work to are stopped by the server when the
+ * turn ends cancelled: it knows which of their threads are running on a
+ * message this turn sent, where the transcript here can't tell that turn
+ * from one the user started in the expert's own thread since.
  */
 export function useCopilotStop({
   sessionId,

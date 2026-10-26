@@ -26,7 +26,8 @@ other turn.
 import json
 import logging
 import time
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, Callable
 
 from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
@@ -52,9 +53,17 @@ from .expert_delegation import sent_from_metadata
 from .models import (
     DelegatedExpertInfo,
     ErrorResponse,
+    SubSessionStatus,
     SubSessionStatusResponse,
     ToolResponseBase,
     WorkspaceFileInfoData,
+)
+from .sub_session_facts import (
+    PendingAsk,
+    RunFacts,
+    ask_from_tool_calls,
+    record_stopped,
+    sub_session_link,
 )
 from .workspace_files import AGENT_CREATED_METADATA
 
@@ -266,6 +275,12 @@ class RunSubSessionTool(BaseTool):
             effective_prompt = f"[System Context: {system_context.strip()}]\n\n{prompt}"
 
         cap = max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS))
+        record_stopped(
+            actor="Subtask",
+            inner_session_id=inner_session_id,
+            parent_session_id=session.session_id,
+            started_at=datetime.now(UTC),
+        )
         started_at = time.monotonic()
         outcome, result = await run_copilot_turn_via_queue(
             session_id=inner_session_id,
@@ -326,9 +341,7 @@ def _sub_session_link(inner_session_id: str | None) -> str | None:
     running/completed/error paths, and so the frontend only has one
     contract to honour.
     """
-    if not inner_session_id:
-        return None
-    return f"/copilot?sessionId={inner_session_id}"
+    return sub_session_link(inner_session_id)
 
 
 async def list_sub_workspace_files(
@@ -491,6 +504,8 @@ def response_from_outcome(
     elapsed: float,
     workspace_files: list[WorkspaceFileInfoData] | None = None,
     actor: str = "Subtask",
+    facts: RunFacts | None = None,
+    pending_ask: PendingAsk | None = None,
 ) -> SubSessionStatusResponse:
     """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
@@ -500,6 +515,16 @@ def response_from_outcome(
     when the caller already knows it (e.g. ``delegate_to_expert``), so the
     message is built correctly once instead of via a post-hoc string
     substitution against this function's own wording.
+
+    ``facts`` (cost so far, turn start and end) ride on every outcome alike,
+    so a card can show "$0.12 · 2m 14s" whatever state the child is in.
+
+    A completed turn that stopped on ``ask_question`` is ``needs_input``: the
+    child is waiting on the user, not done. One that landed on a limit (a
+    budget, a hand-off's cap, a step check-in) is ``cancelled``: it stopped
+    part-way and is picked up from its thread. The question is read from the
+    turn's last tool call, or from ``pending_ask`` when the caller has the
+    child's parked question instead (a cold poll of an idle thread).
 
     ``completed`` surfaces the aggregated response text, plus a manifest of
     any workspace files the sub wrote (SECRT-2377). Pass ``workspace_files``
@@ -512,95 +537,101 @@ def response_from_outcome(
     the existing turn on its next drain.
     """
     link = _sub_session_link(inner_session_id)
+    run = facts or RunFacts()
+
+    def status(
+        state: SubSessionStatus,
+        message: str,
+        *,
+        outside: tuple[Any, ...] = (),
+        **extra: Any,
+    ) -> SubSessionStatusResponse:
+        return SubSessionStatusResponse(
+            message=message,
+            session_id=parent_session_id,
+            status=state,
+            sub_session_id=inner_session_id,
+            sub_autopilot_session_id=inner_session_id,
+            sub_autopilot_session_link=link,
+            elapsed_seconds=round(elapsed, 2),
+            cost_usd=run.cost_usd,
+            started_at=run.started_at,
+            finished_at=run.finished_at,
+            **extra,
+        ).from_outside(*outside)
+
     if outcome == "queued":
-        return SubSessionStatusResponse(
-            message=(
-                f"Target session already had a turn in flight; the message "
-                f"was queued ({result.pending_buffer_length} now pending) and "
-                "will be processed by the existing turn on its next drain. "
-                f"Call tool:get_sub_session_result to poll progress"
-                f"{f' or watch live at {link}' if link else ''}."
-            ),
-            session_id=parent_session_id,
-            status="queued",
-            sub_session_id=inner_session_id,
-            sub_autopilot_session_id=inner_session_id,
-            sub_autopilot_session_link=link,
-            elapsed_seconds=round(elapsed, 2),
-        ).from_outside()
-
+        return status(
+            "queued",
+            f"Target session already had a turn in flight; the message "
+            f"was queued ({result.pending_buffer_length} now pending) and "
+            "will be processed by the existing turn on its next drain. "
+            f"Call tool:get_sub_session_result to poll progress"
+            f"{f' or watch live at {link}' if link else ''}.",
+        )
     if outcome == "queued_for_slot":
-        return SubSessionStatusResponse(
-            message=(
-                f"{actor} is queued: the user's task slots for sub-work are all "
-                "taken, and it starts on its own when one frees. Call "
-                "tool:get_sub_session_result to wait for it or check on it"
-                f"{f', or watch at {link}' if link else ''}."
-            ),
-            session_id=parent_session_id,
-            status="queued",
-            sub_session_id=inner_session_id,
-            sub_autopilot_session_id=inner_session_id,
-            sub_autopilot_session_link=link,
-            elapsed_seconds=round(elapsed, 2),
-        ).from_outside()
-
+        return status(
+            "queued",
+            f"{actor} is queued: the user's task slots for sub-work are all "
+            "taken, and it starts on its own when one frees. Call "
+            "tool:get_sub_session_result to wait for it or check on it"
+            f"{f', or watch at {link}' if link else ''}.",
+        )
     if outcome == "running":
-        return SubSessionStatusResponse(
-            message=(
-                f"{actor} is still running after {elapsed:.0f}s."
-                f"{f' Watch live at {link}.' if link else ''} "
-                "Call tool:get_sub_session_result (optionally with "
-                "include_progress=true) to wait, poll, or inspect progress."
-            ),
-            session_id=parent_session_id,
-            status="running",
-            sub_session_id=inner_session_id,
-            sub_autopilot_session_id=inner_session_id,
-            sub_autopilot_session_link=link,
-            elapsed_seconds=round(elapsed, 2),
-        ).from_outside()
-
+        return status(
+            "running",
+            f"{actor} is still running after {elapsed:.0f}s."
+            f"{f' Watch live at {link}.' if link else ''} "
+            "Call tool:get_sub_session_result (optionally with "
+            "include_progress=true) to wait, poll, or inspect progress.",
+        )
     if outcome == "refused":
         # The turn never started; the tree or the target said why.
-        return SubSessionStatusResponse(
-            message=result.refusal or f"{actor} could not start this task.",
-            session_id=parent_session_id,
-            status="error",
-            sub_session_id=inner_session_id,
-            sub_autopilot_session_id=inner_session_id,
-            sub_autopilot_session_link=link,
-            elapsed_seconds=round(elapsed, 2),
-        ).from_outside()
-
+        return status("error", result.refusal or f"{actor} could not start this task.")
     if outcome == "rejected_concurrent_turn_cap":
         # No sub-session record / transcript exists yet — the per-user
         # concurrent-turn cap rejected before ``create_session`` ran.
         # Render the actionable message instead of a "see transcript"
         # pointer to nothing.
-        return SubSessionStatusResponse(
-            message=spawn_limit_message(),
-            session_id=parent_session_id,
-            status="error",
-            sub_session_id=inner_session_id,
-            sub_autopilot_session_id=inner_session_id,
-            sub_autopilot_session_link=link,
-            elapsed_seconds=round(elapsed, 2),
-        ).from_outside()
-
+        return status("error", spawn_limit_message())
     if outcome == "failed":
-        return SubSessionStatusResponse(
-            message=f"{actor} failed. See the sub's transcript for details.",
-            session_id=parent_session_id,
-            status="error",
-            sub_session_id=inner_session_id,
-            sub_autopilot_session_id=inner_session_id,
-            sub_autopilot_session_link=link,
-            elapsed_seconds=round(elapsed, 2),
-        ).from_outside()
+        return status("error", f"{actor} failed. See the sub's transcript for details.")
+    pause = result.pause
+    if outcome == "completed" and pause is not None and pause.started:
+        # Landed on a limit part-way: not a result. A hand-off's cap pause is
+        # read again by the caller, which reports the cap question it holds.
+        return status(
+            "cancelled",
+            f"{actor} stopped before finishing. {pause.summary} What it had "
+            "done so far is in its reply; the user picks the task up from the "
+            f"thread{f' at {link}' if link else ''}. Don't redo the work or "
+            "report it as finished.",
+            outside=(result.response_text,),
+            response=result.response_text,
+        )
+    ask = pending_ask or ask_from_tool_calls(result.tool_calls)
+    if ask is not None:
+        return status(
+            "needs_input",
+            f"{actor} is waiting on the user: {ask.question} The user answers "
+            "in the chat. Do not answer it yourself or delegate a guessed answer.",
+            outside=(result.response_text, ask.question, ask.options),
+            response=result.response_text,
+            question=ask.question,
+            question_options=ask.options,
+        )
+    return _completed(status, result, workspace_files, actor, link)
 
-    # completed — prefer the authoritative listing supplied by the caller;
-    # fall back to mining the tool-call log when it's unavailable.
+
+def _completed(
+    status: Callable[..., SubSessionStatusResponse],
+    result: SessionResult,
+    workspace_files: list[WorkspaceFileInfoData] | None,
+    actor: str,
+    link: str | None,
+) -> SubSessionStatusResponse:
+    """Prefer the authoritative listing supplied by the caller; fall back to
+    mining the tool-call log when it's unavailable."""
     if workspace_files is None:
         workspace_files = _workspace_files_from_tool_calls(result.tool_calls)
     message = f"{actor} completed.{f' View at {link}.' if link else ''}"
@@ -612,15 +643,11 @@ def response_from_outcome(
             f" It wrote {len(workspace_files)} workspace file(s); read them via "
             "read_workspace_file(path=<read_path>) — see sub_workspace_files."
         )
-    return SubSessionStatusResponse(
-        message=message,
-        session_id=parent_session_id,
-        status="completed",
-        sub_session_id=inner_session_id,
-        sub_autopilot_session_id=inner_session_id,
-        sub_autopilot_session_link=link,
+    return status(
+        "completed",
+        message,
         response=result.response_text,
         sub_tool_call_count=len(result.tool_calls),
         sub_workspace_files=workspace_files or None,
-        elapsed_seconds=round(elapsed, 2),
-    ).from_outside(result.response_text, workspace_files)
+        outside=(result.response_text, workspace_files),
+    )
