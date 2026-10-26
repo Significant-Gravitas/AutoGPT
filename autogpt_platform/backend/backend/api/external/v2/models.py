@@ -32,7 +32,9 @@ if TYPE_CHECKING:
     from backend.api.features.library.model import (
         LibraryFolderTree as _LibraryFolderTree,
     )
-    from backend.api.features.store.model import CreatorDetails
+    from backend.api.features.store.model import (
+        CreatorDetails,
+    )
     from backend.api.features.store.model import ProfileDetails as _ProfileDetails
     from backend.api.features.store.model import (
         StoreAgent,

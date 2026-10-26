@@ -8,7 +8,12 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.conn_manager import ConnectionManager
 from backend.api.test_helpers import override_config
-from backend.api.ws_api import AppEnvironment, WebsocketServer, WSMessage, WSMethod
+from backend.api.ws_api import (
+    AppEnvironment,
+    WebsocketServer,
+    WSMessage,
+    WSMethod,
+)
 from backend.api.ws_api import app as websocket_app
 from backend.api.ws_api import (
     handle_subscribe,
