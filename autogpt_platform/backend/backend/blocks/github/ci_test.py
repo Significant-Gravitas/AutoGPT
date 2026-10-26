@@ -92,6 +92,12 @@ async def test_search_in_logs_surfaces_a_regex_timeout_as_an_input_error(mocker)
 
 
 @pytest.mark.asyncio
+async def test_search_in_logs_reports_an_invalid_pattern():
+    with pytest.raises(ValueError, match="Invalid search pattern"):
+        await GithubGetCIResultsBlock.search_in_logs(CHECK_RUNS, "(")
+
+
+@pytest.mark.asyncio
 async def test_search_in_logs_rejects_an_oversized_pattern_before_compiling(mocker):
     compile_pattern = mocker.patch("backend.blocks.github.ci.regex.compile")
 
