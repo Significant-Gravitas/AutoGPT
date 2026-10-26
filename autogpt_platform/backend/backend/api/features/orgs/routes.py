@@ -13,6 +13,7 @@ from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, HTTPException, Security
 
 from . import db as org_db
+from .member_runs import stop_member_runs
 from .model import (
     CreateAliasRequest,
     CreateOrgRequest,
@@ -198,6 +199,7 @@ async def remove_member(
 ) -> None:
     _verify_org_path(ctx, org_id)
     await org_db.remove_org_member(org_id, uid, requesting_user_id=ctx.user_id)
+    await stop_member_runs(org_id, uid)
 
 
 @router.post(

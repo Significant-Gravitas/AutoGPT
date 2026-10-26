@@ -7,7 +7,7 @@ import {
   screen,
   within,
 } from "@/tests/integrations/test-utils";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

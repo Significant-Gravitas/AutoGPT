@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 import { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
+import {
+  SCOPE_API_VERSION,
+  SCOPE_DESCRIPTIONS,
+  SCOPE_GROUPS,
+} from "@/lib/api-key-scopes";
 
 export const createAPIKeySchema = z.object({
   name: z
@@ -28,9 +33,13 @@ export function humanizePermission(permission: APIKeyPermission): string {
     .join(" ");
 }
 
-export const PERMISSION_OPTIONS = Object.values(APIKeyPermission).map(
-  (permission) => ({
-    value: permission,
-    label: humanizePermission(permission),
-  }),
-);
+export const PERMISSION_GROUPS = SCOPE_GROUPS.map((group) => ({
+  ...group,
+  options: Object.values(APIKeyPermission)
+    .filter((permission) => SCOPE_API_VERSION[permission] === group.version)
+    .map((permission) => ({
+      value: permission,
+      label: humanizePermission(permission),
+      description: SCOPE_DESCRIPTIONS[permission],
+    })),
+}));

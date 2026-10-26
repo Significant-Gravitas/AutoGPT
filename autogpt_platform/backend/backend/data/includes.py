@@ -123,7 +123,7 @@ def library_agent_include(
 
     # Build AgentGraph include based on requested options
     if include_nodes or include_executions:
-        agent_graph_include = {}
+        agent_graph_include: prisma.types.AgentGraphIncludeFromAgentGraph = {}
 
         # Add nodes if requested (always full nodes)
         if include_nodes:
@@ -137,10 +137,7 @@ def library_agent_include(
                 "take": execution_limit,
             }
 
-        result["AgentGraph"] = cast(
-            prisma.types.AgentGraphArgsFromLibraryAgent,
-            {"include": agent_graph_include},
-        )
+        result["AgentGraph"] = {"include": agent_graph_include}
     else:
         # Default: Basic metadata only (fast - recommended for most use cases)
         result["AgentGraph"] = True  # Basic graph metadata (name, description, id)

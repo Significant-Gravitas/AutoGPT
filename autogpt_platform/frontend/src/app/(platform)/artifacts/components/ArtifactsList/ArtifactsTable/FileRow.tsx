@@ -68,7 +68,7 @@ export function FileRow({
       animate="show"
       className={cn(
         ROW_GRID_CLASS,
-        "group cursor-pointer px-2 transition-colors has-[[data-state=open]]:bg-surface-muted hover:bg-surface-muted",
+        "group cursor-pointer px-2 transition-colors hover:bg-surface-muted has-[[data-state=open]]:bg-surface-muted",
         isSelected && "bg-surface-hover hover:bg-surface-hover",
       )}
       data-testid="artifacts-list-item"
@@ -143,7 +143,7 @@ export function FileRow({
         <button
           type="button"
           aria-label={`Rename ${file.name}`}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-foreground-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-foreground-strong focus-visible:opacity-100"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-foreground-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground-strong focus-visible:opacity-100 group-hover:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
             setIsRenameOpen(true);

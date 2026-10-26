@@ -1,3 +1,5 @@
+import re
+
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -5,6 +7,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from backend.monitoring.instrumentation import record_legacy_api_path_hit
 
 INTERNAL_API_PREFIX = "/api/internal"
+_PUBLIC_API_VERSION = re.compile(r"v\d+")
 
 
 class LegacyAPIPathMiddleware:
@@ -13,7 +16,10 @@ class LegacyAPIPathMiddleware:
 
     def __init__(self, app: ASGIApp, segments: frozenset[str]):
         self.app = app
-        self.segments = segments
+        # `/api/v<n>` is the public API's, whatever an internal route is called.
+        self.segments = frozenset(
+            s for s in segments if not _PUBLIC_API_VERSION.fullmatch(s)
+        )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":

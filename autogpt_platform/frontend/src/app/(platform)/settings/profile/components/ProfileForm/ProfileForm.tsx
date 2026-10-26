@@ -223,13 +223,13 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
             <div
               className={cn(
                 "max-w-none break-words text-sm leading-5.5 text-foreground-base",
-                "[&_p]:my-2 first:[&_p]:mt-0 last:[&_p]:mb-0",
+                "[&_p]:my-2 [&_p]:first:mt-0 [&_p]:last:mb-0",
                 "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5",
                 "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
                 "[&_li]:my-1 [&_li]:pl-1",
                 "[&_li>p]:my-0",
                 // TODO(tokens): no fitting role for [&_a]:text-purple-600 #6C2EDF; #6C2EDF is brand-hover, a hover fill; no exact role (hover:[&_a]:text-purple-700 #5424AE)
-                "[&_a]:text-purple-600 [&_a]:underline hover:[&_a]:text-purple-700",
+                "[&_a]:text-purple-600 [&_a]:underline [&_a]:hover:text-purple-700",
                 "[&_strong]:font-semibold",
                 "[&_em]:italic",
                 "[&_del]:text-foreground-tertiary [&_del]:line-through",

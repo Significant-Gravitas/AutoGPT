@@ -30,6 +30,10 @@ export const variants = {
     "font-poppins text-heading font-medium text-foreground-base tracking-tight",
   h4: "font-poppins text-heading-sm font-medium text-foreground-base",
   h5: "font-poppins text-body-lg font-medium leading-6 text-foreground-base",
+  // The h5 size and line-height at semibold (the wallet panel title).
+  // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
+  "h5-semibold":
+    "font-poppins text-body-lg font-semibold leading-6 text-foreground-base",
 
   // Body Text
   lead: "font-sans text-lead font-normal text-foreground-base",
@@ -44,6 +48,9 @@ export const variants = {
   // TODO(tokens): no role is 1rem/1.5rem (text-base); body-lg plus leading-6.
   "large-semibold-tight":
     "font-sans text-body-lg font-semibold leading-6 text-foreground-base",
+  // TODO(tokens): no role is 1rem/2rem; body-lg plus leading-8.
+  "large-loose":
+    "font-sans text-body-lg font-normal leading-8 text-foreground-base",
   body: "font-sans text-body font-normal text-foreground-base",
   "body-medium": "font-sans text-body font-medium text-foreground-base",
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
@@ -61,9 +68,24 @@ export const variants = {
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
   "body-tight-italic":
     "font-sans text-body font-normal italic leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5,
+  // stepping up to body-lg (16px/24px) below md like the raw sizes it replaced.
+  "body-tight-touch":
+    "font-sans text-body font-normal leading-5 text-foreground-base max-md:text-body-lg max-md:leading-6",
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
   "body-semibold-tight":
     "font-sans text-body font-semibold leading-5 text-foreground-base",
+  // Keeps the parent's line height, like the raw size it replaced.
+  "body-sm-medium-inherit":
+    "font-sans text-body-sm font-medium leading-inherit text-foreground-base",
+  // body-sm-medium-inherit that steps up to body (14px/20px) below md, like
+  // the responsive raw sizes it replaced.
+  "body-sm-medium-inherit-touch":
+    "font-sans text-body-sm font-medium leading-inherit text-foreground-base max-md:text-body max-md:leading-5",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4,
+  // stepping up to body (14px/20px) below md like the raw sizes it replaced.
+  "small-medium-tight-touch":
+    "font-sans text-caption font-medium leading-4 text-foreground-base max-md:text-body max-md:leading-5",
   small: "font-sans text-caption font-normal text-foreground-base",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
   "small-mono": "font-mono text-caption font-normal text-foreground-base",
@@ -176,6 +198,7 @@ export const variantElementMap: Record<Variant, As> = {
   h4: "h4",
   h5: "h5",
   "h3-tracking-tight": "h3",
+  "h5-semibold": "h5",
   lead: "p",
   "lead-medium": "p",
   "lead-semibold": "p",
@@ -184,6 +207,7 @@ export const variantElementMap: Record<Variant, As> = {
   "large-semibold": "p",
   "large-medium-tight": "p",
   "large-semibold-tight": "p",
+  "large-loose": "p",
   body: "p",
   "body-medium": "p",
   "body-tight": "p",
@@ -192,7 +216,11 @@ export const variantElementMap: Record<Variant, As> = {
   "body-line-through": "p",
   "body-tight-italic": "p",
   "body-medium-tight": "p",
+  "body-tight-touch": "p",
   "body-semibold-tight": "p",
+  "body-sm-medium-inherit": "p",
+  "body-sm-medium-inherit-touch": "p",
+  "small-medium-tight-touch": "p",
   small: "p",
   "small-medium": "p",
   "small-mono": "p",

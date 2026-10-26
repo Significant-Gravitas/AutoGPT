@@ -53,6 +53,8 @@ async def test_a_url_held_outside_the_app_still_reaches_its_route(method, path):
         # Mounted at their own /api paths, outside the internal API.
         "/api/copilot-webhooks/slack/events",
         "/api/v2/graphs",
+        "/api/v2/mcp",
+        "/.well-known/oauth-protected-resource/api/v2/mcp",
         "/external-api/v1/blocks",
         "/health",
     ],
@@ -61,6 +63,23 @@ async def test_paths_outside_the_internal_api_are_left_alone(path):
     scope = await _rewritten({"type": "http", "method": "GET", "path": path})
 
     assert scope["path"] == path
+
+
+async def test_a_versioned_path_is_never_read_as_an_internal_one():
+    """`/api/v2` stays the public API's even if an internal route is named `v2`."""
+    seen: list[Scope] = []
+
+    async def record(scope: Scope, receive: Receive, send: Send) -> None:
+        seen.append(scope)
+
+    middleware = LegacyAPIPathMiddleware(record, segments=frozenset({"v2"}))
+    await middleware(
+        {"type": "http", "method": "GET", "path": "/api/v2/mcp"},
+        _never_receive,
+        _never_send,
+    )
+
+    assert seen[0]["path"] == "/api/v2/mcp"
 
 
 def test_an_old_path_keeps_its_parameters_and_query():

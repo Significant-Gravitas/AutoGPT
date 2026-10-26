@@ -1,5 +1,8 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import {
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/molecules/Sidebar/Sidebar";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
