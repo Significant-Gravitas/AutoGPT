@@ -274,9 +274,9 @@ const configWithSentry = skipSentryPlugin
 // POSTHOG_API_KEY so the two keys can't be mixed up.
 const postHogUploadConfigured = Boolean(
   process.env.NODE_ENV === "production" &&
-    enableSourceMaps &&
-    process.env.POSTHOG_SOURCEMAP_UPLOAD_KEY &&
-    process.env.POSTHOG_SOURCEMAP_PROJECT_ID,
+  enableSourceMaps &&
+  process.env.POSTHOG_SOURCEMAP_UPLOAD_KEY &&
+  process.env.POSTHOG_SOURCEMAP_PROJECT_ID,
 );
 
 export default postHogUploadConfigured

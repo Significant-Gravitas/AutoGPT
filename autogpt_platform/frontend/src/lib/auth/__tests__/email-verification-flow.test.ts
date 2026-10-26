@@ -73,9 +73,8 @@ const refusedAtSend = vi.hoisted(() => new Set<string>());
 vi.mock("../email", () => ({
   sendAuthEmail: vi.fn(async (email: (typeof sentEmails)[number]) => {
     if (refusedAtSend.has(email.to)) {
-      const { undeliverableEmailError } = await import(
-        "../email-deliverability"
-      );
+      const { undeliverableEmailError } =
+        await import("../email-deliverability");
       throw undeliverableEmailError();
     }
     sentEmails.push(email);

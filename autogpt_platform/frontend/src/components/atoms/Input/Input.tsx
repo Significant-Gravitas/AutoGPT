@@ -12,8 +12,10 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement;
 
-export interface TextFieldProps
-  extends Omit<BaseInputProps, "size" | "onKeyDown"> {
+export interface TextFieldProps extends Omit<
+  BaseInputProps,
+  "size" | "onKeyDown"
+> {
   label: string;
   id: string;
   hideLabel?: boolean;

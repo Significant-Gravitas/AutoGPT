@@ -3,8 +3,10 @@ import type { ComponentPropsWithoutRef } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-interface DismissProps
-  extends Omit<ComponentPropsWithoutRef<"button">, "children"> {
+interface DismissProps extends Omit<
+  ComponentPropsWithoutRef<"button">,
+  "children"
+> {
   "aria-label": string;
   onClick: () => void;
 }

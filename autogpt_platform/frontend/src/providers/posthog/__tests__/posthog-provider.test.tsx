@@ -72,9 +72,8 @@ describe("PostHogProvider", () => {
 
   it("drops events without consent, then marks those an admin sends while acting as a user", async () => {
     const { PostHogProvider } = await import("../posthog-provider");
-    const { markImpersonatedEvent } = await import(
-      "@/services/analytics/posthog-request-context"
-    );
+    const { markImpersonatedEvent } =
+      await import("@/services/analytics/posthog-request-context");
     const { dropWithoutConsent } = await import("../posthog-consent");
 
     render(<PostHogProvider>app</PostHogProvider>);

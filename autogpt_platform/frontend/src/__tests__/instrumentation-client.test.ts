@@ -39,9 +39,8 @@ afterEach(() => {
 describe("Sentry client instrumentation", () => {
   it("passes each navigation Next starts on to Sentry", async () => {
     const Sentry = await import("@sentry/nextjs");
-    const { onRouterTransitionStart } = await import(
-      "../../instrumentation-client"
-    );
+    const { onRouterTransitionStart } =
+      await import("../../instrumentation-client");
 
     onRouterTransitionStart("/link/t-1", "push");
 

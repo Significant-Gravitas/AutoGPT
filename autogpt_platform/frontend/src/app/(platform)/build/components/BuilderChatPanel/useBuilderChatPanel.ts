@@ -532,9 +532,8 @@ export function useBuilderChatPanel({
     if (isInFlight) {
       queueMessage(trimmed);
       try {
-        const { queueFollowUpMessage } = await import(
-          "@/app/(platform)/copilot/helpers/queueFollowUpMessage"
-        );
+        const { queueFollowUpMessage } =
+          await import("@/app/(platform)/copilot/helpers/queueFollowUpMessage");
         await queueFollowUpMessage(sessionId, trimmed);
       } catch (err) {
         Sentry.captureException(err);

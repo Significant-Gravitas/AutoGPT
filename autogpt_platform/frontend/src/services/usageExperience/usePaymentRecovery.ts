@@ -42,8 +42,8 @@ export function usePaymentRecovery(tier: string | null | undefined) {
 function isAwaitingPayment(trial: TrialStatusResponse | undefined) {
   return Boolean(
     trial &&
-      !trial.active &&
-      !trial.converted &&
-      ["past_due", "unpaid"].includes(trial.status ?? ""),
+    !trial.active &&
+    !trial.converted &&
+    ["past_due", "unpaid"].includes(trial.status ?? ""),
   );
 }

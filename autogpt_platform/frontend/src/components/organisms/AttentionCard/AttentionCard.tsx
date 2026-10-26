@@ -39,7 +39,8 @@ const CardContext = createContext<{ variant: Variant; density: Density }>({
 });
 
 interface RootProps
-  extends ComponentPropsWithoutRef<"div">,
+  extends
+    ComponentPropsWithoutRef<"div">,
     VariantProps<typeof cardVariants>,
     VariantProps<typeof densityVariants> {
   asChild?: boolean;
@@ -92,8 +93,7 @@ function Root({
 }
 
 interface RowProps
-  extends ComponentPropsWithoutRef<"div">,
-    VariantProps<typeof rowVariants> {
+  extends ComponentPropsWithoutRef<"div">, VariantProps<typeof rowVariants> {
   asChild?: boolean;
 }
 
@@ -122,8 +122,7 @@ function Row({
 }
 
 interface IconProps
-  extends ComponentPropsWithoutRef<"span">,
-    VariantProps<typeof iconVariants> {}
+  extends ComponentPropsWithoutRef<"span">, VariantProps<typeof iconVariants> {}
 
 // Wraps nothing: it hands its classes to the one icon or avatar inside.
 function Icon({ nudge, trailing, className, ...rest }: IconProps) {

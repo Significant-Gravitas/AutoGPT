@@ -55,9 +55,9 @@ function SharedChatChrome({
 // one.  Mirrors the owner CopilotPage.
 const ArtifactPanel = dynamic(
   () =>
-    import(
-      "@/app/(platform)/copilot/components/ArtifactPanel/ArtifactPanel"
-    ).then((m) => m.ArtifactPanel),
+    import("@/app/(platform)/copilot/components/ArtifactPanel/ArtifactPanel").then(
+      (m) => m.ArtifactPanel,
+    ),
   { ssr: false },
 );
 

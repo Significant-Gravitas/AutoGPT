@@ -109,16 +109,15 @@ export const Flow = () => {
   );
 };
 
-interface FlowCanvasProps
-  extends Pick<
-    ReturnType<typeof useFlow>,
-    | "onDragOver"
-    | "onDrop"
-    | "isFlowContentLoading"
-    | "isLocked"
-    | "setIsLocked"
-    | "isReadOnly"
-  > {
+interface FlowCanvasProps extends Pick<
+  ReturnType<typeof useFlow>,
+  | "onDragOver"
+  | "onDrop"
+  | "isFlowContentLoading"
+  | "isLocked"
+  | "setIsLocked"
+  | "isReadOnly"
+> {
   isGraphRunning: boolean;
   children: ReactNode;
 }

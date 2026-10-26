@@ -67,9 +67,9 @@ export function useAutopilotUsageCard() {
     hasUsage: Boolean(featured || secondary),
     unlimited: Boolean(
       usage &&
-        !experience.isActiveTrial &&
-        usage.daily === null &&
-        usage.weekly === null,
+      !experience.isActiveTrial &&
+      usage.daily === null &&
+      usage.weekly === null,
     ),
   };
 }

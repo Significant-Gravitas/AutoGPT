@@ -37,8 +37,8 @@ export function MainMarkeplacePage() {
   const showExperts = !isUserLoading;
   const hasWorkflowShelf = Boolean(
     topAgents &&
-      (topAgents.agents.length > 0 ||
-        (!category && (featuredAgents?.agents.length ?? 0) > 0)),
+    (topAgents.agents.length > 0 ||
+      (!category && (featuredAgents?.agents.length ?? 0) > 0)),
   );
 
   if (isLoading) {
