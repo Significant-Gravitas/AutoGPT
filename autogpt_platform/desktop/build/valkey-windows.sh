@@ -50,5 +50,23 @@ cp COPYING "${output}/COPYING"
 printf 'Collecting Valkey runtime DLLs from PE imports\n'
 bash "${script_dir}/valkey-dlls.sh" "${output}/valkey-server.exe" /usr/bin "${output}"
 
+pacman -Q gcc gcc-libs msys2-runtime msys2-runtime-devel binutils > "${output}/toolchain.txt"
+command -v bash gcc objdump cygcheck >> "${output}/toolchain.txt"
+printf 'MSYSTEM=%s\nPATH=%s\n' "${MSYSTEM:-}" "$PATH" >> "${output}/toolchain.txt"
+sha256sum src/valkey-server.exe > "${output}/sha256.txt"
+for binary in "${output}/valkey-server.exe" "${output}"/*.dll; do
+  objdump -f "$binary" > "${binary}.imports.txt"
+  objdump -p "$binary" >> "${binary}.imports.txt"
+  sha256sum "$binary" >> "${output}/sha256.txt"
+  if [[ "$binary" == *.dll ]]; then
+    sha256sum "/usr/bin/$(basename "$binary")" >> "${output}/sha256.txt"
+  fi
+done
+if cygcheck -v "${output}/valkey-server.exe" > "${output}/dependencies.txt" 2>&1; then
+  printf 'cygcheck exit: 0\n' >> "${output}/dependencies.txt"
+else
+  printf 'cygcheck exit: %s\n' "$?" >> "${output}/dependencies.txt"
+fi
+
 printf 'Checking the assembled Valkey executable\n'
 "${output}/valkey-server.exe" --version
