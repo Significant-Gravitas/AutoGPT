@@ -453,7 +453,7 @@ export const MessageResponse = memo(function MessageResponse({
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-surface",
         // TODO(tokens): no fitting role for [&_a]:text-blue-500 #3B82F6: info is a
         // status colour and sidebar-ring a focus ring, not link copy
-        "[&_a]:text-blue-500 [&_a]:no-underline hover:[&_a]:underline",
+        "[&_a]:text-blue-500 [&_a]:no-underline [&_a]:hover:underline",
         // Raycast-style markdown tables: a rounded card with a quiet small-caps
         // header, hairline row separators and tabular figures.
         "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border-0 [&_table]:text-body-sm [&_table]:tabular-nums [&_table]:leading-inherit",
@@ -464,8 +464,7 @@ export const MessageResponse = memo(function MessageResponse({
         // their own [&_table_*] scope. th and inline code keep the 20px
         // line-height their own text-sm gives them.
         "[&_table_td]:text-body-sm [&_table_td_code]:text-caption [&_table_td_code]:leading-5 [&_table_th]:text-caption-sm [&_table_th]:leading-5",
-        // TODO(tokens): no exact role for [&_th]:text-indigo-950/70 #1E1B4B
-        "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-border-base [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-eyebrow [&_th]:text-indigo-950/70",
+        "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-border-base [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-eyebrow",
         "[&_th:first-child]:text-shadow-message-table-violet [&_th:last-child]:text-shadow-message-table-blue [&_th]:text-shadow-message-table-indigo",
         "[&_td]:border-b [&_td]:border-separator [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:text-foreground-body [&_td]:transition-colors",
         // TODO(tokens): no fitting role for [&_td_strong]:text-zinc-950 #09090B

@@ -12,7 +12,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
   useSidebar,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { cn } from "@/lib/utils";

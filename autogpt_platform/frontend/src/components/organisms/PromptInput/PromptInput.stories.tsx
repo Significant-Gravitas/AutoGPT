@@ -1,7 +1,10 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
-import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
+import {
+  InputGroup,
+  InputGroupAddon,
+} from "@/components/molecules/InputGroup/InputGroup";
 import { cn } from "@/lib/utils";
 import {
   ArrowUp02Icon,

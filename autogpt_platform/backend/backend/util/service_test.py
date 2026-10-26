@@ -30,6 +30,7 @@ from backend.util.exceptions import (
     GraphValidationError,
     NotFoundError,
 )
+from backend.util.process import AppProcess
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -1004,6 +1005,37 @@ async def test_health_check_during_shutdown(test_service):
     except (httpx.ConnectError, httpx.ConnectTimeout):
         # Connection refused/timeout is also acceptable
         pass
+
+
+def test_cleanup_of_a_service_stopped_before_run_finishes_the_chain(mocker):
+    """A SIGTERM in a deploy's first moments reaches `cleanup()` before `run()`
+    has created the shared loop (Sentry AUTOGPT-SERVER-ABN, A85, A7H, A54)."""
+    process_cleanup = mocker.patch.object(AppProcess, "cleanup")
+
+    _LoopService().cleanup()
+
+    process_cleanup.assert_called_once_with()
+
+
+def test_cleanup_stops_the_loop_run_created(mocker):
+    process_cleanup = mocker.patch.object(AppProcess, "cleanup")
+    service = _LoopService()
+    service.shared_event_loop = asyncio.new_event_loop()
+    loop_thread = threading.Thread(target=service._run_shared_event_loop, daemon=True)
+    loop_thread.start()
+
+    service.cleanup()
+    loop_thread.join(timeout=30)
+
+    assert not loop_thread.is_alive()
+    assert service.shared_event_loop.is_closed()
+    process_cleanup.assert_called_once_with()
+
+
+class _LoopService(AppService):
+    @classmethod
+    def get_port(cls) -> int:
+        return 0
 
 
 # ============================================================================

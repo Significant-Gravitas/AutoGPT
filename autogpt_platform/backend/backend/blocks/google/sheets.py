@@ -224,11 +224,6 @@ class ValueInputOption(str, Enum):
     USER_ENTERED = "USER_ENTERED"
 
 
-class InsertDataOption(str, Enum):
-    OVERWRITE = "OVERWRITE"
-    INSERT_ROWS = "INSERT_ROWS"
-
-
 class BatchOperationType(str, Enum):
     UPDATE = "update"
     CLEAR = "clear"
