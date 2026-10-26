@@ -18,16 +18,16 @@ export function ConnectStep({ names, onConnect }: Props) {
 
   return (
     <div
-      className="mt-6 flex flex-wrap items-center gap-3 rounded-xl border border-zinc-200 bg-white p-4"
+      className="mt-6 flex flex-wrap items-center gap-3 rounded-xl border border-border-base bg-surface p-4"
       data-testid="skill-connect-step"
     >
       <Icon
         icon={PlugSocketIcon}
         size={18}
-        className="text-zinc-500"
+        className="text-foreground-tertiary"
         aria-hidden
       />
-      <Text variant="small" className="!text-zinc-600">
+      <Text variant="small" className="!text-foreground-secondary">
         Its steps use {providers}. Connect when you first need it.
       </Text>
       <Button

@@ -44,7 +44,7 @@ export function ExpertOverview({
       {expert.bio ? (
         <Text
           variant="body"
-          className="!text-[15px] !leading-relaxed !text-zinc-600"
+          className="!text-body-md !leading-relaxed !text-foreground-secondary"
         >
           {getBioLead(expert.bio)}
         </Text>
@@ -101,18 +101,21 @@ export function ExpertOverview({
                   key="a"
                   icon={BubbleChatIcon}
                   size={22}
+                  // TODO(tokens): no exact role: text-sky-500 #0EA5E9
                   className="text-sky-500"
                 />,
                 <Icon
                   key="b"
                   icon={PlayIcon}
                   size={22}
+                  // TODO(tokens): no exact role: text-orange-500 #FE8700
                   className="text-orange-500"
                 />,
                 <Icon
                   key="c"
                   icon={File02Icon}
                   size={22}
+                  // TODO(tokens): no exact role: text-violet-500 #8B5CF6
                   className="text-violet-500"
                 />,
               ]}

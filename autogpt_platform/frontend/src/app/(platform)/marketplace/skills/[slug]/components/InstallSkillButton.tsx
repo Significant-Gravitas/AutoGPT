@@ -95,7 +95,7 @@ export function ExpertInstallMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[15rem]">
-        <DropdownMenuLabel className="text-xs font-normal text-zinc-500">
+        <DropdownMenuLabel className="text-xs font-normal text-foreground-tertiary">
           {MENU_LABEL}
         </DropdownMenuLabel>
         {experts.map((expert) => (
@@ -112,11 +112,11 @@ export function ExpertInstallMenu({
               <AvatarFallback>{expert.name}</AvatarFallback>
             </Avatar>
             <span className="min-w-0">
-              <span className="block truncate text-zinc-900">
+              <span className="block truncate text-foreground-strong">
                 {expert.name}
               </span>
               {expert.role ? (
-                <span className="block truncate text-xs text-zinc-500">
+                <span className="block truncate text-xs text-foreground-tertiary">
                   {expert.role}
                 </span>
               ) : null}

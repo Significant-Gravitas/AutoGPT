@@ -58,24 +58,19 @@ it.each([
   ["PRO", "Pro"],
   ["MAX", "Max"],
   ["BUSINESS", "Team"],
-] as const)(
-  "uses the %s plan's display name and masks personalized billing copy",
-  async (tier, label) => {
-    server.use(
-      getGetTrialsGetTrialStatusMockHandler200(
-        trialResponse({
-          eligible: true,
-          active: false,
-          offer: { ...trialOffer, tier },
-        }),
-      ),
-    );
-    render(<TrialCard />);
-    await screen.findByText(`Try AutoGPT ${label} for 7 days`);
-    expect(
-      screen
-        .getByText(/Card required. No subscription charge today/)
-        .classList.contains("sentry-unmask"),
-    ).toBe(false);
-  },
-);
+] as const)("uses the %s plan's display name", async (tier, label) => {
+  server.use(
+    getGetTrialsGetTrialStatusMockHandler200(
+      trialResponse({
+        eligible: true,
+        active: false,
+        offer: { ...trialOffer, tier },
+      }),
+    ),
+  );
+  render(<TrialCard />);
+  await screen.findByText(`Try AutoGPT ${label} for 7 days`);
+  expect(
+    screen.getByText(/Card required. No subscription charge today/),
+  ).toBeDefined();
+});

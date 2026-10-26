@@ -41,7 +41,7 @@ export function ChainTile({ item, size }: Props) {
   return (
     <span
       className={cn(
-        "flex items-center justify-center bg-white ring-1 ring-zinc-200/70",
+        "flex items-center justify-center bg-surface ring-1 ring-border-base/70",
         isSmall ? "size-9 rounded-lg" : "size-12 rounded-xl",
       )}
     >
@@ -53,7 +53,7 @@ export function ChainTile({ item, size }: Props) {
           size={isSmall ? 16 : 20}
           role="img"
           aria-label={fallback.label}
-          className="text-zinc-600"
+          className="text-foreground-secondary"
         />
       )}
     </span>

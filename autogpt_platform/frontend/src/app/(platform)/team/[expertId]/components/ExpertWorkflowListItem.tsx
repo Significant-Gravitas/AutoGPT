@@ -55,7 +55,7 @@ export function ExpertWorkflowListItem({
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex flex-col items-stretch gap-3 rounded-2xl bg-white px-3.5 py-2.5 transition-colors smooth-shadow-ring-sm hover:bg-zinc-50 sm:flex-row sm:items-center sm:gap-4"
+      className="group relative flex flex-col items-stretch gap-3 rounded-2xl bg-surface px-3.5 py-2.5 transition-colors smooth-shadow-ring-sm hover:bg-surface-muted sm:flex-row sm:items-center sm:gap-4"
     >
       {libraryHref ? (
         <NextLink
@@ -74,7 +74,7 @@ export function ExpertWorkflowListItem({
             variant="small-medium"
             as="span"
             className={cn(
-              "shrink-0 rounded-md px-2 py-0.5 ring-1 ring-inset ring-zinc-200/80",
+              "shrink-0 rounded-md px-2 py-0.5 ring-1 ring-inset ring-border-base/80",
               status.className,
             )}
           >
@@ -87,7 +87,7 @@ export function ExpertWorkflowListItem({
           </Text>
         ) : null}
         {meta.length > 0 || credentialProviders.length > 0 ? (
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm leading-5 text-zinc-600">
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm leading-5 text-foreground-secondary">
             {meta.length > 0 ? (
               <Text
                 variant="body"
@@ -99,7 +99,7 @@ export function ExpertWorkflowListItem({
               </Text>
             ) : null}
             {meta.length > 0 && credentialProviders.length > 0 ? (
-              <span className="text-zinc-300">•</span>
+              <span className="text-foreground-disabled">•</span>
             ) : null}
             <WorkflowCredentialStack providers={credentialProviders} />
           </div>

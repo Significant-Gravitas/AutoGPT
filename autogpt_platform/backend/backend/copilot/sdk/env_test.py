@@ -63,6 +63,22 @@ class TestBuildSdkEnvSubscription:
         assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
         mock_validate.assert_called_once()
 
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_carries_the_login_the_host_holds_in_a_variable(
+        self, mock_validate, monkeypatch
+    ):
+        """The launch keeps nothing else of the backend's environment."""
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-host-login")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "sk-ant-ort01-host")
+        cfg = _make_config(use_claude_code_subscription=True)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert result["CLAUDE_CODE_OAUTH_TOKEN"] == "sk-ant-oat01-host-login"
+        assert result["CLAUDE_CODE_OAUTH_REFRESH_TOKEN"] == "sk-ant-ort01-host"
+
     @patch(
         "backend.copilot.sdk.env.validate_subscription",
         side_effect=RuntimeError("CLI not found"),
@@ -83,9 +99,44 @@ class TestBuildSdkEnvSubscription:
 
 
 class TestBuildSdkEnvDirectAnthropic:
-    """When OpenRouter is inactive, no ANTHROPIC_* overrides (inherit parent env)."""
+    """When OpenRouter is inactive, the deployment's Anthropic key, and where
+    it is sent, are carried over from the parent environment: the launch
+    keeps nothing else of it."""
 
-    def test_no_anthropic_key_overrides_when_openrouter_inactive(self):
+    @pytest.fixture(autouse=True)
+    def _deployment_key(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-deployment-key")
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://anthropic-proxy.example")
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+
+    def test_carries_the_deployments_key_when_openrouter_inactive(self):
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert result["ANTHROPIC_API_KEY"] == "sk-ant-deployment-key"
+        assert result["ANTHROPIC_BASE_URL"] == "https://anthropic-proxy.example"
+        assert "ANTHROPIC_AUTH_TOKEN" not in result
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+
+    def test_carries_an_auth_token_set_beside_the_key(self, monkeypatch):
+        """A bearer-authenticated Anthropic proxy keeps working."""
+        monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "sk-ant-proxy-bearer")
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert result["ANTHROPIC_AUTH_TOKEN"] == "sk-ant-proxy-bearer"
+        assert result["ANTHROPIC_API_KEY"] == "sk-ant-deployment-key"
+
+    def test_sets_no_key_the_parent_does_not_hold(self, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_API_KEY")
+        monkeypatch.delenv("ANTHROPIC_BASE_URL")
         cfg = _make_config(use_openrouter=False)
         with patch("backend.copilot.sdk.env.config", cfg):
             from backend.copilot.sdk.env import build_sdk_env
@@ -93,12 +144,9 @@ class TestBuildSdkEnvDirectAnthropic:
             result = build_sdk_env()
 
         assert "ANTHROPIC_API_KEY" not in result
-        assert "ANTHROPIC_AUTH_TOKEN" not in result
         assert "ANTHROPIC_BASE_URL" not in result
-        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
-        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
 
-    def test_no_anthropic_key_overrides_when_openrouter_flag_true_but_no_key(self):
+    def test_carries_the_deployments_key_when_openrouter_flag_true_but_no_key(self):
         """OpenRouter flag is True but no api_key => openrouter_active is False."""
         cfg = _make_config(use_openrouter=True, base_url="https://openrouter.ai/api/v1")
         # Force api_key to None after construction (field_validator may pick up env vars)
@@ -109,9 +157,9 @@ class TestBuildSdkEnvDirectAnthropic:
 
             result = build_sdk_env()
 
-        assert "ANTHROPIC_API_KEY" not in result
+        assert result["ANTHROPIC_API_KEY"] == "sk-ant-deployment-key"
+        assert result["ANTHROPIC_BASE_URL"] == "https://anthropic-proxy.example"
         assert "ANTHROPIC_AUTH_TOKEN" not in result
-        assert "ANTHROPIC_BASE_URL" not in result
         assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
         assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
 

@@ -731,7 +731,7 @@ describe("edgeStore", () => {
             id: "e1",
             data: {
               isStatic: true,
-              edgeColorClass: "text-red-500",
+              edgeColorClass: "text-error",
               beadUp: 3,
               beadDown: 2,
               beadData: new Map(),
@@ -744,7 +744,7 @@ describe("edgeStore", () => {
 
       const edge = useEdgeStore.getState().edges[0];
       expect(edge.data?.isStatic).toBe(true);
-      expect(edge.data?.edgeColorClass).toBe("text-red-500");
+      expect(edge.data?.edgeColorClass).toBe("text-error");
       expect(edge.data?.beadUp).toBe(0);
     });
   });

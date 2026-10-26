@@ -1,5 +1,5 @@
 import { useMainDashboardPage } from "./useMainDashboardPage";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { AgentTable } from "../AgentTable/AgentTable";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 import { EditAgentModal } from "@/components/contextual/EditAgentModal/EditAgentModal";
@@ -38,6 +38,7 @@ export const MainDashboardPage = () => {
             <Text
               variant="h2"
               size="large-medium"
+              // TODO(tokens): no exact role (text-neutral-900 #171717, dark:text-neutral-100)
               className="text-neutral-900 dark:text-neutral-100"
             >
               Submit a New Workflow
@@ -70,6 +71,7 @@ export const MainDashboardPage = () => {
         <Text
           variant="h2"
           size="large-medium"
+          // TODO(tokens): no exact role (text-neutral-900 #171717, dark:text-neutral-100)
           className="mb-4 text-neutral-900 dark:text-neutral-100"
         >
           Your uploaded workflows

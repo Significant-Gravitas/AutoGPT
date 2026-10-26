@@ -54,16 +54,12 @@ export function loadTallyEmbed(): Promise<TallyApi> {
 }
 
 interface FeedbackContext {
-  sentryReplayId: string;
-  replayUrl: string;
   pageUrl: string;
   isAuthenticated: boolean | null;
 }
 
 export function getFeedbackHiddenFields(context: FeedbackContext) {
   return {
-    sentryReplayId: context.sentryReplayId || "not-initialized",
-    sentryReplayUrl: context.replayUrl || "not-initialized",
     pageUrl: context.pageUrl
       ? context.pageUrl.split("?")[0]
       : "not-initialized",
@@ -84,6 +80,7 @@ export function showFeedbackLoadError() {
           href={FEEDBACK_FORM_URL}
           target="_blank"
           rel="noopener noreferrer"
+          data-slot="feedback-form-link"
           className="underline"
         >
           Open the form in a new tab
