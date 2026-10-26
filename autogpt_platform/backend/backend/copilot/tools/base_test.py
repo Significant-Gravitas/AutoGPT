@@ -170,6 +170,7 @@ class TestBaseToolExecuteLargeOutput:
         tool = _HugeOutputTool(output_size=_LARGE_OUTPUT_THRESHOLD + 10_000)
         session = MagicMock()
         session.session_id = "s-1"
+        session.external_caller = False
 
         mock_workspace = MagicMock()
         mock_workspace.id = "ws-1"
@@ -189,6 +190,27 @@ class TestBaseToolExecuteLargeOutput:
         assert "<tool-output-truncated" in str(result.output)
         assert "read_workspace_file" in str(result.output)
         mock_manager.write_file.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("size", [_LARGE_OUTPUT_THRESHOLD + 10_000, 200_000])
+    async def test_an_external_callers_large_output_is_not_persisted(self, size):
+        """An MCP client can't follow a preview to its copy; each one was a
+        scanned write into the caller's workspace, counted against its quota."""
+        tool = _HugeOutputTool(output_size=size)
+        session = MagicMock()
+        session.session_id = "s-1"
+        session.external_caller = True
+
+        with patch(
+            "backend.copilot.tools.base._persist_and_summarize",
+            new_callable=AsyncMock,
+        ) as persist_mock:
+            result = await tool.execute("user-1", session, "tc-mcp")
+
+        persist_mock.assert_not_awaited()
+        assert "<tool-output-truncated" not in str(result.output)
+        # Past what a result keeps, the cut says so.
+        assert ("omitted" in str(result.output)) == (size > 100_000)
 
     @pytest.mark.asyncio
     async def test_no_persistence_without_user_id(self):
@@ -331,6 +353,7 @@ async def _execute_with_flag(tool, flag_on: bool, manager=None):
     assert flag_on
     session = MagicMock()
     session.session_id = "s-1"
+    session.external_caller = False
     db_patch, mgr_patch = _workspace_patches(manager or AsyncMock())
     with db_patch, mgr_patch:
         return await tool.execute("user-1", session, "tc-digest")

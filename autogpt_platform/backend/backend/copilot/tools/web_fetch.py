@@ -9,6 +9,7 @@ from typing import Any
 
 import aiohttp
 import html2text
+from prisma.enums import APIKeyPermission
 
 from backend.copilot.model import ChatSession
 from backend.util.request import Requests
@@ -161,6 +162,11 @@ class WebFetchTool(BaseTool):
         return "web_fetch"
 
     @property
+    def allow_external_use(self):
+        # Fetches a caller-chosen URL from platform infrastructure.
+        return True, [APIKeyPermission.USE_TOOLS]
+
+    @property
     def description(self) -> str:
         return "Fetch a public web page. Public URLs only — internal addresses blocked. Returns readable text from HTML by default."
 
@@ -206,7 +212,10 @@ class WebFetchTool(BaseTool):
 
         try:
             client = Requests(raise_for_status=False, retry_max_attempts=1)
-            response = await client.get(url, timeout=_REQUEST_TIMEOUT)
+            # Read no more than the cap: the whole body was buffered first.
+            response = await client.get(
+                url, timeout=_REQUEST_TIMEOUT, max_body_bytes=_MAX_DOWNLOAD_BYTES
+            )
         except ValueError as e:
             # validate_url raises ValueError for SSRF / blocked IPs
             return ErrorResponse(

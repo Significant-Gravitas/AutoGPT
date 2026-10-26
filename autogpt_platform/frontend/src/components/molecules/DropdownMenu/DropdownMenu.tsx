@@ -60,7 +60,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
     ref={ref}
     data-slot="menu-submenu-trigger"
     className={cn(
-      "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-body leading-5 outline-none data-[state=open]:bg-neutral-100 focus:bg-neutral-100 [@media(pointer:coarse)]:py-3",
+      "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-body leading-5 outline-none focus:bg-neutral-100 data-[state=open]:bg-neutral-100 [@media(pointer:coarse)]:py-3",
       inset && "pl-8",
       className,
     )}
@@ -123,7 +123,7 @@ const DropdownMenuItem = React.forwardRef<
     ref={ref}
     data-slot="menu-item"
     className={cn(
-      "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-body leading-5 outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-neutral-100 focus:text-neutral-900 [@media(pointer:coarse)]:py-3",
+      "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-body leading-5 outline-none transition-colors focus:bg-neutral-100 focus:text-neutral-900 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [@media(pointer:coarse)]:py-3",
       inset && "pl-8",
       className,
     )}
@@ -140,7 +140,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
     ref={ref}
     data-slot="menu-checkbox-item"
     className={cn(
-      "relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-body leading-5 outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-neutral-100 focus:text-neutral-900 [@media(pointer:coarse)]:py-3",
+      "relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-body leading-5 outline-none transition-colors focus:bg-neutral-100 focus:text-neutral-900 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [@media(pointer:coarse)]:py-3",
       className,
     )}
     checked={checked}
@@ -168,7 +168,7 @@ const DropdownMenuRadioItem = React.forwardRef<
     ref={ref}
     data-slot="menu-radio-item"
     className={cn(
-      "relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-body leading-5 outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-neutral-100 focus:text-neutral-900 [@media(pointer:coarse)]:py-3",
+      "relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-body leading-5 outline-none transition-colors focus:bg-neutral-100 focus:text-neutral-900 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [@media(pointer:coarse)]:py-3",
       className,
     )}
     {...props}

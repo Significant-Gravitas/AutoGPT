@@ -134,7 +134,20 @@ def resolve_type_hints(func: Callable[..., Any]) -> dict[str, Any]:
 # AppService for IPC service based on HTTP request through FastAPI
 # --------------------------------------------------
 class BaseAppService(AppProcess, ABC):
-    shared_event_loop: asyncio.AbstractEventLoop
+    # Created by `run()`, so a service stopped before then has none.
+    _shared_event_loop: asyncio.AbstractEventLoop | None = None
+
+    @property
+    def shared_event_loop(self) -> asyncio.AbstractEventLoop:
+        if self._shared_event_loop is None:
+            raise AttributeError(
+                f"[{self.service_name}] has no event loop before run()"
+            )
+        return self._shared_event_loop
+
+    @shared_event_loop.setter
+    def shared_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._shared_event_loop = loop
 
     @classmethod
     @abstractmethod
@@ -199,9 +212,10 @@ class BaseAppService(AppProcess, ABC):
         # closed loop here means that thread is already gone (loop crash or
         # repeated cleanup) and there is nothing left to stop — scheduling
         # onto it would raise "Event loop is closed" mid-shutdown.
-        if not self.shared_event_loop.is_closed():
+        loop = self._shared_event_loop
+        if loop is not None and not loop.is_closed():
             try:
-                self.shared_event_loop.call_soon_threadsafe(self.shared_event_loop.stop)
+                loop.call_soon_threadsafe(loop.stop)
             except RuntimeError:
                 # The loop thread closed the loop between the check above and
                 # the scheduling call; equivalent to the is_closed() case.
