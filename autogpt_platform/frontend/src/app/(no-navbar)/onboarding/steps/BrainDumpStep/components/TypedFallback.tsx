@@ -46,7 +46,6 @@ export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
               role="alert"
               id={LIMIT_HINT_ID}
               className="text-left"
-              unmask
             >
               {TYPED_TOO_LONG_COPY}
             </Text>
@@ -56,7 +55,6 @@ export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
               tone="muted"
               id={LIMIT_HINT_ID}
               className="min-h-[1.125rem] text-right"
-              unmask
             >
               {typedCharsLeftHint(value.length)}
             </Text>

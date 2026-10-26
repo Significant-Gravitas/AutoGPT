@@ -1,6 +1,6 @@
 import { formatNodeDisplayTitle } from "@/app/(platform)/build/components/FlowEditor/nodes/CustomNode/helpers";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
 import { beautifyString, cn } from "@/lib/utils";
 import { SearchableNode } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
 import { GraphMenuSearchBar } from "../GraphMenuSearchBar/GraphMenuSearchBar";

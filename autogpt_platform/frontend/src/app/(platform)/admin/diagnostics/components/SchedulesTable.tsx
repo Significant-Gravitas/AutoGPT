@@ -8,7 +8,12 @@
 // text-purple-600 = brand-hover (a hover fill).
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Card } from "@/components/atoms/Card/Card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/atoms/Card/Card";
 import {
   Dialog,
   DialogContent,
@@ -28,11 +33,6 @@ import {
   TableCell,
 } from "@/components/molecules/Table/components/TablePrimitives";
 import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
-import {
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/__legacy__/ui/card";
 import {
   useGetV2ListAllUserSchedules,
   useGetV2ListOrphanedSchedules,

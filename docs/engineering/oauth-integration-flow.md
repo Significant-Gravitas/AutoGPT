@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AutoGPT platform implements OAuth 2.0 in two distinct contexts:
+The AutoGPT Platform implements OAuth 2.0 in two distinct contexts:
 
 1. **User Authentication (SSO)**: Handled by Better Auth, embedded in the Next.js frontend at `/api/auth/*`
 2. **API Integration Credentials**: Custom OAuth implementation for third-party service access
@@ -323,7 +323,7 @@ stateDiagram-v2
 
 ### User Authentication (SSO) via Better Auth
 
-- **Purpose**: Authenticate users to access the AutoGPT platform
+- **Purpose**: Authenticate users to access the AutoGPT Platform
 - **Provider**: Better Auth, embedded in the Next.js frontend (supports Google, GitHub, and Discord SSO)
 - **Flow Path**: `/login` → `/api/auth/*` (Better Auth) → provider OAuth → back to the app
 - **Session Storage**: Better Auth-managed cookies

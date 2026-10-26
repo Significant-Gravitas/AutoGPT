@@ -561,3 +561,24 @@ def test_is_filled_treats_falsy_valid_values_as_filled():
     assert _is_filled("") is False
     assert _is_filled({}) is False
     assert _is_filled([]) is False
+
+
+@pytest.mark.asyncio
+async def test_an_external_call_files_the_library_entry_in_its_organization(tool):
+    session = make_session(_USER)
+    session.external_caller = True
+    session.organization_id, session.team_id = "org-1", "team-1"
+    graph = _make_graph(manual=True, regular_credentials={})
+    preset = MagicMock(id="preset-1", is_active=True)
+    preset.name = "My Trigger"
+    preset.webhook.url, preset.webhook.provider = "https://x/ingress", "generic_webhook"
+    ctxs, _ = _patches(graph, preset=preset)
+    library_entry = AsyncMock(return_value=MagicMock(id="lib-1"))
+    with ctxs[0], ctxs[2], ctxs[3], ctxs[4], patch(
+        f"{_PATH}.get_or_create_library_agent", new=library_entry
+    ):
+        await tool._execute(
+            user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"
+        )
+
+    assert library_entry.await_args.args[2:] == ("org-1", "team-1")
