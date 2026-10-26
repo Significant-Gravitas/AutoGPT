@@ -867,6 +867,7 @@ describe("ToolResult", () => {
       ["grep -q x orders.csv || ./fallback.sh", 1, ""],
       ["./build.sh || grep -q x out.log", 1, ""],
       ["cd drafts 2>/dev/null && test -f brief.md", 1, ""],
+      ["set -o pipefail; ./build.sh | grep -q x out.log", 1, ""],
     ])(
       "calls a non-zero exit a failure even with nothing on stderr (%s)",
       (command, exitCode, stdout) => {

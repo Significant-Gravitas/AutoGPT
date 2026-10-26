@@ -1,4 +1,4 @@
-import { type Link, lastChain } from "./shellChain";
+import { type Link, type ShellItem, shellItems } from "./shellChain";
 
 // Commands whose exit 1 answers a question ("no match", "not there", "files
 // differ") rather than reporting a fault. A test whose stderr is silenced
@@ -9,7 +9,7 @@ const ANSWERS_NO = /^(?:grep|egrep|fgrep|rg|test|\[\[?|diff|cmp)(?:\s|$)/;
 // stderr empty did not fail in one of them, unless their stderr went
 // elsewhere (`2>/dev/null`, `2>&1`, `&>log`).
 const COMPLAINS_ON_FAILURE =
-  /^(?:echo|printf|true|:|cd|pwd|mkdir|cat|ls|wc|cp|mv|rm|touch|head|tail|sort|uniq|ln|chmod)(?:\s|$)/;
+  /^(?:echo|printf|true|:|cd|pwd|mkdir|cat|ls|wc|cp|mv|rm|touch|head|tail|sort|uniq|ln|chmod|set)(?:\s|$)/;
 const SILENCES_STDERR = /(?:^|[^\w])2>|&>|>&(?!\s*\d)/;
 
 // Past this many links the ways a chain could have run are not enumerated,
@@ -59,27 +59,40 @@ export function stepFailed(
   const stderr = output.stderr;
   if (typeof stderr === "string" && stderr.trim()) return true;
   if (exitCode !== 1 || !command) return true;
-  return !answersAQuestion(lastChain(command));
+  return !answersAQuestion(shellItems(command));
 }
 
 type Run = "no" | "fault" | "impossible";
 
-/** Whether every way the chain could have ended in a quiet exit 1 is a "no".
- *  Each link either succeeded or failed; bit i of a mask says link i failed. */
-function answersAQuestion(links: Link[]): boolean {
-  if (links.length === 0 || links.length > MAX_LINKS) return false;
-  const runs = Array.from({ length: 2 ** links.length }, (_, mask) =>
+/** Whether every way the command could have ended in a quiet exit 1 is a
+ *  "no". The status comes from the last list item, or, under `set -e`, from
+ *  any earlier one that failed and so ended the run. */
+function answersAQuestion(items: ShellItem[]): boolean {
+  const sources = items.filter(
+    (item, index) => index === items.length - 1 || item.errexit,
+  );
+  const runs = sources.flatMap((item) => chainRuns(item.links));
+  if (runs.includes("fault")) return false;
+  return runs.includes("no");
+}
+
+/** Each way a chain could have run, link i failing when bit i of the mask
+ *  is set. Past MAX_LINKS links they are not enumerated: a fault. */
+function chainRuns(links: Link[]): Run[] {
+  if (links.length === 0 || links.length > MAX_LINKS) return ["fault"];
+  return Array.from({ length: 2 ** links.length }, (_, mask) =>
     judge(links, mask),
-  ).filter((run) => run !== "impossible");
-  return runs.length > 0 && runs.every((run) => run === "no");
+  );
 }
 
 /** One way the chain could have run. `&&` runs the next link after a
  *  success and `||` after a failure; the status is the last link's that ran.
  *  It is impossible if it ends in success or needs a command that complains
  *  to have failed without a word; a fault if a command that is not a test
- *  failed along the way. Earlier commands in a pipeline do not set its
- *  status, so they are not read. */
+ *  failed along the way, or could have earlier in a pipeline that ran: under
+ *  `pipefail` its failure is the pipeline's status, and without it the
+ *  commands after it read nothing (a build that failed leaves grep nothing to
+ *  find). */
 function judge(links: Link[], mask: number): Run {
   let failed = false;
   const verdicts: Run[] = [];
@@ -87,8 +100,12 @@ function judge(links: Link[], mask: number): Run {
     const runs = link.after === "" || (link.after === "&&" ? !failed : failed);
     if (!runs) return;
     failed = Boolean(mask & (1 << index));
+    const earlier = link.stages.slice(0, -1);
+    if (earlier.some((stage) => quietFailure(stage) === "fault"))
+      verdicts.push("fault");
     // A `!` link fails when its command succeeds, and succeeds when it fails.
-    if (failed !== link.negated) verdicts.push(quietFailure(link.command));
+    if (failed !== link.negated)
+      verdicts.push(quietFailure(link.stages[link.stages.length - 1]));
   });
   if (!failed || verdicts.includes("impossible")) return "impossible";
   return verdicts.includes("fault") ? "fault" : "no";

@@ -1,32 +1,63 @@
-/** The chain that set a shell command's exit status: the list item that
- *  ran last (after any unconditional `;`, newline or `&`), split into its
- *  `&&`/`||` links. Each link is a pipeline, whose status is its last
- *  command's, inverted by a leading `!`. */
+/** One `&&`/`||` link of a chain: a pipeline. Its status is its last
+ *  command's (under `pipefail`, its rightmost failing command's), inverted
+ *  by a leading `!`. */
 export interface Link {
-  // The pipeline's last command, without any leading `!`.
-  command: string;
+  // The pipeline's commands in order, without the leading `!`.
+  stages: string[];
   negated: boolean;
   // The operator before this link; empty for the first.
   after: "&&" | "||" | "";
 }
 
-export function lastChain(command: string): Link[] {
-  const items = splitUnquoted(command, isListSeparator).filter((item) =>
-    item.text.trim(),
-  );
-  const last = items[items.length - 1]?.text ?? "";
-  const links = splitUnquoted(last, isChainSeparator);
+/** A list item (between `;`, newlines and background `&`) and whether
+ *  `set -e` was on when it ran, so its failure would have ended the run. */
+export interface ShellItem {
+  links: Link[];
+  errexit: boolean;
+}
+
+export function shellItems(command: string): ShellItem[] {
+  let errexit = false;
+  return splitUnquoted(command, isListSeparator)
+    .map((item) => item.text.trim())
+    .filter(Boolean)
+    .map((text) => {
+      const item = { links: chainLinks(text), errexit };
+      errexit = errexitAfter(text, errexit);
+      return item;
+    });
+}
+
+function chainLinks(text: string): Link[] {
+  const links = splitUnquoted(text, isChainSeparator);
   return links.map((link, index) => {
-    const stages = splitUnquoted(link.text, isPipe);
-    const tail = stages[stages.length - 1].text.trim();
-    const first = stages[0].text.trim();
+    const stages = splitUnquoted(link.text, isPipe).map((stage) =>
+      stage.text.trim(),
+    );
+    const negated = /^!\s/.test(stages[0]);
+    if (negated) stages[0] = stages[0].replace(/^!\s*/, "");
     const before = index === 0 ? "" : links[index - 1].separator;
     return {
-      command: stages.length === 1 ? tail.replace(/^!\s*/, "") : tail,
-      negated: /^!\s/.test(first),
+      stages,
+      negated,
       after: before === "&&" || before === "||" ? before : "",
     };
   });
+}
+
+/** Whether `set -e` is on after a list item: `set -e`, `set -euo pipefail`
+ *  and `set -o errexit` turn it on; `set +e` and `set +o errexit` off. */
+function errexitAfter(text: string, errexit: boolean): boolean {
+  if (!/^set\s/.test(text)) return errexit;
+  let state = errexit;
+  const words = text.split(/\s+/).slice(1);
+  words.forEach((word, index) => {
+    const named = words[index + 1] === "errexit";
+    if (/^-[a-z]*e[a-z]*$/.test(word) || (word === "-o" && named)) state = true;
+    if (/^\+[a-z]*e[a-z]*$/.test(word) || (word === "+o" && named))
+      state = false;
+  });
+  return state;
 }
 
 type Separator = (text: string, at: number) => number;

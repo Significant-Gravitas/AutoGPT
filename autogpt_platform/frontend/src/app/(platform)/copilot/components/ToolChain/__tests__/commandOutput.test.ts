@@ -242,6 +242,54 @@ describe("stepFailed, from what ran", () => {
   });
 });
 
+describe("stepFailed, pipelines and shell options", () => {
+  const exit = (code: number) => ({ stdout: "", stderr: "", exit_code: code });
+
+  it("calls exit 1 a failure when an earlier stage of a pipeline could have failed", () => {
+    // Under pipefail the status is the rightmost failing stage: build.sh's own.
+    expect(stepFailed("set -o pipefail; ./build.sh | grep -q x", exit(1))).toBe(
+      true,
+    );
+    expect(
+      stepFailed("set -euo pipefail\n./build.sh | grep -q x", exit(1)),
+    ).toBe(true);
+    // Without it, a build that failed before printing leaves grep nothing to find.
+    expect(stepFailed("./build.sh | grep -q x", exit(1))).toBe(true);
+    expect(
+      stepFailed(
+        "curl -s https://shop.example | grep -q ok && echo up",
+        exit(1),
+      ),
+    ).toBe(true);
+    expect(stepFailed("cat log 2>/dev/null | grep -q x", exit(1))).toBe(true);
+  });
+
+  it("calls exit 1 a failure when set -e let an earlier command end the run", () => {
+    expect(stepFailed("set -e; ./build.sh; grep -q x f", exit(1))).toBe(true);
+    expect(stepFailed("set -o errexit\n./build.sh\ntest -f out", exit(1))).toBe(
+      true,
+    );
+  });
+
+  it("still reads tests fed by commands that cannot fail quietly as a 'no'", () => {
+    expect(stepFailed("cat log | grep -q x", exit(1))).toBe(false);
+    expect(stepFailed("set -o pipefail; cat log | grep -q x", exit(1))).toBe(
+      false,
+    );
+    expect(stepFailed("grep x f | grep -q y", exit(1))).toBe(false);
+    expect(stepFailed("! cat log | grep -q x || test -f a", exit(1))).toBe(
+      false,
+    );
+    expect(stepFailed("set -e; cd drafts; test -f brief.md", exit(1))).toBe(
+      false,
+    );
+    expect(stepFailed("set -e; set +e; ./build.sh; grep -q x f", exit(1))).toBe(
+      false,
+    );
+    expect(stepFailed("./build.sh; grep -q x f", exit(1))).toBe(false);
+  });
+});
+
 describe("stepOutput", () => {
   it("reads the outcome of a result too large for the chat from its kept tail", () => {
     const failed = truncatedEnvelope({
