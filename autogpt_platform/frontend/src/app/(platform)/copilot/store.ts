@@ -116,6 +116,15 @@ function getPersistedOpen(): boolean {
   return storage.get(Key.COPILOT_CONTEXT_PANEL_OPEN) === "true";
 }
 
+export function getPersistedNotificationsEnabled(): boolean {
+  return (
+    isClient &&
+    storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "true" &&
+    typeof Notification !== "undefined" &&
+    Notification.permission === "granted"
+  );
+}
+
 function getPersistedTab(): ContextPanelTab {
   if (!isClient) return "files";
   const saved = storage.get(Key.COPILOT_CONTEXT_PANEL_TAB);
@@ -361,11 +370,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     set({ completedSessionIDs: new Set<string>() });
   },
 
-  isNotificationsEnabled:
-    isClient &&
-    storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "true" &&
-    typeof Notification !== "undefined" &&
-    Notification.permission === "granted",
+  isNotificationsEnabled: getPersistedNotificationsEnabled(),
   setNotificationsEnabled: (enabled) => {
     storage.set(Key.COPILOT_NOTIFICATIONS_ENABLED, String(enabled));
     set({ isNotificationsEnabled: enabled });

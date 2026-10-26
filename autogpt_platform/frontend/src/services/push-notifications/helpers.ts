@@ -34,9 +34,17 @@ export async function setupPushSubscription(
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || (await fetchVapidPublicKey());
   if (!vapidKey) return false;
 
-  const subscription = await withPushSubscriptionLock(async () =>
-    isCancelled() ? null : subscribeToPush(registration, vapidKey),
-  );
+  const subscription = await withPushSubscriptionLock(async () => {
+    if (isCancelled()) return null;
+    const created = await subscribeToPush(registration, vapidKey);
+    // A teardown that gave up waiting for the lock may already have run and
+    // found nothing, so a subscription made after the cancel is ours to drop.
+    if (created && isCancelled()) {
+      await unsubscribeFromPush(created);
+      return null;
+    }
+    return created;
+  });
   if (!subscription || isCancelled()) return false;
 
   return sendSubscriptionToServer(subscription);

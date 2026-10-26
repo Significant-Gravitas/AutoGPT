@@ -25,6 +25,7 @@ export function usePushNotifications() {
   const isEnabled = useCopilotUIStore((s) => s.isNotificationsEnabled);
   const registeredRef = useRef(false);
   const wasAuthedRef = useRef(false);
+  const pendingTeardownRef = useRef<Promise<void>>(Promise.resolve());
   const [renewCount, setRenewCount] = useState(0);
 
   useEffect(() => {
@@ -32,10 +33,19 @@ export function usePushNotifications() {
 
     let cancelled = false;
 
+    function startTeardown() {
+      pendingTeardownRef.current = teardownPushSubscription().catch((error) =>
+        console.error("Push notification teardown failed:", error),
+      );
+    }
+
     if (user && isEnabled) {
       wasAuthedRef.current = true;
       if (registeredRef.current) return;
-      setupPushSubscription(() => cancelled)
+      // Wait for an earlier teardown, or it could remove the subscription
+      // this setup is about to make.
+      pendingTeardownRef.current
+        .then(() => setupPushSubscription(() => cancelled))
         .then((sent) => {
           if (sent && !cancelled) registeredRef.current = true;
         })
@@ -52,18 +62,14 @@ export function usePushNotifications() {
       // drops its subscription the next time the app opens.
       wasAuthedRef.current = true;
       registeredRef.current = false;
-      teardownPushSubscription().catch((error) =>
-        console.error("Push notification teardown failed:", error),
-      );
+      startTeardown();
       return;
     }
 
     if (!wasAuthedRef.current) return;
     wasAuthedRef.current = false;
     registeredRef.current = false;
-    teardownPushSubscription().catch((error) =>
-      console.error("Push notification teardown failed:", error),
-    );
+    startTeardown();
   }, [user, isEnabled, renewCount]);
 
   useEffect(() => {

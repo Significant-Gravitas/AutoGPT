@@ -439,6 +439,41 @@ describe("PushNotificationProvider", () => {
       expect(mockSubscribeToPush).not.toHaveBeenCalled();
       expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
     });
+
+    it("waits for a pending teardown before subscribing again", async () => {
+      const { rerender } = render(<PushNotificationProvider />);
+      await waitFor(() => {
+        expect(mockSendSubscriptionToServer).toHaveBeenCalledTimes(1);
+      });
+
+      let resolveRegistration: (value: typeof mockRegistration) => void = () =>
+        undefined;
+      vi.mocked(navigator.serviceWorker.getRegistration).mockReturnValue(
+        new Promise((resolve) => {
+          resolveRegistration = resolve;
+        }) as unknown as ReturnType<
+          typeof navigator.serviceWorker.getRegistration
+        >,
+      );
+      mockSubscribeToPush.mockClear();
+
+      notificationsEnabledMock.mockReturnValue(false);
+      rerender(<PushNotificationProvider />);
+      notificationsEnabledMock.mockReturnValue(true);
+      rerender(<PushNotificationProvider />);
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockSubscribeToPush).not.toHaveBeenCalled();
+
+      resolveRegistration(mockRegistration);
+
+      await waitFor(() => {
+        expect(mockSendSubscriptionToServer).toHaveBeenCalledTimes(2);
+      });
+      expect(mockUnsubscribeFromPush.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSubscribeToPush.mock.invocationCallOrder[0],
+      );
+    });
   });
 
   describe("client URL reporting", () => {
