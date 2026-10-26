@@ -35,7 +35,7 @@ export function AskCard({
         <Button
           size="small"
           variant="ghost"
-          className="text-zinc-500"
+          className="text-foreground-tertiary"
           onClick={onDismissConnect}
         >
           Not now
@@ -75,7 +75,7 @@ function AskFrame({ body, children }: { body: string; children: ReactNode }) {
   return (
     <section
       aria-label="One thing I need from you"
-      className="mt-3 rounded-lg border border-zinc-200 bg-white px-4 py-3 md:-mx-5"
+      className="mt-3 rounded-lg border border-border-base bg-surface px-4 py-3 md:-mx-5"
     >
       <Text variant="small-medium" tone="muted" as="h3">
         One thing I need from you

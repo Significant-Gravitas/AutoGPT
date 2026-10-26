@@ -11,12 +11,14 @@ import {
 } from "../helpers";
 
 const STATUS_DOTS: Record<MemberStatus, string> = {
+  // TODO(tokens): no exact role: bg-sky-500 #0EA5E9
   installing: "bg-sky-500 animate-pulse",
-  unchecked: "bg-amber-500",
-  failed: "bg-red-500",
-  needs_connection: "bg-amber-500",
-  needs_setup: "bg-amber-500",
+  unchecked: "bg-warning",
+  failed: "bg-error",
+  needs_connection: "bg-warning",
+  needs_setup: "bg-warning",
   working: "bg-primary animate-pulse",
+  // TODO(tokens): no exact role: bg-emerald-500 #10B981
   ready: "bg-emerald-500",
 };
 
@@ -32,9 +34,9 @@ export function TeamCard({ team }: Props) {
   return (
     <section
       aria-label="Your team"
-      className="mt-5 overflow-hidden rounded-lg border border-zinc-200 bg-white md:-mx-5"
+      className="mt-5 overflow-hidden rounded-lg border border-border-base bg-surface md:-mx-5"
     >
-      <div className="flex items-baseline justify-between gap-3 border-b border-zinc-100 px-4 py-2.5">
+      <div className="flex items-baseline justify-between gap-3 border-b border-separator px-4 py-2.5">
         <Text variant="body-medium" tone="primary" as="h3">
           Your team
         </Text>
@@ -42,7 +44,7 @@ export function TeamCard({ team }: Props) {
           {getTeamSummary(team)}
         </Text>
       </div>
-      <ul className="divide-y divide-zinc-100">
+      <ul className="divide-y divide-separator">
         {visible.map((member) => (
           <li
             key={member.expert.id}
@@ -100,7 +102,7 @@ export function TeamCard({ team }: Props) {
         ))}
       </ul>
       {(hidden > 0 || isSettingUp) && (
-        <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-zinc-100 px-4 py-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-separator px-4 py-2">
           {isSettingUp && (
             <Text variant="small" tone="muted" as="span">
               Each row turns Ready when its setup finishes.
@@ -109,7 +111,7 @@ export function TeamCard({ team }: Props) {
           {hidden > 0 && (
             <NextLink
               href="/team"
-              className="ml-auto text-sm font-medium text-zinc-600 hover:text-zinc-900"
+              className="ml-auto text-sm font-medium text-foreground-secondary hover:text-foreground-strong"
             >
               and {hidden} more
             </NextLink>
