@@ -87,6 +87,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        id: native_python
         with:
           python-version: "3.13"
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
@@ -114,44 +115,15 @@ jobs:
         run: |
           read -r version digest < "$(cygpath -u "$RUNNER_TEMP")/desktop-valkey-pin.txt"
           bash build/valkey-windows.sh "$version" build/.cache/valkey-windows "$digest"
-      - name: Diagnose a failed Windows Valkey launch
-        if: failure() && runner.os == 'Windows' && steps.valkey.outcome == 'failure'
+      - name: Validate Windows Valkey with native Python
+        id: valkey_native
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          python - <<'PY'
-          import ctypes
-          import json
-          import shutil
-          import subprocess
-          from pathlib import Path
-          output = Path("build/.cache/valkey-windows").resolve()
-          server = output / "valkey-server.exe"
-          if not server.is_file():
-              raise SystemExit("Valkey did not produce an executable")
-          checker = output / "valkey-check-rdb.exe"
-          shutil.copy2(server, checker)
-          ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x0002 | 0x8000)
-          try:
-              result = subprocess.run(
-                  [str(checker), "--version"], cwd=output,
-                  capture_output=True, text=True, errors="replace", timeout=15,
-                  check=False,
-              )
-              report = {
-                  "returncode": result.returncode,
-                  "windows_status": f"0x{result.returncode & 0xffffffff:08X}",
-                  "stdout": result.stdout[:32768], "stderr": result.stderr[:32768],
-              }
-          except subprocess.TimeoutExpired:
-              report = {"timeout_seconds": 15}
-          except OSError as error:
-              report = {"winerror": error.winerror, "error": str(error)}
-          report.update(executable=str(checker), cwd=str(output), args=["--version"])
-          text = json.dumps(report, indent=2)
-          (output / "native-launch.json").write_text(text + "\n", encoding="utf-8")
-          print(text)
-          PY
+          & "${{ steps.native_python.outputs.python-path }}" -B build/valkey_windows_check.py build/.cache/valkey-windows
+          exit $LASTEXITCODE
       - name: Retain failed Windows Valkey build evidence
-        if: failure() && runner.os == 'Windows' && steps.valkey.outcome == 'failure'
+        if: failure() && runner.os == 'Windows' && (steps.valkey.outcome == 'failure' || steps.valkey_native.outcome == 'failure')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-valkey-failure-${{ github.sha }}
@@ -159,8 +131,8 @@ jobs:
             autogpt_platform/desktop/build/.cache/valkey-windows/*.exe
             autogpt_platform/desktop/build/.cache/valkey-windows/*.dll
             autogpt_platform/desktop/build/.cache/valkey-windows/COPYING
-            autogpt_platform/desktop/build/.cache/valkey-windows/*.txt
-            autogpt_platform/desktop/build/.cache/valkey-windows/*.json
+            autogpt_platform/desktop/build/.cache/valkey-windows-diagnostics/*.txt
+            autogpt_platform/desktop/build/.cache/valkey-windows-diagnostics/*.json
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7

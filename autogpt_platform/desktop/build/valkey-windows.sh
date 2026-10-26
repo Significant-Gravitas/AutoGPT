@@ -28,6 +28,8 @@ sha256="${3:?${usage}}"
 # deleted on exit, and a relative output would land inside it.
 mkdir -p "${2:?${usage}}"
 output="$(cd "$2" && pwd)"
+diagnostics="${output}-diagnostics"
+mkdir -p "${diagnostics}"
 
 pacman -S --noconfirm --needed gcc binutils make pkgconf tar >/dev/null
 
@@ -50,23 +52,22 @@ cp COPYING "${output}/COPYING"
 printf 'Collecting Valkey runtime DLLs from PE imports\n'
 bash "${script_dir}/valkey-dlls.sh" "${output}/valkey-server.exe" /usr/bin "${output}"
 
-pacman -Q gcc gcc-libs msys2-runtime msys2-runtime-devel binutils > "${output}/toolchain.txt"
-command -v bash gcc objdump cygcheck >> "${output}/toolchain.txt"
-printf 'MSYSTEM=%s\nPATH=%s\n' "${MSYSTEM:-}" "$PATH" >> "${output}/toolchain.txt"
-sha256sum src/valkey-server.exe > "${output}/sha256.txt"
+pacman -Q gcc gcc-libs msys2-runtime msys2-runtime-devel binutils > "${diagnostics}/toolchain.txt"
+command -v bash gcc objdump cygcheck >> "${diagnostics}/toolchain.txt"
+printf 'MSYSTEM=%s\nPATH=%s\n' "${MSYSTEM:-}" "$PATH" >> "${diagnostics}/toolchain.txt"
+sha256sum src/valkey-server.exe > "${diagnostics}/sha256.txt"
 for binary in "${output}/valkey-server.exe" "${output}"/*.dll; do
-  objdump -f "$binary" > "${binary}.imports.txt"
-  objdump -p "$binary" >> "${binary}.imports.txt"
-  sha256sum "$binary" >> "${output}/sha256.txt"
+  objdump -f "$binary" > "${diagnostics}/$(basename "$binary").imports.txt"
+  objdump -p "$binary" >> "${diagnostics}/$(basename "$binary").imports.txt"
+  sha256sum "$binary" >> "${diagnostics}/sha256.txt"
   if [[ "$binary" == *.dll ]]; then
-    sha256sum "/usr/bin/$(basename "$binary")" >> "${output}/sha256.txt"
+    sha256sum "/usr/bin/$(basename "$binary")" >> "${diagnostics}/sha256.txt"
   fi
 done
-if cygcheck -v "${output}/valkey-server.exe" > "${output}/dependencies.txt" 2>&1; then
-  printf 'cygcheck exit: 0\n' >> "${output}/dependencies.txt"
+if cygcheck -v "${output}/valkey-server.exe" > "${diagnostics}/dependencies.txt" 2>&1; then
+  printf 'cygcheck exit: 0\n' >> "${diagnostics}/dependencies.txt"
 else
-  printf 'cygcheck exit: %s\n' "$?" >> "${output}/dependencies.txt"
+  printf 'cygcheck exit: %s\n' "$?" >> "${diagnostics}/dependencies.txt"
 fi
 
-printf 'Checking the assembled Valkey executable\n'
-"${output}/valkey-server.exe" --version
+printf 'Valkey build and DLL inspection complete; native Windows validation is required before assembly\n'
