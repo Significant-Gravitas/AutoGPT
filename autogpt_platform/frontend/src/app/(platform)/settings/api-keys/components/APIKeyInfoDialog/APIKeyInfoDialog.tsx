@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import type { APIKeyInfo } from "@/app/api/__generated__/models/aPIKeyInfo";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { SCOPE_API_VERSION } from "@/lib/api-key-scopes";
 
 import { maskAPIKey } from "../APIKeyList/helpers";
 import { humanizePermission } from "../CreateAPIKeyDialog/schema";
@@ -52,6 +53,12 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
                     className="rounded-full bg-surface-hover px-2.5 py-1 text-xs text-foreground-body"
                   >
                     {humanizePermission(scope)}
+                    {SCOPE_API_VERSION[scope] === "v1" && (
+                      <span className="text-foreground-secondary">
+                        {" "}
+                        · v1 only
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

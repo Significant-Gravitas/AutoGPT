@@ -279,7 +279,11 @@ from ._test_data import make_session
 # re-measured on that merged tree (89 tools), with the stack's margin:
 #     merged tree                                 77,301 (89 tools)
 #     + headroom                       +300       77,601
-_CHAR_BUDGET = 77_601
+# Re-measured on the v2 External API root merged with dev 8df80022bc, which
+# brings the MCP tools' external schemas and the preset tools back:
+#     merged tree                                 77,510 (89 tools)
+#     + headroom                       +300       77,810
+_CHAR_BUDGET = 77_810
 
 
 @pytest.fixture(scope="module")

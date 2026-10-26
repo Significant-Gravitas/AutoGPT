@@ -167,11 +167,6 @@ type BaseButtonProps = {
   rightIcon?: React.ReactNode;
   asChild?: boolean;
   withTooltip?: boolean;
-  /**
-   * Shows the label in session replays, which mask all text by default.
-   * Only for a static label that is the same for every user.
-   */
-  unmask?: boolean;
 } & VariantProps<typeof extendedButtonVariants>;
 
 type ButtonAsButton = BaseButtonProps &

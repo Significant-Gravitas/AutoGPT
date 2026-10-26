@@ -20,48 +20,6 @@ afterEach(() => {
   cleanup();
 });
 
-describe("Button in session replay", () => {
-  it.each([
-    ["primary", {}],
-    ["secondary", { variant: "secondary" }],
-    ["ghost", { variant: "ghost" }],
-    ["link", { variant: "link" }],
-    ["loading", { loading: true }],
-  ] as const)("is masked by default (%s)", (_, props) => {
-    renderButton({ ...props, children: "Account name" });
-    const el = screen.getByRole("button");
-    expect(el.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
-  });
-
-  it("is masked by default as a NextLink", () => {
-    renderButton({ as: "NextLink", href: "/save", children: "Go" });
-    const el = screen.getByRole("link", { name: "Go" });
-    expect(el.className).not.toContain("sentry-unmask");
-  });
-
-  it("opts into unmasking only when asked", () => {
-    renderButton({ unmask: true, className: "my-class", children: "Save" });
-    const el = screen.getByRole("button", { name: "Save" });
-    expect(el.className).toContain("sentry-unmask");
-    expect(el.className).toContain("my-class");
-  });
-
-  it("opts into unmasking in the loading state and as a NextLink", () => {
-    renderButton({ loading: true, unmask: true, children: "Saving" });
-    expect(screen.getByRole("button").className).toContain("sentry-unmask");
-    cleanup();
-    renderButton({
-      as: "NextLink",
-      href: "/save",
-      unmask: true,
-      children: "Go",
-    });
-    expect(screen.getByRole("link", { name: "Go" }).className).toContain(
-      "sentry-unmask",
-    );
-  });
-});
-
 describe("Button compact sizes", () => {
   it("renders xs as a 28px rounded-rectangle chip", () => {
     renderButton({ variant: "secondary", size: "xs", children: "Chat" });

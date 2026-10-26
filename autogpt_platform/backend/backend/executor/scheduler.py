@@ -2848,7 +2848,8 @@ def _index_entry(
 
 
 class Scheduler(AppService):
-    scheduler: BackgroundScheduler
+    # Built by `run_service`, so a scheduler stopped before then has none.
+    _scheduler: BackgroundScheduler | None = None
     _persistent_jobstores: dict[str, ResilientSQLAlchemyJobStore] = {}
 
     # Sidecar index for filtered schedule reads. ``None`` (not set up or
@@ -2870,6 +2871,16 @@ class Scheduler(AppService):
         # must not run in them, and their tests' schedules must not land there.
         self.throwaway_jobstores = throwaway_jobstores
 
+    @property
+    def scheduler(self) -> BackgroundScheduler:
+        if self._scheduler is None:
+            raise AttributeError("Scheduler has no APScheduler before run_service()")
+        return self._scheduler
+
+    @scheduler.setter
+    def scheduler(self, scheduler: BackgroundScheduler) -> None:
+        self._scheduler = scheduler
+
     @classmethod
     def get_port(cls) -> int:
         return config.execution_scheduler_port
@@ -2880,7 +2891,7 @@ class Scheduler(AppService):
 
     async def health_check(self) -> str:
         # Thread-safe health check with proper initialization handling
-        if not hasattr(self, "scheduler"):
+        if self._scheduler is None:
             raise UnhealthyServiceError("Scheduler is still initializing")
 
         # Check if we're in the middle of cleanup
@@ -3280,7 +3291,9 @@ class Scheduler(AppService):
                 )
 
     def cleanup(self):
-        if self.scheduler:
+        # `run_service` builds the scheduler before it starts it, and a stopped
+        # scheduler's `shutdown()` raises.
+        if self._scheduler is not None and self._scheduler.running:
             logger.info("⏳ Shutting down scheduler...")
             self.scheduler.shutdown(wait=True)
 

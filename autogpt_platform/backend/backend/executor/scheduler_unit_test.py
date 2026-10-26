@@ -17,6 +17,7 @@ from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -71,7 +72,8 @@ from backend.util.exceptions import (
     UserBannedError,
     UserPaywalledError,
 )
-from backend.util.service import EXPOSED_FLAG
+from backend.util.process import AppProcess
+from backend.util.service import EXPOSED_FLAG, UnhealthyServiceError
 from backend.util.settings import Config
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
@@ -3196,6 +3198,32 @@ class TestScheduleListCache:
         assert fetch.calls == 1
         assert sum(isinstance(r, RuntimeError) for r in results) == 1  # the fetcher
         assert [r for r in results if isinstance(r, list)] == [["list-1"]] * 7
+
+
+# ── stopped before `run_service` started the APScheduler ───────────────────
+
+
+@pytest.mark.parametrize(
+    "built", [False, True], ids=["not built", "built, not started"]
+)
+def test_cleanup_of_a_scheduler_stopped_before_run_service_finishes_the_chain(
+    monkeypatch: pytest.MonkeyPatch, mocker, built: bool
+):
+    monkeypatch.setattr(scheduler_module, "_event_loop", None)
+    monkeypatch.setattr(scheduler_module, "_event_loop_thread", None)
+    process_cleanup = mocker.patch.object(AppProcess, "cleanup")
+    service = Scheduler(register_system_tasks=False)
+    if built:
+        service.scheduler = BackgroundScheduler()
+
+    service.cleanup()
+
+    process_cleanup.assert_called_once_with()
+
+
+async def test_a_scheduler_before_run_service_reports_itself_initializing():
+    with pytest.raises(UnhealthyServiceError, match="initializing"):
+        await Scheduler(register_system_tasks=False).health_check()
 
 
 class _GatedFetch:

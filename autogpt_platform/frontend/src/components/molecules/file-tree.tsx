@@ -11,7 +11,7 @@ import React, {
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/atoms/Button/Button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
 import {
   FileEmpty02Icon,
   Folder01Icon,
