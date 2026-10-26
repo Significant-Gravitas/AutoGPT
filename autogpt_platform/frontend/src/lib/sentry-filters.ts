@@ -45,7 +45,7 @@ export function isInjectedIframeProbe(event: Event) {
 }
 
 export const CLIENT_IGNORE_ERRORS = [
-  // Sentry Replay (rrweb) serializing DOM snapshots with cross-origin
+  // Session replay (rrweb) serializing DOM snapshots with cross-origin
   // stylesheets (e.g. from browser extensions or CDN-loaded CSS)
   /Not allowed to access cross-origin stylesheet/,
   // Sentry SDK internal issue on some mobile browsers
