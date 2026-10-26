@@ -6,17 +6,13 @@ vi.mock("@/services/analytics/sentry-posthog", () => ({
   createPostHogSentryProcessor: () => mirrorEvent,
 }));
 
-const { initMock, reportingObserverIntegrationMock, holdReplayBackForMock } =
-  vi.hoisted(() => ({
-    initMock: vi.fn(),
-    holdReplayBackForMock: vi.fn(),
-    reportingObserverIntegrationMock: vi.fn(
-      (options?: { types?: string[] }) => ({
-        name: "ReportingObserver",
-        options,
-      }),
-    ),
-  }));
+const { initMock, reportingObserverIntegrationMock } = vi.hoisted(() => ({
+  initMock: vi.fn(),
+  reportingObserverIntegrationMock: vi.fn((options?: { types?: string[] }) => ({
+    name: "ReportingObserver",
+    options,
+  })),
+}));
 
 vi.mock("@sentry/nextjs", () => {
   function stubIntegration(name: string) {
@@ -36,17 +32,12 @@ vi.mock("@sentry/nextjs", () => {
   };
 });
 
-vi.mock("@/lib/session-replay", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/session-replay")>()),
-  holdReplayBackFor: holdReplayBackForMock,
-}));
-
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
 describe("Sentry client instrumentation", () => {
-  it("holds session replay back as Next starts each navigation", async () => {
+  it("passes each navigation Next starts on to Sentry", async () => {
     const Sentry = await import("@sentry/nextjs");
     const { onRouterTransitionStart } = await import(
       "../../instrumentation-client"
@@ -58,7 +49,6 @@ describe("Sentry client instrumentation", () => {
       "/link/t-1",
       "push",
     );
-    expect(holdReplayBackForMock).toHaveBeenCalledWith("/link/t-1");
   });
 
   it("does not forward browser deprecation reports to Sentry", async () => {
@@ -210,12 +200,24 @@ describe("Sentry client instrumentation", () => {
     initMock.mockClear();
     await import("../../instrumentation-client");
 
-    const { tracesSampleRate, profilesSampleRate, replaysOnErrorSampleRate } =
-      initMock.mock.calls[0][0];
+    const { tracesSampleRate, profilesSampleRate } = initMock.mock.calls[0][0];
 
     expect(tracesSampleRate).toBe(1);
     expect(profilesSampleRate).toBe(0.1);
-    expect(replaysOnErrorSampleRate).toBe(1);
+  });
+
+  it("records no session replay", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    await import("../../instrumentation-client");
+
+    const options = initMock.mock.calls[0][0];
+    expect(options).not.toHaveProperty("replaysSessionSampleRate");
+    expect(options).not.toHaveProperty("replaysOnErrorSampleRate");
+    const names = options.integrations.map(
+      (integration: { name: string }) => integration.name,
+    );
+    expect(names).not.toContain("Replay");
   });
 
   it("tags events with the environment the deployment names for itself", async () => {

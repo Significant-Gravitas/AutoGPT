@@ -54,7 +54,6 @@ describe("DeviceAuthConnectButton", () => {
     renderButton();
 
     const code = screen.getByText("glow-relish-chaste-soft");
-    expect(code.className).not.toContain("sentry-unmask");
     const blocked = code.closest(".ph-no-capture");
     expect(blocked).not.toBeNull();
     // verification_uri_complete carries the code in the link's href.
