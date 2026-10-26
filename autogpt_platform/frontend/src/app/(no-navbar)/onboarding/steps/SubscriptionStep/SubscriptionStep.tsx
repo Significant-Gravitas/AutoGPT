@@ -7,6 +7,7 @@ import { TrialCardContent } from "@/components/organisms/TrialCard/TrialCard";
 import { useTrialCard } from "@/components/organisms/TrialCard/useTrialCard";
 import { useOnboardingWizardStore } from "../../store";
 import { useState } from "react";
+import { TrialHero } from "./components/TrialHero";
 import { useSubscriptionStep } from "./useSubscriptionStep";
 
 export function SubscriptionStep() {
@@ -32,6 +33,8 @@ export function SubscriptionStep() {
     }
   }
   const offer = getEligibleTrialOffer(trial, subscription.plans);
+  const isStartingTrial = trial.isStarting || saving;
+  const trialError = saveError ?? trial.error;
 
   return (
     <FadeIn className="w-full">
@@ -43,10 +46,22 @@ export function SubscriptionStep() {
         onSelectPlan={subscription.handlePlanSelect}
         isUpdatingTier={subscription.isUpdatingTier}
         selectedPlan={subscription.selectedPlan}
+        header={
+          offer ? (
+            <TrialHero
+              offer={offer}
+              onStart={startTrial}
+              isStarting={isStartingTrial}
+              isDisabled={subscription.isUpdatingTier}
+              error={trialError}
+            />
+          ) : undefined
+        }
         trialOffer={offer}
         onStartTrial={startTrial}
-        isStartingTrial={trial.isStarting || saving}
-        trialError={saveError ?? trial.error}
+        isStartingTrial={isStartingTrial}
+        // The hero shows the trial error next to its own button.
+        trialError={offer ? null : trialError}
         trialStatus={
           !offer && (
             <TrialCardContent
@@ -54,9 +69,9 @@ export function SubscriptionStep() {
               controller={{
                 ...trial,
                 startTrial,
-                isStarting: trial.isStarting || saving,
+                isStarting: isStartingTrial,
                 isBlocked: trial.isBlocked || subscription.isUpdatingTier,
-                error: saveError ?? trial.error,
+                error: trialError,
               }}
             />
           )
