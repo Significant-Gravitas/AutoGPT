@@ -261,7 +261,10 @@ export default function StyleguidePage() {
               <SubSection label="Thinking indicator">
                 <div className="flex flex-col gap-6">
                   <ThinkingIndicator active />
-                  <DrawnLineLoader size={64} className="text-zinc-600" />
+                  <DrawnLineLoader
+                    size={64}
+                    className="text-foreground-secondary"
+                  />
                 </div>
               </SubSection>
 
