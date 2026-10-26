@@ -412,7 +412,7 @@ export const CARD_FIXTURES: Record<string, CardFixture> = Object.fromEntries([
         messages_before: 40,
         messages_after: 8,
       }),
-      marker: "Condensed",
+      marker: "Summarized",
     },
   ],
   [

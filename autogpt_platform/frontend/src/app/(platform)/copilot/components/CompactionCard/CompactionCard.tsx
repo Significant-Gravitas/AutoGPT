@@ -5,6 +5,7 @@ import { ReloadIcon } from "@hugeicons/core-free-icons";
 import { formatElapsed } from "../JobStatsBar/formatElapsed";
 import {
   barPercent,
+  compactionDetail,
   compactionLabel,
   type CompactionPhase,
   type CompactionStats,
@@ -25,7 +26,10 @@ export function CompactionCard({ phase, stats, isSettled }: Props) {
     return (
       <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
         <Icon icon={ReloadIcon} size={14} />
-        <span className="min-w-0 truncate">
+        <span
+          className="min-w-0 truncate"
+          title={compactionDetail(stats) ?? undefined}
+        >
           {compactionLabel(phase, stats)}
         </span>
       </div>
