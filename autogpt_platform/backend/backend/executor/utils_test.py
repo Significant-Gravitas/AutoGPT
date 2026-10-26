@@ -6,9 +6,11 @@ from prisma.enums import ReviewStatus
 from pytest_mock import MockerFixture
 
 from backend.blocks.anysearch.extract import AnySearchExtractBlock
+from backend.blocks.autopilot import AutoPilotBlock
 from backend.blocks.github.issues import GithubCommentBlock
 from backend.blocks.google._drive import GoogleDriveFile
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
+from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
 from backend.data.execution import (
     ExecutionContext,
@@ -3875,6 +3877,39 @@ def test_validate_exec_keeps_selected_optional_credentials():
 
     assert data is not None, msg
     assert data["credentials"]["id"] == "cred-1"
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["llama3.2", "gpt-4o-mini", "claude-opus-4-5-20251101"],
+    ids=["ollama", "openai", "anthropic"],
+)
+def test_validate_exec_clears_unset_llm_credentials(model):
+    """LLM blocks declare `credentials` with `default=None`; a stored `{}`
+    must not fail the nested schema and leave the node unqueued."""
+    node = Node(
+        block_id=AITextGeneratorBlock().id,
+        input_default={"model": model, "credentials": {}},
+    )
+
+    data, msg = validate_exec(node, {"prompt": "hi"})
+
+    assert data is not None, msg
+    assert data["credentials"] is None
+
+
+def test_validate_exec_clears_unset_autopilot_codex_credentials():
+    """AutoPilot on the platform transport with a stored `{}` Codex
+    reference is queued instead of skipped."""
+    node = Node(
+        block_id=AutoPilotBlock().id,
+        input_default={"transport": "platform", "codex_credentials": {}},
+    )
+
+    data, msg = validate_exec(node, {"prompt": "hi"})
+
+    assert data is not None, msg
+    assert data["codex_credentials"] is None
 
 
 def test_validate_exec_rejects_unset_required_credentials():
