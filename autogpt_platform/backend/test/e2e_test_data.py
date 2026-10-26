@@ -1342,20 +1342,17 @@ class TestDataCreator:
 
     async def backfill_content_embeddings(self):
         """Drive embedding coverage to 100% so the CI cache dump carries it."""
-        client = get_openai_client()
-        if not client:
+        if not get_openai_client():
             print("⏭️  No embedding backend configured — skipping embedding backfill")
             return
-        # generate_embedding reuses this cached client, whose default lets one stuck
-        # request hold its whole round for 600 s x 3 attempts.
-        client.timeout = EMBEDDING_REQUEST_TIMEOUT_SECONDS
 
         print("Backfilling content embeddings...")
         deadline = time.monotonic() + EMBEDDING_BACKFILL_TIMEOUT_SECONDS
         while True:
             try:
-                # Both awaits reach the network, so checking the clock between
-                # them would bound nothing.
+                # Both awaits reach the network, and one stuck embedding call is
+                # 600s x 3 attempts under the OpenAI client's defaults — longer than
+                # the whole deadline. Checking the clock between them bounds nothing.
                 stats = await asyncio.wait_for(
                     get_embedding_stats(), _seconds_left(deadline)
                 )
@@ -1418,6 +1415,10 @@ async def main():
         if args.refresh_credentials_only:
             await refresh_seeded_credentials()
         else:
+            # Bounds each embedding request. Not in the backfill itself: the admin route
+            # runs that inside the server, whose cached client other callers share.
+            if client := get_openai_client():
+                client.timeout = EMBEDDING_REQUEST_TIMEOUT_SECONDS
             creator = TestDataCreator()
             await creator.create_all_test_data()
     finally:
