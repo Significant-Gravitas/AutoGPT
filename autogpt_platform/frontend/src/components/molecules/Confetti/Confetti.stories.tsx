@@ -29,14 +29,14 @@ function BasicCannonDemo() {
   }
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-zinc-50">
+    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-surface-muted">
       <Confetti ref={confettiRef} manualstart />
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-foreground-tertiary">
         Single burst from center of viewport
       </p>
       <button
         onClick={fire}
-        className="rounded-lg bg-purple-500 px-8 py-3 text-base font-medium text-white shadow-md transition-colors hover:bg-purple-600 active:scale-95"
+        className="rounded-lg bg-brand px-8 py-3 text-base font-medium text-action-foreground shadow-md transition-colors hover:bg-brand-hover active:scale-95"
       >
         Fire Cannon
       </button>
@@ -63,14 +63,14 @@ function RandomDirectionDemo() {
   }
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-zinc-50">
+    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-surface-muted">
       <Confetti ref={confettiRef} manualstart />
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-foreground-tertiary">
         Random position and angle each click
       </p>
       <button
         onClick={fire}
-        className="rounded-lg bg-purple-500 px-8 py-3 text-base font-medium text-white shadow-md transition-colors hover:bg-purple-600 active:scale-95"
+        className="rounded-lg bg-brand px-8 py-3 text-base font-medium text-action-foreground shadow-md transition-colors hover:bg-brand-hover active:scale-95"
       >
         Random Burst
       </button>
@@ -105,12 +105,14 @@ function SideCannonsDemo() {
   }
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-zinc-50">
+    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-surface-muted">
       <Confetti ref={confettiRef} manualstart />
-      <p className="text-sm text-zinc-500">Dual cannons from left and right</p>
+      <p className="text-sm text-foreground-tertiary">
+        Dual cannons from left and right
+      </p>
       <button
         onClick={fireSideCannons}
-        className="rounded-lg bg-purple-500 px-8 py-3 text-base font-medium text-white shadow-md transition-colors hover:bg-purple-600 active:scale-95"
+        className="rounded-lg bg-brand px-8 py-3 text-base font-medium text-action-foreground shadow-md transition-colors hover:bg-brand-hover active:scale-95"
       >
         Fire Side Cannons
       </button>
@@ -165,13 +167,15 @@ function FireworksDemo() {
   }
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-zinc-900">
+    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-action-hover">
       <Confetti ref={confettiRef} manualstart />
-      <p className="text-sm text-zinc-400">Continuous stream from both sides</p>
+      <p className="text-sm text-foreground-subtle">
+        Continuous stream from both sides
+      </p>
       <button
         onClick={startFireworks}
         disabled={active}
-        className="rounded-lg bg-purple-500 px-8 py-3 text-base font-medium text-white shadow-md transition-colors hover:bg-purple-600 active:scale-95 disabled:opacity-50"
+        className="rounded-lg bg-brand px-8 py-3 text-base font-medium text-action-foreground shadow-md transition-colors hover:bg-brand-hover active:scale-95 disabled:opacity-50"
       >
         {active ? "Fireworks..." : "Launch Fireworks"}
       </button>
@@ -243,13 +247,11 @@ function CelebrationDemo() {
       <h1 className="font-poppins text-7xl font-medium tracking-tighter text-purple-700">
         Congrats!
       </h1>
-      <p className="text-lg text-purple-500">
-        AutoGPT purple-themed celebration
-      </p>
+      <p className="text-lg text-brand">AutoGPT purple-themed celebration</p>
       <button
         onClick={celebrate}
         disabled={celebrating}
-        className="mt-4 rounded-lg bg-purple-500 px-8 py-3 text-base font-medium text-white shadow-md transition-colors hover:bg-purple-600 active:scale-95 disabled:opacity-50"
+        className="mt-4 rounded-lg bg-brand px-8 py-3 text-base font-medium text-action-foreground shadow-md transition-colors hover:bg-brand-hover active:scale-95 disabled:opacity-50"
       >
         {celebrating ? "Celebrating..." : "Celebrate!"}
       </button>
@@ -283,7 +285,7 @@ function StarsDemo() {
       <p className="text-sm text-purple-400">Large star-shaped confetti</p>
       <button
         onClick={fireStars}
-        className="rounded-lg bg-purple-600 px-8 py-3 text-base font-medium text-white shadow-md transition-colors hover:bg-purple-700 active:scale-95"
+        className="rounded-lg bg-brand-hover px-8 py-3 text-base font-medium text-action-foreground shadow-md transition-colors hover:bg-purple-700 active:scale-95"
       >
         Purple Stars
       </button>
@@ -333,15 +335,15 @@ function FullScreenShowerDemo() {
   }
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-zinc-50">
+    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-surface-muted">
       <Confetti ref={confettiRef} manualstart />
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-foreground-tertiary">
         Confetti rain across the full viewport
       </p>
       <button
         onClick={startShower}
         disabled={active}
-        className="rounded-lg bg-purple-500 px-8 py-3 text-base font-medium text-white shadow-md transition-colors hover:bg-purple-600 active:scale-95 disabled:opacity-50"
+        className="rounded-lg bg-brand px-8 py-3 text-base font-medium text-action-foreground shadow-md transition-colors hover:bg-brand-hover active:scale-95 disabled:opacity-50"
       >
         {active ? "Raining..." : "Confetti Shower"}
       </button>

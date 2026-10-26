@@ -16,6 +16,7 @@ interface Props {
 }
 
 export function IdentityAvatar({ identity, className, imageSize }: Props) {
+  // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3
   const avatarClassName = cn("rounded-full border border-[#e3e3e3]", className);
   if (identity.isAutopilot)
     return <AutopilotAvatar size={imageSize} className={avatarClassName} />;

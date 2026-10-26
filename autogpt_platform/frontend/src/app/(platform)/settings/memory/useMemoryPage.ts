@@ -1,5 +1,6 @@
 import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
 import {
+  getGetMyBusinessUnderstandingQueryKey,
   getGetMyExpertMemoryOverviewQueryKey,
   getGetMyMemoryOverviewQueryKey,
   getListMyExpertMemoryFactsQueryKey,
@@ -77,6 +78,9 @@ export function useMemoryPage() {
       });
       queryClient.invalidateQueries({
         queryKey: getGetMyMemoryOverviewQueryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getGetMyBusinessUnderstandingQueryKey(),
       });
       return;
     }

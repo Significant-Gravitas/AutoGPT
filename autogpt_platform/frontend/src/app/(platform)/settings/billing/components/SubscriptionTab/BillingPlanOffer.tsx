@@ -33,22 +33,31 @@ export function BillingPlanOffer({
       aria-label={`AutoGPT ${target}`}
       className={
         quiet
-          ? "flex h-full flex-col rounded-2xl border border-zinc-200 bg-white p-6"
-          : "flex h-full flex-col rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 p-6"
+          ? "flex h-full flex-col rounded-2xl border border-border-base bg-surface p-6"
+          : // TODO(tokens): no exact role (border-purple-200 #C0A1FA, from-purple-50 #F1EBFE)
+            "flex h-full flex-col rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 via-surface to-info-surface p-6"
       }
     >
       <div className="flex items-center gap-2.5">
-        <span className="flex size-7 items-center justify-center rounded-lg bg-purple-100 text-purple-700">
+        <span
+          // TODO(tokens): no exact role (bg-purple-100 #EFE8FE, text-purple-700 #5424AE)
+          className="flex size-7 items-center justify-center rounded-lg bg-purple-100 text-purple-700"
+        >
           <Icon icon={SparklesIcon} size={17} />
         </span>
-        <Text variant="small-medium" className="text-purple-800">
+        <Text
+          // TODO(tokens): no exact role (text-purple-800 #411C87)
+          variant="small-medium"
+          className="text-purple-800"
+        >
           AutoGPT {target}
         </Text>
       </div>
       <Text
         variant="h4"
         as="h2"
-        className="mb-3 mt-4 text-[23px] leading-8 tracking-[-0.04em]"
+        // TODO(tokens): SECRT-3152 rare size (text-[23px])
+        className="mb-3 mt-4 text-[23px] leading-8 tracking-display"
       >
         {title}
       </Text>
@@ -62,6 +71,7 @@ export function BillingPlanOffer({
           <Text
             variant="h2"
             as="span"
+            // TODO(tokens): no exact text token (tracking-[-0.045em]); SECRT-3152 rare size (text-[36px])
             className="font-sans text-[36px] font-semibold leading-10 tracking-[-0.045em]"
           >
             {price.split(" / ")[0]}
@@ -77,9 +87,10 @@ export function BillingPlanOffer({
             <Icon
               icon={Tick02Icon}
               size={15}
+              // TODO(tokens): no exact role (text-purple-700 #5424AE)
               className="mt-0.5 shrink-0 text-purple-700"
             />
-            <Text variant="small" className="text-zinc-700">
+            <Text variant="small" className="text-foreground-body">
               {benefit}
             </Text>
           </li>

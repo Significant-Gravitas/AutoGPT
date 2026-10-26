@@ -56,7 +56,7 @@ export function ArtifactsTab({ sessionId }: Props) {
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 overflow-y-auto px-4 py-8">
       <div className="flex flex-col items-center gap-3">
-        <p className="max-w-[17rem] text-center text-sm text-zinc-500">
+        <p className="max-w-[17rem] text-center text-sm text-foreground-tertiary">
           {files.length === 0
             ? "Nothing to preview yet."
             : "Pick an artifact from this chat to preview it here."}

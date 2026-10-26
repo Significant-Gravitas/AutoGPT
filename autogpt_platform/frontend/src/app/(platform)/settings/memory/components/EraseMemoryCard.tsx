@@ -30,12 +30,15 @@ export function EraseMemoryCard({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-[18px] border border-red-200 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)] sm:flex-row sm:items-center sm:justify-between">
+    <div
+      // TODO(tokens): no exact role (border-red-200 #FAC5C5)
+      className="flex flex-col gap-3 rounded-[18px] border border-red-200 bg-surface px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)] sm:flex-row sm:items-center sm:justify-between"
+    >
       <div className="flex min-w-0 flex-col">
-        <Text variant="body-medium" as="span" className="text-red-700">
+        <Text variant="body-medium" as="span" className="text-error-foreground">
           Erase {scopeName}&apos;s memory
         </Text>
-        <Text variant="small" as="span" className="text-zinc-500">
+        <Text variant="small" as="span" className="text-foreground-tertiary">
           Permanently delete everything this memory holds. This can&apos;t be
           undone.
         </Text>
@@ -58,7 +61,7 @@ export function EraseMemoryCard({
         </Dialog.Trigger>
         <Dialog.Content>
           <div className="flex flex-col gap-4">
-            <Text variant="small" as="p" className="text-zinc-600">
+            <Text variant="small" as="p" className="text-foreground-secondary">
               {memoryCount !== null
                 ? `Every memory in this scope will be permanently deleted — ${memoryCount} ${memoryCount === 1 ? "memory" : "memories"}, raw conversations included. Other scopes are not affected.`
                 : "Every memory in this scope will be permanently deleted, raw conversations included. Other scopes are not affected."}{" "}

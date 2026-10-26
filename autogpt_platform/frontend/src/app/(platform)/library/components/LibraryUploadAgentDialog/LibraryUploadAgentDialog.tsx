@@ -122,7 +122,10 @@ export default function LibraryUploadAgentDialog() {
           >
             {isUploading ? (
               <div className="flex items-center gap-2">
-                <LoadingSpinner size="small" className="text-white" />
+                <LoadingSpinner
+                  size="small"
+                  className="text-action-foreground"
+                />
                 <span>Uploading...</span>
               </div>
             ) : (

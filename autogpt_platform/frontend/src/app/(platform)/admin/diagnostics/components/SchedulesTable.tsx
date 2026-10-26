@@ -1,7 +1,19 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-100 #F3F4F6, bg-purple-50 #F1EBFE, bg-red-700 #AA3030,
+// text-gray-400 #9CA3AF, text-gray-500 #6B7280, text-gray-600 #4B5563,
+// text-gray-700 #374151, text-purple-600 #6C2EDF.
+// Same value as a role with another meaning, so not swapped:
+// text-purple-600 = brand-hover (a hover fill).
+
 import { Button } from "@/components/atoms/Button/Button";
-import { Card } from "@/components/atoms/Card/Card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/atoms/Card/Card";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +21,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import React, { useState } from "react";
 import {
@@ -19,13 +31,8 @@ import {
   TableHead,
   TableRow,
   TableCell,
-} from "@/components/__legacy__/ui/table";
+} from "@/components/molecules/Table/components/TablePrimitives";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import {
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/__legacy__/ui/card";
 import {
   useGetV2ListAllUserSchedules,
   useGetV2ListOrphanedSchedules,
@@ -455,7 +462,7 @@ export function SchedulesTable({
             <Button
               variant="destructive"
               onClick={handleDelete}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-error-hover hover:bg-red-700"
             >
               Delete Schedules
             </Button>

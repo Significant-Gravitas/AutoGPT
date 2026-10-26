@@ -29,10 +29,11 @@ function Pill({ tone, label }: PillProps) {
       className={cn(
         "rounded-full px-2 py-0.5 text-xs font-medium",
         tone === "on"
-          ? "bg-emerald-50 text-emerald-700"
+          ? // TODO(tokens): no exact role for bg-emerald-50, text-emerald-700
+            "bg-emerald-50 text-emerald-700"
           : tone === "off"
-            ? "bg-zinc-100 text-zinc-600"
-            : "bg-zinc-50 text-zinc-500",
+            ? "bg-surface-hover text-foreground-secondary"
+            : "bg-surface-muted text-foreground-tertiary",
       )}
     >
       {label}
@@ -98,14 +99,14 @@ export function ComputerPanelContent({ sessionId }: Props) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2">
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border-base bg-surface px-3 py-2">
         <div className="flex items-center gap-3 text-sm">
           <span className="flex items-center gap-1.5">
-            <span className="text-zinc-500">Machine</span>
+            <span className="text-foreground-tertiary">Machine</span>
             <Pill tone={machineTone} label={machineLabel} />
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="text-zinc-500">Screen</span>
+            <span className="text-foreground-tertiary">Screen</span>
             <Pill
               tone={!box ? "none" : screenOn ? "on" : "off"}
               label={!box ? "None" : screenOn ? "On" : "Off"}
@@ -128,9 +129,9 @@ export function ComputerPanelContent({ sessionId }: Props) {
           {desktopStreamRenderer.render({ kind: "desktop_stream", ...stream })}
         </div>
       ) : (
-        <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-zinc-200 p-6 text-center">
+        <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-base p-6 text-center">
           <Text variant="small-medium">Screen is not on this panel yet</Text>
-          <Text variant="small" className="max-w-xs text-zinc-500">
+          <Text variant="small" className="max-w-xs text-foreground-tertiary">
             {isExpert
               ? "This chat runs on the expert's own computer. Turn on its screen to watch it work in a real browser, or ask for one in the chat."
               : "Turn on this chat's screen to watch it work in a real browser, or ask for one in the chat. It is the same machine your commands run in."}
@@ -139,7 +140,7 @@ export function ComputerPanelContent({ sessionId }: Props) {
       )}
 
       {computer && !computer.e2b_active ? (
-        <Text variant="small" className="text-amber-700">
+        <Text variant="small" className="text-warning-foreground">
           Cloud sandboxes are not configured on this deployment.
         </Text>
       ) : null}

@@ -13,7 +13,7 @@ export function BotsList() {
   if (isLoading) {
     return (
       <div className="flex w-full flex-col gap-3 px-4">
-        <div className="h-40 animate-pulse rounded-large bg-zinc-100" />
+        <div className="h-40 animate-pulse rounded-large bg-surface-hover" />
       </div>
     );
   }
@@ -38,7 +38,7 @@ export function BotsList() {
         <Text variant="large-medium" as="span" className="text-textBlack">
           No bots enabled
         </Text>
-        <Text variant="body" className="max-w-[360px] text-zinc-500">
+        <Text variant="body" className="max-w-[360px] text-foreground-tertiary">
           No chat-bot platforms are available on this deployment right now.
         </Text>
       </div>

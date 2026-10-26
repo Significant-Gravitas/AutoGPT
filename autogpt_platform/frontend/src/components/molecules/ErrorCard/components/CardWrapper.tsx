@@ -1,5 +1,4 @@
 import React from "react";
-import { colors } from "@/components/styles/colors";
 
 interface CardWrapperProps {
   children: React.ReactNode;
@@ -8,15 +7,19 @@ interface CardWrapperProps {
 
 export function CardWrapper({ children, className = "" }: CardWrapperProps) {
   return (
-    <div className={`relative my-6 overflow-hidden rounded-xl ${className}`}>
+    <div
+      data-slot="error-card"
+      className={`relative my-6 overflow-hidden rounded-xl ${className}`}
+    >
       {/* Purple gradient border */}
       <div
-        className="absolute inset-0 rounded-xl p-[1px]"
-        style={{
-          background: `linear-gradient(135deg, ${colors.zinc[100]}, ${colors.zinc[200]}, ${colors.zinc[100]})`,
-        }}
+        data-slot="error-card-border"
+        className="absolute inset-0 rounded-xl bg-[linear-gradient(135deg,rgb(var(--color-surface-hover)),rgb(var(--color-surface-active)),rgb(var(--color-surface-hover)))] p-px"
       >
-        <div className="h-full w-full rounded-xl bg-white" />
+        <div
+          data-slot="error-card-surface"
+          className="h-full w-full rounded-xl bg-surface"
+        />
       </div>
       {children}
     </div>

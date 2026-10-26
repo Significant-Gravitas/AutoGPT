@@ -11,13 +11,19 @@ import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
 import { getTrustedClientIP } from "./client-ip";
+import { DISABLED_AUTH_PATHS } from "./disabled-paths";
 import { assertNotDisposableEmail } from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
+import {
+  assertEmailDeliverable,
+  assertEmailHasMailServer,
+  sharedLookups,
+} from "./email-deliverability";
 import { isAwaitingEmailVerification } from "./email-verification";
 import { emailRepeatSignUp } from "./existing-user-sign-up";
-import { capAuthEmailsPerIP } from "./ip-email-cap";
+import { capAuthEmailsPerIP, IP_CAPPED_PATHS } from "./ip-email-cap";
 import { recordAuthIP } from "./ip-log";
 import {
   AUTH_PASSWORD_BCRYPT_COST,
@@ -121,6 +127,7 @@ export const auth = betterAuth({
   secret: authSecret,
   database: authDbPool,
   telemetry: { enabled: false },
+  disabledPaths: DISABLED_AUTH_PATHS,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
       // Before Better Auth looks the address up, so an address that already
@@ -139,6 +146,15 @@ export const auth = betterAuth({
         headers: ctx.headers,
         context: ctx.context,
       });
+      // After the cap, so each mailer lookup spends one of the IP's slots, and
+      // before the address is looked up, so it answers alike with or without an
+      // account.
+      if (
+        IP_CAPPED_PATHS.has(ctx.path) &&
+        typeof ctx.body?.email === "string"
+      ) {
+        await assertEmailDeliverable(ctx.body.email);
+      }
     }),
     // A reset link only reaches whoever holds the address it was mailed to,
     // so opening one verifies that address, if it is still the account's: an
@@ -463,5 +479,7 @@ async function assertEmailSignUpAllowed(
   ipAddress: string | null,
 ) {
   await assertSignUpAllowed(authDbPool, { email, ipAddress });
-  await assertNotDisposableEmail(email);
+  const dns = sharedLookups();
+  await assertNotDisposableEmail(email, { dns });
+  await assertEmailHasMailServer(email, { dns });
 }

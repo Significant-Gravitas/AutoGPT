@@ -37,7 +37,9 @@ export function ChainMessageParts({
 }: Props) {
   const outcomes = useContext(HeldOutcomesContext);
   // Kept per `parts` so each ToolChain gets the same `parts` array back and
-  // its own row derivation stays memoised.
+  // its own row derivation stays memoised. A manual memo even with the
+  // compiler on, which would rebuild this with the rows below whenever any
+  // prop or the outcomes context changes.
   const segments = useMemo(
     () => buildChainSegments(parts, isChainableToolPart),
     [parts],
