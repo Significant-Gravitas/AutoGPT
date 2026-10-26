@@ -10,8 +10,8 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
-import { Calendar } from "@/components/__legacy__/ui/calendar";
+} from "@/components/molecules/Popover/Popover";
+import { Calendar } from "@/components/atoms/Calendar/Calendar";
 
 function toLocalISODateTimeString(d: Date) {
   const year = d.getFullYear();
@@ -205,9 +205,12 @@ export const DateTimeInput = ({
             {buttonText}
           </Button>
         </PopoverTrigger>
+        {/* TODO(tokens): today's popover look. No exact role: border-neutral-200
+            #E5E5E5; text-neutral-950 #0A0A0A is the `focus` role, a ring colour,
+            not a text colour (SECRT-3154). */}
         <PopoverContent
           data-slot="date-time-input-popup"
-          className="w-auto p-0"
+          className="w-auto rounded-medium border-neutral-200 p-0 text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
           sideOffset={6}
         >
           <div data-slot="date-time-input-popup-body" className="p-3">

@@ -106,7 +106,7 @@ export default function IntegrationSetupWizardPage() {
     isLoading,
     error,
   } = useGetOauthGetOauthAppInfo(
-    clientID || "",
+    encodeURIComponent(clientID || ""),
     { redirect_uri: redirectURI },
     { query: { enabled: !!clientID && !!redirectURI, select: okData } },
   );

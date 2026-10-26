@@ -1,7 +1,7 @@
 "use client";
 
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
