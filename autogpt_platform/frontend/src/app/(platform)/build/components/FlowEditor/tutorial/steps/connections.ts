@@ -9,8 +9,9 @@ import { banner } from "../styles";
 import { useEdgeStore } from "../../../../stores/edgeStore";
 import { TUTORIAL_SELECTORS } from "../constants";
 
+// TODO(tokens): no exact role: ring-green-200 #94D5AC, text-amber-600 #D97706; no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
 const getConnectionStatusHtml = (id: string, isConnected: boolean = false) => `
-  <div id="${id}" class="mt-3 p-2 ${isConnected ? "bg-green-50 ring-1 ring-green-200" : "bg-amber-50 ring-1 ring-amber-200"} rounded-2xl text-center text-sm ${isConnected ? "text-green-600" : "text-amber-600"}">
+  <div id="${id}" class="mt-3 p-2 ${isConnected ? "bg-success-surface ring-1 ring-green-200" : "bg-warning-surface ring-1 ring-amber-200"} rounded-2xl text-center text-body leading-5 ${isConnected ? "text-success" : "text-amber-600"}">
     ${isConnected ? "✅ Connected!" : "Waiting for connection..."}
   </div>
 `;
@@ -25,17 +26,33 @@ const updateConnectionStatus = (
     statusEl.innerHTML =
       message || (isConnected ? "✅ Connected!" : "Waiting for connection...");
     statusEl.classList.remove(
-      "bg-amber-50",
+      "bg-warning-surface",
+      // TODO(tokens): no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
       "ring-amber-200",
+      // TODO(tokens): no exact role: text-amber-600 #D97706
       "text-amber-600",
-      "bg-green-50",
+      "bg-success-surface",
+      // TODO(tokens): no exact role: ring-green-200 #94D5AC
       "ring-green-200",
-      "text-green-600",
+      "text-success",
     );
     if (isConnected) {
-      statusEl.classList.add("bg-green-50", "ring-green-200", "text-green-600");
+      // TODO(tokens): no exact role: ring-green-200 #94D5AC
+      statusEl.classList.add(
+        "bg-success-surface",
+        // TODO(tokens): no exact role: ring-green-200 #94D5AC
+        "ring-green-200",
+        "text-success",
+      );
     } else {
-      statusEl.classList.add("bg-amber-50", "ring-amber-200", "text-amber-600");
+      // TODO(tokens): no exact role: text-amber-600 #D97706
+      statusEl.classList.add(
+        "bg-warning-surface",
+        // TODO(tokens): no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
+        "ring-amber-200",
+        // TODO(tokens): no exact role: text-amber-600 #D97706
+        "text-amber-600",
+      );
     }
   }
 };
@@ -107,13 +124,14 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
     {
       id: "connect-blocks-output",
       title: "Connect the Blocks: Output",
+      // TODO(tokens): no exact role: ring-blue-200 #BFDBFE
       text: `
-        <div class="text-sm leading-[1.375rem] text-zinc-800">
-          <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Now, let's connect the <strong>Result output</strong> of the first Calculator to the <strong>input (A)</strong> of the second Calculator.</p>
+        <div class="text-body text-foreground-emphasis">
+          <p class="text-body font-normal text-foreground-emphasis m-0">Now, let's connect the <strong>Result output</strong> of the first Calculator to the <strong>input (A)</strong> of the second Calculator.</p>
           
-          <div class="mt-3 p-3 bg-blue-50 ring-1 ring-blue-200 rounded-2xl">
-            <p class="text-sm font-medium text-blue-600 m-0 mb-2">Drag from the Result output:</p>
-            <p class="text-[0.8125rem] text-blue-600 m-0">Click and drag from the <strong>Result</strong> output pin (right side) of the <strong>first Calculator block</strong>.</p>
+          <div class="mt-3 p-3 bg-info-surface ring-1 ring-blue-200 rounded-2xl">
+            <p class="text-body leading-5 font-medium text-info-foreground m-0 mb-2">Drag from the Result output:</p>
+            <p class="text-body-sm leading-inherit text-info-foreground m-0">Click and drag from the <strong>Result</strong> output pin (right side) of the <strong>first Calculator block</strong>.</p>
           </div>
           ${getConnectionStatusHtml("connection-status-output", false)}
           ${banner(ICONS.Drag, "Drag from the Result output pin", "action")}
@@ -196,13 +214,14 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
     {
       id: "connect-blocks-input",
       title: "Connect the Blocks: Input",
+      // TODO(tokens): no exact role: ring-blue-200 #BFDBFE
       text: `
-        <div class="text-sm leading-[1.375rem] text-zinc-800">
-          <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Now, connect to the <strong>input (A)</strong> of the second Calculator block.</p>
+        <div class="text-body text-foreground-emphasis">
+          <p class="text-body font-normal text-foreground-emphasis m-0">Now, connect to the <strong>input (A)</strong> of the second Calculator block.</p>
           
-          <div class="mt-3 p-3 bg-blue-50 ring-1 ring-blue-200 rounded-2xl">
-            <p class="text-sm font-medium text-blue-600 m-0 mb-2">Drop on the A input:</p>
-            <p class="text-[0.8125rem] text-blue-600 m-0">Drag to the <strong>A</strong> input handle (left side) of the <strong>second Calculator block</strong>.</p>
+          <div class="mt-3 p-3 bg-info-surface ring-1 ring-blue-200 rounded-2xl">
+            <p class="text-body leading-5 font-medium text-info-foreground m-0 mb-2">Drop on the A input:</p>
+            <p class="text-body-sm leading-inherit text-info-foreground m-0">Drag to the <strong>A</strong> input handle (left side) of the <strong>second Calculator block</strong>.</p>
           </div>
           ${getConnectionStatusHtml("connection-status-input", false)}
         </div>
@@ -283,20 +302,21 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
     {
       id: "connection-complete",
       title: "Blocks Connected! 🎉",
+      // TODO(tokens): no exact role: ring-green-200 #94D5AC, text-green-500 #16A34A
       text: `
-        <div class="text-sm leading-[1.375rem] text-zinc-800">
-          <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Excellent! Your Calculator blocks are now connected:</p>
+        <div class="text-body text-foreground-emphasis">
+          <p class="text-body font-normal text-foreground-emphasis m-0">Excellent! Your Calculator blocks are now connected:</p>
           
-          <div class="mt-3 p-3 bg-green-50 ring-1 ring-green-200 rounded-2xl">
-            <div class="flex items-center justify-center gap-2 text-sm font-medium text-green-600">
+          <div class="mt-3 p-3 bg-success-surface ring-1 ring-green-200 rounded-2xl">
+            <div class="flex items-center justify-center gap-2 text-body leading-5 font-medium text-success">
               <span>Calculator 1</span>
               <span>→</span>
               <span>Calculator 2</span>
             </div>
-            <p class="text-[0.75rem] text-green-500 m-0 mt-2 text-center italic">The result of Calculator 1 flows into Calculator 2's input A</p>
+            <p class="text-caption leading-inherit text-green-500 m-0 mt-2 text-center italic">The result of Calculator 1 flows into Calculator 2's input A</p>
           </div>
           
-          <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.75rem;">Now let's save and run your workflow!</p>
+          <p class="text-body font-normal text-foreground-emphasis m-0" style="margin-top: 0.75rem;">Now let's save and run your workflow!</p>
         </div>
       `,
       beforeShowPromise: async () => {

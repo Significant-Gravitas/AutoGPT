@@ -65,8 +65,12 @@ function IntegrationsTabContent({ expert }: { expert: ContextPanelExpert }) {
   return (
     <div className="flex flex-col gap-6">
       {isGrantableError && !isError ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-inset ring-amber-200">
-          <Text variant="small" className="!text-amber-800">
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-warning-surface px-3 py-2 ring-1 ring-inset ring-warning-border">
+          <Text
+            // TODO(tokens): no exact role for !text-amber-800
+            variant="small"
+            className="!text-amber-800"
+          >
             Couldn&apos;t load your connected services, so &ldquo;Use
             existing&rdquo; is unavailable.
           </Text>
@@ -130,7 +134,7 @@ function IntegrationsTabContent({ expert }: { expert: ContextPanelExpert }) {
                   size="icon"
                   onClick={openUseExisting}
                   aria-label="Use existing"
-                  className="size-6 rounded-lg !p-0 text-zinc-400"
+                  className="size-6 rounded-lg !p-0 text-foreground-subtle"
                 >
                   <Icon icon={Share01Icon} size={14} />
                 </Button>
@@ -140,14 +144,14 @@ function IntegrationsTabContent({ expert }: { expert: ContextPanelExpert }) {
                 size="icon"
                 onClick={openConnect}
                 aria-label="Add integration"
-                className="size-6 rounded-lg !p-0 text-zinc-400"
+                className="size-6 rounded-lg !p-0 text-foreground-subtle"
               >
                 <Icon icon={PlusSignIcon} size={14} />
               </Button>
             </>
           }
         >
-          <div className="-mx-3 grid divide-y divide-zinc-200/70">
+          <div className="-mx-3 grid divide-y divide-border-base/70">
             {groups.flatMap((group) =>
               group.integrations.map((integration) => (
                 <IntegrationRow
@@ -161,7 +165,7 @@ function IntegrationsTabContent({ expert }: { expert: ContextPanelExpert }) {
               )),
             )}
           </div>
-          <div className="-mx-3 border-t border-zinc-200/70 px-3">
+          <div className="-mx-3 border-t border-border-base/70 px-3">
             <ExpertPageLink expert={expert} className="justify-between py-2" />
           </div>
         </StackSection>
@@ -201,7 +205,7 @@ function ExpertPageLink({ expert, className }: ExpertPageLinkProps) {
     <Link
       href={`/team/${expert.id}`}
       className={cn(
-        "flex items-center gap-1 text-[13px] font-medium text-zinc-700 transition-colors hover:text-zinc-950",
+        "flex items-center gap-1 text-body-sm font-medium leading-inherit text-foreground-body transition-colors hover:text-foreground",
         className,
       )}
     >
@@ -232,10 +236,10 @@ function IntegrationRow({
 
   return (
     <div
-      className="group flex items-center gap-3 px-3 py-2 transition-colors hover:bg-zinc-100/70"
+      className="group flex items-center gap-3 px-3 py-2 transition-colors hover:bg-surface-hover/70"
       data-testid="expert-integration-row"
     >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border-base bg-surface">
         <IntegrationLogo
           provider={icon}
           alt={`${serviceName} logo`}
@@ -246,17 +250,22 @@ function IntegrationRow({
         <Text
           variant="body-medium"
           as="span"
-          className="truncate text-zinc-900"
+          className="truncate text-foreground-strong"
         >
           {serviceName}
         </Text>
-        <Text variant="small" as="span" className="truncate text-zinc-500">
+        <Text
+          variant="small"
+          as="span"
+          className="truncate text-foreground-tertiary"
+        >
           {name} · {TYPE_LABELS[integration.type] ?? integration.type}
         </Text>
       </span>
       <span
         aria-hidden
         title="Ready"
+        // TODO(tokens): no exact role for bg-emerald-500
         className="size-1.5 shrink-0 rounded-full bg-emerald-500"
       />
       <Button
@@ -266,7 +275,7 @@ function IntegrationRow({
         disabled={isRemoving}
         aria-busy={isRemoving}
         aria-label={`Remove ${name}`}
-        className="size-7 shrink-0 rounded-lg !p-0 text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-500 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+        className="size-7 shrink-0 rounded-lg !p-0 text-foreground-tertiary opacity-0 transition-opacity hover:text-error focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
       >
         <Icon
           icon={isRemoving ? Loading03Icon : Delete02Icon}

@@ -14,8 +14,12 @@ Both ways it is deployed are in scope:
   sign up. Users store third-party credentials (API keys and OAuth tokens), pay for usage with credits, publish
   agents to a public marketplace and work together in organizations (teams). Do not test against it: reproduce
   locally (see "How to exercise it").
-- **Self-hosted**, with `autogpt_platform/docker-compose.yml` or the single-container image
-  (`autogpt_platform/single-container/`), often for one person or a small team.
+- **Self-hosted**, with the single-container image (`autogpt_platform/single-container/`, which
+  `autogpt_platform/installer/install.sh` and `install.ps1` set up), often for one person or a small team.
+
+The Docker Compose stack (`autogpt_platform/docker-compose.yml`, also run by `installer/setup-autogpt.*`) is the
+development stack. It runs with `APP_ENV=local`, so what happens only there is "Local-development behavior", and
+its defaults are "Development defaults documented as such" (see "Out of scope").
 
 The main components:
 
@@ -223,10 +227,10 @@ cd /src/autogpt_platform/frontend
   then sign in again (`POST http://localhost:3000/api/auth/sign-in/email` with the email and password) and fetch a
   token from the new session; the old session keeps the old role. An admin can give a user credits with
   `POST /api/credits/admin/add_credits`.
-- **Feature flags** come from LaunchDarkly, which isn't configured here, so every flag is off.
-  `FORCE_FLAG_<KEY>=true` in the backend's environment turns one on (the flag key upper-cased, with `-` as `_`), and
-  `FORCE_ALL_FLAGS=true` turns them all on. Code behind a flag is in scope: the hosted service turns flags on for
-  some or all users.
+- **Feature flags** come from PostHog (`FEATURE_FLAG_BACKEND=posthog`), which isn't configured here, so every
+  flag reads as its default in the code. `FORCE_FLAG_<KEY>=true` in the backend's environment turns one on (the
+  flag key upper-cased, with `-` as `_`), and `FORCE_ALL_FLAGS=true` turns them all on. Code behind a flag is in
+  scope: the hosted service turns flags on for some or all users.
 - `next start` warns that it doesn't work with standalone output; it serves everything anyway.
 - Anything that needs an API key logs errors and fails offline (LLM calls, embeddings, third-party integrations).
 
@@ -265,10 +269,12 @@ pnpm exec vitest run src/lib/auth
   - reflected or DOM XSS that needs a click
   - open redirects in the sign-in and OAuth flows (high if they leak a token or code)
   - disclosure of other users' non-secret metadata, such as email addresses
+  - a combination of settings that loads without an error or warning but silently switches off or weakens a
+    protection the operator turned on
 - **Low**:
   - denial of service that needs sustained traffic, or that only hurts the attacker's own runs
   - missing hardening headers and verbose errors
-  - problems that need unusual, non-default configuration
+  - other problems that need unusual, non-default configuration
 
 ## How reports should look
 

@@ -21,9 +21,17 @@ export function SourcesView({ version, isBusy, onExclude }: Props) {
     );
   }
   return (
-    <ul className="flex flex-col gap-3" aria-label="Sources">
+    <ul
+      data-slot="skill-learning-sheet-sources"
+      className="flex flex-col gap-3"
+      aria-label="Sources"
+    >
       {sources.map((source) => (
-        <li key={source.source_id} className="rounded-lg bg-zinc-50 p-3">
+        <li
+          key={source.source_id}
+          data-slot="skill-learning-sheet-sources-item"
+          className="rounded-lg bg-surface-muted p-3"
+        >
           {source.accessible ? (
             <>
               <Text variant="small-medium" tone="primary">
@@ -33,13 +41,17 @@ export function SourcesView({ version, isBusy, onExclude }: Props) {
                 Revision {source.revision.replace(/^0+/, "") || "0"}
                 {source.excluded ? " · Excluded from learning" : ""}
               </Text>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div
+                data-slot="skill-learning-sheet-sources-item-actions"
+                className="mt-2 flex flex-wrap gap-2"
+              >
                 {source.url ? (
                   <Link
                     href={source.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-sm text-violet-700 underline"
+                    data-slot="skill-learning-sheet-sources-item-link"
+                    className="text-sm text-accent-strong underline"
                   >
                     Open source
                   </Link>

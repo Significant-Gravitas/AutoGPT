@@ -24,13 +24,14 @@ from backend.data.redis_client import get_redis_async
 from backend.data.subscription_trial import get_subscription_trial
 
 enrollment = fixtures.enrollment
+usage_now = fixtures.usage_now
 pytestmark = fixtures.pytestmark
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("paid_tier", [SubscriptionTier.PRO, SubscriptionTier.MAX])
 async def test_persisted_trial_turn_keeps_trial_costs_after_activation_and_retry(
-    enrollment, paid_tier, monkeypatch
+    enrollment, usage_now, paid_tier, monkeypatch
 ):
     user_id, session_id, generation = enrollment.user_id, str(uuid4()), str(uuid4())
     await _start_trial(enrollment.id, user_id)
@@ -50,8 +51,8 @@ async def test_persisted_trial_turn_keeps_trial_costs_after_activation_and_retry
     monkeypatch.setattr(executor_utils, "dispatch_turn", dispatch)
     redis = await get_redis_async()
     keys = [
-        *usage_keys(user_id, None, datetime.now(UTC)),
-        *usage_keys(user_id, generation, datetime.now(UTC)),
+        *usage_keys(user_id, None, usage_now),
+        *usage_keys(user_id, generation, usage_now),
     ]
     try:
         await rate_limit.record_cost_usage(user_id, 40)

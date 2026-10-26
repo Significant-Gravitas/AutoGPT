@@ -31,6 +31,11 @@ class Settings:
             "SWAP_PROXY_BACKEND_URL", "http://localhost:8012"
         )
     )
+    # The key the backend's services require on internal calls: the same
+    # value as the backend's own INTERNAL_API_KEY.
+    internal_api_key: str = field(
+        default_factory=lambda: os.getenv("INTERNAL_API_KEY", "")
+    )
     # Where the CA the proxy signs with is mounted (``mitmproxy-ca.pem``: key
     # and certificate).  The boxes' image trusts its certificate, so it is one
     # CA for every replica and every restart: provisioned, never generated.

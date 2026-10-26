@@ -1,23 +1,45 @@
 """Experiment arm assignments: which variant a user saw, recorded once.
 
-PostHog owns bucketing and significance testing. This table is the durable,
-joinable copy of the arm so the ``analytics.*`` views can split activation,
-retention and cost by variant without depending on the flag provider's
-history. First write wins: a user's arm is fixed the moment it is observed.
+PostHog owns bucketing and significance testing. The backend reads the arm by
+user id on first request and stores it here, so it stays the same whether or not
+the browser may tell PostHog who the user is, and the ``analytics.*`` views can
+split activation, retention and cost by variant. First write wins.
 """
 
 import logging
 from datetime import datetime
+from enum import Enum
 from typing import Literal
 
 import prisma.models
 import prisma.types
 from prisma.errors import UniqueViolationError
-from pydantic import BaseModel
+from pydantic import BaseModel, GetJsonSchemaHandler
+from pydantic.json_schema import JsonSchemaValue
+from pydantic_core import CoreSchema
+
+from backend.util.feature_flag import evaluate_experiment_variant
 
 logger = logging.getLogger(__name__)
 
 AssignmentSource = Literal["posthog", "launchdarkly", "backend"]
+
+
+class Experiment(str, Enum):
+    """Experiments, each a multivariate PostHog flag read by the frontend or backend."""
+
+    SUBSCRIPTION_PRICING = "subscription-pricing-page-initial-state"
+    # Backend-decided: the arm sets the trial's Stripe Checkout text.
+    TRIAL_CHECKOUT_NO_CHARGE_COPY = "trial-checkout-no-charge-copy"
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls, core_schema: CoreSchema, handler: GetJsonSchemaHandler
+    ) -> JsonSchemaValue:
+        # Orval names the generated const's members from this.
+        schema = handler(core_schema)
+        handler.resolve_ref_schema(schema)["x-enum-varnames"] = [m.name for m in cls]
+        return schema
 
 
 class ExperimentAssignment(BaseModel):
@@ -34,6 +56,27 @@ class ExperimentAssignment(BaseModel):
             source=row.source,
             assigned_at=row.createdAt,
         )
+
+
+async def assign(user_id: str, experiment: Experiment) -> ExperimentAssignment | None:
+    """The user's arm: the stored one, else PostHog's bucket for them, stored now.
+
+    None while they are not enrolled, with nothing stored, so a later read can enrol them.
+    """
+    stored = await prisma.models.ExperimentAssignment.prisma().find_unique(
+        where={
+            "userId_experimentKey": {
+                "userId": user_id,
+                "experimentKey": experiment.value,
+            }
+        }
+    )
+    if stored is not None:
+        return ExperimentAssignment.from_db(stored)
+    variant = await evaluate_experiment_variant(experiment.value, user_id)
+    if variant is None:
+        return None
+    return await record_assignment(user_id, experiment.value, variant, source="backend")
 
 
 async def record_assignment(

@@ -51,7 +51,7 @@ export function BanAllDialog({ user, report, signedInUserId, ownIP }: Props) {
       <Dialog.Content>
         <div className="flex flex-col gap-4">
           {dialog.isBlockOnly ? null : (
-            <Text variant="body" className="text-zinc-600">
+            <Text variant="body" className="text-foreground-secondary">
               They&apos;re signed out and can&apos;t sign in again until the ban
               ends, but for up to 5 minutes they can still get a token that
               works for an hour. Their API keys, schedules and triggers keep
@@ -76,7 +76,7 @@ export function BanAllDialog({ user, report, signedInUserId, ownIP }: Props) {
               maxHeightClassName="max-h-[240px]"
             />
             {dialog.excludesSelf ? (
-              <Text variant="small" className="text-zinc-500">
+              <Text variant="small" className="text-foreground-tertiary">
                 Your own account isn&apos;t included.
               </Text>
             ) : null}

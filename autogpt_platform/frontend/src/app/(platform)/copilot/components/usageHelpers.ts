@@ -42,6 +42,7 @@ export function formatTierLabel(
   return tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
 }
 
+// TODO(tokens): no exact role for bg-[rgb(224,237,255)]
 export const TIER_BADGE_CLASS_NAME = "bg-[rgb(224,237,255)]";
 
 interface UsageWindowLike {

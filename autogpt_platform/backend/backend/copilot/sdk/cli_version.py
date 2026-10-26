@@ -7,6 +7,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from backend.copilot.sdk.launch_env import inherited_env
+
 logger = logging.getLogger(__name__)
 
 # First CLI release that honours ``client_composed`` on a user message, which
@@ -101,6 +103,7 @@ def _probe_version(path: str) -> tuple[int, ...]:
         result = subprocess.run(
             [path, "-v"],
             stdin=subprocess.DEVNULL,
+            env=inherited_env(),
             capture_output=True,
             encoding="utf-8",
             errors="replace",

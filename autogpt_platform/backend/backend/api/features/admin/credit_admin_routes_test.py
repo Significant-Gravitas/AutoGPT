@@ -9,7 +9,7 @@ import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
-from backend.data.model import UserTransaction
+from backend.data.model import UserCreditTransactionAdminView
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 
@@ -127,14 +127,14 @@ def test_get_user_history_success(
     # Mock the admin_get_user_history function
     mock_history_response = UserHistoryResponse(
         history=[
-            UserTransaction(
+            UserCreditTransactionAdminView(
                 user_id="user-1",
                 user_email="user1@example.com",
                 amount=1000,
                 reason="Initial grant",
                 transaction_type=prisma.enums.CreditTransactionType.GRANT,
             ),
-            UserTransaction(
+            UserCreditTransactionAdminView(
                 user_id="user-2",
                 user_email="user2@example.com",
                 amount=-50,
@@ -178,7 +178,7 @@ def test_get_user_history_with_filters(
     # Mock the admin_get_user_history function
     mock_history_response = UserHistoryResponse(
         history=[
-            UserTransaction(
+            UserCreditTransactionAdminView(
                 user_id="user-3",
                 user_email="test@example.com",
                 amount=500,
@@ -333,7 +333,7 @@ def test_export_credit_transactions_success(
 ) -> None:
     mock_export = AsyncMock(
         return_value=[
-            UserTransaction(
+            UserCreditTransactionAdminView(
                 user_id="user-1",
                 user_email="user1@example.com",
                 amount=1000,
@@ -342,7 +342,7 @@ def test_export_credit_transactions_success(
                 admin_email="admin@example.com",
                 transaction_type=prisma.enums.CreditTransactionType.GRANT,
             ),
-            UserTransaction(
+            UserCreditTransactionAdminView(
                 user_id="user-2",
                 user_email="user2@example.com",
                 amount=-50,

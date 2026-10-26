@@ -39,7 +39,10 @@ export function ScrollableTabs({ children, className, defaultValue }: Props) {
         scrollContainer,
       }}
     >
-      <div className={cn("relative flex flex-col", className)}>
+      <div
+        data-slot="scrollable-tabs"
+        className={cn("relative flex flex-col", className)}
+      >
         {listElement}
         <div
           ref={(node) => {
@@ -47,9 +50,15 @@ export function ScrollableTabs({ children, className, defaultValue }: Props) {
               contentContainerRef.current = node;
             }
           }}
-          className="max-h-[64rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700"
+          data-slot="scrollable-tabs-viewport"
+          className="max-h-[64rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong"
         >
-          <div className="min-h-full pb-[200px]">{contentElements}</div>
+          <div
+            data-slot="scrollable-tabs-panels"
+            className="min-h-full pb-[200px]"
+          >
+            {contentElements}
+          </div>
         </div>
       </div>
     </ScrollableTabsContext.Provider>

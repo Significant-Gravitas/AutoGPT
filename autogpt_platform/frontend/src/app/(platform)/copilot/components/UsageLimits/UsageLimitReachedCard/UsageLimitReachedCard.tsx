@@ -1,5 +1,6 @@
 "use client";
 
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import { ArrowRight02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -19,6 +20,10 @@ import { useUsageLimitReachedCard } from "./useUsageLimitReachedCard";
 
 export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
   const state = useUsageLimitReachedCard(props);
+  // Relative to the clock, so read on every render rather than cached.
+  const resetSentence = useReadEveryRender(() =>
+    state.wait ? budgetResetSentence(state.wait) : null,
+  );
   if (state.isLoading || (!state.experience.blocked && !state.isError))
     return null;
   const copy = usagePresentation(state.experience, state.offer.usageMultiplier);
@@ -30,10 +35,10 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
     <section
       role="status"
       aria-label="Usage notice"
-      className="mx-auto w-full rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm"
+      className="mx-auto w-full rounded-2xl border border-border-base bg-surface p-5 shadow-sm"
     >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <Text variant="small" className="!text-xs !text-zinc-500">
+        <Text variant="small" className="!text-xs !text-foreground-tertiary">
           {state.isRefreshing
             ? "Checking your allowance"
             : state.isError
@@ -46,7 +51,7 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
             href="/settings/billing"
             size="small"
             variant="ghost"
-            className="!h-auto !p-0 !text-xs !text-zinc-500"
+            className="!h-auto !p-0 !text-xs !text-foreground-tertiary"
           >
             {state.experience.inactiveTrialStatus === "payment_failed"
               ? "Review billing"
@@ -63,13 +68,16 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
               ? budgetOutTitle(state.wait.window)
               : copy.noticeTitle}
       </Text>
-      <Text variant="small" className="mt-2 !leading-5 !text-zinc-500">
+      <Text
+        variant="small"
+        className="mt-2 !leading-5 !text-foreground-tertiary"
+      >
         {state.isRefreshing
           ? "Refreshing your plan and usage…"
           : state.isError
             ? "Your work is saved. Try again to check your allowance."
             : state.wait
-              ? budgetResetSentence(state.wait)
+              ? resetSentence
               : copy.description}
       </Text>
       {state.wait && (
@@ -90,7 +98,10 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
             {getUsageOfferAction(state.experience, state.offer)}
           </Button>
           {state.experience.freshProUsage && (
-            <Text variant="small" className="!text-xs !text-zinc-500">
+            <Text
+              variant="small"
+              className="!text-xs !text-foreground-tertiary"
+            >
               + tax. Review before you pay.
             </Text>
           )}
@@ -114,7 +125,7 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
         />
       )}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <Text variant="small" className="!text-xs !text-zinc-400">
+        <Text variant="small" className="!text-xs !text-foreground-subtle">
           You can keep editing your draft.
         </Text>
         {state.isError ? (

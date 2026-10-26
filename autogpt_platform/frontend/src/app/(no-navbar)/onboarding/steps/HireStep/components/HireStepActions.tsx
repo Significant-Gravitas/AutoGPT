@@ -50,7 +50,7 @@ export function HireStepActions({
           size="xs"
           onClick={onSecondary}
           disabled={isCardHiring}
-          className="text-zinc-500 hover:text-zinc-900"
+          className="text-foreground-tertiary hover:text-foreground-strong"
         >
           {secondaryLabel}
         </Button>
