@@ -229,12 +229,14 @@ REM Subroutines
 REM ============================================================================
 
 :init_env
-REM The .env.default files leave ENCRYPTION_KEY, UNSUBSCRIBE_SECRET_KEY,
-REM INTERNAL_API_KEY and BETTER_AUTH_SECRET blank and the backend refuses to
-REM start without an ENCRYPTION_KEY, so generate them here exactly as
-REM `make init-env` does. Values that are already set are never overwritten.
-REM The generator is stdlib-only Python; it runs in a container because Docker
-REM is the one prerequisite every Windows install already has.
+REM The .env.default files leave the secrets and the service passwords blank
+REM and the backend refuses to start without an ENCRYPTION_KEY, so generate
+REM them here exactly as `make init-env` does. Values you set are never
+REM overwritten; a service password still holding a published value is. The
+REM generator is stdlib-only Python; it runs in a container because Docker is
+REM the one prerequisite every Windows install already has. It gets this
+REM shell's POSTGRES_PASSWORD, if any, so it can point out that Docker Compose
+REM would take that one over the generated password.
 cd /d "%REPO_DIR%\autogpt_platform"
 if errorlevel 1 (
     echo Failed to navigate to autogpt_platform directory.
@@ -244,12 +246,10 @@ echo Generating secrets for this install...
 if not exist .env copy /Y .env.default .env >nul
 if not exist backend\.env copy /Y backend\.env.default backend\.env >nul
 if not exist frontend\.env copy /Y frontend\.env.default frontend\.env >nul
-for %%F in (.env backend/.env frontend/.env) do (
-    docker run --rm -v "%REPO_DIR%\autogpt_platform:/platform" -w /platform python:3.13-alpine python3 single-container/runtime_config.py fill-env --path %%F
-    if errorlevel 1 (
-        echo Failed to generate secrets in %%F
-        exit /b 1
-    )
+docker run --rm -e POSTGRES_PASSWORD -v "%REPO_DIR%\autogpt_platform:/platform" -w /platform python:3.13-alpine python3 single-container/runtime_config.py fill-env --path .env --path backend/.env --path frontend/.env
+if errorlevel 1 (
+    echo Failed to generate secrets in the .env files
+    exit /b 1
 )
 echo Secrets ready.
 exit /b 0
