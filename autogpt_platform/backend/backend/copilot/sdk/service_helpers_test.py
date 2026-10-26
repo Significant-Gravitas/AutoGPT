@@ -2163,6 +2163,29 @@ class TestExpectPreQueryCompaction:
             )
         ).expected is False
 
+    def test_resume_predicts_from_follow_ups_saved_after_a_pruned_block(self):
+        # The turn-start prune dropped an orphan tool-use row (seq 3) from
+        # before the follow-ups saved after it, so they sit one position
+        # below their sequence. The gap is still read by sequence, as
+        # _build_query_message reads it: the big follow-ups compress.
+        messages = [
+            _seq_msg("user", "turn 1", 0),
+            _seq_msg("assistant", "reply 1", 1),
+            _seq_msg("user", "turn 2", 2),
+            _seq_msg("user", "word " * 150_000, 4),
+            _seq_msg("user", "word " * 150_000, 5),
+            _seq_msg("user", "turn 3", 6),
+        ]
+        assert (
+            _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=True,
+                transcript_msg_count=4,
+                session_msg_ceiling=len(messages),
+            )
+        ).expected is True
+
     def test_cap_engaged_window_predicts_from_post_watermark_rows(self):
         # The windowed view starts above absolute sequence 0, so the
         # sequence-based gap path runs; rows at/after the watermark form

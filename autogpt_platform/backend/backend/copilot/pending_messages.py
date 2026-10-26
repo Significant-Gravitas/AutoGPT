@@ -386,26 +386,14 @@ async def drain_pending_messages(
 
     Returns them in enqueue order (oldest first). Every drain removes just
     the prefix it inspected, atomically and only if it has not changed;
-    text-only consumers stop that prefix before the first image. The ids are
-    marked taken before they leave the queue (see ``pending_message_waiting``).
+    text-only consumers stop that prefix before the first image, and a prefix
+    that changed before the take is read again. The ids are marked taken in
+    the same step that takes them (see ``pending_message_waiting``).
     """
     redis = await get_redis_async()
-    key = _buffer_key(session_id)
-
-    items = await cast("Any", redis.lrange(key, 0, MAX_PENDING_MESSAGES - 1))
-    prefix: list[str] = []
-    for item in items:
-        payload = _decode_redis_item(item)
-        if text_only and _carries_image(payload):
-            break
-        prefix.append(payload)
-    # Marked taken in the same step that takes them off the queue: a sender
-    # whose push raised asks whether its message landed, and it must never be
-    # in neither place. If the mark cannot be written, nothing is taken.
-    lpop_result = await _take_prefix(redis, session_id, prefix)
-    if not lpop_result:
+    raw_popped = await _take_inspected_prefix(redis, session_id, text_only)
+    if not raw_popped:
         return []
-    raw_popped: list[Any] = list(lpop_result)
 
     # redis-py may return bytes or str depending on decode_responses.
     decoded: list[str] = [_decode_redis_item(item) for item in raw_popped]
@@ -449,6 +437,44 @@ def _ids_in(payloads: list[str]) -> list[str]:
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
             continue
     return ids
+
+
+# A take finds the queue's head changed only when someone else took from it
+# between the read and the take: another drain, or a Stop's cleanup. Each
+# retry reads what is there now.
+_TAKE_ATTEMPTS = 3
+
+
+async def _take_inspected_prefix(
+    redis: Any, session_id: str, text_only: bool
+) -> list[str | bytes]:
+    """Read the queue's head and take it, reading again if it changed in
+    between: a miss must not leave queued messages out of this turn."""
+    for _ in range(_TAKE_ATTEMPTS):
+        items = await cast(
+            "Any", redis.lrange(_buffer_key(session_id), 0, MAX_PENDING_MESSAGES - 1)
+        )
+        prefix: list[str] = []
+        for item in items or []:
+            payload = _decode_redis_item(item)
+            if text_only and _carries_image(payload):
+                break
+            prefix.append(payload)
+        if not prefix:
+            return []
+        # Marked taken in the same step that takes them off the queue: a
+        # sender whose push raised asks whether its message landed, and it
+        # must never be in neither place. If the mark cannot be written,
+        # nothing is taken.
+        taken = await _take_prefix(redis, session_id, prefix)
+        if taken:
+            return taken
+    logger.warning(
+        "pending_messages: queue kept changing under the drain for session=%s;"
+        " leaving it for the next drain",
+        session_id,
+    )
+    return []
 
 
 # Takes a prefix the drain inspected off the queue, only if it is still

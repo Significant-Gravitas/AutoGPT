@@ -3289,15 +3289,39 @@ def _expect_pre_query_compaction(
             if m.sequence is not None and m.sequence >= transcript_msg_count
         ]
         return _will_compact(visible_to_model(window_gap), model)
-    if transcript_msg_count < session_msg_ceiling - 1:
-        if transcript_msg_count > len(prior):
-            return _NO_COMPACTION
-        if prior[transcript_msg_count - 1].role != "assistant":
-            # Misaligned watermark — _build_query_message skips the gap.
-            return _NO_COMPACTION
-        return _will_compact(visible_to_model(prior[transcript_msg_count:]), model)
-    # Scenario A: --resume covers the full context; nothing is compressed.
-    return _NO_COMPACTION
+    gap = _uncovered_rows(prior, transcript_msg_count, session_msg_ceiling)
+    if not gap:
+        # --resume covers the full context, or the watermark is misaligned
+        # and _build_query_message skips the gap: nothing is compressed.
+        return _NO_COMPACTION
+    return _will_compact(visible_to_model(gap), model)
+
+
+def _uncovered_rows(
+    prior: list[ChatMessage], watermark: int, ceiling: int
+) -> list[ChatMessage] | None:
+    """The rows of *prior* a resumed transcript lacks: ``[]`` when it covers
+    them all, ``None`` when the watermark is misaligned (the covered row just
+    before the gap is not an assistant turn), so the gap is skipped.
+
+    The watermark is the next uncovered DB sequence. Rows that carry their
+    sequence are sliced by it: the turn-start prune drops an orphan tool-use
+    block from before the user rows saved after it, so past that block a
+    row's position is no longer its sequence. A row the prune dropped can't
+    be checked, so the gap after it is trusted."""
+    if prior and all(m.sequence is not None for m in prior):
+        gap = [m for m in prior if m.sequence is not None and m.sequence >= watermark]
+        before = next((m for m in prior if m.sequence == watermark - 1), None)
+    else:
+        if watermark >= ceiling - 1 or watermark > len(prior):
+            return []
+        gap = prior[watermark:]
+        before = prior[watermark - 1]
+    if not gap:
+        return []
+    if before is not None and before.role != "assistant":
+        return None
+    return gap
 
 
 def _retry_reduced_context(
@@ -3678,25 +3702,25 @@ async def _build_query_message(
                 msg_count,
             )
             return current_message, compaction_stats
-        if transcript_msg_count < effective_count - 1:
-            # Sanity-check the watermark: the last covered position should be
-            # an assistant turn.  A user-role message here means the count is
-            # misaligned (e.g. a message was deleted and DB positions shifted).
-            # Skip the gap rather than injecting wrong context — the CLI session
-            # loaded via --resume still has good history.
-            if prior[transcript_msg_count - 1].role != "assistant":
-                logger.warning(
-                    "[SDK] [%s] Watermark misaligned: prior[%d].role=%r"
-                    " (expected 'assistant') — skipping gap to avoid"
-                    " injecting wrong context (transcript=%d, db=%d)",
-                    session_id[:8],
-                    transcript_msg_count - 1,
-                    prior[transcript_msg_count - 1].role,
-                    transcript_msg_count,
-                    msg_count,
-                )
-                return current_message, compaction_stats
-            gap = visible_to_model(prior[transcript_msg_count:])
+        gap = _uncovered_rows(prior, transcript_msg_count, effective_count)
+        if gap is None:
+            # The last covered position should be an assistant turn. Anything
+            # else means the count is misaligned (e.g. a message was deleted
+            # and DB positions shifted). Skip the gap rather than injecting
+            # wrong context — the CLI session loaded via --resume still has
+            # good history.
+            logger.warning(
+                "[SDK] [%s] Watermark misaligned: the row before seq %d is not"
+                " an assistant turn — skipping gap to avoid injecting wrong"
+                " context (transcript=%d, db=%d)",
+                session_id[:8],
+                transcript_msg_count,
+                transcript_msg_count,
+                msg_count,
+            )
+            return current_message, compaction_stats
+        if gap:
+            gap = visible_to_model(gap)
             compressed, _was_compressed, stats = await _compress_messages(
                 gap, target_tokens
             )

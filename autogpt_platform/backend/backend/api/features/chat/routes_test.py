@@ -1668,6 +1668,45 @@ async def test_a_message_leaving_the_queue_is_never_in_neither_place(
     reason="needs Redis",
 )
 @pytest.mark.parametrize("text_only", [True, False], ids=["mid-turn", "turn-start"])
+async def test_a_drain_whose_queue_changed_before_the_take_reads_it_again(
+    mocker: pytest_mock.MockerFixture, text_only: bool
+) -> None:
+    """Another drain takes the first message between this drain's read and
+    its take, so the queue no longer starts with what this drain read. It
+    must read again and take the message still waiting, not come back empty
+    and leave that message out of its turn."""
+    session_id = f"s-{uuid4()}"
+    first = PendingMessage(content="first")
+    second = PendingMessage(content="Approved: hire Maya (confirmation_id: c-1).")
+    for message in (first, second):
+        await pending_messages_module.push_pending_message(session_id, message)
+    redis = await redis_client.get_redis_async()
+    take = pending_messages_module._take_prefix
+    other_drain_ran = False
+
+    async def another_drain_first(*args: object, **kwargs: object):
+        nonlocal other_drain_ran
+        if not other_drain_ran:
+            other_drain_ran = True
+            await redis.lpop(pending_messages_module._buffer_key(session_id))
+        return await take(*args, **kwargs)
+
+    mocker.patch.object(
+        pending_messages_module, "_take_prefix", side_effect=another_drain_first
+    )
+    drained = await pending_messages_module.drain_pending_messages(
+        session_id, text_only=text_only
+    )
+
+    assert [m.id for m in drained] == [second.id]
+    assert await pending_messages_module.peek_pending_messages(session_id) == []
+
+
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+@pytest.mark.parametrize("text_only", [True, False], ids=["mid-turn", "turn-start"])
 async def test_a_drain_that_cannot_record_what_it_takes_takes_nothing(
     text_only: bool,
 ) -> None:
