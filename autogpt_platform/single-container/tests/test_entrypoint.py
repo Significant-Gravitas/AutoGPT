@@ -15,6 +15,7 @@ HEALTHCHECK_PATH = ASSET_DIR / "healthcheck.sh"
 RUN_SERVICE_PATH = ASSET_DIR / "run-service.sh"
 DOCKERFILE_PATH = ASSET_DIR / "Dockerfile"
 SUPERVISOR_PATH = ASSET_DIR / "supervisor" / "supervisord.conf"
+NGINX_CONF_PATH = ASSET_DIR / "nginx" / "nginx.conf"
 BACKEND_SERVICE_PATH = ASSET_DIR.parent / "backend" / "backend" / "util" / "service.py"
 
 
@@ -373,6 +374,19 @@ class ProxyIsolationTest(unittest.TestCase):
         self.assertIn("user=autogpt_proxy", nginx_program)
         self.assertIn("AUTOGPT_HOME=/run/autogpt/nginx/home", nginx_program)
         self.assertNotIn("user=autogpt\n", nginx_program)
+
+    def test_the_backend_reads_the_client_from_the_one_entry_nginx_sends(
+        self,
+    ) -> None:
+        # The backend's default of 3 is the hosted platform's proxy chain; here
+        # it falls back to nginx's own address, putting every client in one
+        # rate-limit bucket that one caller's failed keys can exhaust for all.
+        nginx = NGINX_CONF_PATH.read_text(encoding="utf-8")
+        rest_location = nginx.split("location /_agpt/ {", 1)[1].split("}", 1)[0]
+        entrypoint = ENTRYPOINT_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("proxy_set_header X-Forwarded-For $remote_addr;", rest_location)
+        self.assertIn("export TRUSTED_PROXY_COUNT=1\n", entrypoint)
 
 
 class ThirdPartyTelemetryTest(unittest.TestCase):

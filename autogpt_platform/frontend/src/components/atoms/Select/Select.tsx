@@ -7,7 +7,7 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "./components/SelectPrimitives";
 import { cn } from "@/lib/utils";
 import * as React from "react";
 import { ReactNode } from "react";
@@ -71,52 +71,60 @@ export function Select({
 }: SelectFieldProps) {
   const triggerStyles = cn(
     // Base styles matching Input
-    "rounded-xl border border-zinc-200 bg-white px-4 shadow-none",
-    "font-normal text-black w-full",
-    "placeholder:font-normal !placeholder:text-zinc-500",
+    "rounded-xl border border-border-base bg-surface px-4 shadow-none",
+    "font-normal text-foreground-base w-full",
+    "placeholder:font-normal !placeholder:text-placeholder",
     // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    "focus:border-foreground-subtle focus:shadow-none focus:outline-none focus:ring-1 focus:ring-foreground-subtle focus:ring-offset-0",
     // Size variants
-    size === "small" && [
-      "h-[2.25rem]",
-      "py-2",
-      "text-sm leading-[22px]",
-      "placeholder:text-sm placeholder:leading-[22px]",
-    ],
-    size === "medium" && ["h-[2.875rem]", "py-2.5", "text-sm"],
+    size === "small" && ["h-9", "py-2", "text-body", "placeholder:text-body"],
+    size === "medium" && ["h-[2.875rem]", "py-2.5", "text-body leading-5"],
     // Error state
-    error &&
-      "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
+    error && "border-1.5 border-error focus:border-error focus:ring-error",
     // Placeholder styling for SelectValue when data-placeholder is present
-    "[&[data-placeholder]>span]:text-zinc-400 [&[data-placeholder]>span]:font-normal",
+    "[&[data-placeholder]>span]:text-foreground-subtle [&[data-placeholder]>span]:font-normal",
     className,
   );
 
   const select = (
     <BaseSelect value={value} onValueChange={onValueChange} disabled={disabled}>
       <SelectTrigger
+        data-slot="select-trigger"
         className={triggerStyles}
         aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
         aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
         id={id}
       >
-        <SelectValue placeholder={placeholder || label} />
+        <SelectValue
+          data-slot="select-value"
+          placeholder={placeholder || label}
+        />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent data-slot="select-popup">
         {options.map((option, idx) => {
-          if (option.separator) return <SelectSeparator key={`sep-${idx}`} />;
+          if (option.separator)
+            return (
+              <SelectSeparator
+                key={`sep-${idx}`}
+                data-slot="select-separator"
+              />
+            );
           const content = renderItem ? (
             renderItem(option)
           ) : (
-            <div className="flex items-center gap-2">
+            <div
+              data-slot="select-item-content"
+              className="flex items-center gap-2"
+            >
               {option.icon}
-              <span>{option.label}</span>
+              <span data-slot="select-item-label">{option.label}</span>
             </div>
           );
           return (
             <SelectItem
               key={option.value}
+              data-slot="select-item"
               value={option.value}
               disabled={option.disabled}
               onMouseDown={(e) => {
@@ -135,13 +143,18 @@ export function Select({
   );
 
   const selectWithError = (
-    <div className={cn("relative mb-6", wrapperClassName)}>
+    <div
+      data-slot="select-field"
+      className={cn("relative mb-6", wrapperClassName)}
+    >
       {select}
       <Text
+        data-slot="select-error"
         variant="small-medium"
         as="span"
+        tone="error"
         className={cn(
-          "absolute left-0 top-full mt-1 !text-red-500 transition-opacity duration-200",
+          "absolute left-0 top-full mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
@@ -154,13 +167,17 @@ export function Select({
   return hideLabel ? (
     selectWithError
   ) : (
-    <label htmlFor={id} className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
+    <label data-slot="select" htmlFor={id} className="flex flex-col gap-2">
+      <div
+        data-slot="select-header"
+        className="flex items-center justify-between gap-2"
+      >
+        <div data-slot="select-label-group" className="flex items-center gap-1">
           <Text
+            data-slot="select-label"
             variant={labelVariant}
             as="span"
-            className={cn("text-black", labelClassName)}
+            className={cn("text-foreground-base", labelClassName)}
           >
             {label}
           </Text>

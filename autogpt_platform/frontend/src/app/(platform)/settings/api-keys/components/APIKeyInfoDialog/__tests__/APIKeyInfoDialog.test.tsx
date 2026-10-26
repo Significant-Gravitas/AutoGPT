@@ -42,6 +42,24 @@ describe("APIKeyInfoDialog", () => {
     expect(within(dialog).getByText(/^last used$/i)).toBeDefined();
   });
 
+  test("marks the scopes only v1 checks", () => {
+    render(
+      <APIKeyInfoDialog
+        apiKey={buildApiKey({
+          scopes: [APIKeyPermission.EXECUTE_GRAPH, APIKeyPermission.RUN_AGENT],
+        })}
+        open
+        onOpenChange={vi.fn()}
+      />,
+    );
+
+    const scopes = within(screen.getByRole("dialog")).getAllByRole("listitem");
+    expect(scopes.map((scope) => scope.textContent)).toEqual([
+      "Execute Graph · v1 only",
+      "Run Agent",
+    ]);
+  });
+
   test("renders 'No scopes' when the key has no permissions", () => {
     render(
       <APIKeyInfoDialog

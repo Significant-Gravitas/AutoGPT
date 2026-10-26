@@ -28,7 +28,7 @@ vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
 }));
 
 function HireProbe() {
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+  const { enabled, ready } = useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS);
   return (
     <span>
       hire: {String(enabled)} ready: {String(ready)}
@@ -122,7 +122,7 @@ describe("flag resolution timeout while the session loads", () => {
     });
     expect(screen.getByText("hire: false ready: false")).toBeDefined();
 
-    source.flags = { "hire-experts": true };
+    source.flags = { "generic-trigger-agents": true };
     rerenderProbe(rerender);
 
     expect(screen.getByText("hire: true ready: true")).toBeDefined();

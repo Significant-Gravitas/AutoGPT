@@ -7,6 +7,7 @@ from backend.util.request import (
     _is_ip_blocked,
     _remove_insecure_headers,
     pin_url,
+    resolve_and_check_blocked,
     validate_url_host,
 )
 
@@ -204,9 +205,22 @@ async def test_large_header_handling():
         ("1.1.1.1", False),
         ("::ffff:8.8.8.8", False),  # IPv4-mapped but public
         # Native IPv6 blocked ranges
+        ("::", True),  # Unspecified; Linux connects it to ::1
         ("::1", True),  # Loopback
         ("fe80::1", True),  # Link-local
         ("fc00::1", True),  # ULA
+        # Other IPv6 encodings of a blocked IPv4 address
+        ("2002:a9fe:a9fe::", True),  # 6to4 of 169.254.169.254
+        ("2001:0:4136:e378:8000:63bf:80ff:fffe", True),  # Teredo, client 127.0.0.1
+        ("64:ff9b::a9fe:a9fe", True),  # NAT64 of 169.254.169.254
+        ("64:ff9b:1::a00:1", True),  # Local-use NAT64 of 10.0.0.1
+        ("64:ff9b:1::808:808", True),  # Local-use NAT64 is blocked whatever it embeds
+        ("::ffff:0:7f00:1", True),  # SIIT of 127.0.0.1
+        ("::7f00:1", True),  # IPv4-compatible 127.0.0.1
+        # The same encodings of a public IPv4 address (should NOT be blocked)
+        ("2002:808:808::", False),  # 6to4 of 8.8.8.8
+        ("2001:0:4136:e378:8000:63bf:f7f7:f7f7", False),  # Teredo, client 8.8.8.8
+        ("64:ff9b::808:808", False),  # NAT64 of 8.8.8.8, as DNS64 networks resolve
         # Public IPv6 (should NOT be blocked)
         ("2607:f8b0:4004:800::200e", False),  # Google
     ],
@@ -228,17 +242,21 @@ def test_is_ip_blocked(ip: str, expected_blocked: bool):
         ("cgnat.example.com", ["100.64.0.1"], True),
         # Mixed: one public, one mapped-private — must be blocked (any blocked = reject)
         ("mixed.example.com", ["8.8.8.8", "::ffff:192.168.1.1"], True),
+        # A lone AAAA record of :: — Linux connects it to ::1, so must be blocked
+        ("unspecified.example.com", ["::"], True),
+        # NAT64 of the cloud metadata address — must be blocked
+        ("nat64-metadata.example.com", ["64:ff9b::a9fe:a9fe"], True),
         # All public — should pass
         ("public.example.com", ["8.8.8.8", "9.9.9.9"], False),
     ],
 )
-async def test_ipv4_mapped_ipv6_bypass(
+async def test_ipv6_encoded_blocked_ip_bypass(
     monkeypatch,
     raw_url: str,
     resolved_ips: list[str],
     should_raise: bool,
 ):
-    """Ensures IPv4-mapped IPv6 addresses are checked against IPv4 blocklist."""
+    """Ensures a host that resolves to a blocked address in any IPv6 form is rejected."""
 
     def mock_getaddrinfo(host, port, *args, **kwargs):
         return [(None, None, None, None, (ip, port)) for ip in resolved_ips]
@@ -251,6 +269,15 @@ async def test_ipv4_mapped_ipv6_bypass(
     else:
         url, _, ip_addresses = await validate_url_host(raw_url)
         assert ip_addresses  # Should have resolved IPs
+
+
+@pytest.mark.parametrize("host", ["::", "::1", "::ffff:127.0.0.1", "0.0.0.0"])
+async def test_literal_blocked_host_is_rejected(host: str):
+    """The SQL and email blocks pass a user's host to resolve_and_check_blocked
+    as typed, without validate_url_host's hostname check, so an IP literal must
+    be rejected here. getaddrinfo returns a literal as is, so no DNS is involved."""
+    with pytest.raises(ValueError):
+        await resolve_and_check_blocked(host)
 
 
 @pytest.mark.parametrize(
@@ -625,6 +652,47 @@ async def test_post_follows_redirect_to_trailing_slash_without_looping():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("compressed", [False, True], ids=["plain", "gzip"])
+async def test_a_capped_read_stops_at_the_cap(compressed: bool):
+    """A capped caller holds at most the cap, however much the server sends.
+
+    Counted after decompression, so a short gzip body that expands is cut too.
+    """
+    import gzip
+
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    body = b"x" * (5 * 1024 * 1024)
+
+    async def big(_request: aiohttp_web.Request) -> aiohttp_web.Response:
+        if compressed:
+            return aiohttp_web.Response(
+                body=gzip.compress(body),
+                headers={"Content-Encoding": "gzip", "Content-Type": "text/plain"},
+            )
+        return aiohttp_web.Response(body=body, content_type="text/plain")
+
+    app = aiohttp_web.Application()
+    app.router.add_get("/big", big)
+    runner = aiohttp_web.AppRunner(app)
+    await runner.setup()
+    site = aiohttp_web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"], raise_for_status=False)
+        capped = await requests.get(f"http://127.0.0.1:{port}/big", max_body_bytes=1024)
+        whole = await requests.get(f"http://127.0.0.1:{port}/big")
+    finally:
+        await runner.cleanup()
+
+    assert capped.content == b"x" * 1025
+    assert whole.content == body
+
+
 async def test_untrusted_request_connects_only_to_the_pinned_address(
     monkeypatch: pytest.MonkeyPatch,
 ):

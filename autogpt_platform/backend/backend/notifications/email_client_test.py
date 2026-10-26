@@ -15,8 +15,8 @@ def kit_html() -> str:
         .from_string(
             """{% import '_email_ui.j2' as ui with context %}
 {{ ui.head_block('Client compatibility') }}
-{{ ui.page_open() }}{{ ui.masthead() }}{{ ui.sheet_open() }}
-{{ ui.strip_amber('Needs you') }}
+{{ ui.page_open() }}{{ ui.masthead() }}{{ ui.strip_amber('Needs you') }}
+{{ ui.sheet_open() }}
 {{ ui.cta('Review your plan', 'https://example.com/billing') }}
 {{ ui.attention_card({'title': 'Reconnect Gmail', 'body': 'Your connection expired.',
                      'cta_label': 'Reconnect', 'cta_url': 'https://example.com/connect'}) }}
@@ -53,7 +53,7 @@ def test_frame_and_footers_keep_fluid_width_when_styles_are_stripped(kit_html: s
         assert "width:100%" in sheet["style"]
         assert "max-width:560px" in sheet["style"]
     assert len(re.findall(r'<!--\[if mso\]>.*?width="560"', kit_html, re.S)) == 3
-    assert kit_html.count("<!--[if mso]></td></tr></table><![endif]-->") == 3
+    assert kit_html.count("<!--[if mso]></td></tr></table><![endif]-->") == 5
 
 
 def test_phone_sheet_has_no_outer_side_padding_and_resets_all_corners(kit_html: str):
@@ -68,7 +68,7 @@ def test_phone_sheet_has_no_outer_side_padding_and_resets_all_corners(kit_html: 
         if "border-radius:16px 16px 0 0" in attrs.get("style", "")
         or "border-radius:0 0 16px 16px" in attrs.get("style", "")
     ]
-    assert len(rounded_sheet_elements) == 3
+    assert len(rounded_sheet_elements) == 2
     assert all("corner" in attrs["class"].split() for attrs in rounded_sheet_elements)
 
 

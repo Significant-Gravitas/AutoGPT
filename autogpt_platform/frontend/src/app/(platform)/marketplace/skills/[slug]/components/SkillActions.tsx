@@ -17,7 +17,8 @@ import {
 const STATUS_CLASS = "h-9 rounded-full px-3.5 text-sm";
 
 const SECONDARY_CLASS =
-  "border-zinc-200 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-zinc-300 hover:bg-zinc-50";
+  // TODO(tokens): no exact role: shadow-[…] #101828
+  "border-border-base bg-surface shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-border-strong hover:bg-surface-muted";
 
 interface Props {
   slug: string;

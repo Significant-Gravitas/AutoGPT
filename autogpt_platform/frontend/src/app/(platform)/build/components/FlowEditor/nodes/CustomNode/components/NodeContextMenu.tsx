@@ -52,9 +52,15 @@ export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
           <Icon
             icon={Copy01Icon}
             size={20}
+            // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-gray-100 #F3F4F6
             className="mr-2 dark:text-gray-100"
           />
-          <span className="dark:text-gray-100">Copy</span>
+          <span
+            // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-gray-100 #F3F4F6
+            className="dark:text-gray-100"
+          >
+            Copy
+          </span>
         </SecondaryDropdownMenuItem>
         <SecondaryDropdownMenuSeparator />
 
@@ -66,9 +72,15 @@ export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
               <Icon
                 icon={LinkSquare01Icon}
                 size={20}
+                // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-gray-100 #F3F4F6
                 className="mr-2 dark:text-gray-100"
               />
-              <span className="dark:text-gray-100">Open workflow</span>
+              <span
+                // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-gray-100 #F3F4F6
+                className="dark:text-gray-100"
+              >
+                Open workflow
+              </span>
             </SecondaryDropdownMenuItem>
             <SecondaryDropdownMenuSeparator />
           </>
@@ -78,9 +90,15 @@ export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
           <Icon
             icon={Delete02Icon}
             size={20}
-            className="mr-2 text-red-500 dark:text-red-400"
+            // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-red-400 #F26969
+            className="mr-2 text-error dark:text-red-400"
           />
-          <span className="dark:text-red-400">Delete</span>
+          <span
+            // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-red-400 #F26969
+            className="dark:text-red-400"
+          >
+            Delete
+          </span>
         </SecondaryDropdownMenuItem>
       </SecondaryDropdownMenuContent>
     </DropdownMenu>

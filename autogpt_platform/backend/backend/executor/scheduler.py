@@ -140,6 +140,7 @@ from backend.util.exceptions import (
     UserPaywalledError,
 )
 from backend.util.logging import PrefixFilter
+from backend.util.process import freeze_startup_heap
 from backend.util.retry import func_retry
 from backend.util.service import (
     AppService,
@@ -1543,32 +1544,17 @@ def execute_community_rebuild(user_id: str, expert_id: str | None = None):
     if not _memory_scope_may_fire(scope):
         return
     result = _rebuild_scope_communities(scope)
-    if result is not None and not result.get("error"):
+    if not result.get("error"):
         _stamp_scope_run(scope, "community")
 
 
-def _rebuild_scope_communities(scope: MemoryScope) -> dict | None:
-    """Flag-gated community rebuild of one scope, with its outcome logged.
+def _rebuild_scope_communities(scope: MemoryScope) -> dict:
+    """Community rebuild of one scope, with its outcome logged.
 
     Sync wrapper around the async ``rebuild_communities_for_user`` so it
     can run on the APScheduler thread pool. Failures are caught inside
     the coroutine; this wrapper logs the outcome.
-
-    Runtime flag gate: if ``GRAPHITI_COMMUNITIES_ENABLED`` flipped from
-    on→off after the schedule was registered, this returns None instead
-    of running. Registration-time gating is in
-    ``add_scope_community_rebuild_schedule``; this is the third layer of
-    defense (see ``copilot/dream/scheduling.py`` module docstring).
     """
-    from backend.copilot.graphiti.config import is_communities_enabled_for_user
-
-    if not run_async(is_communities_enabled_for_user(scope.owner_user_id)):
-        logger.info(
-            "Community rebuild skipped for %s — flag flipped off post-registration",
-            scope_label(scope),
-        )
-        return None
-
     result = run_async(
         rebuild_communities_for_user(scope.owner_user_id, expert_id=scope.expert_id),
         timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
@@ -1659,32 +1645,8 @@ def execute_morning_briefing(user_id: str) -> None:
             timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS,
         )
         logger.info("Morning briefing for user %s: %s", user_id[:12], result)
-        if result.get("reason") == "flag_disabled":
-            run_async(
-                _self_delete_morning_briefing_schedule(user_id),
-                timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS,
-            )
     except Exception as e:
         logger.error("Morning briefing failed for user %s: %s", user_id[:12], e)
-
-
-async def _self_delete_morning_briefing_schedule(user_id: str) -> None:
-    """Drop a briefing cron whose feature flag has since been turned off.
-
-    The registration marker goes with it: left set, it would suppress lazy
-    re-registration for the rest of its TTL if the flag comes back on.
-    Best-effort — the next daily fire retries the cleanup.
-    """
-    from backend.copilot.briefing.scheduling import clear_briefing_registration_marker
-
-    try:
-        await get_scheduler_client().remove_morning_briefing_schedule(user_id=user_id)
-        await clear_briefing_registration_marker(user_id)
-    except Exception:
-        logger.warning(
-            f"Failed to remove morning briefing job for user {user_id[:12]}",
-            exc_info=True,
-        )
 
 
 def execute_nightly_batch_sync(
@@ -2283,6 +2245,16 @@ def cleanup_oauth_tokens():
     run_async(_cleanup())
 
 
+def cleanup_auth_ip_events():
+    """Delete sign-up and sign-in IP records past their retention."""
+
+    async def _cleanup():
+        db = get_database_manager_async_client()
+        return await db.delete_expired_ip_events(config.auth_ip_event_retention_days)
+
+    run_async(_cleanup())
+
+
 def cleanup_failed_push_subscriptions():
     """Delete push subscriptions that have exceeded the failure threshold."""
 
@@ -2876,7 +2848,8 @@ def _index_entry(
 
 
 class Scheduler(AppService):
-    scheduler: BackgroundScheduler
+    # Built by `run_service`, so a scheduler stopped before then has none.
+    _scheduler: BackgroundScheduler | None = None
     _persistent_jobstores: dict[str, ResilientSQLAlchemyJobStore] = {}
 
     # Sidecar index for filtered schedule reads. ``None`` (not set up or
@@ -2888,6 +2861,7 @@ class Scheduler(AppService):
     _schedule_index_ready: bool = False
     _schedule_index_failure_version: int = 0
     _throwaway_dir: tempfile.TemporaryDirectory | None = None
+    _block_load_error: Exception | None = None
 
     def __init__(
         self, register_system_tasks: bool = True, throwaway_jobstores: bool = False
@@ -2896,6 +2870,16 @@ class Scheduler(AppService):
         # Test servers: jobs a real scheduler saved in the platform database
         # must not run in them, and their tests' schedules must not land there.
         self.throwaway_jobstores = throwaway_jobstores
+
+    @property
+    def scheduler(self) -> BackgroundScheduler:
+        if self._scheduler is None:
+            raise AttributeError("Scheduler has no APScheduler before run_service()")
+        return self._scheduler
+
+    @scheduler.setter
+    def scheduler(self, scheduler: BackgroundScheduler) -> None:
+        self._scheduler = scheduler
 
     @classmethod
     def get_port(cls) -> int:
@@ -2907,7 +2891,7 @@ class Scheduler(AppService):
 
     async def health_check(self) -> str:
         # Thread-safe health check with proper initialization handling
-        if not hasattr(self, "scheduler"):
+        if self._scheduler is None:
             raise UnhealthyServiceError("Scheduler is still initializing")
 
         # Check if we're in the middle of cleanup
@@ -2917,20 +2901,15 @@ class Scheduler(AppService):
         # Normal operation - check if scheduler is running
         if not self.scheduler.running:
             raise UnhealthyServiceError("Scheduler is not running")
+        if self._block_load_error is not None:
+            raise UnhealthyServiceError(
+                f"Loading the block registry failed: {self._block_load_error}"
+            )
 
         return await super().health_check()
 
     def run_service(self):
         load_dotenv()
-
-        # Load the block registry before serving. Otherwise the first add-schedule
-        # loads it inside graph validation, and the scheduler freezes meanwhile.
-        load_started = time.monotonic()
-        block_count = len(get_blocks())
-        logger.info(
-            f"[{self.service_name}] Loaded {block_count} blocks in "
-            f"{time.monotonic() - load_started:.1f}s"
-        )
 
         # Initialize the event loop for async jobs
         global _event_loop
@@ -3098,6 +3077,17 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # Sign-in IP log retention - daily
+            self.scheduler.add_job(
+                cleanup_auth_ip_events,
+                id="cleanup_auth_ip_events",
+                trigger="interval",
+                hours=24,
+                replace_existing=True,
+                max_instances=1,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
             # Failed Push Subscription Cleanup - configurable interval
             self.scheduler.add_job(
                 cleanup_failed_push_subscriptions,
@@ -3212,9 +3202,39 @@ class Scheduler(AppService):
             self._register_memory_cron_reconcile()
         self._report_parked_jobs()
         self._start_schedule_index_backfill()
+        threading.Thread(
+            target=self._load_blocks_once_serving,
+            daemon=True,
+            name="SchedulerBlockLoad",
+        ).start()
 
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
+
+    def _load_blocks_once_serving(self) -> None:
+        """Load the block registry once the RPC server is up, then freeze it.
+
+        The first add-schedule loads it inside graph validation otherwise. Not in
+        ``run_service``: the server starts only after it, on the loop it hands over to.
+        """
+        while not (self.http_server and self.http_server.started):
+            if not self.scheduler.running:
+                return
+            time.sleep(0.1)
+        load_started = time.monotonic()
+        try:
+            block_count = len(get_blocks())
+        except Exception as e:
+            # Unhealthy, so the pod restarts as it did when this ran before serving.
+            self._block_load_error = e
+            logger.exception(f"[{self.service_name}] Loading the block registry failed")
+            return
+        logger.info(
+            f"[{self.service_name}] Loaded {block_count} blocks in "
+            f"{time.monotonic() - load_started:.1f}s"
+        )
+        # The serving lifespan froze the heap before the blocks existed.
+        freeze_startup_heap()
 
     def _jobstore_database(self) -> tuple[str | None, str]:
         """Schema and URL of the jobstores and schedule index: the platform
@@ -3271,7 +3291,9 @@ class Scheduler(AppService):
                 )
 
     def cleanup(self):
-        if self.scheduler:
+        # `run_service` builds the scheduler before it starts it, and a stopped
+        # scheduler's `shutdown()` raises.
+        if self._scheduler is not None and self._scheduler.running:
             logger.info("⏳ Shutting down scheduler...")
             self.scheduler.shutdown(wait=True)
 
@@ -4245,9 +4267,7 @@ class Scheduler(AppService):
 
     # --- Graphiti community detection (P-1.7) ---
     #
-    # Communities are off-by-default behind LD flag ``GRAPHITI_COMMUNITIES_ENABLED``.
-    # Registration checks the flag here too (defense in depth: the registry
-    # gates first). Rebuilds run weekly at owner-local 04:00 on Mondays
+    # Rebuilds run weekly at owner-local 04:00 on Mondays
     # (``0 4 * * 0``: APScheduler counts weekdays from 0 = Monday) to avoid
     # the Leiden cost spike during active hours and to stagger from the
     # nightly dream at 03:00.
@@ -4272,24 +4292,10 @@ class Scheduler(AppService):
     ) -> dict:
         """Register the weekly community rebuild of one memory scope.
 
-        Gated by ``Flag.GRAPHITI_COMMUNITIES_ENABLED`` for the scope's
-        owner. When the flag is off the call is a no-op — returns a
-        structured "skipped" dict so callers see the same shape as a
-        successful registration. Only adds the job: the registry row that
+        Only adds the job: the registry row that
         lets it fire is ``copilot/dream/registry.py``'s to write.
         """
-        from backend.copilot.graphiti.config import is_communities_enabled_for_user
-
         user_timezone = user_timezone or "UTC"
-        if not run_async(is_communities_enabled_for_user(scope.owner_user_id)):
-            logger.info(
-                "Community rebuild registration skipped for %s — "
-                "GRAPHITI_COMMUNITIES_ENABLED flag is off.",
-                scope_label(scope),
-            )
-            return memory_job_skipped(
-                scope, user_timezone, "graphiti_communities_disabled"
-            )
         job = self._add_memory_job(
             *_MEMORY_CRONS[COMMUNITY_REBUILD_JOB_PREFIX],
             dream_system_job(COMMUNITY_REBUILD_JOB_PREFIX),

@@ -75,12 +75,14 @@ async def clear_insufficient_funds_notifications(user_id: str) -> int:
 
 
 def _block_has_paid_cost_entry(block: Block, input_data: "dict[str, Any]") -> bool:
-    """Whether any BLOCK_COSTS entry matches this input — even if pre-flight is 0.
+    """Whether any non-free BLOCK_COSTS entry matches this input — even if
+    pre-flight is 0.
 
     Used to guard dynamic-cost blocks (SECOND/ITEMS/COST_USD) whose
     pre-flight cost is 0 but whose post-flight reconciliation will debit
     a real amount. A user with non-positive balance must not be allowed
-    to start such a block.
+    to start such a block. Free entries (e.g. Ollama models, Jev's BYOK
+    price) never debit, so they don't count.
     """
     from backend.data.block_cost_config import BLOCK_COSTS
 
@@ -89,7 +91,10 @@ def _block_has_paid_cost_entry(block: Block, input_data: "dict[str, Any]") -> bo
     block_costs = BLOCK_COSTS.get(type(block))
     if not block_costs:
         return False
-    return any(_is_cost_filter_match(bc.cost_filter, input_data) for bc in block_costs)
+    return any(
+        not bc.is_free and _is_cost_filter_match(bc.cost_filter, input_data)
+        for bc in block_costs
+    )
 
 
 def resolve_block_cost(
@@ -340,20 +345,29 @@ async def charge_reconciled_usage(
         # the USER ledger: no org context, or a personal org (which bills
         # the owner's wallet). Real-org deductions come from OrgBalance, so
         # the user's personal auto-top-up must not trigger for those.
-        user_ledger = not org_id or (
-            await db_client.get_personal_org_owner(org_id) is not None
-        )
-        if delta > 0 and user_ledger:
-            # handle_low_balance is sync + does a blocking RPC; dispatch to
-            # thread so we don't block the event loop. Rare path (threshold
-            # crossings only).
-            await asyncio.to_thread(
-                handle_low_balance,
-                get_db_client(),
-                node_exec.user_id,
-                remaining_balance,
-                delta,
-            )
+        # The delta has landed, so a failed check is logged here instead of
+        # dropping the delta via the handler below.
+        if delta > 0:
+            try:
+                user_ledger = not org_id or (
+                    await db_client.get_personal_org_owner(org_id) is not None
+                )
+                if user_ledger:
+                    # handle_low_balance is sync + does a blocking RPC;
+                    # dispatch to thread so we don't block the event loop.
+                    # Rare path (threshold crossings only).
+                    await asyncio.to_thread(
+                        handle_low_balance,
+                        get_db_client(),
+                        node_exec.user_id,
+                        remaining_balance,
+                        delta,
+                    )
+            except Exception:
+                logger.exception(
+                    f"Low-balance check failed after reconciling node "
+                    f"{node_exec.node_exec_id}"
+                )
         # Keep the expert's weekly meter honest for dynamic-cost blocks:
         # positive deltas add spend, refunds subtract.
         if node_exec.execution_context.expert_id:
@@ -381,14 +395,27 @@ async def charge_node_usage(node_exec: NodeExecutionEntry) -> tuple[int, int]:
     (``increment_execution_count``). Nested tool executions are sub-steps
     of a single block run from the user's perspective and should not push
     them into higher per-execution cost tiers.
+
+    Pins ``node_exec.pre_flight_charge`` to the block cost actually spent,
+    so the post-flight reconciliation settles against what the wallet paid
+    (as the main queue does), not against a re-derived catalogue estimate.
     """
 
     def _run():
-        total_cost, remaining, _ = charge_usage(node_exec, 0)
+        total_cost, remaining, block_pre_flight = charge_usage(node_exec, 0)
+        node_exec.pre_flight_charge = block_pre_flight
         if total_cost > 0:
-            handle_low_balance(
-                get_db_client(), node_exec.user_id, remaining, total_cost
-            )
+            try:
+                handle_low_balance(
+                    get_db_client(), node_exec.user_id, remaining, total_cost
+                )
+            except Exception:
+                # The spend has landed: a failed alert must not report it as a
+                # failed charge, or the caller drops it from the run's cost.
+                logger.exception(
+                    f"Low-balance check failed after charging node "
+                    f"{node_exec.node_exec_id}"
+                )
         return total_cost, remaining
 
     return await asyncio.to_thread(_run)
@@ -463,7 +490,7 @@ def handle_insufficient_funds_notif(
         data=ZeroBalanceCause(
             cta_path="/settings/billing",
             agent=agent_name,
-            shortfall_display=f"{shortfall / 100:,.2f}",
+            shortfall_display=f"${shortfall / 100:,.2f}",
         ).model_dump(mode="json"),
     )
 
@@ -550,7 +577,7 @@ def _low_balance_cause(
     the alert says the balance is low without naming a date.
     """
     daily_rate = db_client.get_recent_daily_spend(user_id)
-    balance_display = f"{current_balance / 100:,.2f} credits"
+    balance_display = f"${current_balance / 100:,.2f}"
     scheduled_agents = db_client.count_scheduled_agents(user_id)
 
     if daily_rate <= 0:
@@ -565,7 +592,7 @@ def _low_balance_cause(
     return LowBalanceCause(
         cta_path="/settings/billing",
         days_left=days_left,
-        daily_rate_display=f"{daily_rate / 100:,.2f} credits",
+        daily_rate_display=f"${daily_rate / 100:,.2f}",
         balance_display=balance_display,
         runs_out_label=f"{runs_out.day} {runs_out.strftime('%b')}",
         scheduled_agents=scheduled_agents,

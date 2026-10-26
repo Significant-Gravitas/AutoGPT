@@ -27,8 +27,8 @@ export function TemplateListItem({
   return (
     <SidebarItemCard
       icon={
-        <IconWrapper className="border-blue-50 bg-blue-50">
-          <Icon icon={File02Icon} size={16} className="text-zinc-700" />
+        <IconWrapper className="border-info-surface bg-info-surface">
+          <Icon icon={File02Icon} size={16} className="text-foreground-body" />
         </IconWrapper>
       }
       title={template.name}

@@ -32,7 +32,7 @@ VISITOR_TERMS = ["Sales"]
 VISITOR = "0b6c1f3e-visitor-0001"
 USER_ID = "3f2b8c1e-7a4d-4e9b-9c2a-5d6e7f8a9b0c"
 PINNING = FrontendFlag.CHAT_PINNING.value
-HIRE_EXPERTS = FrontendFlag.HIRE_EXPERTS.value
+GENERIC_TRIGGER_AGENTS = FrontendFlag.GENERIC_TRIGGER_AGENTS.value
 PROGRESS_BAR = FrontendFlag.TASK_PROGRESS_BAR.value
 STREAM_SHADOW = FrontendFlag.COPILOT_STREAM_SHADOW.value
 
@@ -79,6 +79,39 @@ async def test_each_flag_answers_what_the_backends_own_read_answers(caller):
     )
 
 
+@pytest.mark.parametrize("caller", [USER_ID, None])
+async def test_retired_rollout_flags_are_not_served_or_restored_by_overrides(
+    caller, monkeypatch, mocker
+):
+    mocker.patch(
+        "backend.util.feature_flag._fetch_user_context_status",
+        AsyncMock(
+            return_value=(
+                _UserContext(key=caller or "anonymous", anonymous=caller is None),
+                True,
+            )
+        ),
+    )
+    retired = {
+        "artifacts-page",
+        "hire-experts",
+        "skills-hub",
+        "onboarding-brain-dump",
+        "onboarding-expert-team",
+        "graphiti-memory",
+        "graphiti-communities-enabled",
+        "expert-spend-approval",
+        "ai-agent-execution-summary",
+    }
+    for key in retired:
+        monkeypatch.setenv(f"FORCE_FLAG_{key.replace('-', '_').upper()}", "false")
+
+    flags = (await _get_flags(caller))["flags"]
+
+    assert retired.isdisjoint(flags)
+    assert set(flags) == {flag.value for flag in FrontendFlag}
+
+
 async def test_a_flag_the_vendor_has_no_definition_of_is_answered_null():
     flags = (await _get_flags("u-staff"))["flags"]
 
@@ -86,7 +119,7 @@ async def test_a_flag_the_vendor_has_no_definition_of_is_answered_null():
     assert (
         flags.get(PROGRESS_BAR, "left out"),
         flags.get(STREAM_SHADOW, "left out"),
-        flags[HIRE_EXPERTS],
+        flags[GENERIC_TRIGGER_AGENTS],
     ) == (None, None, True)
 
 
@@ -100,7 +133,10 @@ async def test_a_defined_flag_the_vendor_could_not_answer_is_left_out(mocker):
     flags = (await _get_flags(USER_ID))["flags"]
 
     # A default here would read as an answer and 404 a gated route for a user who has it.
-    assert (HIRE_EXPERTS in flags, flags.get(PROGRESS_BAR, "left out")) == (False, None)
+    assert (GENERIC_TRIGGER_AGENTS in flags, flags.get(PROGRESS_BAR, "left out")) == (
+        False,
+        None,
+    )
 
 
 @pytest.mark.parametrize("ready_first", [False, True])
@@ -125,7 +161,10 @@ async def test_a_signed_out_answer_is_kept_long_only_when_complete(
         not_ready.shutdown()
 
     # Either way the second read sees the first, complete answer.
-    assert (HIRE_EXPERTS in first, second.get(HIRE_EXPERTS)) == (ready_first, True)
+    assert (GENERIC_TRIGGER_AGENTS in first, second.get(GENERIC_TRIGGER_AGENTS)) == (
+        ready_first,
+        True,
+    )
 
 
 async def test_a_vendor_still_loading_leaves_every_flag_out_and_says_it_will_answer(
@@ -156,7 +195,7 @@ async def test_a_signed_in_read_asks_posthog_nothing_about_flags_it_lacks(mocker
     finally:
         client.shutdown()
 
-    # hire-experts is defined but needs /flags; nothing else may ask.
+    # generic-trigger-agents is defined but needs /flags; nothing else may ask.
     assert (remote.call_count, flags.get(PROGRESS_BAR, "left out")) == (1, None)
 
 
@@ -175,9 +214,12 @@ async def test_on_posthog_only_loaded_definitions_can_rule_a_flag_undefined(
     finally:
         client.shutdown()
 
-    # hire-experts is defined but needs /flags, which is down: left out either way.
+    # generic-trigger-agents is defined but needs /flags, which is down: left out either way.
     expected = (False, None) if loaded else (False, "left out")
-    assert (HIRE_EXPERTS in flags, flags.get(PROGRESS_BAR, "left out")) == expected
+    assert (
+        GENERIC_TRIGGER_AGENTS in flags,
+        flags.get(PROGRESS_BAR, "left out"),
+    ) == expected
 
 
 async def test_posthog_with_no_key_leaves_every_flag_to_the_frontend(mocker):
@@ -268,8 +310,8 @@ async def test_fresh_visitor_ids_cost_posthog_nothing(mocker):
         "_get_flags_decision",
         return_value={
             "flags": {
-                HIRE_EXPERTS: FeatureFlag.from_value_and_payload(
-                    HIRE_EXPERTS, True, None
+                GENERIC_TRIGGER_AGENTS: FeatureFlag.from_value_and_payload(
+                    GENERIC_TRIGGER_AGENTS, True, None
                 )
             }
         },
@@ -292,7 +334,7 @@ async def test_fresh_visitor_ids_cost_posthog_nothing(mocker):
     # Each is still bucketed by their own id where the definitions decide it, and
     # takes the shared signed-out answer where only PostHog's servers could.
     assert {v.get(PINNING) for v in visitors} == {True, False}
-    assert all(v.get(HIRE_EXPERTS) is True for v in visitors)
+    assert all(v.get(GENERIC_TRIGGER_AGENTS) is True for v in visitors)
 
 
 def _posthog_with_fixed_targeting() -> Posthog:
@@ -302,7 +344,7 @@ def _posthog_with_fixed_targeting() -> Posthog:
         _targeted(1, FrontendFlag.COPILOT_VOICE_MODE.value, ["u-staff"]),
         {
             "id": 2,
-            "key": HIRE_EXPERTS,
+            "key": GENERIC_TRIGGER_AGENTS,
             "active": True,
             "filters": {"groups": [{"properties": [], "rollout_percentage": 100}]},
         },
@@ -381,7 +423,7 @@ def _posthog_still_loading(mocker) -> Posthog:
 
 
 def _posthog_splitting_pinning_and_gating_hire_on_email() -> Posthog:
-    """Local definitions: pinning is a 50% split, hire-experts needs an email."""
+    """Local definitions: pinning is a 50% split, generic-trigger-agents needs an email."""
     client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
     client.feature_flags = [
         {
@@ -392,7 +434,7 @@ def _posthog_splitting_pinning_and_gating_hire_on_email() -> Posthog:
         },
         {
             "id": 2,
-            "key": HIRE_EXPERTS,
+            "key": GENERIC_TRIGGER_AGENTS,
             "active": True,
             "filters": {
                 "groups": [

@@ -27,6 +27,7 @@ export function SampleCard({
 }: Props) {
   return (
     <label
+      data-slot="sample-card"
       className={cn(
         "block w-full text-left",
         selectableCardClassName(isSelected, true, colors, compact),
@@ -39,17 +40,20 @@ export function SampleCard({
         checked={isSelected}
         onChange={onSelect}
         aria-label={sample.label}
+        data-slot="sample-card-radio"
         className="sr-only"
       />
       <div
+        data-slot="sample-card-header"
         className={cn(
           "flex items-center justify-between gap-3",
           compact ? "mb-1" : "mb-2",
         )}
       >
         <span
+          data-slot="sample-card-label"
           className={cn(
-            "text-xs font-semibold uppercase tracking-[0.12em]",
+            "text-xs font-semibold uppercase tracking-caps",
             labelClassName ?? "text-accent",
           )}
         >
@@ -64,11 +68,12 @@ export function SampleCard({
         ) : null}
       </div>
       <p
+        data-slot="sample-card-text"
         className={cn(
           "whitespace-pre-line text-muted-foreground",
           compact
             ? "line-clamp-3 text-sm leading-normal"
-            : "text-[15px] leading-relaxed",
+            : "text-body-md leading-relaxed",
         )}
       >
         {sample.text}

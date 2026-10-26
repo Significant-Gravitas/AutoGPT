@@ -31,26 +31,26 @@ vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
 }));
 
-const HIRE_EXPERTS = "hire-experts";
+const GENERIC_TRIGGER_AGENTS = "generic-trigger-agents";
 
 describe("Sentry's flag context", () => {
   it("records the served boolean", () => {
-    source.flags = { [HIRE_EXPERTS]: true };
+    source.flags = { [GENERIC_TRIGGER_AGENTS]: true };
 
-    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    renderHook(() => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS));
 
     expect(sentry.addFeatureFlag).toHaveBeenCalledExactlyOnceWith(
-      HIRE_EXPERTS,
+      GENERIC_TRIGGER_AGENTS,
       true,
     );
   });
 
   it("records a flag read by a component that throws in the same render", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    source.flags = { [HIRE_EXPERTS]: true };
+    source.flags = { [GENERIC_TRIGGER_AGENTS]: true };
     let recordedAtCatch: unknown[][] = [];
     function Reader(): ReactNode {
-      useGetFlag(Flag.HIRE_EXPERTS);
+      useGetFlag(Flag.GENERIC_TRIGGER_AGENTS);
       throw new Error("render failed");
     }
     class Boundary extends Component<{ children: ReactNode }> {
@@ -72,26 +72,28 @@ describe("Sentry's flag context", () => {
       </Boundary>,
     );
 
-    expect(recordedAtCatch).toContainEqual([HIRE_EXPERTS, true]);
+    expect(recordedAtCatch).toContainEqual([GENERIC_TRIGGER_AGENTS, true]);
   });
 
   it("records the default it serves while the flag has no answer", () => {
     source.flags = {};
 
-    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toBe(false);
     expect(sentry.addFeatureFlag).toHaveBeenCalledExactlyOnceWith(
-      HIRE_EXPERTS,
+      GENERIC_TRIGGER_AGENTS,
       false,
     );
   });
 
   it("records nothing for an env-forced flag", () => {
-    process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS = "true";
+    process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS = "true";
 
-    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
-    renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    renderHook(() => useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS));
+    renderHook(() => useGetFlag(Flag.GENERIC_TRIGGER_AGENTS));
 
     expect(sentry.addFeatureFlag).not.toHaveBeenCalled();
   });
@@ -108,11 +110,13 @@ describe("Sentry's flag context", () => {
     sentry.addFeatureFlag.mockImplementation(() => {
       throw new Error("sentry down");
     });
-    source.flags = { [HIRE_EXPERTS]: true };
+    source.flags = { [GENERIC_TRIGGER_AGENTS]: true };
 
     const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
 
-    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toBe(true);
     expect(debug).toHaveBeenCalledOnce();

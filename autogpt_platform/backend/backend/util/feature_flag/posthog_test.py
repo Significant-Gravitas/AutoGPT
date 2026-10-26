@@ -175,7 +175,9 @@ class TestInMemoryRead:
         remote = mocker.patch.object(client, "_get_flags_decision")
         mocker.patch.object(ph, "get_flag_client", return_value=client)
         try:
-            values = ph.evaluate_flags_in_memory(["hire-experts"], "visitor:v-1", {})
+            values = ph.evaluate_flags_in_memory(
+                ["generic-trigger-agents"], "visitor:v-1", {}
+            )
         finally:
             client.shutdown()
 
@@ -187,13 +189,13 @@ class TestInMemoryRead:
         )
         client.feature_flags = [
             _rolled_out("marketplace-search-terms", 100, payload='["Research"]'),
-            _rolled_out("hire-experts", 100),
+            _rolled_out("generic-trigger-agents", 100),
             _rolled_out("chat-search", 0, payload='["unused"]'),
         ]
         mocker.patch.object(ph, "get_flag_client", return_value=client)
         try:
             values = ph.evaluate_flags_in_memory(
-                ["marketplace-search-terms", "hire-experts", "chat-search"],
+                ["marketplace-search-terms", "generic-trigger-agents", "chat-search"],
                 "visitor:v-1",
                 {},
             )
@@ -202,7 +204,7 @@ class TestInMemoryRead:
 
         assert values == {
             "marketplace-search-terms": ["Research"],
-            "hire-experts": True,
+            "generic-trigger-agents": True,
             "chat-search": False,
         }
 
@@ -212,7 +214,9 @@ class TestRawRead:
     async def test_an_unconfigured_client_returns_the_default(self, mocker):
         mocker.patch.object(ph, "get_flag_client", return_value=None)
 
-        assert await ph.evaluate_flag("hire-experts", "u-1", default=True) == (
+        assert await ph.evaluate_flag(
+            "generic-trigger-agents", "u-1", default=True
+        ) == (
             True,
             False,
         )
@@ -223,7 +227,7 @@ class TestRawRead:
         client.get_feature_flag_result.return_value = answer(value=False)
         mocker.patch.object(ph, "get_flag_client", return_value=client)
 
-        assert await ph.evaluate_flag("hire-experts", "u-1") == (False, True)
+        assert await ph.evaluate_flag("generic-trigger-agents", "u-1") == (False, True)
 
     @pytest.mark.asyncio
     async def test_an_unresolved_flag_is_not(self, mocker):
@@ -231,7 +235,9 @@ class TestRawRead:
         client.get_feature_flag_result.return_value = answer(value=None)
         mocker.patch.object(ph, "get_flag_client", return_value=client)
 
-        assert await ph.evaluate_flag("hire-experts", "u-1", default=True) == (
+        assert await ph.evaluate_flag(
+            "generic-trigger-agents", "u-1", default=True
+        ) == (
             True,
             False,
         )
@@ -259,7 +265,7 @@ class TestRawRead:
         )
         mocker.patch.object(ph, "get_flag_client", return_value=client)
 
-        assert await ph.evaluate_flag("hire-experts", "u-1") == (False, True)
+        assert await ph.evaluate_flag("generic-trigger-agents", "u-1") == (False, True)
 
     @pytest.mark.asyncio
     async def test_a_variant_key_is_returned_as_the_value(self, mocker):
@@ -278,10 +284,10 @@ class TestRawRead:
         client.get_feature_flag_result.return_value = answer(value=True)
         mocker.patch.object(ph, "get_flag_client", return_value=client)
 
-        await ph.evaluate_flag("hire-experts", "u-1", {"role": "admin"})
+        await ph.evaluate_flag("generic-trigger-agents", "u-1", {"role": "admin"})
 
         args, kwargs = client.get_feature_flag_result.call_args
-        assert args == ("hire-experts", "u-1")
+        assert args == ("generic-trigger-agents", "u-1")
         assert kwargs["person_properties"] == {"role": "admin"}
 
     @pytest.mark.asyncio
@@ -290,7 +296,9 @@ class TestRawRead:
         client.get_feature_flag_result.side_effect = Exception("connection refused")
         mocker.patch.object(ph, "get_flag_client", return_value=client)
 
-        assert await ph.evaluate_flag("hire-experts", "u-1", default=True) == (
+        assert await ph.evaluate_flag(
+            "generic-trigger-agents", "u-1", default=True
+        ) == (
             True,
             False,
         )
@@ -318,7 +326,9 @@ class TestRawRead:
                 ThreadPoolExecutor(max_workers=ph.FLAG_READ_WORKERS)
             )
             reads = [
-                asyncio.create_task(ph.evaluate_flag("hire-experts", f"u-{i}"))
+                asyncio.create_task(
+                    ph.evaluate_flag("generic-trigger-agents", f"u-{i}")
+                )
                 for i in range(ph.FLAG_READ_WORKERS + 1)
             ]
             try:

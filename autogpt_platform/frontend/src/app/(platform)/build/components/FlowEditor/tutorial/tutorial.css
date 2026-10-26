@@ -1,3 +1,7 @@
+/* Tailwind 4 compiles each stylesheet on its own: this one reads the app's
+   theme from globals.css (for the @apply rules below) without emitting it. */
+@reference "../../../../../globals.css";
+
 .new-builder-tutorial-disable {
   opacity: 0.3 !important;
   pointer-events: none !important;
@@ -18,6 +22,9 @@
   animation: new-builder-tutorial-pulse 2s ease-in-out infinite;
 }
 
+/* TODO(tokens): no fitting role for the pulse ring white #FFFFFF; #FFFFFF is
+   card (a surface fill, not a shadow). No exact role: violet #7c3aed #7C3AED
+   (accent is #7C3BED), #8b5cf6 #8B5CF6 and rgba(124, 58, 237) #7C3AED. */
 @keyframes new-builder-tutorial-pulse {
   0%,
   100% {
@@ -37,11 +44,15 @@
 .shepherd-element.new-builder-tour {
   max-width: 420px !important;
   border-radius: 1rem !important;
+  /* TODO(tokens): no exact role: shadow rgba(0, 0, 0) #000000. */
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.08),
     0px 4px 6px -1px rgba(0, 0, 0, 0.1),
     0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
+  /* TODO(tokens): no fitting role for white #FFFFFF; #FFFFFF is card, whose .dark value (9 9 11) differs (QUALITY 43, SECRT-3154). */
   background: white !important;
+  /* TODO(tokens): no exact text token: the family keeps its system-ui,
+     sans-serif fallback, which font-sans does not have. */
   font-family: var(--font-geist-sans), system-ui, sans-serif !important;
 }
 
@@ -52,20 +63,23 @@
 }
 
 .shepherd-element.new-builder-tour .shepherd-title {
+  /* TODO(tokens): no exact text token: the family keeps its system-ui,
+     sans-serif fallback, which font-poppins does not have. */
   font-family: var(--font-poppins), system-ui, sans-serif !important;
-  font-size: 1rem !important;
-  font-weight: 600 !important;
-  line-height: 1.5rem !important;
+  @apply text-body-lg! font-semibold! leading-6!;
+  /* TODO(tokens): no fitting role for #18181b #18181B; #18181B is secondary-foreground, whose .dark value (250 250 250) differs (QUALITY 43, SECRT-3154). */
   color: #18181b !important; /* zinc-900 */
 }
 
 .shepherd-element.new-builder-tour .shepherd-text {
   padding: 0 1.25rem 1rem !important;
-  color: #52525b !important; /* zinc-600 */
+  /* TODO(tokens): no exact role: #52525b #52525B. */
+  color: #52525b !important;
 }
 
 .shepherd-element.new-builder-tour .shepherd-footer {
   padding: 0.75rem 1.25rem 1rem !important;
+  /* TODO(tokens): no fitting role for #e4e4e7 #E4E4E7; #E4E4E7 is border, whose .dark value (39 39 42) differs (QUALITY 43, SECRT-3154). */
   border-top: 1px solid #e4e4e7 !important; /* zinc-200 */
   gap: 0.5rem !important;
   display: flex !important;
@@ -77,10 +91,10 @@
   align-items: center !important;
   justify-content: center !important;
   white-space: nowrap !important;
+  /* TODO(tokens): no exact text token: the family keeps its system-ui,
+     sans-serif fallback, which font-sans does not have. */
   font-family: var(--font-geist-sans), system-ui, sans-serif !important;
-  font-weight: 500 !important;
-  font-size: 0.875rem !important;
-  line-height: 1.25rem !important;
+  @apply text-body! font-medium! leading-5!;
   transition: all 150ms ease !important;
   border-radius: 9999px !important; /* rounded-full */
   min-width: 5rem !important;
@@ -92,13 +106,16 @@
 
 .shepherd-element.new-builder-tour
   .shepherd-button:not(.shepherd-button-secondary) {
-  background-color: #27272a !important; /* zinc-800 */
+  /* TODO(tokens): no exact role: #27272a #27272A. */
+  background-color: #27272a !important;
   border: 1px solid #27272a !important;
+  /* TODO(tokens): no fitting role for white #FFFFFF; #FFFFFF is accent-foreground, whose .dark value (250 250 250) differs (QUALITY 43, SECRT-3154). */
   color: white !important;
 }
 
 .shepherd-element.new-builder-tour
   .shepherd-button:not(.shepherd-button-secondary):hover {
+  /* TODO(tokens): no fitting role for #18181b #18181B; #18181B is primary, whose .dark value (250 250 250) differs (QUALITY 43, SECRT-3154). */
   background-color: #18181b !important; /* zinc-900 */
   border-color: #18181b !important;
 }
@@ -109,15 +126,20 @@
 }
 
 .shepherd-element.new-builder-tour .shepherd-button-secondary {
+  /* TODO(tokens): no fitting role for #f4f4f5 #F4F4F5; #F4F4F5 is secondary, whose .dark value (39 39 42) differs (QUALITY 43, SECRT-3154). */
   background-color: #f4f4f5 !important; /* zinc-100 */
   border: 1px solid #f4f4f5 !important;
-  color: #52525b !important; /* zinc-600 */
+  /* TODO(tokens): no exact role: #52525b #52525B. */
+  color: #52525b !important;
 }
 
 .shepherd-element.new-builder-tour .shepherd-button-secondary:hover {
-  background-color: #e4e4e7 !important; /* zinc-200 */
+  /* TODO(tokens): no fitting role for the fill #e4e4e7 #E4E4E7; #E4E4E7 is
+     border (a border colour), and the border repeats the fill. No exact role:
+     #27272a #27272A. */
+  background-color: #e4e4e7 !important;
   border-color: #e4e4e7 !important;
-  color: #27272a !important; /* zinc-800 */
+  color: #27272a !important;
 }
 
 .shepherd-element.new-builder-tour .shepherd-button-secondary:active {
@@ -125,14 +147,16 @@
 }
 
 .shepherd-element.new-builder-tour .shepherd-cancel-icon {
-  color: #a1a1aa !important; /* zinc-400 */
+  /* TODO(tokens): no exact role: #a1a1aa #A1A1AA. */
+  color: #a1a1aa !important;
   transition: color 150ms ease !important;
   width: 1.5rem !important;
   height: 1.5rem !important;
 }
 
 .shepherd-element.new-builder-tour .shepherd-cancel-icon:hover {
-  color: #52525b !important; /* zinc-600 */
+  /* TODO(tokens): no exact role: #52525b #52525B. */
+  color: #52525b !important;
 }
 
 .shepherd-element.new-builder-tour .shepherd-arrow {
@@ -140,6 +164,7 @@
 }
 
 .shepherd-element.new-builder-tour .shepherd-arrow:before {
+  /* TODO(tokens): no fitting role for white #FFFFFF; #FFFFFF is card, whose .dark value (9 9 11) differs (QUALITY 43, SECRT-3154). */
   background: white !important;
 }
 

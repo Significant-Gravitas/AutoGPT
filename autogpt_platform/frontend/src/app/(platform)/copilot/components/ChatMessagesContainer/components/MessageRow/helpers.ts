@@ -91,14 +91,17 @@ export function getMessageContentClassName(compact: boolean): string {
   return cn(
     compact
       ? "text-sm leading-6 group-[.is-user]:rounded-xl"
-      : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
-    "group-[.is-user]:bg-zinc-900 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
+      : "text-body-lg leading-relaxed group-[.is-user]:rounded-3xl",
+    // TODO(tokens): no fitting role for group-[.is-user]:text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a fill)
+    "group-[.is-user]:bg-action-hover group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
     // Streamdown's links (buttons, `text-primary`) and light
     // code chips would sink into the dark bubble.
-    "group-[.is-user]:[&_[data-streamdown=link]]:break-all group-[.is-user]:[&_[data-streamdown=link]]:text-zinc-50 group-[.is-user]:[&_[data-streamdown=link]]:underline group-[.is-user]:[&_code]:bg-white/10 group-[.is-user]:[&_code]:text-zinc-50",
+    // TODO(tokens): no fitting role for group-[.is-user]:[&_[data-streamdown=link]]:text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a fill); no fitting role for group-[.is-user]:[&_code]:text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a fill)
+    "group-[.is-user]:[&_[data-streamdown=link]]:break-all group-[.is-user]:[&_[data-streamdown=link]]:text-zinc-50 group-[.is-user]:[&_[data-streamdown=link]]:underline group-[.is-user]:[&_code]:bg-surface/10 group-[.is-user]:[&_code]:text-zinc-50",
     "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
     // Chain hover pills use negative margins that the base
     // overflow-hidden would clip.
+    // TODO(tokens): no exact role for group-[.is-assistant]:text-slate-900
     "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900",
   );
 }

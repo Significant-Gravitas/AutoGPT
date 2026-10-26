@@ -23,20 +23,21 @@ export function SupportOffer({
   return (
     <section
       aria-label={ready ? "Your plan is ready" : "Plan support"}
-      className="flex h-full flex-col rounded-2xl border border-zinc-200 bg-zinc-50/60 p-6"
+      className="flex h-full flex-col rounded-2xl border border-border-base bg-surface-muted/60 p-6"
     >
       <div className="flex items-center gap-2.5">
-        <span className="flex size-7 items-center justify-center rounded-lg bg-white text-zinc-600 ring-1 ring-zinc-200">
+        <span className="flex size-7 items-center justify-center rounded-lg bg-surface text-foreground-secondary ring-1 ring-border-base">
           <Icon icon={ready ? SparklesIcon : Message01Icon} size={17} />
         </span>
-        <Text variant="small-medium" className="text-zinc-600">
+        <Text variant="small-medium" className="text-foreground-secondary">
           {eyebrow}
         </Text>
       </div>
       <Text
         variant="h4"
         as="h2"
-        className="mb-3 mt-4 text-[23px] leading-8 tracking-[-0.04em]"
+        // TODO(tokens): SECRT-3152 rare size (text-[23px])
+        className="mb-3 mt-4 text-[23px] leading-8 tracking-display"
       >
         {title}
       </Text>

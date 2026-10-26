@@ -24,17 +24,17 @@ vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
 }));
 
 const FORCE_ALL = "NEXT_PUBLIC_FORCE_ALL_FLAGS";
-const PER_FLAG = "NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY";
+const PER_FLAG = "NEXT_PUBLIC_FORCE_FLAG_COPILOT_AUTO_MODE";
 
 function Gated() {
   return <div>gated content</div>;
 }
 
-const Wrapped = withFeatureFlag(Gated, Flag.GRAPHITI_MEMORY);
+const Wrapped = withFeatureFlag(Gated, Flag.COPILOT_AUTO_MODE);
 
 describe("withFeatureFlag reads through the flag seam", () => {
   it("renders the page once the vendor answers true", () => {
-    source.results = { "graphiti-memory": { value: true, resolved: true } };
+    source.results = { "copilot-auto-mode": { value: true, resolved: true } };
 
     render(<Wrapped />);
 
@@ -43,7 +43,7 @@ describe("withFeatureFlag reads through the flag seam", () => {
   });
 
   it("sends the user to 404 once the vendor answers false", () => {
-    source.results = { "graphiti-memory": { value: false, resolved: true } };
+    source.results = { "copilot-auto-mode": { value: false, resolved: true } };
 
     render(<Wrapped />);
 
@@ -86,7 +86,7 @@ async function renderGated() {
   vi.resetModules();
   const { withFeatureFlag: freshHOC } = await import("../with-feature-flag");
   const { Flag: FreshFlag } = await import("../use-get-flag");
-  const Page = freshHOC(Gated, FreshFlag.GRAPHITI_MEMORY);
+  const Page = freshHOC(Gated, FreshFlag.COPILOT_AUTO_MODE);
   return render(<Page />);
 }
 

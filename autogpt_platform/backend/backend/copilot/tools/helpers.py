@@ -51,8 +51,8 @@ from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockError, InsufficientBalanceError
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.request import HTTPClientError
+from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
@@ -349,8 +349,10 @@ async def execute_block(
         try:
             for field_name, cred_meta in matched_credentials.items():
                 credential_field_name = field_name
-                if field_name not in input_data:
-                    input_data[field_name] = cred_meta.model_dump()
+                # Always overwrite: the block runs with the resolved
+                # credential below, so the input it is priced on must name
+                # that same credential, not whatever the model passed.
+                input_data[field_name] = cred_meta.model_dump()
                 if cred_meta.provider == ProviderName.CODEX:
                     lease = await creds_manager.acquire_lease(user_id, cred_meta.id)
                     credential_leases[field_name] = lease
@@ -1404,8 +1406,10 @@ async def check_spend_approval(
     threshold (SECRT-2599). None means the block may run."""
     if session.expert_id is None:
         return None
+    # Price with the credentials the run will use, not the model's own.
+    resolved = {f: m.model_dump() for f, m in prep.matched_credentials.items()}
     cost, _ = block_usage_cost(
-        prep.block, prep.input_data, use_preflight_estimate=False
+        prep.block, {**prep.input_data, **resolved}, use_preflight_estimate=False
     )
     if cost <= 0:
         return None
@@ -1436,15 +1440,10 @@ async def check_spend_approval(
 
 
 async def metered_expert_id(user_id: str, expert_id: str | None) -> str | None:
-    """The expert whose spend counters a chat block charge lands on; None
-    keeps the pre-SECRT-2599 behaviour of not counting chat block spend.
-
-    Narrower than the scope id ``execute_block`` takes: the flag gates who
-    gets metered, never whose file scope a ``workspace://`` input resolves in.
-    """
+    """The expert to meter when billing is enabled, independently of file scope."""
     if expert_id is None:
         return None
-    if not await is_feature_enabled(Flag.EXPERT_SPEND_APPROVAL, user_id):
+    if not Settings().config.enable_credit:
         return None
     return expert_id
 
@@ -1643,6 +1642,10 @@ def require_guide_read(session: ChatSession, tool_name: str):
     # requiring one would waste a round-trip every turn.
     if session.metadata.builder_graph_id:
         return None
+    # An External API call has no earlier calls to find; its client reads the
+    # guide through `get_agent_building_guide` when it wants it.
+    if session.external_caller:
+        return None
     # Building sessions get the guide in the (cached) system prompt — see
     # ``build_builder_system_prompt_suffix``.
     if session.guide_in_system_prompt:
@@ -1707,6 +1710,10 @@ def require_library_check(session: ChatSession, tool_name: str):
     from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
 
     if session.metadata.builder_graph_id:
+        return None
+    # As in `require_guide_read`: an External API call has no history; its
+    # client searches the library with `find_library_agent` itself.
+    if session.external_caller:
         return None
     if _was_called_for_creation(session):
         return None
