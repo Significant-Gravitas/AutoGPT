@@ -1950,9 +1950,10 @@ class ExecutionOutputEntry(BaseModel):
     produced_at: float = Field(default_factory=time.monotonic, exclude=True)
 
 
-# How long a stopped run's cleanup waits for a node's task to unwind after
-# the cancel. A block that ignores the cancel gets no more than this, so a stop
-# still ends within stop_graph_execution's 15 s wait.
+# How long a stopped run's cleanup waits for nodes whose block is still running
+# after the cancel. The cleanup gives all its nodes this one grace together, so
+# blocks that ignore the cancel can't hold a stop past stop_graph_execution's
+# 15 s wait.
 NODE_UNWIND_GRACE_SECONDS = 5.0
 
 
@@ -2046,7 +2047,7 @@ class NodeExecutionProgress:
             cancelled_ids.append(task_id)
         return cancelled_ids
 
-    def wait_for_done(self, timeout: float = 5.0):
+    def wait_for_done(self, timeout: float = 5.0, unwind_until: float | None = None):
         """
         Wait for all cancelled tasks to complete cancellation.
 
@@ -2058,25 +2059,29 @@ class NodeExecutionProgress:
 
         Args:
             timeout: Maximum time to wait for cancellation in seconds
+            unwind_until: When to stop waiting for a node whose block is still
+                running (a time.time() value); by default
+                NODE_UNWIND_GRACE_SECONDS from now
         """
         start_time = time.time()
+        if unwind_until is None:
+            unwind_until = start_time + NODE_UNWIND_GRACE_SECONDS
 
         while time.time() - start_time < timeout:
             while self.pop_output():
                 pass
 
-            unwound = (
-                not self._unwinding
-                or time.time() - start_time >= NODE_UNWIND_GRACE_SECONDS
-            )
+            unwound = not self._unwinding or time.time() >= unwind_until
             if self.is_done() and unwound and not self._settling:
                 return
 
             time.sleep(0.1)  # Small delay to avoid busy waiting
 
+        with self._lock:
+            settling = sorted(self._settling.values())
         raise TimeoutError(
             "Timeout waiting for cancellation of tasks: "
-            f"{list(self.tasks.keys()) + sorted(self._settling.values())}"
+            f"{list(self.tasks.keys()) + settling}"
         )
 
     def _pop_done_task(self, exec_id: str) -> bool:

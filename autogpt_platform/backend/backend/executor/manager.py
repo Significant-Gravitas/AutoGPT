@@ -114,6 +114,7 @@ from .utils import (
     GRAPH_EXECUTION_QUEUE_NAME,
     GRAPH_EXECUTION_ROUTING_KEY,
     LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+    NODE_UNWIND_GRACE_SECONDS,
     CancelExecutionEvent,
     ExecutionOutputEntry,
     LogMetadata,
@@ -311,13 +312,19 @@ T = TypeVar("T")
 
 async def _finish_despite_cancel(work: Awaitable[T]) -> T:
     """Await ``work`` to its end even if the caller is cancelled meanwhile,
-    then re-raise the cancel. A failure of ``work`` itself wins over the
-    cancel, since it is the more useful error to surface."""
+    any number of times, then re-raise the cancel. A failure of ``work``
+    itself wins over the cancel, since it is the more useful error to
+    surface."""
     task = asyncio.ensure_future(work)
     try:
         return await asyncio.shield(task)
     except asyncio.CancelledError:
-        await task
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+        task.result()
         raise
 
 
@@ -876,15 +883,22 @@ class ExecutionProcessor:
         transaction named after its block."""
         block = get_block(node_exec.block_id)
         with node_transaction(node_exec, block) as span:
-            return await self._run_node(
-                node_exec,
-                block,
-                node_exec_progress,
-                nodes_input_masks,
-                graph_stats_pair,
-                nodes_to_skip,
-                span,
+            # Its own task, even when a caller such as the Orchestrator runs a
+            # tool node inline from a longer-lived task: a stop's cleanup waits
+            # for this task (see wait_for_done), so it must end with the node.
+            node_run = asyncio.ensure_future(
+                self._run_node(
+                    node_exec,
+                    block,
+                    node_exec_progress,
+                    nodes_input_masks,
+                    graph_stats_pair,
+                    nodes_to_skip,
+                    span,
+                )
             )
+            node_exec_progress.track_unwinding(node_exec.node_exec_id, node_run)
+            return await node_run
 
     async def _run_node(
         self,
@@ -905,10 +919,6 @@ class ExecutionProcessor:
             node_id=node_exec.node_id,
             block_name=block.name if block else "-",
         )
-        # A stop marks this node done before its task has unwound; the run's
-        # cleanup waits for the task itself too (see wait_for_done).
-        if task := asyncio.current_task():
-            node_exec_progress.track_unwinding(node_exec.node_exec_id, task)
         db_client = get_db_async_client()
         node = await db_client.get_node(node_exec.node_id)
         execution_stats = NodeExecutionStats()
@@ -932,8 +942,8 @@ class ExecutionProcessor:
 
         # A stop cancels this task, even after the block has finished. The
         # block's charge, its final status and the run's totals must still be
-        # written, so a cancel arriving now waits for them and then ends the
-        # task. The run's cleanup waits for them too (see wait_for_done):
+        # written, so a cancel arriving now waits for them before it is
+        # re-raised. The run's cleanup waits for them too (see wait_for_done):
         # its terminal sweep would otherwise fail the node first.
         settle = asyncio.ensure_future(
             self._settle_node(
@@ -1142,9 +1152,9 @@ class ExecutionProcessor:
                 status = ExecutionStatus.TERMINATED
 
         finally:
-            # The block is done, so from here this task is the node's
-            # bookkeeping, which the run's cleanup waits for in full rather
-            # than for the unwind grace (see wait_for_done).
+            # The block is done, so from here the node's own task (started in
+            # on_node_execution) is its bookkeeping, which the run's cleanup
+            # waits for in full rather than for the unwind grace.
             if task := asyncio.current_task():
                 node_exec_progress.track_settling(node_exec.node_exec_id, task)
             if status == ExecutionStatus.FAILED and stats.error is not None:
@@ -1689,9 +1699,12 @@ class ExecutionProcessor:
             log_metadata.info(f"Stopping node execution {node_id}")
             inflight_exec.stop()
 
+        # One unwind grace for all nodes together, so several blocks that
+        # ignore the cancel can't add up past stop_graph_execution's wait.
+        unwind_until = time.time() + NODE_UNWIND_GRACE_SECONDS
         for node_id, inflight_exec in running_node_execution.items():
             try:
-                inflight_exec.wait_for_done(timeout=3600.0)
+                inflight_exec.wait_for_done(timeout=3600.0, unwind_until=unwind_until)
             except TimeoutError:
                 log_metadata.exception(
                     f"Node execution #{node_id} did not stop in time, "

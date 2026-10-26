@@ -9,6 +9,7 @@ import logging
 import threading
 import time
 import uuid
+from concurrent.futures import Future
 from contextlib import ExitStack, contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -19,7 +20,7 @@ from backend.blocks._base import BlockType
 from backend.data.execution import ExecutionContext, ExecutionStatus, NodeExecutionEntry
 from backend.data.graph import Node
 from backend.data.model import GraphExecutionStats
-from backend.executor.manager import ExecutionProcessor
+from backend.executor.manager import ExecutionProcessor, _finish_despite_cancel
 from backend.executor.utils import NodeExecutionProgress
 from backend.util.decorator import TimingInfo
 
@@ -52,6 +53,11 @@ async def _completed_block(**kwargs):
 
 async def _failing_block(**kwargs):
     raise RuntimeError("provider down")
+    yield  # pragma: no cover - makes this an async generator
+
+
+async def _block_with_no_outputs(**kwargs):
+    return
     yield  # pragma: no cover - makes this an async generator
 
 
@@ -292,15 +298,83 @@ def test_a_block_that_ignores_the_stop_holds_the_cleanup_only_briefly():
         stack.enter_context(
             patch("backend.executor.utils.NODE_UNWIND_GRACE_SECONDS", 0.3)
         )
-        future = _start_node(loop, run, processor, progress)
+        _start_node(loop, run, processor, progress)
         assert block_started.wait(timeout=5)
 
         progress.stop()
         progress.wait_for_done(timeout=5)
 
-        assert future.cancelled()
         release.set()
         deadline = time.monotonic() + 5
         while not run.update_graph.await_count and time.monotonic() < deadline:
             time.sleep(0.01)
         run.update_graph.assert_awaited_once()
+
+
+def test_a_tool_node_run_inline_holds_the_cleanup_only_for_itself():
+    """The Orchestrator runs a tool node inline from its own long-lived task,
+    tracked by a bare future. Once the tool node is done, a stop's cleanup
+    must not also wait for the Orchestrator's task to end."""
+    tool_done = threading.Event()
+    orchestrator_ends = threading.Event()
+    run = _Run(threading.Event())
+    processor = ExecutionProcessor()
+    progress = NodeExecutionProgress()
+    progress.add_task("node-exec-1", Future())
+
+    async def orchestrator():
+        await run.node_run(processor, progress)
+        tool_done.set()
+        await _until(orchestrator_ends)()
+
+    with _node_loop() as loop, ExitStack() as stack:
+        run.patches(stack)
+        stack.enter_context(
+            patch("backend.executor.manager.execute_node", new=_block_with_no_outputs)
+        )
+        orchestrator_run = asyncio.run_coroutine_threadsafe(orchestrator(), loop)
+        assert tool_done.wait(timeout=5)
+        assert run.settle_call()["status"] == ExecutionStatus.COMPLETED
+
+        progress.stop()
+        progress.wait_for_done(timeout=2)
+
+        orchestrator_ends.set()
+        orchestrator_run.result(timeout=5)
+
+
+def test_the_unwind_grace_is_one_deadline_for_the_whole_cleanup():
+    """A node whose block ignores the cancel is waited for until the deadline
+    the cleanup passes, not for a fresh grace of its own."""
+    loop = asyncio.new_event_loop()
+    try:
+        progress = NodeExecutionProgress()
+        progress.track_unwinding("node-exec-1", loop.create_future())
+
+        with pytest.raises(TimeoutError):
+            progress.wait_for_done(timeout=0.3)
+        progress.wait_for_done(timeout=5, unwind_until=time.time())
+    finally:
+        loop.close()
+
+
+@pytest.mark.asyncio
+async def test_finishing_despite_cancel_survives_a_second_cancel():
+    answers = asyncio.Event()
+    finished = []
+
+    async def work():
+        await answers.wait()
+        finished.append(True)
+
+    caller = asyncio.ensure_future(_finish_despite_cancel(work()))
+    await asyncio.sleep(0)
+    for _ in range(2):
+        caller.cancel()
+        await asyncio.sleep(0)
+    assert not caller.done()
+
+    answers.set()
+    with pytest.raises(asyncio.CancelledError):
+        await caller
+    assert finished == [True]
