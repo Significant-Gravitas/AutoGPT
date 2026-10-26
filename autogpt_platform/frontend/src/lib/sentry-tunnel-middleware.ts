@@ -17,7 +17,8 @@ const FORWARDED_HEADERS = [
   "referer",
 ];
 
-// Above Replay's ~20 MB event buffer, the largest envelope the browser SDK sends.
+// Only stops oversized bodies: the browser SDK's envelopes (errors, traces,
+// profiles, logs) stay far below it.
 const MAX_ENVELOPE_BYTES = 20 * 1024 * 1024;
 
 export function relaySentryEnvelope(request: NextRequest) {

@@ -2,7 +2,8 @@
 
 import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import type { GraphExecutionWithNodes } from "@/app/api/__generated__/models/graphExecutionWithNodes";
-import { IconCircleAlert } from "@/components/__legacy__/ui/icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { CircleAlertGlyph } from "@/components/atoms/Icon/drawnIcons";
 import {
   Tooltip,
   TooltipContent,
@@ -68,7 +69,9 @@ export function RunSummary({ run }: Props) {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <IconCircleAlert
+                <Icon
+                  icon={CircleAlertGlyph}
+                  aria-label="Icon"
                   // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3), hover:text-neutral-600 (#525252)
                   className="size-4 cursor-help text-neutral-400 hover:text-neutral-600"
                 />

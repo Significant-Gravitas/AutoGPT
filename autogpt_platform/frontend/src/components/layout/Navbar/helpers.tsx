@@ -1,4 +1,19 @@
-import { IconType } from "@/components/__legacy__/ui/icons";
+export enum IconType {
+  Marketplace,
+  Library,
+  Builder,
+  Edit,
+  LayoutDashboard,
+  UploadCloud,
+  Settings,
+  LogOut,
+  AutoGPTLogo,
+  Sliders,
+  Chat,
+  Billing,
+  Help,
+  WhatsNew,
+}
 
 export type MenuItemGroup = {
   groupName?: string;
