@@ -29,6 +29,7 @@ from redis.exceptions import RedisError, ResponseError
 from backend.api.model import CopilotCompletionPayload
 from backend.copilot import after_turn
 from backend.copilot.active_turns import release_turn_slot
+from backend.copilot.result_waiters import is_result_awaited
 from backend.copilot.turn_queue import dispatch_next_for_user
 from backend.data.db_accessors import chat_db
 from backend.data.notification_bus import (
@@ -1025,6 +1026,9 @@ async def mark_session_completed(
     if not turn_id:
         turn_id = _parse_session_meta(meta, session_id).turn_id if meta else session_id
 
+    # Read before the swap: a waiter's listener lets go once the status flips.
+    result_awaited = await is_result_awaited(session_id)
+
     # Atomic compare-and-swap: only update if status is "running". A turn's end
     # can wake the next one, so its late safety-net call must not close that.
     swapped = await hash_compare_and_set(
@@ -1083,6 +1087,16 @@ async def mark_session_completed(
                 session_id,
                 exc,
             )
+
+    # Only the call that ended the turn reports it, so the executor's safety-net
+    # call after a delivered result or a Stop cannot report an error.
+    if user_id and error_message != CANCELLED_MESSAGE and not result_awaited:
+        # Deferred like the gate below: the report reaches back through the tools.
+        from backend.copilot.delegation_report import report_to_delegator
+
+        await report_to_delegator(
+            user_id, session_id, turn_id, failed=bool(error_message)
+        )
 
     # A card answered while this turn ran has nobody to start its turn but us,
     # an error included; only the user's own Stop leaves it for their next turn.

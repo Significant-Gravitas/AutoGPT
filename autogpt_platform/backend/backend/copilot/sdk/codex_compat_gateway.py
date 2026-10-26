@@ -14,7 +14,12 @@ from uuid import uuid4
 from aiohttp import web
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.copilot.pending_messages import FOLLOW_UP_CLOSE_TAG, FOLLOW_UP_OPEN_TAG
+from backend.copilot.pending_messages import (
+    FOLLOW_UP_CLOSE_TAG,
+    FOLLOW_UP_OPEN_TAG,
+    REPORTS_CLOSE_TAG,
+    REPORTS_OPEN_TAG,
+)
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.provider_failure import classify as classify_provider_failure
 from backend.copilot.provider_failure import status_for
@@ -70,17 +75,20 @@ _SECRET_ASSIGNMENT_PATTERN = re.compile(
     r"\s*[\"']?\s*[:=]\s*(?:Bearer\s+)?"
     r"(?:\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'|[^\s,;]+)"
 )
-# A queued user message the PostToolUse hook injected, wrapper included.
-# `format_pending_as_followup` escapes the tags inside each message, so a
-# block's own tags are the only raw ones in it. Greedy up to the next opening
-# tag, never past it, so two blocks never merge into one match that carries
-# the CLI's text between them.
+# A block the PostToolUse hook injected, wrapper included: the user's queued
+# messages, or reports from other chats. `format_pending_as_followup` escapes
+# the tags inside each message, so a block's own tags are the only raw ones in
+# it. Greedy up to the next opening tag, never past it, so two blocks never
+# merge into one match that carries the CLI's text between them.
+_ANY_OPEN_TAG = f"{re.escape(FOLLOW_UP_OPEN_TAG)}|{re.escape(REPORTS_OPEN_TAG)}"
 _FOLLOW_UP_BLOCK = re.compile(
-    re.escape(FOLLOW_UP_OPEN_TAG)
-    + r"(?:(?!"
-    + re.escape(FOLLOW_UP_OPEN_TAG)
-    + r").)*"
-    + re.escape(FOLLOW_UP_CLOSE_TAG),
+    "|".join(
+        f"{re.escape(open_tag)}(?:(?!{_ANY_OPEN_TAG}).)*{re.escape(close_tag)}"
+        for open_tag, close_tag in (
+            (FOLLOW_UP_OPEN_TAG, FOLLOW_UP_CLOSE_TAG),
+            (REPORTS_OPEN_TAG, REPORTS_CLOSE_TAG),
+        )
+    ),
     re.DOTALL,
 )
 
@@ -1169,12 +1177,14 @@ def _claim(
 
 
 def _followup_after_results(messages: object, call_ids: list[str]) -> str | None:
-    """The user's queued messages the CLI sent with these tool results.
+    """The user's queued messages, and other chats' reports, the CLI sent with
+    these tool results.
 
-    The PostToolUse hook hands them over as ``<user_follow_up>`` blocks in its
-    context, which the CLI sends after the result: for a non-Claude model
-    name, in a ``system`` message after the result's message (CLI 2.1.284 and
-    2.1.296); older builds, in a text block beside the result. Only the blocks
+    The PostToolUse hook hands them over as ``<user_follow_up>`` and
+    ``<reports_from_other_chats>`` blocks in its context, which the CLI sends
+    after the result: for a non-Claude model name, in a ``system`` message
+    after the result's message (CLI 2.1.284 and 2.1.296); older builds, in a
+    text block beside the result. Only the blocks
     are passed on. The CLI's own notes can ride the same way (2.1.296 adds a
     ``<total_tokens>`` count every round) and must not become user turns. A
     block inside the result itself, the CLI's shape for Claude model names,

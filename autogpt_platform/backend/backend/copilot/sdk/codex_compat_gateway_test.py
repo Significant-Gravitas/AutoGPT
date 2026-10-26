@@ -1391,6 +1391,42 @@ def test_two_blocks_reach_codex_without_the_cli_text_between_them() -> None:
     assert followup == f"{first}\n\n{second}"
 
 
+@pytest.mark.parametrize(
+    "pending",
+    [
+        [
+            PendingMessage(content="also check logs"),
+            PendingMessage(content="Bit finished: the PR is open.", report=True),
+        ],
+        [
+            PendingMessage(
+                content="why are <reports_from_other_chats> and "
+                "</reports_from_other_chats> in my logs?"
+            ),
+            PendingMessage(content="Bit finished: the PR is open.", report=True),
+        ],
+    ],
+    ids=["beside-the-users-words", "user-quotes-the-report-tags"],
+)
+def test_a_report_from_another_chat_reaches_codex_whole(
+    pending: list[PendingMessage],
+) -> None:
+    block = format_pending_as_followup(pending)
+    messages = [
+        _tool_result_message("toolu_codex_1", "one result"),
+        {
+            "role": "system",
+            "content": f"PostToolUse:x hook additional context: {block}\n\n"
+            f"{_TOTAL_TOKENS}",
+        },
+    ]
+
+    followup = codex_compat_gateway._followup_after_results(messages, ["toolu_codex_1"])
+
+    assert followup == block
+    assert "Bit finished: the PR is open." in followup
+
+
 @pytest.mark.asyncio
 async def test_recording_sink_drops_the_buffer_past_the_replay_cap(
     monkeypatch: pytest.MonkeyPatch,
