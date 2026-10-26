@@ -6,10 +6,10 @@ import pytest
 import pytest_mock
 
 from backend.copilot import ai_spans
-from backend.copilot.executor.utils import CoPilotExecutionEntry
+from backend.copilot.executor.utils import CoPilotExecutionEntry, ScheduledTurnOrigin
 from backend.copilot.response_model import StreamToolInputAvailable
 from backend.copilot.tree import TurnEnvelope
-from backend.copilot.turn_tracing import turn_transaction
+from backend.copilot.turn_tracing import turn_origin, turn_transaction
 from backend.util.posthog_events import PostHogEvent
 
 CANCELLED = "Operation cancelled"
@@ -47,6 +47,25 @@ def test_a_turn_that_ran_ends_as_its_replys_trace(capture: MagicMock):
     assert properties["tool_call_count"] == 1
     assert properties["turn_origin"] == "chat"
     assert properties["$ai_latency"] >= 0
+
+
+@pytest.mark.parametrize(
+    ("changes", "expected"),
+    [
+        ({}, "chat"),
+        ({"is_user_message": False}, "system"),
+        ({"envelope": TurnEnvelope(tree_id="turn-0", depth=1)}, "spawned"),
+        ({"scheduled": ScheduledTurnOrigin(schedule_id="sched-1")}, "scheduled"),
+        ({"unattended": True}, "scheduled"),
+    ],
+    ids=["a message", "the platform", "a subtask", "a schedule", "unattended"],
+)
+def test_turn_origin_says_what_started_the_turn(
+    changes: dict[str, object], expected: str
+):
+    entry = _entry().model_copy(update=changes)
+
+    assert turn_origin(entry) == expected
 
 
 def test_a_failed_turn_carries_its_error_code_not_its_message(capture: MagicMock):

@@ -16,8 +16,10 @@ OpenRouter Broadcast sends every generation to PostHog LLM analytics as an
   ``ai_spans`` sends the trace's tool spans and root from the backend.
 - ``trace.generation_name`` becomes ``$ai_span_name``; every other ``trace``
   key arrives as ``metadata_<key>`` (``metadata_environment``,
-  ``metadata_impersonated``, and ``metadata_revision``: the deployed build's
-  git sha from ``config.sentry_release``, left out when that is blank).
+  ``metadata_impersonated``, ``metadata_turn_origin``: what started the turn,
+  as on its ``$ai_trace`` (``turn_tracing.turn_origin``), and
+  ``metadata_revision``: the deployed build's git sha from
+  ``config.sentry_release``, left out when that is blank).
   Broadcast sends these events itself, not through our PostHog client, so
   they never get a property the client adds to every event it captures.
 
@@ -47,6 +49,10 @@ GenerationName = Literal["copilot-title", "copilot-sdk", "copilot-baseline"]
 # executor sets it for every turn, so a value never carries over; a call made
 # outside a turn sends none.
 _turn_trace_id: ContextVar[str | None] = ContextVar("_turn_trace_id", default=None)
+# What started the running turn (``turn_tracing.turn_origin``), so analytics
+# can tell a person's message from a schedule's. Set for every turn, like the
+# trace id; a call made outside a turn sends none.
+_turn_origin: ContextVar[str | None] = ContextVar("_turn_origin", default=None)
 
 
 def openrouter_attribution(
@@ -69,6 +75,9 @@ def openrouter_attribution(
     trace_id = turn_trace_id()
     if trace_id:
         body["trace"]["trace_id"] = trace_id[:_MAX_ID_CHARS]
+    origin = _turn_origin.get()
+    if origin:
+        body["trace"]["turn_origin"] = origin
     if user_id:
         body["user"] = user_id[:_MAX_ID_CHARS]
     if session_id:
@@ -96,6 +105,12 @@ def set_turn_trace_id(trace_id: str | None) -> None:
 
 def turn_trace_id() -> str | None:
     return _turn_trace_id.get()
+
+
+def set_turn_origin(origin: str | None) -> None:
+    """Make *origin* the turn origin every model call the running turn makes
+    reports."""
+    _turn_origin.set(origin or None)
 
 
 def is_impersonated_request(request: Request) -> bool:

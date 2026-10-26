@@ -107,7 +107,7 @@ class TurnTrace:
             outcome=self.outcome,
             error_code=self.error_code,
             engine=self.engine,
-            origin=_origin(entry),
+            origin=turn_origin(entry),
             tool_call_count=self._tool_calls,
         )
 
@@ -126,7 +126,7 @@ def turn_transaction(entry: "CoPilotExecutionEntry") -> Iterator[TurnTrace]:
         tags={
             "copilot.llm_auth_provider": entry.llm_auth_provider,
             "copilot.model_tier": entry.model or "default",
-            "copilot.turn.origin": _origin(entry),
+            "copilot.turn.origin": turn_origin(entry),
         },
         data={
             key: value
@@ -152,7 +152,10 @@ def turn_transaction(entry: "CoPilotExecutionEntry") -> Iterator[TurnTrace]:
             turn.report_to_posthog(entry)
 
 
-def _origin(entry: "CoPilotExecutionEntry") -> str:
+def turn_origin(entry: "CoPilotExecutionEntry") -> str:
+    """What started a turn: ``scheduled`` (a schedule, or a turn nobody is
+    watching), ``spawned`` (a subtask), ``system`` (the platform, not a
+    message) or ``chat`` (a message someone sent)."""
     if entry.scheduled is not None or entry.unattended:
         return "scheduled"
     if entry.envelope is not None and entry.envelope.depth > 0:
