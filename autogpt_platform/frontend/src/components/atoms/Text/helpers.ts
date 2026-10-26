@@ -167,6 +167,15 @@ export const variants = {
   "2xl-bold": "font-sans text-2xl font-bold text-foreground-base",
   // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
   "2xl": "font-sans text-2xl font-normal text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1 (text-sm leading-none); body plus leading-none.
+  "body-medium-lh-none":
+    "font-sans text-body font-medium leading-none text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.375 (text-sm leading-snug); body plus leading-snug.
+  "body-medium-lh-snug":
+    "font-sans text-body font-medium leading-snug text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1.25 (text-xs leading-tight); caption plus leading-tight.
+  "small-lh-tight":
+    "font-sans text-caption font-normal leading-tight text-foreground-base",
   // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
   "lg-medium": "font-sans text-lg font-medium text-foreground-base",
   // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl) and no tracking token is -0.025em (tracking-tight); the raw values stay.
@@ -271,6 +280,9 @@ export const variantElementMap: Record<Variant, As> = {
   "lg-semibold": "h3",
   "2xl-bold": "div",
   "2xl": "span",
+  "body-medium-lh-none": "span",
+  "body-medium-lh-snug": "p",
+  "small-lh-tight": "p",
   "lg-medium": "h3",
   "2xl-bold-tracking-tight": "h1",
   "small-mono-bold-tight": "code",
