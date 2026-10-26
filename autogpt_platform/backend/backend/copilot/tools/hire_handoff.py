@@ -15,19 +15,19 @@ is not put to them again.
 
 The hire stands whatever happens to the task, and what is reported is only
 what is known: started, queued for a task slot, refused (no retry: the
-refusal says why), or, when the send raised, which side of the publish it
-raised on. Before it (``TurnPublishUnconfirmed`` not raised) nothing reached
-the broker, so the empty thread is removed and a retry is safe; a publish
-that raised may still have delivered, so that task is reported unconfirmed
-and never sent a second time.
+refusal says why), or, when the send raised, whether it provably never left.
+``TurnNotDispatched`` means nothing reached the queue: ``run_delegated_turn``
+has removed the empty thread and a retry is safe. Any other error, a publish
+that raised included, may have delivered the task, so it is reported
+unconfirmed with its thread and never sent a second time.
 """
 
 import logging
 from typing import Literal
 
 from backend.api.features.experts.models import Expert
-from backend.copilot.executor.utils import TurnPublishUnconfirmed
-from backend.copilot.model import ChatSession, delete_chat_session
+from backend.copilot.model import ChatSession
+from backend.copilot.sdk.session_waiter import TurnNotDispatched
 
 from .delegate_to_expert import (
     open_delegation_thread,
@@ -88,13 +88,12 @@ async def hand_off_to_new_hire(
             opened_here=True,
             wait_for_result=0,
         )
-    except TurnPublishUnconfirmed:
+    except TurnNotDispatched:
+        logger.warning("Hand-off to a new hire was not sent", exc_info=True)
+        return _report(applied, task, "failed", None, "It could not be sent.", True)
+    except Exception:
         logger.warning("Hand-off to a new hire is unconfirmed", exc_info=True)
         return _report(applied, task, "unconfirmed", thread)
-    except Exception:
-        logger.warning("Hand-off to a new hire was not sent", exc_info=True)
-        await _discard(thread, user_id)
-        return _report(applied, task, "failed", None, "It could not be sent.", True)
     if not isinstance(sent, SubSessionStatusResponse) or sent.status == "error":
         # A refusal (tree budget or depth, a full set of task slots) says
         # itself what has to change first.
@@ -128,15 +127,6 @@ async def _target(user_id: str, session: ChatSession, expert_id: str) -> Expert:
     if (refusal := await chain_refusal(user_id, session, target)) is not None:
         raise _NotStarted(refusal, retry=False)
     return target
-
-
-async def _discard(thread: str, user_id: str) -> None:
-    """Remove a thread nothing was sent to. Best-effort, like
-    ``discard_unused_sub_session``: an empty thread is the lesser harm."""
-    try:
-        await delete_chat_session(thread, user_id)
-    except Exception:
-        logger.warning("Failed to remove an unused hand-off thread", exc_info=True)
 
 
 def _report(

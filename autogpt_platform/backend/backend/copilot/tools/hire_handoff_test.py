@@ -19,7 +19,7 @@ import pytest
 
 from backend.copilot.executor.utils import TurnPublishUnconfirmed
 from backend.copilot.model import ChatMessage
-from backend.copilot.sdk.session_waiter import SessionResult
+from backend.copilot.sdk.session_waiter import SessionResult, TurnNotDispatched
 
 from ._test_data import make_session
 from .confirm_expert_change import ConfirmExpertChangeTool
@@ -150,7 +150,7 @@ def _env(
             "backend.copilot.tools.delegate_to_expert.build_spawn_state_note",
             AsyncMock(return_value=""),
         ),
-        patch("backend.copilot.tools.hire_handoff.delete_chat_session", deleted),
+        patch("backend.copilot.tools.delegate_to_expert.delete_chat_session", deleted),
     ):
         yield SimpleNamespace(
             db=db, turn=turn, created=created, deleted=deleted, redis=fake_redis
@@ -362,11 +362,19 @@ class TestHandOffOnlyClaimsWhatHappened:
         env.turn.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_a_publish_that_raised_is_reported_unconfirmed(self):
-        """The broker may hold a turn whose publish raised, so the task may be
+    @pytest.mark.parametrize(
+        "error",
+        [
+            pytest.param(TurnPublishUnconfirmed("confirm lost"), id="publish"),
+            pytest.param(RuntimeError("unknown"), id="unknown"),
+        ],
+    )
+    async def test_a_send_that_may_have_landed_is_reported_unconfirmed(self, error):
+        """The broker may hold a turn whose publish raised, and an error not
+        typed as before the dispatch proves nothing either, so the task may be
         running: point at the thread, never ask for a second delegation that
         would run the task twice (Sentry, CodeRabbit)."""
-        with _env(turn_error=TurnPublishUnconfirmed("confirm lost")) as env:
+        with _env(turn_error=error) as env:
             session = make_session(_USER)
             preview = await _propose_with_task(session)
             assert preview.handoff_confirmation_id
@@ -384,9 +392,9 @@ class TestHandOffOnlyClaimsWhatHappened:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_an_error_before_the_dispatch_is_a_retryable_failure(self):
-        """Anything that raises before the publish proves nothing reached the
-        broker: the empty thread goes, and a retry is safe."""
-        with _env(turn_error=RuntimeError("redis blip")) as env:
+        """A failure typed as before the dispatch proves nothing reached the
+        queue: the empty thread goes, and a retry is safe."""
+        with _env(turn_error=TurnNotDispatched("redis blip")) as env:
             session = make_session(_USER)
             preview = await _propose_with_task(session)
             assert preview.handoff_confirmation_id

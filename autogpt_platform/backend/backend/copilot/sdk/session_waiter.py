@@ -28,7 +28,11 @@ from typing import TYPE_CHECKING, Any, Literal
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.config import CopilotLlmAuthProvider
-from backend.copilot.executor.utils import queue_spawned_turn, schedule_turn
+from backend.copilot.executor.utils import (
+    TurnPublishUnconfirmed,
+    queue_spawned_turn,
+    schedule_turn,
+)
 from backend.copilot.llm_attribution import is_turn_impersonated
 from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
@@ -70,6 +74,19 @@ _ALREADY_WAITING = (
     "That session already has a task waiting to start, so this task cannot be "
     "handed to it right now. Wait for it, or start a fresh one."
 )
+
+
+class TurnNotDispatched(Exception):
+    """The turn provably never reached the executor queue.
+
+    Raised for a failure before the publish (the session lookup, the status
+    checks, the slot or tree admission, the stream registry write), each of
+    which leaves nothing for a worker to pick up. Only this lets a caller
+    remove the thread it opened or send the task again; a publish that raised
+    is :class:`TurnPublishUnconfirmed` instead, and any other error from this
+    module leaves the turn's state unknown. The original error is the
+    ``__cause__``.
+    """
 
 
 @dataclass
@@ -243,15 +260,20 @@ async def run_copilot_turn_via_queue(
       what happened next"; no separate deferred-state branch needed in
       ``run_sub_session`` / ``AutoPilotBlock``.
     """
-    session = await get_chat_session(session_id, user_id)
+    try:
+        session = await get_chat_session(session_id, user_id)
+        already_waiting = not allow_queue and (
+            await chat_db().get_chat_session_status(session_id) == CHAT_STATUS_QUEUED
+        )
+        in_flight = not already_waiting and await is_turn_in_flight(session_id)
+    except Exception as e:
+        raise TurnNotDispatched("The checks before the dispatch failed.") from e
     if session is None:
-        raise RuntimeError("copilot_session_not_found")
+        raise TurnNotDispatched("copilot_session_not_found")
 
-    if not allow_queue and (
-        await chat_db().get_chat_session_status(session_id) == CHAT_STATUS_QUEUED
-    ):
+    if already_waiting:
         return "refused", SessionResult(refusal=_ALREADY_WAITING)
-    if await is_turn_in_flight(session_id):
+    if in_flight:
         if not allow_queue:
             return "refused", SessionResult(
                 refusal=(
@@ -316,6 +338,8 @@ async def run_copilot_turn_via_queue(
         )
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)
+    except TurnPublishUnconfirmed:
+        raise
     except ConcurrentTurnLimitError:
         if delegated:
             return await _queue_for_slot(
@@ -344,6 +368,8 @@ async def run_copilot_turn_via_queue(
             tool_name,
         )
         return "rejected_concurrent_turn_cap", SessionResult()
+    except Exception as e:
+        raise TurnNotDispatched("The turn could not be dispatched.") from e
     if timeout <= 0:
         # The turn is queued and the caller waits for nothing. Subscribing
         # anyway could only fail, and a failure here, after the dispatch,

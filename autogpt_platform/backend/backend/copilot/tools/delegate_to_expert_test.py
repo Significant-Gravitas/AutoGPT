@@ -15,7 +15,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.copilot.active_turns import spawn_limit_message
-from backend.copilot.sdk.session_waiter import SessionResult
+from backend.copilot.executor.utils import TurnPublishUnconfirmed
+from backend.copilot.sdk.session_waiter import SessionResult, TurnNotDispatched
 
 from .delegate_to_expert import DelegateToExpertTool
 from .expert_delegation import CALLER_NAME_LIMIT
@@ -1070,24 +1071,16 @@ class TestAfterTheDispatch:
         assert result.sub_session_id == mock_sessions[0].session_id
 
 
-class TestStoppedMidSend:
-    """A turn cancelled while it opens a fresh delegation (the user pressed
-    Stop) must not leave an empty thread behind, and must not delete one the
-    task already reached (Sentry)."""
+class TestASendThatFailed:
+    """A fresh delegation thread is removed only when the turn provably never
+    reached the queue (``TurnNotDispatched``). A cancellation, the user
+    pressing Stop, can land inside the publish, so like a publish that raised
+    it may have delivered the task, and that thread stays (Sentry)."""
 
-    def _cancelled_send(self, monkeypatch, *, meta, status):
+    def _failed_send(self, monkeypatch, error: BaseException):
         monkeypatch.setattr(
             "backend.copilot.tools.delegate_to_expert.run_copilot_turn_via_queue",
-            AsyncMock(side_effect=asyncio.CancelledError()),
-        )
-        monkeypatch.setattr(
-            "backend.copilot.tools.delegate_to_expert.stream_registry.get_session",
-            AsyncMock(return_value=meta),
-        )
-        chat = MagicMock()
-        chat.get_chat_session_status = AsyncMock(return_value=status)
-        monkeypatch.setattr(
-            "backend.copilot.tools.delegate_to_expert.chat_db", lambda: chat
+            AsyncMock(side_effect=error),
         )
         deleted = AsyncMock()
         monkeypatch.setattr(
@@ -1095,34 +1088,53 @@ class TestStoppedMidSend:
         )
         return deleted
 
+    async def _delegate(self, **kwargs):
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s1"),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+            **kwargs,
+        )
+
     @pytest.mark.asyncio
-    async def test_a_thread_nothing_was_sent_to_is_removed(
+    async def test_a_thread_nothing_reached_is_removed(
         self, roster, mock_sessions, monkeypatch
     ):
-        deleted = self._cancelled_send(monkeypatch, meta=None, status="idle")
-        with pytest.raises(asyncio.CancelledError):
-            await DelegateToExpertTool()._execute(
-                user_id="alice",
-                session=_session(),
-                expert_id="expert-b",
-                prompt="hi",
-                wait_for_result=0,
-            )
+        deleted = self._failed_send(monkeypatch, TurnNotDispatched("redis down"))
+        with pytest.raises(TurnNotDispatched):
+            await self._delegate()
         deleted.assert_awaited_once_with(mock_sessions[0].session_id, "alice")
 
     @pytest.mark.asyncio
-    async def test_a_thread_the_task_reached_is_kept(
-        self, roster, mock_sessions, monkeypatch
+    @pytest.mark.parametrize(
+        "error",
+        [
+            pytest.param(asyncio.CancelledError(), id="stopped-mid-send"),
+            pytest.param(TurnPublishUnconfirmed("confirm lost"), id="publish"),
+            pytest.param(RuntimeError("unknown"), id="unknown"),
+        ],
+    )
+    async def test_a_thread_the_task_may_have_reached_is_kept(
+        self, roster, mock_sessions, monkeypatch, error
     ):
-        deleted = self._cancelled_send(
-            monkeypatch, meta=MagicMock(status="running"), status="running"
+        deleted = self._failed_send(monkeypatch, error)
+        with pytest.raises(type(error)):
+            await self._delegate()
+        assert len(mock_sessions) == 1
+        deleted.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_thread_it_did_not_open_is_kept(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        await self._delegate()
+        mock_turn.side_effect = TurnNotDispatched("redis down")
+        deleted = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.delete_chat_session", deleted
         )
-        with pytest.raises(asyncio.CancelledError):
-            await DelegateToExpertTool()._execute(
-                user_id="alice",
-                session=_session(),
-                expert_id="expert-b",
-                prompt="hi",
-                wait_for_result=0,
-            )
+        with pytest.raises(TurnNotDispatched):
+            await self._delegate(delegated_session_id="inner-1")
         deleted.assert_not_awaited()

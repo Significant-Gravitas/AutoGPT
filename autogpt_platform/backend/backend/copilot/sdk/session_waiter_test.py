@@ -19,6 +19,7 @@ import pytest
 
 from backend.copilot import active_turns
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.executor.utils import TurnPublishUnconfirmed
 from backend.copilot.response_model import (
     StreamFinish,
     StreamStart,
@@ -27,6 +28,7 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.sdk.session_waiter import (
     SessionResult,
+    TurnNotDispatched,
     run_copilot_turn_via_queue,
     wait_for_session_result,
 )
@@ -694,3 +696,72 @@ async def test_a_turn_queued_for_a_slot_with_no_wait_returns_without_reading_it(
     assert result.queued is True
     queued.assert_awaited_once()
     status_read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failure_before_the_dispatch_is_typed_as_not_dispatched():
+    """Callers may remove a thread or send again only when the turn provably
+    never reached the queue, so that case is typed; a publish that raised
+    stays TurnPublishUnconfirmed (Sentry on #16101)."""
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.schedule_turn",
+            new=AsyncMock(side_effect=ConnectionError("redis down")),
+        ),
+        pytest.raises(TurnNotDispatched) as raised,
+    ):
+        await run_copilot_turn_via_queue(
+            session_id="s",
+            user_id="u1",
+            message="m",
+            timeout=0,
+            tool_call_id="delegate:p",
+            tool_name="delegate_to_expert",
+        )
+    assert isinstance(raised.value.__cause__, ConnectionError)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_status_check_is_typed_as_not_dispatched():
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(side_effect=ConnectionError("redis down")),
+        ),
+        pytest.raises(TurnNotDispatched),
+    ):
+        await run_copilot_turn_via_queue(
+            session_id="s",
+            user_id="u1",
+            message="m",
+            timeout=0,
+            tool_call_id="delegate:p",
+            tool_name="delegate_to_expert",
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_publish_that_raised_is_not_called_undispatched():
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.schedule_turn",
+            new=AsyncMock(side_effect=TurnPublishUnconfirmed("confirm lost")),
+        ),
+        pytest.raises(TurnPublishUnconfirmed),
+    ):
+        await run_copilot_turn_via_queue(
+            session_id="s",
+            user_id="u1",
+            message="m",
+            timeout=0,
+            tool_call_id="delegate:p",
+            tool_name="delegate_to_expert",
+        )
