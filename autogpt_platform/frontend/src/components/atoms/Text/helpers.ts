@@ -187,6 +187,8 @@ export const variants = {
   // h3 at semibold; the tracking is h3's (TODO(tokens): SECRT-3152 above).
   "h3-semibold":
     "font-poppins text-heading font-semibold text-foreground-base tracking-[-0.01313rem]",
+  // The sans sibling of caption-sm-mono: caption-sm (0.6875rem/1rem) as it is.
+  "caption-sm": "font-sans text-caption-sm font-normal text-foreground-base",
 } as const;
 
 export type Variant = keyof typeof variants;
@@ -287,4 +289,5 @@ export const variantElementMap: Record<Variant, As> = {
   "2xl-bold-tracking-tight": "h1",
   "small-mono-bold-tight": "code",
   "h3-semibold": "h3",
+  "caption-sm": "kbd",
 };

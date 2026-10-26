@@ -4,7 +4,7 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -338,8 +338,8 @@ const Sidebar = React.forwardRef<
 Sidebar.displayName = "Sidebar";
 
 const SidebarTrigger = React.forwardRef<
-  React.ElementRef<typeof Button>,
-  React.ComponentProps<typeof Button>
+  HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement>
 >(({ className, onClick }, ref) => {
   const { toggleSidebar } = useSidebar();
 
@@ -347,8 +347,8 @@ const SidebarTrigger = React.forwardRef<
     <Button
       ref={ref}
       data-sidebar="trigger"
-      variant="ghost"
-      size="icon"
+      variant="compact-ghost"
+      size="compact-icon"
       className={className}
       onClick={(event) => {
         onClick?.(event);
