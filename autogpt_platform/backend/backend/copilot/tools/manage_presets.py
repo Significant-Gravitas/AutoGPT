@@ -14,8 +14,8 @@ from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
 from backend.api.features.library.model import (
-    NODE_INPUT_MASK_PREFIX,
     LibraryAgentPreset,
+    stored_trigger_mask_key,
 )
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db, triggers_db
@@ -376,10 +376,7 @@ class UpdatePresetTool(BaseTool):
             # A triggered preset nests its trigger config under a per-node mask
             # key, beside the graph's own inputs. Merging graph inputs into that
             # mask pollutes the config and leaves the graph input unchanged.
-            mask_key = next(
-                (k for k in current.inputs if k.startswith(NODE_INPUT_MASK_PREFIX)),
-                None,
-            )
+            mask_key = stored_trigger_mask_key(current.inputs)
             if new_trigger_config and not (mask_key or current.webhook_id):
                 return ErrorResponse(
                     message="This preset has no webhook trigger to configure.",

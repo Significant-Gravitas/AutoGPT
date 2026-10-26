@@ -31,9 +31,17 @@ describe("splitPresetInputs", () => {
     expect(splitPresetInputs(undefined).maskKey).toBeNull();
   });
 
-  test("ignores a non-object value under the mask key", () => {
-    const split = splitPresetInputs({ _node_input_mask_abc123: "not-a-dict" });
-    expect(split.triggerConfig).toEqual({});
+  test("reads a non-object value under the prefix as a graph input", () => {
+    const split = splitPresetInputs({
+      _node_input_mask_note: "hello",
+      _node_input_mask_list: ["a"],
+      _node_input_mask_abc123: { repo: "owner/repo" },
+    });
+    expect(split.inputs).toEqual({
+      _node_input_mask_note: "hello",
+      _node_input_mask_list: ["a"],
+    });
+    expect(split.triggerConfig).toEqual({ repo: "owner/repo" });
     expect(split.maskKey).toBe("_node_input_mask_abc123");
   });
 });

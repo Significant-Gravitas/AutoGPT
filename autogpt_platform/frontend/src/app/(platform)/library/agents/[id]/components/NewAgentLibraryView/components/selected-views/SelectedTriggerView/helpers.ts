@@ -1,7 +1,8 @@
 // Mirrors the backend's `node_input_mask_key()`: a triggered preset nests the
 // trigger block's config under a per-node key, alongside its regular graph
-// inputs. The node id isn't exposed to the client, so the key is found by prefix
-// (a graph has at most one trigger node) and preserved on save rather than
+// inputs. The node id isn't exposed to the client, so the key is found as the
+// backend's `stored_trigger_mask_key` finds it, by prefix and an object value
+// (a graph has at most one trigger node), and preserved on save rather than
 // reconstructed.
 const NODE_INPUT_MASK_PREFIX = "_node_input_mask_";
 
@@ -32,20 +33,12 @@ export function splitPresetInputs(
 ): SplitPresetInputs {
   const all = presetInputs ?? {};
   const maskKey =
-    Object.keys(all).find((key) => key.startsWith(NODE_INPUT_MASK_PREFIX)) ??
-    null;
+    Object.keys(all).find((key) => isTriggerMask(key, all[key])) ?? null;
 
   if (!maskKey) return { inputs: { ...all }, triggerConfig: {}, maskKey: null };
 
   const { [maskKey]: mask, ...inputs } = all;
-  return {
-    inputs,
-    triggerConfig:
-      mask && typeof mask === "object" && !Array.isArray(mask)
-        ? (mask as Record<string, unknown>)
-        : {},
-    maskKey,
-  };
+  return { inputs, triggerConfig: mask as Record<string, unknown>, maskKey };
 }
 
 export function mergePresetInputs({
@@ -55,4 +48,14 @@ export function mergePresetInputs({
 }: SplitPresetInputs): Record<string, unknown> {
   if (!maskKey) return { ...inputs };
   return { ...inputs, [maskKey]: triggerConfig };
+}
+
+// A graph input may use the prefix too; only an object under it is the config.
+function isTriggerMask(key: string, value: unknown) {
+  return (
+    key.startsWith(NODE_INPUT_MASK_PREFIX) &&
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
 }
