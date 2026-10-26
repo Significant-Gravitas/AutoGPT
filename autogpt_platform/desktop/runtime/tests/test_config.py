@@ -249,6 +249,34 @@ def test_user_settings_cannot_override_the_runtime_wiring(
     assert "elsewhere" not in env["DATABASE_URL"]
 
 
+@pytest.mark.parametrize("override", [None, "", "outside-cache"])
+def test_tokenizer_cache_follows_the_bundle_after_relocation(
+    bundle: Bundle, data: DataDir, monkeypatch, override
+):
+    secret = settings.ensure_secrets(bundle, data)
+    port = {name: 20000 + index for index, name in enumerate(ports.PORT_NAMES)}
+    monkeypatch.setenv("TIKTOKEN_CACHE_DIR", "ambient-cache")
+    monkeypatch.setenv("DATA_GYM_CACHE_DIR", "ambient-legacy-cache")
+    user = {} if override is None else {"TIKTOKEN_CACHE_DIR": override}
+    user["DATA_GYM_CACHE_DIR"] = "user-legacy-cache"
+    defaults = {"TIKTOKEN_CACHE_DIR": "profile-cache"}
+
+    for root in (bundle.root, bundle.root.parent / "Moved AutoGPT's runtime"):
+        relocated = Bundle(root)
+        env = settings.backend_environment(
+            relocated, data, port, secret, user, defaults
+        )
+        expected = str(root / "assets" / "tiktoken")
+        assert env["TIKTOKEN_CACHE_DIR"] == expected
+        host_env = settings.claude_code_host_environment(
+            env, data, {}, data.root / "host-home"
+        )
+        assert host_env["TIKTOKEN_CACHE_DIR"] == expected
+        assert "TIKTOKEN_CACHE_DIR" not in settings.frontend_environment(
+            env, port, secret, data
+        )
+
+
 def test_registration_is_open_until_an_owner_exists_or_the_user_decides(
     bundle: Bundle, data: DataDir
 ):

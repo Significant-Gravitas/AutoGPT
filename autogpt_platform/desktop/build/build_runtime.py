@@ -31,6 +31,7 @@ import lock_export
 import next_config
 import site_zip
 import slim
+import tokenizer_assets
 from artifacts import ARTIFACTS, CLAUDE_CLI_VERSION, PYTHON_VERSION, platform_key
 from fetch import download, extract
 
@@ -529,6 +530,9 @@ class Build:
         }
         (self.out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
+    def step_tokenizers(self) -> None:
+        tokenizer_assets.install(self.out, self.cache, LOCK)
+
     # --- size and startup ------------------------------------------------
 
     def step_prune(self) -> None:
@@ -977,6 +981,7 @@ STEPS = (
     "frontend",
     "frontend_config",
     "assets",
+    "tokenizers",
     "prune",
     "relocate",
     "tools",

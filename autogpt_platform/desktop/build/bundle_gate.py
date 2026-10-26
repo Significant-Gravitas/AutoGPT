@@ -50,6 +50,8 @@ from itertools import pairwise
 from pathlib import Path
 from typing import NoReturn
 
+import tokenizer_assets
+
 BUILD = Path(__file__).resolve().parent
 DESKTOP = BUILD.parent
 FINDING = "GATE: "
@@ -201,10 +203,12 @@ def backend_checks(runtime: Path) -> NoReturn:
     prevent_package_installs()
     scratch = tempfile.mkdtemp(prefix="autogpt-gate-")
     as_a_service(runtime, Path(scratch))
-    problems = unimportable_backend_modules()
-    problems += blocks_that_do_not_load()
-    problems += data_that_is_not_reached()
-    problems += code_named_for_another_file(zipped(runtime))
+    problems = offline_tokenizers(runtime)
+    if not problems:
+        problems += unimportable_backend_modules()
+        problems += blocks_that_do_not_load()
+        problems += data_that_is_not_reached()
+        problems += code_named_for_another_file(zipped(runtime))
     for problem in problems:
         print(f"{FINDING}{problem}")
     sys.stdout.flush()
@@ -220,6 +224,64 @@ def as_a_service(runtime: Path, scratch: Path) -> None:
     import backend_contract
 
     backend_contract.as_a_service_sees_it(runtime, scratch)
+
+
+def offline_tokenizers(runtime: Path) -> list[str]:
+    """Require the service's managed cache, even in an already-warm builder."""
+    try:
+        cache = runtime / tokenizer_assets.CACHE_PATH
+        configured = os.environ.get("TIKTOKEN_CACHE_DIR")
+        if not configured or Path(configured).resolve() != cache.resolve():
+            raise RuntimeError("runtime settings did not select assets/tiktoken")
+        tokenizer_assets.verify(cache)
+
+        import tiktoken
+        import tiktoken.load
+        import tiktoken.registry
+
+        if tiktoken.__version__ != tokenizer_assets.VERSION:
+            raise RuntimeError("installed tiktoken version differs from the asset pins")
+        registry = tiktoken.registry
+
+        def no_download(blobpath: str) -> bytes:
+            raise RuntimeError(
+                "tokenizer attempted a download outside its bundled cache"
+            )
+
+        with registry._lock:
+            encodings = registry.ENCODINGS
+            constructors = registry.ENCODING_CONSTRUCTORS
+            read_file = tiktoken.load.read_file
+            registry.ENCODINGS = {}
+            registry.ENCODING_CONSTRUCTORS = None
+            registry._available_plugin_modules.cache_clear()
+            tiktoken.load.read_file = no_download
+            try:
+                if set(tiktoken.list_encoding_names()) != set(
+                    tokenizer_assets.ENCODINGS
+                ):
+                    raise RuntimeError(
+                        "unsupported tiktoken encoding constructor drift"
+                    )
+                sample = "AutoGPT offline tokenizer: café 日本語 👋\n"
+                for name in tokenizer_assets.ENCODINGS:
+                    encoder = tiktoken.get_encoding(name)
+                    tokens = encoder.encode(sample)
+                    if (
+                        encoder.name != name
+                        or not tokens
+                        or encoder.decode(tokens) != sample
+                    ):
+                        raise RuntimeError(f"tokenizer encode/decode failed: {name}")
+            finally:
+                tiktoken.load.read_file = read_file
+                registry.ENCODINGS = encodings
+                registry.ENCODING_CONSTRUCTORS = constructors
+                registry._available_plugin_modules.cache_clear()
+    except Exception as exc:  # noqa: BLE001 - probe failures are gate findings
+        return [f"offline tokenizer cache failed: {describe(exc)}"]
+    print(f"  {len(tokenizer_assets.ENCODINGS)} tokenizer encodings load offline")
+    return []
 
 
 def unimportable_backend_modules() -> list[str]:

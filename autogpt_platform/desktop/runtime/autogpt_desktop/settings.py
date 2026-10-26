@@ -314,6 +314,7 @@ def backend_environment(
         "PYTHONIOENCODING": "utf-8",
         "PYTHONPATH": str(bundle.root / "assets" / "python"),
         "XDG_CACHE_HOME": str(data.backend_cache),
+        "TIKTOKEN_CACHE_DIR": str(bundle.root / "assets" / "tiktoken"),
         **_home(data.home),
         # AutoPilot's coding agents keep their sign-in and transcripts under
         # the home directory. Like the appliance, the app has its own: no
