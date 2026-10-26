@@ -227,9 +227,11 @@ class _RestrictedEnvironment(SandboxedEnvironment):
         return super().call(__context, __obj, *args, **kwargs)
 
     def call_binop(self, context, operator, left, right):
-        # Intercept %-style string formatting
+        # Intercept %-style formatting, of bytes too: a template can make them
         if operator == "%" and isinstance(left, str):
             _check_percent_format(left, right)
+        if operator == "%" and isinstance(left, (bytes, bytearray)):
+            _check_percent_format(left.decode("latin-1"), right)
         # Intercept the ** (power) operator
         if operator == "**":
             if isinstance(right, (int, float)) and abs(right) > MAX_EXPONENT:

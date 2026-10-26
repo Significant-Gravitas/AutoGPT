@@ -253,3 +253,14 @@ async def test_nested_key_percent_width_pads_within_the_cap(fmt: TextFormatter):
 async def test_huge_nested_key_percent_width_blocked(fmt: TextFormatter):
     with pytest.raises((ValueError, OverflowError)):
         await fmt.format_string("{{ '%(a(b))" + TOO_WIDE + "d' % {'a(b)': 1} }}")
+
+
+@pytest.mark.asyncio
+async def test_bytes_percent_operator_pads_within_the_cap(fmt: TextFormatter):
+    assert await fmt.format_string("{{ '%5d'.encode() % 1 }}") == "b'    1'"
+
+
+@pytest.mark.asyncio
+async def test_huge_bytes_percent_width_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string("{{ '%" + TOO_WIDE + "d'.encode() % 1 }}")
