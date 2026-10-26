@@ -34,6 +34,31 @@ def _decode_xml_entity(match: re.Match[str]) -> str:
     return chr(codepoint)
 
 
+def _protect_backslashes(xml: str) -> tuple[str, str | None]:
+    """Swap backslashes for a private-use character absent from the input.
+
+    gravitasml tokenizes a backslash at the start of a text run plus the next
+    character as an ESCAPE token, which its parser drops. The caller restores
+    the backslashes in the tokens.
+    """
+    if "\\" not in xml:
+        return xml, None
+    used = set(xml)
+    sentinel = next(
+        (chr(cp) for cp in range(0xE000, 0xF900) if chr(cp) not in used), None
+    )
+    if sentinel is None:
+        raise ValueError("XML input uses every private-use character.")
+    return xml.replace("\\", sentinel), sentinel
+
+
+def _mixed_content_error(tag: str) -> str:
+    return (
+        f"Mixed text and child elements are not supported: <{tag}> has both. "
+        "Wrap the text in its own tag."
+    )
+
+
 class XMLParserBlock(Block):
     class Input(BlockSchemaInput):
         input_xml: str = SchemaField(description="input xml to be parsed")
@@ -63,15 +88,27 @@ class XMLParserBlock(Block):
 
         depth = 0
         root_seen = False
+        # (tag, has_text, has_child) per open element. gravitasml drops text on
+        # elements that have children, so reject the mix. Whitespace-only text
+        # never becomes a token, so indentation is unaffected.
+        open_elements: list[tuple[str, bool, bool]] = []
 
         for token in tokens:
             if token.type == "TAG_OPEN":
                 if depth == 0 and root_seen:
                     raise ValueError("XML must have a single root element.")
+                if open_elements:
+                    parent, has_text, _ = open_elements[-1]
+                    if has_text:
+                        raise ValueError(_mixed_content_error(parent))
+                    open_elements[-1] = (parent, has_text, True)
+                open_elements.append((token.value, False, False))
                 depth += 1
                 if depth == 1:
                     root_seen = True
             elif token.type == "TAG_CLOSE":
+                if open_elements:
+                    open_elements.pop()
                 depth -= 1
                 if depth < 0:
                     raise ValueError("Unexpected closing tag in XML input.")
@@ -81,6 +118,11 @@ class XMLParserBlock(Block):
                         "XML contains text outside the root element; "
                         "wrap content in a single root tag."
                     )
+                if open_elements and token.value:
+                    tag, _, has_child = open_elements[-1]
+                    if has_child:
+                        raise ValueError(_mixed_content_error(tag))
+                    open_elements[-1] = (tag, True, has_child)
 
         if depth != 0:
             raise ValueError("Unclosed tag detected in XML input.")
@@ -166,7 +208,12 @@ class XMLParserBlock(Block):
 
         try:
             xml = self._normalize_tokenizer_input(input_data.input_xml)
+            xml, sentinel = _protect_backslashes(xml)
             tokens = list(tokenize(xml))
+            if sentinel:
+                # Restore before entity decoding: "&#xE000;" must not become "\\".
+                for token in tokens:
+                    token.value = token.value.replace(sentinel, "\\")
             self._validate_tokens(tokens)
             for token in tokens:
                 if token.type == "TEXT":

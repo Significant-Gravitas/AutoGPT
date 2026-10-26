@@ -194,3 +194,69 @@ async def test_run_existing_shapes_unchanged():
             },
         )
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "xml, tag",
+    [
+        ("<a><b>1</b>tail</a>", "a"),
+        ("<a>head<b>1</b></a>", "a"),
+        ("<a>head<b>1</b>tail</a>", "a"),
+        ("<a><b><c>1</c>z</b></a>", "b"),
+        ("<a>text<br/></a>", "a"),
+    ],
+)
+async def test_run_rejects_text_mixed_with_child_elements(xml, tag):
+    with pytest.raises(
+        ValueError, match=f"Mixed text and child elements are not supported: <{tag}>"
+    ):
+        await _parse(xml)
+
+
+@pytest.mark.asyncio
+async def test_run_allows_whitespace_between_child_elements():
+    xml = "<root>\n  <item>\n    <name>x</name>\n  </item>\n\t<item><name>y</name></item>\n</root>"
+    assert await _parse(xml) == [
+        ("parsed_xml", {"root": [{"item": {"name": "x"}}, {"item": {"name": "y"}}]})
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("\\path", "\\path"),
+        ("\\\\", "\\\\"),
+        ("C:\\Users\\x", "C:\\Users\\x"),
+        ("\\x y", "\\x y"),
+        ("\\", "\\"),
+        ("\\\\server\\share", "\\\\server\\share"),
+        ("\\&amp;", "\\&"),
+        ("&#92;n", "\\n"),
+        ("\\p &#xE000;", "\\p \ue000"),
+        ("\ue000\\x", "\ue000\\x"),
+        ("x\\", "x\\"),
+    ],
+)
+async def test_run_keeps_backslashes_literal(text, expected):
+    assert await _parse(f"<a>{text}</a>") == [("parsed_xml", {"a": expected})]
+
+
+@pytest.mark.asyncio
+async def test_run_backslash_before_child_is_mixed_content():
+    with pytest.raises(ValueError, match="Mixed text and child elements"):
+        await _parse("<a><b>1</b>\\x</a>")
+
+
+@pytest.mark.asyncio
+async def test_run_backslash_before_closing_tag():
+    assert await _parse("<a><b>\\</b><c>x\\</c></a>") == [
+        ("parsed_xml", {"a": {"b": "\\", "c": "x\\"}})
+    ]
+
+
+@pytest.mark.asyncio
+async def test_run_backslash_before_opening_tag_is_mixed_content():
+    with pytest.raises(ValueError, match="Mixed text and child elements"):
+        await _parse("<a>\\<b>1</b></a>")
