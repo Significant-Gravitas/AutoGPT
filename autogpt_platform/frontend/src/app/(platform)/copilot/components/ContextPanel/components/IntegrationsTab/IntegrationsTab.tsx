@@ -275,7 +275,7 @@ function IntegrationRow({
         disabled={isRemoving}
         aria-busy={isRemoving}
         aria-label={`Remove ${name}`}
-        className="size-7 shrink-0 rounded-lg !p-0 text-foreground-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:text-error focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+        className="size-7 shrink-0 rounded-lg !p-0 text-foreground-tertiary opacity-0 transition-opacity hover:text-error focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
       >
         <Icon
           icon={isRemoving ? Loading03Icon : Delete02Icon}

@@ -20,13 +20,13 @@
 
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import { Card } from "@/components/atoms/Card/Card";
 import {
+  Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/__legacy__/ui/card";
+} from "@/components/atoms/Card/Card";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useDiagnosticsContent } from "./useDiagnosticsContent";
 import { ExecutionsTable } from "./ExecutionsTable";

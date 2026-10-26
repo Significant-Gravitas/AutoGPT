@@ -2,7 +2,7 @@
 the /presets routes and the copilot preset tools."""
 
 import contextlib
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -381,6 +381,27 @@ async def test_update_reconfigure_reregisters_and_prunes_old():
     m["setup"].assert_awaited_once()
     m["set_webhook"].assert_awaited_once()
     m["prune"].assert_awaited_once_with(_USER, "wh-old")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failing", ["update", "set_webhook"])
+@pytest.mark.parametrize("registered, pruned", [("wh-new", True), ("wh-old", False)])
+async def test_a_failed_update_prunes_only_the_webhook_it_registered(
+    failing, registered, pruned
+):
+    """The new webhook is attached last, so a failure before that would leave
+    it registered with the provider and attached to nothing."""
+    current = _preset(webhook_id="wh-old")
+    with _update_patches(current=current, webhook=MagicMock(id=registered)) as m:
+        m[failing].side_effect = RuntimeError("database down")
+        with pytest.raises(RuntimeError):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"repo": "owner/repo"},
+                credentials={},
+            )
+    assert m["prune"].await_args_list == ([call(_USER, registered)] if pruned else [])
 
 
 @pytest.mark.asyncio

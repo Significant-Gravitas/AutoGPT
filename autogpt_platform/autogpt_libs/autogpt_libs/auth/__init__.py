@@ -8,7 +8,7 @@ from .dependencies import (
     requires_team_permission,
     requires_user,
 )
-from .helpers import add_auth_responses_to_openapi
+from .jwt_utils import add_auth_responses_to_openapi
 from .models import RequestContext, User
 from .permissions import (
     OrgAction,

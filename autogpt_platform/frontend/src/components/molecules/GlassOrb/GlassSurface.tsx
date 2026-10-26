@@ -37,6 +37,7 @@ export function GlassSurface({ params, showRim = true }: Props) {
   return (
     <>
       <div
+        data-slot="glass-surface"
         className="pointer-events-none absolute inset-0 rounded-full"
         style={{
           backdropFilter,
@@ -51,6 +52,7 @@ export function GlassSurface({ params, showRim = true }: Props) {
         }}
       />
       <div
+        data-slot="glass-surface-frost"
         className="pointer-events-none absolute inset-0 rounded-full [mask-image:radial-gradient(closest-side,transparent_50%,black_80%)]"
         style={{
           backdropFilter: `blur(${frost * 2.5}px)`,

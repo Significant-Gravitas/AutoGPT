@@ -107,6 +107,23 @@ describe("IntegrationSetupWizardPage", () => {
     expect(sentTo.searchParams.get("state")).toBe("state-1");
   });
 
+  test("encodes the client id in the app-info request", async () => {
+    let requested: URL | undefined;
+    openWith({ client_id: "client?1" });
+    server.use(
+      getGetOauthGetOauthAppInfoMockHandler200(({ request }) => {
+        requested = new URL(request.url);
+        return { name: "Example App", scopes: ["IDENTITY"] };
+      }),
+    );
+
+    render(<IntegrationSetupWizardPage />);
+    await screen.findByRole("button", { name: "Cancel" });
+
+    expect(requested?.pathname).toBe("/api/proxy/api/oauth/app/client%3F1");
+    expect(requested?.searchParams.get("redirect_uri")).toBe(REGISTERED);
+  });
+
   test("continuing returns the user to the accepted redirect_uri, once", async () => {
     const sentTo = recordNavigations();
     openWith({ providers: btoa(JSON.stringify([{ provider: "github" }])) });
