@@ -7,6 +7,7 @@ stored row rather than inferred from a response body.
 """
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -31,6 +32,7 @@ from backend.api.features.onboarding_dump.models import (
     RecommendedExpert,
 )
 from backend.data.onboarding_role import OnboardingRole
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.data.understanding import BusinessUnderstanding, BusinessUnderstandingInput
 
 USER_ID = "user-1"
@@ -228,6 +230,9 @@ def extraction(mocker: MockerFixture) -> dict[str, AsyncMock]:
         "scan_content_safe": AsyncMock(),
         "get_business_understanding": AsyncMock(return_value=None),
         "get_onboarding_role": AsyncMock(return_value=None),
+        "get_user_onboarding": AsyncMock(
+            return_value=SimpleNamespace(wizardProgress=None)
+        ),
         "extract_business_understanding": AsyncMock(
             return_value=BusinessUnderstandingInput.model_construct()
         ),
@@ -1110,6 +1115,39 @@ async def test_path_b_greeting_names_the_role_the_wizard_kept_over_a_rewritten_o
     card = await service.get_intro_card(USER_ID)
 
     assert expected in card.greeting
+    assert "Founder" not in card.greeting
+
+
+@pytest.mark.asyncio
+async def test_path_b_greeting_names_the_role_saved_in_progress_when_no_pick_was_kept(
+    dumps: DumpStore,
+    extraction: dict[str, AsyncMock],
+):
+    # The wizard's progress is newer than the understanding's copy of the role.
+    extraction["get_user_onboarding"].return_value = SimpleNamespace(
+        wizardProgress=OnboardingWizardProgress(
+            version=1,
+            currentStep="painPoints",
+            completedSteps=["team", "autopilot", "role"],
+            role="Sales/BD",
+            otherRole="",
+            painPoints=[],
+            otherPainPoint="",
+            selectedBilling="monthly",
+            hasUserSelectedBilling=False,
+            selectedCountryCode="US",
+            hiredTemplateIds=[],
+        ).model_dump()
+    )
+    extraction["get_business_understanding"].return_value = (
+        BusinessUnderstanding.model_construct(user_role="Founder/CEO")
+    )
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.skipped)
+    await dumps.update_dump(USER_ID, RECORDING_ID, status=BrainDumpStatus.completed)
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert "You told me your role is Sales / BD, but" in card.greeting
     assert "Founder" not in card.greeting
 
 

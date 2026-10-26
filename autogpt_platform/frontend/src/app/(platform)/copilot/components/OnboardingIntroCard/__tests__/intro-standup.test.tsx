@@ -807,16 +807,26 @@ describe("Otto's first turn on Home — the one ask", () => {
     expect(painted.some((text) => text.includes("Triages"))).toBe(false);
   });
 
-  it("asks a user with a team who skipped the dump to talk through their week", async () => {
+  it("asks a user with a team who skipped the dump about their week, as the composer does", async () => {
+    // Skipping the dump now still hires a team from the user's role.
     serve({ hires: [nadia, robin], path: "B" });
     stubMicrophone(true);
     renderHome();
 
+    expect(within(await findTeam()).getAllByRole("listitem")).toHaveLength(2);
     const ask = await findAsk();
     expect(
       within(ask).getByRole("button", { name: "Talk me through your week" }),
     ).toBeDefined();
     expect(ask.textContent).not.toContain("Triages");
+    const composer = await screen.findByPlaceholderText(/What's your role/);
+    // The composer focuses itself on load; the button must bring it back.
+    composer.blur();
+    expect(document.activeElement).not.toBe(composer);
+    fireEvent.click(
+      within(ask).getByRole("button", { name: "Type it instead" }),
+    );
+    expect(document.activeElement).toBe(composer);
   });
 
   it("grants the connection to the hires the dialog opened for, though the ask moves on meanwhile", async () => {
