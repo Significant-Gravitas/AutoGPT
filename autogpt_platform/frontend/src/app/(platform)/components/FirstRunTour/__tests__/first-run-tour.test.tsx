@@ -1,4 +1,8 @@
-import { Sidebar, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
+import {
+  Sidebar,
+  SidebarProvider,
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";

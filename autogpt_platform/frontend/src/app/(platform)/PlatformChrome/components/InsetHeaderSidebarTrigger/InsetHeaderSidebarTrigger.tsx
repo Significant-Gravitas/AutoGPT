@@ -1,7 +1,7 @@
 "use client";
 
+import { SidebarTrigger } from "@/components/molecules/Sidebar/Sidebar";
 import { tourTarget } from "@/lib/tour-targets";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 
 import { useIsChatSession } from "../../useIsChatSession";
 

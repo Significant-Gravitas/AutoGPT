@@ -1,6 +1,6 @@
 "use client";
 
-import { useSidebar } from "@/components/ui/sidebar";
+import { useSidebar } from "@/components/molecules/Sidebar/Sidebar";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";

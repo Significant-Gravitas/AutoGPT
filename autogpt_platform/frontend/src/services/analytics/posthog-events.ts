@@ -66,6 +66,9 @@ export const BrainDumpEvent = {
   BRAIN_DUMP_RESTARTED: "brain_dump_restarted",
   BRAIN_DUMP_DOWNLOAD: "brain_dump_download",
   BRAIN_DUMP_PERMISSION_DENIED: "brain_dump_permission_denied",
+  // Every failure to open the microphone, a denial included, with the
+  // browser's `error_name` (NotFoundError, NotReadableError, …).
+  BRAIN_DUMP_MIC_FAILED: "brain_dump_mic_failed",
   BRAIN_DUMP_TYPED_FALLBACK: "brain_dump_typed_fallback",
   // The first-run intro shown on the first copilot landing ended (finished
   // or skipped). Since SECRT-3149 that intro is the guided walkthrough

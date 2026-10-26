@@ -1,8 +1,8 @@
 import { cn } from "@/lib/utils";
 import React from "react";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { useBlockMenuSearchBar } from "./useBlockMenuSearchBar";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -32,11 +32,11 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
       <div className="flex h-6 w-6 items-center justify-center">
         <Icon
           icon={Search01Icon}
-          className="h-6 w-6 text-zinc-700"
+          className="h-6 w-6 text-foreground-body"
           strokeWidth={2}
         />
       </div>
-      <Input
+      <BaseInput
         ref={inputRef}
         type="text"
         value={localQuery}
@@ -46,20 +46,20 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
         }}
         placeholder={"Blocks, Workflows, Integrations or Keywords..."}
         className={cn(
-          "m-0 border-none p-0 font-sans text-base font-normal text-zinc-800 shadow-none outline-none",
-          "placeholder:text-zinc-400 focus:shadow-none focus:outline-none focus:ring-0",
+          "m-0 border-none p-0 font-sans text-body-lg font-normal leading-6 text-foreground-emphasis shadow-none outline-none",
+          "placeholder:text-foreground-subtle focus:shadow-none focus:outline-none focus:ring-0",
         )}
       />
       {localQuery.length > 0 && (
         <Button
-          variant="ghost"
-          size={"sm"}
+          variant="legacy-ghost"
+          size={"legacy-sm"}
           onClick={handleClear}
           className="p-0 hover:bg-transparent"
         >
           <Icon
             icon={Cancel01Icon}
-            className="h-6 w-6 text-zinc-700"
+            className="h-6 w-6 text-foreground-body"
             strokeWidth={2}
           />
         </Button>

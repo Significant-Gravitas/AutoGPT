@@ -262,7 +262,7 @@ describe("Marketplace ExpertsSection", () => {
     expect(within(maria).getByText(/SEO Content Manager/)).toBeDefined();
     expect(within(maria).queryByText("Marketing Strategist")).toBeNull();
     expect(within(maria).queryByText("AI Expert")).toBeNull();
-    const max = screen.getByRole("link", { name: /Max/ });
+    const max = screen.getByRole("link", { name: /^Max\b/ });
     expect(within(max).getByText(/Sales Development Rep/)).toBeDefined();
   });
 

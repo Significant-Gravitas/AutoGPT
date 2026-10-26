@@ -116,3 +116,103 @@ describe("Button compact sizes", () => {
     expect(el.className).toContain("aria-pressed:bg-surface-hover");
   });
 });
+
+describe("Button legacy variants", () => {
+  it("renders a plain button with the children as they are", () => {
+    render(
+      <Button variant="legacy-outline" className="space-x-3">
+        <span>One</span>
+        <span>Two</span>
+      </Button>,
+    );
+    const el = screen.getByRole("button", { name: "One Two" });
+    expect(el.children).toHaveLength(2);
+    expect(el.querySelector(".contents")).toBeNull();
+    expect(el.className).toContain("border-neutral-200");
+    expect(el.className).toContain("h-9 px-4 py-2");
+    expect(el.className).toContain("space-x-3");
+  });
+
+  it("applies the size, and lets the caller's classes win", () => {
+    render(
+      <Button variant="legacy-default" size="legacy-sm" className="text-xs">
+        Save
+      </Button>,
+    );
+    const el = screen.getByRole("button", { name: "Save" });
+    expect(el.className).toContain("h-8");
+    expect(el.className).toContain("text-xs");
+    expect(el.className).not.toContain("text-caption");
+    expect(el.className).not.toContain("leading-4");
+  });
+
+  it("forwards the ref and the caller's props", () => {
+    let node: HTMLButtonElement | null = null;
+    render(
+      <Button
+        variant="legacy-ghost"
+        ref={(el) => {
+          node = el;
+        }}
+        disabled
+        data-testid="ghost"
+      >
+        Ghost
+      </Button>,
+    );
+    const el = screen.getByTestId("ghost");
+    expect(node).toBe(el);
+    expect(el).toHaveProperty("disabled", true);
+  });
+
+  it("adds no slot of its own, like the old component, and keeps the caller's", () => {
+    render(
+      <>
+        <Button variant="legacy-outline">Plain</Button>
+        <Button variant="legacy-ghost" data-slot="date-input-trigger">
+          Pick
+        </Button>
+      </>,
+    );
+    expect(
+      screen.getByRole("button", { name: "Plain" }).hasAttribute("data-slot"),
+    ).toBe(false);
+    expect(
+      screen.getByRole("button", { name: "Pick" }).getAttribute("data-slot"),
+    ).toBe("date-input-trigger");
+  });
+});
+
+describe("Button slots", () => {
+  it("names the button and its label", () => {
+    renderButton({ children: "Save" });
+    const el = screen.getByRole("button", { name: "Save" });
+    expect(el.getAttribute("data-slot")).toBe("button");
+    expect(el.querySelector("[data-slot=button-label]")?.textContent).toBe(
+      "Save",
+    );
+  });
+
+  it("keeps a slot the caller passes", () => {
+    render(
+      <TooltipProvider>
+        <Button data-slot="date-input-trigger">Pick</Button>
+      </TooltipProvider>,
+    );
+    expect(
+      screen.getByRole("button", { name: "Pick" }).getAttribute("data-slot"),
+    ).toBe("date-input-trigger");
+  });
+
+  it("keeps its own slot inside the tooltip trigger of an icon button", () => {
+    renderButton({
+      variant: "icon",
+      "aria-label": "Edit",
+      leadingIcon: PencilEdit02Icon,
+      children: null,
+    });
+    const el = screen.getByRole("button", { name: "Edit" });
+    expect(el.getAttribute("data-slot")).toBe("button");
+    expect(el.querySelector("[data-slot=button-icon]")).not.toBeNull();
+  });
+});

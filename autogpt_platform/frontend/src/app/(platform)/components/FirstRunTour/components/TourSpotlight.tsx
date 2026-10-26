@@ -5,7 +5,7 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from "@/components/molecules/Popover/Popover";
-import { useSidebar } from "@/components/ui/sidebar";
+import { useSidebar } from "@/components/molecules/Sidebar/Sidebar";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useEffect, useId, useRef, useState } from "react";
 import { isPartlyOffScreen, withMenuHint, type Box } from "../helpers";

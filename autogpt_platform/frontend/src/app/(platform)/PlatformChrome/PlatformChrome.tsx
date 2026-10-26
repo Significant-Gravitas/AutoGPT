@@ -12,7 +12,7 @@ import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import { cn } from "@/lib/utils";
 
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";

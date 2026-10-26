@@ -1,4 +1,4 @@
-import { IconType } from "@/components/__legacy__/ui/icons";
+import { IconType } from "@/components/layout/Navbar/helpers";
 import { ExpertChangeGroup } from "@/app/(platform)/copilot/components/ToolChain/ExpertCards";
 import { EmptySession } from "@/app/(platform)/copilot/components/EmptySession/EmptySession";
 import { AccountMenu } from "@/components/layout/Navbar/components/AccountMenu/AccountMenu";

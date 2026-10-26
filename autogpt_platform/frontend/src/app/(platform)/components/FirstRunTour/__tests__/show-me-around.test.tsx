@@ -2,7 +2,7 @@ import {
   AppSidebarToggleProvider,
   AppSidebarTrigger,
 } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { act, render, renderHook } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -12,7 +12,7 @@ const sidebar = vi.hoisted(() => ({
     setOpenMobile: (open: boolean) => void;
   } | null,
 }));
-vi.mock("@/components/ui/sidebar", async (original) => ({
+vi.mock("@/components/molecules/Sidebar/Sidebar", async (original) => ({
   ...(await original<object>()),
   useOptionalSidebar: () => sidebar.current,
 }));

@@ -1296,6 +1296,54 @@ async def test_run_agent_pauses_irreversible_actions_for_attended_chats(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("external_caller", [False, True])
+async def test_a_run_an_api_caller_starts_names_no_chat(mocker, external_caller):
+    """An MCP call's session is never saved: a run pointing at it would ask its
+    approvals there, and pause irreversible blocks on resume for want of it."""
+    from backend.data.execution import ExecutionTrigger
+
+    tool = RunAgentTool()
+    session = make_session(user_id="user-1")
+    session.organization_id = "org-1"
+    session.external_caller = external_caller
+
+    lib = MagicMock(graph_id="graph-1", graph_version=1, id="lib-1")
+    lib.name = "Test Agent"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_or_create_library_agent",
+        AsyncMock(return_value=lib),
+    )
+    mocker.patch("backend.copilot.tools.run_agent.track_chat_outcome")
+    mocker.patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
+    )
+    add = mocker.patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        AsyncMock(return_value=MagicMock(id="exec-1")),
+    )
+    graph = MagicMock(id="graph-1", version=1)
+    graph.name = "Test Agent"
+
+    await tool._run_agent(
+        user_id="user-1",
+        session=session,
+        graph=graph,
+        graph_credentials={},
+        inputs={},
+        dry_run=False,
+        gate_approved=False,
+    )
+
+    kwargs = add.await_args.kwargs
+    if external_caller:
+        assert kwargs["trigger"] == ExecutionTrigger.API
+        assert kwargs["trigger_ref"] != session.session_id
+    else:
+        assert kwargs["trigger"] == ExecutionTrigger.COPILOT
+        assert kwargs["trigger_ref"] == session.session_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocker):
     """Sessions created before org tagging carry no org — the run must fall
     back to the user's default team instead of executing tenant-blind."""

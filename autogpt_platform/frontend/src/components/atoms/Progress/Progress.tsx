@@ -13,6 +13,7 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
     return (
       <div
         ref={ref}
+        data-slot="progress"
         // TODO(tokens): no role is gray-200 #E5E7EB (sidebar-border has the
         // hex but belongs to the sidebar).
         className={cn(
@@ -22,7 +23,8 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
         {...props}
       >
         <div
-          className="h-full w-[--progress-width] bg-action transition-all duration-300 ease-in-out"
+          data-slot="progress-indicator"
+          className="w-(--progress-width) h-full bg-action transition-all duration-300 ease-in-out"
           style={
             { "--progress-width": `${percentage}%` } as React.CSSProperties
           }

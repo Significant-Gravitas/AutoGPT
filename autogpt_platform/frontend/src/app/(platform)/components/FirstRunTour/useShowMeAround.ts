@@ -1,6 +1,6 @@
 "use client";
 
-import { useOptionalSidebar } from "@/components/ui/sidebar";
+import { useOptionalSidebar } from "@/components/molecules/Sidebar/Sidebar";
 import { useRouter } from "next/navigation";
 import { useFirstRunTourStore } from "./store";
 

@@ -16,6 +16,8 @@ type CustomProps = {
   /** Semantic colour role; see `tones` in helpers.ts for each value. */
   tone?: Tone;
   className?: string;
+  /** With `as="label"`: the id of the control the label names. */
+  htmlFor?: string;
   /**
    * Shows the text in session replays, which mask all text by default.
    * Only for static copy that is the same for every user.
@@ -49,6 +51,7 @@ export function Text({
   return React.createElement(
     Element,
     {
+      "data-slot": "text",
       className: combinedClassName,
       ...rest,
     },

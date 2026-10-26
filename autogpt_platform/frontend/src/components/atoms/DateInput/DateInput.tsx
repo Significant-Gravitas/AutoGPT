@@ -2,14 +2,14 @@
 
 import * as React from "react";
 import { Calendar as CalendarIcon } from "lucide-react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
-import { Calendar } from "@/components/__legacy__/ui/calendar";
+} from "@/components/molecules/Popover/Popover";
+import { Calendar } from "@/components/atoms/Calendar/Calendar";
 
 function toLocalISODateString(d: Date) {
   const year = d.getFullYear();
@@ -106,10 +106,11 @@ export const DateInput = ({
   );
 
   return (
-    <div className="flex flex-col gap-1">
+    <div data-slot="date-input" className="flex flex-col gap-1">
       {label && !hideLabel && (
         // TODO(tokens): no role is gray-700 #374151.
         <label
+          data-slot="date-input-label"
           htmlFor={id}
           className="text-body font-medium leading-5 text-gray-700"
         >
@@ -119,8 +120,9 @@ export const DateInput = ({
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
+            data-slot="date-input-trigger"
             type="button"
-            variant="ghost"
+            variant="legacy-ghost"
             className={triggerStyles}
             disabled={isDisabled}
             autoFocus={autoFocus}
@@ -130,13 +132,22 @@ export const DateInput = ({
             aria-describedby={ariaDescribedBy}
           >
             <CalendarIcon
+              data-slot="date-input-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
             {buttonText}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" sideOffset={6}>
+        {/* TODO(tokens): today's popover look. No exact role: border-neutral-200
+            #E5E5E5; text-neutral-950 #0A0A0A is the `focus` role, a ring colour,
+            not a text colour (SECRT-3154). */}
+        <PopoverContent
+          data-slot="date-input-popup"
+          className="w-auto rounded-medium border-neutral-200 p-0 text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
+          sideOffset={6}
+        >
           <Calendar
+            data-slot="date-input-calendar"
             mode="single"
             selected={selected}
             onSelect={setDate}
@@ -148,7 +159,14 @@ export const DateInput = ({
           />
         </PopoverContent>
       </Popover>
-      {error && <span className="text-body leading-5 text-error">{error}</span>}
+      {error && (
+        <span
+          data-slot="date-input-error"
+          className="text-body leading-5 text-error"
+        >
+          {error}
+        </span>
+      )}
     </div>
   );
 };
