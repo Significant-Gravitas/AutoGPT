@@ -223,7 +223,9 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* Google Drive Picker: ensure picker appears above dialogs and can receive clicks */
+/* Google Drive Picker: ensure picker appears above dialogs and can receive
+   clicks. The picker is Google's own markup, so it has no slot; !important
+   beats the z-index and pointer-events Google's script writes inline. */
 [class*="picker-dialog"] {
   z-index: 10000 !important;
   pointer-events: auto !important;
@@ -294,17 +296,6 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
    around them; display blocks keep KaTeX's size. */
 :not(.katex-display) > .katex {
   font-size: 1.1em;
-}
-
-/* Expert and Otto profile tabs: body copy inside a tab panel reads at the
-   Overview intro's 15px instead of the default 14px. Scoped to the panels so
-   the tab labels, cards' small captions and the rest of the app keep their
-   sizes. */
-[data-profile-tabs] [role="tabpanel"] .text-sm,
-[data-profile-tabs] [role="tabpanel"] .text-body,
-[data-profile-tabs] [role="tabpanel"] [class*="text-[0.875rem]"] {
-  font-size: 15px;
-  line-height: 1.5rem;
 }
 
 /* DS2b keyframes */

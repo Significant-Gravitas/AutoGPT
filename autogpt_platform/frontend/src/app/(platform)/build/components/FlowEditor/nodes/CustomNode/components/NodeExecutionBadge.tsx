@@ -1,6 +1,6 @@
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import { Badge } from "@/components/__legacy__/ui/badge";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { cn } from "@/lib/utils";
 import { useShallow } from "zustand/react/shallow";
@@ -30,6 +30,7 @@ export const NodeExecutionBadge = ({ nodeId }: { nodeId: string }) => {
   return (
     <div className="flex items-center justify-end rounded-b-xl py-2 pr-4">
       <Badge
+        variant="solid"
         className={cn(statusStyles[status], "gap-2 rounded-full bg-surface")}
       >
         {status}
