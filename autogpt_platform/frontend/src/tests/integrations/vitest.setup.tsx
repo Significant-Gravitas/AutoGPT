@@ -1,9 +1,10 @@
-import { beforeAll, afterAll, afterEach, vi } from "vitest";
+import { beforeAll, afterAll, afterEach, beforeEach, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { mockNextjsModules } from "./setup-nextjs-mocks";
 import { mockAuthRequest } from "./mock-auth-request";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { resetCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
+import { seedFaker } from "./faker-seed";
 
 // Auth tests send the client IP in X-Forwarded-For, as a trusted proxy would
 // (lib/auth/client-ip.ts).
@@ -49,6 +50,14 @@ const QUIET_TICKS = 5;
 const MAX_SETTLE_TICKS = 1000;
 const realSetTimeout = globalThis.setTimeout;
 
+// Setup files run before each test file loads, so this seeds data built at
+// module scope, in describe bodies and in beforeAll; beforeEach re-seeds.
+seedFaker();
+
+// CI runners ran these tests 2-3x slower than a dev machine (T494.1), so give
+// findBy/waitFor 3x Testing Library's 1 s default.
+configure({ asyncUtilTimeout: 3000 });
+
 beforeAll(() => {
   mockNextjsModules();
   mockAuthRequest(); // If you need user's data - please mock auth actions in your specific test - it sends null user [It's only to avoid cookies() call]
@@ -56,6 +65,9 @@ beforeAll(() => {
   // After listen(): MSW's fetch wrapper answers mocked requests without
   // calling the fetch it wrapped, so a tracker beneath it sees none.
   trackOpenRequests();
+});
+beforeEach(() => {
+  seedFaker();
 });
 afterEach(async () => {
   cleanup();

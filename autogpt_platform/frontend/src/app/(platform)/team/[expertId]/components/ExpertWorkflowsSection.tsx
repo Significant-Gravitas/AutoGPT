@@ -97,18 +97,21 @@ export function ExpertWorkflowsSection({
               key="flow"
               icon={WorkflowSquare01Icon}
               size={22}
+              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
               className="text-sky-500"
             />,
             <Icon
               key="play"
               icon={PlayIcon}
               size={22}
+              // TODO(tokens): no exact role: text-orange-500 #FE8700
               className="text-orange-500"
             />,
             <Icon
               key="calendar"
               icon={Calendar03Icon}
               size={22}
+              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
               className="text-violet-500"
             />,
           ]}

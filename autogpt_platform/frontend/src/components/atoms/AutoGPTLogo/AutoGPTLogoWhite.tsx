@@ -2,6 +2,8 @@ interface Props extends React.SVGProps<SVGSVGElement> {
   hideText?: boolean;
 }
 
+// TODO(tokens): brand artwork. The fills are #FFFFFF, which only shadcn's
+// card and popover names hold (surface is #FEFEFE); a logo is neither.
 export function AutoGPTLogoWhite({
   hideText = false,
   className,
@@ -9,6 +11,7 @@ export function AutoGPTLogoWhite({
 }: Props) {
   return (
     <svg
+      data-slot="autogpt-logo"
       viewBox={hideText ? "63 0 57 54" : "0 0 119 54"}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"

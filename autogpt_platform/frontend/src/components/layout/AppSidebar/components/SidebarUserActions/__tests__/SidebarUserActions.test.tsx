@@ -12,7 +12,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 }));
 
 const sidebar = vi.hoisted(() => ({ state: "expanded" }));
-vi.mock("@/components/ui/sidebar", async (importOriginal) => {
+vi.mock("@/components/molecules/Sidebar/Sidebar", async (importOriginal) => {
   const actual = await importOriginal<object>();
   return { ...actual, useSidebar: () => sidebar };
 });

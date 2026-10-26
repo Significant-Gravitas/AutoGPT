@@ -86,12 +86,7 @@ export function createAssistantRunJoiner() {
     const joined: UiMessage[] = [];
     for (const message of messages) {
       const last = joined[joined.length - 1];
-      if (
-        last?.role !== "assistant" ||
-        message.role !== "assistant" ||
-        last.metadata ||
-        message.metadata
-      ) {
+      if (!continuesAssistantRun(last, message)) {
         joined.push(message);
         continue;
       }
@@ -106,6 +101,40 @@ export function createAssistantRunJoiner() {
     }
     return joined;
   };
+}
+
+/**
+ * Stats for the bubbles ``createAssistantRunJoiner`` makes: a joined run is keyed
+ * by its first message, its later turns' fields winning, as a reload merges them.
+ */
+export function statsOfAssistantRuns(
+  messages: UiMessage[],
+  stats: TurnStatsMap,
+): TurnStatsMap {
+  const joined: TurnStatsMap = new Map(stats);
+  let runStart: UiMessage | undefined;
+  for (const message of messages) {
+    if (!continuesAssistantRun(runStart, message)) {
+      runStart = message;
+      continue;
+    }
+    const later = stats.get(message.id);
+    if (later)
+      joined.set(runStart.id, { ...joined.get(runStart.id), ...later });
+  }
+  return joined;
+}
+
+function continuesAssistantRun(
+  run: UiMessage | undefined,
+  message: UiMessage,
+): run is UiMessage {
+  return (
+    run?.role === "assistant" &&
+    message.role === "assistant" &&
+    !run.metadata &&
+    !message.metadata
+  );
 }
 
 function drainedTexts(snapshot: RuntimeSnapshot) {

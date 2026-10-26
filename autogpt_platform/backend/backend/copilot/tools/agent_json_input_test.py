@@ -175,6 +175,35 @@ async def test_or_error_returns_graph_on_success():
     assert err is None
 
 
+@pytest.mark.parametrize(
+    "agent_json, key",
+    [
+        ({"nodes": [1], "links": []}, "nodes"),
+        # As a string, the form an MCP client can send past the schema.
+        ('{"nodes": [1], "links": []}', "nodes"),
+        ({"nodes": [{"id": "n1"}], "links": "n1->n2"}, "links"),
+        ({"nodes": {"id": "n1"}}, "nodes"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_or_error_refuses_nodes_or_links_that_are_not_objects(agent_json, key):
+    """The fixer and validator assume objects; on anything else they failed with
+    an internal error, whose text went back to the caller."""
+    session = make_session(_USER_ID)
+    graph, err = await resolve_agent_json_or_error(
+        agent_json=agent_json,
+        agent_json_ref=None,
+        user_id=_USER_ID,
+        session=session,
+        session_id="s1",
+        missing_message="missing",
+    )
+    assert graph is None
+    assert isinstance(err, ErrorResponse)
+    assert err.error == "invalid_agent_json"
+    assert err.message == f"The agent JSON's '{key}' must be a list of objects."
+
+
 @pytest.mark.asyncio
 async def test_or_error_builds_missing_error_response():
     session = make_session(_USER_ID)

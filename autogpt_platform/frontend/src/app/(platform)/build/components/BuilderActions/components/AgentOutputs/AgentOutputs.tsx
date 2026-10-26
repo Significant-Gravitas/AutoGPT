@@ -1,8 +1,8 @@
 import { BlockUIType } from "@/app/(platform)/build/components/types";
+import { Label } from "@/components/atoms/Label/Label";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { Label } from "@/components/__legacy__/ui/label";
-import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
+import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
 import {
   Sheet,
   SheetContent,
@@ -10,7 +10,7 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from "@/components/__legacy__/ui/sheet";
+} from "@/components/molecules/Dialog/components/SheetPrimitives";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
@@ -27,6 +27,7 @@ import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { BookOpen01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
   const hasOutputs = useGraphStore(useShallow((state) => state.hasOutputs));
@@ -111,13 +112,29 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
         <SheetHeader className="px-2 py-2">
           <div className="flex items-center justify-between">
             <div>
-              <SheetTitle className="text-xl">Run Outputs</SheetTitle>
-              <SheetDescription className="mt-1 text-sm text-muted-foreground">
+              <SheetTitle>
+                <Text
+                  variant="lead-semibold"
+                  as="span"
+                  tone="inherit"
+                  className="block"
+                >
+                  Run Outputs
+                </Text>
+              </SheetTitle>
+              <SheetDescription className="mt-1 text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="rounded-md bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
+                  <Text
+                    variant="small-medium-tight"
+                    as="span"
+                    // TODO(tokens): no exact role: bg-yellow-100 #FCEBB0, text-yellow-800 #876A00; dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-yellow-900/30 #675100, dark:text-yellow-400 #F7CD33
+                    className="rounded-md bg-yellow-100 px-2 py-0.5 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                  >
                     Beta
-                  </span>
-                  <span>This feature is in beta and may contain bugs</span>
+                  </Text>
+                  <Text variant="body-tight" as="span" tone="inherit">
+                    This feature is in beta and may contain bugs
+                  </Text>
                 </span>
               </SheetDescription>
             </div>
@@ -131,12 +148,27 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                 outputs.map((group) => (
                   <div key={group.nodeID} className="space-y-2">
                     <div>
-                      <Label className="text-base font-semibold">
-                        {group.metadata.name || "Unnamed Output"}
+                      <Label>
+                        <Text
+                          variant="large-semibold-tight"
+                          as="span"
+                          tone="inherit"
+                        >
+                          {group.metadata.name || "Unnamed Output"}
+                        </Text>
                       </Label>
                       {group.metadata.description && (
-                        <Label className="mt-1 block text-sm text-gray-600">
-                          {group.metadata.description}
+                        <Label
+                          // TODO(tokens): no exact role: text-gray-600 #4B5563
+                          className="mt-1 block text-gray-600"
+                        >
+                          <Text
+                            variant="body-medium-tight"
+                            as="span"
+                            tone="inherit"
+                          >
+                            {group.metadata.description}
+                          </Text>
                         </Label>
                       )}
                     </div>
@@ -152,7 +184,10 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                   </div>
                 ))
               ) : (
-                <div className="flex h-full items-center justify-center text-gray-500">
+                <div
+                  // TODO(tokens): no exact role: text-gray-500 #6B7280
+                  className="flex h-full items-center justify-center text-gray-500"
+                >
                   <p>No output blocks available.</p>
                 </div>
               )}

@@ -97,10 +97,6 @@ export function newRecordingId() {
   return crypto.randomUUID();
 }
 
-export function isPermissionDenied(error: unknown) {
-  return error instanceof DOMException && error.name === "NotAllowedError";
-}
-
 export const BRAIN_DUMP_HEADLINE = "Talk to me about your work";
 
 // The backend's quality gate rejects dumps with these codes when the

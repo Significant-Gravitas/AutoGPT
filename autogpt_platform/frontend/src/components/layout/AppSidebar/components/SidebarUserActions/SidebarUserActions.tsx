@@ -6,7 +6,10 @@ import { okData } from "@/app/api/helpers";
 import { AccountMenu } from "@/components/layout/Navbar/components/AccountMenu/AccountMenu";
 import { Wallet } from "@/components/layout/Navbar/components/Wallet/Wallet";
 import { getAccountMenuItems } from "@/components/layout/Navbar/helpers";
-import { SidebarFooter, useSidebar } from "@/components/ui/sidebar";
+import {
+  SidebarFooter,
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import {
   Tooltip as SidebarTooltip,
   TooltipContent as SidebarTooltipContent,

@@ -3,15 +3,19 @@
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 
 from .agent_generator.validation import AgentValidator, get_blocks_as_dicts
 from .agent_json_input import (
     AGENT_JSON_REF_SCHEMA,
     AGENT_JSON_SCHEMA,
+    reads_workspace_file,
     resolve_agent_json_or_error,
 )
 from .base import BaseTool
+from .external_scope import error_detail
 from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase, ValidationResultResponse
 
@@ -24,6 +28,14 @@ class ValidateAgentGraphTool(BaseTool):
     @property
     def name(self) -> str:
         return "validate_agent_graph"
+
+    @property
+    def allow_external_use(self):
+        return True, []
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # Reading the graph from a workspace file is a read of the caller's files.
+        return [APIKeyPermission.READ_FILES] if reads_workspace_file(args) else []
 
     @property
     def description(self) -> str:
@@ -97,7 +109,7 @@ class ValidateAgentGraphTool(BaseTool):
         except Exception as e:
             logger.error(f"Validation error: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Validation encountered an error: {str(e)}",
+                message=f"Validation encountered an error: {error_detail(e, session)}",
                 error="validation_exception",
                 session_id=session_id,
             )
