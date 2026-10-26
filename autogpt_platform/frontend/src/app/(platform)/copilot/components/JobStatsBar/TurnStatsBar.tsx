@@ -1,4 +1,5 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { cn } from "@/lib/utils";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useState } from "react";
@@ -10,6 +11,7 @@ interface Props {
   turnMessages: UIMessage<unknown, UIDataTypes, UITools>[];
   elapsedSeconds?: number;
   stats?: TurnStats;
+  isLatest?: boolean;
 }
 
 function formatLocalDate(iso: string): string {
@@ -67,11 +69,16 @@ function TimeLabel({
   );
 }
 
-export function TurnStatsBar({ turnMessages, elapsedSeconds, stats }: Props) {
+export function TurnStatsBar({
+  turnMessages,
+  elapsedSeconds,
+  stats,
+  isLatest = true,
+}: Props) {
   const { counters } = getWorkDoneCounters(turnMessages);
   const displaySeconds = resolveDisplaySeconds(elapsedSeconds, stats);
   const localDate = stats?.createdAt ? formatLocalDate(stats.createdAt) : null;
-  const outcome = getTurnOutcome(turnMessages);
+  const outcome = isLatest ? getTurnOutcome(turnMessages) : "unsettled";
 
   const seconds =
     displaySeconds !== undefined && displaySeconds > 0 ? displaySeconds : null;
@@ -81,7 +88,10 @@ export function TurnStatsBar({ turnMessages, elapsedSeconds, stats }: Props) {
   return (
     <div
       data-testid="turn-end-line"
-      className="mt-2 flex items-center gap-1.5 text-caption-sm tabular-nums leading-inherit text-foreground-secondary"
+      className={cn(
+        "mt-2 flex items-center gap-1.5 text-caption-sm tabular-nums leading-inherit text-foreground-secondary",
+        !isLatest && "opacity-50 transition-opacity group-hover:opacity-100",
+      )}
     >
       {outcome === "done" && (
         <Icon

@@ -483,6 +483,7 @@ export function ChatMessagesContainer({
         isLastAssistant={isLastAssistant}
         isCurrentlyStreaming={isCurrentlyStreaming}
         isLastInTurn={isLastInTurn}
+        isLatestTurn={isLastRow}
         turnStat={turnStats?.get(message.id)}
         turnMessages={
           showsTurnStats

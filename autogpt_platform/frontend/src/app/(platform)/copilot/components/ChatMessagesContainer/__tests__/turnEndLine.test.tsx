@@ -213,4 +213,34 @@ describe("ChatMessagesContainer — end of a turn", () => {
     );
     expect(announcement(container)).toBe("");
   });
+
+  it("keeps the done line on the latest turn only", () => {
+    const secondUser: Message = {
+      id: "user-2",
+      role: "user",
+      parts: [{ type: "text", text: "Make the titles shorter" }],
+    };
+    const secondReply: Message = {
+      id: "assistant-2",
+      role: "assistant",
+      parts: [{ type: "text", text: "Shorter titles below" }],
+    };
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[userMessage, ranWorkflow, secondUser, secondReply]}
+        status="ready"
+        turnStats={
+          new Map([
+            ["assistant-1", { durationMs: 42_000 }],
+            ["assistant-2", { durationMs: 9_000 }],
+          ])
+        }
+      />,
+    );
+
+    const [earlier, latest] = screen.getAllByTestId("turn-end-line");
+    expect(earlier.textContent).toMatch(/^Thought for 42s/);
+    expect(latest.textContent).toBe("Done in 9s");
+  });
 });
