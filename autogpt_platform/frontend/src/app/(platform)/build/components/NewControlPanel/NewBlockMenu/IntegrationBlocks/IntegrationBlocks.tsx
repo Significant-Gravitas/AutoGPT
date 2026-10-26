@@ -34,7 +34,10 @@ export const IntegrationBlocks = () => {
         {Array.from({ length: 3 }).map((_, blockIndex) => (
           <Fragment key={blockIndex}>
             {blockIndex > 0 && (
-              <Skeleton className="my-4 h-[1px] w-full text-zinc-100" />
+              <Skeleton
+                // TODO(tokens): no fitting role for text-zinc-100 #EFEFF0; #EFEFF0 is surface-hover (a surface fill), separator (a border colour)
+                className="my-4 h-[1px] w-full text-zinc-100"
+              />
             )}
             {[0, 1, 2].map((index) => (
               <IntegrationBlock.Skeleton key={`${blockIndex}-${index}`} />
@@ -94,6 +97,7 @@ export const IntegrationBlocks = () => {
             variant="body"
             as="span"
             tone="muted"
+            // TODO(tokens): no exact role: bg-[#f0f0f0] #F0F0F0
             className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 group-disabled:text-foreground-subtle"
           >
             {totalBlocks}

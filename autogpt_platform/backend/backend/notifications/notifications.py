@@ -857,6 +857,8 @@ class NotificationManager(AppService):
     def cleanup(self):
         self.running = False
         try:
+            if self._run_service_future is None:
+                return  # stopped before `run_service`: nothing to shut down
             shutdown = self._shutdown_service()
             if self.shared_event_loop.is_closed():
                 shutdown.close()
