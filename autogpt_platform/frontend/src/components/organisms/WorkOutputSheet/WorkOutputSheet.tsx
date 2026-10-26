@@ -9,6 +9,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/molecules/Sheet/Sheet";
@@ -73,6 +74,9 @@ export function WorkOutputSheet({
       >
         <SheetHeader className="text-left">
           <SheetTitle className="truncate">{title}</SheetTitle>
+          <SheetDescription className="sr-only">
+            This run&apos;s output.
+          </SheetDescription>
         </SheetHeader>
         <WorkOutputBody
           outputType={outputType}
