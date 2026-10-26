@@ -199,7 +199,8 @@ SET ep.derived_from_facts = $facts,
 # A fact is stamped only when every episode it names is there and carries a
 # record: a missing or unrecorded source (a user's episode) could have stated
 # it, so it is left unstamped. ``reduce`` builds each union in source order,
-# once each.
+# once each. The uuid list stays inline: FalkorDB 4.12 cannot read an alias
+# from the same ``WITH`` inside a list predicate.
 STAMP_FACTS_QUERY = """
 MATCH ()-[e:RELATES_TO]->()
 WHERE e.uuid IN $uuids
@@ -208,8 +209,7 @@ WHERE e.uuid IN $uuids
 MATCH (source:Episodic)
 WHERE source.uuid IN coalesce(e.episodes, [])
 WITH e, collect(DISTINCT source) AS sources
-WITH e, sources, [s IN sources | s.uuid] AS found
-WHERE all(x IN coalesce(e.episodes, []) WHERE x IN found)
+WHERE all(x IN coalesce(e.episodes, []) WHERE x IN [s IN sources | s.uuid])
   AND all(s IN sources WHERE s.derived_from_facts IS NOT NULL)
 SET e.derived_from_facts = reduce(
         acc = [], s IN sources |
