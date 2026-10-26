@@ -208,6 +208,7 @@ updates:
     # One entry per folder that holds a Dockerfile: the ecosystem does not
     # look below the directory it is given.
     directories:
+      - ".github/actions/start-minio"
       - "autogpt_platform/backend"
       - "autogpt_platform/frontend"
       - "autogpt_platform/single-container"

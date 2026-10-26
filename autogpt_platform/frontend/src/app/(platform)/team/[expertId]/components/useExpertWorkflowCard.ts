@@ -14,27 +14,30 @@ import { getWorkflowCredentialProviders } from "./WorkflowCredentialStack";
 const STATUS = {
   "needs-setup": {
     label: "Needs setup",
-    className: "bg-amber-50 text-amber-700",
+    className: "bg-warning-surface text-warning-foreground",
     icon: Alert01Icon,
-    iconClassName: "bg-amber-50 text-amber-600",
+    // TODO(tokens): no exact role: text-amber-600 #D97706
+    iconClassName: "bg-warning-surface text-amber-600",
   },
   scheduled: {
     label: "Scheduled",
-    className: "bg-white text-zinc-700",
+    className: "bg-surface text-foreground-body",
     icon: Calendar03Icon,
-    iconClassName: "bg-violet-50 text-violet-600",
+    // TODO(tokens): no exact role: text-violet-600 #7C3AED
+    iconClassName: "bg-accent-surface text-violet-600",
   },
   trigger: {
     label: "Triggered",
-    className: "bg-white text-zinc-700",
+    className: "bg-surface text-foreground-body",
     icon: FlashIcon,
+    // TODO(tokens): no exact role: bg-sky-50 #F0F9FF, text-sky-600 #0284C7
     iconClassName: "bg-sky-50 text-sky-600",
   },
   manual: {
     label: "Manual",
-    className: "bg-white text-zinc-500",
+    className: "bg-surface text-foreground-tertiary",
     icon: PlayIcon,
-    iconClassName: "bg-zinc-100 text-zinc-500",
+    iconClassName: "bg-surface-hover text-foreground-tertiary",
   },
 } as const;
 

@@ -15,11 +15,12 @@ import {
 } from "@/lib/sentry-filters";
 import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
 import { redactEventURLs, redactSpanURLs } from "@/lib/sentry-url-redaction";
-import { holdReplayBackFor, setupSessionReplay } from "@/lib/session-replay";
+import { createPostHogSentryProcessor } from "@/services/analytics/sentry-posthog";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
 const dsn = environment.getSentryDSN();
+const mirrorSentryEvent = createPostHogSentryProcessor(dsn);
 
 Sentry.init({
   dsn,
@@ -32,9 +33,6 @@ Sentry.init({
   tunnel: getSentryTunnelURL(dsn),
   transportOptions: { fetchOptions: { credentials: "omit" } },
 
-  // Suppress cross-origin stylesheet errors from Sentry Replay (rrweb)
-  // serializing DOM snapshots with cross-origin stylesheets
-  // (e.g., from browser extensions or CDN-loaded CSS)
   ignoreErrors: CLIENT_IGNORE_ERRORS,
 
   // Errors are reported without consent (legitimate interest), so they carry
@@ -54,7 +52,11 @@ Sentry.init({
     if (isFromBot(navigator.userAgent)) return null;
     if (isLoggedRequestFailure(event)) return null;
     if (isInjectedIframeProbe(event)) return null;
-    return isNextRSCNavigationFallback(event) ? null : redactEventURLs(event);
+    if (isNextRSCNavigationFallback(event)) return null;
+    // Mirror last: after our filters (an integration would run before
+    // beforeSend) and on the stripped, URL-masked event, so PostHog never
+    // gets an email, IP address or credential Sentry doesn't keep either.
+    return mirrorSentryEvent(redactEventURLs(event));
   },
   beforeSendTransaction(event) {
     return isFromBot(navigator.userAgent)
@@ -71,8 +73,6 @@ Sentry.init({
     Sentry.browserProfilingIntegration(),
     Sentry.httpClientIntegration(),
     Sentry.featureFlagsIntegration(),
-    // GDPR: session replay only once the visitor consents to monitoring
-    ...setupSessionReplay(),
     // Deprecation reports are browser platform notices about the web platform
     // itself (e.g. Chrome's "Attribution Reporting is deprecated"), not bugs in
     // our code, and they bury real issues. Crash and intervention reports still
@@ -95,15 +95,6 @@ Sentry.init({
     /^https:\/\/.*\.agpt\.co\/api/,
   ],
 
-  // Define how likely Replay events are sampled.
-  // This sets the sample rate to be 10%. You may want this to be 100% while
-  // in development and sample at a lower rate in production
-  // Inert until setupSessionReplay installs the replay integration.
-  replaysSessionSampleRate: 0.1,
-
-  // Define how likely Replay events are sampled when an error occurs.
-  replaysOnErrorSampleRate: 1.0,
-
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
 
@@ -120,5 +111,4 @@ export function onRouterTransitionStart(
   ...args: Parameters<typeof Sentry.captureRouterTransitionStart>
 ) {
   Sentry.captureRouterTransitionStart(...args);
-  holdReplayBackFor(args[0]);
 }

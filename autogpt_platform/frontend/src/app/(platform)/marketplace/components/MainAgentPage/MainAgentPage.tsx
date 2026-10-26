@@ -1,6 +1,6 @@
 "use client";
 import { okData } from "@/app/api/helpers";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { Button } from "@/components/atoms/Button/Button";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -100,7 +100,6 @@ export function MainAgentPage({ params }: Props) {
           <div className="w-full lg:w-2/5">
             <AgentInfo
               user={user}
-              agentId={agentData.active_version_id ?? "–"}
               name={agentData.agent_name ?? ""}
               creator={agentData.creator ?? ""}
               creatorAvatar={agentData.creator_avatar ?? ""}

@@ -185,17 +185,17 @@ export function LibraryAgentList({
             <button
               type="button"
               onClick={() => onFolderSelect(null)}
-              className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900"
+              className="inline-flex items-center gap-1 text-sm text-foreground-tertiary hover:text-foreground-strong"
             >
               <Icon icon={ArrowLeft02Icon} className="h-4 w-4" />
               My Library
             </button>
             {currentFolder && (
               <>
-                <Text variant="body" className="text-zinc-400">
+                <Text variant="body" className="text-foreground-subtle">
                   /
                 </Text>
-                <Text variant="large" className="text-zinc-700">
+                <Text variant="large" className="text-foreground-body">
                   {currentFolder.name}
                 </Text>
               </>
@@ -207,7 +207,7 @@ export function LibraryAgentList({
             <LoadingSpinner size="large" />
           </div>
         ) : isFavoritesTab && agents.length === 0 ? (
-          <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-zinc-500">
+          <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-foreground-tertiary">
             <Icon icon={FavouriteIcon} className="h-10 w-10" />
             <Text variant="body">No favorite workflows yet</Text>
           </div>

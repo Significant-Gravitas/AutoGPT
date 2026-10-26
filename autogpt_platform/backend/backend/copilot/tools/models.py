@@ -7,6 +7,7 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from backend.copilot.graphiti.memory_model import MemoryForgetFailure
+from backend.copilot.tool_image import ImageCarrier
 from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
@@ -155,7 +156,7 @@ class ResponseType(str, Enum):
 
 
 # Base response model
-class ToolResponseBase(BaseModel):
+class ToolResponseBase(ImageCarrier):
     """Base model for all tool responses."""
 
     type: ResponseType
@@ -873,6 +874,9 @@ class ExpertOnboardingStep(BaseModel):
     # Tappable answers. The card always offers a free-text escape as well, so
     # an empty list simply means "this one is open-ended".
     options: list[str] = Field(default_factory=list)
+    # Several of `options` may be picked. Only ever set alongside options:
+    # there is nothing to multi-select in a free-text question.
+    allow_multiple: bool = False
 
 
 class ExpertOnboardingResponse(ToolResponseBase):

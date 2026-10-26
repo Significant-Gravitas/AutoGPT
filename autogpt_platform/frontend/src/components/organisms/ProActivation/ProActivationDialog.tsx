@@ -51,22 +51,31 @@ export function ProActivationDialog({ activation }: Props) {
       controlled={{ isOpen, set: setOpen }}
       styling={{ maxWidth: "560px" }}
       title={
-        <div className="space-y-2 pr-7">
-          <Text variant="small" className="font-medium text-zinc-500">
+        <div
+          data-slot="pro-activation-dialog-heading"
+          className="space-y-2 pr-7"
+        >
+          <Text variant="small-medium" tone="muted">
             {review ? "Payment review" : `AutoGPT ${plan}`}
           </Text>
-          <span className="block text-[26px] font-semibold leading-[1.2] tracking-[-0.6px] text-zinc-900">
+          <span
+            data-slot="pro-activation-dialog-title"
+            // TODO(tokens): SECRT-3152, the 26px size, leading-[1.2] and
+            // tracking-[-0.6px] have no role.
+            className="block text-[26px] font-semibold leading-[1.2] tracking-[-0.6px] text-foreground-strong"
+          >
             {title}
           </span>
         </div>
       }
     >
       <Dialog.Content>
-        <div className="space-y-5">
+        <div data-slot="pro-activation-dialog-body" className="space-y-5">
           {error && (
             <div
               role="alert"
-              className="rounded-large border border-amber-200 bg-amber-50 p-4 text-sm text-zinc-700"
+              data-slot="pro-activation-dialog-error"
+              className="rounded-large border border-warning-border bg-warning-surface p-4 text-sm text-foreground-body"
             >
               {error}
             </div>
@@ -76,12 +85,16 @@ export function ProActivationDialog({ activation }: Props) {
               <ActivationTerms terms={review} />
               <ActivationPaymentMethod />
               {expiry.expiringSoon && !retryConsent && (
-                <Text variant="small" className="text-amber-700">
+                <Text variant="small" className="text-warning-foreground">
                   This price is held for a few more minutes.
                 </Text>
               )}
               {expiry.expired && !retryConsent && (
-                <Text variant="small" className="text-amber-700" role="status">
+                <Text
+                  variant="small"
+                  className="text-warning-foreground"
+                  role="status"
+                >
                   This quote has expired. Review the current terms before
                   paying.
                 </Text>
@@ -97,7 +110,7 @@ export function ProActivationDialog({ activation }: Props) {
                   ? "Retry same confirmation"
                   : `Pay ${formatAmount(review.amount_due, review.currency)} and start ${plan}`}
               </Button>
-              <Text variant="small" className="text-center text-zinc-500">
+              <Text variant="small" tone="muted" className="text-center">
                 Renews {billingCadence(review)} until you cancel. Cancel anytime
                 in Billing.
               </Text>
@@ -123,7 +136,7 @@ export function ProActivationDialog({ activation }: Props) {
               )}
               <Button
                 variant="link"
-                className="w-full text-zinc-600"
+                className="w-full text-foreground-secondary"
                 onClick={() => setOpen(false)}
               >
                 Not now

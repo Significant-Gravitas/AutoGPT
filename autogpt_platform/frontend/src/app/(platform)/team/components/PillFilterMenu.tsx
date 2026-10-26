@@ -53,13 +53,13 @@ export function PillFilterMenu<T extends string>({
             <Icon
               icon={ArrowDown01Icon}
               size={14}
-              className="ml-0.5 text-zinc-400 transition-transform duration-200 group-data-[state=open]:rotate-180"
+              className="ml-0.5 text-foreground-subtle transition-transform duration-200 group-data-[state=open]:rotate-180"
             />
           }
           className={cn(
             "group shrink-0 gap-1.5 font-medium",
             isActive &&
-              "border-zinc-900 bg-zinc-900 text-white hover:border-zinc-800 hover:bg-zinc-800 [&_svg]:text-white",
+              "border-action-hover bg-action-hover text-action-foreground hover:border-action hover:bg-action [&_svg]:text-action-foreground",
           )}
         >
           {current.label}
@@ -76,7 +76,11 @@ export function PillFilterMenu<T extends string>({
               value={option.value}
               className="gap-2"
             >
-              <Icon icon={option.icon} size={15} className="text-zinc-500" />
+              <Icon
+                icon={option.icon}
+                size={15}
+                className="text-foreground-tertiary"
+              />
               {option.label}
             </DropdownMenuRadioItem>
           ))}

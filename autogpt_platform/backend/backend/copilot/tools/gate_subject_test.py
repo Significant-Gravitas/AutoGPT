@@ -93,7 +93,7 @@ def _session(mode: AutopilotMode = "auto") -> ChatSession:
 
 @pytest.fixture
 def gate():
-    """The gate on, no approval on record, nothing rejected in this chat."""
+    """Both gates on, no approval on record, nothing rejected in this chat."""
     store = SimpleNamespace(
         find_review=AsyncMock(return_value=None),
         open_review=AsyncMock(side_effect=_opened),
@@ -101,6 +101,7 @@ def gate():
     )
     with (
         patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.reads.get_flag_variant", AsyncMock(return_value=True)),
         patch(f"{_GATE}.review_store.find_review", store.find_review),
         patch(f"{_GATE}.review_store.open_review", store.open_review),
         patch(f"{_GATE}.review_store.consume", store.consume),

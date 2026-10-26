@@ -4,12 +4,12 @@ import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import {
   Conversation,
   ConversationContent,
-} from "@/components/ai-elements/conversation";
+} from "@/components/organisms/Conversation/Conversation";
 import {
   Message,
   MessageContent,
   MessageResponse,
-} from "@/components/ai-elements/message";
+} from "@/components/organisms/Message/Message";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   CredentialsProvidersContext,
@@ -28,6 +28,8 @@ import { FindBlocksTool } from "../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../tools/RunBlock/RunBlock";
 import { SearchDocsTool } from "../tools/SearchDocs/SearchDocs";
+import { DrawnLineLoader } from "../components/DrawnLineLoader/DrawnLineLoader";
+import { ThinkingIndicator } from "../components/ChatMessagesContainer/components/ThinkingIndicator";
 import { ReasoningCollapse } from "../components/ChatMessagesContainer/components/ReasoningCollapse";
 import { GenericTool } from "../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../tools/ViewAgentOutput/ViewAgentOutput";
@@ -71,6 +73,7 @@ function Section({
 }) {
   return (
     <div id={slugify(title)} className="mb-10 scroll-mt-6">
+      {/* TODO(tokens): no exact role for neutral-200 / neutral-800 */}
       <h2 className="mb-4 border-b border-neutral-200 pb-2 font-mono text-xl font-semibold text-neutral-800">
         {title}
       </h2>
@@ -87,6 +90,7 @@ function SubSection({
   children: React.ReactNode;
 }) {
   return (
+    // TODO(tokens): no exact role for blue-200 / neutral-500
     <div className="rounded-lg border border-dashed border-blue-200 p-3">
       <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
         {label}
@@ -172,10 +176,12 @@ const MOCK_PROVIDERS_WITHOUT_CREDENTIALS: CredentialsProvidersContextType = {
 export default function StyleguidePage() {
   return (
     <CopilotChatActionsProvider onSend={(msg) => alert(`onSend: ${msg}`)}>
+      {/* TODO(tokens): no exact role for #F8F8F9 */}
       <div className="flex h-[calc(100vh-72px)] bg-[#f8f8f9]">
         {/* Sidebar */}
-        <nav className="sticky top-0 hidden h-full w-56 shrink-0 overflow-y-auto border-r border-neutral-200 bg-white px-3 py-6 lg:block">
-          <p className="mb-3 px-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+        {/* TODO(tokens): no exact role for neutral-100 / 200 / 400 / 600 / 900 */}
+        <nav className="sticky top-0 hidden h-full w-56 shrink-0 overflow-y-auto border-r border-neutral-200 bg-surface px-3 py-6 lg:block">
+          <p className="mb-3 px-2 text-caption-sm font-semibold uppercase leading-inherit tracking-wider text-neutral-400">
             Sections
           </p>
           <ul className="space-y-0.5">
@@ -183,7 +189,7 @@ export default function StyleguidePage() {
               <li key={title}>
                 <a
                   href={`#${slugify(title)}`}
-                  className="block rounded-md px-2 py-1.5 text-[13px] text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+                  className="block rounded-md px-2 py-1.5 text-body-sm leading-inherit text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
                 >
                   {title.replace(/^Tool: /, "")}
                 </a>
@@ -196,6 +202,7 @@ export default function StyleguidePage() {
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-4 py-10">
             <Text variant="h1">Copilot Styleguide</Text>
+            {/* TODO(tokens): no exact role for neutral-500 */}
             <p className="mb-8 text-sm text-neutral-500">
               Static showcase of all chat message types, tool states &amp;
               variants.
@@ -208,7 +215,8 @@ export default function StyleguidePage() {
             <Section title="Messages">
               <SubSection label="User message">
                 <Message from="user">
-                  <MessageContent className="text-[1rem] leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0]">
+                  {/* TODO(tokens): no exact role for purple-100 / slate-900 */}
+                  <MessageContent className="text-body-lg leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0]">
                     <MessageResponse>
                       Find me an agent that can summarize YouTube videos
                     </MessageResponse>
@@ -218,7 +226,8 @@ export default function StyleguidePage() {
 
               <SubSection label="Assistant message (text)">
                 <Message from="assistant">
-                  <MessageContent className="text-[1rem] leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
+                  {/* TODO(tokens): no exact role for slate-900 */}
+                  <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
                     <MessageResponse>
                       I found a few agents that can help with YouTube video
                       summarization. Let me search for the best options for you.
@@ -229,7 +238,8 @@ export default function StyleguidePage() {
 
               <SubSection label="Assistant message (markdown)">
                 <Message from="assistant">
-                  <MessageContent className="text-[1rem] leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
+                  {/* TODO(tokens): no exact role for slate-900 */}
+                  <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
                     <MessageResponse>
                       {`Here's what I found:\n\n1. **YouTube Summarizer** — Extracts key points from any YouTube video\n2. **Video Digest** — Creates bullet-point summaries with timestamps\n\n> Both agents support videos up to 2 hours long.\n\n\`\`\`python\n# Example usage\nresult = agent.run(url="https://youtube.com/watch?v=...")\nprint(result.summary)\n\`\`\``}
                     </MessageResponse>
@@ -239,7 +249,8 @@ export default function StyleguidePage() {
 
               <SubSection label="Thinking state">
                 <Message from="assistant">
-                  <MessageContent className="text-[1rem] leading-relaxed">
+                  <MessageContent className="text-body-lg leading-relaxed">
+                    {/* TODO(tokens): no exact role for neutral-400 / neutral-600 */}
                     <span className="inline-block animate-shimmer bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-[length:200%_100%] bg-clip-text text-transparent">
                       Thinking...
                     </span>
@@ -247,8 +258,19 @@ export default function StyleguidePage() {
                 </Message>
               </SubSection>
 
+              <SubSection label="Thinking indicator">
+                <div className="flex flex-col gap-6">
+                  <ThinkingIndicator active />
+                  <DrawnLineLoader
+                    size={64}
+                    className="text-foreground-secondary"
+                  />
+                </div>
+              </SubSection>
+
               <SubSection label="Error state">
-                <div className="rounded-lg bg-red-50 p-3 text-red-600">
+                {/* TODO(tokens): no exact text role for red-600 (#D93636) */}
+                <div className="rounded-lg bg-error-surface p-3 text-red-600">
                   Error: Connection timed out. Please try again.
                 </div>
               </SubSection>
@@ -1734,10 +1756,11 @@ export default function StyleguidePage() {
             {/* ============================================================= */}
 
             <Section title="Full Conversation Example">
-              <Conversation className="min-h-0 rounded-lg border bg-white">
+              <Conversation className="min-h-0 rounded-lg border bg-surface">
                 <ConversationContent className="gap-6 px-3 py-6">
                   <Message from="user">
-                    <MessageContent className="text-[1rem] leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0]">
+                    {/* TODO(tokens): no exact role for purple-100 / slate-900 */}
+                    <MessageContent className="text-body-lg leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0]">
                       <MessageResponse>
                         Find me a block that can fetch weather data
                       </MessageResponse>
@@ -1745,7 +1768,8 @@ export default function StyleguidePage() {
                   </Message>
 
                   <Message from="assistant">
-                    <MessageContent className="text-[1rem] leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
+                    {/* TODO(tokens): no exact role for slate-900 */}
+                    <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
                       <MessageResponse>
                         Let me search for weather-related blocks for you.
                       </MessageResponse>
@@ -1789,7 +1813,8 @@ export default function StyleguidePage() {
                   </Message>
 
                   <Message from="user">
-                    <MessageContent className="text-[1rem] leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0]">
+                    {/* TODO(tokens): no exact role for purple-100 / slate-900 */}
+                    <MessageContent className="text-body-lg leading-relaxed group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0]">
                       <MessageResponse>
                         Yes, run the Get Weather block for San Francisco
                       </MessageResponse>
@@ -1797,7 +1822,8 @@ export default function StyleguidePage() {
                   </Message>
 
                   <Message from="assistant">
-                    <MessageContent className="text-[1rem] leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
+                    {/* TODO(tokens): no exact role for slate-900 */}
+                    <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
                       <RunBlockTool
                         part={{
                           type: "tool-run_block",
@@ -1839,6 +1865,7 @@ export default function StyleguidePage() {
             {/* ============================================================= */}
 
             <Section title="Reasoning Collapse: Interactive Tool Pinning">
+              {/* TODO(tokens): no exact role for neutral-600 */}
               <p className="mb-4 text-sm text-neutral-600">
                 When the stream finishes, intermediate tool calls are collapsed
                 behind a &quot;Show reasoning&quot; button. However, tools whose
@@ -1848,10 +1875,11 @@ export default function StyleguidePage() {
               </p>
 
               <SubSection label="Collapsed reasoning with pinned setup_requirements">
-                <Conversation className="min-h-0 rounded-lg border bg-white">
+                <Conversation className="min-h-0 rounded-lg border bg-surface">
                   <ConversationContent className="gap-6 px-3 py-6">
                     <Message from="assistant">
-                      <MessageContent className="text-[1rem] leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
+                      {/* TODO(tokens): no exact role for slate-900 */}
+                      <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
                         <ReasoningCollapse>
                           <GenericTool
                             part={{
@@ -1947,10 +1975,11 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Collapsed reasoning with pinned agent_details (inputs required)">
-                <Conversation className="min-h-0 rounded-lg border bg-white">
+                <Conversation className="min-h-0 rounded-lg border bg-surface">
                   <ConversationContent className="gap-6 px-3 py-6">
                     <Message from="assistant">
-                      <MessageContent className="text-[1rem] leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
+                      {/* TODO(tokens): no exact role for slate-900 */}
+                      <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
                         <ReasoningCollapse>
                           <FindAgentsTool
                             part={{
@@ -2026,10 +2055,11 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Collapsed reasoning with pinned agent_saved">
-                <Conversation className="min-h-0 rounded-lg border bg-white">
+                <Conversation className="min-h-0 rounded-lg border bg-surface">
                   <ConversationContent className="gap-6 px-3 py-6">
                     <Message from="assistant">
-                      <MessageContent className="text-[1rem] leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
+                      {/* TODO(tokens): no exact role for slate-900 */}
+                      <MessageContent className="text-body-lg leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
                         <ReasoningCollapse>
                           <FindBlocksTool
                             part={{

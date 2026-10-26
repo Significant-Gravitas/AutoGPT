@@ -4,6 +4,7 @@ import logging
 import uuid
 from typing import Any
 
+from backend.blocks import get_block
 from backend.blocks.llm import LLM_PROVIDER_NAMES
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.gate import unified_approvals
@@ -98,10 +99,11 @@ class RunBlockTool(BaseTool):
             or result.provider in LLM_PROVIDER_NAMES
         ):
             return None
+        block = get_block(result.block_id)
         return ActivityEventDraft(
             category="INTEGRATION",
             event_type="integration.action",
-            title=result.block_name,
+            title=block.display_name if block else result.block_name,
             provider=result.provider,
             object_id=result.block_id,
         )

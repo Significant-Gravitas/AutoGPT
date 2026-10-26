@@ -141,7 +141,7 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                     <Icon
                       icon={Search01Icon}
                       size={16}
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-subtle"
                     />
                     <input
                       type="text"
@@ -149,17 +149,17 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="Search services..."
                       aria-label="Search services"
-                      className="h-9 w-full rounded-md border border-zinc-200 bg-white pl-9 pr-3 text-sm leading-[22px] text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
+                      className="h-9 w-full rounded-md border border-border-base bg-surface pl-9 pr-3 text-sm leading-5.5 text-foreground-strong transition-colors placeholder:text-foreground-subtle focus:border-action-hover focus:outline-none"
                     />
                   </div>
 
                   {query.trim() ? (
                     providers.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-200 py-8 text-center">
+                      <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border-base py-8 text-center">
                         <Icon
                           icon={Plug01Icon}
                           size={16}
-                          className="text-zinc-400"
+                          className="text-foreground-subtle"
                         />
                         <Text variant="body" tone="secondary">
                           {`No services match "${query.trim()}"`}

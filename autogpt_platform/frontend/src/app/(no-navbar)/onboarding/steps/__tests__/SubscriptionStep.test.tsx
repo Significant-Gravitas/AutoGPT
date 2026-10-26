@@ -21,13 +21,12 @@ import {
   getSubscriptionPricingExperimentPlans,
 } from "../SubscriptionStep/helpers";
 import { SubscriptionStep } from "../SubscriptionStep/SubscriptionStep";
-
-const postHog = vi.hoisted(() => ({
-  variant: undefined as string | boolean | undefined,
-}));
+import { getGetExperimentsGetExperimentAssignmentMockHandler } from "@/app/api/__generated__/endpoints/experiments/experiments.msw";
+import { getGetTrialsGetTrialStatusMockHandler200 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
+import { Experiment } from "@/app/api/__generated__/models/experiment";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
 vi.mock("@posthog/react", () => ({
-  useFeatureFlagVariantKey: () => postHog.variant,
   usePostHog: () => undefined,
 }));
 
@@ -55,10 +54,10 @@ afterEach(() => {
   restoreLocation();
   removeGtagShim();
   vi.unstubAllEnvs();
+  useAuthStore.setState({ user: null, hasLoadedUser: false });
 });
 
 beforeEach(() => {
-  postHog.variant = undefined;
   posthogJS.capture.mockClear();
   sessionStorage.clear();
   useOnboardingWizardStore.getState().reset();
@@ -181,8 +180,8 @@ describe("SubscriptionStep", () => {
     expect(screen.queryByText(/Best value/i)).toBeNull();
   });
 
-  test("PostHog monthly Pro variant starts on monthly billing", async () => {
-    postHog.variant = "monthly-pro";
+  test("an assigned monthly Pro arm starts on monthly billing", async () => {
+    assignArm("monthly-pro");
 
     render(<SubscriptionStep />);
 
@@ -195,8 +194,8 @@ describe("SubscriptionStep", () => {
     expect(screen.getAllByText("billed monthly").length).toBe(2);
   });
 
-  test("PostHog billing default does not override a user-selected cycle", async () => {
-    postHog.variant = "monthly-pro";
+  test("an assigned arm's billing default does not override a user-selected cycle", async () => {
+    assignArm("monthly-pro");
     useOnboardingWizardStore.getState().setSelectedBilling("yearly");
 
     render(<SubscriptionStep />);
@@ -459,7 +458,7 @@ describe("SubscriptionStep", () => {
   });
 
   test("reports the paywall view and the picked plan with its pricing arm to PostHog", async () => {
-    postHog.variant = "yearly-max";
+    assignArm("yearly-max");
     let capturedTierBody: { surface?: string } | null = null;
     server.use(
       http.post("*/api/credits/subscription", async ({ request }) => {
@@ -492,10 +491,9 @@ describe("SubscriptionStep", () => {
     });
   });
 
-  // PostHog answers `false` for a user outside the rollout. They see the
-  // control layout but are not in the control arm.
+  // A user outside the rollout sees the control layout but is not in the control arm.
   test("reports no pricing arm for a user the experiment did not enrol", async () => {
-    postHog.variant = false;
+    assignArm(null);
     server.use(
       http.post("*/api/credits/subscription", () =>
         HttpResponse.json({ url: null }),
@@ -594,3 +592,29 @@ describe("SubscriptionStep", () => {
     resolveTier(null);
   });
 });
+
+// Signs in a user with no trial, whom the backend assigned *variant* (null: not enrolled).
+function assignArm(variant: string | null) {
+  useAuthStore.setState({
+    user: { id: "user-1", email: "user-1@example.com", user_metadata: {} },
+    isUserLoading: false,
+    // Without it the store refetches the session, which this suite answers with nobody.
+    hasLoadedUser: true,
+  });
+  server.use(
+    getGetTrialsGetTrialStatusMockHandler200({
+      eligible: false,
+      active: false,
+    }),
+    getGetExperimentsGetExperimentAssignmentMockHandler(
+      variant === null
+        ? null
+        : {
+            experiment_key: Experiment.SUBSCRIPTION_PRICING,
+            variant,
+            source: "backend",
+            assigned_at: new Date("2026-10-11T00:00:00Z"),
+          },
+    ),
+  );
+}

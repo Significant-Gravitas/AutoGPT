@@ -107,7 +107,7 @@ class ChannelInfo(BaseModel):
     id: str
     name: str
     server_id: str
-    server_name: Optional[str] = None
+    server_name: str | None = None
 
 
 class EditOutcome(Enum):
@@ -169,6 +169,21 @@ class MessageContext:
     username: str
     text: str  # with bot mentions stripped
     bot_mentioned: bool = False
+    # The message replies to one of the bot's own messages (with or without
+    # pinging it): it is addressed to the bot even when not @mentioned.
+    replied_to_bot: bool = False
+    # Where the message was sent, for the per-turn location header the model
+    # sees. The `public_*` ids are the platform's own ids (never the encoded
+    # target in `channel_id`); `post_channel_id` is exactly what
+    # `post_to_chat_platform` accepts as `channel` to post here, None when
+    # that tool can't post to this channel. On Telegram the channel is the
+    # group and the thread a forum topic.
+    server_name: str | None = None
+    channel_name: str | None = None
+    public_channel_id: str | None = None
+    thread_name: str | None = None
+    public_thread_id: str | None = None
+    post_channel_id: str | None = None
     thread_history: tuple[MessageHistoryEntry, ...] = ()
     # Users the bot may @-mention back in this turn: the author and anyone
     # mentioned in the inbound message (excluding the bot itself), as

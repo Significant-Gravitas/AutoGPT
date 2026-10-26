@@ -52,7 +52,7 @@ export function ErrorCard({
 
   return (
     <CardWrapper className={className}>
-      <div className="relative space-y-4 p-6">
+      <div data-slot="error-card-content" className="relative space-y-4 p-6">
         <ErrorHeader />
         <ErrorMessage
           errorMessage={errorMessage}

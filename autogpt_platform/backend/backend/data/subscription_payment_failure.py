@@ -17,6 +17,7 @@ cancel the newer one as a duplicate.
 """
 
 import logging
+from enum import StrEnum
 from typing import Any
 
 import stripe
@@ -101,7 +102,13 @@ class FailedInvoice(BaseModel):
         )
 
 
-async def handle_subscription_payment_failure(invoice: dict) -> None:
+class PaymentFailureOutcome(StrEnum):
+    NEEDS_ACTION = "needs_action"
+    SETTLED = "settled"
+    IGNORED = "ignored"
+
+
+async def handle_subscription_payment_failure(invoice: dict) -> PaymentFailureOutcome:
     """Pay the failed invoice from the wallet, or cut access until it is paid.
 
     - A payment still processing (e.g. a bank debit) is left to settle before
@@ -123,10 +130,10 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     """
     failed = await _load_failed_invoice(invoice)
     if failed is None:
-        return
+        return PaymentFailureOutcome.IGNORED
     payment = await find_wallet_payment(failed.user_id, failed.invoice_id)
     if await _left_to_settle(failed, payment):
-        return
+        return PaymentFailureOutcome.IGNORED
     replaced = failed.is_unpaid and await replaced_by_newer_plan(
         failed.customer_id, failed.subscription
     )
@@ -134,36 +141,49 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         await settle_wallet_payment(
             failed.user_id, failed.invoice_id, may_pay=failed.is_unpaid and not replaced
         )
+        # Settling may have just refunded it.
+        payment = (
+            await find_wallet_payment(failed.user_id, failed.invoice_id) or payment
+        )
     if replaced:
         await _end_replaced_subscription(failed)
-        return
+        return PaymentFailureOutcome.IGNORED
     if failed.was_replaced:
         # An earlier delivery cancelled it but did not finish voiding. Any of
         # its invoices' events may finish it, not only the latest one's.
         await _void_unpaid_invoices(failed.sub_id)
-        return
+        return PaymentFailureOutcome.IGNORED
     if payment is not None:
-        return
+        # A refunded debit never pays the invoice again, so the customer must.
+        if payment.state == WalletPaymentState.REFUNDED and (
+            failed.is_unpaid or await _uncollectible_awaits_customer(failed)
+        ):
+            return PaymentFailureOutcome.NEEDS_ACTION
+        return PaymentFailureOutcome.IGNORED
     if not failed.is_unpaid:
+        if await _uncollectible_awaits_customer(failed):
+            return PaymentFailureOutcome.NEEDS_ACTION
         logger.info(
             f"Payment failure for invoice {failed.invoice_id} is stale: invoice"
             f" {failed.invoice.get('status')}, subscription {failed.sub_id}"
             f" {failed.subscription.get('status')}, latest={failed.is_latest},"
             f" pending update={failed.waits_on_pending_update}"
         )
-        return
+        return PaymentFailureOutcome.IGNORED
     if failed.invoice.get("amount_due", 0) <= 0:
-        return
+        return PaymentFailureOutcome.IGNORED
     if await _wallet_may_start_payment(failed) and await pay_invoice_from_wallet(
         failed.user_id, failed.customer_id, failed.sub_id, failed.invoice
     ):
-        return
+        return PaymentFailureOutcome.SETTLED
     logger.info(
         f"Wallet did not pay invoice {failed.invoice_id} of user"
         f" {failed.user_id}; cutting access while Stripe retries subscription"
         f" {failed.sub_id}"
     )
     await sync_subscription_from_stripe(failed.subscription)
+
+    return PaymentFailureOutcome.NEEDS_ACTION
 
 
 async def _left_to_settle(failed: FailedInvoice, payment: WalletPayment | None) -> bool:
@@ -186,6 +206,22 @@ async def _left_to_settle(failed: FailedInvoice, payment: WalletPayment | None) 
     )
     await sync_subscription_from_stripe(failed.subscription)
     return True
+
+
+async def _uncollectible_awaits_customer(failed: FailedInvoice) -> bool:
+    """Stripe can mark the invoice uncollectible once its retries run out. It
+    stays payable through its link, so the customer is still told, unless a
+    newer plan replaced this one: paying would reactivate it. The wallet
+    never pays it here; this only decides the notice."""
+    if not (
+        failed.is_latest
+        and not failed.waits_on_pending_update
+        and failed.invoice.get("status") == "uncollectible"
+        and failed.invoice.get("amount_due", 0) > 0
+        and failed.subscription.get("status") in _UNPAID_STATUSES
+    ):
+        return False
+    return not await replaced_by_newer_plan(failed.customer_id, failed.subscription)
 
 
 async def _wallet_may_start_payment(failed: FailedInvoice) -> bool:

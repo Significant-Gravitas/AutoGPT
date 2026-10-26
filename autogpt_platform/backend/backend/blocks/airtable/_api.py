@@ -27,8 +27,14 @@ def _convert_bools(
     return obj
 
 
+class AirtableWebhookEvent(str, Enum):
+    TABLE_DATA = "tableData"
+    TABLE_FIELDS = "tableFields"
+    TABLE_METADATA = "tableMetadata"
+
+
 class WebhookFilters(BaseModel):
-    dataTypes: list[str]
+    dataTypes: list[AirtableWebhookEvent]
     changeTypes: list[str] | None = None
     fromSources: list[str] | None = None
     sourceOptions: dict | None = None
@@ -1085,18 +1091,6 @@ async def list_webhook_payloads(
         raise ValueError(
             f"Failed to validate webhook payloads response: {e}\nResponse: {response.json()}"
         )
-
-
-async def list_webhooks(
-    credentials: Credentials,
-    base_id: str,
-) -> Any:
-
-    response = await Requests().get(
-        f"https://api.airtable.com/v0/bases/{base_id}/webhooks",
-        headers={"Authorization": credentials.auth_header()},
-    )
-    return response.json()
 
 
 class OAuthAuthorizeRequest(BaseModel):

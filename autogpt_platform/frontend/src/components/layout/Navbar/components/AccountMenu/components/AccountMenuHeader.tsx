@@ -34,7 +34,8 @@ export function AccountMenuHeader({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-none transition-colors data-[state=open]:bg-neutral-100 hover:bg-neutral-100 focus-visible:bg-neutral-100"
+          // TODO(tokens): no exact role for data-[state=open]:bg-neutral-100 (#F5F5F5), hover:bg-neutral-100 (#F5F5F5), focus-visible:bg-neutral-100 (#F5F5F5)
+          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-none transition-colors hover:bg-neutral-100 focus-visible:bg-neutral-100 data-[state=open]:bg-neutral-100"
           aria-controls={popupId}
           aria-haspopup="true"
           data-testid="account-menu-org-trigger"
@@ -53,11 +54,15 @@ export function AccountMenuHeader({
               </>
             ) : (
               <>
-                <span className="truncate text-sm font-semibold leading-tight text-neutral-900">
+                <span
+                  // TODO(tokens): no exact role for text-neutral-900 (#171717)
+                  className="truncate text-sm font-semibold leading-tight text-neutral-900"
+                >
                   {userName}
                 </span>
                 <span
                   data-testid="account-menu-user-email"
+                  // TODO(tokens): no exact role for text-neutral-700 (#404040)
                   className="truncate text-sm leading-tight text-neutral-700"
                 >
                   {userEmail}
@@ -67,6 +72,7 @@ export function AccountMenuHeader({
           </div>
           <Icon
             icon={ArrowRight01Icon}
+            // TODO(tokens): no exact role for text-neutral-700 (#404040)
             className="shrink-0 text-neutral-700"
             size={16}
             aria-hidden="true"
@@ -79,6 +85,7 @@ export function AccountMenuHeader({
         side="right"
         align="start"
         sideOffset={12}
+        // TODO(tokens): no exact role for border-neutral-200 (#E5E5E5)
         className="w-64 rounded-2xl border border-neutral-200 p-0 shadow-lg"
         data-testid="account-menu-org-popover"
       >

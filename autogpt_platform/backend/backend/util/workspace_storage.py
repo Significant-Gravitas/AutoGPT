@@ -189,7 +189,9 @@ _gcs_storages: dict[int, GCSWorkspaceStorage] = {}
 _storage_lock = asyncio.Lock()
 
 
-async def get_workspace_storage() -> WorkspaceStorageBackend:
+async def get_workspace_storage(
+    *, config: Config | None = None
+) -> WorkspaceStorageBackend:
     """Return a workspace storage backend for the **current** event loop.
 
     * Local storage → single shared instance (no event-loop affinity).
@@ -198,7 +200,7 @@ async def get_workspace_storage() -> WorkspaceStorageBackend:
     """
     global _local_storage
 
-    config = Config()
+    config = config if config is not None else Config()
 
     # --- Local storage (shared) ---
     bucket_name = config.resolved_private_user_data_bucket

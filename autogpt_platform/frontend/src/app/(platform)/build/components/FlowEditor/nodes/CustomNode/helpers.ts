@@ -52,12 +52,19 @@ export function formatNodeDisplayTitle(data: CustomNodeData): string {
 }
 
 export const nodeStyleBasedOnStatus: Record<AgentExecutionStatus, string> = {
+  // TODO(tokens): no exact role: ring-slate-300 #B8BFCA, bg-slate-300 #B8BFCA
   INCOMPLETE: "ring-slate-300 bg-slate-300",
+  // TODO(tokens): no exact role: ring-blue-300 #93C5FD, bg-blue-300 #93C5FD
   QUEUED: " ring-blue-300 bg-blue-300",
+  // TODO(tokens): no exact role: ring-amber-300 #FCD34D, bg-amber-300 #FCD34D
   RUNNING: "ring-amber-300 bg-amber-300",
+  // TODO(tokens): no exact role: ring-yellow-300 #F8D554, bg-yellow-300 #F8D554
   REVIEW: "ring-yellow-300 bg-yellow-300",
+  // TODO(tokens): no exact role: ring-green-300 #63C186, bg-green-300 #63C186
   COMPLETED: "ring-green-300 bg-green-300",
+  // TODO(tokens): no exact role: ring-orange-300 #FEAF54, bg-orange-300 #FEAF54
   TERMINATED: "ring-orange-300 bg-orange-300 ",
+  // TODO(tokens): no exact role: ring-red-300 #F69999, bg-red-300 #F69999
   FAILED: "ring-red-300 bg-red-300",
 };
 

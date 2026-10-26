@@ -13,7 +13,7 @@ import re
 import sys
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -31,7 +31,6 @@ from websockets.exceptions import InvalidStatus
 from backend.api import rest_api, ws_api
 from backend.api.conn_manager import ConnectionManager
 from backend.api.features.integrations import router as integrations_router
-from backend.api.test_helpers import override_config
 from backend.util import logging as service_logging
 from backend.util import metrics
 from backend.util.process import AppProcess
@@ -287,9 +286,11 @@ async def _open_websockets(host: str) -> None:
     with pytest.raises(InvalidStatus):
         async with connect(url):
             pass
-    # ...and with auth off it is accepted, as a live session's is. A raw quote
-    # or # earlier in the query must not end the masking before the token.
-    with override_config(ws_api.settings, "enable_auth", False):
+    # ...and once it authenticates it is accepted, as a live session's is. A raw
+    # quote or # earlier in the query must not end the masking before the token.
+    with patch.object(
+        ws_api, "authenticate_websocket", AsyncMock(return_value="user-1")
+    ):
         async with connect(url):
             pass
         target = f"/ws?q=it's#&token={SESSION_TOKEN}"

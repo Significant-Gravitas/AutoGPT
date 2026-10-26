@@ -44,7 +44,6 @@ from backend.api.features.store.skill_model import MarketplaceSkill
 from backend.api.rest_api import app as rest_app
 from backend.copilot.tools.skills import SkillWriteLockError
 from backend.util.exceptions import ConflictError, NotFoundError
-from backend.util.feature_flag import Flag
 
 app = fastapi.FastAPI()
 app.include_router(public_router)
@@ -191,14 +190,12 @@ def test_list_expert_templates_forwards_search_and_category(
     mock_list.assert_awaited_once_with(search_query="Maria", category="marketing")
 
 
-@pytest.mark.parametrize(
-    ("user_id", "flag_key"), [(None, "anonymous"), ("user-1", "user-1")]
-)
+@pytest.mark.parametrize("user_id", [None, "user-1"])
 def test_list_expert_templates_links_live_hub_skills(
-    mocker: pytest_mock.MockerFixture, user_id: str | None, flag_key: str
+    mocker: pytest_mock.MockerFixture, user_id: str | None
 ) -> None:
     app.dependency_overrides[get_optional_user_id] = lambda: user_id
-    flag, _ = _mock_templates_with_hub_skill(mocker, hub_on=True)
+    rows_query = _mock_templates_with_hub_skill(mocker)
 
     response = client.get("/experts/templates")
 
@@ -211,24 +208,10 @@ def test_list_expert_templates_links_live_hub_skills(
             "description": "Keeps every draft on-brand.",
         }
     ]
-    flag.assert_awaited_once_with(Flag.SKILLS_HUB, flag_key)
+    rows_query.assert_awaited_once()
 
 
-def test_list_expert_templates_links_nothing_with_the_hub_off(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    _, rows_query = _mock_templates_with_hub_skill(mocker, hub_on=False)
-
-    response = client.get("/experts/templates")
-
-    assert response.status_code == 200
-    assert response.json()[0]["bundled_skills"] == []
-    rows_query.assert_not_awaited()
-
-
-def _mock_templates_with_hub_skill(
-    mocker: pytest_mock.MockerFixture, *, hub_on: bool
-) -> tuple[AsyncMock, AsyncMock]:
+def _mock_templates_with_hub_skill(mocker: pytest_mock.MockerFixture) -> AsyncMock:
     template = _make_expert(
         id="template-1",
         is_template=True,
@@ -264,12 +247,7 @@ def _mock_templates_with_hub_skill(
             )
         },
     )
-    flag = mocker.patch(
-        "backend.api.features.experts.experts_db.is_feature_enabled",
-        new_callable=AsyncMock,
-        return_value=hub_on,
-    )
-    return flag, rows_query
+    return rows_query
 
 
 # ─── Hire ──────────────────────────────────────────────────────────────

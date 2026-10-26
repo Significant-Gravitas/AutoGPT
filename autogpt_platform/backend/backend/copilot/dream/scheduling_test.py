@@ -3,7 +3,7 @@
 Contracts pinned here:
 
   1. Table shape — 3 rows (community, nightly batch, skill learning),
-     distinct flags, distinct registry columns; skill learning is the
+     distinct registry columns; community maintenance has no flag and skill learning is the
      account's alone.
   2. Job ids are keyed by scope, and the account's are the per-user ids
      the crons had before they were per scope.
@@ -62,13 +62,8 @@ def test_each_job_has_its_own_registry_column():
     assert fields == ["community_job_id", "nightly_job_id", "learning_job_id"]
 
 
-def test_community_and_nightly_batch_have_distinct_flags():
-    """Community rebuild and nightly batch are independent features
-    behind separate LD flags. A user can have one enabled without
-    the other. (Skill learning's own flag is pinned below.)"""
-    assert dream_system_job("community_rebuild").flag == (
-        Flag.GRAPHITI_COMMUNITIES_ENABLED
-    )
+def test_community_is_ungated_and_nightly_batch_keeps_its_flag():
+    assert dream_system_job("community_rebuild").flag is None
     assert dream_system_job("dream_nightly_batch").flag == Flag.DREAM_PASS_ENABLED
 
 

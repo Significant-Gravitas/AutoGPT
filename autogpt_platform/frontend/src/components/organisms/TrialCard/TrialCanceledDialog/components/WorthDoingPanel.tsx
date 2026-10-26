@@ -42,21 +42,38 @@ export function WorthDoingPanel({ offer, endsAt }: Props) {
   ];
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 pt-3">
+    <div
+      data-slot="worth-doing-panel"
+      className="rounded-xl border border-border-base bg-surface-muted px-4 pt-3"
+    >
       <Text variant="eyebrow" as="h3">
         Worth doing before then
       </Text>
-      <ul className="divide-y divide-zinc-200">
+      <ul
+        data-slot="worth-doing-panel-list"
+        className="divide-y divide-border-base"
+      >
         {rows.map((row) => (
-          <li key={row.title} className="flex gap-3 py-3">
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-violet-100">
-              <Icon icon={row.icon} size={14} className="text-violet-700" />
+          <li
+            key={row.title}
+            data-slot="worth-doing-panel-item"
+            className="flex gap-3 py-3"
+          >
+            <span
+              data-slot="worth-doing-panel-icon"
+              // TODO(tokens): no role for violet-100.
+              className="flex size-7 shrink-0 items-center justify-center rounded-full bg-violet-100"
+            >
+              <Icon icon={row.icon} size={14} className="text-accent-strong" />
             </span>
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <Text variant="body-medium" className="!text-zinc-900">
+            <div
+              data-slot="worth-doing-panel-content"
+              className="flex min-w-0 flex-col gap-0.5"
+            >
+              <Text variant="body-medium" tone="primary">
                 {row.title}
               </Text>
-              <Text variant="small" className="!text-zinc-600">
+              <Text variant="small" tone="secondary">
                 {row.body}
               </Text>
             </div>

@@ -2,7 +2,7 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Button } from "@/components/ui/button";
-import { useSidebar } from "@/components/ui/sidebar";
+import { useSidebar } from "@/components/molecules/Sidebar/Sidebar";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { createContext, useContext, type ReactNode } from "react";
 

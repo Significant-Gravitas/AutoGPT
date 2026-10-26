@@ -36,6 +36,7 @@ export const ScrollableTabsContent = React.forwardRef<HTMLDivElement, Props>(
         }}
         data-scrollable-tab-content
         data-value={value}
+        data-slot="scrollable-tabs-panel"
         className={cn("focus-visible:outline-none", className)}
         {...props}
       >

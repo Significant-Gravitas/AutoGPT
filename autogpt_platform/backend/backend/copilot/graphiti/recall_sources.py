@@ -123,6 +123,8 @@ async def ancestry(driver: GraphDriver, cited: list[dict[str, Any]]) -> Ancestry
         if not frontier:
             return found
         parents = _named(frontier, origin, "facts", seen)
+        # Episodes are terminal sources in this upward walk, so there is no
+        # later frontier that could read one again.
         episodes = _named(frontier, origin, "episodes", set())
         read += len(parents)
         if read > CASCADE_MAX_ITEMS:
@@ -137,7 +139,30 @@ async def ancestry(driver: GraphDriver, cited: list[dict[str, Any]]) -> Ancestry
         seen.update(parents)
         frontier = [states[u] for u in parents if u in states and walkable(states[u])]
         origin.update({row["uuid"]: parents[row["uuid"]] for row in frontier})
-    found.unfinished = bool(frontier)
+    # A trailing read-only round distinguishes an unfinished walk from a
+    # converging frontier, and can still find a forgotten terminal source.
+    parents = _named(frontier, origin, "facts", seen)
+    episodes = _named(frontier, origin, "episodes", set())
+    if read + len(parents) > CASCADE_MAX_ITEMS:
+        found.unfinished = True
+        return found
+    states = await fact_states(driver, list(parents))
+    for uuid, cited_uuid in parents.items():
+        if (reach := fact_reach(uuid, states.get(uuid))) is not None:
+            found.add(cited_uuid, reach)
+    for uuid, reach in (await reached_episodes(driver, list(episodes))).items():
+        found.add(episodes[uuid], reach)
+    seen.update(parents)
+    beyond = [states[u] for u in parents if u in states and walkable(states[u])]
+    origin.update({row["uuid"]: parents[row["uuid"]] for row in beyond})
+    # A walkable fact read there leaves the walk unfinished only when it
+    # names a fact not read yet; its episodes are terminal, so read them.
+    if _named(beyond, origin, "facts", seen):
+        found.unfinished = True
+        return found
+    terminal = _named(beyond, origin, "episodes", set())
+    for uuid, reach in (await reached_episodes(driver, list(terminal))).items():
+        found.add(terminal[uuid], reach)
     return found
 
 
