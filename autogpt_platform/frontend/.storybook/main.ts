@@ -17,6 +17,7 @@ const config: StorybookConfig = {
     "../src/app/[(]platform[)]/build/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/app/[(]platform[)]/profile/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/app/[(]platform[)]/marketplace/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/app/[(]no-navbar[)]/onboarding/**/*.stories.@(js|jsx|mjs|ts|tsx)",
   ],
   addons: [
     "@storybook/addon-a11y",
