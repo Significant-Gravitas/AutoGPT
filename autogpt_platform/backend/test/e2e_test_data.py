@@ -95,6 +95,10 @@ EMBEDDING_BACKFILL_BATCH_SIZE = int(os.getenv("E2E_EMBEDDING_BATCH_SIZE", "100")
 EMBEDDING_BACKFILL_TIMEOUT_SECONDS = float(
     os.getenv("E2E_EMBEDDING_TIMEOUT_SECONDS", "900")
 )
+# Per request; the slowest of 13,509 in two passing CI seeds took 4.4 s.
+EMBEDDING_REQUEST_TIMEOUT_SECONDS = float(
+    os.getenv("E2E_EMBEDDING_REQUEST_TIMEOUT_SECONDS", "30")
+)
 
 SEEDED_TEST_EMAILS = [
     "test123@example.com",
@@ -1338,17 +1342,20 @@ class TestDataCreator:
 
     async def backfill_content_embeddings(self):
         """Drive embedding coverage to 100% so the CI cache dump carries it."""
-        if not get_openai_client():
+        client = get_openai_client()
+        if not client:
             print("⏭️  No embedding backend configured — skipping embedding backfill")
             return
+        # generate_embedding reuses this cached client, whose default lets one stuck
+        # request hold its whole round for 600 s x 3 attempts.
+        client.timeout = EMBEDDING_REQUEST_TIMEOUT_SECONDS
 
         print("Backfilling content embeddings...")
         deadline = time.monotonic() + EMBEDDING_BACKFILL_TIMEOUT_SECONDS
         while True:
             try:
-                # Both awaits reach the network, and one stuck embedding call is
-                # 600s x 3 attempts under the OpenAI client's defaults — longer than
-                # the whole deadline. Checking the clock between them bounds nothing.
+                # Both awaits reach the network, so checking the clock between
+                # them would bound nothing.
                 stats = await asyncio.wait_for(
                     get_embedding_stats(), _seconds_left(deadline)
                 )

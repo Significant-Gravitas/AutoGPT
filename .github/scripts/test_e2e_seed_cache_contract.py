@@ -10,6 +10,10 @@ SEED_PULL_STEP = "Set up tests - Pull cached E2E test data from GHCR"
 SEED_RESTORE_STEP = "Set up tests - Load cached E2E test data"
 SEED_CREATE_STEP = "Set up tests - Create E2E test data"
 SEED_VERIFY_STEP = "Set up tests - Verify seeded credentials with fresh encryption key"
+SEED_VERIFY_CACHED_STEP = (
+    "Set up tests - Verify cached seed credentials with fresh encryption key"
+)
+FRONTEND_WAIT_STEP = "Wait for frontend image build"
 SEED_SAVE_STEP = "Push E2E test data to GHCR"
 PLAYWRIGHT_STEP = "Run Playwright E2E suite"
 PLAYWRIGHT_REPORT_STEP = "Validate Playwright JSON report"
@@ -42,6 +46,11 @@ def _matrix_leg(workflow: str, suite: str) -> dict[str, str]:
     e2e_job = workflow.split("\n  e2e_test:\n", 1)[1].split("\n    steps:\n", 1)[0]
     leg = e2e_job.split(f"- suite: {suite}\n", 1)[1].split("- suite:", 1)[0]
     return dict(re.findall(r"^\s+(\w+): (\S+)$", leg, re.MULTILINE))
+
+
+def _e2e_step_names(workflow: str) -> list[str]:
+    e2e_job = workflow.split("\n  e2e_test:\n", 1)[1]
+    return re.findall(r"^      - name: (.+)$", e2e_job, re.MULTILINE)
 
 
 class E2EMatrixContractTests(unittest.TestCase):
@@ -97,28 +106,62 @@ class E2ESeedCacheContractTests(unittest.TestCase):
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
         ).read_text(encoding="utf-8")
-        name = "Set up tests - Verify seeded credentials with fresh encryption key"
-        verification = workflow.split(f"- name: {name}\n", 1)[1].split(
-            "\n      - name:", 1
-        )[0]
-        self.assertIn("--refresh-credentials-only", verification)
-        # Runs whenever the leg seeds, cached dump or fresh; only the
-        # journeys leg, which seeds nothing, skips it.
+        cached = _step(workflow, SEED_VERIFY_CACHED_STEP)
+        fresh = _step(workflow, SEED_VERIFY_STEP)
+        # Exactly one of the two runs whenever the leg seeds: the cached check
+        # after a restore, the fresh one whenever the create step runs.
         self.assertEqual(
-            re.findall(r"^\s+if: (.+)$", verification, re.M), ["matrix.seed"]
+            re.findall(r"^\s+if: (.+)$", cached, re.MULTILINE),
+            ["steps.e2e-seed-restore.outputs.restored == 'true'"],
+        )
+        self.assertEqual(
+            re.findall(r"^\s+if: (.+)$", fresh, re.MULTILINE),
+            re.findall(
+                r"^\s+if: (.+)$", _step(workflow, SEED_CREATE_STEP), re.MULTILINE
+            ),
         )
         self.assertEqual(_matrix_leg(workflow, "smoke")["seed"], "true")
-        self.assertNotIn("continue-on-error", verification)
-        # The trailing newline matters: the key step's sed names the create
-        # step too, earlier in the file.
+        for verification in (cached, fresh):
+            with self.subTest(step=verification.splitlines()[0]):
+                self.assertIn("--refresh-credentials-only", verification)
+                self.assertNotIn("continue-on-error", verification)
+        steps = _e2e_step_names(workflow)
         self.assertLess(
-            workflow.index(f"- name: {SEED_CREATE_STEP}\n"),
-            workflow.index(f"- name: {name}\n"),
+            steps.index(SEED_RESTORE_STEP), steps.index(SEED_VERIFY_CACHED_STEP)
+        )
+        self.assertLess(steps.index(SEED_CREATE_STEP), steps.index(SEED_VERIFY_STEP))
+        for name in (SEED_VERIFY_CACHED_STEP, SEED_VERIFY_STEP):
+            self.assertLess(steps.index(name), steps.index(PLAYWRIGHT_STEP))
+
+    def test_seed_waits_for_the_frontend_build_and_is_time_boxed(self):
+        # Seeding beside the Next.js build froze the runner for up to 48 minutes
+        # (OPEN-3734); a restored dump's check still overlaps the build.
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        seed = (
+            Path(__file__).resolve().parents[2]
+            / "autogpt_platform/backend/test/e2e_test_data.py"
+        ).read_text(encoding="utf-8")
+        steps = _e2e_step_names(workflow)
+        self.assertIn(
+            "wait: [platform-build-frontend]", _step(workflow, FRONTEND_WAIT_STEP)
         )
         self.assertLess(
-            workflow.index(f"- name: {name}\n"),
-            workflow.index(f"- name: {PLAYWRIGHT_STEP}\n"),
+            steps.index(SEED_VERIFY_CACHED_STEP), steps.index(FRONTEND_WAIT_STEP)
         )
+        self.assertLess(steps.index(FRONTEND_WAIT_STEP), steps.index(SEED_CREATE_STEP))
+
+        timeout = re.search(
+            r"^\s+timeout-minutes: (\d+)$",
+            _step(workflow, SEED_CREATE_STEP),
+            re.MULTILINE,
+        )
+        deadline = re.search(r'"E2E_EMBEDDING_TIMEOUT_SECONDS", "(\d+)"', seed)
+        assert timeout and deadline
+        # The seed's own embedding deadline must give up first, with time left to
+        # dump, so a slow seed still runs the suite instead of being killed.
+        self.assertGreater(int(timeout[1]) * 60, int(deadline[1]) + 120)
 
     def test_seed_dump_excludes_migration_owned_activation_policy(self):
         workflow = (
