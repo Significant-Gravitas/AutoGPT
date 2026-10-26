@@ -15,7 +15,7 @@ from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
 from pytest_mock import MockerFixture
 
-from backend.api.features.onboarding_dump import routes
+from backend.api.features.onboarding_dump import quality, routes
 from backend.api.features.onboarding_dump.models import (
     MAX_DURATION_SECS,
     MAX_PART_BYTES,
@@ -42,6 +42,12 @@ RECOMMENDED_EXPERTS_URL = "/onboarding/brain-dump/recommended-experts"
 
 RECORDING_ID = "rec-1"
 TRANSCRIPT = "I run a small bakery and I want the weekly order emails handled."
+JUDGED_UNUSABLE = quality.QualityRejection(
+    error_code=quality.INSUFFICIENT_CONTENT, reason="judge_unusable"
+)
+# Taken before the autouse fixture below replaces it, for the one test
+# that drives the real gate.
+_REAL_QUALITY_GATE = quality.check_transcript_quality
 GREETING = "Let's get those weekly order emails off your plate."
 
 
@@ -131,13 +137,18 @@ class DumpStore:
         return True
 
     async def mark_failed(
-        self, user_id: str, recording_id: str, error_code: str
+        self,
+        user_id: str,
+        recording_id: str,
+        error_code: str,
+        reason: str | None = None,
     ) -> None:
         await self.update_dump(
             user_id,
             recording_id,
             status=BrainDumpStatus.failed,
             errorCode=error_code,
+            errorReason=reason,
         )
 
     async def mark_greeting_seen(self, user_id: str) -> None:
@@ -196,6 +207,8 @@ def storage_mocks(mocker: MockerFixture) -> dict[str, AsyncMock]:
         "assemble_parts": AsyncMock(return_value=b"opus-audio-bytes"),
         "store_audio": AsyncMock(return_value="brain-dumps/rec-1.webm"),
         "discard_parts": AsyncMock(),
+        "mark_discarded": AsyncMock(),
+        "was_discarded": AsyncMock(return_value=False),
         "audio_download_url": AsyncMock(return_value="https://signed.example/audio"),
         "audio_available": AsyncMock(return_value=True),
         "delete_audio": AsyncMock(),
@@ -456,7 +469,7 @@ def test_quality_rejected_voice_finalize_reports_the_error_code(
     it went once the transcript was stored, and a re-record starts a new
     take from the browser."""
     upload_part()
-    quality_gate.return_value = "insufficient_content"
+    quality_gate.return_value = JUDGED_UNUSABLE
 
     response = finalize()
 
@@ -475,7 +488,7 @@ def test_quality_rejected_voice_finalize_reports_the_error_code(
 def test_quality_rejected_typed_finalize_reports_the_error_code(
     dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
 ):
-    quality_gate.return_value = "insufficient_content"
+    quality_gate.return_value = JUDGED_UNUSABLE
 
     response = finalize(input_mode="typed", text="hello hello testing")
 
@@ -483,6 +496,35 @@ def test_quality_rejected_typed_finalize_reports_the_error_code(
     body = response.json()
     assert body["status"] == BrainDumpStatus.failed
     assert body["error_code"] == "insufficient_content"
+    extraction["upsert_business_understanding"].assert_not_awaited()
+
+
+def test_a_judge_outage_reports_its_own_code_and_reason(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    extraction: dict[str, AsyncMock],
+    mocker: MockerFixture,
+):
+    """Through the real gate: a judge that times out is reported as an
+    outage the frontend offers a retry for, never as "not enough", and the
+    row and the response both say what decided it."""
+    quality_gate.side_effect = _REAL_QUALITY_GATE
+    judge = MagicMock()
+    judge.chat.completions.create = AsyncMock(side_effect=TimeoutError())
+    mocker.patch.object(quality, "get_openai_client", return_value=judge)
+    upload_part()
+
+    response = finalize()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == BrainDumpStatus.failed
+    assert body["error_code"] == "quality_check_unavailable"
+    assert body["error_reason"] == "judge_timeout"
+    assert body["transcript_words"] == 13
+    assert dumps.row is not None
+    assert dumps.row.errorCode == "quality_check_unavailable"
+    assert dumps.row.errorReason == "judge_timeout"
     extraction["upsert_business_understanding"].assert_not_awaited()
 
 
@@ -517,6 +559,8 @@ def test_skipped_finalize_records_the_skip_without_a_transcript(dumps: DumpStore
         "input_mode": BrainDumpInputMode.skipped,
         "transcript_preview": None,
         "error_code": None,
+        "error_reason": None,
+        "transcript_words": None,
     }
     assert dumps.row is not None
     assert dumps.row.inputMode == BrainDumpInputMode.skipped

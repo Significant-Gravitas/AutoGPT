@@ -72,6 +72,9 @@ export function useVirtualTranscript({
   const firstRowIDRef = useRef<string | undefined>(rows[0]?.message.id);
   const gap = compact ? COMPACT_ROW_GAP_PX : ROW_GAP_PX;
 
+  // Kept as a memo: the compiler skips this hook (TanStack Virtual's
+  // `useVirtualizer` is an incompatible library), and the virtualizer redoes
+  // every row's measurements whenever `getItemKey` changes identity.
   const getItemKey = useCallback(
     (index: number) => rows[index].message.id,
     [rows],

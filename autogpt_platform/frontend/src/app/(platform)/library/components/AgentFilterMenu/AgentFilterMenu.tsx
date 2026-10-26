@@ -33,7 +33,7 @@ export function AgentFilterMenu({ value, onChange, summary }: Props) {
 
   return (
     <div className="flex items-center" data-testid="agent-filter-dropdown">
-      <span className="hidden whitespace-nowrap text-sm text-zinc-500 sm:inline">
+      <span className="hidden whitespace-nowrap text-sm text-foreground-tertiary sm:inline">
         filter
       </span>
       <Icon icon={FunnelIcon} className="ml-1 h-4 w-4 sm:hidden" />

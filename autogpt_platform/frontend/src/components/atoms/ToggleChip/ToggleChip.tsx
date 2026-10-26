@@ -41,19 +41,24 @@ export function ToggleChip({
     <Tooltip>
       <TooltipTrigger asChild>
         <button
+          data-slot="toggle-chip"
           type="button"
           aria-pressed={pressed}
           aria-disabled={locked}
           onClick={onToggle}
           aria-label={ariaLabel}
           className={cn(
-            "group inline-flex h-7 items-center justify-center gap-1 rounded-full px-2.5 text-xs font-medium text-zinc-950 transition-colors hover:bg-white",
+            "group inline-flex h-7 items-center justify-center gap-1 rounded-full px-2.5 text-caption font-medium leading-4 text-foreground transition-colors hover:bg-surface",
             locked && "cursor-not-allowed opacity-70 hover:bg-transparent",
             className,
           )}
         >
-          <span className="relative inline-flex size-3.5 items-center justify-center">
+          <span
+            data-slot="toggle-chip-icon"
+            className="relative inline-flex size-3.5 items-center justify-center"
+          >
             <span
+              data-slot="toggle-chip-icon-default"
               className={cn(
                 "transition-opacity duration-150 ease-out",
                 !locked && "group-hover:opacity-0",
@@ -63,6 +68,7 @@ export function ToggleChip({
             </span>
             {!locked && (
               <Icon
+                data-slot="toggle-chip-icon-hover"
                 icon={ArrowDataTransferVerticalIcon}
                 size={14}
                 className="absolute opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100"
@@ -72,6 +78,7 @@ export function ToggleChip({
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
               key={label}
+              data-slot="toggle-chip-label"
               initial={{ filter: blurred, opacity: 0 }}
               animate={{ filter: "blur(0px)", opacity: 1 }}
               exit={{ filter: blurred, opacity: 0 }}
@@ -83,7 +90,7 @@ export function ToggleChip({
           </AnimatePresence>
         </button>
       </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
+      <TooltipContent data-slot="toggle-chip-tooltip">{tooltip}</TooltipContent>
     </Tooltip>
   );
 }

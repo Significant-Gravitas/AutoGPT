@@ -49,6 +49,7 @@ class FrontendEnvironmentTest(unittest.TestCase):
             "DIRECT_URL": "postgresql://superuser:secret@127.0.0.1/postgres",
             "ENCRYPTION_KEY": "master-encryption-key",
             "GRAPHITI_FALKORDB_PASSWORD": "falkor-password",
+            "INTERNAL_API_KEY": "internal-service-key",
             "JWT_VERIFY_KEY": "legacy-backend-secret",
             "POSTGRES_PASSWORD": "postgres-superuser-password",
             "RABBITMQ_DEFAULT_PASS": "rabbitmq-password",

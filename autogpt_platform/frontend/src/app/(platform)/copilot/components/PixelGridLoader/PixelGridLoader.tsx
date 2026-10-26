@@ -1,5 +1,4 @@
 import { cn } from "@/lib/utils";
-import styles from "./PixelGridLoader.module.css";
 
 // Chevron wavefront: cells light up in diagonal bands driving left to right.
 // The cycle is shorter than the sweep, so two fronts are always in flight.
@@ -51,7 +50,8 @@ export function PixelGridLoader({
           className={cn(
             "bg-current",
             round ? "rounded-full" : "rounded-[1px]",
-            delay !== null && styles.cell,
+            delay !== null &&
+              "[animation-iteration-count:infinite] [animation-name:pixel-grid-loader-on] [animation-timing-function:ease-in-out] motion-reduce:[animation-name:none]",
           )}
           style={{
             width: cellSize,

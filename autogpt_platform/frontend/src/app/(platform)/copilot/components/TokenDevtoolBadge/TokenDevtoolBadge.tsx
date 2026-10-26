@@ -38,7 +38,7 @@ export function TokenDevtoolBadge({ sessionId, className }: Props) {
             context === null ? "unknown" : formatTokenCount(context)
           }`}
           className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700",
+            "flex h-8 w-8 items-center justify-center rounded-full text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-body",
             className,
           )}
         >
@@ -53,7 +53,8 @@ export function TokenDevtoolBadge({ sessionId, className }: Props) {
         side="top"
         align="end"
         sideOffset={8}
-        className="w-80 rounded-2xl border-zinc-200/70 p-3 shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]"
+        // TODO(tokens): no exact role for shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]
+        className="w-80 rounded-2xl border-border-base/70 p-3 shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]"
       >
         <TokenDevtoolPanel {...devtool} />
       </PopoverContent>

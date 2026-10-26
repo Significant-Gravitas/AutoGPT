@@ -70,6 +70,7 @@ from backend.copilot.google_data_redaction import install_trace_redaction
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
+from backend.copilot.tools.skill_matching import build_matched_skills_notice
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.sdk.codex_compat_gateway import (
@@ -119,7 +120,7 @@ from ..constants import (
     is_transient_assistant_error,
 )
 from ..session_cleanup import prune_orphan_tool_calls
-from ..context import encode_cwd_for_cli, get_workspace_manager
+from ..context import encode_cwd_for_cli, get_workspace_manager, is_unattended_turn
 from ..hidden_rows import visible_to_model
 from ..model_normalize import normalize_model_for_transport
 from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
@@ -253,6 +254,7 @@ from .compaction import (
 from .env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text, cli_user_message
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .governor import TurnGovernor
+from .launch_env import launch_options
 from .openrouter_cost import TurnGenerations, record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
@@ -2635,7 +2637,7 @@ async def _do_transient_backoff(
 def _scrub_resumed_memory_for_retry(
     sdk_cwd: str, session_id: str, log_prefix: str
 ) -> None:
-    """Remove the failed send's literal memory before the CLI can resume it."""
+    """Remove the failed send's memory and skill hints before CLI resume."""
     path = os.path.realpath(cli_session_path(sdk_cwd, session_id))
     if not path.startswith(projects_base() + os.sep):
         raise RuntimeError("Cannot safely prepare the session for retry")
@@ -2646,6 +2648,8 @@ def _scrub_resumed_memory_for_retry(
     except OSError as exc:
         raise RuntimeError("Cannot read the session for retry") from exc
     scrubbed = _strip_ephemeral_memory_from_cli_jsonl(content)
+    if b"matched_skills" in scrubbed:
+        scrubbed = strip_for_upload(scrubbed.decode("utf-8")).encode("utf-8")
     if scrubbed != content and not _write_cli_session_to_disk(
         scrubbed, sdk_cwd, session_id, log_prefix
     ):
@@ -4407,7 +4411,7 @@ async def _run_stream_attempt(
             read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
         )
         state.usage.start_cli_session(baseline)
-    sdk_client = ClaudeSDKClient(options=state.options)
+    sdk_client = ClaudeSDKClient(options=launch_options(state.options))
     client = await sdk_client.__aenter__()
     try:
         logger.info(
@@ -5203,7 +5207,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             first_message = user_messages[0].content or message or ""
             if first_message:
                 task = asyncio.create_task(
-                    _update_title_async(session_id, first_message, user_id)
+                    _update_title_async(
+                        session_id,
+                        first_message,
+                        user_id,
+                        bridge_origin=session.metadata.source_platform is not None,
+                    )
                 )
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
@@ -5418,7 +5427,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
         auto_mode_supplement = approval_mode_supplement(
-            await active_mode(user_id, session)
+            await active_mode(user_id, session),
+            interactive=not is_unattended_turn(),
         )
         experts_enabled = bool(user_id)
         delegation_supplement = get_delegation_supplement() if experts_enabled else ""
@@ -6028,8 +6038,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # per turn.
         budget_status = await build_turn_budget_block(envelope, user_id)
 
+        matched_skills_notice = (
+            await build_matched_skills_notice(
+                user_id, session, current_message, permissions=permissions
+            )
+            if is_user_message
+            else ""
+        )
+
         query_message, compaction_stats = await _build_query_message(
-            budget_status + current_message,
+            budget_status + current_message + matched_skills_notice,
             session,
             use_resume,
             transcript_msg_count,
@@ -6060,6 +6078,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         attachments = await _prepare_file_attachments(
             file_ids or [], user_id or "", session_id, sdk_cwd
         )
+        attachments.image_blocks.extend(
+            pm.model_image.anthropic()
+            for pm in continued_pending or []
+            if pm.model_image
+        )
+        if pending_messages and persisted_ok:
+            attachments.image_blocks.extend(
+                pm.model_image.anthropic() for pm in pending_messages if pm.model_image
+            )
         if attachments.hint:
             query_message = f"{query_message}\n\n{attachments.hint}"
 
@@ -6278,7 +6305,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     state.query_message,
                     state.compaction_stats,
                 ) = await _build_query_message(
-                    budget_status + current_message,
+                    budget_status + current_message + matched_skills_notice,
                     session,
                     state.use_resume,
                     state.transcript_msg_count,
@@ -7306,6 +7333,7 @@ async def _enqueue_graphiti_turn(
         message,
         assistant_msg=assistant_msg,
         expert_id=session.expert_id,
+        bridge_origin=session.metadata.source_platform is not None,
     )
 
 

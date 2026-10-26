@@ -41,12 +41,15 @@ function ArtifactContentLoader({
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm text-zinc-500">Failed to load content</p>
-        <p className="text-xs text-zinc-400">{error}</p>
+        <p className="text-sm text-foreground-tertiary">
+          Failed to load content
+        </p>
+        <p className="text-xs text-foreground-subtle">{error}</p>
         <button
           type="button"
           onClick={retry}
-          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          // TODO(tokens): no exact role for focus-visible:ring-violet-400
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-xs font-medium text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
           Try again
         </button>
@@ -92,7 +95,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm text-zinc-500">Failed to load image</p>
+        <p className="text-sm text-foreground-tertiary">Failed to load image</p>
         <button
           type="button"
           onClick={() => {
@@ -100,7 +103,8 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
             setLoaded(false);
             setRetryNonce((n) => n + 1);
           }}
-          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          // TODO(tokens): no exact role for focus-visible:ring-violet-400
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-xs font-medium text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
           Try again
         </button>
@@ -136,7 +140,7 @@ function ArtifactVideo({ src }: { src: string }) {
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm text-zinc-500">Failed to load video</p>
+        <p className="text-sm text-foreground-tertiary">Failed to load video</p>
         <button
           type="button"
           onClick={() => {
@@ -144,7 +148,8 @@ function ArtifactVideo({ src }: { src: string }) {
             setLoaded(false);
             setRetryNonce((n) => n + 1);
           }}
-          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          // TODO(tokens): no exact role for focus-visible:ring-violet-400
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-xs font-medium text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
           Try again
         </button>
@@ -212,7 +217,7 @@ function ArtifactRenderer({
   // Source view: always show raw text
   if (isSourceView) {
     return (
-      <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm text-zinc-800">
+      <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm text-foreground-emphasis">
         {content}
       </pre>
     );
@@ -303,7 +308,7 @@ function ArtifactRenderer({
 
   // Fallback: plain text
   return (
-    <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm text-zinc-800">
+    <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm text-foreground-emphasis">
       {content}
     </pre>
   );

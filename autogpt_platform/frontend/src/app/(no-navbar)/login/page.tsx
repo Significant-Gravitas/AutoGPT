@@ -70,7 +70,7 @@ export default function LoginPage() {
   return (
     <AuthSplitLayout marketing={<LoginMarketingPanel />}>
       <div className="mb-8">
-        <Text variant="h3" as="h1" className="!text-zinc-900">
+        <Text variant="h3" as="h1" className="!text-foreground-strong">
           Log in to your account to continue
         </Text>
       </div>
@@ -159,7 +159,7 @@ export default function LoginPage() {
       </Form>
 
       <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
-        <Text variant="body-medium" className="!text-zinc-500">
+        <Text variant="body-medium" className="!text-foreground-tertiary">
           Don&apos;t have an account?
         </Text>
         <Link href={signupHref} variant="secondary">

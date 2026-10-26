@@ -31,7 +31,7 @@ export function AlsoBlockList({
 
   return (
     <div className="flex flex-col gap-2">
-      <Text variant="small-medium" className="text-zinc-700">
+      <Text variant="small-medium" className="text-foreground-body">
         Also block
       </Text>
       {options.map((option) => (
@@ -47,7 +47,7 @@ export function AlsoBlockList({
             disabled={option.isDisabled || done.has(option.key)}
             onCheckedChange={() => onToggle(option.key)}
           />
-          <Text variant="body" as="span" className="text-zinc-700">
+          <Text variant="body" as="span" className="text-foreground-body">
             Block{" "}
             <span className="font-medium" translate="no">
               {option.label}
@@ -57,7 +57,7 @@ export function AlsoBlockList({
         </label>
       ))}
       {alreadyBlockedDomain ? (
-        <Text variant="body" className="text-zinc-500">
+        <Text variant="body" className="text-foreground-tertiary">
           <span className="font-medium">{alreadyBlockedDomain}</span> · already
           blocked
         </Text>

@@ -57,7 +57,9 @@ export function APIKeyCredentialsModal({
     >
       <Dialog.Content>
         {schemaDescription && (
-          <p className="mb-4 text-sm text-zinc-600">{schemaDescription}</p>
+          <p className="mb-4 text-sm text-foreground-secondary">
+            {schemaDescription}
+          </p>
         )}
 
         <Form {...form}>

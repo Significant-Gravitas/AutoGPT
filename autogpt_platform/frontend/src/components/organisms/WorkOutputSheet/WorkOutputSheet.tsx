@@ -2,16 +2,17 @@
 
 import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { okData } from "@/app/api/helpers";
-import { MessageResponse } from "@/components/ai-elements/message";
+import { MessageResponse } from "@/components/organisms/Message/Message";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/components/molecules/Sheet/Sheet";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -73,6 +74,9 @@ export function WorkOutputSheet({
       >
         <SheetHeader className="text-left">
           <SheetTitle className="truncate">{title}</SheetTitle>
+          <SheetDescription className="sr-only">
+            This run&apos;s output.
+          </SheetDescription>
         </SheetHeader>
         <WorkOutputBody
           outputType={outputType}
@@ -110,7 +114,11 @@ function WorkOutputBody({
 
   if (isLoading) {
     return (
-      <div className="space-y-3" data-testid="work-output-loading">
+      <div
+        data-slot="work-output-sheet-loading"
+        className="space-y-3"
+        data-testid="work-output-loading"
+      >
         <Skeleton className="h-6 w-2/3" />
         <Skeleton className="h-40 w-full" />
       </div>
@@ -133,7 +141,10 @@ function WorkOutputBody({
 
   if (outputType === "doc" && typeof primary === "string") {
     return (
-      <div className="prose prose-sm max-w-none">
+      <div
+        data-slot="work-output-sheet-doc"
+        className="prose prose-sm max-w-none"
+      >
         <MessageResponse>{primary}</MessageResponse>
       </div>
     );
@@ -163,6 +174,7 @@ function OutputImage({
       alt={title}
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
+      data-slot="work-output-sheet-image"
       className="max-h-[70vh] w-full rounded-xl object-contain"
     />
   );
@@ -184,8 +196,11 @@ function OutputTable({
     rows.length > visibleRows.length || allColumns.length > columns.length;
 
   return (
-    <div className="space-y-3">
-      <div className="flex justify-end">
+    <div data-slot="work-output-sheet-table" className="space-y-3">
+      <div
+        data-slot="work-output-sheet-table-actions"
+        className="flex justify-end"
+      >
         <Button
           variant="secondary"
           size="small"
@@ -217,23 +232,48 @@ interface OutputTablePreviewProps {
 
 function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
   return (
-    <div className="overflow-x-auto rounded-xl ring-1 ring-inset ring-zinc-200">
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr className="bg-zinc-50 text-left">
+    <div
+      data-slot="work-output-sheet-table-preview"
+      className="overflow-x-auto rounded-xl ring-1 ring-inset ring-border-base"
+    >
+      <table
+        data-slot="work-output-sheet-table-grid"
+        className="w-full border-collapse"
+      >
+        <thead data-slot="work-output-sheet-table-head">
+          <tr
+            data-slot="work-output-sheet-table-head-row"
+            className="bg-surface-muted text-left"
+          >
             {columns.map((column) => (
-              <th key={column} className="px-3 py-2 font-medium text-zinc-600">
-                {column}
+              <th
+                key={column}
+                data-slot="work-output-sheet-table-header-cell"
+                className="px-3 py-2 text-foreground-secondary"
+              >
+                <Text as="div" variant="body-medium-tight" tone="secondary">
+                  {column}
+                </Text>
               </th>
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody data-slot="work-output-sheet-table-body">
           {rows.map((row, index) => (
-            <tr key={index} className="border-t border-zinc-100">
+            <tr
+              key={index}
+              data-slot="work-output-sheet-table-row"
+              className="border-t border-separator"
+            >
               {columns.map((column) => (
-                <td key={column} className="px-3 py-2 text-zinc-700">
-                  {cellText(row[column])}
+                <td
+                  key={column}
+                  data-slot="work-output-sheet-table-cell"
+                  className="px-3 py-2"
+                >
+                  <Text as="div" variant="body-tight" tone="body">
+                    {cellText(row[column])}
+                  </Text>
                 </td>
               ))}
             </tr>
@@ -260,14 +300,18 @@ function OutputTableTruncationNotice({
   runLink,
 }: OutputTableTruncationNoticeProps) {
   return (
-    <Text variant="small" className="text-zinc-500">
+    <Text variant="small" tone="muted">
       Showing the first {visibleRowCount} of {rowCount} rows and{" "}
       {visibleColumnCount} of {columnCount} columns. The CSV export matches this
       preview
       {runLink ? (
         <>
           {" — "}
-          <Link href={runLink} className="underline">
+          <Link
+            href={runLink}
+            data-slot="work-output-sheet-truncation-link"
+            className="underline"
+          >
             open the full run
           </Link>{" "}
           for everything
@@ -281,14 +325,14 @@ function OutputTableTruncationNotice({
 function RunLinkFallback({ runLink }: { runLink?: string | null }) {
   if (!runLink) {
     return (
-      <Text variant="body" className="text-zinc-500">
+      <Text variant="body" tone="muted">
         This run has no preview available.
       </Text>
     );
   }
   return (
-    <div className="space-y-3">
-      <Text variant="body" className="text-zinc-500">
+    <div data-slot="work-output-sheet-fallback" className="space-y-3">
+      <Text variant="body" tone="muted">
         Open the full run to inspect its output.
       </Text>
       <Button as="NextLink" href={runLink} variant="primary" size="small">

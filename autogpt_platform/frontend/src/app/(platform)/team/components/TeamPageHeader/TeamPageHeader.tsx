@@ -12,6 +12,7 @@ interface Props {
 }
 
 const AVATAR_CLASS =
+  // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3, ring-[#f9f9f9] #F9F9F9
   "rounded-full border border-[#e3e3e3] ring-2 ring-[#f9f9f9]";
 
 // Same motion as the side panel's empty-state tiles: the outer two lean out
@@ -52,10 +53,10 @@ export function TeamPageHeader({ experts }: Props) {
           </span>
         </div>
         <div className="flex min-w-0 flex-col gap-0.5">
-          <Text variant="h4" as="h1" className="!text-zinc-900">
+          <Text variant="h4" as="h1" className="!text-foreground-strong">
             Team
           </Text>
-          <Text variant="body" className="!text-zinc-500">
+          <Text variant="body" className="!text-foreground-tertiary">
             Otto and your hired experts, ready to work.
           </Text>
         </div>

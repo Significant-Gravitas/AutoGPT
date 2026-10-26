@@ -140,6 +140,11 @@ class ProviderBuilder:
     ) -> "ProviderBuilder":
         """Set base cost for all blocks using this provider.
 
+        A non-zero cost is only charged when the run uses a credential the
+        platform provides: the ``<provider>-default`` key from ``with_api_key``
+        or ``with_user_password``, or a system credential for this provider in
+        ``credentials_store``. Runs on a user's own credential are free.
+
         ``cost_divisor`` only applies to SECOND / ITEMS. TOKENS is billed via
         the TOKEN_COST rate table (per-model pricing) and ignores the divisor.
         Example: ``with_base_cost(1, BlockCostType.SECOND, cost_divisor=10)``

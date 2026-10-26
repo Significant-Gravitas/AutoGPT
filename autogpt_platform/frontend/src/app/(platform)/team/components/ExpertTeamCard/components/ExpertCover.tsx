@@ -20,12 +20,13 @@ const STATUS_STYLES: Partial<
 > = {
   working: {
     label: "Working",
+    // TODO(tokens): no exact role: bg-emerald-50 #ECFDF5, text-emerald-700 #047857
     className: "bg-emerald-50 text-emerald-700",
     icon: Activity01Icon,
   },
   "needs-you": {
     label: "Needs you",
-    className: "bg-amber-50 text-amber-700",
+    className: "bg-warning-surface text-warning-foreground",
     icon: Alert01Icon,
   },
 };
@@ -49,7 +50,7 @@ export function ExpertCover({ className, color, status, art }: Props) {
           : undefined
       }
       className={cn(
-        "relative h-24 w-full overflow-hidden rounded-lg bg-zinc-100",
+        "relative h-24 w-full overflow-hidden rounded-lg bg-surface-hover",
         coverClassFor(color ?? null),
         className,
       )}

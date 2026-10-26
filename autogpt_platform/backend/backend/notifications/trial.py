@@ -209,7 +209,20 @@ def _notice_matches_current_terms(
         plan.label = expected.plan.label
     if plan.price_display == legacy_price:
         plan.price_display = expected.plan.price_display
-    return data.model_copy(update={"plan": plan, "notice_key": None}) == expected
+    return (
+        data.model_copy(
+            update={
+                "plan": plan,
+                "notice_key": None,
+                "started_label": (
+                    expected.started_label
+                    if data.started_label is None
+                    else data.started_label
+                ),
+            }
+        )
+        == expected
+    )
 
 
 def _owns_subscription(trial: TrialState, current: dict) -> bool:
@@ -285,6 +298,11 @@ def trial_notice_data(
             price_display=f"{amount} / {cycle_noun}",
         ),
         ends_label=trial.ends_at.astimezone(UTC).strftime("%d %b %Y at %H:%M UTC"),
+        started_label=(
+            trial.converted_at.astimezone(UTC).strftime("%d %b %Y at %H:%M UTC")
+            if kind == "converted" and trial.converted_at
+            else None
+        ),
         onboarding_credit_amount=trial.offer.onboarding_credit_amount,
         offer_version=trial.offer.version,
     )

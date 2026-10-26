@@ -116,7 +116,7 @@ export function OnboardingIntroCard({
         </motion.span>
         <motion.div {...reveal(HEADING_START)}>
           <Text variant="large-medium" tone="primary">
-            Hey, <span className="text-zinc-900">{name}</span>
+            Hey, <span className="text-foreground-strong">{name}</span>
           </Text>
         </motion.div>
         {transcript && (
@@ -127,12 +127,13 @@ export function OnboardingIntroCard({
                   type="button"
                   onClick={handleCopyTranscript}
                   aria-label="Copy your recording's transcript"
-                  className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                  className="rounded-full p-2 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
                 >
                   {isCopied ? (
                     <Icon
                       icon={Tick02Icon}
                       size={16}
+                      // TODO(tokens): no exact role for text-emerald-600
                       className="text-emerald-600"
                     />
                   ) : (

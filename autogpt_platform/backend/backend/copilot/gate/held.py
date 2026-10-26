@@ -33,6 +33,7 @@ from backend.copilot.google_data_redaction import (
 from backend.copilot.model import CHAT_STATUS_RUNNING, ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamStatus
+from backend.copilot.tool_image import HeldImage, ToolImage, parse_held_image
 from backend.copilot.tree import TreeRefusal, TurnEnvelope
 from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
 from backend.data.db_accessors import chat_db, review_db
@@ -439,15 +440,32 @@ async def _resolve(
             outcome, output = await _settled(user_id, session, call, row)
     shown = _card_copy(row)
     google_data = is_google_call(call.args) or is_google_output(output)
+    image_result = parse_held_image(output) if outcome == "approved" else None
+    if image_result is not None:
+        output = image_result.text
     try:
-        deliver(_result_row(call, cap(output), outcome, shown, google_data))
+        deliver(
+            _result_row(
+                call,
+                cap(output),
+                outcome,
+                shown,
+                google_data,
+                image=image_result.image if image_result else None,
+            )
+        )
     except Exception:
         # The outcome is known and may be a refusal; only the engine's cut
         # failed, so deliver it trimmed rather than let recovery guess.
         logger.warning(f"Could not cap held result {call.review_id}", exc_info=True)
         deliver(
             _result_row(
-                call, output[: _MAX_RESULT_CHARS // 2], outcome, shown, google_data
+                call,
+                output[: _MAX_RESULT_CHARS // 2],
+                outcome,
+                shown,
+                google_data,
+                image=image_result.image if image_result else None,
             )
         )
 
@@ -482,6 +500,7 @@ def _result_row(
     outcome: Outcome,
     shown: dict[str, Any] | None = None,
     google_data: bool = False,
+    image: ToolImage | None = None,
 ) -> PendingMessage:
     content = (
         f'<held_call_result tool="{call.tool_name}" '
@@ -493,6 +512,7 @@ def _result_row(
     if google_data:
         remember_google_output(content)
     return HeldResult(
+        model_image=image,
         content=content,
         metadata={
             _RESULT_KEY: {
@@ -594,6 +614,13 @@ async def _run(
     # With the flag switched off since, the gate ran it without spending the
     # approval; spend it here so no later identical call rides on it.
     await review_store.consume(call.review_id, user_id)
+    if result.image is not None:
+        text = (
+            result.output
+            if isinstance(result.output, str)
+            else json.dumps(result.output, default=str)
+        )
+        return "approved", HeldImage(text=text, image=result.image).model_dump_json()
     if isinstance(result.output, str):
         return "approved", result.output
     return "approved", json.dumps(result.output, default=str)

@@ -112,7 +112,10 @@ def test_all_trial_notices_render_exact_terms_and_billing_link(trial, urls, kind
     assert email.subject and email.preheader
     for body in (email.html, email.text):
         assert "$20.00 / month" in body
-        assert data.ends_label in body
+        if kind != "converted":
+            assert data.ends_label in body
+        else:
+            assert "Trial ends" not in body
         assert urls.billing in body
     if kind == "payment_failed":
         assert "paid access is paused" in email.text

@@ -30,7 +30,6 @@ import { translateText } from "@/tests/integrations/translation";
 
 const posthog = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("@posthog/react", () => ({
-  useFeatureFlagVariantKey: () => undefined,
   usePostHog: () => posthog,
 }));
 

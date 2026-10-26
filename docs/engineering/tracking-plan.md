@@ -67,7 +67,7 @@ Every event must carry:
 | Property | Value |
 | --- | --- |
 | `environment` | `settings.config.app_env` on the backend (`local`, `dev`, `prod`), the matching app environment in the browser. |
-| `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser). |
+| `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser), `website` (the marketing site, see [Marketing site](#marketing-site)). |
 | `revision` | The deployed build's git sha, which Sentry reports as its release: `SENTRY_RELEASE` on the backend, the build's commit in the browser (`SENTRY_RELEASE`, else Vercel's `VERCEL_GIT_COMMIT_SHA`). Left out of a build that has none, such as a local one, and from `$ai_generation` (below). |
 
 Every backend event goes through `capture()` in
@@ -222,6 +222,110 @@ mount-time steps (`tour_start`, the first `tour_scenario_start`) on a first
 visit where the answer arrives only after the page loads; `tour_start` is
 retried on the next tour visit in that session.
 
+## Marketing site
+
+The marketing site, `agpt.co` (repo `Significant-Gravitas/autogpt-marketing-site`),
+sends to the same PostHog project as the app, so one funnel runs from a
+website visit to a paid account (SECRT-2769). Its code is
+`lib/posthog/posthog.ts` and `lib/posthog/goals.ts` there.
+
+- **Consent.** The site asks through Cookiebot too, but Cookiebot keeps one
+  answer per domain, so a visitor answers once on `agpt.co` and once on
+  `platform.agpt.co`. The site downloads and starts `posthog-js` only once its
+  answer allows analytics; before that nothing reaches PostHog, not even
+  `/flags`.
+- **Settings.** The app's: opted out by default, `localStorage+cookie`
+  persistence with consent, autocapture and page leave, no session replay, and
+  the same-origin relay at `/relay/pnosthog`.
+- **Base properties.** `environment` (`prod`, `preview`, `local`, from
+  Vercel), `source: website`, and `revision` (the commit) where the build has
+  one.
+
+| Event | Fires when |
+| --- | --- |
+| `$pageview` | A route or query string changes, and once more when consent arrives, so the landing page counts. |
+| `$pageleave`, `$autocapture` | As in the app. |
+| `section_viewed` | A section marked for DataFast's scroll goals comes on screen: as soon as any of it shows, and again after it left the screen and comes back. `section` is the part after `scroll_to_` (e.g. `faq`). |
+| DataFast goals | Every DataFast goal is also sent to PostHog under an `object_action`, past-tense name, with the same parameters (`data-fast-goal-*` attributes, hyphens turned into underscores, or the properties passed from code, such as `pricing_billing_toggled.billing`). |
+
+The goal names (`POSTHOG_GOAL_EVENTS` on the site, where a test fails for a
+goal without one):
+
+| DataFast goal | PostHog event |
+| --- | --- |
+| `demo_tour_click` | `demo_tour_clicked` |
+| `demo_video_play` | `demo_video_played` |
+| `demo_video_sound` | `demo_video_sound_toggled` |
+| `get_started_click` | `get_started_clicked` |
+| `github_selfhost_click` | `github_selfhost_clicked` |
+| `github_stars_click` | `github_stars_clicked` |
+| `hero_prompt_chip_click` | `hero_prompt_chip_clicked` |
+| `hero_prompt_focus` | `hero_prompt_focused` |
+| `hero_prompt_submit` | `hero_prompt_submitted` |
+| `marketplace_agent_click` | `marketplace_agent_clicked` |
+| `marketplace_browse_click` | `marketplace_browse_clicked` |
+| `nav_product_click` | `nav_product_clicked` |
+| `press_source_click` | `press_source_clicked` |
+| `pricing_billing_toggle` | `pricing_billing_toggled` |
+| `pricing_click` | `pricing_clicked` |
+| `pricing_plan_cta_click` | `pricing_plan_cta_clicked` |
+| `product_demo_interact` | `product_demo_interacted` |
+| `product_video_play` | `product_video_played` |
+| `see_it_in_action_click` | `see_it_in_action_clicked` |
+| `signin_click` | `signin_clicked` |
+| `testimonial_source_click` | `testimonial_source_clicked` |
+| `usecase_cta_click` | `usecase_cta_clicked` |
+| `watch_demo_click` | `watch_demo_clicked` |
+
+These names follow the [naming rules](#naming) and are never renamed. They
+live in the site's repo, not in `posthog-events.ts`.
+
+### Hand-over to the app
+
+The site keeps PostHog's state in the `ph_<project key>_posthog` cookie on
+`.agpt.co`, which `platform.agpt.co` can read. It carries `$device_id`. The
+app adopts that id as the visitor's anonymous id, so `identify()` at signup
+merges the website pageviews into the new user:
+
+- **While the app's answer is pending,** the app leaves the cookie (and its
+  own stored identity) alone and runs PostHog on an in-memory id. Only an
+  answer without analytics deletes them, the shared cookie included; the site
+  does the same on its side. If Cookiebot asks again after PostHog started
+  with an earlier grant, PostHog stops capturing (so it writes nothing until
+  the visitor answers) but keeps its storage, the shared cookie included; a
+  grant resumes it on the same id.
+- **On a grant,** during the page or from an earlier answer, the visitor's
+  anonymous id is, in order: the app's own `agpt_anonymous_id`; else the
+  device id in the app's own PostHog storage; else the cookie's `$device_id`;
+  else the page's in-memory id (`src/services/analytics/anonymous-id.ts`).
+  Both device ids are read before PostHog rewrites them. If PostHog started
+  on the in-memory id, it moves onto the adopted one without a reload
+  (`src/providers/posthog/posthog-consent.ts`).
+- **Returning app visitors keep their own id.** A browser that already has
+  `agpt_anonymous_id` from an earlier visit with consent keeps it, so
+  website visits made under another id do not merge into the account.
+- **Only a new visitor or a new account takes the website's id.** The
+  cookie's `$device_id` is adopted only when nobody is signed in, or the
+  account was created in this browser (the `agpt_account_created` signup flag,
+  as seen while signed in on that page: the ads signup conversion clears it).
+  An older account signed in on a browser someone else used on agpt.co keeps
+  the in-memory id, so `identify()` doesn't merge that person's website visits
+  into it. Until the auth store knows the session (after its fallback
+  validation; an auth error leaves it unknown for the page), the choice
+  waits: PostHog stays opted out and in memory, events
+  are held, and nothing is stored. The id then settles, PostHog moves onto it
+  and starts, before `identify()`.
+- **Logout and account switches forget the shared cookie** when analytics is
+  not allowed (declined or still pending): PostHog then runs in memory, so its
+  `reset()` would leave the previous person's id there for the next account.
+- **The backend gets the id PostHog ends up with.** The attribution report
+  (`useReportAttribution`, the `anonymous_id` and `posthog_distinct_id` on
+  `UserAttribution`) waits while the answer is pending, then sends the adopted
+  id on a grant, or the in-memory id (and no PostHog id) on a decline. It
+  goes at once without a Cookiebot domain group, and when uc.js still hasn't
+  arrived 10 seconds after the page loaded (blocked). A visitor who never
+  answers is reported on the first later page where they do.
+
 ## Onboarding and activation
 
 | Event | Sender | Status | Required properties | Fires when |
@@ -238,6 +342,7 @@ retried on the next tour visit in that session.
 | `brain_dump_restarted` | browser | live | — | Recording starts over. |
 | `brain_dump_download` | browser | live | — | The recording is downloaded after a failure. |
 | `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused. |
+| `brain_dump_mic_failed` | browser | live | `error_name` | The microphone fails to open, for any reason, a refused permission included. |
 | `brain_dump_typed_fallback` | browser | live | `reason` | The user types instead of speaking. |
 | `transcription_failed` | browser | live | `error_code`, `finalize_latency_ms` | Finalize returns a failure. |
 | `welcome_dialog_closed` | browser | live | — | The first-landing welcome dialog closes. |
@@ -274,6 +379,7 @@ retried on the next tour visit in that session.
 | `chat_tool_called` | backend | live | `chat_session_id`, `tool_name`, `tool_call_id` | The copilot calls a tool. |
 | `chat_outcome` | backend | live | `outcome_type` (`agent_run_success`, `schedule_created`), `chat_session_id`; `agent_run_success`: `graph_id`, `execution_id`, `library_agent_id`; `schedule_created`: `target` (`agent`: `graph_id`, `schedule_id`, `cron`, `library_agent_id`; `followup`: `schedule_id`, `target_chat_session_id`, `is_recurring`) | A moment of value in a chat: the copilot started a (non-dry) run or created a schedule for the user. `agent_run_started` / `schedule_created` still count the run or schedule itself. |
 | `chat_library_check_outcome` | backend | live | `chat_session_id`, `outcome`, `matches_count`, `top_score` | The create-agent library check ends. |
+| `chat_read_screen_shadow_decision` | backend | live | `tool_name`, `tool_call_id`, `source_kind` (`web`, `file`, `shell`, `mcp`, `block`, `workflow`, `chat`, `skill`, …), `chat_session_id`, `trace_id` (the reply's trace, the `$ai_trace_id` of its generations and spans, shared by the subtasks it spawns; the tool call's `$ai_span` with the same `tool_call_id` names the turn), `expert_id`, `verdict` (`allow`, `hold`, `judge_error`), `reason_code`, `judge` (`jev`, `content`; null when the shadow itself failed), `llm_model`, `jev_model`, `rubric_version`, `latency_ms`, `impersonated`, `judgement_id`, `sample_rate` | With `copilot-read-screen` serving `shadow`, the prompt-injection check judges an outside read in a sampled interactive chat (`backend/copilot/gate/shadow.py`). Nothing is held. No content, URL or judge wording is sent. |
 | `voice_mode_started` | browser | live | `entry` | Voice mode is switched on. |
 | `voice_mode_stopped` | browser | live | `turns`, `state` | Switched off by the user. |
 | `voice_mode_timed_out` | browser | live | `turns`, `state` | Closed by the silence timeout. |

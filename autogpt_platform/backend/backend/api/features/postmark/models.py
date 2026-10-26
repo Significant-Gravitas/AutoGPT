@@ -190,15 +190,17 @@ class PostmarkClickWebhook(BaseModel):
 
 class PostmarkSubscriptionChangeWebhook(BaseModel):
     RecordType: Literal["SubscriptionChange"] = "SubscriptionChange"
-    MessageID: str
+    # Null for a suppression we or a Postmark admin made by hand, and for a
+    # reactivation; Tag and SuppressionReason are null on a reactivation.
+    MessageID: str | None
     ServerID: int
     MessageStream: str
     ChangedAt: str
     Recipient: str
     Origin: str
     SuppressSending: bool
-    SuppressionReason: str
-    Tag: str
+    SuppressionReason: str | None
+    Tag: str | None
     Metadata: dict[str, str]
 
 

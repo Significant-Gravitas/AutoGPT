@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.store.db import StoreAgentsSortOptions
+from backend.data.graph import GraphModelWithoutNodes
 
 from . import model as store_model
 from . import routes as store_routes
@@ -986,6 +987,39 @@ def test_get_submissions_malformed_request(mocker: pytest_mock.MockFixture):
 class _DownloadedGraph(BaseModel):
     id: str
     version: int
+
+
+def test_listing_graph_outline_names_no_publisher_account(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Any signed-in user can read a listing's outline, so it carries no ids
+    of the account or organization that published the workflow."""
+    mocker.patch(
+        "backend.api.features.store.db.get_available_graph",
+        mocker.AsyncMock(
+            return_value=GraphModelWithoutNodes(
+                id="graph-1",
+                version=1,
+                name="Listed",
+                description="",
+                user_id="publisher",
+                organization_id="publisher-org",
+                team_id="publisher-team",
+                created_at=FIXED_NOW,
+            )
+        ),
+    )
+
+    response = client.get("/listings/versions/slv-1/graph")
+
+    assert response.status_code == 200
+    outline = response.json()
+    assert outline["id"] == "graph-1"
+    assert (outline["user_id"], outline["organization_id"], outline["team_id"]) == (
+        "",
+        None,
+        None,
+    )
 
 
 def test_download_agent_file_sends_listing_downloaded(

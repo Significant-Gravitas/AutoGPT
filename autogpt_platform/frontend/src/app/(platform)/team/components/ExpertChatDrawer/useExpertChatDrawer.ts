@@ -20,6 +20,7 @@ import {
   type WorkspaceAttachment,
 } from "@/app/(platform)/copilot/helpers/workspaceAttachments";
 import { latestExpertSessionParams } from "@/app/(platform)/copilot/expertSessionQuery";
+import { usePendingOnboardingSession } from "@/app/(platform)/copilot/components/ExpertOnboardingCard/usePendingOnboardingSession";
 import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
 import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
 import {
@@ -258,6 +259,27 @@ export function useExpertChatDrawer({
       clearKickoffPending(attempt.userId, attempt.expertId, attempt.token);
     }).catch(() => undefined);
   }, [error]);
+
+  // An empty thread opens the chat whose setup questions still wait, so the
+  // answers reach the expert that asked them and its card settles there.
+  const isEmptyThread =
+    !sessionId ||
+    (sessionQuery.data?.status === 200 &&
+      messages.length === 0 &&
+      status === "ready");
+  const pendingOnboarding = usePendingOnboardingSession(
+    expertId,
+    isOpen &&
+      isEmptyThread &&
+      !suppressOnboarding &&
+      !isCreating &&
+      !pendingSend,
+  );
+  useEffect(() => {
+    const pending = pendingOnboarding.sessionId;
+    if (!pending || pending === sessionId) return;
+    setSessionId(pending);
+  }, [pendingOnboarding.sessionId, sessionId]);
 
   const { queuedMessages, queueMessage } = useCopilotPendingChips({
     sessionId,
@@ -527,7 +549,9 @@ export function useExpertChatDrawer({
     (kickoffCheckQuery.isFetching ||
       (!kickoffCheckQuery.isError && !kickoffCheckQuery.data));
   const isResolvingSession =
-    (!sessionId && wantsLatest && latestQuery.isLoading) || isCheckingKickoff;
+    (!sessionId && wantsLatest && latestQuery.isLoading) ||
+    isCheckingKickoff ||
+    (!sessionId && pendingOnboarding.isChecking);
 
   return {
     sessionId,
@@ -540,9 +564,7 @@ export function useExpertChatDrawer({
     onActionSend,
     queuedMessages,
     isResolvingSession,
-    isLoadingSession: !!sessionId && sessionQuery.isLoading,
     isCreating,
-    suppressOnboarding,
     pendingSend,
   };
 }

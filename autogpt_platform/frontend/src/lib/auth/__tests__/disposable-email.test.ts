@@ -12,6 +12,14 @@ function mx(records: Records) {
   return vi.fn(async (_domain: string) => records);
 }
 
+function dnsWith(resolveMx: (domain: string) => Promise<Records>) {
+  return {
+    resolveMx,
+    resolve4: async () => ["192.0.2.1"],
+    resolve6: async () => [],
+  };
+}
+
 async function codeOf(promise: Promise<unknown>) {
   try {
     await promise;
@@ -30,7 +38,7 @@ describe("assertNotDisposableEmail", () => {
     "refuses %s, on the list",
     async (email) => {
       await expect(
-        codeOf(assertNotDisposableEmail(email, { resolveMX: mx([]) })),
+        codeOf(assertNotDisposableEmail(email, { dns: dnsWith(mx([])) })),
       ).resolves.toBe(DISPOSABLE_EMAIL_CODE);
     },
   );
@@ -40,7 +48,9 @@ describe("assertNotDisposableEmail", () => {
 
     await expect(
       codeOf(
-        assertNotDisposableEmail("a@rotating-inbox.example", { resolveMX }),
+        assertNotDisposableEmail("a@rotating-inbox.example", {
+          dns: dnsWith(resolveMX),
+        }),
       ),
     ).resolves.toBe(DISPOSABLE_EMAIL_CODE);
     expect(resolveMX).toHaveBeenCalledWith("rotating-inbox.example");
@@ -58,7 +68,7 @@ describe("assertNotDisposableEmail", () => {
     await expect(
       codeOf(
         assertNotDisposableEmail(email, {
-          resolveMX: mx([{ exchange: "mx.example.net" }]),
+          dns: dnsWith(mx([{ exchange: "mx.example.net" }])),
         }),
       ),
     ).resolves.toBeNull();
@@ -72,7 +82,9 @@ describe("assertNotDisposableEmail", () => {
     });
 
     await expect(
-      codeOf(assertNotDisposableEmail("a@slow.example", { resolveMX })),
+      codeOf(
+        assertNotDisposableEmail("a@slow.example", { dns: dnsWith(resolveMX) }),
+      ),
     ).resolves.toBeNull();
   });
 
@@ -87,7 +99,7 @@ describe("assertNotDisposableEmail", () => {
     await expect(
       codeOf(
         assertNotDisposableEmail("a@slow.example", {
-          resolveMX,
+          dns: dnsWith(resolveMX),
           timeoutMs: 20,
         }),
       ),
@@ -99,7 +111,7 @@ describe("assertNotDisposableEmail", () => {
 
     await expect(
       codeOf(
-        assertNotDisposableEmail("a@mailinator.com", { resolveMX: mx([]) }),
+        assertNotDisposableEmail("a@mailinator.com", { dns: dnsWith(mx([])) }),
       ),
     ).resolves.toBeNull();
   });

@@ -2045,8 +2045,10 @@ async def _reconcile_marketplace_copies(
             "[skills] could not read active marketplace versions", exc_info=True
         )
         return skills
-    manager = await _get_user_skill_manager(user_id, scope)
     backoff = await _read_update_backoff(user_id, expert_id)
+    # Looked up for the first copy that is actually updated: on most cold
+    # turns every copy is current, and the lookup is a database round trip.
+    manager: WorkspaceManager | None = None
     flags: dict[str, str] = {}
     rewritten: list[str] = []
     failed: dict[str, str] = {}
@@ -2073,6 +2075,8 @@ async def _reconcile_marketplace_copies(
         # An attempt spends budget whether or not it lands, so copies that
         # cannot be updated bound the turn like the ones that can.
         budget -= 1
+        if manager is None:
+            manager = await _get_user_skill_manager(user_id, scope)
         try:
             outcome = await _update_copy(
                 manager, user_id, expert_id, scope, skill, current

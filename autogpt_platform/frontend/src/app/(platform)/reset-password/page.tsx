@@ -5,7 +5,7 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 import { ExpiredLinkMessage } from "@/components/auth/ExpiredLinkMessage";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
-import LoadingBox from "@/components/__legacy__/ui/loading";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { changePasswordFormSchema, sendEmailFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -111,9 +111,9 @@ function ResetPasswordContent() {
       }
       setDisabled(true);
       toast({
-        title: "Email Sent",
+        title: "Check your email",
         description:
-          "Password reset email sent if user exists. Please check your email.",
+          "If an account exists for this address, we've sent a reset link.",
         variant: "default",
       });
     },
@@ -260,7 +260,17 @@ function ResetPasswordContent() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<LoadingBox className="h-[80vh]" />}>
+    <Suspense
+      fallback={
+        <div className="flex h-[80vh] items-center justify-center">
+          <LoadingSpinner
+            variant="circle"
+            className="size-16"
+            aria-hidden="true"
+          />
+        </div>
+      }
+    >
       <ResetPasswordContent />
     </Suspense>
   );

@@ -171,13 +171,26 @@ async def _reconcile_locked(
             async for other in stripe_list_items(others):
                 if other.id != snapshot.id:
                     return dict(raw), None
-    await tx.user.update_many(
-        where={
-            "id": trial.user_id,
-            "subscriptionTier": {"not": SubscriptionTier.ENTERPRISE},
-        },
-        data={"subscriptionTier": tier},
-    )
+    if tier == SubscriptionTier.NO_TIER:
+        # The trial ended: stamp the drop for the product-mail win-back
+        # window, unless the account was already on NO_TIER.
+        await tx.user.update_many(
+            where={
+                "id": trial.user_id,
+                "subscriptionTier": {
+                    "not_in": [SubscriptionTier.ENTERPRISE, SubscriptionTier.NO_TIER]
+                },
+            },
+            data={"subscriptionTier": tier, "subscriptionEndedAt": now},
+        )
+    else:
+        await tx.user.update_many(
+            where={
+                "id": trial.user_id,
+                "subscriptionTier": {"not": SubscriptionTier.ENTERPRISE},
+            },
+            data={"subscriptionTier": tier, "subscriptionEndedAt": None},
+        )
     return dict(raw), tier
 
 

@@ -1,4 +1,4 @@
-import { PromptInputSubmit } from "@/components/ai-elements/prompt-input";
+import { PromptInputSubmit } from "@/components/organisms/PromptInput/PromptInput";
 import {
   Tooltip,
   TooltipContent,

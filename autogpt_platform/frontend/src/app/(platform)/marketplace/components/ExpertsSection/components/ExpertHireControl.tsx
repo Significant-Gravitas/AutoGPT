@@ -55,6 +55,7 @@ export function ExpertHireControl({ expert, isHired }: Props) {
     control = (
       <Badge
         variant="success"
+        // TODO(tokens): no exact role: shadow-[…] #101828
         className="rounded-full px-2.5 py-1 shadow-[0_1px_2px_rgba(16,24,40,0.05)]"
       >
         <Icon icon={CheckmarkCircle02Icon} size={14} aria-hidden />

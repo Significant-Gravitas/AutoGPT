@@ -31,7 +31,8 @@ export function PendingChangeBanner({
     <div
       role="status"
       aria-live="polite"
-      className="flex flex-col gap-2 rounded-md border border-violet-500 bg-violet-50 px-3 py-2 text-sm text-violet-800 sm:flex-row sm:items-center sm:justify-between"
+      // TODO(tokens): no exact role (border-violet-500 #8B5CF6, text-violet-800 #5B21B6)
+      className="flex flex-col gap-2 rounded-md border border-violet-500 bg-accent-surface px-3 py-2 text-sm text-violet-800 sm:flex-row sm:items-center sm:justify-between"
     >
       <p>
         {isCancellation ? (

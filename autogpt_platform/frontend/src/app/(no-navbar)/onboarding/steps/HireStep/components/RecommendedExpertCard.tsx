@@ -21,7 +21,7 @@ interface Props {
 }
 
 export const EXPERT_CARD_CLASS =
-  "flex h-full flex-col gap-2 rounded-2xl border bg-white p-4 text-left transition-colors";
+  "flex h-full flex-col gap-2 rounded-2xl border bg-surface p-4 text-left transition-colors";
 
 export function RecommendedExpertCard({
   expert,
@@ -37,33 +37,38 @@ export function RecommendedExpertCard({
     <div
       className={cn(
         EXPERT_CARD_CLASS,
-        "relative",
-        isHired ? "border-zinc-900" : "border-zinc-200",
+        "relative isolate",
+        isHired ? "border-action-hover" : "border-border-base",
       )}
       data-testid="hire-step-expert"
       data-hired={isHired || undefined}
     >
       {isHired ? null : (
         // The wizard's own pick badge (SelectableCard), as a toggle: ticked
-        // cards are what the step's primary action hires.
+        // cards are what the step's primary action hires. z-10 lifts it over the
+        // faded header; the card's `isolate` keeps it under the list's edge fades.
         <button
           type="button"
           aria-pressed={isIncluded}
           aria-label={`Include ${expert.name}`}
           disabled={disabled}
           onClick={onToggleIncluded}
-          className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full disabled:cursor-not-allowed"
+          className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-full disabled:cursor-not-allowed"
         >
           <span
             className={cn(
               "flex size-4 items-center justify-center rounded-full border transition-colors",
               isIncluded
-                ? "border-zinc-900 bg-zinc-900"
-                : "border-zinc-300 bg-white",
+                ? "border-action-hover bg-action-hover"
+                : "border-border-strong bg-surface",
             )}
           >
             {isIncluded ? (
-              <Icon icon={Tick02Icon} size={10} className="text-white" />
+              <Icon
+                icon={Tick02Icon}
+                size={10}
+                className="text-action-foreground"
+              />
             ) : null}
           </span>
         </button>
@@ -104,7 +109,7 @@ export function RecommendedExpertCard({
         <Text
           variant="small"
           as="span"
-          className="mt-auto inline-flex items-center gap-1 self-start pt-1 text-zinc-900"
+          className="mt-auto inline-flex items-center gap-1 self-start pt-1 text-foreground-strong"
         >
           <Icon icon={Tick02Icon} size={14} />
           Hired

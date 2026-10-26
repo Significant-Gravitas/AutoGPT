@@ -67,7 +67,10 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Text variant="large-medium">{`${expertName}'s computer`}</Text>
-          <Text variant="small" className="mt-1 max-w-prose !text-zinc-500">
+          <Text
+            variant="small"
+            className="mt-1 max-w-prose !text-foreground-tertiary"
+          >
             One persistent cloud machine only {expertName} uses: the shell it
             runs commands in and, when needed, its screen. It is suspended
             between turns and costs nothing while suspended; installed tools and
@@ -77,8 +80,8 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
       </div>
 
       {!computer.e2b_active ? (
-        <div className="rounded-xl bg-amber-50 px-4 py-2.5 ring-1 ring-inset ring-amber-200">
-          <Text variant="small" className="text-amber-700">
+        <div className="rounded-xl bg-warning-surface px-4 py-2.5 ring-1 ring-inset ring-warning-border">
+          <Text variant="small" className="text-warning-foreground">
             Cloud sandboxes are not configured on this deployment.
           </Text>
         </div>
@@ -86,7 +89,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
 
       {/* The screen itself: the live desktop when there is one, otherwise a
           dark monitor showing the machine's state and the way in. */}
-      <div className="overflow-hidden rounded-2xl bg-white p-2 smooth-shadow-ring-sm">
+      <div className="overflow-hidden rounded-2xl bg-surface p-2 smooth-shadow-ring-sm">
         {stream ? (
           <div className="flex flex-col gap-2">
             <div
@@ -110,29 +113,37 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
             </div>
           </div>
         ) : (
-          <div className="relative flex min-h-[240px] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-zinc-800 via-zinc-900 to-black px-6 py-8 text-center sm:aspect-[16/7] sm:min-h-0 sm:py-0">
+          <div
+            // TODO(tokens): no fitting role for to-black #141414; #141414 is foreground-base (a text colour)
+            className="relative flex min-h-[240px] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-action via-action-hover to-black px-6 py-8 text-center sm:aspect-[16/7] sm:min-h-0 sm:py-0"
+          >
             <div
               aria-hidden
-              className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.08),transparent_60%)]"
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgb(var(--color-card)/0.08),transparent_60%)]"
             />
             <span
               className={cn(
                 "relative flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
                 running
-                  ? "bg-emerald-500/15 text-emerald-300"
-                  : "bg-white/10 text-zinc-300",
+                  ? // TODO(tokens): no exact role: bg-emerald-500/15 #10B981, text-emerald-300 #6EE7B7
+                    "bg-emerald-500/15 text-emerald-300"
+                  : "bg-surface/10 text-foreground-disabled",
               )}
             >
               <span
                 aria-hidden
                 className={cn(
                   "size-1.5 rounded-full",
+                  // TODO(tokens): no exact role: bg-emerald-400 #34D399; no fitting role for bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
                   running ? "bg-emerald-400" : "bg-zinc-400",
                 )}
               />
               {status}
             </span>
-            <Text variant="body" className="relative max-w-md !text-zinc-300">
+            <Text
+              variant="body"
+              className="relative max-w-md !text-foreground-disabled"
+            >
               {formatScreen(computer)}
             </Text>
             <Button
@@ -163,21 +174,23 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
       </div>
 
       {mounts.length > 0 ? (
-        <div className="rounded-2xl bg-white p-4 smooth-shadow-ring-sm">
-          <Text variant="small-medium" className="!text-zinc-700">
+        <div className="rounded-2xl bg-surface p-4 smooth-shadow-ring-sm">
+          <Text variant="small-medium" className="!text-foreground-body">
             Volumes
           </Text>
-          <ul className="mt-2 divide-y divide-zinc-100">
+          <ul className="mt-2 divide-y divide-separator">
             {mounts.map(([path, name]) => (
               <li key={path} className="flex items-start gap-3 py-2.5">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-zinc-500">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border-base bg-surface-muted text-foreground-tertiary">
                   <Icon icon={Folder01Icon} size={15} aria-hidden />
                 </span>
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  <code className="text-xs text-zinc-800">{path}</code>
-                  <Text variant="small" className="!text-zinc-500">
+                  <code className="text-xs text-foreground-emphasis">
+                    {path}
+                  </code>
+                  <Text variant="small" className="!text-foreground-tertiary">
                     {describeMount(path, computer)}{" "}
-                    <span className="font-mono text-xs text-zinc-400">
+                    <span className="font-mono text-xs text-foreground-subtle">
                       {name}
                     </span>
                   </Text>
@@ -188,13 +201,13 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
         </div>
       ) : null}
 
-      <div className="flex items-start gap-2.5 rounded-xl bg-zinc-100/80 px-4 py-3">
+      <div className="flex items-start gap-2.5 rounded-xl bg-surface-hover/80 px-4 py-3">
         <Icon
           icon={SecurityIcon}
           size={16}
-          className="mt-0.5 shrink-0 text-zinc-500"
+          className="mt-0.5 shrink-0 text-foreground-tertiary"
         />
-        <Text variant="small" className="!text-zinc-600">
+        <Text variant="small" className="!text-foreground-secondary">
           {expertName} has full access to this machine, so anything signed in on
           its desktop is visible to the AI. Do not sign into personal accounts
           there.
@@ -212,15 +225,15 @@ interface DetailTileProps {
 
 function DetailTile({ icon, label, children }: DetailTileProps) {
   return (
-    <div className="flex items-start gap-3 rounded-2xl bg-white p-4 smooth-shadow-ring-sm">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-zinc-500">
+    <div className="flex items-start gap-3 rounded-2xl bg-surface p-4 smooth-shadow-ring-sm">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border-base bg-surface-muted text-foreground-tertiary">
         <Icon icon={icon} size={15} aria-hidden />
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
-        <Text variant="small-medium" className="!text-zinc-700">
+        <Text variant="small-medium" className="!text-foreground-body">
           {label}
         </Text>
-        <Text variant="small" className="!text-zinc-500">
+        <Text variant="small" className="!text-foreground-tertiary">
           {children}
         </Text>
       </span>

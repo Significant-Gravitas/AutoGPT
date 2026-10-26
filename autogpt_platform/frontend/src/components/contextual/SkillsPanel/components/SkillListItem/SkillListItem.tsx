@@ -44,13 +44,20 @@ export function SkillListItem({ skill, isNew = false }: Props) {
 
   return (
     <div
-      className="flex w-full flex-col gap-3 rounded-large border border-zinc-200 bg-white p-4 sm:flex-row sm:items-start sm:justify-between"
+      className="flex w-full flex-col gap-3 rounded-large border border-border-base bg-surface p-4 sm:flex-row sm:items-start sm:justify-between"
       data-testid="skill-row"
       data-skill-name={skill.name}
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-violet-50">
-          <Icon icon={BookOpen01Icon} size={18} className="text-violet-700" />
+        <div
+          // TODO(tokens): no exact role for border-slate-50 #F7F8F9
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-accent-surface"
+        >
+          <Icon
+            icon={BookOpen01Icon}
+            size={18}
+            className="text-accent-strong"
+          />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
@@ -65,7 +72,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
               </span>
             )}
           </div>
-          <Text variant="small" className="!text-zinc-500">
+          <Text variant="small" className="!text-foreground-tertiary">
             {descriptionPreview}
           </Text>
           {triggers.length > 0 ? (
@@ -76,7 +83,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
               {triggers.map((trigger) => (
                 <span
                   key={trigger}
-                  className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
+                  className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-secondary"
                 >
                   {trigger}
                 </span>
@@ -125,7 +132,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
       >
         <Dialog.Content>
           <div className="flex flex-col gap-3">
-            <Text variant="small" className="!text-zinc-500">
+            <Text variant="small" className="!text-foreground-tertiary">
               {detail?.description ?? descriptionPreview}
             </Text>
             {triggers.length > 0 ? (
@@ -133,7 +140,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                 {triggers.map((trigger) => (
                   <span
                     key={trigger}
-                    className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
+                    className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-secondary"
                   >
                     {trigger}
                   </span>
@@ -154,7 +161,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
             ) : (
               <>
                 <pre
-                  className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"
+                  className="max-h-[60vh] overflow-auto rounded-medium bg-surface-muted p-3 text-sm text-foreground-emphasis"
                   style={{ whiteSpace: "pre-wrap" }}
                   data-testid="skill-view-body"
                 >
@@ -165,10 +172,10 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                     className="flex flex-col gap-1"
                     data-testid="skill-view-files"
                   >
-                    <Text variant="small" className="!text-zinc-500">
+                    <Text variant="small" className="!text-foreground-tertiary">
                       Package files ({detail?.files?.length ?? 0}):
                     </Text>
-                    <ul className="flex flex-col gap-0.5 text-xs text-zinc-600">
+                    <ul className="flex flex-col gap-0.5 text-xs text-foreground-secondary">
                       {fileRows.map((row) => (
                         <li
                           key={row.path}
@@ -176,7 +183,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                         >
                           <span className="break-all">{row.label}</span>
                           {row.sizeLabel ? (
-                            <span className="flex-shrink-0 tabular-nums text-zinc-400">
+                            <span className="flex-shrink-0 tabular-nums text-foreground-subtle">
                               {row.sizeLabel}
                             </span>
                           ) : null}

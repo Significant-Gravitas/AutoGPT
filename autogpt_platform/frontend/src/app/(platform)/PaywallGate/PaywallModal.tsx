@@ -10,6 +10,7 @@ import { PaymentRecoveryCard } from "@/components/organisms/UsageExperience/Paym
 import { usePaymentRecovery } from "@/services/usageExperience/usePaymentRecovery";
 import { Logout03Icon } from "@hugeicons/core-free-icons";
 import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
+import { PausedSchedulesNotice } from "./components/PausedSchedulesNotice";
 import { PaywallPlanChoices } from "./components/PaywallPlanChoices";
 import { PaywallHeader } from "./components/PaywallHeader";
 import { usePaywallModal } from "./usePaywallModal";
@@ -34,6 +35,7 @@ export function PaywallModal() {
     handleClose,
     trial,
     trialOffer,
+    pausedWorkflowSchedules,
   } = usePaywallModal();
   // The gate only opens this modal for accounts without a plan.
   const recovery = usePaymentRecovery("NO_TIER");
@@ -66,13 +68,17 @@ export function PaywallModal() {
             </Button>
           </div>
           {recovery.paymentFailed ? (
-            <PaymentRecoveryCard
-              payment={recovery.payment}
-              fallback="Update your payment method in billing to continue. Your chats, workflows and results are saved."
-            />
+            <>
+              <PaymentRecoveryCard
+                payment={recovery.payment}
+                fallback="Update your payment method in billing to continue. Your chats, workflows and results are saved."
+              />
+              <PausedSchedulesNotice count={pausedWorkflowSchedules} />
+            </>
           ) : (
             <>
               <PaywallHeader />
+              <PausedSchedulesNotice count={pausedWorkflowSchedules} />
 
               <div className="relative mt-2 w-full">
                 {isLoading || trial.isLoading ? (

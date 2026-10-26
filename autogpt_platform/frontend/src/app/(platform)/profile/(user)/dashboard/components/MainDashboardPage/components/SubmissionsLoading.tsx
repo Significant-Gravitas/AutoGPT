@@ -6,6 +6,7 @@ export function SubmissionsLoading() {
       {Array.from({ length: 3 }).map((_, i) => (
         <div
           key={i}
+          // TODO(tokens): no exact role (border-neutral-200 #E5E5E5, dark:border-neutral-700)
           className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-700"
         >
           <div className="flex items-center gap-4">
