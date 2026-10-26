@@ -12,7 +12,7 @@ import { LuCopy } from "react-icons/lu";
 import { Label } from "@/components/atoms/Label/Label";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Text } from "@/components/atoms/Text/Text";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Button } from "@/components/atoms/Button/Button";
 
 import { useAPIkeysModals } from "./useAPIkeysModals";

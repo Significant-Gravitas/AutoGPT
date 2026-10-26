@@ -34,7 +34,7 @@ import {
   SelectValue,
 } from "@/components/atoms/Select/components/SelectPrimitives";
 import { Textarea } from "@/components/__legacy__/ui/textarea";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Collapsible } from "@/components/molecules/Collapsible/Collapsible";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
