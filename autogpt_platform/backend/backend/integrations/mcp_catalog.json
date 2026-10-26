@@ -425,7 +425,7 @@
     "mcp_server": {
       "server_url": "https://mcp.cloudflare.com/mcp",
       "documentation_url": "https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/",
-      "setup_instructions": "Sign in to Cloudflare; its consent screen opens on Full access. Pick Read only there to allow inspection without changes. Minimal grants only your identity and account list, so Cloudflare API calls will be refused. Or use a Cloudflare API token with the permissions you need. Account tokens also need Account Resources: Read, and tokens with Client IP Address Filtering aren't supported.",
+      "setup_instructions": "Sign in to Cloudflare and keep Full access on its consent screen. Cloudflare refuses calls outside a narrower choice, and Minimal allows only your identity and account list. Or use a Cloudflare API token with the permissions you need. Account tokens also need Account Resources: Read, and tokens with Client IP Address Filtering aren't supported.",
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth",

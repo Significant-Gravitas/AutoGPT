@@ -539,7 +539,7 @@
       "search",
       "whoami"
     ],
-    "irreversible": [
+    "external": [
       "execute"
     ]
   }

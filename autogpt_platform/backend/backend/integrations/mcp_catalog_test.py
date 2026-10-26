@@ -285,7 +285,7 @@ def test_a_tool_cannot_carry_two_effects():
         ("https://mcp.cloudflare.com/mcp", "search", "read"),
         ("https://mcp.cloudflare.com/mcp", "docs", "read"),
         ("https://mcp.cloudflare.com/mcp", "whoami", "read"),
-        ("https://mcp.cloudflare.com/mcp", "execute", "irreversible"),
+        ("https://mcp.cloudflare.com/mcp", "execute", "external"),
         ("https://mcp.example.com/mcp", "get_things", None),
     ],
 )

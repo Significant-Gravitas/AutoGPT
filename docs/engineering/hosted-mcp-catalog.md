@@ -11,7 +11,7 @@
 - Set `oauth_server_url` when the vendor supplies a separate signed-in endpoint.
 - Set documented `oauth_scopes` to cover what the server's tools need, write scopes included. The vendor refuses any call the grant doesn't cover, and whether a covered call asks first is the effect map's job, so don't withhold write scopes to prevent changes. An empty list omits the scope parameter; omission/null uses discovery defaults, which are the resource's `scopes_supported`, else the authorization server's.
 - Set `oauth_request_all_scopes` instead when the resource lists only a minimum and adds the rest through step-up authorization, which our client doesn't do. Sign-in then requests every scope the authorization server advertises, so the list can't go stale, and the vendor's consent screen lets the user narrow it. Example: Cloudflare.
-- List the server's tools in [`mcp_effects.json`](../../autogpt_platform/backend/backend/integrations/mcp_effects.json) as `read`, `external` or `irreversible`, named exactly as the vendor's published tool list names them. Pick the more cautious class when the docs are unclear; a tool the map leaves out asks before it runs.
+- List the server's tools in [`mcp_effects.json`](../../autogpt_platform/backend/backend/integrations/mcp_effects.json) as `read`, `external` or `irreversible`, named exactly as the vendor's published tool list names them. Pick the more cautious class when the docs are unclear; a tool the map leaves out asks before it runs. Map a catch-all tool that both reads and writes, such as Cloudflare's `execute`, as `external`: it still asks first, while `irreversible` would mark every read as permanent and rule out approving several calls at once.
 
 ## Choose how users connect
 
