@@ -28,6 +28,7 @@ export function useMapEmbed(pins: MapPin[]) {
   useEffect(() => {
     const container = containerRef.current;
     if (!apiKey || !container) return;
+    const pins = JSON.parse(pinsKey) as MapPin[];
     let cancelled = false;
     let rejected = false;
     const markers: Array<{ map: unknown }> = [];
@@ -87,7 +88,6 @@ export function useMapEmbed(pins: MapPin[]) {
       unsubscribe();
       teardown();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey, pinsKey]);
 
   return { containerRef, status };

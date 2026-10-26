@@ -16,12 +16,13 @@ function PinLinks({ data }: Props) {
             href={googleMapsPinUrl(pin)}
             target="_blank"
             rel="noreferrer"
+            // TODO(tokens): no link colour role yet; matches chat links
             className="text-sm text-blue-500 hover:underline"
           >
             {pin.name}
           </a>
           {pin.address ? (
-            <Text variant="small" className="text-zinc-500">
+            <Text variant="small" className="text-foreground-tertiary">
               {pin.address}
             </Text>
           ) : null}
@@ -36,25 +37,25 @@ export function MapEmbed({ data }: Props) {
 
   return (
     <figure
-      className="my-3 overflow-hidden rounded-xl border border-zinc-200"
+      className="my-3 overflow-hidden rounded-xl border border-border-base"
       data-testid="map-embed"
     >
       {data.title ? (
-        <figcaption className="border-b border-zinc-100 px-3 py-2 text-sm font-medium text-zinc-800">
+        <figcaption className="border-b border-separator px-3 py-2 text-sm font-medium text-foreground-emphasis">
           {data.title}
         </figcaption>
       ) : null}
       {status === "failed" ? (
         <PinLinks data={data} />
       ) : (
-        <div className="relative h-72 w-full bg-zinc-100">
+        <div className="relative h-72 w-full bg-surface-muted">
           <div
             ref={containerRef}
             className="h-full w-full"
             aria-label={data.title ?? "Map"}
           />
           {status === "loading" ? (
-            <div className="absolute inset-0 flex items-center justify-center text-zinc-500">
+            <div className="absolute inset-0 flex items-center justify-center text-foreground-tertiary">
               <LoadingSpinner />
             </div>
           ) : null}
