@@ -162,3 +162,54 @@ async def test_huge_format_width_blocked_in_a_later_field(fmt: TextFormatter):
         await fmt.format_string(
             "{{ 0 | format('%%%" + str(MAX_FORMAT_FIELD_SIZE + 1) + "f') }}"
         )
+
+
+# --- The same cap covers the other ways a template can format a string ---
+
+TOO_WIDE = str(MAX_FORMAT_FIELD_SIZE + 1)
+
+
+@pytest.mark.asyncio
+async def test_percent_operator_pads_within_the_cap(fmt: TextFormatter):
+    assert await fmt.format_string("{{ '%5d' % 1 }}") == "    1"
+
+
+@pytest.mark.asyncio
+async def test_huge_percent_operator_width_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string("{{ '%" + TOO_WIDE + "d' % 1 }}")
+
+
+@pytest.mark.asyncio
+async def test_str_format_pads_within_the_cap(fmt: TextFormatter):
+    assert await fmt.format_string("{{ '{:5}'.format(1) }}") == "    1"
+
+
+@pytest.mark.asyncio
+async def test_huge_str_format_width_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string("{{ '{:" + TOO_WIDE + "}'.format(1) }}")
+
+
+@pytest.mark.asyncio
+async def test_huge_str_format_precision_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string("{{ '{:." + TOO_WIDE + "f}'.format(1.5) }}")
+
+
+@pytest.mark.asyncio
+async def test_huge_nested_str_format_width_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string("{{ '{:{w}}'.format(1, w=" + TOO_WIDE + ") }}")
+
+
+@pytest.mark.asyncio
+async def test_huge_format_map_width_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string("{{ '{n:" + TOO_WIDE + "}'.format_map({'n': 1}) }}")
+
+
+@pytest.mark.asyncio
+async def test_huge_safe_markup_format_width_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string("{{ ('{:" + TOO_WIDE + "}' | safe).format(1) }}")
