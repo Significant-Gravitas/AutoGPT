@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { MapAwarePre } from "@/components/contextual/MapEmbed/MapAwarePre";
 import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@/lib/streamdown-code-plugin";
@@ -422,7 +423,10 @@ const LINK_SAFETY = {
   renderModal: renderExternalLinkModal,
 };
 
-const TABLE_COMPONENT: StreamdownComponents = { table: MessageTable };
+const TABLE_COMPONENT: StreamdownComponents = {
+  table: MessageTable,
+  pre: MapAwarePre,
+};
 
 const mergeTableComponent = createComponentsMerger((components) => ({
   ...TABLE_COMPONENT,
