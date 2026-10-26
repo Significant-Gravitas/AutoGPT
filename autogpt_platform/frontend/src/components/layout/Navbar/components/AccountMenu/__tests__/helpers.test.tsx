@@ -1,4 +1,4 @@
-import { IconType } from "@/components/__legacy__/ui/icons";
+import { IconType } from "@/components/layout/Navbar/helpers";
 import { describe, expect, test } from "vitest";
 import { getAccountMenuIcon } from "../helpers";
 import { getAccountMenuItems } from "../../../helpers";

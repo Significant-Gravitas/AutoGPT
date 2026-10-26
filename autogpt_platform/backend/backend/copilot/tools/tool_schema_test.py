@@ -279,14 +279,18 @@ from ._test_data import make_session
 # re-measured on that merged tree (89 tools), with the stack's margin:
 #     merged tree                                 77,301 (89 tools)
 #     + headroom                       +300       77,601
+# Re-measured on the v2 External API root merged with dev 8df80022bc, which
+# brings the MCP tools' external schemas and the preset tools back:
+#     merged tree                                 77,510 (89 tools)
+#     + headroom                       +300       77,810
 #
 # SECRT-3150 adds request_integration (90 tools): the card that says a
 # service cannot be connected yet, instead of a hand-built HTTP request.
 # Description and argument text were trimmed to the minimum first.
-#     dev f0ae7dfd4                                77,501 (89 tools)
-#     + request_integration          +409          77,910 (90 tools)
-#     + headroom                       +300       78,210
-_CHAR_BUDGET = 78_210
+#     dev above                                    77,510 (89 tools)
+#     + request_integration          +409          77,919 (90 tools)
+#     + headroom                       +300       78,219
+_CHAR_BUDGET = 78_219
 
 
 @pytest.fixture(scope="module")

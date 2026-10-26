@@ -14,6 +14,7 @@ import {
   isIntegrationRequestPart,
 } from "../ToolChain/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
+import { CHAT_IMAGE_TOKEN_PREFIXES } from "../../helpers/chatImageTokens";
 
 export type MessagePart = UIMessage<
   unknown,
@@ -142,9 +143,8 @@ export function getLastCompactionCallId(parts: MessagePart[]): string | null {
 export const WORKSPACE_FILE_PATTERN =
   /^\/api\/proxy\/api\/workspace\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download$/;
 const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
-// An image token the renderer draws as the file's own link (`WorkspaceLink`); no
-// `_` or `*`, which Streamdown would close as unfinished emphasis at the end.
-const WORKSPACE_LINK_IMAGE_PREFIX = "/workspace-link/";
+// An image token the renderer draws as the file's own link (`WorkspaceLink`).
+const WORKSPACE_LINK_IMAGE_PREFIX = CHAT_IMAGE_TOKEN_PREFIXES.workspaceLink;
 
 export function getTurnMessages(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
