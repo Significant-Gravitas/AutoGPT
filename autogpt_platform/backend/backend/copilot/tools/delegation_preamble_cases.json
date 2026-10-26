@@ -11,7 +11,9 @@
     "frontend regex is updated to match.",
     "user: the user's first name, or empty when it is unknown. Rows stored before",
     "the name was added say \"this user's team\"; that wording is also what an",
-    "unknown name still renders, so the frontend must keep hiding it."
+    "unknown name still renders, so the frontend must keep hiding it.",
+    "The emoji-named caller is 45 code points but 90 UTF-16 code units: both",
+    "matchers must count code points, as the backend's name caps do."
   ],
   "cases": [
     {
@@ -85,6 +87,15 @@
       "prompt": "Review **all** links.\n\n- [ ] Footer",
       "message": "[Task handed to you by Avery, a teammate on Priya's team. It is yours now: they are not waiting on a report and cannot answer follow-ups. Take it to completion and tell the user the outcome yourself. If something only the user can provide is missing, ask them.]\n\n[Context: Launch on Friday.]\n\nReview **all** links.\n\n- [ ] Footer",
       "visible": "[Context: Launch on Friday.]\n\nReview **all** links.\n\n- [ ] Footer"
+    },
+    {
+      "kind": "delegation",
+      "caller": "🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀",
+      "user": "Priya",
+      "context": "",
+      "prompt": "Draft the launch update.",
+      "message": "[Delegated task from 🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀, a teammate on Priya's team — not the user. They cannot see your thread, so report the outcome in your final message. If the task needs something only the user can provide, say what is missing instead of guessing.]\n\nDraft the launch update.",
+      "visible": "Draft the launch update."
     }
   ]
 }
