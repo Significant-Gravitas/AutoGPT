@@ -161,7 +161,9 @@ async def test_the_conversion_event_reports_the_chosen_plan(converted):
             "user_db",
             return_value=MagicMock(
                 get_user_by_id=AsyncMock(
-                    return_value=SimpleNamespace(id="user-1", name="Sam")
+                    return_value=SimpleNamespace(
+                        id="user-1", name="Sam", email="sam.carter@example.com"
+                    )
                 )
             ),
         ),
