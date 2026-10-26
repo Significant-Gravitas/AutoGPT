@@ -293,8 +293,8 @@ jobs:
       # passes ``-a`` so AUTH succeeds rather than the daemon rejecting
       # an unauthenticated PING.
       # Pinned to the release the cloud runs (``serviceVersion`` in the infra
-      # repo's FalkorDB chart): older releases refuse Cypher newer ones run,
-      # so a newer pin passes queries production fails. Bump it with the chart.
+      # repo's FalkorDB chart): older releases refuse Cypher newer ones run.
+      # Bump every FalkorDB pin together with that chart (OPEN-3746, #16224).
       falkordb:
         image: falkordb/falkordb:v4.12.5
         ports:
