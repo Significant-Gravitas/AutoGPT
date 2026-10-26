@@ -5,7 +5,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/atoms/Button/Button";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/atoms/Input/Input";
 
 function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
@@ -125,7 +125,9 @@ const InputGroupTextarea = React.forwardRef<
   React.ComponentProps<"textarea">
 >(({ className, ...props }, ref) => {
   return (
-    <Textarea
+    <Input
+      bare
+      type="textarea"
       ref={ref}
       data-slot="input-group-control"
       className={cn(
