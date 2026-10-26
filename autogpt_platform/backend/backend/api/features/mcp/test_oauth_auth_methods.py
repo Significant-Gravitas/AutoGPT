@@ -405,6 +405,58 @@ async def test_catalog_defaults_apply_to_generic_oauth_login(
     )
 
 
+CLOUDFLARE_IDENTITY_SCOPES = ["user:read", "account:read"]
+CLOUDFLARE_ADVERTISED_SCOPES = [
+    "offline_access",
+    *CLOUDFLARE_IDENTITY_SCOPES,
+    "dns.read",
+    "dns.write",
+]
+
+
+@pytest.mark.parametrize(
+    "server_url,advertised,expected",
+    [
+        (
+            "https://mcp.cloudflare.com/mcp",
+            CLOUDFLARE_ADVERTISED_SCOPES,
+            CLOUDFLARE_ADVERTISED_SCOPES,
+        ),
+        ("https://mcp.cloudflare.com/mcp", None, CLOUDFLARE_IDENTITY_SCOPES),
+        (
+            "https://unknown.example.com/mcp",
+            CLOUDFLARE_ADVERTISED_SCOPES,
+            CLOUDFLARE_IDENTITY_SCOPES,
+        ),
+    ],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_catalog_entry_can_request_every_advertised_scope(
+    client, oauth_mocks, server_url, advertised, expected
+):
+    metadata, _, post, manager = oauth_mocks
+    if advertised is not None:
+        metadata["scopes_supported"] = advertised
+    resource = {
+        "resource": server_url,
+        "authorization_servers": ["https://auth.example.com"],
+        "scopes_supported": CLOUDFLARE_IDENTITY_SCOPES,
+    }
+    with patch("backend.api.features.mcp.routes.MCPClient") as mcp_client:
+        mcp_client.return_value.discover_auth = AsyncMock(return_value=resource)
+        mcp_client.return_value.discover_auth_server_metadata = AsyncMock(
+            return_value=(metadata, "https://auth.example.com")
+        )
+        response = await client.post("/oauth/login", json={"server_url": server_url})
+
+    assert response.status_code == 200
+    assert manager.store.store_state_token.call_args.args[2] == expected
+    assert post.call_args.kwargs["json"]["scope"] == " ".join(expected)
+    assert parse_qs(urlparse(response.json()["login_url"]).query)["scope"] == [
+        " ".join(expected)
+    ]
+
+
 @pytest.mark.parametrize(
     "provider_name",
     ["mcp_antimetal", "mcp_brevo", "mcp_intercom"],

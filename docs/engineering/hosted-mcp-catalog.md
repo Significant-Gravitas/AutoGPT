@@ -9,7 +9,9 @@
 - Choose the connection setup that matches the vendor's server; see [Choose how users connect](#choose-how-users-connect).
 - Order the supported `auth_methods` by preference; the first method is selected initially. Choices are `oauth`, `bearer`, `basic`, and `none`.
 - Set `oauth_server_url` when the vendor supplies a separate signed-in endpoint.
-- Set documented `oauth_scopes` for the initial grant and separate `oauth_write_scopes` for the optional **Allow changes** choice. An empty default list omits the scope parameter; omission/null uses discovery defaults.
+- Set documented `oauth_scopes` for the grant, write scopes included: writes are gated by the server's effect map, not by its scopes. An empty list omits the scope parameter; omission/null uses discovery defaults, which are the resource's `scopes_supported`, else the authorization server's.
+- Set `oauth_request_all_scopes` instead when the resource lists only a minimum and adds the rest through step-up authorization, which our client doesn't do. Sign-in then requests every scope the authorization server advertises, so the list can't go stale, and the vendor's consent screen lets the user narrow it. Example: Cloudflare.
+- List the server's tools in [`mcp_effects.json`](../../autogpt_platform/backend/backend/integrations/mcp_effects.json) as `read`, `external` or `irreversible`, named exactly as the vendor's published tool list names them. Pick the more cautious class when the docs are unclear; a tool the map leaves out asks before it runs.
 
 ## Choose how users connect
 
