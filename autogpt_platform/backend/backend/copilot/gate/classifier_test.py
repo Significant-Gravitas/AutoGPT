@@ -22,7 +22,9 @@ def _response(text: str):
     return response
 
 
-async def _classify(raw_or_error, *, args=None, user_message="list the files"):
+async def _classify(
+    raw_or_error, *, args=None, user_message="list the files", user_messages=None
+):
     call = (
         AsyncMock(side_effect=raw_or_error)
         if isinstance(raw_or_error, BaseException)
@@ -36,7 +38,7 @@ async def _classify(raw_or_error, *, args=None, user_message="list the files"):
         judgement = await supervise(
             tool_name="bash_exec",
             args=args or {"command": "ls"},
-            user_message=user_message,
+            user_messages=user_messages or [user_message],
         )
     return (judgement.allowed, judgement.reason), call
 
@@ -209,6 +211,26 @@ async def test_a_shortened_request_keeps_a_pasted_blob_it_cuts_through():
     assert "Now hire a dev." in prompt
 
 
+async def test_a_call_is_judged_first_against_the_last_three_messages():
+    _, call = await _classify(
+        "allow\nreason: asked", user_messages=["one", "two", "three", "four"]
+    )
+
+    prompt = call.await_args.kwargs["messages"][1]["content"]
+    request = prompt.split("<<<BEGIN USER REQUEST ")[1].split("<<<END USER REQUEST")[0]
+    assert request.index("two") < request.index("three") < request.index("four")
+    assert "one" not in request
+
+
+async def test_without_jev_an_ask_names_no_ground_and_is_not_judged_again():
+    (allowed, _), call = await _classify(
+        "ask\nreason: not asked for", user_messages=["one", "two", "three", "four"]
+    )
+
+    assert not allowed
+    call.assert_awaited_once()
+
+
 @pytest.mark.parametrize(
     "args, request_text",
     [({"command": "echo \ud83d"}, "run it"), ({"command": "ls"}, "run \ud83d")],
@@ -264,6 +286,6 @@ async def _jev_state(command: str, request: str) -> str | None:
         patch.object(jev, "call_jev", call_jev),
     ):
         await supervise(
-            tool_name="bash_exec", args={"command": command}, user_message=request
+            tool_name="bash_exec", args={"command": command}, user_messages=[request]
         )
     return call_jev.await_args.args[1] if call_jev.await_count else None

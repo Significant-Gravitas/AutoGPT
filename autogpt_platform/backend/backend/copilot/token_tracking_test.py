@@ -413,8 +413,41 @@ class TestPlatformCostLogging:
         entry = mock_log.call_args[0][0]
         assert (entry.graph_exec_id, entry.chat_session_id) == expected
 
+    @pytest.mark.parametrize("expert_id", ["expert-1", None])
     @pytest.mark.asyncio
-    async def test_logs_cost_entry_without_cost_usd(self):
+    async def test_the_expert_the_spend_ran_for_reaches_the_row(self, expert_id):
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_cost_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-cost",
+                prompt_tokens=10,
+                completion_tokens=5,
+                cost_usd=0.001,
+                expert_id=expert_id,
+            )
+            await asyncio.sleep(0)
+        assert mock_log.call_args[0][0].expert_id == expert_id
+
+    @pytest.mark.parametrize(
+        "prompt,completion,cache_read,cache_write",
+        [(100, 50, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100), (0, 0, 100, 100)],
+    )
+    @pytest.mark.asyncio
+    async def test_logs_cost_entry_without_cost_usd(
+        self, prompt, completion, cache_read, cache_write
+    ):
         """When cost_usd is None, tracking_type should be 'tokens'."""
         mock_log = AsyncMock()
         with (
@@ -432,8 +465,10 @@ class TestPlatformCostLogging:
             await persist_and_record_usage(
                 session=None,
                 user_id="user-tokens",
-                prompt_tokens=100,
-                completion_tokens=50,
+                prompt_tokens=prompt,
+                completion_tokens=completion,
+                cache_read_tokens=cache_read,
+                cache_creation_tokens=cache_write,
                 log_prefix="[Baseline]",
             )
             await asyncio.sleep(0)
@@ -442,9 +477,12 @@ class TestPlatformCostLogging:
         assert entry.cost_microdollars is None
         assert entry.tracking_type == "tokens"
         assert entry.metadata["tracking_type"] == "tokens"
-        assert entry.metadata["tracking_amount"] == 150
+        assert entry.metadata["tracking_amount"] == prompt + completion
         assert entry.graph_exec_id is None
         assert entry.block_name == "copilot:Baseline"
+
+        assert entry.cache_read_tokens == (cache_read or None)
+        assert entry.cache_creation_tokens == (cache_write or None)
 
     @pytest.mark.asyncio
     async def test_skips_cost_log_when_no_user_id(self):
@@ -621,6 +659,40 @@ class TestPlatformCostLogging:
         assert entry.cost_microdollars == 5000
         assert entry.input_tokens == 0
         assert entry.output_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_logs_cache_only_tokens_with_no_cost(self):
+        """A fully-cached response nobody could price (no provider cost, no
+        catalog price) still leaves its billed tokens in the ledger."""
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_cost_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-cache-only",
+                prompt_tokens=0,
+                completion_tokens=0,
+                cache_read_tokens=10_000,
+                model="uncatalogued-model",
+                provider="open_router",
+                log_prefix="[dream:consolidate]",
+            )
+            await asyncio.sleep(0)
+        mock_log.assert_awaited_once()
+        entry = mock_log.call_args[0][0]
+        assert entry.cost_microdollars is None
+        assert entry.tracking_type == "tokens"
+        assert entry.metadata["cache_read_tokens"] == 10_000
 
     @pytest.mark.asyncio
     async def test_negative_cost_usd_falls_back_to_tokens(self):

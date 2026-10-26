@@ -9,7 +9,6 @@ import {
   getGetV1GetNotificationPreferencesMockHandler,
   getGetV1GetUserTimezoneMockHandler,
   getPostV1UpdateNotificationPreferencesMockHandler,
-  getPostV1UpdateUserEmailMockHandler,
 } from "@/app/api/__generated__/endpoints/auth/auth.msw";
 import type { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
 import type { NotificationPreferenceDTO } from "@/app/api/__generated__/models/notificationPreferenceDTO";
@@ -58,7 +57,6 @@ describe("SettingsPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateNotificationPreferencesMockHandler(defaultPreferences),
     );
 
@@ -77,7 +75,6 @@ describe("SettingsPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateNotificationPreferencesMockHandler(async ({ request }) => {
         submitted = (await request.json()) as NotificationPreferenceDTO;
         return { ...defaultPreferences, ...submitted };

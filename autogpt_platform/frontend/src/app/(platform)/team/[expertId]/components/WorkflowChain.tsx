@@ -16,7 +16,7 @@ export function WorkflowChain({ chain, size = "md" }: Props) {
       <Icon
         icon={FlashIcon}
         size={size === "sm" ? 20 : 28}
-        className="text-zinc-300"
+        className="text-foreground-disabled"
       />
     );
   }
@@ -30,7 +30,7 @@ export function WorkflowChain({ chain, size = "md" }: Props) {
               <Icon
                 icon={ArrowRight01Icon}
                 size={14}
-                className="text-zinc-800"
+                className="text-foreground-emphasis"
               />
             ) : null}
             <ChainTile item={item} size={size} />

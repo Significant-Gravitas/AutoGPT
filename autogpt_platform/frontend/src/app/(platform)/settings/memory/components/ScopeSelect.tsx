@@ -27,6 +27,7 @@ function ScopeCheck({ selected }: { selected: boolean }) {
     <Icon
       icon={Tick02Icon}
       size={16}
+      // TODO(tokens): no exact role (text-violet-600 #7C3AED)
       className="ml-auto shrink-0 text-violet-600"
     />
   );
@@ -44,8 +45,10 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           type="button"
           aria-label="Memory scope"
           className={cn(
-            "flex w-full items-center gap-2.5 rounded-[10px] border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-textBlack",
-            "transition-colors hover:border-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400",
+            "flex w-full items-center gap-2.5 rounded-[10px] border border-border-base bg-surface px-3 py-2 text-sm font-medium text-textBlack",
+            // TODO(tokens): no exact role (focus-visible:ring-violet-400 #A78BFA)
+            "transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400",
+            // TODO(tokens): no exact role (data-[state=open]:border-violet-500 #8B5CF6)
             "data-[state=open]:border-violet-500",
           )}
         >
@@ -64,7 +67,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           <Icon
             icon={ArrowDown01Icon}
             size={16}
-            className="ml-auto shrink-0 text-zinc-500"
+            className="ml-auto shrink-0 text-foreground-tertiary"
           />
         </button>
       </DropdownMenuTrigger>
@@ -79,7 +82,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           <AutopilotAvatar size={28} />
           <span className="flex min-w-0 flex-col leading-snug">
             <span className="text-sm font-medium text-textBlack">Otto</span>
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-foreground-tertiary">
               Your account memory — everything you do together
             </span>
           </span>
@@ -89,7 +92,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
         {experts.length > 0 && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="px-2.5 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-400">
+            <DropdownMenuLabel className="px-2.5 pb-0.5 pt-1.5 text-tiny font-semibold uppercase leading-inherit tracking-caps text-foreground-subtle">
               Your experts
             </DropdownMenuLabel>
             {experts.map((expert) => (
@@ -108,7 +111,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
                     {expert.name}
                   </span>
                   {expert.role && (
-                    <span className="truncate text-xs text-zinc-500">
+                    <span className="truncate text-xs text-foreground-tertiary">
                       {expert.role}
                     </span>
                   )}

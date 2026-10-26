@@ -1,7 +1,8 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { cn } from "@/lib/utils";
 import * as RXDialog from "@radix-ui/react-dialog";
 import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
@@ -120,19 +121,23 @@ export function SearchCommandModal({
         <RXDialog.Overlay className="fixed inset-0 z-[80] bg-black/20 backdrop-blur-sm" />
         <RXDialog.Content
           onOpenAutoFocus={handleOpenAutoFocus}
-          className="fixed left-1/2 top-[18vh] z-[80] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-zinc-200 focus:outline-none"
+          className="fixed left-1/2 top-[18vh] z-[80] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-3xl bg-surface shadow-2xl ring-1 ring-border-base focus:outline-none"
           onKeyDown={handleKeyDown}
         >
           <RXDialog.Title className="sr-only">Search</RXDialog.Title>
           <RXDialog.Description className="sr-only">
             Search commands and results.
           </RXDialog.Description>
-          <div className="flex items-center gap-3 bg-zinc-50 p-3">
+          <div
+            data-slot="search-command-modal-search-bar"
+            className="flex items-center gap-3 bg-surface-muted p-3"
+          >
             <Icon
               icon={Search01Icon}
-              className="h-5 w-5 shrink-0 text-zinc-800"
+              className="h-5 w-5 shrink-0 text-foreground-emphasis"
             />
             <Input
+              bare
               ref={inputRef}
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
@@ -145,20 +150,20 @@ export function SearchCommandModal({
                   : undefined
               }
               autoComplete="off"
-              className="h-9 border-0 bg-transparent px-0 text-base text-zinc-950 shadow-none placeholder:text-zinc-700 focus-visible:ring-0"
+              className="h-9 border-0 bg-transparent px-0 text-foreground shadow-none placeholder:text-foreground-body focus-visible:ring-0"
             />
             {isLoading && isSearching ? (
               <LoadingSpinner
                 size="small"
                 aria-label="Searching"
-                className="shrink-0 text-zinc-500"
+                className="shrink-0 text-foreground-tertiary"
               />
             ) : null}
             {query ? (
               <Button
                 type="button"
-                variant="ghost"
-                size="icon-sm"
+                variant="compact-ghost"
+                size="compact-icon-sm"
                 aria-label="Clear search"
                 onClick={() => onQueryChange("")}
                 className="shrink-0"
@@ -168,18 +173,25 @@ export function SearchCommandModal({
             ) : null}
           </div>
           <Separator />
-          <div className="py-2">
+          <div data-slot="search-command-modal-body" className="py-2">
             <div
               id={`${idPrefix}-results`}
+              data-slot="search-command-modal-results"
               className={cn(
-                "max-h-[26rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200",
+                "max-h-[26rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-base",
                 totalCount === 0 && "max-h-none",
               )}
             >
               {isError ? (
-                <div className="px-3 py-8 text-center text-sm text-red-500">
+                <Text
+                  variant="body-tight"
+                  as="div"
+                  tone="error"
+                  data-slot="search-command-modal-error"
+                  className="px-3 py-8 text-center"
+                >
                   {errorLabel}
-                </div>
+                </Text>
               ) : showResults ? (
                 <SearchCommandResults
                   buckets={buckets}
@@ -199,36 +211,106 @@ export function SearchCommandModal({
                 // Kowalski's strategy-feedback-immediate rule.
                 <SearchCommandSkeleton />
               ) : showEmptyState ? (
-                <div className="px-3 py-8 text-center text-sm text-zinc-500">
+                <Text
+                  variant="body-tight"
+                  as="div"
+                  tone="muted"
+                  data-slot="search-command-modal-empty"
+                  className="px-3 py-8 text-center"
+                >
                   {isSearching ? searchingEmptyLabel : idleEmptyLabel}
-                </div>
+                </Text>
               ) : null}
             </div>
           </div>
           <Separator />
-          <div className="flex items-center justify-between gap-4 bg-zinc-50 px-4 py-4 text-xs text-zinc-700">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <kbd className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-zinc-200 bg-white font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
+          <div
+            data-slot="search-command-modal-footer"
+            className="flex items-center justify-between gap-4 bg-surface-muted px-4 py-4"
+          >
+            <div
+              data-slot="search-command-modal-hints"
+              className="flex items-center gap-4"
+            >
+              <div
+                data-slot="search-command-modal-hint"
+                className="flex items-center gap-1.5"
+              >
+                <Text
+                  variant="caption-sm"
+                  as="kbd"
+                  tone="emphasis"
+                  data-slot="search-command-modal-key"
+                  // TODO(tokens): no shadow token for the key-cap shadow.
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
+                >
                   ↑
-                </kbd>
-                <kbd className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-zinc-200 bg-white font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
+                </Text>
+                <Text
+                  variant="caption-sm"
+                  as="kbd"
+                  tone="emphasis"
+                  data-slot="search-command-modal-key"
+                  // TODO(tokens): no shadow token for the key-cap shadow.
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
+                >
                   ↓
-                </kbd>
-                <span>Navigate</span>
+                </Text>
+                <Text
+                  variant="small-tight"
+                  as="span"
+                  tone="body"
+                  data-slot="search-command-modal-hint-label"
+                >
+                  Navigate
+                </Text>
               </div>
-              <div className="flex items-center gap-1.5">
-                <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-zinc-200 bg-white px-1 font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
+              <div
+                data-slot="search-command-modal-hint"
+                className="flex items-center gap-1.5"
+              >
+                <Text
+                  variant="caption-sm"
+                  as="kbd"
+                  tone="emphasis"
+                  data-slot="search-command-modal-key"
+                  // TODO(tokens): no shadow token for the key-cap shadow.
+                  className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border-base bg-surface px-1 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
+                >
                   ↵
-                </kbd>
-                <span>Select</span>
+                </Text>
+                <Text
+                  variant="small-tight"
+                  as="span"
+                  tone="body"
+                  data-slot="search-command-modal-hint-label"
+                >
+                  Select
+                </Text>
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <kbd className="inline-flex h-5 items-center justify-center rounded-md border border-zinc-200 bg-white px-1.5 font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
+            <div
+              data-slot="search-command-modal-hint"
+              className="flex items-center gap-1.5"
+            >
+              <Text
+                variant="caption-sm"
+                as="kbd"
+                tone="emphasis"
+                data-slot="search-command-modal-key"
+                // TODO(tokens): no shadow token for the key-cap shadow.
+                className="inline-flex h-5 items-center justify-center rounded-md border border-border-base bg-surface px-1.5 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
+              >
                 esc
-              </kbd>
-              <span>Close</span>
+              </Text>
+              <Text
+                variant="small-tight"
+                as="span"
+                tone="body"
+                data-slot="search-command-modal-hint-label"
+              >
+                Close
+              </Text>
             </div>
           </div>
         </RXDialog.Content>

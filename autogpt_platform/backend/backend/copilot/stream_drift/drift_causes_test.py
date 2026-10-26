@@ -199,15 +199,6 @@ async def test_a_silent_turn_keeps_publishing_within_the_stream_ttl(
 
 
 @requires_redis
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "Approval wake: the end-of-turn wake dispatches the follow-up turn while "
-        "the ending turn is still registered, and the executor drops it as a "
-        "duplicate without closing it, so the chat reads running forever"
-    ),
-)
 async def test_a_turn_the_executor_drops_is_not_left_running(
     session_id: str, turn_id: str
 ) -> None:

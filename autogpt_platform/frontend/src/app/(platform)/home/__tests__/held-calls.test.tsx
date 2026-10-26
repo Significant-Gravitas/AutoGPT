@@ -60,6 +60,8 @@ test("a bare held call is approved from its row", async () => {
       chat_rule: null,
     },
   ]);
+  // Home cannot continue a chat, so its answer never waits for the chat's others.
+  expect("wait_for_other_cards" in requests[0]).toBe(false);
 });
 
 // A folder whose colour the headline does not name, and an email that can't be undone.

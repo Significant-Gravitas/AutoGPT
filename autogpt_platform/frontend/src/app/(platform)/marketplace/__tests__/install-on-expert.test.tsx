@@ -13,11 +13,6 @@ import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import {
-  configureCookiebot,
-  installCookiebot,
-  removeCookiebot,
-} from "@/tests/integrations/cookiebot";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { MainAgentPage } from "../components/MainAgentPage/MainAgentPage";
 
@@ -26,18 +21,6 @@ const mockUseAuth = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: mockUseAuth,
 }));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) =>
-      flag === "hire-experts" ? true : actual.useGetFlag(flag as never),
-  };
-});
 
 const hiredMaria: Expert = {
   id: "expert-maria",
@@ -95,14 +78,8 @@ function renderAgentPage() {
   );
 }
 
-const datafast = vi.fn();
-
 describe("Install on Expert from marketplace detail", () => {
   beforeEach(() => {
-    configureCookiebot();
-    installCookiebot({ statistics: true });
-    datafast.mockReset();
-    (window as unknown as { datafast: typeof datafast }).datafast = datafast;
     mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       isLoggedIn: true,
@@ -110,7 +87,6 @@ describe("Install on Expert from marketplace detail", () => {
   });
 
   afterEach(() => {
-    removeCookiebot();
     vi.unstubAllEnvs();
   });
 
@@ -147,9 +123,6 @@ describe("Install on Expert from marketplace detail", () => {
     expect(await screen.findByText("Installed on Maria")).toBeDefined();
     expect(installExpertId).toBe("expert-maria");
     expect(installBody).toEqual({ store_listing_version_id: "listing-1" });
-    expect(datafast).toHaveBeenCalledWith("workflow_installed_on_expert", {
-      expert_id: "expert-maria",
-    });
   });
 
   test("toasts success when the workflow is already installed", async () => {

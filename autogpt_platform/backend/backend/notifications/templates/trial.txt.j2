@@ -4,12 +4,19 @@
 {{ copy.lede() }}
 
 Plan: {{ plan.label }}
-Trial ends: {{ ends_label }}
-Paid price: {{ plan.price_display }}
+{% if kind == 'converted' %}{% if started_label %}Started: {{ started_label }}
+{% endif %}Price: {{ plan.price_display }}{% else %}{{ 'Trial ended' if kind == 'ended' else 'Trial ends' }}: {{ ends_label }}
+Paid price: {{ plan.price_display }}{% endif %}
 
 {{ copy.detail() }}
 
-{{ 'Update payment method' if kind == 'payment_failed' else 'Review your plan' }}: {{ urls.billing }}
+{% if kind == 'converted' %}Open AutoGPT: {{ urls.dashboard }}{% elif kind == 'ended' %}Choose a plan: {{ urls.billing }}{% else %}{{ 'Update payment method' if kind == 'payment_failed' else 'Review your plan' }}: {{ urls.billing }}{% endif %}
+{% if kind == 'converted' %}
+Three good places to start
+The quick-start guide: {{ urls.docs }}
+The Marketplace: {{ urls.marketplace }}
+Discord: {{ urls.discord }}
+{% endif %}
 You received this because your trial status changed or its end is approaching.
 Billing settings: {{ urls.billing }}
 

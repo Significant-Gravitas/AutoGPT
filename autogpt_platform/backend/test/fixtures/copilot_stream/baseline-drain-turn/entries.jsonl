@@ -1,7 +1,7 @@
 {"id": "1-0", "data": {"type": "data-status", "message": "Message received…"}}
 {"id": "2-0", "data": {"type": "data-status", "message": "Setting up your environment…"}}
 {"id": "3-0", "data": {"type": "start", "messageId": "00000000-0000-4000-8000-000000000001", "sessionId": "drift-session"}}
-{"id": "4-0", "data": {"type": "data-pending-drained", "drainedCount": 1, "messages": [{"id": "00000000-0000-4000-8000-000000000002", "content": "Keep it short."}]}}
+{"id": "4-0", "data": {"type": "data-pending-drained", "drainedCount": 1, "messages": [{"id": "00000000-0000-4000-8000-000000000002", "content": "Keep it short.", "metadata": null}]}}
 {"id": "5-0", "data": {"type": "start-step"}}
 {"id": "6-0", "data": {"type": "reasoning-start", "id": "00000000-0000-4000-8000-000000000003"}}
 {"id": "7-0", "data": {"type": "reasoning-delta", "id": "00000000-0000-4000-8000-000000000003", "delta": "The user wants "}}
@@ -14,7 +14,7 @@
 {"id": "14-0", "data": {"type": "tool-input-start", "toolCallId": "call-fetch", "toolName": "web_fetch"}}
 {"id": "15-0", "data": {"type": "tool-input-available", "toolCallId": "call-fetch", "toolName": "web_fetch", "input": {"url": "example.com"}}}
 {"id": "16-0", "data": {"type": "tool-output-available", "toolCallId": "call-fetch", "output": "Example Domain", "toolName": "web_fetch", "success": true}}
-{"id": "17-0", "data": {"type": "data-pending-drained", "drainedCount": 1, "messages": [{"id": "00000000-0000-4000-8000-000000000005", "content": "In French, please."}]}}
+{"id": "17-0", "data": {"type": "data-pending-drained", "drainedCount": 1, "messages": [{"id": "00000000-0000-4000-8000-000000000005", "content": "In French, please.", "metadata": null}]}}
 {"id": "18-0", "data": {"type": "data-checkpoint", "rows": 5, "sequence": 1, "digest": "630cc061bcb09f33a99719db8a07e65f79152226f69db47702f7a59ea02b17be"}}
 {"id": "19-0", "data": {"type": "start-step"}}
 {"id": "20-0", "data": {"type": "reasoning-start", "id": "00000000-0000-4000-8000-000000000006"}}

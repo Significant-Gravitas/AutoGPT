@@ -5,12 +5,13 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Literal, Mapping, Optional, cast, get_args
+from typing import Any, Literal, Mapping, Optional, cast, get_args
 
 from prisma.enums import ReviewStatus
-from pydantic import BaseModel, JsonValue, ValidationError
+from pydantic import BaseModel, Field, JsonValue, ValidationError
 
 from backend.api.features.experts import scheduling as experts_scheduling
+from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockSchema, BlockType
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
@@ -48,6 +49,7 @@ from backend.data.model import (
     NodeExecutionStats,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.data.user import is_user_banned
 from backend.integrations.credentials_store import is_system_credential
 from backend.monitoring.instrumentation import record_graph_execution
 from backend.util import product_analytics
@@ -63,6 +65,7 @@ from backend.util.exceptions import (
     GraphNotFoundError,
     GraphValidationError,
     NotFoundError,
+    UserBannedError,
 )
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
@@ -851,7 +854,7 @@ async def _construct_starting_node_execution_input(
     n_errors = sum(len(errors) for errors in validation_errors.values())
     if validation_errors:
         raise GraphValidationError(
-            f"Graph validation failed: {n_errors} issues on {n_error_nodes} nodes",
+            f"Workflow validation failed: {n_errors} issues on {n_error_nodes} nodes",
             node_errors=validation_errors,
         )
 
@@ -885,9 +888,9 @@ async def _construct_starting_node_execution_input(
             and "payload" not in input_data
         ):
             raise ValueError(
-                "This agent is triggered by an external event (webhook) "
+                "This workflow is triggered by an external event (webhook) "
                 "and cannot be executed directly. "
-                "Please use the appropriate trigger to run this agent."
+                "Please use the appropriate trigger to run this workflow."
             )
 
         input_data, error = validate_exec(node, input_data, dry_run=dry_run)
@@ -898,7 +901,7 @@ async def _construct_starting_node_execution_input(
 
     if not nodes_input:
         raise ValueError(
-            "No starting nodes found for the graph, make sure an AgentInput or blocks with no inbound links are present as starting nodes."
+            "No starting point found for this workflow. Add an input block, or a block with no incoming links."
         )
 
     return nodes_input, nodes_to_skip
@@ -951,7 +954,7 @@ async def validate_and_construct_node_execution_input(
         skip_access_check=True,
     )
     if not graph:
-        raise GraphNotFoundError(f"Graph #{graph_id} not found.")
+        raise GraphNotFoundError(f"Workflow #{graph_id} not found.")
 
     # Validate that the user has permission to execute this graph
     # This checks both library membership and execution permissions,
@@ -1155,7 +1158,7 @@ async def stop_graph_execution(
         )
 
         if not graph_exec:
-            raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+            raise NotFoundError(f"Workflow run #{graph_exec_id} not found.")
 
         if graph_exec.status in [
             ExecutionStatus.TERMINATED,
@@ -1207,7 +1210,7 @@ async def stop_graph_execution(
             await asyncio.sleep(0.1)
 
     raise TimeoutError(
-        f"Graph execution #{graph_exec_id} will need to take longer than {wait_timeout} seconds to stop. "
+        f"Workflow run #{graph_exec_id} will need to take longer than {wait_timeout} seconds to stop. "
         f"You can check the status of the execution in the UI or try again later."
     )
 
@@ -1225,6 +1228,18 @@ async def _resolve_expert_execution_tenancy(
     user_id: str, expert_id: str
 ) -> tuple[str, str | None]:
     return await get_experts_db().resolve_private_expert_tenancy(user_id, expert_id)
+
+
+async def _resolve_runner_tenancy(
+    user_id: str, organization_id: str | None, team_id: str | None
+) -> tuple[str | None, str | None]:
+    """``resolve_member_tenancy`` for a run's org/team, called directly in the
+    API server and through the DB manager in the scheduler and executor."""
+    if prisma.is_connected():
+        return await resolve_member_tenancy(user_id, organization_id, team_id)
+    return await get_database_manager_async_client().resolve_member_tenancy(
+        user_id, organization_id, team_id
+    )
 
 
 async def _enforce_expert_credential_scope(
@@ -1318,7 +1333,7 @@ async def add_graph_execution(
             graph_id=graph_id, status="validation_error", user_id=user_id
         )
         raise
-    except UserPaywalledError:
+    except (UserPaywalledError, UserBannedError):
         raise
     except Exception:
         record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
@@ -1408,9 +1423,12 @@ async def _add_graph_execution(
         )
 
     if not bypass_paywall and await is_user_paywalled(user_id):
-        raise UserPaywalledError("A subscription is required to run agents.")
+        raise UserPaywalledError("A subscription is required to run workflows.")
+    if await is_user_banned(user_id):
+        raise UserBannedError("This account is banned, so its workflows can't run.")
 
     is_new_execution = graph_exec_id is None
+    tenancy_replaced = False
     context_expert_id = execution_context.expert_id if execution_context else None
     if expert_id is not None and context_expert_id not in (None, expert_id):
         raise ValueError(
@@ -1439,13 +1457,14 @@ async def _add_graph_execution(
         )
 
         if not graph_exec:
-            raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+            raise NotFoundError(f"Workflow run #{graph_exec_id} not found.")
 
+        approval_chat_id = await starting_chat(graph_exec, user_id, edb)
         # A resume rebuilds its context from the graph settings, which would
         # drop the pause the chat that started this run asked for.
         pause_irreversible_actions = (
             pause_irreversible_actions
-            or await _started_from_attended_chat(graph_exec, user_id, edb)
+            or await _started_from_attended_chat(approval_chat_id)
         )
 
         # The persisted row is authoritative on resume. A caller cannot turn
@@ -1498,9 +1517,34 @@ async def _add_graph_execution(
                     )
                     graph_exec.status = ExecutionStatus.TERMINATED
                     return graph_exec
+        else:
+            # Any other run resumes in the org and team it's stored in,
+            # whatever the caller passes. One whose runner has left them since
+            # isn't moved, as it has already run there: the executor stops it
+            # when it picks it up.
+            organization_id, team_id = graph_exec.organization_id, graph_exec.team_id
 
-        # Use existing execution's compiled input masks
+        # The row stores the caller's raw masks and the run-time credential
+        # inputs separately; rebuild the credential masks the same way the
+        # create path compiles them, or nodes that get their credentials from
+        # the run dialog fail validation and are silently skipped (#15266).
         compiled_nodes_input_masks = graph_exec.nodes_input_masks or {}
+        if graph_exec.credential_inputs:
+            resumed_graph = await gdb.get_graph(
+                graph_id=graph_exec.graph_id,
+                version=graph_exec.graph_version,
+                user_id=user_id,
+                include_subgraphs=True,
+                skip_access_check=True,
+            )
+            if resumed_graph:
+                # Same precedence as create: explicit masks override credentials.
+                compiled_nodes_input_masks = _merge_nodes_input_masks(
+                    make_node_credentials_input_map(
+                        resumed_graph, graph_exec.credential_inputs
+                    ),
+                    compiled_nodes_input_masks,
+                )
         # For resumed executions, nodes_to_skip was already determined at creation time
         # TODO: Consider storing nodes_to_skip in DB if we need to preserve it across resumes
         nodes_to_skip: set[str] = set()
@@ -1519,6 +1563,13 @@ async def _add_graph_execution(
         parent_exec_id = (
             execution_context.parent_execution_id if execution_context else None
         )
+        # A sub-graph asks in the chat that started its parent run.
+        if trigger == ExecutionTrigger.COPILOT:
+            approval_chat_id = trigger_ref
+        elif trigger == ExecutionTrigger.SUBGRAPH and execution_context:
+            approval_chat_id = execution_context.approval_chat_id
+        else:
+            approval_chat_id = None
 
         # When execution_context is provided (e.g. from AgentExecutorBlock),
         # inherit dry_run so child-graph validation skips credential checks.
@@ -1541,6 +1592,20 @@ async def _add_graph_execution(
             is_sub_graph=parent_exec_id is not None,
             dry_run=dry_run,
         )
+
+        if organization_id and not expert_id:
+            # The org/team comes from whatever started the run: a request's
+            # verified context, a parent run, a preset, a trigger or a
+            # schedule. As for a request, it's kept only if the user belongs
+            # to it; otherwise the run gets the user's own default.
+            member_org_id, member_team_id = await _resolve_runner_tenancy(
+                user_id, organization_id, team_id
+            )
+            tenancy_replaced = (member_org_id, member_team_id) != (
+                organization_id,
+                team_id,
+            )
+            organization_id, team_id = member_org_id, member_team_id
 
         # Tenant a NEW execution at creation: several callers arrive with a
         # falsy organization_id — legacy schedules (empty organizationId),
@@ -1673,10 +1738,23 @@ async def _add_graph_execution(
                 "expert_id": expert_id,
             }
         )
+    elif tenancy_replaced:
+        # Billing reads the context, not the row, and a sub-graph is handed
+        # its parent's: the org/team the run was moved to must replace it.
+        execution_context = execution_context.model_copy(
+            update={"organization_id": organization_id, "team_id": team_id}
+        )
+    elif not is_new_execution:
+        # A resumed run's context gets the org/team the run is stored with,
+        # in place of any the caller's names. Review resume builds one with
+        # neither, before they're known.
+        execution_context = execution_context.model_copy(
+            update={"organization_id": organization_id, "team_id": team_id}
+        )
     elif execution_context.organization_id is None and graph_exec.organization_id:
-        # A caller-supplied context (e.g. review-resume, admin-requeue) may
-        # be built before org/team are known. Backfill from the persisted
-        # row so billing and sub-graph runs aren't tenant-blind on resume.
+        # A caller-supplied context (e.g. a sub-graph's, whose parent run is
+        # untenanted) may have no org/team. Backfill from the persisted row
+        # so billing and sub-graph runs aren't tenant-blind.
         execution_context = execution_context.model_copy(
             update={
                 "organization_id": graph_exec.organization_id,
@@ -1684,10 +1762,35 @@ async def _add_graph_execution(
             }
         )
 
-    if pause_irreversible_actions:
-        execution_context = execution_context.model_copy(
-            update={"sensitive_action_safe_mode": True}
+    # Identity always comes from the persisted row. A caller-supplied context
+    # (review-resume builds one with only safety/user settings) would
+    # otherwise reach the executor with graph_exec_id=None, which skips the
+    # review gate for irreversible blocks and breaks file blocks (#15300).
+    execution_context = execution_context.model_copy(
+        update={
+            "user_id": graph_exec.user_id,
+            "graph_id": graph_exec.graph_id,
+            "graph_exec_id": graph_exec.id,
+            "graph_version": graph_exec.graph_version,
+            "root_execution_id": execution_context.root_execution_id or graph_exec.id,
+        }
+    )
+
+    stamp: dict[str, Any] = {
+        "approval_chat_id": (
+            None
+            if dry_run or execution_context.dry_run or graph_exec.is_dry_run
+            else approval_chat_id or None
         )
+    }
+    if execution_context.graph_sensitive_action_safe_mode is None:
+        # Kept apart from the pause forced below: the gate holds it as a floor.
+        stamp["graph_sensitive_action_safe_mode"] = (
+            execution_context.sensitive_action_safe_mode
+        )
+    if pause_irreversible_actions:
+        stamp["sensitive_action_safe_mode"] = True
+    execution_context = execution_context.model_copy(update=stamp)
 
     try:
         graph_exec_entry = graph_exec.to_graph_execution_entry(
@@ -1783,11 +1886,15 @@ async def _add_graph_execution(
     return graph_exec
 
 
-async def _started_from_attended_chat(
+# A sub-graph run whose parent run is gone: no chat can be named for it.
+PARENT_GONE = ""
+
+
+async def starting_chat(
     graph_exec: GraphExecutionMeta, user_id: str, edb
-) -> bool:
-    # A sub-graph run follows its parent run's chat. A parent or chat that is
-    # gone cannot prove nobody is watching, so the run pauses.
+) -> str | None:
+    """The chat that started this run, through its sub-graph parents: None when
+    no chat did, ``PARENT_GONE`` when a parent run no longer exists."""
     while (
         graph_exec.trigger_source == ExecutionTrigger.SUBGRAPH
         and graph_exec.trigger_ref
@@ -1796,14 +1903,21 @@ async def _started_from_attended_chat(
             user_id=user_id, execution_id=graph_exec.trigger_ref
         )
         if parent is None:
-            return True
+            return PARENT_GONE
         graph_exec = parent
-    if (
-        graph_exec.trigger_source != ExecutionTrigger.COPILOT
-        or not graph_exec.trigger_ref
-    ):
+    if graph_exec.trigger_source != ExecutionTrigger.COPILOT:
+        return None
+    return graph_exec.trigger_ref or None
+
+
+async def _started_from_attended_chat(chat_id: str | None) -> bool:
+    # A parent or chat that is gone cannot prove nobody is watching, so the
+    # run pauses.
+    if chat_id is None:
         return False
-    session = await chat_db().get_chat_session_metadata(graph_exec.trigger_ref)
+    if chat_id == PARENT_GONE:
+        return True
+    session = await chat_db().get_chat_session_metadata(chat_id)
     return session is None or session.metadata.pauses_irreversible_actions
 
 
@@ -1830,6 +1944,17 @@ class ExecutionOutputEntry(BaseModel):
     node: Node
     node_exec_id: str
     data: BlockOutputEntry
+    # The producing node's Sentry trace, which the output's routing continues,
+    # and when the output was produced (monotonic), for the routing's wait.
+    trace_headers: dict[str, str] = Field(default_factory=dict, exclude=True)
+    produced_at: float = Field(default_factory=time.monotonic, exclude=True)
+
+
+# How long a stopped run's cleanup waits for nodes whose block is still running
+# after the cancel. The cleanup gives all its nodes this one grace together, so
+# blocks that ignore the cancel can't hold a stop past stop_graph_execution's
+# 15 s wait.
+NODE_UNWIND_GRACE_SECONDS = 5.0
 
 
 class NodeExecutionProgress:
@@ -1837,9 +1962,36 @@ class NodeExecutionProgress:
         self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
         self.tasks: dict[str, Future] = {}
         self._lock = threading.Lock()
+        # A stop marks a node's future done at once, before its task has
+        # unwound to the bookkeeping for its block, so wait_for_done watches
+        # the task itself and then the bookkeeping. See wait_for_done.
+        self._unwinding: dict[asyncio.Future, str] = {}
+        self._settling: dict[asyncio.Future, str] = {}
 
     def add_task(self, node_exec_id: str, task: Future):
         self.tasks[node_exec_id] = task
+
+    def track_unwinding(self, node_exec_id: str, task: asyncio.Future) -> None:
+        self._track(self._unwinding, node_exec_id, task)
+
+    def track_settling(self, node_exec_id: str, settle: asyncio.Future) -> None:
+        self._track(self._settling, node_exec_id, settle)
+
+    def _track(
+        self,
+        pending: dict[asyncio.Future, str],
+        node_exec_id: str,
+        work: asyncio.Future,
+    ) -> None:
+        with self._lock:
+            pending[work] = node_exec_id
+        work.add_done_callback(lambda done: self._untrack(pending, done))
+
+    def _untrack(
+        self, pending: dict[asyncio.Future, str], work: asyncio.Future
+    ) -> None:
+        with self._lock:
+            pending.pop(work, None)
 
     def add_output(self, output: ExecutionOutputEntry):
         with self._lock:
@@ -1895,26 +2047,41 @@ class NodeExecutionProgress:
             cancelled_ids.append(task_id)
         return cancelled_ids
 
-    def wait_for_done(self, timeout: float = 5.0):
+    def wait_for_done(self, timeout: float = 5.0, unwind_until: float | None = None):
         """
         Wait for all cancelled tasks to complete cancellation.
 
+        A node's bookkeeping, which begins once its block has finished, is
+        waited for in full: the run's terminal write would otherwise fail
+        the node before its own status lands. A node whose block is still
+        running is waited for up to NODE_UNWIND_GRACE_SECONDS, since a block
+        may ignore the cancel.
+
         Args:
             timeout: Maximum time to wait for cancellation in seconds
+            unwind_until: When to stop waiting for a node whose block is still
+                running (a time.time() value); by default
+                NODE_UNWIND_GRACE_SECONDS from now
         """
         start_time = time.time()
+        if unwind_until is None:
+            unwind_until = start_time + NODE_UNWIND_GRACE_SECONDS
 
         while time.time() - start_time < timeout:
             while self.pop_output():
                 pass
 
-            if self.is_done():
+            unwound = not self._unwinding or time.time() >= unwind_until
+            if self.is_done() and unwound and not self._settling:
                 return
 
             time.sleep(0.1)  # Small delay to avoid busy waiting
 
+        with self._lock:
+            settling = sorted(self._settling.values())
         raise TimeoutError(
-            f"Timeout waiting for cancellation of tasks: {list(self.tasks.keys())}"
+            "Timeout waiting for cancellation of tasks: "
+            f"{list(self.tasks.keys()) + settling}"
         )
 
     def _pop_done_task(self, exec_id: str) -> bool:

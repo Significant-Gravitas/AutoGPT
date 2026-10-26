@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { notFound, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Text } from "@/components/atoms/Text/Text";
+import { useBillingStatus } from "@/hooks/useIsBillingEnabled";
 import {
   TabsLine,
   TabsLineContent,
@@ -42,7 +43,14 @@ function resolveInitialTab(searchParams: URLSearchParams): BillingTab {
   return "subscription";
 }
 
-export default function SettingsBillingPage() {
+export default function SettingsBillingRoute() {
+  const { isBillingEnabled, isResolved } = useBillingStatus();
+  if (!isResolved) return null;
+  if (!isBillingEnabled) notFound();
+  return <SettingsBillingPage />;
+}
+
+function SettingsBillingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -108,7 +116,7 @@ export default function SettingsBillingPage() {
 
       if (subscriptionStatus === "success") {
         toast({
-          title: "Subscription updated",
+          title: "Confirming your subscription",
           description:
             "Your new plan is being applied. It may take a moment to reflect.",
         });
@@ -143,13 +151,23 @@ export default function SettingsBillingPage() {
   );
 
   return (
-    <div className="flex flex-col gap-4 pb-8 sm:gap-6">
-      <Text variant="h4" as="h1" className="pl-4 leading-[28px] text-textBlack">
-        Billing
-      </Text>
+    <div className="mx-auto flex w-full max-w-[900px] flex-col gap-5 px-4 pb-8 sm:px-6">
+      <header className="space-y-1">
+        <Text
+          // TODO(tokens): no exact text token (tracking-[-0.035em])
+          variant="h3"
+          as="h1"
+          className="tracking-[-0.035em]"
+        >
+          Billing &amp; usage
+        </Text>
+        <Text variant="body" tone="secondary">
+          Everything you need to manage your plan.
+        </Text>
+      </header>
 
       <TabsLine value={activeTab} onValueChange={handleTabChange}>
-        <TabsLineList flush className="ml-4 overflow-x-auto">
+        <TabsLineList flush className="overflow-x-auto">
           <TabsLineTrigger value="subscription">Subscription</TabsLineTrigger>
           <TabsLineTrigger value="automation-credits">
             Automation Credits

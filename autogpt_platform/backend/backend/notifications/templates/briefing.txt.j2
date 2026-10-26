@@ -35,7 +35,7 @@ WORTH A LOOK
 {% if not quiet %}
 THE LEDGER
 {% for row in ledger %}
-- {{ row.agent }}: {{ '{:,}'.format(row.runs) }} runs, {{ '%.2f' | format(row.credits) }} credits{% if row.issues_label %}, {{ row.issues_label }}{% endif %}
+- {{ row.agent }}: {{ '{:,}'.format(row.runs) }} runs, ${{ '%.2f' | format(row.credits) }} in credits{% if row.issues_label %}, {{ row.issues_label }}{% endif %}
 
 {% endfor %}
 {% if ledger_overflow %}
@@ -43,9 +43,9 @@ THE LEDGER
 {% endif %}
 
 {{ '{:,}'.format(totals.runs) }} runs, {{ totals.agents_active }} active workflows, {{ totals.agents_idle | default(0) }} on standby, {{ totals.failed }} failed runs.
-{{ '{:,.2f}'.format(totals.credits_used) }} credits used{% if totals.usd_estimate is not none %} (${{ '{:,.2f}'.format(totals.usd_estimate) }}){% endif %} - balance {{ '{:,.2f}'.format(totals.credits_balance) }}
+${{ '{:,.2f}'.format(totals.credits_used) }} in credits used - balance ${{ '{:,.2f}'.format(totals.credits_balance) }}
 {% else %}
-{{ '{:,}'.format(totals.runs) }} runs - {{ totals.agents_active }} active{% if totals.agents_idle %} - {{ totals.agents_idle }} on standby{% endif %} - {{ totals.failed }} issues - {{ '{:,.2f}'.format(totals.credits_used) }} credits{% if totals.usd_estimate is not none %} (${{ '{:,.2f}'.format(totals.usd_estimate) }}){% endif %} - balance {{ '{:,.2f}'.format(totals.credits_balance) }}
+{{ '{:,}'.format(totals.runs) }} runs - {{ totals.agents_active }} active{% if totals.agents_idle %} - {{ totals.agents_idle }} on standby{% endif %} - {{ totals.failed }} issues - ${{ '{:,.2f}'.format(totals.credits_used) }} in credits - balance ${{ '{:,.2f}'.format(totals.credits_balance) }}
 {% endif %}
 
 Review run history: {{ urls.dashboard }}

@@ -1,5 +1,10 @@
 import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import { getListCopilotSkillsMockHandler } from "@/app/api/__generated__/endpoints/skills/skills.msw";
+import {
+  getGetV1CheckIfOnboardingIsCompletedMockHandler200,
+  getGetV1OnboardingStateMockHandler200,
+  getGetV1OnboardingStateResponseMock200,
+} from "@/app/api/__generated__/endpoints/onboarding/onboarding.msw";
 import { MANAGED_IDENTITIES } from "@/components/molecules/ExpertAvatar/helpers";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
@@ -20,30 +25,12 @@ import {
 } from "../helpers";
 import RaisePage from "../page";
 
-const { setFlagStatusMock } = vi.hoisted(() => ({
-  setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
-}));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
-  const actual =
-    await importActual<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? setFlagStatusMock()
-        : actual.useFlagStatus(flag as never),
-  };
-});
-
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isLoggedIn: true, user: { id: "user-1" } }),
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/raise",
   useSearchParams: () => new URLSearchParams(),
   useParams: () => ({}),
@@ -100,20 +87,36 @@ function seedAtAvatar(category: ExpertAvatarRequestCategory) {
   });
 }
 
-function renderRaise() {
+let onboardingRead = false;
+
+async function renderRaise() {
   render(
     <>
       <RaisePage />
       <Toaster />
     </>,
   );
+  await waitFor(() => expect(onboardingRead).toBe(true));
 }
 
 beforeEach(() => {
   window.sessionStorage.clear();
   mockReducedMotion();
-  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
-  server.use(getListCopilotSkillsMockHandler([]));
+  onboardingRead = false;
+
+  server.use(
+    getListCopilotSkillsMockHandler([]),
+    getGetV1CheckIfOnboardingIsCompletedMockHandler200({
+      is_completed: true,
+    }),
+    getGetV1OnboardingStateMockHandler200(() => {
+      onboardingRead = true;
+      return getGetV1OnboardingStateResponseMock200({
+        userId: "user-1",
+        completedSteps: ["ONBOARDING_COMPLETE"],
+      });
+    }),
+  );
 });
 
 afterEach(() => {
@@ -124,7 +127,7 @@ test("the area beat answers the color first and asks for a job title", async () 
   const requests: unknown[] = [];
   server.use(...generationHandlers(requests));
   saveDraft({ ...EMPTY_DRAFT, hasStarted: true });
-  renderRaise();
+  await renderRaise();
 
   const categories = await screen.findByRole(
     "group",
@@ -169,7 +172,7 @@ test.each([
     const requests: unknown[] = [];
     server.use(...generationHandlers(requests));
     seedAtAvatar(category);
-    renderRaise();
+    await renderRaise();
     const confirm = await screen.findByRole("button", {
       name: "Use this avatar",
     });
@@ -200,7 +203,7 @@ test("regeneration uses the area picked at the start", async () => {
   const requests: unknown[] = [];
   server.use(...generationHandlers(requests));
   seedAtAvatar("finance");
-  renderRaise();
+  await renderRaise();
 
   await userEvent.click(
     await screen.findByRole("button", { name: "Regenerate" }),
@@ -212,7 +215,7 @@ test("regeneration uses the area picked at the start", async () => {
 test("the generated avatar is saved only after confirmation", async () => {
   server.use(...generationHandlers());
   seedAtAvatar("finance");
-  renderRaise();
+  await renderRaise();
   await userEvent.click(
     await screen.findByRole("button", { name: "Regenerate" }),
   );
@@ -237,7 +240,7 @@ test("regenerating asks for another avatar in the same category", async () => {
   const requests: unknown[] = [];
   server.use(...generationHandlers(requests));
   seedAtAvatar("finance");
-  renderRaise();
+  await renderRaise();
 
   await userEvent.click(
     await screen.findByRole("button", { name: "Regenerate" }),
@@ -253,7 +256,7 @@ test("regenerating asks for another avatar in the same category", async () => {
 test("the picker offers upload and no face-part controls", async () => {
   server.use(...generationHandlers());
   seedAtAvatar("finance");
-  renderRaise();
+  await renderRaise();
 
   expect(
     await screen.findByRole("button", { name: "Upload a picture" }),
