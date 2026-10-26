@@ -15,6 +15,8 @@ _MIGRATION = (
     / "migrations/20261026090000_clear_auto_filled_user_names/migration.sql"
 )
 _COMMENTS = re.compile(r"--[^\n]*")
+# The migration's UPDATEs in order, each with the alias it gives its table.
+_TARGETS = [('"UserAuthIdentity"', "i"), ('"User"', "u")]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -96,9 +98,9 @@ async def _run_migration(user_ids: list[str]) -> None:
     """The migration's own statements, confined to this test's accounts."""
     sql = _COMMENTS.sub("", _MIGRATION.read_text())
     statements = [part.strip() for part in sql.split(";") if part.strip()]
-    assert len(statements) == 2
+    assert len(statements) == len(_TARGETS)
     client = prisma.get_client()
-    for statement in statements:
-        alias = statement.split()[2]
+    for statement, (table, alias) in zip(statements, _TARGETS):
+        assert statement.startswith(f"UPDATE {table}")
         for user_id in user_ids:
             await client.execute_raw(f'{statement} AND {alias}."id" = $1', user_id)
