@@ -176,6 +176,22 @@ async def test_a_current_copy_is_left_alone():
 
 
 @pytest.mark.asyncio
+async def test_a_reconcile_with_nothing_to_update_looks_up_no_workspace():
+    fake = _FakeWorkspaceManager()
+    v1 = _package("cold-email", "v1", "# Cold\n")
+    with _patch_skills_path(fake) as patched:
+        await _install(v1)
+        _marketplace(patched, v1)
+        lookup = skills_module._get_user_skill_manager
+        assert isinstance(lookup, AsyncMock)
+        lookup.reset_mock()
+        await list_user_skills(USER)
+
+    # The listing's own lookup; the reconcile had nothing to write.
+    assert lookup.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_an_owners_edit_keeps_the_copy_a_marketplace_copy_with_its_baseline():
     fake = _FakeWorkspaceManager()
     v1 = _package("cold-email", "v1", "# Cold\n", {"references/a.md": b"a\n"})

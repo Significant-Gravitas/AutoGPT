@@ -20,7 +20,9 @@ import logging
 from typing import Any
 
 from backend.blocks.desktop._api import DISPLAY, SHARED_PATH, WORKSPACE_PATH
+from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import allowed_providers
 from backend.copilot.sdk.env import config as chat_config
 
 from .base import BaseTool
@@ -104,6 +106,9 @@ class StartDesktopTool(BaseTool):
                 api_key,
                 user_id=user_id,
                 session_id=session_id,
+                # The turn's own ceiling: a box this creates must not get
+                # every provider (KEEP is for the UI, which has no turn).
+                providers=allowed_providers(get_current_permissions()),
             )
         except Exception as exc:
             logger.error("[E2B] start_desktop failed: %s", exc, exc_info=True)

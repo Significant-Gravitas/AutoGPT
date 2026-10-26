@@ -8,12 +8,14 @@ import {
   sendPrompt,
   turnKeepsRunning,
   waitForConnections,
+  waitForDelivered,
 } from "./backend-sim";
 import {
   expectDrift,
   reportDrift,
   resetChatState,
   sampleTranscripts,
+  waitForStableTranscript,
 } from "./drift-report";
 
 vi.mock("@/services/environment", async (importActual) => {
@@ -139,19 +141,26 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         setTabVisibility("visible");
         vi.useRealTimers();
         await waitForConnections(sim, 2);
+        // Paint the resume's replay before the POST stream writes again, which
+        // would otherwise overwrite it inside one render on some runs.
+        await waitForDelivered(sim);
+        await waitForStableTranscript(500);
         sim.publish();
 
-        expectDrift(
-          await reportDrift({
-            sim,
-            turns: [toolTurn],
-            painted,
-            toast: toastMock,
-          }),
-          // AI SDK: the resume replays the turn into the list while the POST
-          // stream still writes it: both copies of the first block are on screen.
-          { today: path === "stream runtime" ? [] : ["paintedTwice"] },
-        );
+        const report = await reportDrift({
+          sim,
+          turns: [toolTurn],
+          painted,
+          toast: toastMock,
+        });
+        // AI SDK: the resume replays the turn into the list while the POST
+        // stream still writes it: both copies of the first block are on screen.
+        expectDrift(report, {
+          today: path === "stream runtime" ? [] : ["paintedTwice"],
+        });
+        if (path !== "stream runtime") {
+          expect(report.paintedTwice).toEqual({ "Let me fetch that page.": 2 });
+        }
       },
     );
 

@@ -26,7 +26,10 @@ export function SkillTile({ skill, isInstalled, onSee }: Props) {
       subtitle={skill.description}
       trailing={
         isInstalled ? (
-          <span className="flex shrink-0 items-center gap-1 pr-1 text-[13px] font-medium text-emerald-600">
+          <span
+            // TODO(tokens): no exact role: text-emerald-600 #059669
+            className="flex shrink-0 items-center gap-1 pr-1 text-body-sm font-medium leading-inherit text-emerald-600"
+          >
             <Icon icon={CheckmarkCircle02Icon} size={14} aria-hidden />
             Added
           </span>

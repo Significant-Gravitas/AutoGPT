@@ -15,7 +15,6 @@ import {
   type ConnectableProvider,
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useState } from "react";
 import { fallbackProviders, firstMentionOfEachProvider } from "./helpers";
 
@@ -25,9 +24,6 @@ const POLL_INTERVAL_MS = 2_500;
 const MAX_POLLS = 24;
 
 export function useConnectToolsPanel() {
-  // The endpoint 404s with the flag off, and a 404 never settles the poll
-  // below on its own — so the request is not made at all.
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -53,7 +49,6 @@ export function useConnectToolsPanel() {
 
   const recommendedQuery = useGetBrainDumpRecommendedProviders({
     query: {
-      enabled: Boolean(isBrainDumpEnabled),
       refetchInterval: (q) => {
         const response = q.state.data;
         if (response && (response.status !== 200 || response.data.ready)) {
@@ -99,11 +94,10 @@ export function useConnectToolsPanel() {
     .filter((provider) => provider !== null);
 
   // Only fall back once the job has actually answered — `ready`, a status
-  // it will not recover from, or the flag being off. Filling the section
+  // it will not recover from. Filling the section
   // while it is still running would swap the generic picks out from under
   // the user the moment the real ones land.
   const isJobDone =
-    !isBrainDumpEnabled ||
     recommendedQuery.isError ||
     (recommendedQuery.data !== undefined &&
       (recommendedQuery.data.status !== 200 ||

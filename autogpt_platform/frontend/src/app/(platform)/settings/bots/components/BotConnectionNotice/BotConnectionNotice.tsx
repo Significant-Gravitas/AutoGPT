@@ -22,13 +22,16 @@ export function BotConnectionNotice() {
   if (!current || transports.filter((t) => t.available).length < 2) return null;
 
   return (
-    <div className="mb-6 ml-4 rounded-2xl border border-[#DADADC] bg-white px-4 py-3">
-      <Text variant="small" className="text-[#505057]">
+    <div className="mb-6 ml-4 rounded-2xl border border-border-base bg-surface px-4 py-3">
+      <Text variant="small" className="text-foreground-body">
         Conversations that come in over a bot start on{" "}
-        <span className="font-medium text-black">{current.label}</span>, the
-        connection you chose in{" "}
+        <span className="font-medium text-foreground-base">
+          {current.label}
+        </span>
+        , the connection you chose in{" "}
         <Link
           href="/settings/integrations"
+          // TODO(tokens): no exact role (text-[#7444E5])
           className="font-medium text-[#7444E5] underline underline-offset-2"
         >
           AI subscriptions

@@ -209,13 +209,9 @@ def test_country_comes_from_the_strongest_source(sources, country, source):
     assert fields[SubscriberField.COUNTRY_SOURCE] == source
 
 
-def test_a_picked_role_rides_on_the_checkout():
-    fields = _fields(role=OnboardingRole(choice="HR/People"))
-    assert fields[SubscriberField.ROLE] == "HR / People"
-    assert fields[SubscriberField.ROLE_OTHER] is None
-
-
-def test_without_a_pick_the_role_mailerlite_holds_is_left_alone():
+def test_the_role_is_left_to_the_caller():
+    """The checkout path adds it once there is a pick (`role_fields`), so
+    without one the role MailerLite holds is left alone."""
     fields = _fields()
     assert SubscriberField.ROLE not in fields
     assert SubscriberField.ROLE_OTHER not in fields

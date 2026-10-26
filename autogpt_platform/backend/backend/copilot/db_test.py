@@ -1106,6 +1106,7 @@ async def test_batch_persist_maps_stamp_columns_to_prisma_names():
                     "model": "claude-sonnet-4-6",
                     "routing_source": "catalog",
                     "langfuse_trace_id": "1edf31f11b1693cc6103f358c1481694",
+                    "trace_id": "turn-1",
                 }
             ],
         )
@@ -1116,6 +1117,8 @@ async def test_batch_persist_maps_stamp_columns_to_prisma_names():
     assert "routing_source" not in row
     assert row["langfuseTraceId"] == "1edf31f11b1693cc6103f358c1481694"
     assert "langfuse_trace_id" not in row
+    assert row["traceId"] == "turn-1"
+    assert "trace_id" not in row
 
 
 def test_from_db_restores_stamp_columns():
@@ -1131,6 +1134,7 @@ def test_from_db_restores_stamp_columns():
         model="claude-sonnet-4-6",
         routingSource="catalog",
         langfuseTraceId="1edf31f11b1693cc6103f358c1481694",
+        traceId="turn-1",
         createdAt=datetime.now(UTC),
     )
     restored = ChatMessage.from_db(prisma_msg)
@@ -1139,6 +1143,8 @@ def test_from_db_restores_stamp_columns():
     assert restored.langfuse_trace_id == "1edf31f11b1693cc6103f358c1481694"
     # Internal: the trace id never reaches the session payload clients get.
     assert "langfuse_trace_id" not in restored.model_dump()
+    assert restored.trace_id == "turn-1"
+    assert "trace_id" not in restored.model_dump()
 
 
 def test_from_db_null_stamps_stay_null():

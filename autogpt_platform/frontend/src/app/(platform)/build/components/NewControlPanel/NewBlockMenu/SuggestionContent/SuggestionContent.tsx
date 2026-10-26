@@ -5,13 +5,22 @@ import { useSuggestionContent } from "./useSuggestionContent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { blockMenuContainerStyle } from "../style";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
+import { useShallow } from "zustand/react/shallow";
 import { DefaultStateType } from "../types";
 import { SearchHistoryChip } from "../SearchHistoryChip";
 import { HorizontalScroll } from "../HorizontalScroll";
+import { Text } from "@/components/atoms/Text/Text";
 
 export const SuggestionContent = () => {
   const { setIntegration, setDefaultState, setSearchQuery, setSearchId } =
-    useBlockMenuStore();
+    useBlockMenuStore(
+      useShallow((state) => ({
+        setIntegration: state.setIntegration,
+        setDefaultState: state.setDefaultState,
+        setSearchQuery: state.setSearchQuery,
+        setSearchId: state.setSearchId,
+      })),
+    );
   const { data, isLoading, isError, error, refetch } = useSuggestionContent();
   const suggestions = data?.suggestions;
   const hasRecentSearches = (suggestions?.recent_searches?.length ?? 0) > 0;
@@ -40,9 +49,9 @@ export const SuggestionContent = () => {
         {/* Recent searches */}
         {hasRecentSearches && (
           <div className="space-y-2.5 px-4">
-            <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+            <Text variant="body-medium" tone="emphasis">
               Recent searches
-            </p>
+            </Text>
             <HorizontalScroll
               wrapperClassName="-mx-8"
               scrollContainerClassName="flex gap-2 overflow-x-auto px-8 [scrollbar-width:none] [-ms-overflow-style:'none'] [&::-webkit-scrollbar]:hidden"
@@ -75,9 +84,9 @@ export const SuggestionContent = () => {
 
         {/* Integrations */}
         <div className="space-y-2.5 px-4">
-          <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+          <Text variant="body-medium" tone="emphasis">
             Integrations
-          </p>
+          </Text>
           <div className="grid grid-cols-3 grid-rows-2 gap-2">
             {!isLoading && suggestions
               ? suggestions.providers.map((provider, index) => (
@@ -103,9 +112,9 @@ export const SuggestionContent = () => {
 
         {/* Top blocks */}
         <div className="space-y-2.5 px-4">
-          <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+          <Text variant="body-medium" tone="emphasis">
             Top blocks
-          </p>
+          </Text>
           <div className="space-y-2">
             {!isLoading && suggestions
               ? suggestions.top_blocks.map((block, index) => (

@@ -35,8 +35,8 @@ const InputNodeHandle = ({
           size={16}
           fill={isInputConnected ? "currentColor" : "none"}
           className={cn(
-            "text-gray-400 opacity-100",
-            isInputBroken && "text-red-500",
+            "text-handle opacity-100",
+            isInputBroken && "text-error",
           )}
         />
       </div>
@@ -71,11 +71,9 @@ const OutputNodeHandle = ({
         <Icon
           icon={CircleIcon}
           size={16}
+          // TODO(tokens): no exact role: "gray" #808080 (an unconnected output handle; the input handle is text-handle #9CA3AF)
           color={isOutputConnected ? hexColor : "gray"}
-          className={cn(
-            "text-gray-400 opacity-100",
-            isBroken && "text-red-500",
-          )}
+          className={cn("text-handle opacity-100", isBroken && "text-error")}
         />
       </div>
     </Handle>

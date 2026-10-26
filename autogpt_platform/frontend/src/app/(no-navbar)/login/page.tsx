@@ -1,5 +1,6 @@
 "use client";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormProvider } from "react-hook-form";
+import { FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
@@ -16,7 +17,10 @@ import { environment } from "@/services/environment";
 import { useSearchParams } from "next/navigation";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { LoginMarketingPanel } from "./components/LoginMarketingPanel";
-import { EMAIL_VERIFICATION_NOTICE_COPY } from "./helpers";
+import {
+  ACCOUNT_BANNED_NOTICE_COPY,
+  EMAIL_VERIFICATION_NOTICE_COPY,
+} from "./helpers";
 import { useLoginPage } from "./useLoginPage";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +39,7 @@ export default function LoginPage() {
     nextUrl: safeNextUrl,
     verificationEmail,
     verificationNotice,
+    showBannedNotice,
     isLoading,
     isGoogleLoading,
     isCloudEnv,
@@ -66,10 +71,16 @@ export default function LoginPage() {
   return (
     <AuthSplitLayout marketing={<LoginMarketingPanel />}>
       <div className="mb-8">
-        <Text variant="h3" as="h1" className="!text-slate-950">
+        <Text variant="h3" as="h1" className="!text-foreground-strong">
           Log in to your account to continue
         </Text>
       </div>
+
+      {showBannedNotice ? (
+        <Alert variant="error" className="mb-6">
+          <AlertDescription>{ACCOUNT_BANNED_NOTICE_COPY}</AlertDescription>
+        </Alert>
+      ) : null}
 
       {verificationNotice ? (
         <Alert className="mb-6">
@@ -79,7 +90,7 @@ export default function LoginPage() {
         </Alert>
       ) : null}
 
-      <Form {...form}>
+      <FormProvider {...form}>
         <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
           <FormField
             control={form.control}
@@ -146,10 +157,10 @@ export default function LoginPage() {
           isError={!!feedback}
           behaveAs={environment.getBehaveAs()}
         />
-      </Form>
+      </FormProvider>
 
       <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
-        <Text variant="body-medium" className="!text-slate-500">
+        <Text variant="body-medium" className="!text-foreground-tertiary">
           Don&apos;t have an account?
         </Text>
         <Link href={signupHref} variant="secondary">

@@ -22,17 +22,21 @@ export function InputsSection({ requests }: Props) {
       {visible.map((request) => (
         <div
           key={request.id}
-          className="overflow-hidden rounded-3xl border border-zinc-100 bg-white"
+          className="overflow-hidden rounded-3xl border border-separator bg-surface"
         >
-          <div className="flex items-center gap-2.5 border-b border-zinc-100 px-4 py-3">
-            <Icon icon={PencilEdit02Icon} size={18} className="text-zinc-400" />
-            <span className="text-sm font-medium text-zinc-900">
+          <div className="flex items-center gap-2.5 border-b border-separator px-4 py-3">
+            <Icon
+              icon={PencilEdit02Icon}
+              size={18}
+              className="text-foreground-subtle"
+            />
+            <span className="text-sm font-medium text-foreground-strong">
               {request.title
                 ? formatInputsTitle(request.title)
                 : "Fill in the details"}
             </span>
             {request.title && (
-              <span className="ml-auto text-xs text-zinc-400">
+              <span className="ml-auto text-xs text-foreground-subtle">
                 Fill in the details
               </span>
             )}

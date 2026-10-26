@@ -3,26 +3,26 @@ import { LibrarySearchBar } from "../LibrarySearchBar/LibrarySearchBar";
 
 interface Props {
   setSearchTerm: (value: string) => void;
+  isImportOpen: boolean;
+  onImportOpenChange: (open: boolean) => void;
 }
 
-export function LibraryActionHeader({ setSearchTerm }: Props) {
+export function LibraryActionHeader({
+  setSearchTerm,
+  isImportOpen,
+  onImportOpenChange,
+}: Props) {
   return (
-    <>
-      <div className="mb-7 hidden items-center justify-center gap-4 md:flex">
+    <div className="flex flex-col gap-4 p-4 pt-[52px] md:mb-7 md:flex-row md:items-center md:justify-center md:p-0">
+      <div className="order-2 flex items-center justify-center md:order-1">
         <LibrarySearchBar setSearchTerm={setSearchTerm} />
-        <LibraryImportDialog />
       </div>
-
-      {/* Mobile and tablet */}
-      <div className="flex flex-col gap-4 p-4 pt-[52px] md:hidden">
-        <div className="flex w-full justify-between gap-2">
-          <LibraryImportDialog />
-        </div>
-
-        <div className="flex items-center justify-center">
-          <LibrarySearchBar setSearchTerm={setSearchTerm} />
-        </div>
+      <div className="order-1 flex items-center justify-between md:order-2">
+        <LibraryImportDialog
+          isOpen={isImportOpen}
+          onOpenChange={onImportOpenChange}
+        />
       </div>
-    </>
+    </div>
   );
 }

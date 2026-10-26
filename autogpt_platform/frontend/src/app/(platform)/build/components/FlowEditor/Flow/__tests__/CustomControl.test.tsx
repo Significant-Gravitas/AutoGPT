@@ -63,7 +63,7 @@ describe("CustomControls", () => {
     expect(lockButton).not.toBeNull();
     expect(lockButton!.disabled).toBe(true);
     expect(lockButton!.textContent).toContain(
-      "Canvas is locked because this is a read-only graph",
+      "Canvas is locked because this is a read-only workflow",
     );
 
     fireEvent.click(lockButton!);

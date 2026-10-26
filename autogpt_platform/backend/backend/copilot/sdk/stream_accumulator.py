@@ -17,13 +17,16 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
+
+from backend.copilot.turn_pause import TurnPause
 
 from ..response_model import (
     StreamError,
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
     StreamUsage,
 )
 
@@ -49,6 +52,8 @@ class EventAccumulator(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    # Why the turn paused -- or, when ``started`` is False, never ran.
+    pause: TurnPause | None = None
 
 
 def process_event(event: object, acc: EventAccumulator) -> str | None:
@@ -80,6 +85,11 @@ def process_event(event: object, acc: EventAccumulator) -> str | None:
             acc.prompt_tokens += e.prompt_tokens
             acc.completion_tokens += e.completion_tokens
             acc.total_tokens += e.total_tokens
+        case StreamTurnPaused(pause=pause):
+            try:
+                acc.pause = TurnPause.model_validate(pause)
+            except ValidationError:
+                logger.warning(f"Ignoring an unreadable turn pause: {pause}")
         case StreamError(errorText=err):
             return err
     return None

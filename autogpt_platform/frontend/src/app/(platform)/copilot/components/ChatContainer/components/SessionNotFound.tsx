@@ -1,6 +1,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { AppSidebarTrigger } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
 import { BubbleChatBlockedIcon } from "@hugeicons/core-free-icons";
 import { parseAsString, useQueryState } from "nuqs";
 
@@ -16,7 +17,13 @@ export function SessionNotFound() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full items-center justify-center bg-white px-6">
+    <div className="relative flex h-full min-h-0 w-full items-center justify-center bg-surface px-6">
+      {/* An open chat's thread chip owns the mobile sidebar button; this
+          screen has no chip, so it brings its own. */}
+      <AppSidebarTrigger
+        // TODO(tokens): no exact role for hover:bg-[#F5F5F6]
+        className="absolute left-4 top-5 rounded-full border border-border-base bg-surface shadow-md hover:bg-[#F5F5F6] md:hidden"
+      />
       <div
         role="status"
         className="flex max-w-md flex-col items-center gap-3 text-center"

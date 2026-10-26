@@ -40,6 +40,17 @@ test("a spend card shows this step's cost, the chat's spend against its ceiling,
   expect(screen.queryByText(/costs about/)).toBeNull();
 });
 
+test("a chat with a $0 ceiling shows a full bar, not an empty one", async () => {
+  renderQueue([spendCard("zero", [], { spent: 0, ceiling: 0 })]);
+
+  expect(await screen.findByText("$0.00 of $0.00")).toBeDefined();
+  expect(
+    screen
+      .getByRole("progressbar", { name: "Spent of this chat's ceiling" })
+      .getAttribute("aria-valuenow"),
+  ).toBe("100");
+});
+
 test("a spend card offers no rule even when one is listed, and is never approved as a set", async () => {
   renderQueue([spendCard("a", ["allow", "judge"]), spendCard("b")]);
 

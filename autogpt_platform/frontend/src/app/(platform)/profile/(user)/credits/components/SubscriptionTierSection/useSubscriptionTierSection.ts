@@ -7,6 +7,7 @@ import {
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { getTierLabel } from "./helpers";
 import {
@@ -49,7 +50,9 @@ export function useSubscriptionTierSection() {
     isPending: isUpdatePending,
     variables,
   } = useUpdateSubscriptionTier();
-  const isPending = isUpdatePending || isChangingTier;
+  const checkoutRedirect = useCheckoutRedirect();
+  const isPending =
+    isUpdatePending || isChangingTier || checkoutRedirect.isRedirecting;
 
   useEffect(() => {
     if (subscriptionStatus === "success") {
@@ -69,9 +72,9 @@ export function useSubscriptionTierSection() {
     ) {
       router.replace(pathname);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch and toast
-    // are new references each render but are stable in practice; the effect must
-    // only re-run when subscriptionStatus/pathname changes.
+    // refetch and toast are new references each render but are stable in
+    // practice; the effect must only re-run when subscriptionStatus/pathname
+    // changes.
   }, [subscriptionStatus, refetch, toast, router, pathname]);
 
   async function changeTier(tier: string) {
@@ -96,6 +99,7 @@ export function useSubscriptionTierSection() {
           value: getSubscriptionValue(tier, "monthly"),
         });
         window.location.href = result.data.url;
+        checkoutRedirect.markRedirecting();
         return;
       }
       await refetch();
@@ -184,8 +188,10 @@ export function useSubscriptionTierSection() {
     }
   }
 
+  const isPendingHere =
+    isUpdatePending || isChangingTier || checkoutRedirect.isRedirectingHere;
   const pendingTier =
-    isPending && variables?.data?.tier ? variables.data.tier : null;
+    isPendingHere && variables?.data?.tier ? variables.data.tier : null;
 
   return {
     subscription: subscription ?? null,

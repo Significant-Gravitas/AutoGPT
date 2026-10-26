@@ -1,33 +1,31 @@
 import asyncio
 import base64
+import contextvars
 import hashlib
 import hmac
 import logging
-import random
-import uuid
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
+from prisma import Prisma
 from prisma.enums import BriefingFrequency, SubscriptionTier
 from prisma.errors import RecordNotFoundError, UniqueViolationError
 from prisma.models import AuthAccount, AuthUser
 from prisma.models import User as PrismaUser
-from prisma.types import (
-    JsonFilter,
-    ProfileCreateInput,
-    UserCreateInput,
-    UserUpdateInput,
-    UserWhereInput,
-)
+from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput, UserWhereInput
 from pydantic import BaseModel, ConfigDict
 
 from backend.data.db import prisma, query_raw_with_schema, transaction
+from backend.data.db_accessors import user_db
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
     Credentials,
+    OAuth2Credentials,
     User,
     UserIntegrations,
     UserMetadata,
@@ -39,8 +37,11 @@ from backend.data.notifications import (
 )
 from backend.data.org_migration import ensure_personal_org
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
+from backend.data.product_mail_audience import product_mail_audience_where
+from backend.data.profile import ensure_profile
 from backend.data.subscription_trial import get_subscription_trial
 from backend.notifications.audience_enrichment import points_at_excluded_country
+from backend.notifications.posthog_audience import set_account_properties
 from backend.notifications.queue import queue_audience_change
 from backend.notifications.subscriber_fields import audience_event
 from backend.util.cache import cached
@@ -58,6 +59,10 @@ settings = Settings()
 
 # Cache decorator alias for consistent user lookup caching
 cache_user_lookup = cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
+_USER_CACHE_CLEAR_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="user-cache-clear"
+)
+_INVALID_UNSUBSCRIBE_TOKEN = "Invalid unsubscribe token"
 
 
 class UserCreationResult(BaseModel):
@@ -114,7 +119,7 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         # agents). Best-effort: a failure must not block user resolution — the
         # user self-heals on their next request or via the profile settings page.
         try:
-            await _ensure_user_profile(user.id, user.email)
+            await ensure_profile(user.id, user.email)
         except Exception:
             logger.warning(
                 "Failed to ensure marketplace profile for user %s",
@@ -135,10 +140,25 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         # new account: the personal org this call bootstraps does.
         was_created = row_created or org_created
         if was_created:
-            track_signup_completed(
-                user_id=user.id, signup_method=await _signup_method(user.id, user_data)
+            signup_method = await _signup_method(user.id, user_data)
+            track_signup_completed(user_id=user.id, signup_method=signup_method)
+            set_account_properties(
+                user.id, user.email, signup_method, user_data.get("role")
             )
             schedule_posthog_lifecycle_sync(user.id)
+
+        # Every sign-in comes through here, including the one a verify or
+        # reset link ends in. Better Auth marks the identity verified in the
+        # frontend, which can't reach this cache, so drop it here.
+        try:
+            forget_user_email_verification(user.id)
+        except Exception:
+            # Mail eligibility only, and the entry expires on its own.
+            logger.warning(
+                "Failed to drop the cached email verification of %s",
+                user.id,
+                exc_info=True,
+            )
 
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
     except Exception as e:
@@ -185,94 +205,6 @@ def _legacy_signup_method(user_data: dict) -> str | None:
         return None
     provider = app_metadata.get("provider")
     return provider if isinstance(provider, str) and provider else None
-
-
-# Word lists mirror the legacy generate_username() SQL function so that app-
-# and DB-generated handles look consistent.
-_PROFILE_USERNAME_ADJECTIVES = (
-    "happy",
-    "clever",
-    "swift",
-    "bright",
-    "wise",
-    "funny",
-    "cool",
-    "awesome",
-    "amazing",
-    "fantastic",
-    "wonderful",
-)
-_PROFILE_USERNAME_ANIMALS = (
-    "fox",
-    "wolf",
-    "bear",
-    "eagle",
-    "owl",
-    "tiger",
-    "lion",
-    "elephant",
-    "giraffe",
-    "zebra",
-)
-
-
-async def _ensure_user_profile(user_id: str, email: Optional[str]) -> None:
-    """Create a default marketplace Profile for *user_id* if none exists.
-
-    Idempotent and race-safe. A UniqueViolationError has two possible sources:
-    a concurrent request that already created this user's Profile (done), or a
-    collision on the unique username with *another* user (retry with a fresh
-    handle — otherwise the user would be left without a Profile).
-    """
-    if await prisma.profile.find_unique(where={"userId": user_id}):
-        return
-
-    name = (email or "").split("@", 1)[0] or "user"
-    for _ in range(3):
-        try:
-            await prisma.profile.create(
-                data=ProfileCreateInput(
-                    userId=user_id,
-                    name=name,
-                    username=await _generate_profile_username(),
-                    description="I'm new here",
-                    links=[],
-                    avatarUrl="",
-                )
-            )
-            return
-        except UniqueViolationError:
-            if await prisma.profile.find_unique(where={"userId": user_id}):
-                # Another in-flight request (or the legacy auth.users trigger)
-                # created this user's Profile — nothing to do.
-                logger.debug(
-                    "Profile for user %s already created concurrently", user_id
-                )
-                return
-            # The generated username collided with another user — loop and
-            # retry with a fresh handle.
-    logger.warning(
-        "Failed to create a unique profile handle for user %s after retries",
-        user_id,
-    )
-
-
-async def _generate_profile_username() -> str:
-    """Generate a human-friendly profile handle, avoiding obvious collisions.
-
-    The unique constraint on Profile.username is the real guarantee; this
-    pre-check just avoids retrying a create in the common case. Falls back to a
-    UUID-based handle if we can't find a free friendly name.
-    """
-    for _ in range(10):
-        candidate = (
-            f"{random.choice(_PROFILE_USERNAME_ADJECTIVES)}-"
-            f"{random.choice(_PROFILE_USERNAME_ANIMALS)}-"
-            f"{random.randint(10000, 99999)}"
-        )
-        if not await prisma.profile.find_unique(where={"username": candidate}):
-            return candidate
-    return f"user-{uuid.uuid4().hex[:12]}"
 
 
 @cache_user_lookup
@@ -333,6 +265,25 @@ async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields
         email=user.email,
         created_at=user.createdAt,
     )
+
+
+@cached(maxsize=1000, ttl_seconds=30, shared_cache=True)
+async def is_user_banned(user_id: str) -> bool:
+    """Whether an admin ban (Better Auth's ``banned``/``banExpires``) holds now.
+
+    Works in any process; the cache is read before the DatabaseManager is.
+    Lookup errors propagate, and ``@cached`` stores no call that raised.
+    """
+    return await user_db().is_auth_user_banned(user_id)
+
+
+async def is_auth_user_banned(user_id: str) -> bool:
+    """The uncached read behind :func:`is_user_banned`. A lapsed temporary ban
+    and a missing auth row are not bans."""
+    user = await AuthUser.prisma().find_unique(where={"id": user_id})
+    if user is None or not user.banned:
+        return False
+    return user.banExpires is None or user.banExpires > datetime.now(timezone.utc)
 
 
 class OrphanedAuthIdentity(BaseModel):
@@ -445,7 +396,8 @@ async def get_user_by_email(email: str) -> Optional[User]:
         user = await prisma.user.find_unique(where={"email": email})
         return User.from_db(user) if user else None
     except Exception as e:
-        raise DatabaseError(f"Failed to get user by email {email}: {e}") from e
+        # Not the address: this message reaches logs and Sentry.
+        raise DatabaseError(f"Failed to get user by email: {e}") from e
 
 
 async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | None]]:
@@ -468,25 +420,6 @@ async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | Non
         order={"email": "asc"},
     )
     return [(u.id, u.email) for u in users]
-
-
-async def update_user_email(user_id: str, email: str):
-    try:
-        # Get old email first for cache invalidation
-        old_user = await prisma.user.find_unique(where={"id": user_id})
-        old_email = old_user.email if old_user else None
-
-        await prisma.user.update(where={"id": user_id}, data={"email": email})
-
-        # Selectively invalidate only the specific user entries
-        get_user_by_id.cache_delete(user_id)
-        if old_email:
-            get_user_by_email.cache_delete(old_email)
-        get_user_by_email.cache_delete(email)
-    except Exception as e:
-        raise DatabaseError(
-            f"Failed to update user email for user {user_id}: {e}"
-        ) from e
 
 
 async def create_default_user() -> Optional[User]:
@@ -555,6 +488,50 @@ async def get_user_credentials(user_id: str) -> list[Credentials]:
     return credentials
 
 
+async def get_near_expiry_oauth_credentials(
+    refresh_before: int,
+) -> list[tuple[str, OAuth2Credentials]]:
+    """Return refreshable user OAuth credentials expired at or before the cutoff.
+
+    This cross-user query is for trusted system callers such as the scheduler,
+    never user-scoped requests. Access-token expiry does not invalidate a refresh grant.
+    """
+    rows = await prisma.integrationcredential.find_many(
+        where={"ownerType": "USER", "status": "active", "credentialType": "oauth2"}
+    )
+    now = int(time.time())
+    cryptor = JSONCryptor()
+    candidates: list[tuple[str, OAuth2Credentials]] = []
+
+    for row in rows:
+        try:
+            credential = CREDENTIALS_ADAPTER.validate_python(
+                cryptor.decrypt(row.encryptedPayload)
+            )
+        except Exception:
+            logger.error(
+                f"Corrupt credential row {row.id} for user {row.ownerId}; skipping"
+            )
+            continue
+
+        if credential.type != "oauth2":
+            continue
+        if (
+            credential.refresh_strategy == "oauth_handler"
+            and not credential.is_managed
+            and credential.refresh_token is not None
+            and credential.access_token_expires_at is not None
+            and credential.access_token_expires_at <= refresh_before
+            and (
+                credential.refresh_token_expires_at is None
+                or credential.refresh_token_expires_at > now
+            )
+        ):
+            candidates.append((row.ownerId, credential))
+
+    return candidates
+
+
 async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> None:
     """Full-list replace of the user's USER-scoped credential rows.
 
@@ -562,61 +539,86 @@ async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> 
     around: rows missing from ``credentials`` are revoked (soft delete),
     new ids are created, existing ids get their payload refreshed
     (OAuth token rotation runs through here constantly).
+
+    Runs as one transaction. Credential reads take no lock, so a reader must
+    see the old list or the new one: committed row by row, it could see a
+    replacement next to the credential it supersedes, and offer or pick the
+    one about to be revoked.
     """
     cryptor = JSONCryptor()
-    existing_rows = await prisma.integrationcredential.find_many(
-        where={"ownerType": "USER", "ownerId": user_id},
-    )
-    existing_by_id = {row.id: row for row in existing_rows}
     incoming_ids = {c.id for c in credentials}
+    async with transaction() as tx:
+        await _lock_user_credentials(tx, user_id)
+        existing_rows = await tx.integrationcredential.find_many(
+            where={"ownerType": "USER", "ownerId": user_id},
+        )
+        existing_ids = {row.id for row in existing_rows}
 
-    org_id: str | None = None
-    for cred in credentials:
-        row = existing_by_id.get(cred.id)
-        encrypted = cryptor.encrypt(cred.model_dump())
-        if row is not None:
-            await prisma.integrationcredential.update(
-                where={"id": cred.id},
+        org_id: str | None = None
+        for cred in credentials:
+            encrypted = cryptor.encrypt(cred.model_dump())
+            if cred.id in existing_ids:
+                await tx.integrationcredential.update(
+                    where={"id": cred.id},
+                    data={
+                        "encryptedPayload": encrypted,
+                        "displayName": cred.title or cred.provider,
+                        "status": "active",
+                    },
+                )
+                continue
+            if org_id is None:
+                org_id = await _personal_org_id(tx, user_id)
+            await tx.integrationcredential.create(
                 data={
-                    "encryptedPayload": encrypted,
+                    "id": cred.id,
+                    "organizationId": org_id,
+                    "ownerType": "USER",
+                    "ownerId": user_id,
+                    "provider": cred.provider,
+                    "credentialType": cred.type,
                     "displayName": cred.title or cred.provider,
-                    "status": "active",
-                },
-            )
-            continue
-        if org_id is None:
-            org_row = await prisma.organization.find_first(
-                where={
-                    "isPersonal": True,
-                    "Members": {"some": {"userId": user_id, "isOwner": True}},
+                    "encryptedPayload": encrypted,
+                    "createdByUserId": user_id,
                 }
             )
-            if org_row is None:
-                raise DatabaseError(
-                    f"Cannot store credentials for user {user_id}: "
-                    "personal org not bootstrapped"
-                )
-            org_id = org_row.id
-        await prisma.integrationcredential.create(
-            data={
-                "id": cred.id,
-                "organizationId": org_id,
-                "ownerType": "USER",
-                "ownerId": user_id,
-                "provider": cred.provider,
-                "credentialType": cred.type,
-                "displayName": cred.title or cred.provider,
-                "encryptedPayload": encrypted,
-                "createdByUserId": user_id,
-            }
-        )
 
-    for row in existing_rows:
-        if row.id not in incoming_ids and row.status == "active":
-            await prisma.integrationcredential.update(
-                where={"id": row.id},
-                data={"status": "revoked"},
-            )
+        for row in existing_rows:
+            if row.id not in incoming_ids and row.status == "active":
+                await tx.integrationcredential.update(
+                    where={"id": row.id},
+                    data={"status": "revoked"},
+                )
+
+
+async def _lock_user_credentials(tx: Prisma, user_id: str) -> None:
+    """Serialize full-list replaces for one user until the transaction ends.
+
+    The credential store's Redis lock already does this; this keeps two
+    replaces from interleaving row locks, and deadlocking, if that lock lapses.
+
+    execute_raw, not query_raw: pg_advisory_xact_lock returns void, which
+    Prisma cannot deserialize as a result column.
+    """
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        f"integration-credentials:{user_id}",
+    )
+
+
+async def _personal_org_id(tx: Prisma, user_id: str) -> str:
+    org_row = await tx.organization.find_first(
+        where={
+            "isPersonal": True,
+            "Members": {"some": {"userId": user_id, "isOwner": True}},
+        }
+    )
+    if org_row is None:
+        raise DatabaseError(
+            f"Cannot store credentials for user {user_id}: "
+            "personal org not bootstrapped"
+        )
+    return org_row.id
 
 
 async def migrate_and_encrypt_user_integrations():
@@ -699,6 +701,8 @@ async def get_user_notification_preference(user_id: str) -> NotificationPreferen
     try:
         user = await PrismaUser.prisma().find_unique_or_raise(where={"id": user_id})
         return _preference_from_user(user)
+    except RecordNotFoundError as e:
+        raise NotFoundError(f"User not found with ID: {user_id}") from e
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification preference for user {user_id}: {e}"
@@ -724,12 +728,14 @@ async def update_user_notification_preference(
 
         user = await PrismaUser.prisma().update(where={"id": user_id}, data=update_data)
         if not user:
-            raise ValueError(f"User not found with ID: {user_id}")
+            raise NotFoundError(f"User not found with ID: {user_id}")
 
         # Invalidate cache for this user since notification preferences are
         # part of user data
         get_user_by_id.cache_delete(user_id)
         return _preference_from_user(user)
+    except NotFoundError:
+        raise
     except Exception as e:
         raise DatabaseError(
             f"Failed to update user notification preference for user {user_id}: {e}"
@@ -765,21 +771,25 @@ async def set_user_email_verification(user_id: str, verified: bool) -> None:
         ) from e
 
 
-async def disable_all_user_notifications(user_id: str) -> None:
+async def disable_all_user_notifications(
+    user_id: str, *, zero_daily_limit: bool = False
+) -> None:
     """Turn the volume knob all the way down.
 
     Used when a user's email bounces or is marked inactive, so we stop trying
-    to reach an address that cannot receive mail.
+    to reach an address that cannot receive mail. `zero_daily_limit` also sets
+    the daily ceiling to zero, as a one-click unsubscribe does, for an address
+    whose owner asked not to be mailed.
     """
+    data: UserUpdateInput = {
+        "briefingFrequency": BriefingFrequency.OFF,
+        "alertsEnabled": False,
+        "notifyOnStoreVerdict": False,
+    }
+    if zero_daily_limit:
+        data["maxEmailsPerDay"] = 0
     try:
-        await PrismaUser.prisma().update(
-            where={"id": user_id},
-            data={
-                "briefingFrequency": BriefingFrequency.OFF,
-                "alertsEnabled": False,
-                "notifyOnStoreVerdict": False,
-            },
-        )
+        await PrismaUser.prisma().update(where={"id": user_id}, data=data)
         # Invalidate cache for this user
         get_user_by_id.cache_delete(user_id)
         logger.info(f"Disabled all notification preferences for user {user_id}")
@@ -789,13 +799,52 @@ async def disable_all_user_notifications(user_id: str) -> None:
         ) from e
 
 
+# Better Auth's providerId for a Google sign-in.
+_GOOGLE_PROVIDER = "google"
+
+
 async def get_user_email_verification(user_id: str) -> bool:
-    """Get the email verification status for a user."""
+    """Whether product and service mail may go to this account's address.
+
+    ``User.emailVerified`` alone can't answer that: it defaults to true and
+    only a hard bounce clears it. Proof that the address is the account's own
+    is on its auth identity, which Better Auth marks verified when the emailed
+    link is opened; a Google sign-in counts as proof by itself. An account
+    with no identity (the no-auth default user) has none.
+    """
     try:
         user = await PrismaUser.prisma().find_unique_or_raise(
             where={"id": user_id},
         )
-        return user.emailVerified
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to get email verification status for user {user_id}: {e}"
+        ) from e
+    # Read on every call, never cached: a lookup already in flight when a
+    # bounce lands would otherwise cache the old answer past the bounce.
+    if not user.emailVerified:
+        return False
+    return await _user_proved_email(user_id)
+
+
+def forget_user_email_verification(user_id: str) -> None:
+    """Drop the cached proof behind ``get_user_email_verification``."""
+    _user_proved_email.cache_delete(user_id)
+
+
+@cache_user_lookup
+async def _user_proved_email(user_id: str) -> bool:
+    """A verified auth identity, or a Google sign-in."""
+    try:
+        identity = await AuthUser.prisma().find_unique(where={"id": user_id})
+        if identity is None:
+            return False
+        if identity.emailVerified:
+            return True
+        google = await AuthAccount.prisma().find_first(
+            where={"userId": user_id, "providerId": _GOOGLE_PROVIDER}
+        )
+        return google is not None
     except Exception as e:
         raise DatabaseError(
             f"Failed to get email verification status for user {user_id}: {e}"
@@ -822,36 +871,49 @@ def generate_unsubscribe_link(user_id: str) -> str:
 
 async def unsubscribe_user_by_token(token: str) -> None:
     """Unsubscribe a user from all notifications using the token"""
+    user_id = _verify_unsubscribe_token(token)
+    # A deleted user's token gets a forged token's answer, which names no user.
+    email = await get_user_email_by_id(user_id)
+    if email is None:
+        raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN)
     try:
-        # Decode the token
-        decoded = base64.urlsafe_b64decode(token).decode("utf-8")
-        user_id, received_signature_hex = decoded.split(":", 1)
-
-        # Verify the signature
-        secret_key = settings.secrets.unsubscribe_secret_key
-        expected_signature = hmac.new(
-            secret_key.encode("utf-8"), user_id.encode("utf-8"), hashlib.sha256
-        ).digest()
-
-        if not hmac.compare_digest(expected_signature.hex(), received_signature_hex):
-            raise ValueError("Invalid token signature")
-
-        user = await get_user_by_id(user_id)
         # One-click unsubscribe turns everything off, including store
         # verdicts — this is the trapdoor, and the volume knob in the Briefing
         # footer is what most people should be using instead.
         await update_user_notification_preference(
-            user.id,
+            user_id,
             NotificationPreferenceDTO(
-                email=user.email,
+                email=email,
                 briefing_frequency=BriefingFrequency.OFF,
                 alerts_enabled=False,
                 store_verdicts_enabled=False,
                 daily_limit=0,
             ),
         )
-    except Exception as e:
-        raise DatabaseError(f"Failed to unsubscribe user by token {token}: {e}") from e
+    except NotFoundError as e:
+        raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN) from e
+
+
+def _verify_unsubscribe_token(token: str) -> str:
+    """Return the token's user id; a token we did not issue is a ValueError
+    whose message leaves the token out, because the token never expires."""
+    try:
+        decoded = base64.urlsafe_b64decode(token).decode("utf-8")
+        user_id, received_signature_hex = decoded.split(":", 1)
+    except ValueError as e:
+        raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN) from e
+
+    secret_key = settings.secrets.unsubscribe_secret_key
+    expected_signature_hex = hmac.new(
+        secret_key.encode("utf-8"), user_id.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    # Bytes, because compare_digest raises TypeError on a non-ASCII str.
+    if not hmac.compare_digest(
+        expected_signature_hex.encode("utf-8"),
+        received_signature_hex.encode("utf-8"),
+    ):
+        raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN)
+    return user_id
 
 
 async def cleanup_user_managed_credentials(
@@ -902,27 +964,21 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
             raise ValueError(f"User not found with ID: {user_id}")
 
         # Invalidate user caches so subsequent reads see the new timezone.
-        # get_user_by_id and get_user_by_email are keyed by a single value
-        # and can be deleted surgically; get_or_create_user is keyed by the
-        # JWT-payload dict so we can't delete a single entry — clear it
-        # entirely.
-        get_user_by_id.cache_delete(user_id)
-        if user.email:
-            get_user_by_email.cache_delete(user.email)
-        get_or_create_user.cache_clear()
+        await _invalidate_user_caches(user_id, user.email)
 
         # Dream-system schedules are bound to the timezone at job-creation
         # time; without an eager re-register they'd keep firing at the old
-        # local time. Fire-and-forget so this profile update returns
-        # immediately — the helper's lazy drift-detection path (via the
-        # Redis dedup key value) is the durable backstop if this
-        # fails or the user doesn't trigger a memory write within the
-        # 7-day key TTL.
+        # local time. Every memory scope of the user (the account and each
+        # scheduled expert) is re-registered. Fire-and-forget so this
+        # profile update returns immediately. If it fails, the registry's
+        # timezone check on the scope's next registration (a returning
+        # ingest queue, a lifecycle change, the backfill) is the backstop,
+        # not necessarily the next memory write.
         try:
-            from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
+            from backend.copilot.dream.registry import reregister_user
 
             task = asyncio.create_task(
-                ensure_dream_system_scheduled(user_id, force_refresh=True),
+                reregister_user(user_id),
                 name=f"tz-reregister-{user_id[:12]}",
             )
             _background_tasks.add(task)
@@ -1015,7 +1071,7 @@ async def record_signup_consent(
             # Same invalidation as update_user_timezone: the MailerLite gate
             # reads the opt-out through get_user_by_id, so a stale cached user
             # would let a checkout opened right after signup through.
-            _invalidate_user_caches(user_id, current.email)
+            await _invalidate_user_caches(user_id, current.email)
         if opted_out and current.email:
             await _unsubscribe_from_marketing(user_id, current.email)
 
@@ -1125,7 +1181,7 @@ async def record_marketing_opt_out_by_email(email: str, source: str) -> str | No
         )
         if not written:
             return None
-        _invalidate_user_caches(row.id, row.email)
+        await _invalidate_user_caches(row.id, row.email)
         return row.id
     except Exception as e:
         # The address stays out of the message: it would reach the logs.
@@ -1166,11 +1222,43 @@ async def record_excluded_country(user_id: str, country: str) -> None:
     )
 
 
-def _invalidate_user_caches(user_id: str, email: str | None) -> None:
+async def _invalidate_user_caches(user_id: str, email: str | None) -> None:
+    # get_user_by_id and get_user_by_email are keyed by a single value and can
+    # be deleted surgically; get_or_create_user is keyed by the JWT-payload
+    # dict, so it can only be cleared whole. That clear SCANs every shard with
+    # the shared cache's synchronous Redis client, seconds on prod's keyspace,
+    # so it runs in a thread rather than stalling every request on this
+    # event loop.
     get_user_by_id.cache_delete(user_id)
     if email:
         get_user_by_email.cache_delete(email)
-    get_or_create_user.cache_clear()
+    await _clear_get_or_create_user_cache()
+
+
+async def _clear_get_or_create_user_cache() -> None:
+    """Serialize whole-cache clears without retaining cancelled callers."""
+    context = contextvars.copy_context()
+    clear = _USER_CACHE_CLEAR_EXECUTOR.submit(
+        context.run, get_or_create_user.cache_clear
+    )
+    awaiting_clear = asyncio.wrap_future(clear)
+    try:
+        await asyncio.shield(awaiting_clear)
+    except asyncio.CancelledError:
+        awaiting_clear.add_done_callback(
+            lambda done: None if done.cancelled() else done.exception()
+        )
+        clear.add_done_callback(
+            lambda done: context.run(_log_cancelled_cache_clear_error, done)
+        )
+        raise
+
+
+def _log_cancelled_cache_clear_error(clear: Future[None]) -> None:
+    try:
+        clear.result()
+    except Exception:
+        logger.exception("User cache clear failed after request cancellation")
 
 
 class BriefingCandidate(BaseModel):
@@ -1203,6 +1291,11 @@ async def get_briefing_candidates(
             "briefingFrequency": {"not": BriefingFrequency.OFF},
             "timezone": {"in": timezones},
         }
+        # The consumer drops a briefing for anyone outside the audience, so
+        # don't queue the work for them.
+        audience = product_mail_audience_where(datetime.now(timezone.utc))
+        if audience is not None:
+            where["AND"] = [audience]
         if after_id:
             where["id"] = {"gt": after_id}
         rows = await prisma.user.find_many(where=where, take=limit, order={"id": "asc"})
@@ -1453,10 +1546,7 @@ async def set_user_default_chat_route(
 
         # Same cache invalidation as update_user_timezone — the route is read
         # through the cached full-user lookup on every unrouted session create.
-        get_user_by_id.cache_delete(user_id)
-        if user.email:
-            get_user_by_email.cache_delete(user.email)
-        get_or_create_user.cache_clear()
+        await _invalidate_user_caches(user_id, user.email)
     except NotFoundError:
         raise
     except Exception as e:
