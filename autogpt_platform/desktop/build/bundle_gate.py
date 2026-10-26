@@ -40,10 +40,13 @@ import importlib.util
 import json
 import os
 import pkgutil
+import re
+import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
+from itertools import pairwise
 from pathlib import Path
 from typing import NoReturn
 
@@ -82,6 +85,7 @@ def main() -> int:
     args = parser.parse_args()
     runtime = args.runtime.resolve()
     if args.package:
+        prevent_package_installs()
         as_a_service(runtime, Path.cwd())
         # Not this directory's modules: a package may share a name with one.
         ours = (BUILD, CONTRACT_DIRECTORY)
@@ -194,6 +198,7 @@ def in_the_backend(runtime: Path) -> list[str]:
 
 def backend_checks(runtime: Path) -> NoReturn:
     """Inside an interpreter set up as a service's is."""
+    prevent_package_installs()
     scratch = tempfile.mkdtemp(prefix="autogpt-gate-")
     as_a_service(runtime, Path(scratch))
     problems = unimportable_backend_modules()
@@ -309,6 +314,36 @@ def describe(exc: BaseException | None) -> str:
 
 
 # --- 4: the zipped packages ---------------------------------------------------
+
+
+class ImportInstallBlocked(RuntimeError):
+    pass
+
+
+def prevent_package_installs() -> None:
+    """Mem0's optional proxy runs pip on import, mutating other probes' inputs."""
+
+    def reject_installer(event: str, args: tuple) -> None:
+        if event != "subprocess.Popen":
+            return
+        executable, command, *_ = args
+        if isinstance(command, str):
+            command = shlex.split(command, posix=os.name != "nt")
+        program = (
+            Path(executable or command[0].strip('"')).name.lower().removesuffix(".exe")
+        )
+        python_installer = any(
+            flag == "-m" and module in ("pip", "ensurepip")
+            for flag, module in pairwise(command)
+        )
+        if (
+            python_installer
+            or re.fullmatch(r"pip(?:\d+(?:\.\d+)*)?", program)
+            or program == "uv"
+        ):
+            raise ImportInstallBlocked("package installation during an import probe")
+
+    sys.addaudithook(reject_installer)
 
 
 def to_be_zipped(runtime: Path) -> list[str]:
@@ -432,12 +467,19 @@ def outcome(exc: BaseException | None) -> str:
     """How an import ended, in words that are the same from a file and from
     a zip: the exception's type, and for an import that failed the module
     that could not be imported. Not the message: it names paths, which
-    differ. A module that failed for want of one dependency and now fails
-    for want of another has changed."""
+    differ. Keep exception chains: optional SDK wrappers often re-raise a
+    nameless ImportError. A different missing dependency must still fail parity."""
     if exc is None:
         return "ok"
-    missing = exc.name if isinstance(exc, ImportError) else None
-    return f"{type(exc).__name__}: {missing}" if missing else type(exc).__name__
+    failures = []
+    seen: set[int] = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        missing = exc.name if isinstance(exc, ImportError) else None
+        kind = type(exc).__name__
+        failures.append(f"{kind}: {missing}" if missing else kind)
+        exc = exc.__cause__ or (None if exc.__suppress_context__ else exc.__context__)
+    return " <- ".join(failures)
 
 
 def import_all(package: str) -> dict[str, BaseException | None]:

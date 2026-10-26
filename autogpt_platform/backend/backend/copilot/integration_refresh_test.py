@@ -13,6 +13,7 @@ from backend.blocks.airtable._oauth import AirtableOAuthHandler
 from backend.blocks.linear._oauth import LinearOAuthHandler
 from backend.copilot import integration_creds
 from backend.data.model import OAuth2Credentials
+from backend.integrations.credential_refresh import REFRESH_PENDING, REFRESH_REVISION
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.oauth.github import GitHubOAuthHandler
@@ -78,6 +79,8 @@ class _RefreshScenario:
         self.attempts: list[str] = []
         self.provider_refresh_token = "refresh-old"
         self.locks: dict[tuple[str, ...], asyncio.Lock] = {}
+        self.owners: dict[tuple[str, ...], object] = {}
+        self.checkpoints: dict[str, OAuth2Credentials] = {}
         self.refresh_started = asyncio.Event()
         self.finish_refresh = asyncio.Event()
         self.finish_refresh.set()
@@ -95,8 +98,16 @@ class _RefreshScenario:
             "get_creds_by_provider",
             AsyncMock(side_effect=self.read_snapshot),
         )
+        mocker.patch.object(
+            self.manager.store,
+            "_get_persisted_user_creds_unlocked",
+            AsyncMock(side_effect=self.read_persisted),
+        )
+        self.prepares = mocker.patch.object(
+            self.manager.store, "begin_refresh", AsyncMock(side_effect=self.prepare)
+        )
         self.writes = mocker.patch.object(
-            self.manager.store, "update_creds", AsyncMock(side_effect=self.write)
+            self.manager.store, "complete_refresh", AsyncMock(side_effect=self.write)
         )
         mocker.patch.object(
             type(self.manager.store),
@@ -115,8 +126,8 @@ class _RefreshScenario:
         )
         mocker.patch.object(
             self.manager,
-            "locks",
-            AsyncMock(return_value=MagicMock(acquire=self.acquire)),
+            "_fresh_refresh_lock",
+            AsyncMock(side_effect=self.acquire),
         )
         mocker.patch(
             "backend.integrations.creds_manager._invoke_creds_changed_hook", AsyncMock()
@@ -130,6 +141,7 @@ class _RefreshScenario:
         mocker.patch.object(integration_creds, "_manager", self.manager)
         mocker.patch.object(integration_creds, "_ensure_cache_invalidation_listener")
         mocker.patch.object(integration_creds, "_token_cache", {})
+        mocker.patch.object(integration_creds, "_credential_id_cache", {})
         mocker.patch.object(integration_creds, "_null_cache", {})
 
     async def read(self, user_id: str, credential_id: str):
@@ -141,21 +153,79 @@ class _RefreshScenario:
         self.snapshot_read.set()
         return [self.snapshot.model_copy(deep=True)]
 
-    async def write(self, user_id: str, credentials: OAuth2Credentials):
+    async def read_persisted(self, user_id: str):
+        assert user_id == _USER
+        return [self.stored.model_copy(deep=True)]
+
+    async def prepare(
+        self, user_id: str, expected: OAuth2Credentials, nonce: str, deadline: float
+    ):
+        assert (user_id, expected.id) == (_USER, self.stored.id)
+        if (
+            time.time() >= deadline
+            or self.stored != expected
+            or self.stored.metadata.get(REFRESH_PENDING)
+        ):
+            return None
+        self.stored = expected.model_copy(
+            deep=True,
+            update={
+                "access_token": SecretStr(""),
+                "refresh_token": None,
+                "provider_state": None,
+                "access_token_expires_at": 1,
+                "metadata": {
+                    **expected.metadata,
+                    REFRESH_PENDING: nonce,
+                    REFRESH_REVISION: nonce + ":pending",
+                },
+            },
+        )
+        checkpoint = "checkpoint:" + nonce
+        self.checkpoints[checkpoint] = self.stored.model_copy(deep=True)
+        return checkpoint
+
+    async def write(
+        self,
+        user_id: str,
+        credentials: OAuth2Credentials,
+        checkpoint: str,
+        deadline: float,
+    ):
         assert (user_id, credentials.id) == (_USER, self.stored.id)
+        assert not credentials.metadata.get(REFRESH_PENDING)
+        if time.time() >= deadline or self.checkpoints.get(checkpoint) != self.stored:
+            return False
         self.stored = credentials.model_copy(deep=True)
+        return True
 
     async def acquire(self, key: tuple[str, ...], *, blocking_timeout=None):
         mutex = self.locks.setdefault(key, asyncio.Lock())
         await asyncio.wait_for(mutex.acquire(), timeout=blocking_timeout)
+        owner = object()
+        self.owners[key] = owner
+
+        def release():
+            assert self.owners.get(key) is owner
+            del self.owners[key]
+            mutex.release()
+
         lock = AsyncMock(spec=Lock)
-        lock.locked.return_value = True
-        lock.owned.return_value = True
-        lock.release.side_effect = mutex.release
+        lock.name = str(key)
+        lock.locked.side_effect = mutex.locked
+        lock.owned.side_effect = lambda: self.owners.get(key) is owner
+        lock.extend = AsyncMock(
+            side_effect=lambda *_args, **_kwargs: self.owners.get(key) is owner
+        )
+        lock.release.side_effect = release
         return lock
 
     async def exchange(self, _url: str, *, data: dict[str, str], **_kwargs):
         self.attempts.append(data["refresh_token"])
+        assert self.stored.metadata.get(REFRESH_PENDING)
+        assert self.stored.access_token.get_secret_value() == ""
+        assert self.stored.refresh_token is None
+        assert len(self.owners) == 3
         self.refresh_started.set()
         await self.finish_refresh.wait()
         if data["refresh_token"] != self.provider_refresh_token:
@@ -179,9 +249,14 @@ class _RefreshScenario:
     def assert_one_refresh(self, token: str | None):
         assert token == "access-new"
         assert self.attempts == ["refresh-old"]
+        self.prepares.assert_awaited_once()
         self.writes.assert_awaited_once()
+        nonce = self.prepares.await_args.args[2]
+        assert self.stored.metadata[REFRESH_REVISION] == nonce + ":complete"
+        assert REFRESH_PENDING not in self.stored.metadata
         assert self.stored.refresh_token is not None
         assert self.stored.refresh_token.get_secret_value() == "refresh-new"
         assert self.stored.access_token_expires_at is not None
         assert self.stored.access_token_expires_at > time.time()
+        assert not self.owners
         assert all(not lock.locked() for lock in self.locks.values())

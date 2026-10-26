@@ -137,10 +137,17 @@ async def test_cancelled_copilot_lookup_releases_only_its_own_locks(
     lookup = asyncio.create_task(scenario.get_token())
     try:
         await asyncio.wait_for(blocked.wait(), timeout=_HANG_SECONDS)
+        assert await scenario.redis.exists(*scenario.lock_keys[:2]) == 2
+        assert await scenario.redis.exists(scenario.lock_keys[3]) == int(
+            credential_lock_acquired
+        )
         lookup.cancel()
         with pytest.raises(asyncio.CancelledError):
             await lookup
-        assert await scenario.redis.exists(scenario.lock_keys[1]) == 0
+        assert (
+            await scenario.redis.exists(scenario.lock_keys[1], scenario.lock_keys[3])
+            == 0
+        )
         if lease is not None:
             await lease.validate()
         else:
@@ -155,16 +162,12 @@ async def test_cancelled_copilot_lookup_releases_only_its_own_locks(
 
 def _pause_lookup(scenario, mocker, after_acquisition: bool) -> asyncio.Event:
     blocked = asyncio.Event()
-    reads = 0
     acquire = Lock.do_acquire
 
     async def read(*_args):
-        nonlocal reads
-        reads += 1
-        if after_acquisition and reads == 2:
-            blocked.set()
-            await asyncio.Event().wait()
-        return scenario.credentials
+        blocked.set()
+        await asyncio.Event().wait()
+        return [scenario.credentials]
 
     async def acquire_then_pause(lock: Lock, token):
         acquired = await acquire(lock, token)
@@ -173,8 +176,10 @@ def _pause_lookup(scenario, mocker, after_acquisition: bool) -> asyncio.Event:
             await asyncio.Event().wait()
         return acquired
 
-    scenario.manager.store.get_creds_by_id.side_effect = read
-    mocker.patch.object(Lock, "do_acquire", acquire_then_pause)
+    if after_acquisition:
+        scenario.manager.store._get_persisted_user_creds_unlocked.side_effect = read
+    else:
+        mocker.patch.object(Lock, "do_acquire", acquire_then_pause)
     return blocked
 
 

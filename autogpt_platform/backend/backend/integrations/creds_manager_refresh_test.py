@@ -5,17 +5,16 @@ from __future__ import annotations
 import asyncio
 import copy
 import time
-from dataclasses import dataclass, field, replace
 from uuid import uuid4
 
 import pytest
+from pydantic import BaseModel, Field
 
 from backend.integrations import credential_refresh as refresh
 from backend.integrations import creds_manager as manager_module
 
 
-@dataclass
-class Credential:
+class Credential(BaseModel):
     generation: int = 0
     id: str = "test-credential"
     provider: str = "codex"
@@ -26,11 +25,8 @@ class Credential:
     refresh_token: str | None = "synthetic-refresh"
     provider_state: str | None = "synthetic-state"
     scopes: tuple[str, ...] = ()
-    metadata: dict = field(default_factory=dict)
+    metadata: dict = Field(default_factory=dict)
     is_managed: bool = False
-
-    def model_copy(self, *, update):
-        return replace(self, **update)
 
 
 class Lock:
@@ -123,12 +119,13 @@ class Rig:
         self.begin_entered.set()
         await self.begin_release.wait()
         assert self.saved == expected
-        self.saved = replace(
-            expected,
-            access_token="",
-            refresh_token=None,
-            provider_state=None,
-            metadata={refresh.REFRESH_PENDING: nonce},
+        self.saved = expected.model_copy(
+            update={
+                "access_token": "",
+                "refresh_token": None,
+                "provider_state": None,
+                "metadata": {refresh.REFRESH_PENDING: nonce},
+            }
         )
         self.pending_checkpoint = nonce
         self.phase = "prepared"
@@ -150,10 +147,11 @@ class Rig:
             await self.provider_release.wait()
         if self.fail_provider:
             raise ValueError("DO_NOT_LOG_SYNTHETIC_TOKEN")
-        return replace(
-            credential,
-            generation=self.provider_generation,
-            access_token_expires_at=4_000_000_000,
+        return credential.model_copy(
+            update={
+                "generation": self.provider_generation,
+                "access_token_expires_at": 4_000_000_000,
+            }
         )
 
     async def complete_refresh(self, _user, updated, checkpoint, deadline):
@@ -303,9 +301,7 @@ async def test_late_checkpoint_cannot_replace_reconnected_credential(monkeypatch
     rig.store_release.clear()
     task = asyncio.create_task(rig.load())
     await asyncio.wait_for(rig.store_entered.wait(), 1)
-    rig.saved = replace(
-        Credential(), generation=99, access_token_expires_at=4_000_000_000
-    )
+    rig.saved = Credential(generation=99, access_token_expires_at=4_000_000_000)
     rig.store_release.set()
     with pytest.raises(refresh.CredentialRefreshRequired):
         await task

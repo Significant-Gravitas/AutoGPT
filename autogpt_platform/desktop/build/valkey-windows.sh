@@ -18,6 +18,8 @@
 # here instead because it stays BSD-licensed.
 
 set -euo pipefail
+trap 'status=$?; printf "Valkey build failed at line %s (exit %s): %s\n" "$LINENO" "$status" "$BASH_COMMAND" >&2; exit "$status"' ERR
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage="usage: valkey-windows.sh <valkey-version> <output-directory> <source-sha256>"
 version="${1:?${usage}}"
@@ -27,7 +29,7 @@ sha256="${3:?${usage}}"
 mkdir -p "${2:?${usage}}"
 output="$(cd "$2" && pwd)"
 
-pacman -S --noconfirm --needed gcc make pkgconf tar >/dev/null
+pacman -S --noconfirm --needed gcc binutils make pkgconf tar >/dev/null
 
 work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
@@ -45,8 +47,8 @@ make -j"$(nproc)" BUILD_TLS=no CFLAGS="-Wno-char-subscripts" valkey-server
 
 cp src/valkey-server.exe "${output}/valkey-server.exe"
 cp COPYING "${output}/COPYING"
-# Everything the binary loads from the MSYS2 runtime, and nothing else.
-ldd src/valkey-server.exe | awk '$3 ~ /^\/usr\/bin\// {print $3}' | sort -u |
-  while read -r library; do cp "${library}" "${output}/"; done
+printf 'Collecting Valkey runtime DLLs from PE imports\n'
+bash "${script_dir}/valkey-dlls.sh" "${output}/valkey-server.exe" /usr/bin "${output}"
 
+printf 'Checking the assembled Valkey executable\n'
 "${output}/valkey-server.exe" --version

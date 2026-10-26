@@ -64,13 +64,20 @@ class _Spawned(Exception):
 
 
 @pytest.fixture
-def parent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def parent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> MagicMock:
     for name, value in {**_PARENT_SECRETS, **_RUNTIME}.items():
         monkeypatch.setenv(name, value)
-    for name in ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"):
+    for name in (
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL",
+        "CLAUDE_AGENT_CLI_PATH",
+        "CHAT_CLAUDE_AGENT_CLI_PATH",
+    ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
-    monkeypatch.setattr("backend.copilot.sdk.env.validate_subscription", lambda: None)
+    validate = MagicMock(spec=subscription.validate_subscription)
+    monkeypatch.setattr("backend.copilot.sdk.env.validate_subscription", validate)
+    return validate
 
 
 async def _spawned_env(
@@ -138,11 +145,25 @@ _LAUNCHES = {
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("launch", sorted(_LAUNCHES))
+@pytest.mark.parametrize("configured_cli", [False, True])
 async def test_a_copilot_launch_keeps_only_its_credential_and_the_runtime(
-    launch: str, parent: None, monkeypatch: pytest.MonkeyPatch
+    launch: str,
+    configured_cli: bool,
+    parent: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ):
+    cli_path = None
+    if configured_cli:
+        cli = tmp_path / _CLI
+        cli.touch()
+        cli.chmod(0o700)
+        cli_path = str(cli)
     settings, arguments, credential_name, credential = _LAUNCHES[launch]
-    monkeypatch.setattr("backend.copilot.sdk.env.config", _config(**settings))
+    monkeypatch.setattr(
+        "backend.copilot.sdk.env.config",
+        _config(**settings, claude_agent_cli_path=cli_path),
+    )
     env = build_sdk_env(**arguments)
     options = launch_options(ClaudeAgentOptions(env=env, cli_path=_CLI))
 
@@ -150,11 +171,15 @@ async def test_a_copilot_launch_keeps_only_its_credential_and_the_runtime(
 
     _assert_keeps_only(spawned, env, credential)
     assert spawned[credential_name] == credential
+    if launch == "subscription":
+        parent.assert_called_once_with(cli_path)
+    else:
+        parent.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_a_variable_the_backend_gains_later_is_blanked_too(
-    parent: None, monkeypatch: pytest.MonkeyPatch
+    parent: MagicMock, monkeypatch: pytest.MonkeyPatch
 ):
     """Worked out at each launch, not from a list of names."""
     monkeypatch.setattr("backend.copilot.sdk.env.config", _config())
@@ -174,7 +199,10 @@ async def test_a_variable_the_backend_gains_later_is_blanked_too(
     [("anthropic", "ANTHROPIC_API_KEY"), ("open_router", "ANTHROPIC_AUTH_TOKEN")],
 )
 async def test_an_orchestrator_launch_keeps_only_the_users_key_and_the_runtime(
-    provider: str, credential_name: str, parent: None, monkeypatch: pytest.MonkeyPatch
+    provider: str,
+    credential_name: str,
+    parent: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """Read off the options the block starts its CLI with, so a launch that
     skips the allowlist fails here."""
@@ -188,7 +216,7 @@ async def test_an_orchestrator_launch_keeps_only_the_users_key_and_the_runtime(
 
 @pytest.mark.asyncio
 async def test_an_orchestrator_launch_sends_the_users_key_where_anthropic_is_reached(
-    parent: None, monkeypatch: pytest.MonkeyPatch
+    parent: MagicMock, monkeypatch: pytest.MonkeyPatch
 ):
     """A base URL the deployment points Anthropic traffic at still applies,
     without a password embedded in it or the deployment's auth token."""
@@ -241,7 +269,7 @@ def test_loading_the_launch_code_turns_the_sdks_own_version_check_off(
 
 
 def test_the_executor_warm_up_starts_the_cli_from_the_allowlist(
-    parent: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    parent: MagicMock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     envs = _record_runs(monkeypatch, "2.1.284")
     # The warm-up reads the binary through before it runs it.
@@ -256,7 +284,7 @@ def test_the_executor_warm_up_starts_the_cli_from_the_allowlist(
 
 
 def test_the_version_check_starts_the_cli_from_the_allowlist(
-    parent: None, monkeypatch: pytest.MonkeyPatch
+    parent: MagicMock, monkeypatch: pytest.MonkeyPatch
 ):
     envs = _record_runs(monkeypatch, "2.1.284 (Claude Code)")
 
@@ -268,7 +296,7 @@ def test_the_version_check_starts_the_cli_from_the_allowlist(
 
 
 def test_the_subscription_check_starts_the_cli_from_the_allowlist(
-    parent: None, monkeypatch: pytest.MonkeyPatch
+    parent: MagicMock, monkeypatch: pytest.MonkeyPatch
 ):
     envs = _record_runs(monkeypatch, "2.1.284", auth='{"loggedIn": true}')
     monkeypatch.setattr(subscription, "find_bundled_cli", lambda: _CLI)
