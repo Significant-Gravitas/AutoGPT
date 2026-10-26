@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
@@ -34,6 +34,10 @@ beforeEach(() => {
       isComputerOpen: false,
     },
   }));
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("ContextPanel", () => {
@@ -87,6 +91,11 @@ describe("ContextPanel", () => {
 
     expect(await screen.findByText("Nothing delegated yet")).toBeDefined();
     expect(screen.getByRole("dialog").textContent).toContain("Work");
+    expect(
+      screen.getByRole("dialog", {
+        description: "Work Otto handed to experts from this chat.",
+      }),
+    ).toBeDefined();
   });
 
   test("docks for the files tab and lists the chat's files", async () => {
@@ -174,5 +183,22 @@ describe("ContextPanel", () => {
     render(<ContextPanel sessionId="session-1" mobile />);
     expect(await screen.findByRole("dialog")).toBeDefined();
     expect(screen.getByRole("heading", { name: "Artifacts" })).toBeDefined();
+  });
+
+  test("mobile: the sheet describes its tab to screen readers", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, activeTab: "files" },
+    }));
+    render(<ContextPanel sessionId="session-1" mobile />);
+
+    expect(
+      await screen.findByRole("dialog", {
+        description: "Files from this chat.",
+      }),
+    ).toBeDefined();
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("Missing `Description`"),
+    );
   });
 });

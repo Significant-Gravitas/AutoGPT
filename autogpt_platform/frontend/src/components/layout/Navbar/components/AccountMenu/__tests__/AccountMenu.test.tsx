@@ -24,10 +24,6 @@ vi.mock("@/lib/auth/actions", () => ({
   getCurrentUser: vi.fn().mockResolvedValue({ user: null }),
 }));
 
-vi.mock("@sentry/nextjs", () => ({
-  getReplay: vi.fn(),
-}));
-
 vi.mock("@/components/molecules/Popover/Popover", () => {
   function Popover({ children }: { children: React.ReactNode }) {
     return <div>{children}</div>;

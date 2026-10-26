@@ -1,9 +1,11 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/molecules/Sheet/Sheet";
@@ -37,6 +39,13 @@ const TAB_TITLES: Record<ContextPanelTab, string> = {
   artifacts: "Artifacts",
   integrations: "Integrations",
   work: "Work",
+};
+
+const TAB_DESCRIPTIONS: Record<ContextPanelTab, string> = {
+  files: "Files from this chat.",
+  artifacts: "Artifacts from this chat to preview.",
+  integrations: "The tools this chat's expert can use.",
+  work: `Work ${AUTOPILOT_NAME} handed to experts from this chat.`,
 };
 
 export function ContextPanel({ sessionId, mobile }: Props) {
@@ -105,6 +114,9 @@ export function ContextPanel({ sessionId, mobile }: Props) {
                 {TAB_TITLES[activeTab]}
               </Text>
             </SheetTitle>
+            <SheetDescription className="sr-only">
+              {TAB_DESCRIPTIONS[activeTab]}
+            </SheetDescription>
           </SheetHeader>
           {content}
         </SheetContent>
