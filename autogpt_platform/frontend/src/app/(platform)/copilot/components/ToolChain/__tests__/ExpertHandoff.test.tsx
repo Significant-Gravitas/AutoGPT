@@ -1,6 +1,9 @@
+import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import type { ToolUIPart } from "ai";
+import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { ExpertChangeCard, ExpertChangeGroup } from "../ExpertCards";
@@ -195,10 +198,42 @@ describe("hiring an expert for a task already in the chat", () => {
   });
 });
 
+function thread(chatStatus: string) {
+  return getGetV2GetSessionMockHandler200({
+    id: "thread-1",
+    created_at: "2026-10-26T00:00:00Z",
+    updated_at: "2026-10-26T00:00:00Z",
+    user_id: "u-1",
+    messages: [],
+    chat_status: chatStatus,
+    active_stream: null,
+  });
+}
+
+function sentCard(status: "sent" | "queued" | "unconfirmed") {
+  return (
+    <ExpertChangeCard
+      output={{
+        type: "expert_change_applied",
+        applied: true,
+        kind: "hire",
+        expert: { id: "exp-james", name: "James", role: "Operations" },
+        handoff: {
+          title: TITLE,
+          status,
+          sub_session_id: "thread-1",
+          link: "/copilot?sessionId=thread-1",
+        },
+      }}
+    />
+  );
+}
+
 describe("after the hire and hand-off", () => {
   const expert = { id: "exp-james", name: "James", role: "Operations" };
 
-  it("says where the work is happening and links to the expert's chat", () => {
+  it("says where the work is happening and links to the expert's chat", async () => {
+    server.use(thread("running"));
     render(
       <ExpertChangeCard
         output={{
@@ -220,6 +255,7 @@ describe("after the hire and hand-off", () => {
     expect(
       screen.getByText(/Sent the Printify order pipeline to/),
     ).toBeDefined();
+    expect(await screen.findByText("Working")).toBeDefined();
     expect(
       screen
         .getByRole("link", { name: "Open James's chat" })
@@ -227,7 +263,8 @@ describe("after the hire and hand-off", () => {
     ).toBe("/copilot?sessionId=thread-1");
   });
 
-  it("says the task waits for a slot rather than that it started", () => {
+  it("says the task waits for a slot rather than that it started", async () => {
+    server.use(thread("queued"));
     render(
       <ExpertChangeCard
         output={{
@@ -246,9 +283,12 @@ describe("after the hire and hand-off", () => {
     );
 
     expect(
-      screen.getByText(/will start on the Printify order pipeline/),
+      screen.getByText(
+        /will start on the Printify order pipeline as soon as one of your other tasks finishes/,
+      ),
     ).toBeDefined();
     expect(screen.queryByText(/started on/)).toBeNull();
+    expect(await screen.findByText("Waiting")).toBeDefined();
     expect(
       screen
         .getByRole("link", { name: "Open James's chat" })
@@ -283,6 +323,50 @@ describe("after the hire and hand-off", () => {
         .getByRole("link", { name: "Open James's chat" })
         .getAttribute("href"),
     ).toBe("/copilot?sessionId=thread-1");
+  });
+
+  it("follows the expert's thread and says when they stop working", async () => {
+    server.use(thread("idle"));
+    render(sentCard("sent"));
+
+    const row = await screen.findByText(/stopped working on/);
+    expect(row.textContent).toBe(
+      `James stopped working on ${TITLE}. Open their chat for the result, or anything they need from you.`,
+    );
+    expect(screen.queryByText("Working")).toBeNull();
+    expect(screen.queryByText(/Sent the Printify/)).toBeNull();
+  });
+
+  it("does not claim the task is running when the thread can't be read", async () => {
+    server.use(
+      http.get(
+        "/api/proxy/api/chat/sessions/:sessionId",
+        () => new HttpResponse(null, { status: 500 }),
+      ),
+    );
+    render(sentCard("sent"));
+
+    expect(await screen.findByText("Status unknown")).toBeDefined();
+    expect(screen.queryByText("Working")).toBeNull();
+    expect(
+      screen.getByText(/Sent the Printify order pipeline to/),
+    ).toBeDefined();
+  });
+
+  it("never reads an idle thread as a reply when the start is unconfirmed", async () => {
+    let polled = false;
+    server.use(
+      http.get("/api/proxy/api/chat/sessions/:sessionId", () => {
+        polled = true;
+        return HttpResponse.json({});
+      }),
+    );
+    render(sentCard("unconfirmed"));
+
+    expect(screen.getByText(/may have started in James's chat/)).toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(polled).toBe(false);
+    expect(screen.queryByText(/stopped working on/)).toBeNull();
   });
 
   it("never calls a sent task failed just because it has no link", () => {

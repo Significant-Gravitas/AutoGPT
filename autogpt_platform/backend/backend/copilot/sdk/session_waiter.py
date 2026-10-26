@@ -81,11 +81,12 @@ class TurnNotDispatched(Exception):
 
     Raised for a failure before the publish (the session lookup, the status
     checks, the slot or tree admission, the stream registry write), each of
-    which leaves nothing for a worker to pick up. Only this lets a caller
-    remove the thread it opened or send the task again; a publish that raised
-    is :class:`TurnPublishUnconfirmed` instead, and any other error from this
-    module leaves the turn's state unknown. The original error is the
-    ``__cause__``.
+    which leaves nothing for a worker to pick up, and for a wait for a task
+    slot that raised with nothing stored (``_nothing_queued``). Only this lets
+    a caller remove the thread it opened or send the task again; a publish
+    that raised is :class:`TurnPublishUnconfirmed` instead, and any other
+    error from this module leaves the turn's state unknown. The original
+    error is the ``__cause__``.
     """
 
 
@@ -383,6 +384,23 @@ async def run_copilot_turn_via_queue(
     )
 
 
+async def _nothing_queued(session_id: str) -> bool:
+    """Whether a queue attempt that raised left nothing that can run. Unlike
+    the broker, the queue is these rows: a turn waits only as the session's
+    pending message with the session ``queued``, so a thread with no message
+    that is not queued holds nothing. A thread with history can't be read
+    this way, and a read that fails proves nothing."""
+    try:
+        db = chat_db()
+        return (
+            await db.get_chat_session_status(session_id) != CHAT_STATUS_QUEUED
+            and await db.get_next_sequence(session_id) == 0
+        )
+    except Exception:
+        logger.warning("Could not check a failed queue attempt", exc_info=True)
+        return False
+
+
 async def wait_for_queued_session(
     *, session_id: str, user_id: str, timeout: float
 ) -> tuple[SessionOutcome, SessionResult]:
@@ -448,6 +466,10 @@ async def _queue_for_slot(
             f"inflight cap (tool={tool_name})"
         )
         return "rejected_concurrent_turn_cap", SessionResult()
+    except Exception as e:
+        if await _nothing_queued(session_id):
+            raise TurnNotDispatched("The turn could not be queued.") from e
+        raise
     if timeout <= 0:
         # Stored, so it runs when a slot frees; as after a dispatch, a read
         # with nothing to wait for could only fail and read as "not queued".

@@ -234,7 +234,7 @@ async def acquire_turn_slot(
                 await release_turn_slot(user_id, session_id)
             except Exception:
                 logger.exception(
-                    "acquire_turn_slot: release failed for session=%s", session_id
+                    f"acquire_turn_slot: release failed for session={session_id}"
                 )
         raise
     if handle.admitted and not handle._kept:

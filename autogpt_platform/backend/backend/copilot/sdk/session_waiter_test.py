@@ -765,3 +765,68 @@ async def test_a_publish_that_raised_is_not_called_undispatched():
             tool_call_id="delegate:p",
             tool_name="delegate_to_expert",
         )
+
+
+async def _queue_that_raised(chat):
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.schedule_turn",
+            new=AsyncMock(side_effect=ConcurrentTurnLimitError("full")),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.queue_spawned_turn",
+            new=AsyncMock(side_effect=ConnectionError("redis down")),
+        ),
+        patch("backend.copilot.sdk.session_waiter.chat_db", return_value=chat),
+    ):
+        await run_copilot_turn_via_queue(
+            session_id="sess-slot",
+            user_id="u1",
+            message="own the Printify pipeline",
+            timeout=0,
+            tool_call_id="delegate:parent",
+            tool_name="delegate_to_expert",
+        )
+
+
+def _chat(*, status="idle", next_sequence=0, read_error=None):
+    chat = MagicMock()
+    chat.get_chat_session_status = AsyncMock(return_value=status)
+    chat.get_next_sequence = AsyncMock(
+        return_value=next_sequence, side_effect=read_error
+    )
+    return chat
+
+
+@pytest.mark.asyncio
+async def test_a_wait_for_a_slot_that_stored_nothing_is_not_dispatched(
+    mock_session_lookup,
+):
+    """The queue is the session's rows, so a queue attempt that raised and
+    left a fresh thread with no message, not queued, holds nothing that can
+    run (Sentry on #16101)."""
+    mock_session_lookup.return_value.metadata.delegated_by_session_id = "parent"
+    with pytest.raises(TurnNotDispatched) as raised:
+        await _queue_that_raised(_chat())
+    assert isinstance(raised.value.__cause__, ConnectionError)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "chat",
+    [
+        pytest.param(_chat(next_sequence=1), id="a-message-was-stored"),
+        pytest.param(_chat(status="queued"), id="the-session-is-queued"),
+        pytest.param(_chat(read_error=RuntimeError("db")), id="the-check-failed"),
+    ],
+)
+async def test_a_wait_for_a_slot_that_may_have_stored_the_turn_stays_untyped(
+    mock_session_lookup, chat
+):
+    mock_session_lookup.return_value.metadata.delegated_by_session_id = "parent"
+    with pytest.raises(ConnectionError):
+        await _queue_that_raised(chat)

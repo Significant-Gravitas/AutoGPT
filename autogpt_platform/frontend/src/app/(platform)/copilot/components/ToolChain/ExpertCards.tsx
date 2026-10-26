@@ -30,11 +30,8 @@ import {
   handoffSubject,
   handoffTaskOf,
 } from "./expertHandoff";
-import {
-  HandoffActions,
-  HandoffStatusRow,
-  HandoffTaskBlock,
-} from "./ExpertHandoffParts";
+import { HandoffActions, HandoffTaskBlock } from "./ExpertHandoffParts";
+import { HandoffStatusRow } from "./HandoffStatusRow";
 
 interface Props {
   output: Record<string, unknown>;

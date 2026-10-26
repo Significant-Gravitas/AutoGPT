@@ -10,6 +10,7 @@ type HandoffStatus = "sent" | "queued" | "unconfirmed" | "failed";
 export interface HandoffOutcome {
   title: string;
   status: HandoffStatus;
+  subSessionId: string | null;
   link: string | null;
 }
 
@@ -34,6 +35,7 @@ export function handoffOutcomeOf(
   return {
     title,
     status: statusOf(handoff),
+    subSessionId: str(handoff, "sub_session_id") ?? null,
     link: str(handoff, "link") ?? null,
   };
 }
@@ -43,6 +45,15 @@ function statusOf(handoff: Record<string, unknown>): HandoffStatus {
   return status === "sent" || status === "queued" || status === "unconfirmed"
     ? status
     : "failed";
+}
+
+/** The status the confirm froze for a task that reached the thread, so the
+ *  card can follow the thread live from there. An unconfirmed task may never
+ *  have started, so an idle thread proves nothing about it. */
+export function frozenStatusOf(outcome: HandoffOutcome): string | null {
+  if (outcome.status === "sent") return "running";
+  if (outcome.status === "queued") return "queued";
+  return null;
 }
 
 /** Subject of the decision line for "hire and hand off". It reads as one
