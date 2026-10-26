@@ -113,6 +113,9 @@ async def test_execute_returns_page_metadata_and_truncation():
     assert result.content_length == len(response.content)
     assert result.truncated is True
     assert "truncated" in result.message
+    # The client stops reading at the cap; buffering the whole body first
+    # let one call hold whatever the server chose to send.
+    assert client.get.await_args.kwargs["max_body_bytes"] == _MAX_DOWNLOAD_BYTES
 
 
 @pytest.mark.asyncio(loop_scope="session")

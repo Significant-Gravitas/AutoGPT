@@ -1,40 +1,39 @@
-from fastapi import FastAPI
-from fastapi.requests import Request
-from fastapi.responses import JSONResponse
+"""
+External API Application
 
-from backend.api.middleware.security import SecurityHeadersMiddleware
-from backend.copilot.rate_limit import UserPaywalledError
-from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
+This module defines the FastAPI application mounted at /external-api, which
+serves v1. The host app mounts v2 at /api/v2 itself.
+"""
+
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
+
 from backend.monitoring.instrumentation import instrument_fastapi
 
-from .v1.routes import v1_router
+from .v1.app import v1_app
 
-external_api = FastAPI(
-    title="AutoGPT External API",
-    description="External API for AutoGPT integrations",
-    docs_url="/docs",
-    version="1.0",
-)
-
-external_api.add_middleware(SecurityHeadersMiddleware)
-external_api.include_router(v1_router, prefix="/v1")
+# Each version publishes its own spec and docs; this app only routes to them.
+external_api = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
 
 
-# UserPaywalledError raised at deep enqueue paths (e.g. add_graph_execution)
-# maps to HTTP 402 here too — the external API is a separate FastAPI app
-# so the handler in rest_api.py doesn't reach it.
-@external_api.exception_handler(UserPaywalledError)
-async def _user_paywalled_handler(_request: Request, exc: UserPaywalledError):
-    return JSONResponse(status_code=402, content={"detail": str(exc)})
+@external_api.get("/", include_in_schema=False)
+async def root_redirect() -> RedirectResponse:
+    """Redirect root to the current version's documentation."""
+    # Relative, so it keeps a proxy prefix such as the single container's /_agpt.
+    return RedirectResponse(url="../api/v2/docs")
 
 
-# Mirror of rest_api.py's mapping — bad/revoked node credentials during graph
-# activation surface as a clear 400 instead of an opaque 500.
-@external_api.exception_handler(GraphActivationError)
-async def _graph_activation_error_handler(_request: Request, exc: GraphActivationError):
-    return JSONResponse(status_code=400, content={"detail": str(exc)})
+@external_api.get("/openapi.json", include_in_schema=False)
+async def v1_spec_redirect(request: Request) -> RedirectResponse:
+    """v1's spec, at the address it had before the API was versioned, where
+    published docs and generated clients still fetch it."""
+    return RedirectResponse(
+        url=f"{request.scope.get('root_path', '')}/v1/openapi.json", status_code=308
+    )
 
 
-# Add Prometheus instrumentation. The REST API process this app is mounted in
-# serves the metrics on their own port, never on this public app.
+external_api.mount("/v1", v1_app)
+
+# The REST API process this app is mounted in serves the metrics on their own
+# port, never on this public app.
 instrument_fastapi(external_api, service_name="external-api", expose_endpoint=False)

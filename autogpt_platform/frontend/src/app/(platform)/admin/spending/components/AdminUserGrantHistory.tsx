@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@/components/molecules/Table/components/TablePrimitives";
 
-import { PaginationControls } from "../../../../../components/__legacy__/ui/pagination-controls";
+import { PaginationControls } from "@/components/molecules/PaginationControls/PaginationControls";
 import { SearchAndFilterAdminSpending } from "./SearchAndFilterAdminSpending";
 import { getUsersTransactionHistory } from "@/app/(platform)/admin/spending/actions";
 import { AdminAddMoneyButton } from "./AddMoneyButton";
