@@ -1,8 +1,8 @@
 import { BlockUIType } from "@/app/(platform)/build/components/types";
-import { Label } from "@/components/__legacy__/ui/label";
+import { Label } from "@/components/atoms/Label/Label";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
+import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
 import {
   Sheet,
   SheetContent,

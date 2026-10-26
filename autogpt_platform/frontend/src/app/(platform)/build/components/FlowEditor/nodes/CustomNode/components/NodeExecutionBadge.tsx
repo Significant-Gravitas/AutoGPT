@@ -1,7 +1,7 @@
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { Badge } from "@/components/atoms/Badge/Badge";
-import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { cn } from "@/lib/utils";
 import { useShallow } from "zustand/react/shallow";
 
@@ -35,7 +35,11 @@ export const NodeExecutionBadge = ({ nodeId }: { nodeId: string }) => {
       >
         {status}
         {status === AgentExecutionStatus.RUNNING && (
-          <LoadingSpinner className="size-4" />
+          <LoadingSpinner
+            variant="circle"
+            className="size-4"
+            aria-hidden="true"
+          />
         )}
       </Badge>
     </div>

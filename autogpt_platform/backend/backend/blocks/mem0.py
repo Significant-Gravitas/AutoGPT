@@ -88,7 +88,7 @@ class AddMemoryBlock(Block, Mem0Base):
     class Output(BlockSchemaOutput):
         action: str = SchemaField(description="Action of the operation")
         memory: str = SchemaField(description="Memory created")
-        results: list[dict[str, str]] = SchemaField(
+        results: list[dict[str, Any]] = SchemaField(
             description="List of all results from the operation"
         )
 

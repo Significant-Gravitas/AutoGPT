@@ -1,7 +1,10 @@
 "use client";
 
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
-import { SidebarHeader, useSidebar } from "@/components/ui/sidebar";
+import {
+  SidebarHeader,
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";

@@ -44,7 +44,7 @@ export const StickyNoteBlock = ({ data, nodeId }: StickyNoteBlockType) => {
     <div
       className={cn(
         // TODO(tokens): no exact role: shadow-[…] #000000
-        "relative h-76 w-76 p-4 text-foreground-base shadow-[rgba(0,0,0,0.3)_-2px_5px_5px_0px]",
+        "relative h-76 w-76 p-4 text-foreground-base shadow-[-2px_5px_5px_0px_rgba(0,0,0,0.3)]",
         color,
       )}
       style={{ transform: `rotate(${angle}deg)` }}

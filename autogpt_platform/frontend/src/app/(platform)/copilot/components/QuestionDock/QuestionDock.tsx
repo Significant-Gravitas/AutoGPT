@@ -156,7 +156,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
             onClick={handleSubmit}
             aria-disabled={!allAnswered}
             // TODO(tokens): no fitting role for hover:bg-zinc-700 #505057; #505057 is foreground-body (a text colour)
-            className="rounded-full bg-action-hover px-3.5 py-1.5 text-xs font-medium text-action-foreground transition-opacity aria-disabled:opacity-40 hover:bg-zinc-700"
+            className="rounded-full bg-action-hover px-3.5 py-1.5 text-xs font-medium text-action-foreground transition-opacity hover:bg-zinc-700 aria-disabled:opacity-40"
           >
             Answer
           </button>

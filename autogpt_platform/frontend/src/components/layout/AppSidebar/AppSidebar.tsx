@@ -12,7 +12,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
   useSidebar,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isEditableElement } from "@/lib/platform";
 import {
