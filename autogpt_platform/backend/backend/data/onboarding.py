@@ -520,7 +520,7 @@ def format_onboarding_for_extraction(
     points = [normalize(p) for p in pain_points if normalize(p)]
 
     lines = [
-        f"Q: What is your name?\nA: {name}",
+        *_name_answer(name),
         f"Q: What best describes your role?\nA: {role}",
         f"Q: What tasks are eating your time?\nA: {', '.join(points)}",
     ]
@@ -549,7 +549,7 @@ def format_brain_dump_for_extraction(
 
     return "\n\n".join(
         [
-            f"Q: What is your name?\nA: {name}",
+            *_name_answer(name),
             f"Q: What best describes your role?\nA: {role}",
             (
                 "The following is a transcript of the user speaking freely for a "
@@ -563,3 +563,8 @@ def format_brain_dump_for_extraction(
             ),
         ]
     )
+
+
+# A user who gave no name has no answer to ask the extractor about.
+def _name_answer(name: str) -> list[str]:
+    return [f"Q: What is your name?\nA: {name}"] if name else []
