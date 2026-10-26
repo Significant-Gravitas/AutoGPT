@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timezone
 from typing import Optional, cast
 
@@ -3946,8 +3947,7 @@ async def test_validate_node_input_credentials_rejects_expired_api_key(
     Copilot reads as "reconnect"."""
     from backend.executor.utils import _validate_node_input_credentials
 
-    now = 1_800_000_000
-    mocker.patch("backend.data.model.time.time", return_value=now)
+    now = int(time.time())
     key = APIKeyCredentials(
         id="cred-1",
         provider="github",
