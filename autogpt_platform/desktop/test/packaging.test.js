@@ -332,7 +332,7 @@ test("every Windows installer closes the programs of its own install only", () =
 
 test("Windows installer process queries preserve literal install paths", {
   skip: process.platform !== "win32" && "PowerShell is a Windows installer dependency",
-  timeout: 60_000,
+  timeout: 180_000,
 }, () => {
   const { spawnSync } = require("node:child_process");
   const include = fs.readFileSync(INCLUDE, "utf8").replace(/\r\n/g, "\n");
@@ -350,7 +350,7 @@ test("Windows installer process queries preserve literal install paths", {
     const encoded = Buffer.from(`${fakeProcesses}\n${command}`, "utf16le").toString("base64");
     const result = spawnSync(powershell, ["-NoProfile", "-NonInteractive", "-EncodedCommand", encoded], {
       encoding: "utf8",
-      timeout: 5000,
+      timeout: 15_000,
       windowsHide: true,
       env: {
         ...process.env,

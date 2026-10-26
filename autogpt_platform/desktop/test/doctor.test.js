@@ -216,25 +216,91 @@ test("manifest checks never execute a launcher or follow one outside the bundle"
 
 test("linked metadata outside its designated directory is not read", async (t) => {
   const f = fixture(t);
-  let reads = 0;
-  const realpath = async (file) =>
-    file === path.join(f.runtimeDir, "manifest.json")
-      ? path.join(f.root, "private-key")
-      : fs.promises.realpath(file);
+  const runtimeDir = path.join(f.root, "runtime-alias");
+  fs.symlinkSync(
+    f.runtimeDir,
+    runtimeDir,
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  const manifest = path.join(
+    await fs.promises.realpath(runtimeDir),
+    "manifest.json",
+  );
+  const outside = path.join(
+    await fs.promises.realpath(f.root),
+    "outside-manifest.json",
+  );
+  fs.copyFileSync(manifest, outside);
+  const reads = [];
+  let redirects = 0;
+  const realpath = async (file) => {
+    if (file === manifest) {
+      redirects++;
+      return outside;
+    }
+    return fs.promises.realpath(file);
+  };
   const report = await f.collect(
-    {},
+    { runtimeDir },
     {
       io: { ...f.dependencies.io, realpath },
       readText: async (file) => {
-        reads++;
-        assert.notEqual(file, path.join(f.root, "private-key"));
+        reads.push(file);
         return fs.promises.readFile(file, "utf8");
       },
     },
   );
   assert.equal(check(report, "runtime-manifest").code, "unreadable");
-  assert.equal(reads, 1);
+  assert.equal(redirects, 1);
+  assert.deepEqual(reads, [await fs.promises.realpath(f.portsFile)]);
 });
+
+for (const outside of [false, true]) {
+  test(`profile metadata directory links ${outside ? "outside the profile are rejected" : "inside the profile are readable"}`, async (t) => {
+    const f = fixture(t);
+    const dataDir = path.join(f.root, "profile-alias");
+    const target = outside
+      ? `${f.dataDir}-outside`
+      : path.join(f.dataDir, "saved-config");
+    const linkType = process.platform === "win32" ? "junction" : "dir";
+    fs.mkdirSync(target);
+    fs.writeFileSync(path.join(target, "ports.json"), JSON.stringify(f.ports));
+    fs.unlinkSync(f.portsFile);
+    fs.rmdirSync(path.dirname(f.portsFile));
+    fs.symlinkSync(target, path.dirname(f.portsFile), linkType);
+    fs.symlinkSync(f.dataDir, dataDir, linkType);
+    const ports = await fs.promises.realpath(
+      path.join(dataDir, "config", "ports.json"),
+    );
+    assert.equal(
+      ports,
+      await fs.promises.realpath(path.join(target, "ports.json")),
+    );
+    const reads = [];
+    const report = await f.collect(
+      { dataDir },
+      {
+        readText: async (file) => {
+          reads.push(file);
+          return fs.promises.readFile(file, "utf8");
+        },
+      },
+    );
+    assert.equal(check(report, "runtime-manifest").code, "compatible");
+    assert.equal(
+      check(report, "service-public").code,
+      outside ? "unverified" : "responding",
+    );
+    assert.deepEqual(
+      reads.sort(),
+      [
+        await fs.promises.realpath(path.join(f.runtimeDir, "manifest.json")),
+        ...(outside ? [] : [ports]),
+      ].sort(),
+    );
+    assert.equal(f.calls.length, outside ? 0 : 7);
+  });
+}
 
 test("disk space is read-only and handles low, unknown and unavailable filesystems", async (t) => {
   const f = fixture(t);

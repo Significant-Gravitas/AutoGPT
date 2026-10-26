@@ -501,7 +501,7 @@ class IntegrationCredentialsManager:
         database_deadline = time.time() + max(0.0, deadline - loop.time())
         checkpoint: str | None = None
         exchange_started = False
-        committed = False
+        committed: OAuth2Credentials | None = None
         phase = "prepare"
         nonce = uuid4().hex
         try:
@@ -538,11 +538,11 @@ class IntegrationCredentialsManager:
                 if loop.time() >= deadline:
                     raise TimeoutError()
                 await self._renew_refresh_locks(locks)
-                committed = await self.store.complete_refresh(
+                if not await self.store.complete_refresh(
                     user_id, fresh, checkpoint, database_deadline
-                )
-                if not committed:
+                ):
                     raise CredentialRefreshRequired()
+                committed = fresh
                 phase = "notify"
                 try:
                     await _invoke_creds_changed_hook(user_id, fresh.provider)
@@ -553,8 +553,8 @@ class IntegrationCredentialsManager:
                     )
                 return fresh
         except BaseException as error:  # noqa: BLE001 - Never replay uncertain tokens.
-            if committed:
-                return fresh
+            if committed is not None:
+                return committed
             logger.warning(
                 "Credential refresh failed during %s: %s", phase, type(error).__name__
             )

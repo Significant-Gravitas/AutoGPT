@@ -6,8 +6,8 @@ import asyncio
 import logging
 import threading
 import time
-from collections.abc import Awaitable, Callable
-from typing import TypeVar
+from collections.abc import Callable, Coroutine
+from typing import Any, TypeVar
 
 REFRESH_SECONDS = 20.0
 REFRESH_CLEANUP_SECONDS = 5.0
@@ -47,7 +47,7 @@ def _finished(task: asyncio.Task) -> None:
 
 
 async def admitted_refresh(
-    operation: Callable[[float], Awaitable[T]],
+    operation: Callable[[float], Coroutine[Any, Any, T]],
     *,
     cleanup: bool = False,
 ) -> T:
