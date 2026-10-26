@@ -13,7 +13,7 @@
 {"id": "13-0", "data": {"type": "data-checkpoint", "rows": 1, "sequence": 3, "digest": "171cf7547b79de2f13e2cbd3830a9773ac270ed1582c197f54309a03334f9490"}}
 {"id": "14-0", "data": {"type": "data-status", "message": "Restoring your session…"}}
 {"id": "15-0", "data": {"type": "start", "messageId": "00000000-0000-4000-8000-000000000003", "sessionId": "drift-session"}}
-{"id": "16-0", "data": {"type": "data-pending-drained", "drainedCount": 2, "messages": [{"id": "00000000-0000-4000-8000-000000000004", "content": "Mention the new export."}, {"id": "00000000-0000-4000-8000-000000000005", "content": "And keep it to one line."}]}}
+{"id": "16-0", "data": {"type": "data-pending-drained", "drainedCount": 2, "messages": [{"id": "00000000-0000-4000-8000-000000000004", "content": "Mention the new export.", "metadata": null}, {"id": "00000000-0000-4000-8000-000000000005", "content": "And keep it to one line.", "metadata": null}]}}
 {"id": "17-0", "data": {"type": "data-status", "message": "Preparing conversation context…"}}
 {"id": "18-0", "data": {"type": "data-status", "message": "Starting the assistant…"}}
 {"id": "19-0", "data": {"type": "data-status", "message": "Reading your message…"}}

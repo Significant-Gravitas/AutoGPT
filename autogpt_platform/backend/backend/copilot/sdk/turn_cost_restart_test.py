@@ -1,8 +1,11 @@
-"""Cost accounting across the building-mode CLI interruption and relaunch."""
+"""Cost and learning capture across a building-mode interruption and relaunch."""
 
+import asyncio
 import contextlib
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,8 +23,9 @@ from .turn_cost_test import _CALL_COST, _SDK_CWD, _SESSION_ID, _SVC, _result
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("result_before_restart", [False, True])
-async def test_building_restart_counts_both_processes_once(
-    result_before_restart, tmp_path, monkeypatch
+@pytest.mark.parametrize("stream_turn_start", [None, 1])
+async def test_building_restart_preserves_cost_and_learning_capture(
+    result_before_restart, stream_turn_start, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
     session_file = Path(cli_session_path(_SDK_CWD, _SESSION_ID))
@@ -53,7 +57,12 @@ async def test_building_restart_counts_both_processes_once(
                     handle.write(build_cli_cost_row(_SESSION_ID, 2 * _CALL_COST))
                 session.building_mode_requested = not result_before_restart
             yield AssistantMessage(
-                content=[TextBlock(text="ok")], model="claude-sonnet-4-6"
+                content=[
+                    TextBlock(
+                        text="before restart" if first_process else "after restart"
+                    )
+                ],
+                model="claude-sonnet-4-6",
             )
             if first_process:
                 session.building_mode_requested = True
@@ -94,6 +103,10 @@ async def test_building_restart_counts_both_processes_once(
         persist = stack.enter_context(
             patch(f"{_SVC}.persist_and_record_usage", new_callable=AsyncMock)
         )
+        capture = stack.enter_context(
+            patch(f"{_SVC}.capture_chat_turn", new_callable=AsyncMock)
+        )
+        stack.enter_context(patch(f"{_SVC}.resolve_answered", new=_no_answered_cards))
         events = [
             event
             async for event in stream_chat_completion_sdk(
@@ -102,11 +115,32 @@ async def test_building_restart_counts_both_processes_once(
                 is_user_message=True,
                 user_id="test-user",
                 session=session,
+                turn_start=stream_turn_start,
             )
         ]
+        await asyncio.sleep(0)
 
     assert [options.resume for options in launched] == [_SESSION_ID, _SESSION_ID]
     assert session.guide_in_system_prompt
     assert not any(isinstance(event, StreamError) for event in events)
     persist.assert_awaited_once()
     assert persist.await_args.kwargs["cost_usd"] == pytest.approx(2 * _CALL_COST)
+    capture.assert_awaited_once()
+    assert capture.await_args is not None
+    assert capture.await_args.args[0] == "test-user"
+    assert capture.await_args.args[1] is session
+    assert capture.await_args.args[3] == "build an agent"
+    assert capture.await_args.kwargs["initiating_user"] is session.messages[2]
+    assert [message.content for message in session.messages[3:]] == [
+        "before restart",
+        "after restart",
+    ]
+    assert [message.content for message in capture.await_args.args[2]] == [
+        "before restart",
+        "after restart",
+    ]
+
+
+async def _no_answered_cards(*_: Any, **__: Any) -> AsyncGenerator[Any, None]:
+    return
+    yield

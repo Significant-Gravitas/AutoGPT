@@ -72,12 +72,12 @@ export function RunMCPToolComponent({ part }: Props) {
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={isCorrupted ? "Tool result could not be displayed" : text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 
       {isCorrupted && (
-        <p className="mt-1 text-sm text-red-500">
+        <p className="mt-1 text-sm text-error">
           The result data arrived corrupted, so any sign-in or setup card it
           contained can&apos;t be shown. Ask your expert to retry this step.
         </p>
@@ -85,7 +85,8 @@ export function RunMCPToolComponent({ part }: Props) {
 
       {/* Error detail card */}
       {errorOutput && (
-        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        // TODO(tokens): no exact role for red-200 #FAC5C5
+        <div className="mt-2 rounded-lg border border-red-200 bg-error-surface px-3 py-2 text-sm text-error-foreground">
           {errorOutput.message}
           {errorOutput.error && (
             <pre className="mt-1 whitespace-pre-wrap break-words text-xs opacity-80">

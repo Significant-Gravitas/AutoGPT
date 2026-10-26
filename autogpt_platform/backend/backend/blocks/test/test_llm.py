@@ -14,7 +14,13 @@ import backend.blocks.llm as llm
 from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
+from backend.util.exceptions import BlockExecutionError
 from backend.util.llm import saturation
+from backend.util.llm.prompt_refusal import PROMPT_REFUSED_MESSAGE
+from backend.util.llm.prompt_refusal_test import (
+    OPENAI_INVALID_PROMPT_BODY,
+    openai_sdk_error,
+)
 from backend.util.llm.providers import FAST_FAIL_TIMEOUT_SECONDS, ProviderResponse
 from backend.util.settings import Config
 
@@ -1150,6 +1156,33 @@ class TestUserErrorStatusCodeHandling:
         mock_exception.assert_not_called()
 
 
+async def test_a_refused_prompt_fails_the_block_with_a_plain_error():
+    """Not a BlockUnknownError quoting the provider: those go to Sentry."""
+    provider = AsyncMock(
+        side_effect=await openai_sdk_error(400, OPENAI_INVALID_PROMPT_BODY)
+    )
+    block = llm.AITextGeneratorBlock()
+
+    with (
+        patch.object(llm, "_llm_call", provider),
+        pytest.raises(BlockExecutionError) as caught,
+    ):
+        async for _ in block.execute(
+            {
+                "prompt": "the user's prompt",
+                "model": llm.DEFAULT_LLM_MODEL,
+                "credentials": llm.TEST_CREDENTIALS_INPUT,
+                "retry": 3,
+            },
+            execution_context=ExecutionContext(),
+            credentials=llm.TEST_CREDENTIALS,
+        ):
+            pass
+
+    assert str(caught.value) == PROMPT_REFUSED_MESSAGE
+    assert provider.await_count == 1
+
+
 class TestLLMModelMissing:
     """Test that LLMModel handles provider-prefixed model names."""
 
@@ -1267,7 +1300,7 @@ class TestAnthropicCacheControl:
     @pytest.mark.asyncio
     async def test_system_prompt_sent_as_block_with_cache_control(self):
         """The system prompt is wrapped in a structured block with cache_control ephemeral."""
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="hello")]
         mock_resp.usage = MagicMock(input_tokens=5, output_tokens=3)
 
@@ -1304,7 +1337,7 @@ class TestAnthropicCacheControl:
     @pytest.mark.asyncio
     async def test_last_tool_gets_cache_control(self):
         """cache_control is placed on the last tool in the Anthropic tools list."""
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="ok")]
         mock_resp.usage = MagicMock(input_tokens=10, output_tokens=5)
 
@@ -1360,7 +1393,7 @@ class TestAnthropicCacheControl:
     @pytest.mark.asyncio
     async def test_no_tools_no_cache_control_on_tools(self):
         """When there are no tools, the Anthropic call receives anthropic.NOT_GIVEN for tools."""
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="ok")]
         mock_resp.usage = MagicMock(input_tokens=5, output_tokens=2)
 
@@ -1401,7 +1434,7 @@ class TestAnthropicCacheControl:
         Anthropic rejects empty text blocks; the guard in llm_call must ensure
         the system argument is omitted entirely when no system messages are present.
         """
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="ok")]
         mock_resp.usage = MagicMock(input_tokens=3, output_tokens=2)
 
@@ -1436,7 +1469,7 @@ class TestAnthropicCacheControl:
         only whitespace should NOT reach the Anthropic API (it would be rejected
         as an empty text block).
         """
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="ok")]
         mock_resp.usage = MagicMock(input_tokens=3, output_tokens=2)
 

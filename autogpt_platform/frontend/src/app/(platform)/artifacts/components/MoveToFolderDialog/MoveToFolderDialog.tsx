@@ -56,12 +56,12 @@ export function MoveToFolderDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-1">
-          <Text variant="small" className="mb-1 text-zinc-500">
+          <Text variant="small" className="mb-1 text-foreground-tertiary">
             Move {subject} to:
           </Text>
           {rows.length === 0 ? (
             <div className="flex h-20 items-center justify-center">
-              <Text variant="small" className="text-zinc-400">
+              <Text variant="small" className="text-foreground-subtle">
                 {folders.length === 0 ? "No folders yet" : "No other folders"}
               </Text>
             </div>

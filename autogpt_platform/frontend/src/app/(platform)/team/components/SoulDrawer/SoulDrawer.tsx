@@ -109,7 +109,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-name"
         label="Name"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        labelClassName="!text-foreground-body"
         value={soul.name}
         maxLength={100}
         required
@@ -119,7 +119,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-identity"
         label="Identity and personality"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        labelClassName="!text-foreground-body"
         type="textarea"
         rows={6}
         value={soul.identity}
@@ -131,7 +131,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-voice"
         label="Voice"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        labelClassName="!text-foreground-body"
         type="textarea"
         rows={3}
         value={soul.voice_preferences}
@@ -145,7 +145,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-boundaries"
         label="Boundaries"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        labelClassName="!text-foreground-body"
         type="textarea"
         rows={4}
         value={soul.boundaries}
@@ -159,12 +159,12 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
 
 function ProtectedRules({ rules }: { rules: string[] }) {
   return (
-    <section className="border-t border-zinc-200 pt-6">
+    <section className="border-t border-border-base pt-6">
       <div className="mb-3 flex items-center gap-2">
-        <Icon icon={LockIcon} size={16} className="text-zinc-500" />
+        <Icon icon={LockIcon} size={16} className="text-foreground-tertiary" />
         <SoulSectionTitle>Protected rules</SoulSectionTitle>
       </div>
-      <div className="space-y-2 rounded-xl bg-zinc-50 p-4">
+      <div className="space-y-2 rounded-xl bg-surface-muted p-4">
         {rules.map((rule) => (
           <Text
             key={rule}

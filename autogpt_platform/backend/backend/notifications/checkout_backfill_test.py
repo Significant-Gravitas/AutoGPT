@@ -2,14 +2,15 @@
 have, writes only the difference, never makes MailerLite's copy worse, and
 writes one subscriber at a time so MailerLite stores what it accepts."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.data.notifications import SubscriberField
+from backend.data.posthog_lifecycle_test import NOW, trial
+from backend.data.stripe_subscription_facts import StripeSubscriptionFacts
 from backend.notifications import checkout_backfill, mailerlite
-from backend.notifications.mailerlite_backfill import Subscription
 from backend.notifications.mailerlite_field_backfill import Person
 
 OPENED = int(datetime(2026, 7, 15, 9, 0, tzinfo=UTC).timestamp())
@@ -71,7 +72,11 @@ def test_an_existing_subscriber_only_joins_the_group():
 
 
 def test_the_status_comes_from_stripe_not_the_signed_default():
-    opener = _opener(subscriptions=[Subscription(status="active", start_date=OPENED)])
+    opener = _opener(
+        subscriptions=[
+            StripeSubscriptionFacts(id="sub_1", status="active", start_date=OPENED)
+        ]
+    )
     held = {**_held(_opener()), "subscription_status": "signed"}
     plan = checkout_backfill.plan(
         [opener], current={"sam@acme.com": held}, members={"sam@acme.com": "1"}
@@ -246,7 +251,16 @@ async def test_a_failed_write_is_counted_and_the_run_goes_on(monkeypatch, caplog
     assert "a@acme.com" not in caplog.text
 
 
-ACTIVE = [Subscription(id="sub_1", status="active", start_date=OPENED)]
+ACTIVE = [StripeSubscriptionFacts(id="sub_1", status="active", start_date=OPENED)]
+
+
+def _now_with(**update):
+    """A `refresh` that finds the person as `update` says they are now."""
+
+    async def refresh(person: Person) -> Person:
+        return person.model_copy(update=update)
+
+    return AsyncMock(side_effect=refresh)
 
 
 async def _apply_with(monkeypatch, plan, *, held, refresh, kept_out=None):
@@ -270,10 +284,10 @@ async def test_the_status_written_is_stripes_now_not_the_plans(monkeypatch):
     write re-reads Stripe, so it says subscribed, not the snapshot's signed."""
     plan = checkout_backfill.plan([_opener()], current={}, members={})
     assert plan.changes[0].fields[SubscriberField.STATUS] == "signed"
-    refresh = AsyncMock(return_value=ACTIVE)
+    refresh = _now_with(subscriptions=ACTIVE)
     result, client = await _apply_with(monkeypatch, plan, held=None, refresh=refresh)
     assert result == (1, 0, 0)
-    refresh.assert_awaited_once_with("cus_1")
+    refresh.assert_awaited_once_with(plan.changes[0].opener.person)
     fields = client.post.await_args.kwargs["json"]["fields"]
     assert fields["subscription_status"] == "subscribed"
     assert fields["subscription_started_date"] == "2026-07-15"
@@ -295,10 +309,42 @@ async def test_a_newer_status_the_live_event_wrote_is_not_overwritten(monkeypatc
         monkeypatch,
         plan,
         held={"fields": live},
-        refresh=AsyncMock(return_value=ACTIVE),
+        refresh=_now_with(subscriptions=ACTIVE),
     )
     assert result == (0, 0, 1)
     client.post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_trial_that_converted_since_the_plan_is_written_subscribed(
+    monkeypatch,
+):
+    """The trial row is read again with Stripe: Stripe alone says active,
+    and the planned row, not yet converted, would make that the hour before
+    the first charge (`in_trial`) rather than a paying subscriber."""
+    trial_sub = StripeSubscriptionFacts(
+        id="sub_trial",
+        status="active",
+        start_date=OPENED,
+        metadata={"trial_enrollment_id": "trial-1"},
+    )
+    planned = trial(
+        status="active", ends_at=NOW - timedelta(hours=2), converted_at=None
+    )
+    opener = _opener(subscriptions=[trial_sub])
+    opener.person.trial = planned
+    plan = checkout_backfill.plan([opener], current={}, members={})
+    assert plan.changes[0].fields[SubscriberField.STATUS] == "in_trial"
+    converted = planned.model_copy(update={"converted_at": NOW - timedelta(hours=1)})
+    result, client = await _apply_with(
+        monkeypatch,
+        plan,
+        held=None,
+        refresh=_now_with(subscriptions=[trial_sub], trial=converted),
+    )
+    assert result == (1, 0, 0)
+    fields = client.post.await_args.kwargs["json"]["fields"]
+    assert fields["subscription_status"] == "subscribed"
 
 
 @pytest.mark.asyncio

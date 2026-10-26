@@ -366,3 +366,89 @@ def test_everything_else_still_resolves_under_the_session(
     """Only an absolute path into a shared root escapes session scoping — a
     relative ``skills/...`` and a lookalike folder must not."""
     assert session_manager._resolve_path(path) == expected
+
+
+# ---------------------------------------------------------------------------
+# Otto's working files: marked once, where every write goes through
+# ---------------------------------------------------------------------------
+
+
+async def _write_in_session(
+    mock_storage, mock_db, *, filename: str, path: str | None = None, **kwargs
+):
+    manager = WorkspaceManager(
+        user_id="user-123", workspace_id="ws-123", session_id="sess-1"
+    )
+    mock_db.get_workspace_file_by_path.return_value = None
+
+    async def create(**record):
+        return _make_workspace_file(
+            name=record["name"], path=record["path"]
+        ).model_copy(update={"is_internal": record["is_internal"]})
+
+    mock_db.create_workspace_file.side_effect = create
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage", return_value=mock_storage
+        ),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            return_value=250 * 1024 * 1024,
+        ),
+        patch(
+            "backend.api.features.workspace.embeddings.schedule_workspace_file_embedding"
+        ) as schedule_embedding,
+    ):
+        file = await manager.write_file(
+            content=b"{}", filename=filename, path=path, overwrite=True, **kwargs
+        )
+    return file, schedule_embedding
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "filename, path, metadata",
+    [
+        (
+            "sdk-926fe642657d.json",
+            "tool-outputs/sdk-926fe642657d.json",
+            {"purpose": "tool-output"},
+        ),
+        ("build_state.json", None, {"origin": "agent-created"}),
+        ("agent.json", None, {"origin": "agent-created", "purpose": "working-file"}),
+    ],
+)
+async def test_write_file_marks_ottos_working_files_internal(
+    mock_storage, mock_db, filename, path, metadata
+):
+    file, schedule_embedding = await _write_in_session(
+        mock_storage, mock_db, filename=filename, path=path, metadata=metadata
+    )
+
+    assert file.is_internal is True
+    assert mock_db.create_workspace_file.await_args.kwargs["is_internal"] is True
+    # Not the user's to find from search either.
+    schedule_embedding.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "filename, metadata",
+    [
+        ("sticker-01.png", {"origin": "agent-created"}),
+        ("sticker-designs-2026-10-23.tar.gz", None),
+        ("build_state.json", {"origin": "user-upload"}),
+    ],
+)
+async def test_write_file_keeps_deliverables_visible(
+    mock_storage, mock_db, filename, metadata
+):
+    file, schedule_embedding = await _write_in_session(
+        mock_storage, mock_db, filename=filename, metadata=metadata
+    )
+
+    assert file.is_internal is False
+    assert mock_db.create_workspace_file.await_args.kwargs["is_internal"] is False
+    schedule_embedding.assert_called_once()

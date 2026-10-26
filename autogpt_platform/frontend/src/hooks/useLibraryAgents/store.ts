@@ -11,7 +11,8 @@ export function buildAgentInfoMap(agents: AgentInfo[]) {
     if (a.graph_id && a.id) {
       map.set(a.graph_id, {
         name:
-          a.name || (a.graph_id ? `Agent ${a.graph_id.slice(0, 8)}` : "Agent"),
+          a.name ||
+          (a.graph_id ? `Workflow ${a.graph_id.slice(0, 8)}` : "Workflow"),
         description: a.description || "",
         library_agent_id: a.id,
       });

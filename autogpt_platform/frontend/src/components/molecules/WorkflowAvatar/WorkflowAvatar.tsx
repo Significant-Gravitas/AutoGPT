@@ -32,9 +32,20 @@ export function WorkflowAvatar({
   className,
 }: Props) {
   return (
-    <Avatar className={cn("shrink-0", SIZE_CLASS[size], className)}>
-      {imageUrl ? <AvatarImage src={imageUrl} alt={name} /> : null}
-      <AvatarFallback>{name}</AvatarFallback>
+    <Avatar
+      data-slot="workflow-avatar"
+      className={cn("shrink-0", SIZE_CLASS[size], className)}
+    >
+      {imageUrl ? (
+        <AvatarImage
+          data-slot="workflow-avatar-image"
+          src={imageUrl}
+          alt={name}
+        />
+      ) : null}
+      <AvatarFallback data-slot="workflow-avatar-fallback">
+        {name}
+      </AvatarFallback>
     </Avatar>
   );
 }

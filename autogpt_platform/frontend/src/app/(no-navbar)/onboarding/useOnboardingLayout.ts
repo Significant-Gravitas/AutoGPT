@@ -1,8 +1,8 @@
 import { environment } from "@/services/environment";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { useRef } from "react";
-import { usePaidCheckoutStatus } from "./usePaidCheckoutStatus";
 import { buildStepLayout, type Step } from "./store";
+import { usePaidCheckoutStatus } from "./usePaidCheckoutStatus";
 
 export function useOnboardingLayout({
   userID,
@@ -16,16 +16,11 @@ export function useOnboardingLayout({
   trialConfirmation: { ready: boolean; active: boolean | undefined };
 }) {
   const payment = useFlagStatus(Flag.ENABLE_PLATFORM_PAYMENT);
-  const brain = useFlagStatus(Flag.ONBOARDING_BRAIN_DUMP);
-  const expertTeam = useFlagStatus(Flag.ONBOARDING_EXPERT_TEAM);
-  const hireExperts = useFlagStatus(Flag.HIRE_EXPERTS);
-  const flagsReady =
-    payment.ready && brain.ready && expertTeam.ready && hireExperts.ready;
+
+  const flagsReady = payment.ready;
   const snapshot = useRef<{
     userID: string | null;
     payment: boolean;
-    brain: boolean;
-    team: boolean;
   } | null>(null);
   if (snapshot.current?.userID !== userID) snapshot.current = null;
   // Resolve once per account: flag changes must not reorder an active wizard.
@@ -33,8 +28,6 @@ export function useOnboardingLayout({
     snapshot.current = {
       userID,
       payment: payment.enabled,
-      brain: brain.enabled,
-      team: expertTeam.enabled && hireExperts.enabled,
     };
   }
   const paidConfirmation = usePaidCheckoutStatus(
@@ -43,12 +36,8 @@ export function useOnboardingLayout({
   );
   const userHasActivePlan = trialConfirmation.active || paidConfirmation.active;
   const isPaymentEnabled = !!snapshot.current?.payment && !userHasActivePlan;
-  const isBrainDumpEnabled = snapshot.current?.brain ?? false;
-  const isExpertTeamEnabled = snapshot.current?.team ?? false;
   const isSelfHostConnectEnabled = !isPaymentEnabled && environment.isLocal();
   const steps = buildStepLayout({
-    hasIntro: isExpertTeamEnabled,
-    hasHire: isExpertTeamEnabled && isBrainDumpEnabled,
     hasPaywall: isPaymentEnabled,
     hasConnect: isSelfHostConnectEnabled,
   });
@@ -65,7 +54,5 @@ export function useOnboardingLayout({
     paidConfirmation,
     isPaymentEnabled,
     isSelfHostConnectEnabled,
-    isBrainDumpEnabled,
-    isExpertTeamEnabled,
   };
 }

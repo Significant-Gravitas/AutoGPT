@@ -26,7 +26,6 @@ export function useSelectedRunView(graphId: string, runId: string) {
           return 1500;
         return false;
       },
-      refetchIntervalInBackground: true,
       refetchOnWindowFocus: false,
     },
   });

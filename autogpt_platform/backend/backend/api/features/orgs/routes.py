@@ -13,8 +13,8 @@ from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, HTTPException, Security
 
 from . import db as org_db
+from .member_runs import stop_member_runs
 from .model import (
-    AddMemberRequest,
     CreateAliasRequest,
     CreateOrgRequest,
     OrgAliasResponse,
@@ -143,6 +143,8 @@ async def convert_org(
 
 # --- Members ---
 
+# A member joins only by accepting an invitation (invitation_routes.py).
+
 
 @router.get(
     "/{org_id}/members",
@@ -156,29 +158,6 @@ async def list_members(
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
     return await org_db.list_org_members(org_id)
-
-
-@router.post(
-    "/{org_id}/members",
-    summary="Add member to organization",
-    tags=["orgs"],
-)
-async def add_member(
-    org_id: str,
-    request: AddMemberRequest,
-    ctx: Annotated[
-        RequestContext,
-        Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
-    ],
-) -> OrgMemberResponse:
-    _verify_org_path(ctx, org_id)
-    return await org_db.add_org_member(
-        org_id=org_id,
-        user_id=request.user_id,
-        is_admin=request.is_admin,
-        is_billing_manager=request.is_billing_manager,
-        invited_by=ctx.user_id,
-    )
 
 
 @router.patch(
@@ -220,6 +199,7 @@ async def remove_member(
 ) -> None:
     _verify_org_path(ctx, org_id)
     await org_db.remove_org_member(org_id, uid, requesting_user_id=ctx.user_id)
+    await stop_member_runs(org_id, uid)
 
 
 @router.post(

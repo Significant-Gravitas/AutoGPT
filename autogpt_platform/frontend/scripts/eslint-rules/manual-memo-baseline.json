@@ -1,0 +1,20 @@
+{
+  "src/app/(platform)/copilot/components/ChatContainer/ChatContainer.tsx": 3,
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer.tsx": 3,
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/ChainMessageParts.tsx": 1,
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessagePartRenderer.tsx": 2,
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessageRow/useMessageRow.ts": 5,
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/TailSpacer.tsx": 1,
+  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/VirtualTranscript/useVirtualTranscript.ts": 1,
+  "src/app/(platform)/copilot/components/ContextPanel/components/FilesTab/useSessionFiles.ts": 1,
+  "src/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider.tsx": 1,
+  "src/app/(platform)/copilot/components/CredentialMention/useCredentialMentionEditor.ts": 1,
+  "src/app/(platform)/copilot/components/ToolChain/ToolChain.tsx": 4,
+  "src/app/(platform)/copilot/useChatSession.ts": 1,
+  "src/app/(platform)/copilot/useCopilotPage.ts": 6,
+  "src/app/(platform)/copilot/useCopilotRuntimeStream.ts": 6,
+  "src/app/(platform)/copilot/useCopilotStream.ts": 2,
+  "src/app/(platform)/copilot/useExpertMap.ts": 1,
+  "src/app/(platform)/copilot/useLoadMoreMessages.ts": 1,
+  "src/app/(platform)/copilot/useSessionList.ts": 1
+}

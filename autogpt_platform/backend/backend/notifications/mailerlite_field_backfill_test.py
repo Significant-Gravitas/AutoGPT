@@ -2,16 +2,19 @@
 would have, writes only what MailerLite does not already hold, and so resumes
 an interrupted run by simply running again."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from backend.data.notifications import SubscriberField, SubscriptionStatus
+from backend.data.posthog_lifecycle_test import NOW as LIFECYCLE_NOW
+from backend.data.posthog_lifecycle_test import TRIAL_START, by_request, coupon, trial
+from backend.data.stripe_subscription_facts import StripeSubscriptionFacts
+from backend.data.subscription_trial import TrialState
 from backend.notifications import mailerlite, mailerlite_backfill
 from backend.notifications import mailerlite_field_backfill as backfill
-from backend.notifications.mailerlite_backfill import Subscription
 from backend.notifications.mailerlite_field_backfill import Person
 
 S = SubscriptionStatus
@@ -25,22 +28,42 @@ def _day(timestamp: int) -> str:
     return datetime.fromtimestamp(timestamp, UTC).strftime("%Y-%m-%d")
 
 
-def _paid(status: str, **over) -> Subscription:
-    return Subscription(status=status, start_date=AUG, **over)
-
-
-def _trial(status: str, **over) -> Subscription:
-    return Subscription(
-        status=status, from_trial=True, trial_start=AUG, trial_end=SEP, **over
+def _sub(status: str, sub_id: str = "sub_1", **stripe) -> StripeSubscriptionFacts:
+    """A Stripe subscription as the backfill lists it."""
+    return StripeSubscriptionFacts.model_validate(
+        {
+            "id": sub_id,
+            "customer": "cus_1",
+            "status": status,
+            "start_date": AUG,
+            "items": {"data": [{"price": {"unit_amount": 5000}, "quantity": 1}]},
+            **stripe,
+        }
     )
 
 
-def _person(email: str = "a@x.io", *subscriptions: Subscription) -> Person:
+def _paid(status: str, **stripe) -> StripeSubscriptionFacts:
+    return _sub(status, **stripe)
+
+
+def _native_trial(status: str, **stripe) -> StripeSubscriptionFacts:
+    return _sub(
+        status, "sub_native", **{"trial_start": AUG, "trial_end": SEP, **stripe}
+    )
+
+
+def _person(
+    email: str = "a@x.io",
+    *subscriptions: StripeSubscriptionFacts,
+    trial: TrialState | None = None,
+) -> Person:
     return Person(
         user_id=f"u-{email}",
         email=email,
         created_at=CREATED,
+        stripe_customer_id="cus_1",
         subscriptions=list(subscriptions),
+        trial=trial,
     )
 
 
@@ -51,24 +74,83 @@ def _person(email: str = "a@x.io", *subscriptions: Subscription) -> Person:
         # Checkout never finished: nothing started.
         ([_paid("incomplete_expired")], S.SIGNED),
         ([_paid("active")], S.SUBSCRIBED),
-        ([_paid("past_due")], S.SUBSCRIBED),
+        # A failed payment is not a paying subscriber (PostHog says the same).
+        ([_paid("past_due")], S.PAYMENT_FAILED),
+        ([_paid("unpaid")], S.PAYMENT_FAILED),
         ([_paid("active", cancel_at_period_end=True)], S.SUBSCRIPTION_CANCELED),
         ([_paid("canceled")], S.SUBSCRIPTION_ENDED),
-        ([_paid("unpaid")], S.SUBSCRIPTION_ENDED),
-        ([_trial("trialing")], S.IN_TRIAL),
-        ([_trial("trialing", cancel_at_period_end=True)], S.TRIAL_CANCELED),
-        # Its first payment never cleared.
-        ([_trial("past_due")], S.TRIAL_CANCELED),
-        ([_trial("canceled")], S.TRIAL_CANCELED),
-        ([_trial("active")], S.SUBSCRIBED),
-        ([_trial("canceled", converted=True)], S.SUBSCRIPTION_ENDED),
+        ([_native_trial("trialing", trial_end=SEP20 * 2)], S.IN_TRIAL),
+        (
+            [_native_trial("trialing", trial_end=SEP20 * 2, cancel_at_period_end=True)],
+            S.TRIAL_CANCELED,
+        ),
+        # Native trials that ended before their first charge.
+        ([_native_trial("canceled", ended_at=SEP, **by_request())], S.TRIAL_CANCELED),
+        (
+            [
+                _native_trial(
+                    "canceled",
+                    ended_at=SEP,
+                    cancellation_details={"reason": "payment_failed"},
+                )
+            ],
+            S.TRIAL_EXPIRED,
+        ),
         # A paid subscription outranks a trial, and a live one an ended one.
-        ([_paid("canceled"), _trial("trialing")], S.IN_TRIAL),
-        ([_trial("canceled"), _paid("active")], S.SUBSCRIBED),
+        ([_native_trial("canceled"), _paid("active")], S.SUBSCRIBED),
     ],
 )
-def test_standing(subscriptions, status):
-    assert backfill.standing(subscriptions)[0] is status
+def test_the_status_is_the_shared_lifecycle_status(subscriptions, status):
+    assert backfill.desired(_person("a@x.io", *subscriptions))[0] is status
+
+
+# ---- the SECRT-2795 rules, as the backfill writes them ----------------------
+
+
+def test_a_tier_without_a_paid_subscription_is_signed():
+    # An admin-granted ENTERPRISE plan has no Stripe subscription; the tier is
+    # never read.
+    assert backfill.desired(_person("a@x.io"))[0] is S.SIGNED
+
+
+@pytest.mark.parametrize(
+    "discounts, status",
+    [
+        ([coupon(percent_off=100)], S.SIGNED),
+        ([coupon(amount_off=5000)], S.SIGNED),
+        ([coupon(percent_off=50)], S.SUBSCRIBED),
+    ],
+)
+def test_only_a_subscription_that_charges_something_is_subscribed(discounts, status):
+    person = _person("a@x.io", _paid("active", discounts=discounts))
+    status_, fields = backfill.desired(person)
+    assert status_ is status
+    if status is S.SIGNED:
+        assert fields[F.SUBSCRIPTION_STARTED] is None
+
+
+def test_a_trial_that_ran_out_has_expired():
+    ran_out = trial(ends_at=LIFECYCLE_NOW - timedelta(days=1))
+    status, fields = backfill.desired(
+        _person("a@x.io", trial=ran_out), now=LIFECYCLE_NOW
+    )
+    assert status is S.TRIAL_EXPIRED
+    assert fields[F.TRIAL_STARTED] == TRIAL_START.strftime("%Y-%m-%d")
+
+
+def test_a_trial_the_user_canceled_is_trial_canceled():
+    canceled = trial(
+        ends_at=LIFECYCLE_NOW - timedelta(days=1), cancel_at_period_end=True
+    )
+    status, _ = backfill.desired(_person("a@x.io", trial=canceled), now=LIFECYCLE_NOW)
+    assert status is S.TRIAL_CANCELED
+
+
+def test_the_subscription_start_is_the_first_paid_one():
+    first = _sub("canceled", "sub_old", start_date=AUG, ended_at=SEP)
+    again = _sub("active", "sub_new", start_date=SEP20)
+    _, fields = backfill.desired(_person("a@x.io", first, again))
+    assert fields[F.SUBSCRIPTION_STARTED] == _day(AUG)
 
 
 def test_every_field_is_set_so_nothing_stale_survives():
@@ -84,28 +166,27 @@ def test_every_field_is_set_so_nothing_stale_survives():
     }
 
 
-def test_the_dates_come_from_stripe():
-    _, fields = backfill.desired(
-        _person(
-            "a@x.io",
-            _trial(
-                "canceled",
-                converted=True,
-                cancel_at_period_end=True,
-                canceled_at=SEP10,
-                ended_at=SEP20,
-            ),
-        )
+def test_the_dates_come_from_stripe_and_the_trial_row():
+    converted = datetime.fromtimestamp(SEP, UTC)
+    ended_trial = trial(status="canceled", converted_at=converted)
+    gone = _sub(
+        "canceled",
+        "sub_trial",
+        metadata={"trial_enrollment_id": "trial-1"},
+        cancel_at_period_end=True,
+        canceled_at=SEP10,
+        ended_at=SEP20,
     )
-    assert fields[F.TRIAL_STARTED] == _day(AUG)
-    # A converted trial's paid subscription began when the trial ended.
+    _, fields = backfill.desired(_person("a@x.io", gone, trial=ended_trial))
+    assert fields[F.TRIAL_STARTED] == TRIAL_START.strftime("%Y-%m-%d")
+    # A converted trial's paid subscription began at the conversion.
     assert fields[F.SUBSCRIPTION_STARTED] == _day(SEP)
     assert fields[F.SUBSCRIPTION_CANCELED] == _day(SEP10)
     assert fields[F.SUBSCRIPTION_ENDED] == _day(SEP20)
 
 
 def test_a_missing_timestamp_is_left_empty_not_today():
-    _, fields = backfill.desired(_person("a@x.io", Subscription(status="canceled")))
+    _, fields = backfill.desired(_person("a@x.io", _paid("canceled")))
     assert fields[F.SUBSCRIPTION_ENDED] is None
 
 
@@ -146,7 +227,10 @@ def test_an_address_mailerlite_would_refuse_is_counted_not_sent():
 
 
 def test_a_second_run_finds_nothing_to_do():
-    people = [_person("a@x.io"), _person("b@x.io", _trial("trialing"))]
+    people = [
+        _person("a@x.io"),
+        _person("b@x.io", _native_trial("trialing", trial_end=SEP20 * 2)),
+    ]
     first = backfill.plan(people, {})
     held = {
         c.person.email: {k.value: v for k, v in c.fields.items()} for c in first.changes
@@ -315,6 +399,9 @@ def test_without_create_only_existing_subscribers_are_planned():
     )
     assert [c.person.email for c in plan.changes] == ["held@x.io"]
     assert not any(c.new for c in plan.changes)
+    # The dry run's counts are of the people it would write.
+    assert sum(plan.statuses.values()) == 1
+    assert plan.not_held == 1
 
 
 @pytest.mark.parametrize("create", [True, False])

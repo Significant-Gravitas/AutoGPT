@@ -6,8 +6,9 @@ A red here means the sender changed; re-record (see ``recording.py``) and rerun
 the frontend suite.
 """
 
+import json
 import uuid
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from claude_agent_sdk import (
@@ -23,11 +24,20 @@ from claude_agent_sdk import (
 from prisma.models import User
 
 from backend.copilot.baseline import service as baseline
+from backend.copilot.constants import COPILOT_NODE_PREFIX
+from backend.copilot.gate import held
 from backend.copilot.model import ChatMessage
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.sdk import dummy
 from backend.copilot.sdk import service as sdk
+from backend.copilot.sdk.tool_adapter import cap_late_tool_result
+from backend.copilot.tools import base
+from backend.copilot.tools.models import (
+    ApprovalRequiredResponse,
+    MCPToolInfo,
+    MCPToolsDiscoveredResponse,
+)
 from backend.data import db, redis_client
 from backend.data.user import get_or_create_user
 from backend.util.testing import is_tcp_port_reachable
@@ -249,6 +259,103 @@ async def test_sdk_auto_continue_turn(user_id: str) -> None:
     )
 
     check_fixture("sdk-auto-continue-turn", recorded)
+
+
+async def test_sdk_held_result_turn(user_id: str) -> None:
+    """An approved held read's late result opens the woken turn: the card's
+    own turn, the wake row, then the result row the hint draws live."""
+    call = held.HeldCall(
+        review_id=f"{COPILOT_NODE_PREFIX}gate-read-run_capability:0a1b2c3d4e5f6a7b",
+        tool_name="run_capability",
+        tool_call_id="sdk-0a1b2c3d4e5f",
+        args={"id": "mcp.example.com", "action": "list_tools"},
+    )
+    card_turn = [
+        ChatMessage(role="user", content="Which CRM tools can you use?"),
+        ChatMessage(
+            role="assistant",
+            content="",
+            tool_calls=[
+                {
+                    "id": call.tool_call_id,
+                    "type": "function",
+                    "function": {
+                        "name": call.tool_name,
+                        "arguments": json.dumps(call.args),
+                    },
+                }
+            ],
+        ),
+        ChatMessage(
+            role="tool",
+            tool_call_id=call.tool_call_id,
+            content=ApprovalRequiredResponse(
+                message="Content withheld pending your review.",
+                tool_name=call.tool_name,
+                reason="Content withheld pending your review: tools mcp.example.com.",
+                review_id=call.review_id,
+                ask="Read",
+                object="mcp.example.com",
+            ).model_dump_json(),
+        ),
+        ChatMessage(role="assistant", content="That needs your approval first."),
+    ]
+    session = await persisted_session(
+        user_id,
+        held.WAKE_MESSAGE,
+        history=card_turn,
+        metadata={"held_calls_answered": True},
+    )
+    result = held._result_row(
+        call,
+        cap_late_tool_result(await _digested(_discovered_tools(), call.tool_call_id)),
+        "approved",
+    )
+    turn_id = str(uuid.uuid4())
+
+    recorded = await record_turn(
+        sdk_service_turn(
+            session,
+            turn_id,
+            [_reply("You can use 20 CRM tools.")],
+            queued_after_first=[],
+            held_results=[result],
+        ),
+        session=session,
+        turn_id=turn_id,
+    )
+
+    check_fixture("sdk-held-result-turn", recorded)
+
+
+def _discovered_tools() -> str:
+    """Large enough to be digested; its ``params`` mark required fields with ``*``."""
+    return MCPToolsDiscoveredResponse(
+        message="Discovered 20 tool(s) on mcp.example.com.",
+        server_url="https://mcp.example.com/mcp",
+        tools=[
+            MCPToolInfo(
+                name=f"manage_objects_{i}",
+                description="Creates or updates CRM objects. " * 15,
+                params="operationType*, createRequest, updateRequest",
+            )
+            for i in range(20)
+        ],
+    ).model_dump_json(exclude_none=True)
+
+
+async def _digested(output: str, tool_call_id: str) -> str:
+    """The large-output preview the tool hands the model, persisted nowhere."""
+    workspaces = MagicMock(
+        get_or_create_workspace=AsyncMock(return_value=MagicMock(id="ws"))
+    )
+    with (
+        patch.object(base, "workspace_db", return_value=workspaces),
+        patch.object(base, "WorkspaceManager", return_value=AsyncMock()),
+    ):
+        return await base._persist_and_summarize(
+            output, "drift-user", "drift-session", tool_call_id, digest=True
+        )
 
 
 def _reply(text: str) -> list:

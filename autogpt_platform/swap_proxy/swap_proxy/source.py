@@ -16,11 +16,13 @@ and the request fails at the provider: loudly, and with nothing leaked.
 """
 
 import logging
+import re
 import time
 from typing import Optional, Protocol
 
 import httpx
 
+from swap_proxy.settings import Settings
 from swap_proxy.swap import Credential, host_in_list
 
 logger = logging.getLogger(__name__)
@@ -33,6 +35,8 @@ _BINDINGS_RETRY = 30.0
 _CREDENTIAL_TTL = 15.0
 _CACHE_MAX = 10_000
 _TIMEOUT = httpx.Timeout(10.0, connect=3.0)
+# The same rule as the backend's (backend/util/service_auth.py).
+_VALID_KEY = re.compile(r"[A-Za-z0-9._~-]{32,}={0,2}")
 
 
 class SourceUnavailable(Exception):
@@ -43,18 +47,44 @@ class CredentialSource(Protocol):
     async def bound_names(self, host: str) -> set[str]: ...
 
     async def resolve(
-        self, user_id: str, name: str, host: str
+        self, user_id: str, name: str, host: str, box: str
     ) -> Optional[Credential]: ...
 
 
 class BackendCredentialSource:
-    def __init__(self, base_url: str, client: Optional[httpx.AsyncClient] = None):
+    def __init__(
+        self,
+        base_url: str,
+        client: Optional[httpx.AsyncClient] = None,
+        api_key: str = "",
+    ):
         self._base_url = base_url.rstrip("/")
-        self._client = client or httpx.AsyncClient(timeout=_TIMEOUT)
+        # trust_env=False: an HTTP_PROXY in the environment must never carry
+        # these plain-HTTP calls, nor the internal key they hold.
+        self._client = client or httpx.AsyncClient(timeout=_TIMEOUT, trust_env=False)
+        # The backend's internal service key, which its services require on
+        # every call (backend/util/service_auth.py).
+        self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._bindings: Optional[tuple[float, dict[str, tuple[str, ...]]]] = None
         self._credentials: dict[
-            tuple[str, str, str], tuple[float, Optional[Credential]]
+            tuple[str, str, str, str], tuple[float, Optional[Credential]]
         ] = {}
+
+    @classmethod
+    def from_settings(
+        cls, settings: Settings, client: Optional[httpx.AsyncClient] = None
+    ) -> "BackendCredentialSource":
+        """Raises on a missing or malformed key, so the proxy does not start
+        without one: the backend refuses every swap lookup that has none."""
+        key = settings.internal_api_key
+        if not _VALID_KEY.fullmatch(key):
+            raise ValueError(
+                "INTERNAL_API_KEY must be the backend's internal service key, "
+                "at least 32 URL-safe characters: letters, digits, '-', '_', "
+                "'.', '~' (and '=' padding). The backend refuses swap lookups "
+                "without it."
+            )
+        return cls(settings.backend_url, client, key)
 
     async def bindings(self) -> dict[str, tuple[str, ...]]:
         now = time.monotonic()
@@ -79,15 +109,21 @@ class BackendCredentialSource:
         table = await self.bindings()
         return {name for name, hosts in table.items() if host_in_list(host, hosts)}
 
-    async def resolve(self, user_id: str, name: str, host: str) -> Optional[Credential]:
-        key = (user_id, name, host.lower())
+    async def resolve(
+        self, user_id: str, name: str, host: str, box: str
+    ) -> Optional[Credential]:
+        """*user_id*'s credential *name* for *host*, asked for the box whose
+        proxy credential is *box*: the backend answers only for a live box of
+        that user's, with what was granted to that box, within the providers
+        that box may use."""
+        key = (user_id, name, host.lower(), box)
         now = time.monotonic()
         cached = self._credentials.get(key)
         if cached and cached[0] > now:
             return cached[1]
         data = await self._call(
             "resolve_swap_credential",
-            {"user_id": user_id, "name": name, "host": host},
+            {"user_id": user_id, "name": name, "host": host, "box": box},
         )
         credential = None
         if data is not None:
@@ -106,7 +142,9 @@ class BackendCredentialSource:
 
     async def _call(self, method: str, body: dict):
         try:
-            response = await self._client.post(f"{self._base_url}/{method}", json=body)
+            response = await self._client.post(
+                f"{self._base_url}/{method}", json=body, headers=self._headers
+            )
             response.raise_for_status()
             return response.json()
         except (httpx.HTTPError, ValueError) as e:

@@ -1,0 +1,6 @@
+{
+ "headers": {},
+ "body": {
+  "detail": "Invalid query. Field p50(nope) is not supported."
+ }
+}

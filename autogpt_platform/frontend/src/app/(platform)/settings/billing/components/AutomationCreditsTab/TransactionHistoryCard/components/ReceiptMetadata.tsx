@@ -17,11 +17,11 @@ export function ReceiptMetadata({ transaction }: Props) {
   const posted = formatActivityDate(transaction.transaction_time);
   const cutoff = formatActivityDate(transaction.receipt_as_of);
   return (
-    <div className="mt-4 flex flex-wrap items-end justify-between gap-4 border-t border-zinc-200 pt-4">
+    <div className="mt-4 flex flex-wrap items-end justify-between gap-4 border-t border-border-base pt-4">
       <div className="flex flex-wrap gap-x-6 gap-y-3">
         {transaction.execution_status && (
           <div className="flex flex-col items-start gap-1">
-            <Text variant="small" className="text-zinc-600">
+            <Text variant="small" className="text-foreground-secondary">
               Run status
             </Text>
             <Badge
@@ -80,10 +80,10 @@ function MetadataField({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <Text variant="small" className="text-zinc-600">
+      <Text variant="small" className="text-foreground-secondary">
         {label}
       </Text>
-      <Text variant="small" unmask={false} title={title}>
+      <Text variant="small" title={title}>
         {value}
       </Text>
     </div>
@@ -114,16 +114,16 @@ function ReceiptDestination({ transaction }: Props) {
       ? "Run unavailable"
       : transaction.execution_available
         ? "Not in your library"
-        : "Agent and run unavailable";
+        : "Workflow and run unavailable";
     return (
-      <Text variant="small" className="text-zinc-600">
+      <Text variant="small" className="text-foreground-secondary">
         {label}
       </Text>
     );
   }
   if (transaction.activity_type === "copilot_tools")
     return (
-      <Text variant="small" className="text-zinc-600">
+      <Text variant="small" className="text-foreground-secondary">
         Conversation unavailable
       </Text>
     );
