@@ -1,3 +1,5 @@
+import re
+
 from gravitasml.parser import Parser
 from gravitasml.token import Token, tokenize
 
@@ -13,6 +15,23 @@ from backend.data.model import SchemaField
 MAX_XML_SIZE = 10 * 1024 * 1024
 MAX_XML_TAG_LENGTH = 4_096
 MAX_XML_DEPTH = 256
+
+# gravitasml does not decode entities; decode the XML predefined ones and
+# numeric references once. Unknown entities and bare "&" stay as-is.
+_XML_ENTITY_RE = re.compile(
+    r"&(?:#x([0-9a-fA-F]{1,6})|#([0-9]{1,7})|(amp|lt|gt|quot|apos));"
+)
+_XML_NAMED_ENTITIES = {"amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'"}
+
+
+def _decode_xml_entity(match: re.Match[str]) -> str:
+    hex_code, dec_code, name = match.groups()
+    if name:
+        return _XML_NAMED_ENTITIES[name]
+    codepoint = int(hex_code, 16) if hex_code else int(dec_code)
+    if codepoint > 0x10FFFF or 0xD800 <= codepoint <= 0xDFFF:
+        return match.group(0)
+    return chr(codepoint)
 
 
 class XMLParserBlock(Block):
@@ -69,24 +88,32 @@ class XMLParserBlock(Block):
             raise ValueError("XML must include a root element.")
 
     @staticmethod
-    def _validate_tokenizer_input(xml: str) -> None:
-        """Reject malformed or deeply nested tags in one linear pass.
+    def _normalize_tokenizer_input(xml: str) -> str:
+        """Reject malformed or deeply nested tags in one linear pass and return
+        the input rewritten for gravitasml.
 
         gravitasml's tokenizer searches to the end of the remaining input for
         every unmatched ``<``. Ensuring every opener has one nearby closing
         ``>`` prevents that quadratic path before the tokenizer runs.
+
+        gravitasml has no self-closing tags or attributes: ``<x/>`` is turned
+        into text and attributes end up in the tag name. Self-closing tags are
+        rewritten to ``<x></x>``; attributes are rejected.
         """
+        pieces: list[str] = []
         position = 0
         depth = 0
         while True:
             tag_start = xml.find("<", position)
             if tag_start == -1:
-                return
+                pieces.append(xml[position:])
+                return "".join(pieces)
 
             if xml.startswith("<!--", tag_start):
                 comment_end = xml.find("-->", tag_start + 4)
                 if comment_end == -1:
                     raise ValueError("Unclosed XML comment.")
+                pieces.append(xml[position : comment_end + 3])
                 position = comment_end + 3
                 continue
 
@@ -105,17 +132,29 @@ class XMLParserBlock(Block):
                 )
             if tag.startswith(("!", "?")):
                 raise ValueError("XML declarations and directives are not supported.")
+            if "=" in tag or '"' in tag or "'" in tag:
+                raise ValueError(f"XML attributes are not supported: <{tag}>")
 
+            pieces.append(xml[position:tag_start])
             if tag.startswith("/"):
                 depth -= 1
                 if depth < 0:
                     raise ValueError("Unexpected closing tag in XML input.")
-            elif not tag.endswith("/"):
+                pieces.append(xml[tag_start : tag_end + 1])
+            elif tag.endswith("/"):
+                if depth + 1 > MAX_XML_DEPTH:
+                    raise ValueError(
+                        f"XML nesting exceeds the maximum depth of {MAX_XML_DEPTH}."
+                    )
+                name = tag[:-1].strip()
+                pieces.append(f"<{name}></{name}>")
+            else:
                 depth += 1
                 if depth > MAX_XML_DEPTH:
                     raise ValueError(
                         f"XML nesting exceeds the maximum depth of {MAX_XML_DEPTH}."
                     )
+                pieces.append(xml[tag_start : tag_end + 1])
 
             position = tag_end + 1
 
@@ -126,9 +165,12 @@ class XMLParserBlock(Block):
             )
 
         try:
-            self._validate_tokenizer_input(input_data.input_xml)
-            tokens = list(tokenize(input_data.input_xml))
+            xml = self._normalize_tokenizer_input(input_data.input_xml)
+            tokens = list(tokenize(xml))
             self._validate_tokens(tokens)
+            for token in tokens:
+                if token.type == "TEXT":
+                    token.value = _XML_ENTITY_RE.sub(_decode_xml_entity, token.value)
 
             parser = Parser(tokens)
             parsed_result = parser.parse()
