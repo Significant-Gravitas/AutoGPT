@@ -41,12 +41,14 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
         </Text>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <ToolbarSearch
+            textSize="body-md"
             id="expert-files-search"
             label="Search files"
             value={files.query}
             onChange={files.setQuery}
           />
           <PillFilterMenu
+            textSize="body-md"
             label="Filter files"
             value={files.filter}
             defaultValue="all"
@@ -64,6 +66,7 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
         </div>
       ) : files.isError ? (
         <ErrorCard
+          textSize="body-md"
           context={`${expertName}'s files`}
           hint="We could not load the files."
           onRetry={() => files.refetch()}
@@ -75,18 +78,21 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
               key="image"
               icon={Image01Icon}
               size={22}
+              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
               className="text-sky-500"
             />,
             <Icon
               key="table"
               icon={Table01Icon}
               size={22}
+              // TODO(tokens): no exact role: text-emerald-500 #10B981
               className="text-emerald-500"
             />,
             <Icon
               key="doc"
               icon={File02Icon}
               size={22}
+              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
               className="text-violet-500"
             />,
           ]}
@@ -94,11 +100,11 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
           description={`Files you share with ${expertName} and documents it creates show up here.`}
         />
       ) : files.visible.length === 0 ? (
-        <Text variant="body" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="pt-4">
           No files match.
         </Text>
       ) : (
-        <div className="mt-4 rounded-2xl bg-white p-2 smooth-shadow-ring-sm">
+        <div className="mt-4 rounded-2xl bg-surface p-2 smooth-shadow-ring-sm">
           <ul aria-label={`${expertName}'s files`} className="flex flex-col">
             {files.visible.map((file) => (
               <li key={file.id}>
@@ -107,7 +113,10 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
             ))}
           </ul>
           {files.hasMore ? (
-            <Text variant="small" className="px-2 pb-1 pt-2 !text-zinc-500">
+            <Text
+              variant="small"
+              className="px-2 pb-1 pt-2 !text-foreground-tertiary"
+            >
               Showing the latest 200 files.
             </Text>
           ) : null}

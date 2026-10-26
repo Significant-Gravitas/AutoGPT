@@ -24,25 +24,11 @@ BUILDER_SESSION_TAG = "builder_session"
 _MAX_NODES = 100
 _MAX_LINKS = 200
 
-_FETCH_FAILED_PREFIX = (
-    f"<{BUILDER_CONTEXT_TAG}>\n"
-    f"<status>fetch_failed</status>\n"
-    f"</{BUILDER_CONTEXT_TAG}>\n\n"
-)
+_FETCH_FAILED_PREFIX = f"<{BUILDER_CONTEXT_TAG}>\n<status>fetch_failed</status>\n</{BUILDER_CONTEXT_TAG}>\n\n"
 
 # Embedded in the cacheable suffix so the LLM picks the right run_agent
 # dispatch mode without forcing the user to watch a long-blocking call.
-_BUILDER_RUN_AGENT_GUIDANCE = (
-    "You are operating inside the builder panel, not the standalone "
-    "copilot page. The builder page already subscribes to agent "
-    "executions the moment you return an execution_id, so for REAL "
-    "(non-dry) runs prefer `run_agent(dry_run=False, wait_for_result=0)` "
-    "— the user will see the run stream in the builder's execution panel "
-    "in-place and your turn ends immediately with the id. For DRY-RUNS "
-    "keep `dry_run=True, wait_for_result=120`: blocking is required so "
-    "you can inspect `execution.node_executions` and report the verdict "
-    "in the same turn."
-)
+_BUILDER_RUN_AGENT_GUIDANCE = "You are in the builder panel, which streams any run as soon as you return its execution_id. For real runs use `run_agent(dry_run=False, wait_for_result=0)`: the user watches it in the execution panel and your turn ends. For dry runs use `dry_run=True, wait_for_result=120` so you can check `execution.node_executions` and report the result in the same turn."
 
 
 # Steers the model toward edit_agent on the bound graph. Empty builder
@@ -61,22 +47,7 @@ def _format_blocked_tool_list(tools: tuple[str, ...]) -> str:
     return f"{', '.join(quoted[:-1])}, and {quoted[-1]}"
 
 
-_BUILDER_TOOL_GUIDANCE = (
-    "This builder panel is bound to the graph shown in <builder_context>. "
-    "Use `tool:edit_agent` against that graph id for every modification, "
-    "including populating an empty graph (version=1, no nodes) — "
-    "`edit_agent` accepts the same node/link payload that `create_agent` "
-    "would, so there is no reason to reach for `create_agent` here. "
-    'Typical sequence for a new request: call `find_capability(context="graph")` to discover '
-    "the block ids and input schemas you need, then run `tool:edit_agent` "
-    "once with the full set of nodes and links. "
-    "Never ask the user to approve or allow a tool — there is no "
-    "permission prompt UI in the builder chat, so any 'click Allow' "
-    "narration will leave the user stuck. "
-    f"The tools {_format_blocked_tool_list(BUILDER_BLOCKED_TOOLS)} are "
-    "intentionally unavailable in builder sessions (the building guide "
-    "is already embedded in <building_guide> below)."
-)
+_BUILDER_TOOL_GUIDANCE = f'This builder panel is bound to the workflow in <builder_context>. Make every change with `tool:edit_agent` on that graph id, including filling an empty workflow (version=1, no nodes); it takes the same node/link payload as `tool:create_agent`. Usual sequence: `find_capability(context="graph")` for block ids and input schemas, then one `tool:edit_agent` call with all nodes and links. There is no permission prompt UI here, so never ask the user to approve or allow a tool. {_format_blocked_tool_list(BUILDER_BLOCKED_TOOLS)} are intentionally unavailable in builder sessions; the building guide is in <building_guide> below.'
 
 
 def _sanitize_for_xml(value: Any) -> str:
@@ -139,8 +110,7 @@ def _format_links(
         src_out = link.get("source_name") or ""
         dst_in = link.get("sink_name") or ""
         lines.append(
-            f"- {_sanitize_for_xml(src_name)}.{_sanitize_for_xml(src_out)} "
-            f"-> {_sanitize_for_xml(dst_name)}.{_sanitize_for_xml(dst_in)}"
+            f"- {_sanitize_for_xml(src_name)}.{_sanitize_for_xml(src_out)} -> {_sanitize_for_xml(dst_name)}.{_sanitize_for_xml(dst_in)}"
         )
     extra = len(links) - len(visible)
     if extra > 0:
@@ -193,25 +163,10 @@ async def build_builder_system_prompt_suffix(
     )
     if not is_builder:
         return f"\n\n{guide_block}"
-    return (
-        f"\n\n<{BUILDER_SESSION_TAG}>\n"
-        f"<tool_usage>\n"
-        f"{_BUILDER_TOOL_GUIDANCE}\n"
-        f"</tool_usage>\n"
-        f"<run_agent_dispatch_mode>\n"
-        f"{_BUILDER_RUN_AGENT_GUIDANCE}\n"
-        f"</run_agent_dispatch_mode>\n"
-        f"{guide_block}\n"
-        f"</{BUILDER_SESSION_TAG}>"
-    )
+    return f"\n\n<{BUILDER_SESSION_TAG}>\n<tool_usage>\n{_BUILDER_TOOL_GUIDANCE}\n</tool_usage>\n<run_agent_dispatch_mode>\n{_BUILDER_RUN_AGENT_GUIDANCE}\n</run_agent_dispatch_mode>\n{guide_block}\n</{BUILDER_SESSION_TAG}>"
 
 
-_BUILDING_GUIDE_PREAMBLE = (
-    "The complete agent-building guide is included below and stays available "
-    "for the rest of this session — refer to it directly. Do NOT call "
-    'get_agent_building_guide or read the "agent_building_guide" skill '
-    "again, including after context compaction."
-)
+_BUILDING_GUIDE_PREAMBLE = 'The full agent-building guide is below and stays available for this session. Do not call get_agent_building_guide or read the "agent_building_guide" skill again, even after context compaction.'
 
 
 async def build_builder_context_turn_prefix(
@@ -251,13 +206,7 @@ async def build_builder_context_turn_prefix(
     nodes = agent_json.get("nodes") or []
     links = agent_json.get("links") or []
     name_attr = f' name="{_sanitize_for_xml(graph_name)}"' if graph_name else ""
-    graph_tag = (
-        f'<graph id="{_sanitize_for_xml(graph_id)}"'
-        f"{name_attr} "
-        f'version="{version}" '
-        f'node_count="{len(nodes)}" '
-        f'edge_count="{len(links)}"/>'
-    )
+    graph_tag = f'<graph id="{_sanitize_for_xml(graph_id)}"{name_attr} version="{version}" node_count="{len(nodes)}" edge_count="{len(links)}"/>'
 
     inner = f"{graph_tag}\n{_format_nodes(nodes)}\n{_format_links(links, nodes)}"
     return f"<{BUILDER_CONTEXT_TAG}>\n{inner}\n</{BUILDER_CONTEXT_TAG}>\n\n"

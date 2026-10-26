@@ -75,7 +75,7 @@ export function SkillsList({ category }: Props) {
           ))}
         </div>
       ) : isError ? (
-        <div className="flex items-center gap-2 text-sm text-zinc-600">
+        <div className="flex items-center gap-2 text-sm text-foreground-secondary">
           <span>Couldn&apos;t load skills right now.</span>
           <button
             type="button"
@@ -86,7 +86,7 @@ export function SkillsList({ category }: Props) {
           </button>
         </div>
       ) : isEmpty ? (
-        <div className="flex items-center gap-2 text-sm text-zinc-600">
+        <div className="flex items-center gap-2 text-sm text-foreground-secondary">
           <span>
             {topic
               ? `No ${formatCategoryLabel(topic).toLowerCase()} skills yet.`

@@ -20,7 +20,10 @@ type AgentUploadTabProps = {
 export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
   return (
     <TabsLineContent value="agent">
-      <p className="mb-4 text-sm text-neutral-500">
+      <p
+        // TODO(tokens): no exact role for text-neutral-500 (#737373)
+        className="mb-4 text-sm text-neutral-500"
+      >
         Upload a previously exported AutoGPT workflow file (.json).
       </p>
       <Form
@@ -92,7 +95,7 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
         >
           {upload.isUploading ? (
             <div className="flex items-center gap-2">
-              <LoadingSpinner size="small" className="text-white" />
+              <LoadingSpinner size="small" className="text-action-foreground" />
               <span>Uploading...</span>
             </div>
           ) : (

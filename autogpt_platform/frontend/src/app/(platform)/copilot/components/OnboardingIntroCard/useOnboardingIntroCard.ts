@@ -1,11 +1,11 @@
 import { useGetBrainDumpIntro } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   clearWelcomePending,
   peekCapabilityCardsSeen,
   peekGreetingDone,
+  peekIntroPath,
   peekWelcomePending,
   setCapabilityCardsSeen,
   setGreetingDone,
@@ -29,11 +29,6 @@ const PENDING_GIVE_UP_MS = 120_000;
 export function useOnboardingIntroCard() {
   const { user } = useAuth();
   const userId = user?.id ?? null;
-  // The endpoint 404s with the flag off, so without this every copilot
-  // visit for every user pays for a request that cannot succeed.
-  const { enabled: isBrainDumpEnabled, ready: isFlagReady } = useFlagStatus(
-    Flag.ONBOARDING_BRAIN_DUMP,
-  );
   // localStorage answers first so a returning user never flashes the
   // greeting; only when it has no answer do we ask the server. The flag
   // is keyed to the user id, so a fresh account on the same browser
@@ -45,7 +40,9 @@ export function useOnboardingIntroCard() {
   // reveal animation must start on a page they are actually looking at.
   // Seeded from sessionStorage so a refresh keeps the overlay up rather
   // than skipping it.
-  const [isWelcomeOpen, setIsWelcomeOpen] = useState(peekWelcomePending);
+  const [isWelcomeOpen, setIsWelcomeOpen] = useState(
+    () => peekWelcomePending() || Boolean(peekIntroPath()),
+  );
 
   // The server render can't see localStorage or the intro answer, so it
   // always emits the held hero; the first client frame must match it or
@@ -73,17 +70,6 @@ export function useOnboardingIntroCard() {
   }, [isWelcomeOpen, userId]);
 
   useEffect(() => {
-    // The handoff keys are written by the wizard while the flag is on, so
-    // they can outlive it: wait for LaunchDarkly, then either run the
-    // handoff or drop it. Consuming it with the flag off would put the
-    // overlay and its 404-ing polls in front of a rolled-back user.
-    if (!isFlagReady) return;
-    if (!isBrainDumpEnabled) {
-      takeIntroPath();
-      clearWelcomePending();
-      setIsWelcomeOpen(false);
-      return;
-    }
     const path = takeIntroPath();
     if (!path) return;
     if (path === "B") {
@@ -96,13 +82,15 @@ export function useOnboardingIntroCard() {
     // consumed by the first real message afterwards.
     setIntroAwaitingFollowup();
     trackBrainDump("intro_path", { path });
-    setWelcomePending();
-    setIsWelcomeOpen(true);
-  }, [isFlagReady, isBrainDumpEnabled]);
+    if (!peekCapabilityCardsSeen(userId)) {
+      setWelcomePending();
+      setIsWelcomeOpen(true);
+    }
+  }, []);
 
   const { data, isError } = useGetBrainDumpIntro({
     query: {
-      enabled: Boolean(isBrainDumpEnabled) && !isDone && !isWelcomeOpen,
+      enabled: !isDone && !isWelcomeOpen,
       staleTime: Infinity,
       gcTime: Infinity,
       refetchInterval: (query) => {
@@ -123,12 +111,8 @@ export function useOnboardingIntroCard() {
   // subscribes, which flashed the regular hero + composer for a beat
   // before the greeting page took over on refresh. A non-200 or a
   // failed request counts as an answer so the composer is never held
-  // hostage by an unavailable endpoint — and so does a flag we know is
-  // off, since that query is disabled and will never answer at all. Wait
-  // for LaunchDarkly to actually say so: treating "not answered yet" as
-  // off is what flashes the composer before the greeting page arrives.
-  const hasIntroAnswer =
-    (isFlagReady && !isBrainDumpEnabled) || data !== undefined || isError;
+  // hostage by an unavailable endpoint.
+  const hasIntroAnswer = data !== undefined || isError;
   const serverSaysDone = Boolean(intro?.greeting_done);
   const isPendingPerServer = Boolean(
     intro && !intro.greeting_done && intro.greeting_pending,
@@ -157,11 +141,6 @@ export function useOnboardingIntroCard() {
     setIsWelcomeOpen(false);
   }
 
-  // Holding the composer is only ever right while this flow is in play:
-  // the overlay is up (seeded synchronously from the handoff) or the flag
-  // already reads on. Holding on "LaunchDarkly has not answered" alone
-  // hid the composer on every flag-off /copilot load until it did.
-  const isGreetingExpected = isWelcomeOpen || Boolean(isBrainDumpEnabled);
   // `serverSaysDone` as well as `isDone`: the effect that caches the verdict
   // runs after render, so a payload that still carries a greeting would
   // otherwise flash the card for one paint before it takes effect.
@@ -184,12 +163,10 @@ export function useOnboardingIntroCard() {
     // The pre-mount frame counts: the server render cannot know any of
     // this, and letting the composer through on that one frame flashed it
     // before the greeting page arrived. The loader fades in on a delay, so
-    // a flag-off user never sees the orb it renders for that frame.
+    // the first frame does not flash the composer.
     isAwaitingGreeting:
       !isMounted ||
-      (!isDone &&
-        isGreetingExpected &&
-        (isWelcomeOpen || !hasIntroAnswer || isPendingGeneration)),
+      (!isDone && (isWelcomeOpen || !hasIntroAnswer || isPendingGeneration)),
     // Only the greeting itself reads top-down like a letter. The loader
     // stays centered — that is the distance the orb travels when the
     // greeting lands.
@@ -197,7 +174,6 @@ export function useOnboardingIntroCard() {
     isWelcomeOpen: !isDone && isWelcomeOpen,
     closeWelcome,
     greeting: intro?.greeting ?? "",
-    prompts: intro?.prompts ?? [],
     transcript: typeof intro?.transcript === "string" ? intro.transcript : "",
     path: intro?.path ?? "B",
   };

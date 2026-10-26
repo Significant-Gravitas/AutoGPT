@@ -1,11 +1,13 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/components/molecules/Sheet/Sheet";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import {
@@ -36,6 +38,12 @@ const TAB_TITLES: Record<ContextPanelTab, string> = {
   integrations: "Integrations",
 };
 
+const TAB_DESCRIPTIONS: Record<ContextPanelTab, string> = {
+  files: "Files from this chat.",
+  artifacts: "Artifacts from this chat to preview.",
+  integrations: "The tools this chat's expert can use.",
+};
+
 export function ContextPanel({ sessionId, mobile }: Props) {
   const expert = useCopilotUIStore((s) => s.contextPanelExpert);
   const {
@@ -55,9 +63,14 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   const content = (
     <div className="flex min-h-0 flex-1 flex-col">
       {showTitle && (
-        <h2 className="shrink-0 px-6 pb-1 pt-6 text-base font-semibold text-zinc-900">
+        <Text
+          variant="large-semibold-tight"
+          as="h2"
+          tone="primary"
+          className="mx-6 mb-1 mt-6 shrink-0"
+        >
           {TAB_TITLES[activeTab]}
-        </h2>
+        </Text>
       )}
       {activeTab === "artifacts" ? (
         <ArtifactsTab sessionId={sessionId} />
@@ -84,9 +97,20 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           className="flex w-full flex-col p-0 sm:max-w-full"
         >
           <SheetHeader className="mt-12 px-6 pb-1 pt-2 text-left">
-            <SheetTitle className="text-lg font-semibold text-zinc-900">
-              {TAB_TITLES[activeTab]}
+            <SheetTitle>
+              <Text
+                as="span"
+                variant="lg-semibold"
+                tone="primary"
+                // TODO(tokens): no exact role for dark:text-neutral-50 (#FAFAFA); SheetTitle's dark colour, kept on the copy that renders it
+                className="dark:text-neutral-50"
+              >
+                {TAB_TITLES[activeTab]}
+              </Text>
             </SheetTitle>
+            <SheetDescription className="sr-only">
+              {TAB_DESCRIPTIONS[activeTab]}
+            </SheetDescription>
           </SheetHeader>
           {content}
         </SheetContent>
@@ -111,6 +135,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           animate={{ width: contextPanelWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
+          // TODO(tokens): no exact role for border-l-[#80808017]
           className="relative h-full shrink-0 border-l border-l-[#80808017] bg-sidebar"
         >
           {/* Sibling of the clip, not a child of it: the handle is

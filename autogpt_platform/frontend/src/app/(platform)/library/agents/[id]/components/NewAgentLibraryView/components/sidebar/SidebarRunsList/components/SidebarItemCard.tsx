@@ -28,7 +28,9 @@ export function SidebarItemCard({
   return (
     <div
       className={cn(
-        "w-full cursor-pointer rounded-large border border-zinc-200 bg-white p-3 text-left ring-1 ring-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-slate-50/50",
+        // TODO(tokens): no exact role for hover:bg-slate-50/50 (#F7F8F9)
+        "w-full cursor-pointer rounded-large border border-border-base bg-surface p-3 text-left ring-1 ring-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-slate-50/50",
+        // TODO(tokens): no exact role for border-slate-800 (#475263), ring-slate-800 (#475263)
         selected ? "border-slate-800 ring-slate-800" : undefined,
       )}
       onClick={onClick}
@@ -45,7 +47,7 @@ export function SidebarItemCard({
           </Text>
           <Text
             variant="body"
-            className="leading-tight !text-zinc-500"
+            className="leading-tight !text-foreground-tertiary"
             title={descriptionTitle}
           >
             {description}

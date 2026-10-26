@@ -23,6 +23,9 @@ from backend.api.features.onboarding_dump.transcription import TranscriptionResu
 
 GOOD_TRANSCRIPT = "I run a bakery and want the weekly order emails handled."
 GARBAGE_TRANSCRIPT = "Thank you for watching."
+JUDGED_UNUSABLE = quality.QualityRejection(
+    error_code=quality.INSUFFICIENT_CONTENT, reason="judge_unusable"
+)
 
 
 def _result(text: str) -> TranscriptionResult:
@@ -38,8 +41,8 @@ def _write_manifest(directory: Path, entries: dict[str, str]) -> None:
 def _gate_by_transcript(monkeypatch) -> None:
     """A stand-in gate: rejects the known garbage transcript, passes the rest."""
 
-    async def check(transcript: str) -> str | None:
-        return "insufficient_content" if transcript == GARBAGE_TRANSCRIPT else None
+    async def check(transcript: str) -> quality.QualityRejection | None:
+        return JUDGED_UNUSABLE if transcript == GARBAGE_TRANSCRIPT else None
 
     monkeypatch.setattr(quality, "check_transcript_quality", check)
 
@@ -178,8 +181,14 @@ async def test_gate_only_transcription_failure_counts_as_empty_transcript(
         ),
     )
 
-    async def check(transcript: str) -> str | None:
-        return None if transcript else "no_usable_speech"
+    async def check(transcript: str) -> quality.QualityRejection | None:
+        return (
+            None
+            if transcript
+            else quality.QualityRejection(
+                error_code=quality.NO_USABLE_SPEECH, reason="deterministic"
+            )
+        )
 
     monkeypatch.setattr(quality, "check_transcript_quality", check)
 
@@ -204,6 +213,26 @@ async def test_evaluate_transcript_compares_outcome_to_expectation(
 
     assert result.outcome == "pass"
     assert result.correct is outcome_correct
+
+
+async def test_a_judge_outage_confirms_no_expected_reject(monkeypatch):
+    """A judge that could not be asked made no call, so an outage can fail
+    the run but never pass it on the clips it happens to reject."""
+
+    async def check(transcript: str) -> quality.QualityRejection:
+        return quality.QualityRejection(
+            error_code=quality.QUALITY_CHECK_UNAVAILABLE, reason="judge_timeout"
+        )
+
+    monkeypatch.setattr(quality, "check_transcript_quality", check)
+
+    result = await brain_dump_gate_eval.evaluate_transcript(
+        "gate-reject-silence", "reject", GARBAGE_TRANSCRIPT
+    )
+
+    assert result.outcome == "reject"
+    assert result.reason == "judge_timeout"
+    assert result.correct is False
 
 
 # --- shipped corpus consistency (pure filesystem, no credentials) ---------

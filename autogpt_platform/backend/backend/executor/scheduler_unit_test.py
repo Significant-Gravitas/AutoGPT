@@ -17,6 +17,7 @@ from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -58,7 +59,6 @@ from backend.executor.scheduler import (
     _reschedule_one_shot_after_plan_unreadable,
     _routine_turn_permissions,
     _self_delete_copilot_turn_schedule,
-    _self_delete_morning_briefing_schedule,
     execute_community_rebuild,
     execute_nightly_batch_sync,
     execute_skill_learning_sync,
@@ -72,7 +72,8 @@ from backend.util.exceptions import (
     UserBannedError,
     UserPaywalledError,
 )
-from backend.util.service import EXPOSED_FLAG
+from backend.util.process import AppProcess
+from backend.util.service import EXPOSED_FLAG, UnhealthyServiceError
 from backend.util.settings import Config
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
@@ -1985,6 +1986,17 @@ def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     assert match.kwargs["seconds"] == 12 * 3600
 
 
+def test_dream_pass_reaper_and_retention_are_registered_at_start(monkeypatch):
+    ids = [c.kwargs["id"] for c in _registered_jobs(monkeypatch, 6).add_job_calls]
+
+    assert ids.count("dream_pass_reaper") == 1
+    assert ids.count("dream_pass_retention") == 1
+
+
+def test_dream_pass_retention_defaults_to_ninety_days():
+    assert Config.model_fields["dream_pass_retention_days"].default == 90
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 def test_orphan_sweep_registered_only_when_switched_on(monkeypatch, enabled):
     monkeypatch.setattr(
@@ -2379,40 +2391,16 @@ class TestMorningBriefingSchedule:
         sched._invalidate_jobs_cache.assert_not_called()
         assert result["removed"] is False
 
-    def test_job_body_removes_the_schedule_once_the_flag_is_off(self):
-        """Without this the cron outlives the feature, firing daily forever
-        to return flag_disabled."""
-        from backend.executor.scheduler import execute_morning_briefing
-
-        with (
-            patch(
-                "backend.copilot.briefing.generate.generate_and_deliver_briefing",
-                new=MagicMock(),
-            ),
-            patch(
-                f"{_SCHEDULER_PATH}.run_async",
-                side_effect=[{"status": "skipped", "reason": "flag_disabled"}, None],
-            ),
-            patch(
-                f"{_SCHEDULER_PATH}._self_delete_morning_briefing_schedule",
-                new=MagicMock(),
-            ) as self_delete,
-        ):
-            execute_morning_briefing("user-1")
-
-        self_delete.assert_called_once_with("user-1")
-
     @pytest.mark.parametrize(
         "result",
         [
             {"status": "skipped", "reason": "nothing_to_say"},
             {"status": "skipped", "reason": "already_delivered"},
-            # An unreachable LaunchDarkly must cost one morning, not the cron.
-            {"status": "skipped", "reason": "flag_unavailable"},
+            {"status": "skipped", "reason": "banned"},
             {"status": "delivered", "briefing_id": "b-1", "session_id": "s-1"},
         ],
     )
-    def test_job_body_keeps_the_schedule_on_every_other_outcome(self, result):
+    def test_job_body_keeps_the_schedule_after_generation(self, result):
         from backend.executor.scheduler import execute_morning_briefing
 
         with (
@@ -2420,54 +2408,11 @@ class TestMorningBriefingSchedule:
                 "backend.copilot.briefing.generate.generate_and_deliver_briefing",
                 new=MagicMock(),
             ),
-            patch(f"{_SCHEDULER_PATH}.run_async", side_effect=[result]),
-            patch(
-                f"{_SCHEDULER_PATH}._self_delete_morning_briefing_schedule",
-                new=MagicMock(),
-            ) as self_delete,
+            patch(f"{_SCHEDULER_PATH}.run_async", return_value=result) as run,
         ):
             execute_morning_briefing("user-1")
 
-        self_delete.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_self_delete_also_clears_the_registration_marker(self):
-        """A marker left behind would suppress lazy re-registration for the
-        rest of its TTL if the flag is turned back on."""
-        client = MagicMock()
-        client.remove_morning_briefing_schedule = AsyncMock()
-        with (
-            patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=client),
-            patch(
-                "backend.copilot.briefing.scheduling."
-                "clear_briefing_registration_marker",
-                new=AsyncMock(),
-            ) as clear_marker,
-        ):
-            await _self_delete_morning_briefing_schedule("user-1")
-
-        client.remove_morning_briefing_schedule.assert_awaited_once_with(
-            user_id="user-1"
-        )
-        clear_marker.assert_awaited_once_with("user-1")
-
-    @pytest.mark.asyncio
-    async def test_self_delete_swallows_a_scheduler_rpc_failure(self, caplog):
-        """It runs inside a job body; raising here would fail the whole run."""
-        client = MagicMock()
-        client.remove_morning_briefing_schedule = AsyncMock(
-            side_effect=RuntimeError("pyro down")
-        )
-        with (
-            patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=client),
-            caplog.at_level(logging.WARNING),
-        ):
-            await _self_delete_morning_briefing_schedule("user-1")
-
-        assert any(
-            "Failed to remove morning briefing job" in r.getMessage()
-            for r in caplog.records
-        )
+        run.assert_called_once()
 
 
 def test_graph_schedule_listing_can_include_paused_jobs():
@@ -3253,6 +3198,32 @@ class TestScheduleListCache:
         assert fetch.calls == 1
         assert sum(isinstance(r, RuntimeError) for r in results) == 1  # the fetcher
         assert [r for r in results if isinstance(r, list)] == [["list-1"]] * 7
+
+
+# ── stopped before `run_service` started the APScheduler ───────────────────
+
+
+@pytest.mark.parametrize(
+    "built", [False, True], ids=["not built", "built, not started"]
+)
+def test_cleanup_of_a_scheduler_stopped_before_run_service_finishes_the_chain(
+    monkeypatch: pytest.MonkeyPatch, mocker, built: bool
+):
+    monkeypatch.setattr(scheduler_module, "_event_loop", None)
+    monkeypatch.setattr(scheduler_module, "_event_loop_thread", None)
+    process_cleanup = mocker.patch.object(AppProcess, "cleanup")
+    service = Scheduler(register_system_tasks=False)
+    if built:
+        service.scheduler = BackgroundScheduler()
+
+    service.cleanup()
+
+    process_cleanup.assert_called_once_with()
+
+
+async def test_a_scheduler_before_run_service_reports_itself_initializing():
+    with pytest.raises(UnhealthyServiceError, match="initializing"):
+        await Scheduler(register_system_tasks=False).health_check()
 
 
 class _GatedFetch:

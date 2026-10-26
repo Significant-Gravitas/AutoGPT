@@ -1,7 +1,7 @@
 """Unit tests for ``recall_ingest``: graphiti's edge dedup never names a
 forgotten edge, checked against graphiti's own dedup prompt, and a prompt the
 guard cannot read in full names no edge at all; an attribute answer keeps
-only what its type declares.
+only what its type declares, and a stored fact gets none.
 
 The live runs, through the production worker, are
 ``recall_ingest_integration_test.py`` and ``recall_reteach_integration_test.py``.
@@ -73,6 +73,17 @@ def _retagged(prompt: list[Message], tag: str, new: str) -> list[Message]:
     """``prompt`` with the ``tag`` pair printed as ``new`` (gone when empty)."""
     opened = _edited(prompt, f"<{tag}>", f"<{new}>" if new else "")
     return _edited(opened, f"</{tag}>", f"</{new}>" if new else "")
+
+
+def _attribute_prompt(existing: dict[str, Any]) -> list[Message]:
+    """graphiti's attribute prompt for a fact holding ``existing``."""
+    return prompt_library.extract_edges.extract_attributes(
+        {
+            "fact": "Alice works on Atlas",
+            "reference_time": None,
+            "existing_attributes": existing,
+        }
+    )
 
 
 def _inner(answer: dict[str, Any]) -> MagicMock:
@@ -286,10 +297,9 @@ class TestForgetAwareLLMClient:
             "made_up": secret,
         }
         client = ForgetAwareLLMClient(_inner(dict(answer)))
-        prompt = [Message(role="user", content="Alice works on Atlas")]
 
         kept = await client.generate_response(
-            prompt, MemoryFact, attribute_extraction=True
+            _attribute_prompt({}), MemoryFact, attribute_extraction=True
         )
         merged, _ = apply_capped_attributes(kept, MemoryFact, {}, merge_mode="replace")
 
@@ -298,6 +308,39 @@ class TestForgetAwareLLMClient:
             answer, MemoryFact, {}, merge_mode="replace"
         )
         assert unfiltered["forgotten_at"] == secret, "graphiti keeps it unfiltered"
+
+    @pytest.mark.asyncio
+    async def test_a_stored_fact_gets_no_attribute_answer(self) -> None:
+        """graphiti asks for the attributes of a fact a statement was merged
+        into, its stored ones shown: the answer is empty, the model is not
+        asked, and so the stored attributes stay (``fact_attributes.py``)."""
+        inner = _inner({"status": "tentative", "scope": "real:global"})
+        client = ForgetAwareLLMClient(inner)
+        stored = {"status": "active", "ratified_at": "2026-05-02T00:00:00+00:00"}
+
+        answer = await client.generate_response(
+            _attribute_prompt(stored), MemoryFact, attribute_extraction=True
+        )
+
+        assert answer == {}
+        inner.generate_response.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_an_entity_with_attributes_still_gets_its_answer(self) -> None:
+        """Only a fact's attributes are kept from extraction: an entity's are
+        graphiti's to update."""
+        inner = _inner({"role": "CTO"})
+        client = ForgetAwareLLMClient(inner)
+        prompt = [
+            Message(
+                role="user",
+                content='<EXISTING ATTRIBUTES>{"role": "VP"}</EXISTING ATTRIBUTES>',
+            )
+        ]
+
+        assert await client.generate_response(
+            prompt, Person, attribute_extraction=True
+        ) == {"role": "CTO"}
 
     @pytest.mark.asyncio
     async def test_an_entity_attribute_answer_keeps_its_types_fields(self) -> None:
@@ -317,6 +360,61 @@ class TestForgetAwareLLMClient:
 
         inner.set_tracer.assert_called_once_with(tracer)
         assert client.token_tracker is inner.token_tracker
+
+
+class TestGraphitisResolutionOfARestatement:
+    """graphiti's own ``resolve_extracted_edge`` through the client, its model
+    naming the stored fact a duplicate and answering a new status."""
+
+    @pytest.mark.asyncio
+    async def test_a_merge_leaves_the_stored_facts_attributes_out_of_the_save(
+        self,
+    ) -> None:
+        """graphiti's save of the merged fact then carries no attributes, so
+        the merging save keeps every stored one."""
+        answers = {
+            "EdgeDuplicate": {"duplicate_facts": [0], "contradicted_facts": []},
+            "MemoryFact": {"status": "tentative"},
+        }
+        inner = _inner({})
+        inner.generate_response.side_effect = lambda messages, model, *a, **k: (
+            answers[model.__name__]
+        )
+        stored = _edge("stored", "Alice works on Atlas")
+        stored.name = "MemoryFact"
+        stored.attributes = {"status": "active", "recall_count": 3}
+        new = _edge("new", "Alice is working on Atlas")
+
+        resolved, _, _ = await resolve_extracted_edge(
+            ForgetAwareLLMClient(inner),
+            new,
+            [stored],
+            [],
+            _episode(new.fact),
+            {"MemoryFact": MemoryFact},
+        )
+
+        assert resolved.uuid == "stored"
+        assert resolved.attributes == {}
+        asked = [call.args[1] for call in inner.generate_response.await_args_list]
+        assert asked == [EdgeDuplicate], "the model is not asked for attributes"
+
+    @pytest.mark.asyncio
+    async def test_a_new_fact_is_seeded_from_the_answer(self) -> None:
+        inner = _inner({"status": "tentative", "scope": "real:global"})
+        new = _edge("new", "Alice works on Atlas")
+        new.name = "MemoryFact"
+
+        resolved, _, _ = await resolve_extracted_edge(
+            ForgetAwareLLMClient(inner),
+            new,
+            [],
+            [],
+            _episode(new.fact),
+            {"MemoryFact": MemoryFact},
+        )
+
+        assert resolved.attributes == {"status": "tentative", "scope": "real:global"}
 
 
 def test_every_graphiti_client_is_built_forget_aware() -> None:
@@ -356,6 +454,18 @@ def _edge(uuid: str, fact: str) -> EntityEdge:
         valid_at=_THEN,
         name="works_on",
         fact=fact,
+    )
+
+
+def _episode(content: str) -> EpisodicNode:
+    return EpisodicNode(
+        name="s-2",
+        group_id="user_abc",
+        source=EpisodeType.text,
+        source_description="chat",
+        content=content,
+        created_at=_THEN,
+        valid_at=_THEN,
     )
 
 

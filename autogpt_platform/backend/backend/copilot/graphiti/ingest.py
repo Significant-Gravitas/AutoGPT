@@ -15,9 +15,15 @@ from graphiti_core import Graphiti
 from graphiti_core.graphiti import AddEpisodeResults
 from graphiti_core.nodes import EpisodeType
 
+from backend.copilot.chat_platform_header import (
+    attribute_chat_platform_speakers,
+    strip_chat_platform_header,
+)
+from backend.copilot.dream.ratification import _promote_if_tentative
 from backend.copilot.dream.registry import ensure_scope_scheduled
 from backend.util.background import spawn_background_task
 
+from . import marked_write
 from .client import ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
 from .recall_citations import Citations, rests_on_a_forget
@@ -111,6 +117,7 @@ class IngestionCompletion:
         "written",
         "dropped_forgotten",
         "failed",
+        "provenance_pending",
     )
 
     def __init__(self) -> None:
@@ -123,8 +130,13 @@ class IngestionCompletion:
         # Episodes the worker dropped, unwritten, for resting on a forget
         # made since they were queued (``recall_citations.py``).
         self.dropped_forgotten = 0
-        # Episodes whose write raised: dropped, logged, not retried.
+        # Episodes the worker did not write: a dream write whose citation
+        # marker could not be written (it fails closed), a graph write that
+        # raised, a payload for another graph.
         self.failed = 0
+        # Dream writes made whose derivation record failed after the write:
+        # their marker stays until it is reconciled (``recall_reconcile.py``).
+        self.provenance_pending = 0
 
     @property
     def registered(self) -> int:
@@ -190,8 +202,8 @@ CUSTOM_EXTRACTION_INSTRUCTIONS = """
 
 # Cypher that overwrites exactly the five envelope-sourced MemoryFact
 # props on a known set of edge uuids. group_id predicate is tenant
-# defense-in-depth (mirrors apply._apply_demotions); the forgotten test
-# keeps it off a fact a forget reached first.
+# defense-in-depth (mirrors the dream's demotions, ``dream/demotions.py``);
+# the forgotten test keeps it off a fact a forget reached first.
 _STAMP_EDGE_METADATA_QUERY = """
 MATCH ()-[e:RELATES_TO]->()
 WHERE e.uuid IN $uuids AND e.group_id = $gid AND e.forgotten_at IS NULL
@@ -402,32 +414,90 @@ async def _write_locked(
     """Write one episode holding the graph's write lock (``scope_lock.py``),
     so no forget lands between what graphiti reads and what it saves over
     it; False, writing nothing, when another writer kept it for the wait.
-    A dream write resting on a forget is dropped under the same lock."""
+    A dream write has its citations marked first, failing closed; one
+    resting on a forget is then dropped under the same lock, its marker
+    withdrawn, as is the marker of one whose check raised; one that is
+    written is recorded after it
+    (``marked_write.py``), so a forget waiting for the lock finds them. A
+    user's chat turn promotes the tentative facts it states under the same
+    lock (``_promote_restated``)."""
     wait = INGEST_LOCK_WAIT_SECONDS
     async with graph_write_lock(group_id, wait_seconds=wait) as lock:
         if lock is LockState.BUSY:
             return False
         client = await get_graphiti_client(group_id)
-        if await _dropped_as_forgotten(client, payload, completion):
-            return True
+        # Sidecars (not add_episode kwargs): the citations and the edge
+        # metadata come only with a dream write, the restatement only with a
+        # chat turn's user-message episode.
+        citations: Citations | None = payload.pop("_citations", None)
+        edge_metadata = payload.pop("_edge_metadata", None)
+        restatement = payload.pop("_restatement", False)
         # This is the write path, so materializing the graph is intended
         # here — unlike driver construction, which must never create one.
         # Once per group per loop.
         await ensure_indices_once(group_id, client)
-        # ``_edge_metadata`` is a sidecar (not an add_episode kwarg) — pop it
-        # before the **payload spread. Present only for dream writes.
-        edge_metadata = payload.pop("_edge_metadata", None)
-        result = await _add_episode(client, group_id, payload)
+        marked = await marked_write.marked(
+            client, group_id, payload, citations, completion
+        )
+        if citations is not None and marked is None:
+            return True
+        try:
+            dropped = await _dropped_as_forgotten(
+                client, payload, citations, completion
+            )
+        except Exception:
+            # Nothing is placed yet. Left pending, the marker would hold up
+            # the forgets of what it cites until it expired.
+            await marked_write.withdrawn(client.driver, marked)
+            raise
+        if dropped:
+            await marked_write.withdrawn(client.driver, marked)
+            return True
+        episode = marked.episode if marked is not None else None
+        result = await marked_write.added(
+            _add_episode(client, group_id, payload, episode),
+            client.driver,
+            group_id,
+            marked,
+        )
         await _undo_extracted_retractions(client, result)
+        if restatement:
+            await _promote_restated(client, result)
         # graphiti's attribute extraction fills MemoryFact fields from the
         # episode text, not the envelope, so dream metadata doesn't survive:
         # stamp it onto the edges THIS episode newly created (see
         # ``_stamp_edge_metadata`` for the dedup-safety invariant).
         if edge_metadata:
             await _stamp_edge_metadata(client, group_id, result, edge_metadata, user_id)
+        if citations is not None and marked is not None:
+            await marked_write.recorded(
+                client, group_id, marked, result, citations, completion
+            )
         if completion is not None:
             completion.written += 1
     return True
+
+
+def _count_failed(completion: IngestionCompletion | None) -> None:
+    if completion is not None:
+        completion.failed += 1
+
+
+async def _promote_restated(client: Graphiti, result: AddEpisodeResults) -> None:
+    """Promote each tentative fact a user's chat turn states, new or merged
+    into, to ``active`` with a ``ratified_at`` stamp (the ratification
+    loop's promotion, ``dream.ratification``). Tentative is probation for
+    what the system inferred, a dream proposal or an assistant's finding,
+    and the user saying it ends it; their own statement is not put on
+    probation because graphiti's model labelled it tentative. Only the facts
+    whose ``episodes`` include the turn's: the ones graphiti invalidated are
+    left alone. The recall stamps and hit counts stay: saying a fact is no
+    recall of it. Best-effort, like the promotion: the episode is written
+    either way."""
+    episode = result.episode.uuid
+    for edge in result.edges:
+        if episode in edge.episodes:
+            await _promote_if_tentative(client.driver, edge.uuid)
 
 
 async def _undo_extracted_retractions(
@@ -466,11 +536,12 @@ SET e.status = $active
 async def _dropped_as_forgotten(
     client: Graphiti,
     payload: dict[str, Any],
+    citations: Citations | None,
     completion: IngestionCompletion | None,
 ) -> bool:
     """True, counting it on ``completion``, when ``payload`` is a dream write
     that rests on a forget made since the dream read the graph."""
-    reason = await rests_on_a_forget(client.driver, payload.pop("_citations", None))
+    reason = await rests_on_a_forget(client.driver, citations)
     if reason is None:
         return False
     logger.info(f"Dropped dream write {payload.get('name')!r}: it {reason}")
@@ -531,13 +602,11 @@ def _note_lock_wait(payload: dict[str, Any], waits: int) -> None:
     )
 
 
-def _count_failed(completion: IngestionCompletion | None) -> None:
-    if completion is not None:
-        completion.failed += 1
-
-
 async def _add_episode(
-    client: Graphiti, group_id: str, payload: dict[str, Any]
+    client: Graphiti,
+    group_id: str,
+    payload: dict[str, Any],
+    episode: str | None = None,
 ) -> AddEpisodeResults:
     """graphiti's ``add_episode`` with our types, under the recall policy.
 
@@ -553,12 +622,19 @@ async def _add_episode(
     found them. (graphiti's exact-text match, which runs before the model,
     can still list a new episode on a forgotten edge whose ``[forgotten]``
     text the statement repeats word for word.)
+
+    A marked dream write's ``episode`` uuid is its marker's: the episode is
+    placed under it first (``marked_write.placed``), after the earlier
+    episodes are read, and graphiti writes over it.
     """
     previous = await previous_episode_uuids(
         client.driver, group_id, payload["reference_time"], payload["source"]
     )
+    if episode is not None:
+        await marked_write.placed(client.driver, group_id, payload, episode)
     return await client.add_episode(
         **payload,
+        uuid=episode,
         previous_episode_uuids=previous,
         entity_types=ENTITY_TYPES,
         edge_types=EDGE_TYPES,
@@ -572,6 +648,8 @@ async def enqueue_conversation_turn(
     user_msg: str,
     assistant_msg: str = "",
     expert_id: str | None = None,
+    *,
+    bridge_origin: bool = False,
 ) -> None:
     """Enqueue a conversation turn for async background ingestion.
 
@@ -600,7 +678,14 @@ async def enqueue_conversation_turn(
     # User's own words only, in graphiti's expected "Speaker: content" format.
     # Assistant response is excluded from extraction
     # (Zep Cloud approach: ignore_roles=["assistant"]).
-    episode_body_for_graphiti = f"{user_display_name}: {user_msg}"
+    # A chat-platform bot turn names its own speakers: in a linked server the
+    # executing user is the owner, not whoever sent the message.
+    episode_body_for_graphiti = attribute_chat_platform_speakers(
+        user_msg, bridge_origin=bridge_origin
+    )
+    if not episode_body_for_graphiti:
+        own_words = strip_chat_platform_header(user_msg, bridge_origin=bridge_origin)
+        episode_body_for_graphiti = f"{user_display_name}: {own_words}"
 
     source_description = f"User message in session {session_id}"
 
@@ -614,6 +699,9 @@ async def enqueue_conversation_turn(
             "reference_time": datetime.now(timezone.utc),
             "group_id": group_id,
             "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
+            # Sidecar: the user's own words, so the worker promotes the
+            # tentative facts they state (``_promote_restated``).
+            "_restatement": True,
         },
     )
     if not queued:
@@ -687,7 +775,10 @@ async def enqueue_episode(
         citations: What a dream write rests on. The worker checks them under
             the graph's write lock right before writing and drops the
             episode, counting it on ``completion``, when a forget made since
-            the dream read the graph reached them (``recall_citations.py``).
+            the dream read the graph reached them (``recall_citations.py``);
+            once it is written, the worker records them on the episode and
+            on the facts only dream episodes state (``recall_derivation.py``),
+            so a later forget of one retracts them (``recall_cascade.py``).
             ``None`` for chat / memory-store writes.
 
     Returns ``True`` if the episode was queued, ``False`` if it was dropped.

@@ -686,6 +686,28 @@ def test_stream_chat_skips_enqueue_for_duplicate_message(
     mocks.enqueue.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    ("body", "dedupe_content"),
+    [
+        # A turn stopped before it streamed leaves "yes" as the last row; the
+        # resend carries a fresh id and must not be collapsed into it.
+        ({"message": "yes", "message_id": "client-send-2"}, False),
+        ({"message": "yes"}, True),
+    ],
+)
+def test_stream_chat_collapses_same_text_only_without_a_client_id(
+    mocker: pytest_mock.MockerFixture,
+    body: dict[str, str],
+    dedupe_content: bool,
+):
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post("/sessions/sess-1/stream", json=body)
+
+    assert response.status_code == 200
+    assert mocks.enqueue.await_args.kwargs["dedupe_content"] is dedupe_content
+
+
 def test_stream_chat_canonicalizes_expert_kickoff(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,

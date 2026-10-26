@@ -92,7 +92,7 @@ _SENTRY_SENSITIVE_FIELDS = sorted(
 # A user is known to Sentry by their id only, so their email and IP address are
 # filtered wherever else they turn up, such as in extras or a frame's locals.
 # Exact names only: keys like ``email_verified`` stay readable.
-_SENTRY_PERSONAL_FIELDS = ("email", "user_email", "ip", "ip_address")
+_SENTRY_PERSONAL_FIELDS = ("email", "user_email", "recipient", "ip", "ip_address")
 # Matched case-insensitively against every key in the event, as sentry's
 # EventScrubber does (with its PII list, since send_default_pii is off).
 _SENTRY_SENSITIVE_KEYS = frozenset(

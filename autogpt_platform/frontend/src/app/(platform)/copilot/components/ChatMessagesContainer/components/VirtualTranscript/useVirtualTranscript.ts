@@ -1,6 +1,10 @@
 "use client";
 
-import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  observeElementOffset,
+  useVirtualizer,
+  type Virtualizer,
+} from "@tanstack/react-virtual";
 import {
   useCallback,
   useLayoutEffect,
@@ -68,6 +72,9 @@ export function useVirtualTranscript({
   const firstRowIDRef = useRef<string | undefined>(rows[0]?.message.id);
   const gap = compact ? COMPACT_ROW_GAP_PX : ROW_GAP_PX;
 
+  // Kept as a memo: the compiler skips this hook (TanStack Virtual's
+  // `useVirtualizer` is an incompatible library), and the virtualizer redoes
+  // every row's measurements whenever `getItemKey` changes identity.
   const getItemKey = useCallback(
     (index: number) => rows[index].message.id,
     [rows],
@@ -78,6 +85,7 @@ export function useVirtualTranscript({
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => estimateRowHeight(rowsRef.current[index].message),
     getItemKey,
+    observeElementOffset: observeOffsetUntilUnsubscribed,
     overscan: OVERSCAN_ROWS,
     gap,
     scrollMargin,
@@ -213,4 +221,20 @@ function useJumpToMessage({
       jumpRef.current = null;
     };
   }, [jumpRef, rowsRef, virtualizer]);
+}
+
+// virtual-core 3.13 leaves its 150 ms scroll-end timer running on unsubscribe,
+// so it updates an unmounted list; 3.17.8 (react-virtual 3.14.10) cancels it.
+function observeOffsetUntilUnsubscribed(
+  instance: Virtualizer<HTMLElement, Element>,
+  cb: (offset: number, isScrolling: boolean) => void,
+) {
+  let isSubscribed = true;
+  const unsubscribe = observeElementOffset(instance, (offset, isScrolling) => {
+    if (isSubscribed) cb(offset, isScrolling);
+  });
+  return () => {
+    isSubscribed = false;
+    unsubscribe?.();
+  };
 }

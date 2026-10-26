@@ -31,15 +31,27 @@ describe("TurnStatsBar", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("prefers live elapsedSeconds over the persisted durationMs", () => {
+  it("reads the saved durationMs over the live count once the server has it", () => {
     render(
       <TurnStatsBar
         turnMessages={EMPTY}
-        elapsedSeconds={7}
-        stats={{ durationMs: 99_000 }}
+        elapsedSeconds={67}
+        stats={{ durationMs: 30_000 }}
       />,
     );
-    expect(screen.getByText(/Thought for 7s/)).toBeDefined();
+    expect(screen.getByText("Thought for 30s")).toBeDefined();
+  });
+
+  it("keeps the live count off the label once a zero duration is saved", () => {
+    const { container } = render(
+      <TurnStatsBar
+        turnMessages={EMPTY}
+        elapsedSeconds={67}
+        stats={{ durationMs: 0 }}
+      />,
+    );
+    // A reload has no live count, so it shows no label either.
+    expect(container.firstChild).toBeNull();
   });
 
   it("uses durationMs when the turn is finalized", () => {

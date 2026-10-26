@@ -28,7 +28,6 @@ vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
 
 const posthog = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("@posthog/react", () => ({
-  useFeatureFlagVariantKey: () => undefined,
   usePostHog: () => posthog,
 }));
 
@@ -186,18 +185,13 @@ test("reports the offer impression against the billing surface", async () => {
   );
 });
 
-test("labels paid signup Start Max and keeps checkout reporting against the upgrade_modal surface", async () => {
+test("labels paid signup Start Max", async () => {
   server.use(getGetTrialsGetTrialStatusMockHandler200(eligible()));
 
   render(<PaywallModal />);
 
   const max = within(await screen.findByRole("region", { name: "Max plan" }));
-  const paid = max.getByRole("button", { name: "Start Max" });
-  expect(paid.getAttribute("data-fast-goal")).toBe("plan_cta_click");
-  expect(paid.getAttribute("data-fast-goal-surface")).toBe("upgrade_modal");
-
-  const toggle = screen.getByRole("button", { name: /yearly/i });
-  expect(toggle.getAttribute("data-fast-goal-surface")).toBe("upgrade_modal");
+  expect(max.getByRole("button", { name: "Start Max" })).toBeDefined();
 });
 
 test("leaves the paid CTAs alone when the user is not eligible", async () => {

@@ -34,7 +34,7 @@ export function ResetUsageDialog({
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
-        <Text variant="body" className="text-zinc-600">
+        <Text variant="body" className="text-foreground-secondary">
           {both
             ? "Sets this user's AutoPilot spend for today and this week back to $0.00. Their limits don't change."
             : "Sets this user's AutoPilot spend for today back to $0.00. Their limits don't change."}

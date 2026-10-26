@@ -102,6 +102,9 @@ export function useSessionList({ enabled = true }: Args = {}) {
   // `query.data` and `deletingIds` keep their identity while nothing in them
   // changes (structural sharing), so a refetch that returns the same sessions
   // hands the lists the same array and every memoised row skips its render.
+  // Kept with the compiler on: the recent-chats sidebar that reads this list
+  // is outside the compiled folders, and its row-render tests expect a
+  // refetch of the same sessions to leave every row alone.
   const sessions = useMemo(
     () =>
       flattenSessions(query.data).filter(

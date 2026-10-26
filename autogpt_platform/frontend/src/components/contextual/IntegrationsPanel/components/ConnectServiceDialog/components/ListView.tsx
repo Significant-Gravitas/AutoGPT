@@ -1,7 +1,7 @@
 "use client";
 import { Text } from "@/components/atoms/Text/Text";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
 
 import type { ConnectableProvider } from "../helpers";
 import { ProviderRow } from "./ProviderRow";
@@ -25,7 +25,7 @@ export function ListView({
 }: Props) {
   return (
     <div className="flex flex-col gap-4">
-      <Text variant="body" className="text-[#505057]">
+      <Text variant="body" className="text-foreground-body">
         {description}
       </Text>
 
@@ -33,7 +33,7 @@ export function ListView({
         <Icon
           icon={Search01Icon}
           size={20}
-          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#83838C]"
+          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-foreground-tertiary"
         />
         <input
           type="text"
@@ -41,14 +41,19 @@ export function ListView({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search services..."
           aria-label="Search services"
-          className="h-[46px] w-full rounded-3xl border border-[#DADADC] bg-white pl-12 pr-4 text-sm leading-[22px] text-[#1F1F20] placeholder:text-[#83838C] focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
+          // TODO(tokens): no exact role for focus:border-purple-400 #925cf7, focus:ring-purple-400 #925cf7, text-[#1F1F20]
+          className="h-[46px] w-full rounded-3xl border border-border-base bg-surface pl-12 pr-4 text-body text-[#1F1F20] placeholder:text-placeholder focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
         />
       </div>
 
       {providers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#DADADC] py-10 text-center">
-          <Icon icon={Plug01Icon} size={24} className="text-[#83838C]" />
-          <Text variant="body" className="text-[#505057]">
+        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border-base py-10 text-center">
+          <Icon
+            icon={Plug01Icon}
+            size={24}
+            className="text-foreground-tertiary"
+          />
+          <Text variant="body" className="text-foreground-body">
             {query.trim()
               ? `No services match "${query.trim()}"`
               : "No services available"}

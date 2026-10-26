@@ -44,23 +44,26 @@ export function RecentConversations({
         <CardError message="Couldn't load conversations." onRetry={onRetry} />
       ) : sessions.length === 0 ? (
         <PanelEmptyState
+          textSize="body-md"
           tiles={[
             <Icon
               key="a"
               icon={Comment01Icon}
               size={22}
+              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
               className="text-sky-500"
             />,
             <Icon
               key="b"
               icon={Message01Icon}
               size={22}
-              className="text-amber-500"
+              className="text-warning"
             />,
             <Icon
               key="c"
               icon={BubbleChatIcon}
               size={22}
+              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
               className="text-violet-500"
             />,
           ]}
@@ -70,6 +73,7 @@ export function RecentConversations({
           <Button
             variant="primary"
             size="small"
+            textSize="body-md"
             leadingIcon={BubbleChatIcon}
             onClick={onChat}
           >
@@ -82,20 +86,24 @@ export function RecentConversations({
             <li key={session.id}>
               <Link
                 href={`/home?sessionId=${session.id}`}
-                className="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-zinc-50"
+                className="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-surface-muted"
               >
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border-base bg-surface text-foreground-tertiary">
                   <Icon icon={BubbleChatIcon} size={16} aria-hidden />
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <Text
-                    variant="body-medium"
+                    variant="body-md-medium"
                     as="span"
-                    className="truncate !text-zinc-900"
+                    className="truncate !text-foreground-strong"
                   >
                     {session.title || "Untitled chat"}
                   </Text>
-                  <Text variant="small" as="span" className="!text-zinc-500">
+                  <Text
+                    variant="small"
+                    as="span"
+                    className="!text-foreground-tertiary"
+                  >
                     {session.is_processing
                       ? "Working now"
                       : formatRelativeDate(session.updated_at)}

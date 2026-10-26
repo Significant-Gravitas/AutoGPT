@@ -354,7 +354,7 @@ async def get_store_agents(
     if page_size < 1:
         raise HTTPException(status_code=422, detail="Page size must be greater than 0")
 
-    agents = await store_cache._get_cached_store_agents(
+    agents = await store_cache.get_cached_store_agents(
         featured=featured,
         creator=creator,
         sorted_by=sorted_by,
@@ -388,7 +388,7 @@ async def get_store_agent(
     """
     username = urllib.parse.unquote(username).lower()
     agent_name = urllib.parse.unquote(agent_name).lower()
-    agent = await store_cache._get_cached_agent_details(
+    agent = await store_cache.get_cached_agent_details(
         username=username, agent_name=agent_name
     )
     return agent
@@ -426,7 +426,7 @@ async def get_store_creators(
     if page_size < 1:
         raise HTTPException(status_code=422, detail="Page size must be greater than 0")
 
-    creators = await store_cache._get_cached_store_creators(
+    creators = await store_cache.get_cached_store_creators(
         featured=featured,
         search_query=search_query,
         sorted_by=sorted_by,
@@ -455,5 +455,5 @@ async def get_store_creator(
         CreatorDetails: Detailed information about the creator
     """
     username = urllib.parse.unquote(username).lower()
-    creator = await store_cache._get_cached_creator_details(username=username)
+    creator = await store_cache.get_cached_creator_details(username=username)
     return creator

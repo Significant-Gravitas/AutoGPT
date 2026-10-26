@@ -32,15 +32,14 @@
   .email-button a { padding:0 !important; }
 </style>
 <![endif]-->
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
   html, body { margin:0 !important; padding:0 !important; width:100% !important; }
   table { border-collapse:collapse; }
   a { text-decoration:none; }
   @media only screen and (max-width: 600px) {
     .sheet { width:100% !important; }
     .corner { border-radius:0 !important; }
-    .gutter { padding-left:22px !important; padding-right:22px !important; }
     .headline { font-size:23px !important; line-height:31px !important; }
     .sum { font-size:10px !important; letter-spacing:0 !important; }
     .mobile-hide { display:none !important; }
@@ -99,25 +98,43 @@
 {%- macro hero_alert() -%}{{ hero_otto() }}{%- endmacro -%}
 
 {# White sheet below the masthead/hero. Close with sheet_close(). #}
+{# Side padding is inline (22px on the card cell) and the content column is a
+   464px max-width table, so a client that drops the <style> block (the Gmail
+   app on Android with a non-Google account, Gmail on the web at times) still
+   gets 22px sides on a phone and 48px at 560px. Outlook ignores max-width,
+   so it gets a fixed 464px wrapper. #}
+{%- macro content_open(background="#FFFFFF") -%}
+      <!--[if mso]><table role="presentation" width="464" bgcolor="{{ background }}" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ background }}" class="content" style="width:100%; max-width:464px; margin:0 auto; border-collapse:separate; border-spacing:0;">
+{%- endmacro -%}
+{%- macro content_close() -%}
+      </table>
+      <!--[if mso]></td></tr></table><![endif]-->
+{%- endmacro -%}
 {%- macro sheet_open() -%}
-    <tr><td bgcolor="#FFFFFF" class="corner" style="border-radius:0 0 16px 16px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" class="corner" style="border-collapse:separate; border-spacing:0; border-radius:0 0 16px 16px;">
+    <tr><td bgcolor="#FFFFFF" align="center" class="corner" style="border-radius:0 0 16px 16px; padding:0 22px;">
+{{ content_open() }}
 {%- endmacro -%}
 {%- macro sheet_close() -%}
-      </table>
+{{ content_close() }}
     </td></tr>
 {%- endmacro -%}
 
+{# Emit before sheet_open(): the strip spans the sheet and its text sits on the content column. #}
 {%- macro strip_amber(text) -%}
-        <tr><td bgcolor="#FFF6E8" class="gutter" style="padding:12px 48px; border-bottom:1px solid #F2DCB0;">
+    <tr><td bgcolor="#FFF6E8" align="center" style="padding:12px 22px; border-bottom:1px solid #F2DCB0;">
+{{ content_open("#FFF6E8") }}
+        <tr><td>
           <div style="font-size:12px; font-weight:700; letter-spacing:2px; color:#B45309;">&#9650;&#xFE0E;&nbsp; {{ text }}</div>
         </td></tr>
+{{ content_close() }}
+    </td></tr>
 {%- endmacro -%}
 
 {# tone: neutral | confirmed | needs_you | brand. `color` overrides the tone. #}
 {%- macro eyebrow(color=none, top=26, tone='neutral') -%}
 {%- set c = color if color else {'neutral': '#575072', 'confirmed': '#1C7A52', 'needs_you': '#B45309', 'brand': '#6144DF'}[tone] -%}
-        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+        <tr><td style="padding:{{ top }}px 0 0;">
           <div style="font-size:12px; font-weight:700; letter-spacing:2px; color:{{ c }};">{{ caller() }}</div>
         </td></tr>
 {%- endmacro -%}
@@ -127,13 +144,13 @@
 {%- endmacro -%}
 
 {%- macro headline(top=8) -%}
-        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+        <tr><td style="padding:{{ top }}px 0 0;">
           <div class="headline" style="font-size:26px; line-height:34px; font-weight:700; letter-spacing:-0.3px; color:#171925; overflow-wrap:anywhere; word-break:break-word;">{{ caller() }}</div>
         </td></tr>
 {%- endmacro -%}
 
 {%- macro para(top=16, color='#2D2A3E', size=15, lh=24) -%}
-        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+        <tr><td style="padding:{{ top }}px 0 0;">
           <div style="font-size:{{ size }}px; line-height:{{ lh }}px; color:{{ color }};">{{ caller() }}</div>
         </td></tr>
 {%- endmacro -%}
@@ -149,7 +166,7 @@
 {# rows: list of (label, value, mono) #}
 {%- macro kvpanel(rows, top=18) -%}
 {%- set background = '#F5F3FC' -%}
-        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+        <tr><td style="padding:{{ top }}px 0 0;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F5F3FC" style="border-radius:10px;">
             <tr><td style="padding:14px 18px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ background | default('#FFFFFF') }}">
@@ -164,7 +181,7 @@
 
 {# tone: 'amber' | 'neutral'. Content comes from `body` or a call block. #}
 {%- macro note_card(label, body=none, tone='neutral', top=20) -%}
-        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+        <tr><td style="padding:{{ top }}px 0 0;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ '#FFF6E8' if tone == 'amber' else '#F5F3FC' }}" style="border-collapse:separate; border-spacing:0; border:1px solid {{ '#F2DCB0' if tone == 'amber' else '#E7E4F4' }}; border-left:4px solid {{ '#E8940A' if tone == 'amber' else '#6144DF' }}; border-radius:10px;">
             <tr><td style="padding:16px 18px;">
               <div style="font-size:11px; font-weight:700; letter-spacing:2px; color:{{ '#8A5800' if tone == 'amber' else '#575072' }}; padding-bottom:7px;">{{ label | upper }}</div>
@@ -208,7 +225,7 @@
 {%- endmacro -%}
 
 {%- macro cta(label, url, micro=none, top=24) -%}
-        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+        <tr><td style="padding:{{ top }}px 0 0;">
           {{ btn(label, url) }}
           {%- if micro %}
           <div style="padding-top:10px; font-size:12px; line-height:18px; color:#575072;">{{ micro }}</div>
@@ -232,7 +249,7 @@
 
 {# items: list of (strong, text, link_label, url) #}
 {%- macro also_panel(label, items, top=28) -%}
-        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+        <tr><td style="padding:{{ top }}px 0 0;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F5F3FC" style="border-radius:10px;">
             <tr><td style="padding:15px 18px;">
               <div style="font-size:11px; font-weight:700; letter-spacing:2px; color:#575072; padding-bottom:5px;">{{ label | upper }}</div>
@@ -249,7 +266,7 @@
 
 {# items: list of (lead, rest) #}
 {%- macro steps(items, top=18) -%}
-        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+        <tr><td style="padding:{{ top }}px 0 0;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ background | default('#FFFFFF') }}">
             {%- for lead, rest in items %}
             <tr>
@@ -273,7 +290,7 @@
 
 {# items: list of (title, body), rendered without emoji. #}
 {%- macro feature_cards(items, top=20) -%}
-        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+        <tr><td style="padding:{{ top }}px 0 0;">
           {%- for title, body in items %}
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F5F3FC" style="border-radius:10px;{{ ' margin-top:10px;' if not loop.first }}">
             <tr><td style="padding:13px 16px;">
@@ -286,7 +303,7 @@
 {%- endmacro -%}
 {# items: list of (emoji, title, body). Only the title and body are rendered. #}
 {%- macro emoji_cards(items, top=20) -%}
-        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+        <tr><td style="padding:{{ top }}px 0 0;">
           {%- for emoji, title, body in items %}
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F5F3FC" style="border-radius:10px;{{ ' margin-top:10px;' if not loop.first }}">
             <tr><td style="padding:13px 16px;">
@@ -299,7 +316,7 @@
 {%- endmacro -%}
 
 {%- macro media_link(label, sub, url, top=20) -%}
-        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+        <tr><td style="padding:{{ top }}px 0 0;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F5F3FC" style="border-radius:10px;">
             <tr><td style="padding:13px 16px;">
               <div style="font-size:14px; font-weight:700;"><a href="{{ url }}" style="color:#6144DF; text-decoration:underline;">&#9654;&#xFE0E;&nbsp; {{ label }}</a></div>
@@ -310,7 +327,7 @@
 {%- endmacro -%}
 
 {%- macro signature(name, title, email=none, top=26) -%}
-        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+        <tr><td style="padding:{{ top }}px 0 0;">
           <div style="font-size:14px; font-weight:700; color:#171925;">{{ name }}</div>
           <div style="font-size:13px; line-height:20px; color:#575072;">{{ title }}</div>
           {%- if email %}
@@ -320,7 +337,7 @@
 {%- endmacro -%}
 
 {%- macro close_row(text, link_label, url) -%}
-        <tr><td align="center" class="gutter" style="padding:22px 48px 24px;">
+        <tr><td align="center" style="padding:22px 0 24px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ background | default('#FFFFFF') }}">
             <tr><td height="1" bgcolor="#E7E4F4" style="font-size:0; line-height:0;">&nbsp;</td></tr>
             <tr><td align="center" style="padding-top:12px; font-size:12px; line-height:19px; color:#575072;">
@@ -332,7 +349,7 @@
 
 {# Briefing only. links: dict daily|weekly|monthly|alerts|off -> signed url. #}
 {%- macro volume_knob(links, current='weekly') -%}
-        <tr><td align="center" class="gutter" style="padding:22px 48px 24px;">
+        <tr><td align="center" style="padding:22px 0 24px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ background | default('#FFFFFF') }}">
             <tr><td height="1" bgcolor="#E7E4F4" style="font-size:0; line-height:0;">&nbsp;</td></tr>
             <tr><td align="center" style="padding-top:12px; font-size:12px; line-height:19px; color:#575072;">
@@ -351,7 +368,9 @@
 {# Internal ops band: the amount is the hero. #}
 {%- macro ops_band(eyebrow, amount_text, sub_text, status_label, status_bg) -%}
 {%- set background = '#171925' -%}
-    <tr><td bgcolor="#171925" class="gutter" style="padding:20px 48px 22px;">
+    <tr><td bgcolor="#171925" align="center" style="padding:20px 22px 22px;">
+{{ content_open("#171925") }}
+        <tr><td>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ background | default('#FFFFFF') }}">
         <tr>
           <td valign="middle">
@@ -369,6 +388,8 @@
           </td>
         </tr>
       </table>
+        </td></tr>
+{{ content_close() }}
     </td></tr>
 {%- endmacro -%}
 

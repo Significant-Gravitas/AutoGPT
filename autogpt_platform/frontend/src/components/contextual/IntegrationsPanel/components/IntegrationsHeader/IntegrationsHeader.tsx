@@ -14,11 +14,19 @@ export function IntegrationsHeader({ onConnect, withTitle = true }: Props) {
     <div className="flex flex-col items-start gap-4 pb-6 pl-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="flex min-w-0 flex-col">
         {withTitle && (
-          <Text variant="h4" as="h1" className="leading-[28px] text-[#1F1F20]">
+          <Text
+            // TODO(tokens): no exact role for text-[#1F1F20]
+            variant="h4"
+            as="h1"
+            className="leading-7 text-[#1F1F20]"
+          >
             Integrations
           </Text>
         )}
-        <Text variant="body" className="mt-4 max-w-[600px] text-[#505057]">
+        <Text
+          variant="body"
+          className="mt-4 max-w-[600px] text-foreground-body"
+        >
           Connect AI subscriptions to power your experts, and third-party tools
           for them to use.
         </Text>
