@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
 }));
 
-vi.mock("@/components/ui/sidebar", () => ({
+vi.mock("@/components/molecules/Sidebar/Sidebar", () => ({
   useSidebar: () => ({ open: sidebarOpen, setOpen: mockSetOpen }),
   getPersistedSidebarOpen: () => undefined,
 }));

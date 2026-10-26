@@ -10,6 +10,7 @@ from backend.data.human_review import (
     get_or_create_human_review,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
+    get_reviews,
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
 )
@@ -130,11 +131,10 @@ async def test_get_pending_reviews_for_user(
     sample_db_review,
 ):
     """Test getting pending reviews for a user with pagination"""
-    mock_find_many = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
+    mock_prisma = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
+    mock_prisma.return_value.count = AsyncMock(return_value=11)
     # The chat cards answering steps (none), then the page.
-    mock_find_many.return_value.find_many = AsyncMock(
-        side_effect=[[], [sample_db_review]]
-    )
+    mock_prisma.return_value.find_many = AsyncMock(side_effect=[[], [sample_db_review]])
 
     # Mock the batched node_id resolution (AgentNodeExecution.prisma().find_many)
     mock_node_exec = Mock()
@@ -161,7 +161,7 @@ async def test_get_pending_reviews_for_user(
     assert result[0].node_id == "test_node_def_789"
 
     # Verify pagination parameters
-    call_args = mock_find_many.return_value.find_many.call_args_list[1]
+    call_args = mock_prisma.return_value.find_many.call_args_list[1]
     assert call_args.kwargs["skip"] == 10  # (page-1) * page_size = (2-1) * 10
     assert call_args.kwargs["take"] == 10
 
@@ -177,6 +177,7 @@ async def test_a_step_card_hides_only_the_step_it_was_opened_for(
         "workflow": {"node_exec_id": "step-1" if named == "its own step" else "step-2"}
     }
     prisma = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
+    prisma.return_value.count = AsyncMock(return_value=0)
     prisma.return_value.find_many = AsyncMock(side_effect=[[card], []])
 
     await get_pending_reviews_for_user("user-1")
@@ -187,21 +188,45 @@ async def test_a_step_card_hides_only_the_step_it_was_opened_for(
 
 
 @pytest.mark.asyncio(loop_scope="function")
+async def test_the_external_api_lists_a_step_whose_card_waits_in_a_chat(
+    mocker: pytest_mock.MockFixture,
+):
+    # Its listing leaves chat cards out, so the step's own row is the one an API
+    # client can see and answer; answering it closes the card.
+    prisma = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
+    prisma.return_value.count = AsyncMock(return_value=0)
+    prisma.return_value.find_many = AsyncMock(return_value=[])
+
+    await get_reviews("user-1", status=ReviewStatus.WAITING, graph_runs_only=True)
+
+    (page,) = prisma.return_value.find_many.call_args_list
+    assert "nodeExecId" not in page.kwargs["where"]
+
+
+@pytest.mark.asyncio(loop_scope="function")
 async def test_get_pending_reviews_for_execution(
     mocker: pytest_mock.MockFixture,
     sample_db_review,
 ):
     """Test getting pending reviews for specific execution"""
-    mock_find_many = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
-    mock_find_many.return_value.find_many = AsyncMock(return_value=[sample_db_review])
+    mock_prisma = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
+    mock_prisma.return_value.count = AsyncMock(return_value=1)
+    mock_prisma.return_value.find_many = AsyncMock(return_value=[sample_db_review])
 
-    # Mock get_node_execution to return node with node_id (async function)
+    # Mock the batched node_id resolution (AgentNodeExecution.prisma().find_many)
     mock_node_exec = Mock()
-    mock_node_exec.node_id = "test_node_def_789"
-    mocker.patch(
-        "backend.data.execution.get_node_execution",
-        new=AsyncMock(return_value=mock_node_exec),
+    mock_node_exec.id = "test_node_123"
+    mock_node_exec.agentNodeId = "test_node_def_789"
+    mock_node_exec_prisma = mocker.patch(
+        "backend.data.human_review.AgentNodeExecution.prisma"
     )
+    mock_node_exec_prisma.return_value.find_many = AsyncMock(
+        return_value=[mock_node_exec]
+    )
+    mock_graph_exec_prisma = mocker.patch(
+        "backend.data.human_review.AgentGraphExecution.prisma"
+    )
+    mock_graph_exec_prisma.return_value.find_many = AsyncMock(return_value=[])
 
     result = await get_pending_reviews_for_execution(
         "test_graph_exec_456", "test-user-123"
@@ -212,7 +237,7 @@ async def test_get_pending_reviews_for_execution(
     assert result[0].node_id == "test_node_def_789"
 
     # Verify it filters by execution and user
-    call_args = mock_find_many.return_value.find_many.call_args
+    call_args = mock_prisma.return_value.find_many.call_args
     where_clause = call_args.kwargs["where"]
     assert where_clause["userId"] == "test-user-123"
     assert where_clause["graphExecId"] == "test_graph_exec_456"
