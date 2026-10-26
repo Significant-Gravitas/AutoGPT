@@ -264,3 +264,18 @@ async def test_bytes_percent_operator_pads_within_the_cap(fmt: TextFormatter):
 async def test_huge_bytes_percent_width_blocked(fmt: TextFormatter):
     with pytest.raises((ValueError, OverflowError)):
         await fmt.format_string("{{ '%" + TOO_WIDE + "d'.encode() % 1 }}")
+
+
+@pytest.mark.asyncio
+async def test_star_width_on_a_literal_percent_keeps_the_argument_order(
+    fmt: TextFormatter,
+):
+    # Python's own answer: the literal percent's * width uses the first argument
+    expected = "%*%%*d" % (1, 5, 1)
+    assert await fmt.format_string("{{ '%*%%*d' % (1, 5, 1) }}") == expected
+
+
+@pytest.mark.asyncio
+async def test_huge_star_width_after_a_literal_percent_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string("{{ '%*%%*d' % (1, " + TOO_WIDE + ", 1) }}")

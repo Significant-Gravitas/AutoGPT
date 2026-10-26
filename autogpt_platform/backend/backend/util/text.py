@@ -53,15 +53,15 @@ def _check_percent_format(format_string: str, args: Any = ()) -> None:
     values = args if isinstance(args, tuple) else (args,)
     position = 0
     for key, width, precision, conversion in _percent_conversions(format_string):
-        if conversion == "%" and key is None:
-            continue
         sizes: list[str | int | None] = []
         for size in (width, precision):
             if size == "*":
+                # Taken even by a literal "%%", so later sizes keep their place
                 size = values[position] if position < len(values) else 0
                 position += 1
             sizes.append(size if isinstance(size, (str, int)) else 0)
-        position += 1
+        if conversion != "%":
+            position += 1
         _check_field_size(*sizes)
 
 
