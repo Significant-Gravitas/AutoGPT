@@ -53,6 +53,33 @@ def split_trigger_inputs(
     return graph_inputs, graph_inputs.pop(mask_key)
 
 
+def split_stored_trigger_inputs(
+    inputs: GraphInput, attached: bool
+) -> tuple[GraphInput, GraphInput | None]:
+    """``(graph_inputs, trigger_config)`` for a reader without the preset's graph;
+    ``None`` for a preset with no trigger. A preset ``attached`` to a webhook
+    with no mask key is a legacy flat one: all of its inputs are trigger config.
+    """
+    graph_inputs = dict(inputs)
+    if key := stored_trigger_mask_key(inputs):
+        return graph_inputs, graph_inputs.pop(key)
+    if attached:
+        return {}, graph_inputs
+    return graph_inputs, None
+
+
+def stored_trigger_mask_key(inputs: GraphInput) -> str | None:
+    """The key a triggered preset's trigger config is stored under, if any."""
+    return next(
+        (
+            key
+            for key, value in inputs.items()
+            if key.startswith(NODE_INPUT_MASK_PREFIX) and isinstance(value, dict)
+        ),
+        None,
+    )
+
+
 def preset_trigger_configs(inputs: GraphInput) -> list[GraphInput]:
     """Every candidate trigger config of a triggered preset, for a reader without
     its graph: each object under a mask-prefixed key, since a graph input may use

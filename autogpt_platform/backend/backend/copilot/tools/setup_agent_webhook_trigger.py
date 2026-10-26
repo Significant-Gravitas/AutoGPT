@@ -163,6 +163,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                         "credential fields. Usually empty for generic webhooks."
                     ),
                     "additionalProperties": True,
+                    "title": "Trigger settings",
                 },
                 "constant_inputs": {
                     "type": "object",
@@ -173,7 +174,6 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                         "trigger_config) or credentials."
                     ),
                     "additionalProperties": True,
-                    "title": "Trigger settings",
                 },
                 "credentials": {
                     "type": "object",

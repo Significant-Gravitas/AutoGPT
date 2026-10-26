@@ -672,11 +672,15 @@ class AgentPreset(TenantedResource):
     name: str
     description: str
     is_active: bool
-    inputs: dict[str, Any]
+    inputs: dict[str, Any] = Field(description="The agent's saved input values")
+    trigger_config: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="A webhook trigger's settings, less those in `hidden_inputs`",
+    )
     hidden_inputs: list[str] = Field(
         default_factory=list,
         description="A trigger's secret settings that are set but returned only when "
-        "it is created. An update that leaves them out of `inputs` keeps them",
+        "it is created. An update that leaves them out of `trigger_config` keeps them",
     )
     webhook_id: Optional[str] = Field(
         default=None,
@@ -692,8 +696,11 @@ class AgentPreset(TenantedResource):
 
     @classmethod
     def from_internal(cls, p: _LibraryAgentPreset, hide: Collection[str] = ()) -> Self:
-        """`hide` names the secret settings a trigger's `inputs` leave out."""
-        hidden = sorted(name for name in hide if p.webhook_id and name in p.inputs)
+        """`hide` names the secret settings a trigger's `trigger_config` leaves out."""
+        from backend.api.features.library.model import split_stored_trigger_inputs
+
+        inputs, config = split_stored_trigger_inputs(p.inputs, bool(p.webhook_id))
+        hidden = sorted(name for name in hide if config and name in config)
         return cls(
             id=p.id,
             graph_id=p.graph_id,
@@ -701,7 +708,12 @@ class AgentPreset(TenantedResource):
             name=p.name,
             description=p.description,
             is_active=p.is_active,
-            inputs={k: v for k, v in p.inputs.items() if k not in hidden},
+            inputs=inputs,
+            trigger_config=(
+                None
+                if config is None
+                else {k: v for k, v in config.items() if k not in hidden}
+            ),
             hidden_inputs=hidden,
             webhook_id=p.webhook_id,
             webhook_url=p.webhook.url if p.webhook else None,
@@ -734,9 +746,12 @@ class AgentPresetUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     inputs: Optional[dict[str, Any]] = Field(
+        default=None, description="Replaces the agent's saved input values"
+    )
+    trigger_config: Optional[dict[str, Any]] = Field(
         default=None,
-        description="Replaces the saved inputs. For a webhook trigger, its "
-        "configuration; changing it re-registers the webhook",
+        description="Replaces a webhook trigger's settings, re-registering its "
+        "webhook. Settings in `hidden_inputs` it leaves out keep their value",
     )
     credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = Field(
         default=None, description="Replaces the saved credentials"
@@ -752,6 +767,10 @@ class AgentTriggerSetupRequest(BaseModel):
     graph_id: str = Field(description="Graph ID")
     graph_version: int = Field(description="Graph version")
     trigger_config: dict[str, Any] = Field(description="Trigger block configuration")
+    inputs: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Values for the agent's own inputs, beside its trigger",
+    )
     credentials_inputs: dict[str, CredentialsMetaInput] = Field(
         default_factory=dict,
         description="Credentials, keyed by the `field_name` of each of the agent's "

@@ -19,11 +19,19 @@ from backend.api.features.library import triggers
 from backend.api.features.library.model import (
     LibraryAgentPreset,
     LibraryAgentPresetCreatable,
+    node_input_mask_key,
+    split_stored_trigger_inputs,
+    stored_trigger_mask_key,
 )
 from backend.blocks import get_blocks
 from backend.data import graph as graph_db
 from backend.executor import utils as execution_utils
-from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
+from backend.util.exceptions import (
+    ConflictError,
+    ExpertRunPausedError,
+    InvalidInputError,
+    NotFoundError,
+)
 
 from ..errors import ErrorResponse
 from ..idempotency import (
@@ -160,7 +168,8 @@ async def setup_trigger(
 
     The agent's `trigger_setup_info` describes the required trigger configuration
     schema and credentials. Use it to populate `trigger_config` and
-    `credentials_inputs`. For a trigger you set up by hand in the other service,
+    `credentials_inputs`, and `inputs` for any inputs of the agent's own. For a
+    trigger you set up by hand in the other service,
     the response's `webhook_url` is where that service must send its events.
     This response is the only one that returns the trigger's secret settings.
     """
@@ -173,6 +182,7 @@ async def setup_trigger(
         name=request.name,
         description=request.description,
         trigger_config=request.trigger_config,
+        constant_inputs=request.inputs,
         agent_credentials=request.credentials_inputs,
         expert_id=await experts_db.resolve_expert_for_graph(
             auth.user_id, request.graph_id
@@ -195,11 +205,12 @@ async def update_preset(
 ) -> AgentPreset:
     """Update properties of a preset. Only provided fields will be updated.
 
-    New `inputs` or `credentials_inputs` on a webhook trigger re-register its
-    webhook; whichever the request leaves out keeps its saved value, and new
-    inputs keep the secret settings in its `hidden_inputs` unless they set them.
-    Setting `is_active` to true, or reconfiguring a trigger that stays active,
-    also needs `RUN_AGENT`: an active trigger starts runs.
+    New `inputs`, `trigger_config` or `credentials_inputs` on a webhook trigger
+    re-register its webhook; whichever the request leaves out keeps its saved
+    value, and a new `trigger_config` keeps the secret settings in its
+    `hidden_inputs` unless it sets them. Setting `is_active` to true, or
+    reconfiguring a trigger that stays active, also needs `RUN_AGENT`: an active
+    trigger starts runs.
     """
     current = await _preset_in_tenant(preset_id, auth)
     if APIKeyPermission.RUN_AGENT not in auth.scopes and await _leaves_a_live_trigger(
@@ -207,10 +218,8 @@ async def update_preset(
     ):
         raise _run_permission_missing()
 
-    inputs = request.inputs
+    inputs = await _inputs_to_store(request, current, auth.user_id)
     credentials = request.credentials_inputs
-    if inputs is not None and current.webhook_id:
-        inputs = {**_kept_secrets(current.inputs), **inputs}
     if inputs is not None and credentials is None:
         # Without credentials the trigger's webhook would keep the old config.
         credentials = current.credentials
@@ -342,12 +351,52 @@ async def _leaves_a_live_trigger(
         return True
     if request.is_active is False or not current.is_active:
         return False
-    if request.inputs is None and request.credentials_inputs is None:
+    if (
+        request.inputs is None
+        and request.trigger_config is None
+        and request.credentials_inputs is None
+    ):
         return False
     graph = await graph_db.get_graph(
         current.graph_id, current.graph_version, user_id=user_id
     )
     return bool(graph and graph.webhook_input_node)
+
+
+async def _inputs_to_store(
+    request: AgentPresetUpdateRequest, current: LibraryAgentPreset, user_id: str
+) -> Optional[dict]:
+    """The request's `inputs` and `trigger_config` in the shape a preset stores,
+    each left out keeping its saved value, as do the hidden secret settings."""
+    if request.inputs is None and request.trigger_config is None:
+        return None
+    saved_inputs, saved_config = split_stored_trigger_inputs(
+        current.inputs, bool(current.webhook_id)
+    )
+    inputs = saved_inputs if request.inputs is None else request.inputs
+    if saved_config is None:
+        if request.trigger_config is not None:
+            raise InvalidInputError(f"Preset #{current.id} is not a webhook trigger")
+        return inputs
+    config = (
+        saved_config
+        if request.trigger_config is None
+        else {**_kept_secrets(saved_config), **request.trigger_config}
+    )
+    return {**inputs, await _trigger_config_key(current, user_id): config}
+
+
+async def _trigger_config_key(current: LibraryAgentPreset, user_id: str) -> str:
+    """Where the preset keeps its trigger config; a legacy flat one has no key
+    yet, so it is its graph's trigger node's."""
+    if key := stored_trigger_mask_key(current.inputs):
+        return key
+    graph = await graph_db.get_graph(
+        current.graph_id, current.graph_version, user_id=user_id
+    )
+    if not (graph and graph.webhook_input_node):
+        raise NotFoundError(f"Graph #{current.graph_id} has no webhook trigger")
+    return node_input_mask_key(graph.webhook_input_node.id)
 
 
 def _run_permission_missing() -> HTTPException:

@@ -276,10 +276,11 @@ class UpdatePresetTool(BaseTool):
 
     def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
         # An active trigger starts runs, so turning one on, or giving one new
-        # inputs (re-registering its webhook), is a run. The graph isn't known
-        # here, so any new inputs count unless they also turn the preset off.
+        # inputs or trigger config (re-registering its webhook), is a run. The
+        # graph isn't known here, so either counts unless it turns the preset off.
         is_active = args.get("is_active")
-        if is_active is True or (args.get("inputs") and is_active is not False):
+        reconfigures = args.get("inputs") or args.get("trigger_config")
+        if is_active is True or (reconfigures and is_active is not False):
             return [APIKeyPermission.RUN_AGENT]
         return []
 
