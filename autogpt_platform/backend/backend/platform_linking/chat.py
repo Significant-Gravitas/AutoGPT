@@ -30,8 +30,15 @@ from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 from backend.util.workspace import WorkspaceManager
 
+from .chat_experts import (
+    list_owner_experts,
+    require_turn_expert,
+    resolve_turn_model,
+    session_reusable,
+)
 from .models import (
     BotChatRequest,
+    BotExpert,
     ChatSessionSummary,
     ChatTurnHandle,
     EnsureSessionResult,
@@ -266,20 +273,20 @@ async def _resolve_or_create_session(
     source_platform: str,
     *,
     allow_expert_session: bool = True,
+    expert_id: str | None = None,
 ) -> ChatSession:
     """Reuse the bot's cached session, or start a fresh one.
 
     The bot caches session IDs across turns and a cached session can be
     deleted from the web app in between — fall back to a new one so the
-    conversation self-heals instead of erroring.
+    conversation self-heals instead of erroring. A session bound to another
+    expert than ``expert_id`` (or one this context may not reach) is replaced.
     """
     session = None
     if session_id:
         session = await get_chat_session(session_id, owner_user_id)
-        if (
-            session is not None
-            and not allow_expert_session
-            and session.expert_id is not None
+        if session is not None and not await session_reusable(
+            session, owner_user_id, expert_id, allow_expert_session
         ):
             session = None
     if session is None:
@@ -295,6 +302,7 @@ async def _resolve_or_create_session(
             source_platform=source_platform,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
+            expert_id=expert_id,
         )
     return session
 
@@ -304,6 +312,7 @@ async def ensure_chat_session(
     platform_user_id: str,
     platform_server_id: str | None,
     session_id: str | None,
+    expert_id: str | None = None,
 ) -> EnsureSessionResult:
     """Resolve (or create) the session for a bot conversation.
 
@@ -328,11 +337,13 @@ async def ensure_chat_session(
             owner_user_id[-8:],
         )
         return EnsureSessionResult(denial=denial)
+    await require_turn_expert(owner_user_id, expert_id, platform_server_id)
     session = await _resolve_or_create_session(
         owner_user_id,
         session_id,
         platform.value.lower(),
         allow_expert_session=platform_server_id is None,
+        expert_id=expert_id,
     )
     return EnsureSessionResult(session_id=session.session_id)
 
@@ -358,6 +369,9 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
             session_id="", turn_id="", user_id=owner_user_id, denial=denial
         )
 
+    await require_turn_expert(
+        owner_user_id, request.expert_id, request.platform_server_id
+    )
     if request.file_ids and request.session_id:
         # Attachment turn: the files were already uploaded into this session
         # (ensure_chat_session ran first). It must still exist — silently
@@ -365,7 +379,12 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         session = await get_chat_session(request.session_id, owner_user_id)
         if session is None:
             raise NotFoundError("The session for the uploaded files no longer exists.")
-        if request.platform_server_id is not None and session.expert_id is not None:
+        if not await session_reusable(
+            session,
+            owner_user_id,
+            request.expert_id,
+            allow_expert_session=request.platform_server_id is None,
+        ):
             raise NotFoundError("The session for the uploaded files no longer exists.")
     else:
         session = await _resolve_or_create_session(
@@ -373,8 +392,10 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
             request.session_id,
             request.platform.value.lower(),
             allow_expert_session=request.platform_server_id is None,
+            expert_id=request.expert_id,
         )
     session_id = session.session_id
+    model, notice = await resolve_turn_model(owner_user_id, request.model, session)
 
     # Persist the user message before enqueueing, mirroring the REST chat
     # endpoint — otherwise the executor runs against empty history.
@@ -405,7 +426,7 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         turn_id=turn_id,
     )
 
-    org_id, team_id = await orgs_db().get_user_default_team(owner_user_id)
+    org_id, team_id = await _turn_tenancy(owner_user_id, session)
     await enqueue_copilot_turn(
         session_id=session_id,
         user_id=owner_user_id,
@@ -415,6 +436,7 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         organization_id=org_id,
         team_id=team_id,
         file_ids=request.file_ids or None,
+        model=model,
         llm_auth_provider=session.metadata.llm_auth_provider,
         llm_credential_id=session.metadata.llm_credential_id,
         # Roots its own tree, and born tainted: the message was written on a
@@ -436,7 +458,35 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         session_id=session_id,
         turn_id=turn_id,
         user_id=owner_user_id,
+        notice=notice,
     )
+
+
+async def _turn_tenancy(
+    owner_user_id: str, session: ChatSession
+) -> tuple[str | None, str | None]:
+    """An expert session runs in the org/team it is pinned to (the owner's
+    personal one); anything else in the owner's default team."""
+    if session.expert_id is not None and session.organization_id:
+        return session.organization_id, session.team_id
+    return await orgs_db().get_user_default_team(owner_user_id)
+
+
+async def list_user_experts(
+    platform: Platform, platform_user_id: str, platform_server_id: str | None
+) -> list[BotExpert]:
+    """The experts a bot conversation can route a turn to.
+
+    The owner resolves exactly like a chat turn. A server gets none: expert
+    sessions are DM-only, and listing the server owner's hires to every
+    member would leak them for nothing.
+    """
+    owner_user_id = await resolve_owner(
+        platform.value, platform_server_id, platform_user_id
+    )
+    if platform_server_id is not None:
+        return []
+    return await list_owner_experts(owner_user_id)
 
 
 LIST_USER_CHATS_MAX_LIMIT = 25

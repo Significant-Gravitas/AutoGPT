@@ -14,7 +14,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
@@ -128,7 +129,7 @@ export function OnboardingIntroCard({
         </motion.div>
         {transcript && (
           <motion.div className="ml-auto" {...reveal(HEADING_START)}>
-            <Tooltip>
+            <Tooltip inheritDelay>
               <TooltipTrigger asChild>
                 <button
                   type="button"
@@ -148,9 +149,11 @@ export function OnboardingIntroCard({
                   )}
                 </button>
               </TooltipTrigger>
-              <TooltipContent>
-                {isCopied ? "Copied!" : "Copy everything you told me"}
-              </TooltipContent>
+              <TooltipPortal>
+                <TooltipContent>
+                  {isCopied ? "Copied!" : "Copy everything you told me"}
+                </TooltipContent>
+              </TooltipPortal>
             </Tooltip>
           </motion.div>
         )}
