@@ -125,12 +125,36 @@ describe("SignupPage", () => {
         "validpassword123",
         false,
         null,
+        "",
       );
     });
 
     expect(
       await screen.findByText("User with this email already exists"),
     ).toBeDefined();
+  });
+
+  test("submits the name given to 'What may we call you?', trimmed", async () => {
+    render(<SignupPage />);
+
+    const nameField = screen.getByLabelText<HTMLInputElement>(
+      "What may we call you?",
+    );
+    expect(nameField.required).toBe(false);
+    fireEvent.change(nameField, { target: { value: "  Sam  " } });
+    fillValidForm();
+    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+
+    await waitFor(() => {
+      expect(mockSignupAction).toHaveBeenCalledWith(
+        "new@example.com",
+        "validpassword123",
+        "validpassword123",
+        false,
+        null,
+        "Sam",
+      );
+    });
   });
 
   test("signs up without a terms checkbox", async () => {
@@ -242,6 +266,7 @@ describe("SignupPage", () => {
         "validpassword123",
         true,
         null,
+        "",
       );
     });
   });
@@ -270,6 +295,7 @@ describe("SignupPage", () => {
         "validpassword123",
         false,
         null,
+        "",
       );
     });
   });
@@ -403,6 +429,7 @@ describe("SignupPage", () => {
         "validpassword123",
         false,
         null,
+        "",
       );
     });
     const toggle = screen.getByRole<HTMLButtonElement>("button", {

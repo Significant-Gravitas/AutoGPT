@@ -103,7 +103,7 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
                     data=UserCreateInput(
                         id=user_id,
                         email=user_email,
-                        name=user_data.get("user_metadata", {}).get("name"),
+                        name=user_data.get("user_metadata", {}).get("name") or None,
                     )
                 )
                 row_created = True

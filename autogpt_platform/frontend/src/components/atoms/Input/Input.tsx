@@ -310,7 +310,12 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           ) : null}
         </div>
         {hint ? (
-          <Text data-slot="input-hint" variant="small" as="span" tone="subtle">
+          <Text
+            data-slot="input-hint"
+            variant="small"
+            as="span"
+            tone="secondary"
+          >
             {hint}
           </Text>
         ) : null}
