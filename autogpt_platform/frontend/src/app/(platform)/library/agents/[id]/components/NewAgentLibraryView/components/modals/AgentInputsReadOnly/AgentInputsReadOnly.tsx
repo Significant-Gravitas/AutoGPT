@@ -24,10 +24,8 @@ export function AgentInputsReadOnly({
     getAgentCredentialsFields(agent),
   );
 
-  // Runs from before triggered presets nested their config store the flat
-  // trigger config as run inputs, which no graph input schema describes.
-  // Dropping them here keeps `hasInputs` honest — otherwise the panel renders
-  // an inputs card with nothing in it.
+  // Legacy runs store flat trigger config as run inputs, which no graph input
+  // schema describes, so only declared inputs are shown.
   const inputEntries =
     inputs &&
     Object.entries(inputs)

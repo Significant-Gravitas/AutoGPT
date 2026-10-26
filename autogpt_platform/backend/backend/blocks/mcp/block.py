@@ -125,6 +125,7 @@ class MCPToolBlock(Block):
             cls, data: BlockInput, exclude_fields: set[str] | None = None
         ) -> str | None:
             """Validate tool_arguments against the tool's input schema."""
+            # exclude_fields names node-level fields, never the tool arguments.
             tool_schema = cls.get_input_schema(data)
             if not tool_schema:
                 return None
