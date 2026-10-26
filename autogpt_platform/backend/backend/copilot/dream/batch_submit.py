@@ -25,6 +25,10 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel
 
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.inference.structured_output import (
+    OUTPUT_TOOL_CALL_ONCE,
+    with_output_tool_instruction,
+)
 from backend.copilot.model_normalize import normalize_model_for_anthropic
 from backend.copilot.trial_cost_context import capture_cost_context
 from backend.executor.batch_executor import (
@@ -54,7 +58,6 @@ from .prompts import (
     build_sanitize_prompt,
 )
 from .schemas import ConsolidationOutput, DreamOperations, RecombinationOutput
-from .structured_output import OUTPUT_TOOL_CALL_ONCE, with_output_tool_instruction
 
 if TYPE_CHECKING:
     from backend.copilot.config import ChatConfig
@@ -370,9 +373,8 @@ async def persist_input_bundle(
     explicitly — reading the live lock key here instead could capture a
     *newer* pass's token (lock expired and was re-acquired between this
     pass's acquire and the persist), letting this pass's callback release
-    a lock it doesn't own hours later. Only when no token is supplied
-    (eval harness calling the batch path without a lock) do we fall back
-    to the live key.
+    a lock it doesn't own hours later. When no token is supplied we fall
+    back to the live key; apply requires a lease before writing.
     """
     from backend.data.redis_client import get_redis_async
 

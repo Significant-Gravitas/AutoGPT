@@ -141,8 +141,14 @@ async def _run(coro_factory, user, claim=True, audience_ok=True):
 
 
 @pytest.mark.asyncio
-async def test_first_subscription_gets_the_welcome_and_the_tour():
+@pytest.mark.parametrize(
+    "name,greeted",
+    # The second is what email sign-up stores: the address's local part.
+    [("Sam Carter", "Sam"), ("sam", "there")],
+)
+async def test_first_subscription_gets_the_welcome_and_the_tour(name, greeted):
     user = _User(welcome_sent_at=None)
+    user.name = name
     with patch(
         "backend.notifications.lifecycle._claim_welcome",
         AsyncMock(return_value=True),
@@ -155,7 +161,7 @@ async def test_first_subscription_gets_the_welcome_and_the_tour():
         )
     queued = calls["notify"].await_args.args[0]
     assert queued.type is NotificationType.SUBSCRIPTION_WELCOME
-    assert queued.data.user_name == "Sam"
+    assert queued.data.user_name == greeted
     calls["audience"].assert_awaited_once()
     assert calls["audience"].await_args.args[0].action.value == "enroll_tour"
 
@@ -188,10 +194,16 @@ async def test_only_the_first_failed_charge_emails():
 
 @pytest.mark.asyncio
 async def test_no_retries_left_is_the_final_notice_not_another_heads_up():
-    calls = await _run(
-        lambda: lifecycle.on_payment_failed(_invoice(next_payment_attempt=None)),
-        _User(),
-    )
+    with patch(
+        "backend.notifications.lifecycle.stripe_call",
+        AsyncMock(return_value={"status": "unpaid"}),
+    ):
+        calls = await _run(
+            lambda: lifecycle.on_payment_failed(
+                _invoice(subscription="sub_1", next_payment_attempt=None)
+            ),
+            _User(),
+        )
     queued = calls["notify"].await_args.args[0]
     assert queued.type is NotificationType.PAYMENT_FINAL_NOTICE
 

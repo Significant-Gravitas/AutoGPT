@@ -2,11 +2,7 @@ import { expect, test } from "./coverage-fixture";
 import { getSeededTestUser } from "./credentials/accounts";
 import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
-import {
-  advanceToRoleStep,
-  dismissTabIntros,
-  skipOnboardingIfPresent,
-} from "./utils/onboarding";
+import { advanceToRoleStep, skipOnboardingIfPresent } from "./utils/onboarding";
 import { signupTestUser } from "./utils/signup";
 
 test("auth happy path: user can sign up with a fresh account", async ({
@@ -73,8 +69,9 @@ test("auth happy path: seeded user can log out and protected routes redirect to 
 
   await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
 
+  // /profile redirects to /settings/profile in next.config.mjs, before auth runs.
   await page.goto("/profile");
-  await expect(page).toHaveURL(/\/login\?next=%2Fprofile/);
+  await expect(page).toHaveURL(/\/login\?next=%2Fsettings%2Fprofile/);
 });
 
 test("auth happy path: multi-tab logout clears shared builder sessions", async ({
@@ -87,8 +84,6 @@ test("auth happy path: multi-tab logout clears shared builder sessions", async (
 
   const page1 = await context.newPage();
   const page2 = await context.newPage();
-  await dismissTabIntros(page1);
-  await dismissTabIntros(page2);
   const buildPage = new BuildPage(page1);
 
   const recordWebSocketErrors =

@@ -9,7 +9,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "@/components/atoms/Select/components/SelectPrimitives";
 import { AdminUserSearch } from "../../components/AdminUserSearch";
 
 export function SearchAndFilterAdminSpending({

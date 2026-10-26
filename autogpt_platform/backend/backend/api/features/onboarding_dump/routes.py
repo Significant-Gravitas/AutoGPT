@@ -10,7 +10,7 @@ from fastapi import APIRouter, Form, Security, UploadFile
 from fastapi.responses import RedirectResponse
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 
-from backend.api.features.onboarding_dump import db, service, storage
+from backend.api.features.onboarding_dump import db, service, storage, suggested_tasks
 from backend.api.features.onboarding_dump.models import (
     ALLOWED_AUDIO_MIME_TYPES,
     MAX_PART_BYTES,
@@ -23,6 +23,8 @@ from backend.api.features.onboarding_dump.models import (
     IntroCardResponse,
     RecommendedExpertsResponse,
     RecommendedProvidersResponse,
+    SuggestedTasksResponse,
+    SuggestedTasksUpdate,
     UploadPartResponse,
 )
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
@@ -45,18 +47,28 @@ async def upload_brain_dump_part(
     file: UploadFile,
     recording_id: Annotated[str, Form(pattern=RECORDING_ID_PATTERN)],
     part_index: Annotated[int, Form(ge=0)],
+    resent: Annotated[bool, Form()] = False,
 ) -> UploadPartResponse:
     """Accept one MediaRecorder timeslice blob.
 
     Parts arrive while the user is still talking, so this stays cheap:
     size checks, buffer, done. Validation that needs the whole stream
     (virus scan, transcription) happens on finalize.
+
+    A part of a take the client discarded is refused, unless ``resent`` says
+    the client is deliberately sending that take again from its local copy.
     """
     if file.content_type and file.content_type.split(";")[0] not in (
         ALLOWED_AUDIO_MIME_TYPES
     ):
         raise fastapi.HTTPException(
             status_code=415, detail=f"Unsupported audio type: {file.content_type}"
+        )
+    if not resent and await storage.was_discarded(user_id, recording_id):
+        # A part already on the wire when the user skipped; letting part 0
+        # through would reopen the take over the skip.
+        raise fastapi.HTTPException(
+            status_code=409, detail="This recording was discarded"
         )
 
     chunks: list[bytes] = []
@@ -80,6 +92,13 @@ async def upload_brain_dump_part(
 
     if part_index == 0:
         await db.start_dump(user_id, recording_id, BrainDumpInputMode.voice)
+        # A discard that landed since the check above has already looked for
+        # this take on the row and missed it, so give the row back here.
+        if not resent and await storage.was_discarded(user_id, recording_id):
+            await _release_discarded_take(user_id, recording_id)
+            raise fastapi.HTTPException(
+                status_code=409, detail="This recording was discarded"
+            )
 
     cumulative = await storage.append_part(
         user_id, recording_id, part_index, b"".join(chunks)
@@ -213,6 +232,31 @@ async def get_brain_dump_recommended_experts(
     return await service.get_recommended_experts(user_id)
 
 
+@router.get("/suggested-tasks", operation_id="get_brain_dump_suggested_tasks")
+async def get_brain_dump_suggested_tasks(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> SuggestedTasksResponse:
+    """The greeting's suggested first tasks, each with its own state.
+
+    Unlike ``/intro``, this keeps answering after the first message: the
+    list stays on Home, a sent row marked in progress, until every row is
+    dismissed.
+    """
+    return await suggested_tasks.get_suggested_tasks(user_id)
+
+
+@router.post("/suggested-tasks", operation_id="update_brain_dump_suggested_tasks")
+async def update_brain_dump_suggested_tasks(
+    request: SuggestedTasksUpdate,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> SuggestedTasksResponse:
+    """Mark suggested tasks sent, dismissed, or open again (Undo).
+
+    Takes several ids so "Hide all" and its Undo are one write each.
+    """
+    return await suggested_tasks.update_suggested_tasks(user_id, request)
+
+
 @router.post("/intro/complete", operation_id="complete_brain_dump_greeting")
 async def complete_brain_dump_greeting(
     user_id: Annotated[str, Security(get_user_id)],
@@ -280,14 +324,22 @@ async def discard_brain_dump(
 ) -> DumpStatusResponse:
     """Drop a half-uploaded take's server buffer when the user re-records.
 
-    The row and any stored audio are left alone — only the disposable
-    part buffer is cleared.
+    Stored audio is left alone. A named take still uploading is also marked
+    failed, so it no longer holds the row against the user's next take, and
+    a part of it that arrives later is refused.
 
     ``recording_id`` says *which* take to drop. Without it the row's
     current take is assumed, which is wrong as soon as a second tab has
     moved the row on: the caller would clear a buffer that is still being
     filled. Callers know their own id, so they send it.
     """
+    # Mark before releasing: a late part 0 claims the row and then reads the
+    # mark, so one of the two always sees the other. Both before the buffer goes.
+    if recording_id:
+        try:
+            await storage.mark_discarded(user_id, recording_id)
+        finally:
+            await _release_discarded_take(user_id, recording_id)
     dump = await db.get_dump(user_id)
     target = recording_id or (dump.recordingId if dump else None)
     if target and not (
@@ -300,4 +352,15 @@ async def discard_brain_dump(
         status=dump.status if dump else None,
         input_mode=dump.inputMode if dump else None,
         has_audio=bool(dump and dump.audioPath),
+    )
+
+
+async def _release_discarded_take(user_id: str, recording_id: str) -> None:
+    """Fail a discarded take that is still waiting for parts, so it stops holding the row."""
+    await db.claim_transition(
+        user_id,
+        recording_id,
+        expected=BrainDumpStatus.recording_uploaded,
+        new=BrainDumpStatus.failed,
+        errorCode="discarded",
     )

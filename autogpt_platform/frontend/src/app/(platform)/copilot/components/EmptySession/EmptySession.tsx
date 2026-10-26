@@ -13,6 +13,8 @@ import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard"
 import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
 import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWelcomeDialog";
 import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
+import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
+import { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
 import { EmptyHero } from "./components/EmptyHero";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
 import { GreetingLoader } from "./components/GreetingLoader";
@@ -32,6 +34,8 @@ interface Props {
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
   ) => void | Promise<void>;
+  /** Sends a suggested task, resolving to the chat it started. */
+  onStartTask?: (message: string) => Promise<string | undefined>;
   isUploadingFiles?: boolean;
   droppedFiles?: File[];
   onDroppedFilesConsumed?: () => void;
@@ -56,6 +60,7 @@ interface Props {
 export function EmptySession({
   isCreatingSession,
   onSend,
+  onStartTask,
   isUploadingFiles,
   droppedFiles,
   onDroppedFilesConsumed,
@@ -81,6 +86,11 @@ export function EmptySession({
     selectRecipient,
   } = useRecipientPicker();
   const isComposerDisabled = isCreatingSession || !!isInteractionLocked;
+  const suggestions = useSuggestedTasks({
+    surface: intro.isVisible ? "intro" : "home",
+    onSend: onStartTask ?? onSend,
+    enabled: !intro.isAwaitingGreeting,
+  });
   const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
   const recipientPicker = (
     <RecipientChip
@@ -94,6 +104,7 @@ export function EmptySession({
   const { inputPlaceholder } = useHomeComposer({
     enabled:
       !intro.isVisible && !intro.isAwaitingGreeting && !isKickoffStarting,
+    greetingPath: intro.isVisible ? intro.path : null,
   });
 
   if (isKickoffStarting) {
@@ -122,9 +133,8 @@ export function EmptySession({
             <OnboardingIntroCard
               name={greetingName}
               greeting={intro.greeting}
-              prompts={intro.prompts}
+              suggestions={suggestions}
               transcript={intro.transcript}
-              onSelectPrompt={onSend}
               disabled={isComposerDisabled || !!atReset}
             />
           ) : intro.isAwaitingGreeting ? (
@@ -195,6 +205,15 @@ export function EmptySession({
                 {lowHint}
               </div>
             </div>
+          )}
+
+          {/* These prompts are Otto's, so they go while an expert is the
+              recipient. */}
+          {!intro.isVisible && !intro.isAwaitingGreeting && !selectedExpert && (
+            <SuggestedTasksBlock
+              suggestions={suggestions}
+              disabled={isComposerDisabled || !!atReset}
+            />
           )}
         </div>
 

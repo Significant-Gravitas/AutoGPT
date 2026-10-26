@@ -67,6 +67,7 @@ from backend.copilot.response_model import (
     StreamToolOutputAvailable,
 )
 from backend.copilot.sdk.compaction import CompactionStats
+from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
 from backend.copilot.sdk.service import _RestoreResult, stream_chat_completion_sdk
 from backend.copilot.stream_checkpoint import turn_checkpoint
 from backend.copilot.stream_drift.recording import saving_into
@@ -1093,6 +1094,10 @@ def _make_sdk_patches(
             dict(new_callable=AsyncMock, return_value=compacted_transcript),
         ),
         (f"{_SVC}.ClaudeSDKClient", dict(side_effect=client_side_effect)),
+        (
+            f"{_SVC}.require_verbatim_prompts_cli",
+            dict(return_value="/opt/claude/claude"),
+        ),
         (f"{_SVC}.create_copilot_mcp_server", dict(return_value=MagicMock())),
         (f"{_SVC}.create_security_hooks", dict(return_value=MagicMock())),
         (f"{_SVC}.get_copilot_tool_names", dict(return_value=[])),
@@ -2437,6 +2442,94 @@ class TestStreamChatCompletionRetryIntegration:
         errors = [e for e in events if isinstance(e, StreamError)]
         assert not errors, f"Unexpected StreamError: {errors}"
         assert any(isinstance(e, StreamStart) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_every_attempt_hands_the_cli_text_as_text(self):
+        """A chat message must reach the model as written, so the first
+        attempt and the retry's copy of the options both turn the CLI's
+        command parser off and ask for prompts to be delivered verbatim."""
+        session = self._make_session()
+        # The session already holds the message the turn is for, as it does
+        # in production by the time the turn starts.
+        session.messages[-1].content = "/compact"
+        result_msg = self._make_result_message()
+        attempt_options: list = []
+
+        def _client_factory(*args, **kwargs):
+            attempt_options.append(kwargs["options"])
+            if len(attempt_options) == 1:
+                return self._make_client_mock(raises_on_enter=True)
+            return self._make_client_mock(result_message=result_msg)
+
+        transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=transcript,
+            compacted_transcript=_build_transcript(
+                [("user", "[summary]"), ("assistant", "summary reply")]
+            ),
+            client_side_effect=_client_factory,
+        )
+
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for _ in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="/compact",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                pass
+
+        assert len(attempt_options) == 2
+        for options in attempt_options:
+            assert DISABLE_SLASH_COMMANDS_FLAG in options.extra_args
+            assert options.extra_args[DISABLE_SLASH_COMMANDS_FLAG] is None
+            assert options.verbatim_prompts is True
+            assert options.cli_path == "/opt/claude/claude"
+
+    @pytest.mark.asyncio
+    async def test_turn_stops_before_the_cli_starts_when_it_is_too_old(self):
+        """An older CLI ignores ``verbatim_prompts`` without an error, so the
+        turn fails before any CLI process starts."""
+        session = self._make_session()
+        clients: list = []
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=_build_transcript(
+                [("user", "prior question"), ("assistant", "prior answer")]
+            ),
+            compacted_transcript=None,
+            client_side_effect=lambda *a, **kw: clients.append(kw),
+        )
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            check = stack.enter_context(
+                patch(
+                    f"{_SVC}.require_verbatim_prompts_cli",
+                    side_effect=RuntimeError("The Claude Code CLI is too old"),
+                )
+            )
+            with pytest.raises(RuntimeError, match="too old"):
+                async for event in stream_chat_completion_sdk(
+                    session_id="test-session-id",
+                    message="hello",
+                    is_user_message=True,
+                    user_id="test-user",
+                    session=session,
+                ):
+                    events.append(event)
+
+        check.assert_called_once()
+        assert clients == []
+        errors = [e for e in events if isinstance(e, StreamError)]
+        assert [e.errorText for e in errors] == ["The Claude Code CLI is too old"]
 
     @pytest.mark.asyncio
     async def test_all_attempts_exhausted_yields_stream_error(self):

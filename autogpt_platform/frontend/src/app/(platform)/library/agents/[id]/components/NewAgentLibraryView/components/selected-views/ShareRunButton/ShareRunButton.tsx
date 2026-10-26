@@ -54,7 +54,7 @@ export function ShareRunButton({
           aria-label="Share results"
           className={isShared ? "relative" : ""}
         >
-          <Icon icon={Share08Icon} size={18} className="text-zinc-700" />
+          <Icon icon={Share08Icon} size={18} className="text-foreground-body" />
         </Button>
       </Dialog.Trigger>
 

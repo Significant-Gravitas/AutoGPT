@@ -45,6 +45,7 @@ must not end work that nobody cancelled. The lock checks fail closed: a pass
 that cannot confirm its lock does not apply.
 """
 
+import json
 import logging
 from collections.abc import Awaitable
 from typing import Literal
@@ -101,7 +102,11 @@ async def cancel_dream_pass(
     )
     record = await read_dream_pass(pass_id, user_id=user_id)
     if closed:
-        logger.info(f"Dream pass {pass_id} cancelled: {reason}")
+        logger.info(
+            "Dream pass %s cancelled: %s",
+            pass_id,
+            json.dumps(reason, ensure_ascii=False),
+        )
     if closed and record is not None and record.provider_batch_id:
         await cancel_provider_batch(record.provider_batch_id)
     return DreamPassCancel(cancelled=closed, record=record)

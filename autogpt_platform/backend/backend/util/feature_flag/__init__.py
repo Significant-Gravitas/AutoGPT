@@ -50,9 +50,11 @@ MAX_CONCURRENT_SHADOW_EVALUATIONS = 100
 _unanswered_flags_reported: set[str] = set()
 
 
-# Flags that run a PostHog experiment. Only a read of one of these sends the
-# billed `$feature_flag_called` event, which is how an experiment counts exposure.
-EXPERIMENT_FLAGS = frozenset({"subscription-pricing-page-initial-state"})
+# Flags that run a PostHog experiment read only here. Only a read of one of these
+# sends the billed `$feature_flag_called` event, which is how an experiment counts
+# exposure. A server-assigned arm (`data/experiments.py`) is not listed: the
+# browser reports its exposure, consent-gated.
+EXPERIMENT_FLAGS: frozenset[str] = frozenset()
 
 
 class Flag(str, Enum):
@@ -72,6 +74,10 @@ class Flag(str, Enum):
     # ungated behaviour, which is why it defaults False rather than
     # fail-closed. Failures *inside* an enabled gate fail to ASK.
     COPILOT_AUTO_MODE = "copilot-auto-mode"
+    # The prompt-injection check on outside reads (``copilot/gate/reads.py``):
+    # true or "enforce" holds a flagged read for the user; "shadow" judges every
+    # read and records the verdict, holding nothing. Off when missing.
+    COPILOT_READ_SCREEN = "copilot-read-screen"
     # The gate answers the review pauses of workflows AutoPilot started, and
     # its yes satisfies a direct block call's own review. A rollout control
     # that defaults ON by decision; off restores the two approval layers.
@@ -439,6 +445,21 @@ async def get_feature_flag_value(
         flag_key, user_id, default, attributes=attributes
     )
     return value
+
+
+async def evaluate_experiment_variant(flag_key: str, user_id: str) -> str | None:
+    """The arm PostHog buckets *user_id* into for an experiment, or None.
+
+    Experiments live in PostHog whichever vendor answers feature flags. None
+    too when the user lookup failed: the first arm is stored for good, and one
+    read without the user's properties can be the wrong one.
+    """
+    user_context, resolved = await _fetch_user_context_status(user_id)
+    if not resolved:
+        return None
+    return await posthog.evaluate_variant(
+        flag_key, user_id, _person_properties(user_context)
+    )
 
 
 def evaluate_flags_in_memory(flag_keys: list[str], key: str) -> dict[str, Any]:
@@ -919,6 +940,16 @@ async def _evaluate_boolean_flag(
     # but never let a caller take an irreversible action on it.
     _record_flag_for_sentry(flag_key, default, False)
     return default, False
+
+
+async def get_flag_variant(flag_key: Flag, user_id: str, default: Any = False) -> Any:
+    """For a flag served as true/false or as a variant key: its env override when
+    one is set, as ``is_feature_enabled`` honours it, else the vendor's answer."""
+    override = _env_flag_override(flag_key)
+    if override is not None:
+        return override
+    value, _ = await _evaluate_flag_value(flag_key.value, user_id, default)
+    return value
 
 
 def feature_flag(

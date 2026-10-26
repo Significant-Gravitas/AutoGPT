@@ -9,12 +9,17 @@ vi.mock("@/lib/auth/country-token", () => ({
   getCountryToken: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/client-ip-token", () => ({
+  getClientIPToken: vi.fn(),
+}));
+
 vi.mock("@/services/environment", () => ({
   environment: {
     getAGPTServerBaseUrl: vi.fn(() => "https://backend.test"),
   },
 }));
 
+import { getClientIPToken } from "@/lib/auth/client-ip-token";
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { GET, POST } from "../route";
@@ -38,6 +43,10 @@ describe("proxy route — handler pass-through", () => {
     vi.mocked(getCountryToken).mockReset();
     vi.mocked(getCountryToken).mockImplementation(
       async (country) => `signed-${country}`,
+    );
+    vi.mocked(getClientIPToken).mockReset();
+    vi.mocked(getClientIPToken).mockImplementation(
+      async (headers) => `signed-ip-${headers.get("x-forwarded-for")}`,
     );
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -297,6 +306,69 @@ describe("proxy route — handler pass-through", () => {
     expect(sentHeaders.get("x-client-country-token")).toBeNull();
   });
 
+  it.each([
+    ["api/store/search", "?query=sheets"],
+    ["api/store/agents", "?search_query=sheets"],
+  ])(
+    "sends the visitor's IP to %s only as the proxy's own signed token",
+    async (route, query) => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response("{}", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+      const req = new NextRequest(
+        `https://app.test/api/proxy/${route}${query}`,
+        {
+          headers: {
+            "x-forwarded-for": "203.0.113.7",
+            "x-client-ip-token": "forged",
+          },
+        },
+      );
+      await GET(req, makeParams(route.split("/")));
+
+      const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+      expect(sentHeaders.get("x-client-ip-token")).toBe(
+        "signed-ip-203.0.113.7",
+      );
+      expect(sentHeaders.get("x-forwarded-for")).toBeNull();
+    },
+  );
+
+  it.each([
+    ["api/store/agents", ""],
+    ["api/store/agents", "?search_query=%20"],
+    ["api/v1/items", "?query=sheets"],
+  ])(
+    "sends no client IP token to %s%s, even one the browser sent",
+    async (route, query) => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response("{}", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+      const req = new NextRequest(
+        `https://app.test/api/proxy/${route}${query}`,
+        {
+          headers: {
+            "x-forwarded-for": "203.0.113.7",
+            "x-client-ip-token": "forged",
+          },
+        },
+      );
+      await GET(req, makeParams(route.split("/")));
+
+      const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+      expect(sentHeaders.get("x-client-ip-token")).toBeNull();
+      expect(getClientIPToken).not.toHaveBeenCalled();
+    },
+  );
+
   it("omits Authorization header when no token is available", async () => {
     vi.mocked(getServerAuthToken).mockResolvedValueOnce(null);
     vi.mocked(fetch).mockResolvedValue(
@@ -383,6 +455,25 @@ describe("proxy route — handler pass-through", () => {
 
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
       `${BACKEND}/api/v1/items?page=2&size=20`,
+    );
+  });
+
+  it("keeps an encoded ?, # or / inside its path segment", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/v1/items/a%3Fb%3Dc%23d%2Fe?page=2",
+    );
+    // Next.js hands the route each segment already decoded
+    await GET(req, makeParams(["api", "v1", "items", "a?b=c#d/e"]));
+
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
+      `${BACKEND}/api/v1/items/a%3Fb%3Dc%23d%2Fe?page=2`,
     );
   });
 

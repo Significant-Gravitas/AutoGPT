@@ -35,17 +35,20 @@ export function AutoRefillCard({ index = 0 }: Props) {
   return (
     <motion.section
       {...getSectionMotionProps(index, Boolean(reduceMotion))}
-      className="flex w-full flex-wrap items-center justify-between gap-4 rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]"
+      className="flex w-full flex-wrap items-center justify-between gap-4 rounded-[18px] border border-border-base bg-surface p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]"
     >
       <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-violet-100 text-violet-700">
+        <div
+          // TODO(tokens): no exact role (bg-violet-100 #EDE9FE)
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-violet-100 text-accent-strong"
+        >
           <Icon icon={ReloadIcon} size={20} />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <Text variant="body-medium" as="span" className="text-textBlack">
             Auto-refill
           </Text>
-          <Text variant="body" as="span" className="text-zinc-500">
+          <Text variant="body" as="span" className="text-foreground-tertiary">
             {isEnabled && config
               ? `Refills $${(config.amount / 100).toFixed(0)} when balance drops below $${(config.threshold / 100).toFixed(0)}.`
               : "Top up automatically when your balance gets low."}

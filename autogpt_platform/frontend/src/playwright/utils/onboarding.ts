@@ -1,31 +1,12 @@
-import { type ElementHandle, Page, expect } from "@playwright/test";
+import { Page, expect } from "@playwright/test";
 
-export async function dismissTabIntros(page: Page) {
-  await page.addLocatorHandler(
-    page.getByTestId("tab-intro-overlay"),
-    async (intro) => {
-      let button: ElementHandle<Node> | undefined;
-      try {
-        [button] = await intro
-          .getByRole("button", { name: "Got it", exact: true })
-          .elementHandles();
-        if (!button) return;
-        // A click can intercept its own handler after the outer wait expires.
-        await button.press("Enter");
-      } catch (error) {
-        if (
-          !(error instanceof Error) ||
-          !/Element is not attached to the DOM|Execution context was destroyed|Unable to adopt element handle from a different document/.test(
-            error.message,
-          )
-        )
-          throw error;
-      } finally {
-        await button?.dispose();
-      }
-    },
-  );
-}
+// First-visit cards that cover the page; marked seen up front, as
+// journeys/journey-user.ts does, so none can open over a test's next click.
+const TAB_INTRO_STEPS = [
+  "AGENTS_TAB_INTRO",
+  "MARKETPLACE_TAB_INTRO",
+  "BUILD_TAB_INTRO",
+];
 
 function resolveAppUrl(page: Page, destination: string) {
   const baseURL =
@@ -45,13 +26,31 @@ function resolveAppUrl(page: Page, destination: string) {
  * the page's request context, which inherits the browser's auth cookies.
  */
 export async function completeOnboardingViaAPI(page: Page) {
-  await page.request.post(
+  await completeOnboardingStep(page, "ONBOARDING_COMPLETE");
+}
+
+/**
+ * Mark the Library, Marketplace and Build tab intros as seen for the signed-in
+ * user. Takes effect from the next page load.
+ */
+export async function dismissTabIntrosViaAPI(page: Page) {
+  for (const step of TAB_INTRO_STEPS) {
+    await completeOnboardingStep(page, step);
+  }
+}
+
+async function completeOnboardingStep(page: Page, step: string) {
+  const response = await page.request.post(
     resolveAppUrl(page, "/api/proxy/api/onboarding/step"),
     {
       headers: { "Content-Type": "application/json" },
-      params: { step: "ONBOARDING_COMPLETE" },
+      params: { step },
     },
   );
+  expect(
+    response.ok(),
+    `onboarding step ${step} failed: ${response.status()}`,
+  ).toBe(true);
 }
 
 /**
@@ -67,6 +66,7 @@ export async function skipOnboardingIfPresent(
   if (!url.includes("/onboarding")) return;
 
   await completeOnboardingViaAPI(page);
+  await dismissTabIntrosViaAPI(page);
   await page.goto(resolveAppUrl(page, destination));
   await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
 }
@@ -138,11 +138,20 @@ export async function completeOnboardingWizard(
   const preparing = page.getByText("Preparing your workspace...", {
     exact: false,
   });
-  await expect(skipHiring).toBeVisible({
+  // A role no seeded template covers gets no cards, so the step's only way
+  // on is "Continue"; wait for the team so the label has stopped changing.
+  const leaveHiring = skipHiring.or(
+    page.getByRole("button", { name: "Continue", exact: true }),
+  );
+  await expect(page.getByTestId("hire-step-grid")).toBeAttached({
     timeout: 10000,
   });
-  await skipHiring.click();
-  await expect(skipHiring).toBeHidden();
+  await expect(page.getByTestId("hire-step-pending").first()).toBeHidden({
+    timeout: 30000,
+  });
+  await expect(leaveHiring).toBeVisible({ timeout: 10000 });
+  await leaveHiring.click();
+  await expect(leaveHiring).toBeHidden();
   await expect(connect.or(preparing).first()).toBeVisible({ timeout: 10000 });
   if (await connect.isVisible()) {
     await page.getByRole("button", { name: "Next", exact: true }).click();

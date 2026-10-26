@@ -43,7 +43,9 @@ export function ExpertActivityGraph({ days, color }: Props) {
               }
               className={cn(
                 "aspect-square w-full rounded-[3px]",
-                cell.level === 0 ? "bg-zinc-100" : !fillColor && "bg-zinc-800",
+                cell.level === 0
+                  ? "bg-surface-hover"
+                  : !fillColor && "bg-action",
               )}
             />
           ),

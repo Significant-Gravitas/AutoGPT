@@ -9,8 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { usePanelSidebarCollapse } from "@/app/(platform)/team/components/ExpertSidePanel/usePanelSidebarCollapse";
-import { Sidebar, useSidebar } from "@/components/ui/sidebar";
-import { SIDEBAR_COOKIE_NAME } from "@/components/ui/sidebar-cookie";
+import { Sidebar, useSidebar } from "@/components/molecules/Sidebar/Sidebar";
+import { SIDEBAR_COOKIE_NAME } from "@/components/molecules/Sidebar/sidebar-cookie";
 import { PlatformChrome } from "../PlatformChrome";
 
 let pathname = "/home";
@@ -133,33 +133,39 @@ afterEach(() => {
 });
 
 describe("the app sidebar across reloads", () => {
-  it.each([{ cohort: "brain-dump", brainDump: true, toggledTo: "expanded" }])(
-    "keeps the $cohort cohort's toggle after a reload",
-    ({ toggledTo }) => {
-      const first = load();
-      fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
-      expect(sidebarState()).toBe(toggledTo);
-      first.unmount();
-
-      load();
-
-      expect(sidebarState()).toBe(toggledTo);
-    },
-  );
-
-  it.each([{ cohort: "brain-dump", brainDump: true, expected: "collapsed" }])(
-    "starts the $cohort cohort $expected when nothing is remembered",
-    ({ expected }) => {
-      load();
-
-      expect(sidebarState()).toBe(expected);
-    },
-  );
-
-  it("falls back to the cookie the server read when the browser has none", () => {
-    load(true);
+  it("starts expanded when nothing is remembered", () => {
+    load();
 
     expect(sidebarState()).toBe("expanded");
+  });
+
+  it("keeps a collapse after a reload", () => {
+    const first = load();
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    expect(sidebarState()).toBe("collapsed");
+    first.unmount();
+
+    load();
+
+    expect(sidebarState()).toBe("collapsed");
+  });
+
+  it("keeps a re-expand after a reload", () => {
+    rememberSidebar(false);
+    const first = load();
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    expect(sidebarState()).toBe("expanded");
+    first.unmount();
+
+    load();
+
+    expect(sidebarState()).toBe("expanded");
+  });
+
+  it("falls back to the cookie the server read when the browser has none", () => {
+    load(false);
+
+    expect(sidebarState()).toBe("collapsed");
   });
 
   it("never paints the builder with the sidebar open, whatever was remembered", () => {

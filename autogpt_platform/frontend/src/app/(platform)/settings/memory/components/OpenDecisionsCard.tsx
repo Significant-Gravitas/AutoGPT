@@ -27,16 +27,19 @@ export function OpenDecisionsCard({
   if (decisions.length === 0) return null;
   return (
     <div
-      className="flex flex-col rounded-[18px] border border-amber-200 bg-amber-50/40 px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]"
+      className="flex flex-col rounded-[18px] border border-warning-border bg-warning-surface/40 px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]"
       data-testid="open-decisions-card"
     >
       <Text variant="body-medium" as="span" className="text-textBlack">
         Needs your decision
       </Text>
-      <Text variant="small" as="span" className="text-zinc-500">
+      <Text variant="small" as="span" className="text-foreground-tertiary">
         Proposed changes to skills you control. Unrelated learning continues.
       </Text>
-      <ul className="mt-2 flex flex-col divide-y divide-amber-100">
+      <ul
+        // TODO(tokens): no exact role (divide-amber-100 #FEF3C7)
+        className="mt-2 flex flex-col divide-y divide-amber-100"
+      >
         {decisions.map((proposal) => (
           <li
             key={proposal.id}
@@ -58,7 +61,11 @@ export function OpenDecisionsCard({
                 {experts.find((expert) => expert.id === proposal.expert_id)
                   ?.name ?? "Otto"}
               </Text>
-              <Text variant="small" as="p" className="text-zinc-600">
+              <Text
+                variant="small"
+                as="p"
+                className="text-foreground-secondary"
+              >
                 {proposal.summary || proposal.description} —{" "}
                 {proposal.state_reason}
               </Text>

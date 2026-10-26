@@ -18,14 +18,16 @@ export function QueueHeader({
   onShow,
 }: Props) {
   return (
-    <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-zinc-100 bg-zinc-50/60 px-4 py-2">
-      <span className="flex items-baseline gap-2 text-sm font-medium text-zinc-900">
+    <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-separator bg-surface-muted/60 px-4 py-2">
+      <span className="flex items-baseline gap-2 text-sm font-medium text-foreground-strong">
         Waiting for you
-        <span className="tabular-nums text-zinc-500">{count}</span>
+        <span className="tabular-nums text-foreground-tertiary">{count}</span>
       </span>
       <div className="flex items-center gap-3">
         {modeLabel(mode) && (
-          <span className="text-xs text-zinc-500">{modeLabel(mode)}</span>
+          <span className="text-xs text-foreground-tertiary">
+            {modeLabel(mode)}
+          </span>
         )}
         {onShow ? (
           <Button

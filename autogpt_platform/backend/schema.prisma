@@ -34,6 +34,7 @@ model AuthUser {
 
   sessions AuthSession[]
   accounts AuthAccount[]
+  ipEvents AuthIPEvent[]
 
   @@map("UserAuthIdentity")
 }
@@ -98,6 +99,52 @@ model AuthJwks {
 
 // ============ End auth service (Better Auth) tables ============ //
 
+// Written and enforced by the frontend's Better Auth hooks over raw SQL (hence
+// the database-generated ids); read by the admin users page.
+
+// Where each sign-up and sign-in came from. Sessions can't answer that: a ban
+// deletes them and they expire. Kept `auth_ip_event_retention_days`.
+model AuthIPEvent {
+  id        String          @id @default(dbgenerated("gen_random_uuid()"))
+  userId    String
+  kind      AuthIPEventKind
+  // As Better Auth records a session's IP: an IPv6 address masked to its /64.
+  ipAddress String
+  userAgent String?
+  createdAt DateTime        @default(now())
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([ipAddress])
+  @@index([createdAt])
+  @@map("UserAuthIPEvent")
+}
+
+enum AuthIPEventKind {
+  SIGN_UP
+  SIGN_IN
+}
+
+// An IP refused at sign-up and sign-in, or an email domain refused at sign-up.
+model AuthAccessBlock {
+  id          String              @id @default(dbgenerated("gen_random_uuid()"))
+  kind        AuthAccessBlockKind
+  value       String
+  reason      String
+  createdById String?
+  createdAt   DateTime            @default(now())
+  expiresAt   DateTime?
+
+  @@unique([kind, value])
+  @@map("UserAuthAccessBlock")
+}
+
+enum AuthAccessBlockKind {
+  IP
+  EMAIL_DOMAIN
+}
+
 // User model to mirror Auth provider users
 model User {
   id               String   @id // This should match the Supabase user ID
@@ -150,6 +197,10 @@ model User {
   defaultChatCredentialId String?
 
   subscriptionTier  SubscriptionTier   @default(NO_TIER)
+  // When the tier last dropped from a plan or trial to NO_TIER, through
+  // set_subscription_tier or the trial reconcile, which clear it when they set
+  // a tier again. Product mail keeps reaching the account for 7 days.
+  subscriptionEndedAt DateTime?
   subscriptionTrial SubscriptionTrial?
   paidUsageActivation PaidUsageActivation?
   proActivationAttempt ProActivationAttempt?
@@ -451,6 +502,8 @@ model OnboardingBrainDump {
   transcript     String?
   transcriptLang String?
   errorCode      String?
+  /// What decided a quality-gate rejection (`quality.QualityRejection.reason`).
+  errorReason    String?
 
   /// Written once when the dump is processed, read by the copilot home's
   /// greeting. Generated up-front rather than on page load so the greeting
@@ -659,6 +712,7 @@ model DreamPass {
 
   @@index([scopeKey, status])
   @@index([userId, createdAt])
+  @@index([createdAt])
   // Deleting an expert cascades here; without it that scans every pass.
   @@index([expertId])
   // The reaper's scans: open passes whose lease lapsed, oldest first, and
@@ -710,6 +764,11 @@ model UserWorkspaceFile {
   deletedAt DateTime?
 
   metadata Json @default("{}")
+
+  // Otto's own working file (a parked tool output, its build scratchpad),
+  // kept out of the user's file lists. Decided once at write time; see
+  // backend/data/workspace_internal.py.
+  isInternal Boolean @default(false)
 
   // User-level organization. Null = root. The folder API soft-deletes
   // folders and reparents files to root; SetNull is a hard-delete safety net.
@@ -3082,18 +3141,34 @@ enum SubmissionStatus {
 }
 
 enum APIKeyPermission {
+  // Legacy v1 permissions (kept for backward compatibility)
   IDENTITY // Info about the authenticated user
-  EXECUTE_GRAPH // Can execute agent graphs
+  EXECUTE_GRAPH // Can execute agent graphs (v1 only)
   READ_GRAPH // Can get graph versions and details
   WRITE_GRAPH // Can create and update agent graphs
-  EXECUTE_BLOCK // Can execute individual blocks
+  EXECUTE_BLOCK // Can execute individual blocks (v1 only)
   READ_BLOCK // Can get block information
-  READ_STORE // Can read store agents and creators
   WRITE_LIBRARY // Can add agents to library
-  USE_TOOLS // Can use chat tools via external API
-  MANAGE_INTEGRATIONS // Can initiate OAuth flows and complete them
+  USE_TOOLS // Can use v1 chat tools, and v2 MCP tools that spend platform resources
+  MANAGE_INTEGRATIONS // Can initiate OAuth flows and create credentials
   READ_INTEGRATIONS // Can list credentials and providers
   DELETE_INTEGRATIONS // Can delete credentials
+
+  // V2 permissions
+  READ_SCHEDULE // Can list schedules
+  WRITE_SCHEDULE // Can create and delete schedules
+  READ_STORE // Can read marketplace submissions (listings are public and accessible without this permission)
+  WRITE_STORE // Can create, update, delete marketplace submissions
+  READ_LIBRARY // Can list library agents and runs
+  RUN_AGENT // Can run agents and presets from library
+  READ_RUN // Can list and get run details
+  WRITE_RUN // Can stop and delete runs
+  SHARE_RUN // Can share/unshare agent runs
+  READ_RUN_REVIEW // Can list pending human-in-the-loop reviews
+  WRITE_RUN_REVIEW // Can submit human-in-the-loop review responses
+  READ_CREDITS // Can get credit balance and transactions
+  READ_FILES // Can list and download workspace files
+  WRITE_FILES // Can upload and delete workspace files
 }
 
 model APIKey {

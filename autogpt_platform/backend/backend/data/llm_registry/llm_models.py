@@ -259,6 +259,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     KIMI_K2_6 = "moonshotai/kimi-k2.6"
     KIMI_K2_THINKING = "moonshotai/kimi-k2-thinking"
     KIMI_K3 = "moonshotai/kimi-k3"
+    KIMI_K3_1_PRO = "moonshotai/kimi-k3.1-pro"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
     QWEN3_8_MAX_0902 = "qwen/qwen3.8-max-0902"

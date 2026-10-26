@@ -11,6 +11,7 @@ import {
   sameProgress,
 } from "./progress";
 import { loadWizardProgress } from "./loadWizardProgress";
+import { clearSkippedRecordings } from "./steps/BrainDumpStep/recordingStore";
 import { createProgressSaver } from "./progress-saver";
 import {
   snapshotProgress,
@@ -86,6 +87,7 @@ export function useWizardProgress({
       if (!isCurrent()) return;
       if (result.kind === "complete") {
         clearLocalProgress(userID!);
+        void clearSkippedRecordings(userID!).catch(() => undefined);
         router.replace("/home");
         return;
       }
@@ -212,7 +214,9 @@ export function useWizardProgress({
 
   function finish() {
     saver.current?.dispose();
-    if (userID) clearLocalProgress(userID);
+    if (!userID) return;
+    clearLocalProgress(userID);
+    void clearSkippedRecordings(userID).catch(() => undefined);
   }
 
   return {

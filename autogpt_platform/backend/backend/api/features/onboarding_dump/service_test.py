@@ -22,6 +22,7 @@ from backend.api.features.onboarding_dump import (
     db,
     intro,
     prompts,
+    quality,
     service,
     transcription,
 )
@@ -46,7 +47,15 @@ _NEW_TAKE_COLUMNS: dict[str, Any] = {
     "recommendedProviders": None,
     "recommendedExperts": None,
     "errorCode": None,
+    "errorReason": None,
 }
+
+DETERMINISTIC = quality.QualityRejection(
+    error_code=quality.NO_USABLE_SPEECH, reason="deterministic"
+)
+JUDGED_UNUSABLE = quality.QualityRejection(
+    error_code=quality.INSUFFICIENT_CONTENT, reason="judge_unusable"
+)
 
 
 class DumpStore:
@@ -69,20 +78,21 @@ class DumpStore:
     ) -> OnboardingBrainDump:
         # Mirrors the real `start_dump`: a take already moving through
         # the pipeline is returned untouched, so a replayed part 0 or a
-        # repeated finalize cannot reset it.
-        if (
-            self.row is not None
-            and self.row.status
-            in (
-                BrainDumpStatus.recording_uploaded,
-                BrainDumpStatus.transcribing,
-                BrainDumpStatus.transcribed,
-                BrainDumpStatus.extracting,
-                BrainDumpStatus.completed,
-            )
-            and (
+        # repeated finalize cannot reset it, and a typed or skipped take
+        # cannot displace one still being processed.
+        processing = (
+            BrainDumpStatus.recording_uploaded,
+            BrainDumpStatus.transcribing,
+            BrainDumpStatus.transcribed,
+            BrainDumpStatus.extracting,
+        )
+        if self.row is not None and (
+            (
                 self.row.recordingId == recording_id
-                or input_mode != BrainDumpInputMode.voice
+                and self.row.status in (*processing, BrainDumpStatus.completed)
+            )
+            or (
+                input_mode != BrainDumpInputMode.voice and self.row.status in processing
             )
         ):
             return self.row
@@ -92,6 +102,7 @@ class DumpStore:
             self.row.status = BrainDumpStatus.recording_uploaded
             self.row.inputMode = input_mode
             self.row.errorCode = None
+            self.row.errorReason = None
         else:
             # model_construct skips defaults, so every column the code
             # under test reads has to be seeded explicitly — otherwise a
@@ -141,13 +152,18 @@ class DumpStore:
         return True
 
     async def mark_failed(
-        self, user_id: str, recording_id: str, error_code: str
+        self,
+        user_id: str,
+        recording_id: str,
+        error_code: str,
+        reason: str | None = None,
     ) -> None:
         await self.update_dump(
             user_id,
             recording_id,
             status=BrainDumpStatus.failed,
             errorCode=error_code,
+            errorReason=reason,
         )
 
     async def mark_greeting_seen(self, user_id: str) -> None:
@@ -432,27 +448,26 @@ async def test_repeating_a_typed_finalize_does_not_restart_the_pipeline(
 
 
 @pytest.mark.asyncio
-async def test_a_stale_typed_finalize_cannot_replace_a_completed_take(
+async def test_a_typed_take_after_a_completed_one_replaces_it(
     dumps: DumpStore,
 ):
-    newer_tasks = BackgroundTasks()
+    """Back from Hire, then typing again, is a re-take, not a stale request."""
+    first_tasks = BackgroundTasks()
     await service.finalize_typed_dump(
-        USER_ID, "rec-newer", "This is the newer transcript.", newer_tasks
+        USER_ID, "rec-first", "This is the first transcript.", first_tasks
     )
-    await newer_tasks()
-    assert dumps.row is not None
-    newer_transcript = dumps.row.transcript
-    stale_tasks = BackgroundTasks()
+    await first_tasks()
+    retake_tasks = BackgroundTasks()
 
     response = await service.finalize_typed_dump(
-        USER_ID, "rec-stale", "This stale request arrived late.", stale_tasks
+        USER_ID, "rec-retake", "This is what I meant to say.", retake_tasks
     )
 
-    assert response.status == BrainDumpStatus.failed
-    assert response.error_code == "superseded"
-    assert dumps.row.recordingId == "rec-newer"
-    assert dumps.row.transcript == newer_transcript
-    assert stale_tasks.tasks == []
+    assert response.status == BrainDumpStatus.transcribed
+    assert dumps.row is not None
+    assert dumps.row.recordingId == "rec-retake"
+    assert dumps.row.transcript == "This is what I meant to say."
+    assert len(retake_tasks.tasks) == 1
 
 
 @pytest.mark.asyncio
@@ -1115,7 +1130,7 @@ async def test_quality_rejected_voice_dump_keeps_its_transcript_and_queues_nothi
     storage_mocks: dict[str, AsyncMock],
 ):
     await start_voice_take(dumps)
-    quality_gate.return_value = "no_usable_speech"
+    quality_gate.return_value = DETERMINISTIC
     background = BackgroundTasks()
 
     response = await service.finalize_voice_dump(
@@ -1125,9 +1140,12 @@ async def test_quality_rejected_voice_dump_keeps_its_transcript_and_queues_nothi
 
     assert response.status == BrainDumpStatus.failed
     assert response.error_code == "no_usable_speech"
+    assert response.error_reason == "deterministic"
+    assert response.transcript_words == 11
     assert dumps.row is not None
     assert dumps.row.status == BrainDumpStatus.failed
     assert dumps.row.errorCode == "no_usable_speech"
+    assert dumps.row.errorReason == "deterministic"
     # The transcript survives the rejection for debugging. The recording
     # does not: it went once the transcript was stored, and the user
     # re-records from the browser rather than from it.
@@ -1144,7 +1162,7 @@ async def test_quality_rejected_voice_dump_keeps_its_transcript_and_queues_nothi
 async def test_quality_rejected_typed_dump_records_the_error(
     dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
 ):
-    quality_gate.return_value = "insufficient_content"
+    quality_gate.return_value = JUDGED_UNUSABLE
     background = BackgroundTasks()
 
     response = await service.finalize_typed_dump(
@@ -1154,9 +1172,12 @@ async def test_quality_rejected_typed_dump_records_the_error(
 
     assert response.status == BrainDumpStatus.failed
     assert response.error_code == "insufficient_content"
+    assert response.error_reason == "judge_unusable"
+    assert response.transcript_words == 3
     assert dumps.row is not None
     assert dumps.row.status == BrainDumpStatus.failed
     assert dumps.row.errorCode == "insufficient_content"
+    assert dumps.row.errorReason == "judge_unusable"
     assert dumps.row.transcript == "hello hello testing"
     assert background.tasks == []
     extraction["upsert_business_understanding"].assert_not_awaited()
@@ -1173,7 +1194,7 @@ async def test_repeating_finalize_after_quality_rejection_does_not_rerun_the_gat
     the row's failure instead, without a second quality check.
     """
     await start_voice_take(dumps)
-    quality_gate.return_value = "no_usable_speech"
+    quality_gate.return_value = DETERMINISTIC
     await finalize_voice()
 
     response = await finalize_voice()
@@ -1188,7 +1209,7 @@ async def test_a_new_take_after_quality_rejection_runs_the_pipeline(
     dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
 ):
     await start_voice_take(dumps)
-    quality_gate.return_value = "insufficient_content"
+    quality_gate.return_value = JUDGED_UNUSABLE
     await finalize_voice()
 
     quality_gate.return_value = None
@@ -1207,16 +1228,23 @@ async def test_a_new_take_after_quality_rejection_runs_the_pipeline(
 
 
 @pytest.mark.asyncio
-async def test_intro_card_takes_path_b_for_a_quality_rejected_dump(dumps: DumpStore):
+@pytest.mark.parametrize(
+    "error_code",
+    ["no_usable_speech", "insufficient_content", "quality_check_unavailable"],
+)
+async def test_intro_card_takes_path_b_for_a_quality_rejected_dump(
+    dumps: DumpStore, error_code: str
+):
     """The preserved transcript of a rejected dump must never leak into a
-    Path A greeting — the gate already decided it isn't worth reflecting."""
+    Path A greeting, even one the judge was unavailable for: the gate
+    fails closed."""
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
     await dumps.update_dump(
         USER_ID,
         RECORDING_ID,
         status=BrainDumpStatus.failed,
         transcript="Thank you for watching.",
-        errorCode="insufficient_content",
+        errorCode=error_code,
     )
 
     card = await service.get_intro_card(USER_ID)
@@ -1514,13 +1542,16 @@ async def test_a_malformed_stored_team_falls_back_rather_than_500s(
 
 @pytest.mark.asyncio
 async def test_a_team_written_while_the_flag_was_off_is_recomputed(
-    dumps: DumpStore, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock, extraction: dict[str, AsyncMock]
 ):
     """A flag flip must not strand the user with an empty section.
 
     ``source="disabled"`` records that the job declined to spend, not
     that this user has no team.
     """
+    extraction["get_business_understanding"].return_value = (
+        BusinessUnderstanding.model_construct(user_role="Marketing", pain_points=[])
+    )
     await start_voice_take(dumps)
     await dumps.update_dump(
         USER_ID,

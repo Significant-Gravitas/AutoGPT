@@ -271,8 +271,9 @@ interface SuppressDuplicateArgs {
  * - ``"reconnecting"``: the stream is reconnecting; the caller should
  *   notify the user (the UI may not yet reflect the disabled state).
  * - ``"duplicate"``: the same text, with the same attachments, was just
- *   submitted and echoed back by the session — safe to silently drop
- *   (user double-clicked).
+ *   submitted, echoed back by the session and not answered yet — safe to
+ *   silently drop (user double-clicked), because the message is already
+ *   on screen.
  */
 export type SuppressReason = "reconnecting" | "duplicate" | null;
 
@@ -312,11 +313,18 @@ export function getSendSuppressionReason({
       .trim();
     // The same caption on other files is a new message, not a resend.
     const lastUserAttachments = attachmentKeys(lastUserMsg?.parts ?? []);
-    if (
+    const isResend =
       lastUserText === text &&
-      lastUserAttachments.join("\n") === attachments.join("\n")
-    )
-      return "duplicate";
+      lastUserAttachments.join("\n") === attachments.join("\n");
+    // A resend is a duplicate only while the first send is still being
+    // answered: the turn is in flight, or its echo is the newest message.
+    // Once a reply (or a Stop marker) followed it, "yes" after "yes" is a
+    // new message, and dropping it would lose text the composer already cleared.
+    const stillBeingAnswered =
+      status === "streaming" ||
+      status === "submitted" ||
+      lastMessage?.role === "user";
+    if (isResend && stillBeingAnswered) return "duplicate";
   }
 
   return null;

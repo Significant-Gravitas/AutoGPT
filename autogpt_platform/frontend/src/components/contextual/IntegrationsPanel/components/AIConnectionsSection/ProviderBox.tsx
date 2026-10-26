@@ -18,7 +18,7 @@ interface Props {
 }
 
 const FRAME =
-  "flex h-44 w-full min-w-0 flex-col items-center gap-3 rounded-2xl border bg-white px-3 py-4 text-center";
+  "flex h-44 w-full min-w-0 flex-col items-center gap-3 rounded-2xl border bg-surface px-3 py-4 text-center";
 
 // One subscription the experts could run on. Available ones are a button
 // that starts the sign-in; connected and coming-soon ones just say so.
@@ -46,7 +46,7 @@ export function ProviderBox({
           <Icon
             icon={Loading03Icon}
             size={20}
-            className="absolute -bottom-1 -right-1 rounded-full bg-white text-zinc-500 motion-safe:animate-spin"
+            className="absolute -bottom-1 -right-1 rounded-full bg-surface text-foreground-tertiary motion-safe:animate-spin"
           />
         )}
       </span>
@@ -56,19 +56,24 @@ export function ProviderBox({
           as="span"
           className={cn(
             "flex min-h-11 items-center justify-center",
-            state === "coming-soon" ? "text-zinc-500" : "text-black",
+            state === "coming-soon"
+              ? "text-foreground-tertiary"
+              : "text-foreground-base",
           )}
         >
           {name}
         </Text>
         {state === "connected" && (
-          <span className="inline-flex items-center gap-1 rounded-[10px] bg-emerald-50 px-2 py-[2px] text-[13px] font-medium leading-[20px] text-emerald-700">
+          <span
+            // TODO(tokens): no exact role for bg-emerald-50 #ecfdf5, text-emerald-700 #047857
+            className="inline-flex items-center gap-1 rounded-[10px] bg-emerald-50 px-2 py-[2px] text-body-sm font-medium leading-5 text-emerald-700"
+          >
             <Icon icon={CheckmarkCircle02Icon} size={13} />
             Connected
           </span>
         )}
         {state === "coming-soon" && (
-          <span className="inline-flex items-center rounded-[10px] bg-zinc-100 px-2 py-[2px] text-[13px] font-medium leading-[20px] text-zinc-500">
+          <span className="inline-flex items-center rounded-[10px] bg-surface-hover px-2 py-[2px] text-body-sm font-medium leading-5 text-foreground-tertiary">
             Coming soon
           </span>
         )}
@@ -82,8 +87,8 @@ export function ProviderBox({
         className={cn(
           FRAME,
           state === "coming-soon"
-            ? "border-dashed border-zinc-200"
-            : "border-zinc-200",
+            ? "border-dashed border-border-base"
+            : "border-border-base",
         )}
       >
         {body}
@@ -99,7 +104,8 @@ export function ProviderBox({
       disabled={isBusy}
       className={cn(
         FRAME,
-        "border-zinc-200 transition-colors hover:border-zinc-300 hover:bg-zinc-50",
+        "border-border-base transition-colors hover:border-border-strong hover:bg-surface-muted",
+        // TODO(tokens): no exact role for focus-visible:ring-purple-400 #925cf7
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
         isBusy && "cursor-progress",
       )}

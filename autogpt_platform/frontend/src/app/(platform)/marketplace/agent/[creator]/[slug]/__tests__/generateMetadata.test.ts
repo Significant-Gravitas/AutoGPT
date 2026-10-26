@@ -9,12 +9,21 @@ const mockNotFound = vi.hoisted(() =>
 );
 const mockGetServerUser = vi.hoisted(() => vi.fn());
 const mockPrefetchLibrary = vi.hoisted(() => vi.fn());
+const mockPrefetchStoreAgents = vi.hoisted(() => vi.fn());
+const mockGetClientIPToken = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ notFound: mockNotFound }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ "x-forwarded-for": "203.0.113.7" }),
+}));
 
 vi.mock("@/app/api/__generated__/endpoints/store/store", () => ({
   getV2GetSpecificAgent: mockGetSpecificAgent,
   prefetchGetV2GetSpecificAgentQuery: vi.fn(),
-  prefetchGetV2ListStoreAgentsQuery: vi.fn(),
+  prefetchGetV2ListStoreAgentsQuery: mockPrefetchStoreAgents,
+}));
+
+vi.mock("@/lib/auth/client-ip-token", () => ({
+  getClientIPToken: mockGetClientIPToken,
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/library/library", () => ({
@@ -39,6 +48,8 @@ describe("generateMetadata", () => {
     mockGetServerUser.mockResolvedValue({ user: null });
     mockNotFound.mockClear();
     mockPrefetchLibrary.mockClear();
+    mockPrefetchStoreAgents.mockClear();
+    mockGetClientIPToken.mockResolvedValue(null);
   });
 
   describe.each([
@@ -85,6 +96,21 @@ describe("generateMetadata", () => {
       expect.anything(),
       "version-1",
       { query: { enabled: true } },
+    );
+  });
+
+  test("searches for similar agents as the visitor, by their signed IP", async () => {
+    mockGetClientIPToken.mockResolvedValue("signed");
+    mockGetSpecificAgent.mockResolvedValue({ status: 200, data: {} });
+
+    await MarketplaceAgentPage({ params: Promise.resolve(params) });
+
+    const [visitorHeaders] = mockGetClientIPToken.mock.calls[0];
+    expect(visitorHeaders.get("x-forwarded-for")).toBe("203.0.113.7");
+    expect(mockPrefetchStoreAgents).toHaveBeenCalledWith(
+      expect.anything(),
+      { search_query: "an agent" },
+      { request: { headers: { "X-Client-IP-Token": "signed" } } },
     );
   });
 

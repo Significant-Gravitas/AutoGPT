@@ -109,6 +109,7 @@ function renderVideo(
       <div className="group relative aspect-video w-full">
         <YouTubeEmbed
           url={videoUrl}
+          // TODO(tokens): no exact role for border-gray-200 #e5e7eb; #e5e7eb is sidebar-border, the sidebar only
           className="rounded-md border border-gray-200"
         />
       </div>
@@ -123,7 +124,7 @@ function renderVideo(
         href={getYouTubeWatchUrl(videoUrl) ?? undefined}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-blue-600 underline"
+        className="text-info-foreground underline"
       >
         {videoUrl}
       </a>
@@ -135,6 +136,7 @@ function renderVideo(
     return (
       <div className="group relative aspect-video w-full">
         <iframe
+          // TODO(tokens): no exact role for border-gray-200 #e5e7eb; #e5e7eb is sidebar-border, the sidebar only
           className="h-full w-full rounded-md border border-gray-200"
           src={`https://player.vimeo.com/video/${vimeoID}`}
           allow="autoplay; fullscreen; picture-in-picture"
@@ -150,6 +152,7 @@ function renderVideo(
     <div className="group relative">
       <video
         controls
+        // TODO(tokens): no exact role for border-gray-200 #e5e7eb; #e5e7eb is sidebar-border, the sidebar only
         className="h-auto max-w-full rounded-md border border-gray-200"
         preload="metadata"
       >

@@ -223,14 +223,13 @@ describe("useOnboardingIntroCard — closing the welcome overlay", () => {
 });
 
 describe("useOnboardingIntroCard — the greeting itself", () => {
-  it("exposes the server's greeting, prompts, transcript and path", async () => {
+  it("exposes the server's greeting, transcript and path", async () => {
     server.use(getGetBrainDumpIntroMockHandler200(READY_INTRO));
 
     const { result } = renderIntro();
     await waitFor(() => expect(result.current.isVisible).toBe(true));
 
     expect(result.current.greeting).toBe(READY_INTRO.greeting);
-    expect(result.current.prompts).toEqual(READY_INTRO.prompts);
     expect(result.current.transcript).toBe(READY_INTRO.transcript);
     expect(result.current.path).toBe("A");
     expect(result.current.isAwaitingGreeting).toBe(false);
@@ -259,7 +258,6 @@ describe("useOnboardingIntroCard — the greeting itself", () => {
     await waitFor(() => expect(result.current.isVisible).toBe(true));
 
     expect(result.current.path).toBe("B");
-    expect(result.current.prompts).toEqual([]);
   });
 
   it("holds the composer back while the pipeline is still writing the greeting", async () => {

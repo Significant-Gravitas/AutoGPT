@@ -1,5 +1,11 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// text-gray-500 #6B7280.
+// TODO(tokens): chart and canvas colours, which have no tokens yet: #7DD3FC,
+// #86EFAC, #FDE68A, #FCA5A5, #C4B5FD, #BEF264, #FDBA74, #93C5FD, #F0ABFC,
+// #A855F7, #6366F1, #EC4899, #111827, #94A3B8.
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { GraphNode } from "@/app/api/__generated__/models/graphNode";

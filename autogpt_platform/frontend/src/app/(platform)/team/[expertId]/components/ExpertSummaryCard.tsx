@@ -42,10 +42,10 @@ export function ExpertSummaryCard({
     >
       <section
         aria-label={`${expert.name} activity`}
-        className="flex flex-col gap-2 rounded-2xl bg-white p-4 smooth-shadow-ring-sm"
+        className="flex flex-col gap-2 rounded-2xl bg-surface p-4 smooth-shadow-ring-sm"
       >
         <div className="flex items-center justify-between gap-2">
-          <Text variant="body-medium" tone="primary">
+          <Text variant="body-md-medium" tone="primary">
             Activity
           </Text>
           {summary ? <ActivityStatus isActive={summary.isActive} /> : null}
@@ -71,7 +71,7 @@ export function ExpertSummaryCard({
 
       <section
         aria-label={`${expert.name} activity streak`}
-        className="flex flex-col rounded-2xl bg-white p-4 smooth-shadow-ring-sm"
+        className="flex flex-col rounded-2xl bg-surface p-4 smooth-shadow-ring-sm"
       >
         {isActivityLoading ? (
           <Skeleton className="h-16 w-full rounded-lg" />
@@ -84,13 +84,13 @@ export function ExpertSummaryCard({
             <Icon
               icon={FireIcon}
               size={40}
-              className="shrink-0 text-zinc-400"
+              className="shrink-0 text-foreground-subtle"
             />
             <div className="min-w-0">
               <Text variant="h4" tone="primary" className="tabular-nums">
                 {streak ?? 0}
               </Text>
-              <Text variant="body" tone="muted">
+              <Text variant="body-md" tone="muted">
                 day streak
               </Text>
             </div>
@@ -112,6 +112,7 @@ function ActivityStatus({ isActive }: ActivityStatusProps) {
         aria-hidden
         className={cn(
           "size-2 rounded-full",
+          // TODO(tokens): no exact role: bg-emerald-500 #10B981; no fitting role for bg-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour), border-strong (a border colour)
           isActive ? "bg-emerald-500" : "bg-zinc-300",
         )}
       />

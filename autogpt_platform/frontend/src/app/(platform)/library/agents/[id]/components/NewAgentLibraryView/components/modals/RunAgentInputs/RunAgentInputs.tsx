@@ -129,7 +129,10 @@ export function RunAgentInputs({
     case DataType.BOOLEAN:
       innerInputElement = (
         <>
-          <span className="text-sm text-gray-500">
+          <span
+            // TODO(tokens): no exact role for text-gray-500 (#6B7280)
+            className="text-sm text-gray-500"
+          >
             {placeholder || (value ? "Enabled" : "Disabled")}
           </span>
           <Switch
@@ -298,7 +301,10 @@ export function RunAgentInputs({
           <div className="overflow-hidden rounded-md border">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-800">
+                <tr
+                  // TODO(tokens): no exact role for bg-gray-50 (#F9FAFB); no dark roles yet for dark:bg-gray-800 (#1F2937)
+                  className="bg-gray-50 dark:bg-gray-800"
+                >
                   {headers.map((header) => (
                     <th
                       key={header}
@@ -312,7 +318,11 @@ export function RunAgentInputs({
               </thead>
               <tbody>
                 {tableData.map((row, rowIndex) => (
-                  <tr key={rowIndex} className="border-t dark:border-gray-700">
+                  <tr
+                    // TODO(tokens): no dark roles yet for dark:border-gray-700 (#374151)
+                    key={rowIndex}
+                    className="border-t dark:border-gray-700"
+                  >
                     {headers.map((header) => (
                       <td key={header} className="px-3 py-1">
                         <input
@@ -321,6 +331,7 @@ export function RunAgentInputs({
                           onChange={(e) =>
                             updateRow(rowIndex, header, e.target.value)
                           }
+                          // TODO(tokens): no dark roles yet for dark:border-gray-700 (#374151), dark:bg-gray-900 (#111827)
                           className="w-full rounded border px-2 py-1 dark:border-gray-700 dark:bg-gray-900"
                           placeholder={`Enter ${header}`}
                         />
