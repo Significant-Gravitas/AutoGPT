@@ -90,7 +90,9 @@ class OnboardingProfileRequest(pydantic.BaseModel):
     """Request body for onboarding profile submission."""
 
     # Empty for an account that gave no name at sign-up.
-    user_name: str = pydantic.Field(max_length=100)
+    user_name: Annotated[
+        str, pydantic.StringConstraints(strip_whitespace=True, max_length=100)
+    ]
     user_role: str = pydantic.Field(min_length=1, max_length=100)
     pain_points: list[Annotated[str, pydantic.StringConstraints(max_length=2000)]] = (
         pydantic.Field(default_factory=list, max_length=20)

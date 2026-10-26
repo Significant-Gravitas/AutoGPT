@@ -150,7 +150,8 @@ async def test_an_unchanged_profile_still_keeps_the_pick(
     role_writes["posthog"].assert_called_once_with(user_id=USER_ID, role=kept)
 
 
-async def test_a_profile_without_a_name_is_saved_with_none(mocker, client):
+@pytest.mark.parametrize("sent", ["", "   "])
+async def test_a_profile_without_a_name_is_saved_with_none(mocker, client, sent):
     extract = mocker.patch.object(
         routes,
         "extract_business_understanding",
@@ -161,7 +162,7 @@ async def test_a_profile_without_a_name_is_saved_with_none(mocker, client):
     )
     response = await client.post(
         "/onboarding/profile",
-        json={"user_name": "", "user_role": "Founder/CEO", "pain_points": []},
+        json={"user_name": sent, "user_role": "Founder/CEO", "pain_points": []},
     )
     assert response.status_code == 200
     assert "What is your name?" not in extract.await_args.args[0]
