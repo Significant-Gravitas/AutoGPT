@@ -7,7 +7,9 @@ import {
 import openapi from "@/app/api/openapi.json";
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -56,6 +58,11 @@ const { recordingStoreState } = vi.hoisted(() => ({
       uploaded: boolean;
     }[],
   },
+}));
+
+// Each wizard save, in order, and whether Hire was already on screen.
+const { wizardSaves } = vi.hoisted(() => ({
+  wizardSaves: [] as { role: string; hireShown: boolean }[],
 }));
 
 vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
@@ -181,11 +188,18 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
     }),
   getV1CheckIfOnboardingIsCompleted: () =>
     Promise.resolve({ status: 200, data: false }),
-  patchV1UpdateOnboardingState: () =>
-    Promise.resolve({
+  patchV1UpdateOnboardingState: (body: {
+    wizardProgress: { role: string };
+  }) => {
+    wizardSaves.push({
+      role: body.wizardProgress.role,
+      hireShown: document.querySelector('[data-testid="step-hire"]') !== null,
+    });
+    return Promise.resolve({
       status: 200,
       data: { userId: "brain-user", wizardRevision: 1 },
-    }),
+    });
+  },
   postV1CompleteOnboardingStep: () => Promise.resolve({ status: 200 }),
   postV1SubmitOnboardingProfile: () => Promise.resolve({ status: 200 }),
 }));
@@ -410,6 +424,7 @@ beforeEach(() => {
   recordingStoreState.meta = null;
   recordingStoreState.parts = [];
   recordingStoreState.finalizedIds = [];
+  wizardSaves.length = 0;
   useOnboardingWizardStore.getState().reset();
   localStorage.clear();
   window.sessionStorage.removeItem(STEP_STORAGE_KEY);
@@ -674,6 +689,87 @@ describe("onboarding brain dump — skip", () => {
     );
   });
 });
+
+// The server builds the hire step's team from the role in the saved progress,
+// and the wizard saves a change 200 ms after it is made. Picking the role and
+// leaving the step in one go leaves no time for that timer.
+describe("onboarding brain dump — the role reaches the server first", () => {
+  it("saves a role picked just before a skip before showing Hire", async () => {
+    finalizeReturns({ status: "completed" });
+    landOnPainPointsStep();
+
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    act(() => useOnboardingWizardStore.getState().setRole("Marketing"));
+    fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+
+    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    await waitFor(() =>
+      expect(wizardSaves.map((save) => save.role)).toContain("Marketing"),
+    );
+    expect(wizardSaves.find((save) => save.role === "Marketing")).toEqual({
+      role: "Marketing",
+      hireShown: false,
+    });
+  });
+
+  it.each([
+    ["typed", sendTypedTake],
+    ["recorded", sendRecordedTake],
+  ])(
+    "saves a role picked just before a %s take before sending the take",
+    async (_label, sendTake) => {
+      let rolesSavedAtFinalize: string[] = [];
+      server.use(
+        getUploadBrainDumpPartMockHandler200(() => ({
+          recording_id: "r",
+          part_index: 0,
+          received_bytes: 9,
+          total_bytes: 9,
+        })),
+        getFinalizeBrainDumpMockHandler200(() => {
+          rolesSavedAtFinalize = wizardSaves.map((save) => save.role);
+          return { status: "completed" as const, input_mode: "voice" as const };
+        }),
+      );
+      landOnPainPointsStep();
+
+      render(<OnboardingPage />);
+      await screen.findByText(DUMP_HEADLINE);
+      await sendTake(() =>
+        act(() => useOnboardingWizardStore.getState().setRole("Marketing")),
+      );
+
+      expect(await screen.findByTestId("step-hire")).toBeDefined();
+      expect(rolesSavedAtFinalize).toContain("Marketing");
+    },
+  );
+});
+
+// Each picks the role (`pickRole`) and sends in one go, with no time between.
+async function sendTypedTake(pickRole: () => void) {
+  await userEvent.click(screen.getByRole("button", { name: "Write" }));
+  await userEvent.type(
+    await screen.findByPlaceholderText(
+      "What repeats every week? What would you hand off first?",
+    ),
+    "I run a bakery",
+  );
+  pickRole();
+  fireEvent.click(screen.getByRole("button", { name: "I'm done" }));
+}
+
+async function sendRecordedTake(pickRole: () => void) {
+  await userEvent.click(screen.getByRole("button", { name: "Talk" }));
+  const send = await screen.findByRole("button", { name: "Send recording" });
+  await waitFor(() =>
+    expect(recordingStoreState.parts.map((part) => part.uploaded)).toEqual([
+      true,
+    ]),
+  );
+  pickRole();
+  fireEvent.click(send);
+}
 
 describe("onboarding brain dump — finishing a take", () => {
   // The success path all the way through: without it the finalize

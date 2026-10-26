@@ -140,6 +140,9 @@ type BaseButtonProps = {
   rightIcon?: React.ReactNode;
   asChild?: boolean;
   withTooltip?: boolean;
+  /** `body-md` sets the label at the text-body-md role (15px/1.5rem) for
+   *  sizes whose label is text-body, e.g. inside a profile tab. */
+  textSize?: "body" | "body-md";
 } & VariantProps<typeof extendedButtonVariants>;
 
 type ButtonAsButton = BaseButtonProps &
