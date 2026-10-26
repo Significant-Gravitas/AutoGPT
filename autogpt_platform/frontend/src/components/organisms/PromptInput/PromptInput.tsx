@@ -23,7 +23,7 @@ import {
   InputGroup,
   InputGroupButton,
   InputGroupTextarea,
-} from "@/components/ui/input-group";
+} from "@/components/molecules/InputGroup/InputGroup";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,

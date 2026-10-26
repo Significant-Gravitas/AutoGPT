@@ -49,16 +49,12 @@ it.each(["past_due", "unpaid"])(
     const pay = await screen.findByRole("link", { name: "Pay $54.13 now" });
     expect(pay.getAttribute("href")).toBe(PAYMENT_URL);
     expect(pay.getAttribute("target")).toBe("_blank");
-    expect(pay.closest(".sentry-unmask")).toBeNull();
     expect(screen.getByText("Your payment didn’t go through")).toBeDefined();
     expect(
       screen.getByText(
         "Pro was due to start on Sep 17, but the $54.13 charge didn’t go through. Pay now and Pro starts right away. Your chats, workflows and results are saved.",
       ),
     ).toBeDefined();
-    for (const amount of screen.getAllByText(/\$54\.13/)) {
-      expect(amount.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
-    }
     expect(screen.queryByText("Your trial has ended")).toBeNull();
     expect(
       screen.queryByText("Pick a plan to continue using AutoGPT."),

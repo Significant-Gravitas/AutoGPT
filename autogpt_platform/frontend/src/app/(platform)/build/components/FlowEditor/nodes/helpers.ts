@@ -96,7 +96,9 @@ export const getTypeDisplayInfo = (schema: any) => {
   ) {
     return {
       displayType: "table",
+      // TODO(tokens): no exact role: !text-indigo-500 #6366F1
       colorClass: "!text-indigo-500",
+      // TODO(tokens): no exact role: literal #6366F1
       hexColor: "#6366f1",
     };
   }
@@ -108,32 +110,44 @@ export const getTypeDisplayInfo = (schema: any) => {
     > = {
       file: {
         displayType: "file",
+        // TODO(tokens): no exact role: !text-green-500 #16A34A
         colorClass: "!text-green-500",
+        // TODO(tokens): no exact role: literal #22C55E
         hexColor: "#22c55e",
       },
       date: {
         displayType: "date",
+        // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         colorClass: "!text-blue-500",
+        // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         hexColor: "#3b82f6",
       },
       time: {
         displayType: "time",
+        // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         colorClass: "!text-blue-500",
+        // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         hexColor: "#3b82f6",
       },
       "date-time": {
         displayType: "datetime",
+        // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         colorClass: "!text-blue-500",
+        // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         hexColor: "#3b82f6",
       },
       "long-text": {
         displayType: "text",
+        // TODO(tokens): no exact role: !text-green-500 #16A34A
         colorClass: "!text-green-500",
+        // TODO(tokens): no exact role: literal #22C55E
         hexColor: "#22c55e",
       },
       "short-text": {
         displayType: "text",
+        // TODO(tokens): no exact role: !text-green-500 #16A34A
         colorClass: "!text-green-500",
+        // TODO(tokens): no exact role: literal #22C55E
         hexColor: "#22c55e",
       },
     };
@@ -157,28 +171,46 @@ export const getTypeDisplayInfo = (schema: any) => {
   const displayType = typeMap[schema?.type] || schema?.type || "any";
 
   const colorMap: Record<string, string> = {
+    // TODO(tokens): no exact role: !text-green-500 #16A34A
     string: "!text-green-500",
+    // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
     number: "!text-blue-500",
+    // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
     integer: "!text-blue-500",
+    // TODO(tokens): no exact role: !text-yellow-500 #F5C000
     boolean: "!text-yellow-500",
+    // TODO(tokens): no fitting role for !text-purple-500 #7733F5; #7733F5 is brand (a button fill), and this colours a type label (QUALITY 41)
     object: "!text-purple-500",
+    // TODO(tokens): no exact role: !text-indigo-500 #6366F1
     array: "!text-indigo-500",
+    // TODO(tokens): no exact role: !text-gray-500 #6B7280
     null: "!text-gray-500",
+    // TODO(tokens): no exact role: !text-gray-500 #6B7280
     any: "!text-gray-500",
   };
 
   const hexColorMap: Record<string, string> = {
+    // TODO(tokens): no exact role: literal #22C55E
     string: "#22c55e",
+    // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
     number: "#3b82f6",
+    // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
     integer: "#3b82f6",
+    // TODO(tokens): no exact role: literal #EAB308
     boolean: "#eab308",
+    // TODO(tokens): no exact role: literal #A855F7
     object: "#a855f7",
+    // TODO(tokens): no exact role: literal #6366F1
     array: "#6366f1",
+    // TODO(tokens): no exact role: literal #6B7280
     null: "#6b7280",
+    // TODO(tokens): no exact role: literal #6B7280
     any: "#6b7280",
   };
 
+  // TODO(tokens): no exact role: !text-gray-500 #6B7280
   const colorClass = colorMap[schema?.type] || "!text-gray-500";
+  // TODO(tokens): no exact role: literal #6B7280
   const hexColor = hexColorMap[schema?.type] || "#6b7280";
 
   return {
@@ -193,7 +225,8 @@ export function getEdgeColorFromOutputType(
   sourceHandle: string,
 ): { colorClass: string; hexColor: string } {
   const defaultColor = {
-    colorClass: "stroke-zinc-500/50",
+    colorClass: "stroke-edge/50",
+    // TODO(tokens): no exact role: literal #6B7280
     hexColor: "#6b7280",
   };
 

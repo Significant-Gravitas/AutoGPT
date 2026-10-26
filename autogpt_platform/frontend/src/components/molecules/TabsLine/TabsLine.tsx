@@ -180,7 +180,7 @@ const TabsLineTrigger = React.forwardRef<
           "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-subtle",
         ],
         variant !== "pill" &&
-          "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-3 font-sans text-body font-medium leading-6 text-foreground-body transition-all data-[state=active]:text-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+          "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-3 font-sans text-body font-medium leading-6 text-foreground-body transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-brand-hover",
         icon && variant !== "pill" && "gap-1.5",
         variant === "compact" &&
           "px-2.5 py-2 text-body leading-5 text-foreground-secondary data-[state=active]:text-foreground-strong",
@@ -218,7 +218,7 @@ const TabsLineContent = React.forwardRef<
       className={cn(
         isPill
           ? "mt-2 ring-offset-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 dark:ring-offset-neutral-950 dark:focus-visible:ring-neutral-300"
-          : "mt-4 data-[state=inactive]:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2",
+          : "mt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2 data-[state=inactive]:hidden",
         className,
       )}
       {...props}

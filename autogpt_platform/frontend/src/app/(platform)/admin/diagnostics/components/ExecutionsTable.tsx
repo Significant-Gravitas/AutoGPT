@@ -14,7 +14,12 @@
 // bg-blue-600 = info-foreground (a text colour).
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Card } from "@/components/atoms/Card/Card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/atoms/Card/Card";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import {
   Dialog,
@@ -35,11 +40,6 @@ import {
   TableCell,
 } from "@/components/molecules/Table/components/TablePrimitives";
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import {
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/__legacy__/ui/card";
 import {
   useGetV2ListRunningExecutions,
   useGetV2ListOrphanedExecutions,
