@@ -213,7 +213,6 @@ _GLOBAL_CLOCK_PATCH_OFFENDERS = {
     "api/features/orgs/routes_test.py asyncio.sleep": 1,
     "blocks/desktop/desktop_api_test.py asyncio.sleep": 1,
     "blocks/exa/cost_tracking_test.py asyncio.sleep": 4,
-    "blocks/rss_test.py asyncio.sleep": 2,
     "blocks/time_blocks_test.py asyncio.sleep": 2,
     "copilot/baseline/reasoning_test.py time.monotonic": 1,
     "copilot/bot/handler_test.py asyncio.sleep": 3,
