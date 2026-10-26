@@ -4,9 +4,15 @@ from typing import Any, Type
 import pytest
 
 from backend.blocks import get_blocks
-from backend.blocks._base import Block, BlockEffect, BlockSchemaInput, BlockType
+from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
+    Block,
+    BlockEffect,
+    BlockSchemaInput,
+    BlockType,
+)
 from backend.blocks.io import AgentDropdownInputBlock, AgentInputBlock
-from backend.blocks.rss import ReadRSSFeedBlock
+from backend.blocks.rss import MAX_CONTINUOUS_RUNTIME_SECONDS, ReadRSSFeedBlock
 from backend.copilot.gate.effects import STRUCTURAL_TYPES, UNREADABLE_BLOCKS
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionContext
@@ -20,8 +26,10 @@ SKIP_BLOCK_TESTS = {
 }
 
 
-def test_rss_feed_block_does_not_inherit_wall_clock_timeout():
-    assert ReadRSSFeedBlock().execution_timeout_seconds is None
+def test_rss_feed_block_has_finite_wall_clock_timeout():
+    assert ReadRSSFeedBlock().execution_timeout_seconds == (
+        MAX_CONTINUOUS_RUNTIME_SECONDS + DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+    )
 
 
 async def test_rss_feed_block_skips_final_sleep_for_one_shot(monkeypatch):

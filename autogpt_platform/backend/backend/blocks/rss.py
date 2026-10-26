@@ -2,6 +2,7 @@ import asyncio
 import logging
 from asyncio import sleep as async_sleep
 from datetime import datetime, timedelta, timezone
+from time import monotonic
 from typing import Any
 
 import feedparser
@@ -19,6 +20,9 @@ from backend.blocks._base import (
 from backend.data.model import SchemaField
 from backend.util.request import Requests
 
+DEFAULT_CONTINUOUS_RUNTIME_SECONDS = 60 * 60
+MAX_CONTINUOUS_RUNTIME_SECONDS = 4 * 60 * 60
+
 
 class RSSEntry(pydantic.BaseModel):
     title: str
@@ -30,7 +34,9 @@ class RSSEntry(pydantic.BaseModel):
 
 
 class ReadRSSFeedBlock(Block):
-    execution_timeout_seconds: int | None = None
+    execution_timeout_seconds: int | None = (
+        MAX_CONTINUOUS_RUNTIME_SECONDS + DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+    )
 
     class Input(BlockSchemaInput):
         rss_url: str = SchemaField(
@@ -45,6 +51,13 @@ class ReadRSSFeedBlock(Block):
         polling_rate: int = SchemaField(
             description="The number of seconds to wait between polling attempts.",
             placeholder="300",
+            ge=1,
+        )
+        max_duration_seconds: int = SchemaField(
+            description="Maximum time to poll continuously before this block finishes.",
+            default=DEFAULT_CONTINUOUS_RUNTIME_SECONDS,
+            ge=1,
+            le=MAX_CONTINUOUS_RUNTIME_SECONDS,
         )
         run_continuously: bool = SchemaField(
             description="Whether to run the block continuously or just once.",
@@ -143,12 +156,15 @@ class ReadRSSFeedBlock(Block):
             return {"entries": []}
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        keep_going = True
         start_time = datetime.now(timezone.utc) - timedelta(
             minutes=input_data.time_period
         )
-        while keep_going:
-            keep_going = input_data.run_continuously
+        seen_links_at_start_time: set[str] = set()
+        deadline = monotonic() + input_data.max_duration_seconds
+
+        while True:
+            if input_data.run_continuously and monotonic() >= deadline:
+                break
 
             if input_data.run_continuously:
                 feed = await self.parse_feed(input_data.rss_url)
@@ -158,22 +174,51 @@ class ReadRSSFeedBlock(Block):
                     timeout=DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
                 )
             all_entries = []
+            poll_start_time = start_time
+            latest_pub_date = start_time
+            latest_links_at_time = set(seen_links_at_start_time)
+            seen_links_this_poll: set[str] = set()
 
             for entry in feed["entries"]:
                 pub_date = datetime(*entry["published_parsed"][:6], tzinfo=timezone.utc)
 
-                if pub_date > start_time:
-                    rss_entry = RSSEntry(
-                        title=entry["title"],
-                        link=entry["link"],
-                        description=entry.get("summary", ""),
-                        pub_date=pub_date,
-                        author=entry.get("author", ""),
-                        categories=[tag["term"] for tag in entry.get("tags", [])],
-                    )
-                    all_entries.append(rss_entry)
-                    yield "entry", rss_entry
+                if pub_date < poll_start_time:
+                    continue
+
+                rss_entry = RSSEntry(
+                    title=entry["title"],
+                    link=entry["link"],
+                    description=entry.get("summary", ""),
+                    pub_date=pub_date,
+                    author=entry.get("author", ""),
+                    categories=[tag["term"] for tag in entry.get("tags", [])],
+                )
+                if rss_entry.link in seen_links_this_poll:
+                    continue
+                if (
+                    pub_date == poll_start_time
+                    and rss_entry.link in seen_links_at_start_time
+                ):
+                    continue
+
+                seen_links_this_poll.add(rss_entry.link)
+                all_entries.append(rss_entry)
+                yield "entry", rss_entry
+
+                if pub_date > latest_pub_date:
+                    latest_pub_date = pub_date
+                    latest_links_at_time = {rss_entry.link}
+                elif pub_date == latest_pub_date:
+                    latest_links_at_time.add(rss_entry.link)
+
+            start_time = latest_pub_date
+            seen_links_at_start_time = latest_links_at_time
 
             yield "entries", all_entries
-            if input_data.run_continuously:
-                await async_sleep(input_data.polling_rate)
+            if not input_data.run_continuously:
+                break
+
+            remaining_seconds = deadline - monotonic()
+            if remaining_seconds <= 0:
+                break
+            await async_sleep(min(input_data.polling_rate, remaining_seconds))
