@@ -213,3 +213,32 @@ async def test_huge_format_map_width_blocked(fmt: TextFormatter):
 async def test_huge_safe_markup_format_width_blocked(fmt: TextFormatter):
     with pytest.raises((ValueError, OverflowError)):
         await fmt.format_string("{{ ('{:" + TOO_WIDE + "}' | safe).format(1) }}")
+
+
+@pytest.mark.asyncio
+async def test_star_percent_width_pads_within_the_cap(fmt: TextFormatter):
+    assert await fmt.format_string("{{ '%*d' % (5, 1) }}") == "    1"
+
+
+@pytest.mark.asyncio
+async def test_huge_star_percent_width_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string("{{ '%*d' % (" + TOO_WIDE + ", 1) }}")
+
+
+@pytest.mark.asyncio
+async def test_huge_star_percent_precision_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string("{{ '%d %.*f' % (1, " + TOO_WIDE + ", 1.5) }}")
+
+
+@pytest.mark.asyncio
+async def test_huge_keyed_percent_width_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string("{{ '%(n)" + TOO_WIDE + "d' % {'n': 1} }}")
+
+
+@pytest.mark.asyncio
+async def test_huge_str_format_width_with_newline_fill_blocked(fmt: TextFormatter):
+    with pytest.raises((ValueError, OverflowError)):
+        await fmt.format_string("{{ '{:\n>" + TOO_WIDE + "}'.format(1) }}")

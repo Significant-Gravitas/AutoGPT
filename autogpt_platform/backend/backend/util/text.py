@@ -24,11 +24,17 @@ MAX_SEQUENCE_REPEAT = 10_000  # Max length from sequence * int
 TEMPLATE_RENDER_TIMEOUT = 10  # Seconds before render is killed
 MAX_FORMAT_FIELD_SIZE = 1_000  # Max width or precision of a formatted field
 
-# The size fields of one %-style conversion, e.g. "%-12.4f" -> ("12", "4")
-_PERCENT_FIELD_SIZES = re.compile(r"%[-+ #0]*(\d*)(?:\.(\d*))?")
-# The size fields of one str.format() spec, e.g. "<12.4f" -> ("12", "4")
+# One %-style conversion: an optional "(key)", flags, a width and a precision
+# that are digits or "*", a length modifier and the conversion type, e.g.
+# "%(n)-12.4f" -> ("n", "12", "4", "f"); "%*d" -> ("", "*", "", "d")
+_PERCENT_CONVERSION = re.compile(
+    r"%(?:\(([^)]*)\))?[-+ #0]*(\*|\d*)(?:\.(\*|\d*))?[hlL]?([\s\S])"
+)
+# The size fields of one str.format() spec, with any fill character, e.g.
+# "<12.4f" -> ("12", "4"). A type's own spec language (a datetime's "%Y")
+# doesn't match and isn't checked.
 _FORMAT_SPEC_SIZES = re.compile(
-    r"^(?:.?[<>=^])?[-+ ]?z?#?0?(\d*)[,_]?(?:\.(\d+))?[a-zA-Z%]?$"
+    r"^(?:[\s\S]?[<>=^])?[-+ ]?z?#?0?(\d*)[,_]?(?:\.(\d+))?[a-zA-Z%]?$"
 )
 
 
@@ -39,10 +45,26 @@ def format_filter_for_jinja2(value, format_string=None):
     return format_string % float(value)
 
 
-def _check_percent_format(format_string: str) -> None:
-    """Refuse a %-style format string with a field over the size cap."""
-    for width, precision in _PERCENT_FIELD_SIZES.findall(format_string):
-        _check_field_size(width, precision)
+def _check_percent_format(format_string: str, args: Any = ()) -> None:
+    """Refuse a %-style format string with a field over the size cap.
+
+    A ``*`` width or precision takes its size from ``args``, in the order the
+    % operator reads them; a size that isn't there is left for the operator
+    to reject.
+    """
+    values = args if isinstance(args, tuple) else (args,)
+    position = 0
+    for key, width, precision, conversion in _PERCENT_CONVERSION.findall(format_string):
+        if conversion == "%" and not key:
+            continue
+        sizes: list[str | int | None] = []
+        for size in (width, precision):
+            if size == "*":
+                size = values[position] if position < len(values) else 0
+                position += 1
+            sizes.append(size if isinstance(size, (str, int)) else 0)
+        position += 1
+        _check_field_size(*sizes)
 
 
 def _check_format_spec(format_spec: str) -> None:
@@ -52,9 +74,9 @@ def _check_format_spec(format_spec: str) -> None:
         _check_field_size(sizes.group(1), sizes.group(2))
 
 
-def _check_field_size(width: str | None, precision: str | None) -> None:
+def _check_field_size(width: str | int | None, precision: str | int | None) -> None:
     # The width and precision decide how much formatting allocates
-    if max(int(width or 0), int(precision or 0)) > MAX_FORMAT_FIELD_SIZE:
+    if max(abs(int(width or 0)), abs(int(precision or 0))) > MAX_FORMAT_FIELD_SIZE:
         raise OverflowError(
             f"Format field too large (max {MAX_FORMAT_FIELD_SIZE} characters)"
         )
@@ -181,7 +203,7 @@ class _RestrictedEnvironment(SandboxedEnvironment):
     def call_binop(self, context, operator, left, right):
         # Intercept %-style string formatting
         if operator == "%" and isinstance(left, str):
-            _check_percent_format(left)
+            _check_percent_format(left, right)
         # Intercept the ** (power) operator
         if operator == "**":
             if isinstance(right, (int, float)) and abs(right) > MAX_EXPONENT:
