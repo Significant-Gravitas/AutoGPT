@@ -5,17 +5,21 @@ import itertools
 import os
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.routing import APIWebSocketRoute
+from fastapi.testclient import TestClient
+from guard import SecurityMiddleware
+from guard.websocket import WS_CLOSE_IP_NOT_ALLOWED
 from httpx import ASGITransport, AsyncClient
 
 from backend.api.middleware.fastapi_guard_wiring import (
     DEFAULT_EXCLUDED_PATHS,
-    DEFAULT_TRUSTED_PROXIES,
     attach_guard,
     build_guard_config,
+    guard_websocket_connection,
 )
-
-PRIVATE_RANGES = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+from backend.api.ws_api import app as websocket_app
+from backend.util.service import AppService
 
 # Rate limiting and ban state in fastapi-guard are process-wide, so every
 # test drives its own TEST-NET client IP to stay hermetic.
@@ -105,16 +109,55 @@ def test_rate_limit_returns_429(monkeypatch):
     )
 
 
+def test_mounted_app_counts_once_against_the_outer_guard(monkeypatch):
+    # The external API is mounted inside the REST app and is not guarded on
+    # its own: the REST app's middleware already sees every mounted request.
+    monkeypatch.setenv("AUTOGPT_GUARD_ENABLED", "1")
+    monkeypatch.setenv("AUTOGPT_GUARD_RATE_LIMIT", "2")
+    mounted = FastAPI()
+
+    @mounted.get("/ping")
+    async def ping():
+        return {"ok": True}
+
+    app = FastAPI()
+    attach_guard(app)
+    app.mount("/external-api", mounted)
+
+    async def runner():
+        transport = ASGITransport(app=app, client=(_unique_ip(), 50000))
+        async with AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
+            assert (await client.get("/external-api/ping")).status_code == 200
+            assert (await client.get("/external-api/ping")).status_code == 200
+            assert (await client.get("/external-api/ping")).status_code == 429
+
+    asyncio.run(runner())
+
+
 def test_config_defaults():
     config = build_guard_config()
     assert config.enable_redis is False
-    assert list(config.trusted_proxies) == PRIVATE_RANGES
-    assert DEFAULT_TRUSTED_PROXIES.split(",") == PRIVATE_RANGES
+    assert tuple(config.trusted_proxies) == ()
+    assert config.enable_ip_banning is True
+    assert config.enable_penetration_detection is True
+    assert config.detection_scan_body is False
     assert config.exclude_paths == DEFAULT_EXCLUDED_PATHS.split(",")
     assert config.enable_rate_limit_auto_ban is False
     assert config.security_headers is None
     assert config.enforce_https is False
     assert config.trust_x_forwarded_proto is False
+
+
+def test_detection_toggles(monkeypatch):
+    monkeypatch.setenv("AUTOGPT_GUARD_IP_BANNING", "0")
+    monkeypatch.setenv("AUTOGPT_GUARD_PENETRATION_DETECTION", "false")
+    monkeypatch.setenv("AUTOGPT_GUARD_SCAN_BODY", "1")
+    config = build_guard_config()
+    assert config.enable_ip_banning is False
+    assert config.enable_penetration_detection is False
+    assert config.detection_scan_body is True
 
 
 def test_explicit_empty_trusted_proxies_trusts_none(monkeypatch):
@@ -180,21 +223,79 @@ def test_invalid_boolean_raises(monkeypatch):
         attach_guard(FastAPI())
 
 
-@pytest.mark.parametrize("enabled", [False, True])
-def test_app_service_builds_its_http_app(monkeypatch, enabled):
-    from guard import SecurityMiddleware
+def _websocket_app() -> FastAPI:
+    app = FastAPI()
+    attach_guard(app)
 
-    from backend.util.service import AppService
+    @app.websocket("/ws", dependencies=[Depends(guard_websocket_connection)])
+    async def ws(websocket: WebSocket):
+        await websocket.accept()
+        await websocket.send_text("hello")
+        await websocket.close()
 
+    return app
+
+
+def test_websocket_handshake_is_guarded(monkeypatch):
+    blocked = _unique_ip()
+    monkeypatch.setenv("AUTOGPT_GUARD_ENABLED", "1")
+    monkeypatch.setenv("AUTOGPT_GUARD_BLOCKED_IPS", blocked)
+    app = _websocket_app()
+
+    with (
+        TestClient(app, client=(blocked, 50000)) as client,
+        pytest.raises(WebSocketDisconnect) as closed,
+        client.websocket_connect("/ws"),
+    ):
+        pass
+    assert closed.value.code == WS_CLOSE_IP_NOT_ALLOWED.code
+
+    with (
+        TestClient(app, client=(_unique_ip(), 50000)) as client,
+        client.websocket_connect("/ws") as websocket,
+    ):
+        assert websocket.receive_text() == "hello"
+
+
+def test_websocket_server_route_runs_the_guard_check():
+    route = next(
+        r
+        for r in websocket_app.routes
+        if isinstance(r, APIWebSocketRoute) and r.path == "/ws"
+    )
+    calls = [dep.call for dep in route.dependant.dependencies]
+    assert guard_websocket_connection in calls
+
+
+def test_websocket_dependency_is_a_no_op_when_disabled():
+    with (
+        TestClient(_websocket_app(), client=(_unique_ip(), 50000)) as client,
+        client.websocket_connect("/ws") as websocket,
+    ):
+        assert websocket.receive_text() == "hello"
+
+
+@pytest.mark.parametrize(
+    "env, guarded",
+    [
+        ({}, False),
+        ({"AUTOGPT_GUARD_ENABLED": "1"}, False),
+        (
+            {"AUTOGPT_GUARD_ENABLED": "1", "AUTOGPT_GUARD_INTERNAL_SERVICES": "1"},
+            True,
+        ),
+    ],
+)
+def test_app_service_is_guarded_only_on_its_own_opt_in(monkeypatch, env, guarded):
     class _Service(AppService):
         @classmethod
         def get_port(cls) -> int:
             return 0
 
-    if enabled:
-        monkeypatch.setenv("AUTOGPT_GUARD_ENABLED", "1")
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
 
     app = _Service().build_fastapi_app()
 
     has_guard = any(m.cls is SecurityMiddleware for m in app.user_middleware)
-    assert has_guard is enabled
+    assert has_guard is guarded

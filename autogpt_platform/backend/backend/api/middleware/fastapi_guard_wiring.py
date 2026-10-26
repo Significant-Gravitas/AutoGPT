@@ -13,17 +13,16 @@ AUTOGPT_GUARD_ENABLED=1 to activate the middleware on a service.
 import os
 from typing import Any
 
-from fastapi import FastAPI
-from guard import SecurityConfig, SecurityDecorator, SecurityMiddleware
+from fastapi import FastAPI, WebSocket
+from guard import SecurityConfig, SecurityDecorator, SecurityMiddleware, guard_websocket
 
 DEFAULT_EXCLUDED_PATHS = "/docs,/redoc,/openapi.json,/health_check"
-DEFAULT_TRUSTED_PROXIES = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 
 
-def _env_bool(name: str) -> bool:
+def _env_bool(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name)
     if raw is None:
-        return False
+        return default
     normalized = raw.strip().lower()
     if normalized in ("1", "true", "yes", "on"):
         return True
@@ -55,20 +54,27 @@ def build_guard_config() -> SecurityConfig:
         "enable_rate_limiting": True,
         "rate_limit": _env_int("AUTOGPT_GUARD_RATE_LIMIT", 100),
         "rate_limit_window": _env_int("AUTOGPT_GUARD_RATE_LIMIT_WINDOW", 60),
-        "enable_ip_banning": True,
+        "enable_ip_banning": _env_bool("AUTOGPT_GUARD_IP_BANNING", default=True),
         "auto_ban_threshold": _env_int("AUTOGPT_GUARD_AUTO_BAN_THRESHOLD", 10),
         "auto_ban_duration": _env_int("AUTOGPT_GUARD_AUTO_BAN_DURATION", 300),
         "enable_rate_limit_auto_ban": _env_bool("AUTOGPT_GUARD_RATE_LIMIT_AUTO_BAN"),
-        "enable_penetration_detection": True,
+        "enable_penetration_detection": _env_bool(
+            "AUTOGPT_GUARD_PENETRATION_DETECTION", default=True
+        ),
+        # Graphs, block inputs and copilot messages carry SQL, HTML and code as
+        # data, so signature-scanning bodies flags ordinary content. Detection
+        # keeps screening the path, query params and headers; body scanning is
+        # opt-in.
+        "detection_scan_body": _env_bool("AUTOGPT_GUARD_SCAN_BODY"),
         # In-memory state unless a Redis URL is configured: never implicitly
         # depend on a Redis server being reachable at localhost.
         "enable_redis": False,
         "passive_mode": _env_bool("AUTOGPT_GUARD_PASSIVE_MODE"),
         "blacklist": _env_csv("AUTOGPT_GUARD_BLOCKED_IPS"),
         "blocked_user_agents": list(_env_csv("AUTOGPT_GUARD_BLOCKED_USER_AGENTS")),
-        "trusted_proxies": _env_csv(
-            "AUTOGPT_GUARD_TRUSTED_PROXIES", DEFAULT_TRUSTED_PROXIES
-        ),
+        # No proxy is trusted unless configured, so X-Forwarded-For can't be
+        # spoofed by any client that reaches the service over a private network.
+        "trusted_proxies": _env_csv("AUTOGPT_GUARD_TRUSTED_PROXIES"),
         "trusted_proxy_depth": _env_int("AUTOGPT_GUARD_TRUSTED_PROXY_DEPTH", 1),
         "exclude_paths": list(
             _env_csv("AUTOGPT_GUARD_EXCLUDED_PATHS", DEFAULT_EXCLUDED_PATHS)
@@ -119,15 +125,31 @@ def build_guard_config() -> SecurityConfig:
     return SecurityConfig(**kwargs)
 
 
-def attach_guard(app: FastAPI) -> None:
+def attach_guard(app: FastAPI, *, internal_service: bool = False) -> None:
     """Attach the fastapi-guard middleware when AUTOGPT_GUARD_ENABLED is set.
 
     No-op unless the env flag is on. Also exposes the shared SecurityDecorator
     on app.state so per-route guard decorators adopt the same config as the
     middleware.
+
+    Internal RPC services share the backend env with the public ones, and
+    their callers don't retry a 4xx, so they stay unguarded unless
+    AUTOGPT_GUARD_INTERNAL_SERVICES is set as well.
     """
     if not _env_bool("AUTOGPT_GUARD_ENABLED"):
+        return
+    if internal_service and not _env_bool("AUTOGPT_GUARD_INTERNAL_SERVICES"):
         return
     config = build_guard_config()
     app.add_middleware(SecurityMiddleware, config=config)
     app.state.guard_decorator = SecurityDecorator(config)
+
+
+async def guard_websocket_connection(websocket: WebSocket) -> None:
+    """Run the guard's checks on a websocket handshake when the guard is attached.
+
+    SecurityMiddleware only sees HTTP requests, so websocket routes add this as
+    a dependency.
+    """
+    if hasattr(websocket.app.state, "guard_decorator"):
+        await guard_websocket(websocket)

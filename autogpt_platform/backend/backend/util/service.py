@@ -582,9 +582,9 @@ class AppService(BaseAppService, ABC):
                 f"Failed to instrument {self.service_name} with Prometheus: {e}"
             )
 
-        # Optional fastapi-guard security middleware (off unless
-        # AUTOGPT_GUARD_ENABLED)
-        attach_guard(app)
+        # Optional fastapi-guard security middleware (off unless both
+        # AUTOGPT_GUARD_ENABLED and AUTOGPT_GUARD_INTERNAL_SERVICES are set)
+        attach_guard(app, internal_service=True)
 
         # Register the exposed API routes.
         for attr_name, attr in vars(type(self)).items():

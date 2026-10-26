@@ -9,7 +9,10 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.api.conn_manager import ConnectionManager
-from backend.api.middleware.fastapi_guard_wiring import attach_guard
+from backend.api.middleware.fastapi_guard_wiring import (
+    attach_guard,
+    guard_websocket_connection,
+)
 from backend.api.model import (
     WSMessage,
     WSMethod,
@@ -238,7 +241,7 @@ _MSG_HANDLERS: dict[WSMethod, WSMessageHandler] = {
 # ===================== WebSocket Server ===================== #
 
 
-@app.websocket("/ws")
+@app.websocket("/ws", dependencies=[Depends(guard_websocket_connection)])
 async def websocket_router(
     websocket: WebSocket, manager: ConnectionManager = Depends(get_connection_manager)
 ):

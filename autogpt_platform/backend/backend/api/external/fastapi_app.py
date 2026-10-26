@@ -8,16 +8,12 @@ serves v1. The host app mounts v2 at /api/v2 itself.
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 
-from backend.api.middleware.fastapi_guard_wiring import attach_guard
 from backend.monitoring.instrumentation import instrument_fastapi
 
 from .v1.app import v1_app
 
 # Each version publishes its own spec and docs; this app only routes to them.
 external_api = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
-
-# Optional fastapi-guard security middleware (off unless AUTOGPT_GUARD_ENABLED)
-attach_guard(external_api)
 
 
 @external_api.get("/", include_in_schema=False)
