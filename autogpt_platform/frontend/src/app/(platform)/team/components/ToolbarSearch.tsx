@@ -12,6 +12,8 @@ interface Props {
   value: string;
   onChange: (next: string) => void;
   className?: string;
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
 }
 
 /** The team pages' search: the Files page's rounded Input with a leading
@@ -22,6 +24,7 @@ export function ToolbarSearch({
   value,
   onChange,
   className,
+  textSize = "body",
 }: Props) {
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     onChange(event.target.value);
@@ -48,6 +51,7 @@ export function ToolbarSearch({
         value={value}
         onChange={handleChange}
         placeholder={label}
+        textSize={textSize}
         className="rounded-full pl-10"
         wrapperClassName="!mb-0 w-full"
       />
