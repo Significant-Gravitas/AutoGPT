@@ -8,6 +8,7 @@ import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, SystemMessage
 
 from .env import build_sdk_env
+from .launch_env import launch_options
 from .tool_adapter import (
     create_copilot_mcp_server,
     get_copilot_tool_names,
@@ -21,7 +22,11 @@ async def test_cli_offers_only_allowed_tools(
     use_e2b: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     # A run inside Claude Code inherits its CLAUDE_* flags, which change the tool set.
-    for key in [k for k in os.environ if k.startswith("CLAUDE")]:
+    for key in [
+        k
+        for k in os.environ
+        if k.startswith("CLAUDE") and k != "CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK"
+    ]:
         monkeypatch.delenv(key)
     allowed = get_copilot_tool_names(use_e2b=use_e2b)
     offered = await asyncio.wait_for(
@@ -64,7 +69,7 @@ async def _cli_offered_tools(
         cwd=str(sdk_cwd),
         env=env,
     )
-    async with ClaudeSDKClient(options) as client:
+    async with ClaudeSDKClient(launch_options(options)) as client:
         await client.query("hi")
         async for message in client.receive_messages():
             if isinstance(message, SystemMessage) and message.subtype == "init":

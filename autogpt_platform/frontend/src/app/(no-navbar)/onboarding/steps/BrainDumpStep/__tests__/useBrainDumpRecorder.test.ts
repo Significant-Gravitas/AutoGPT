@@ -1,5 +1,15 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 
 const savedMeta: Record<string, unknown>[] = [];
 
@@ -48,6 +58,8 @@ vi.mock("@/services/onboarding/brain-dump-analytics", () => ({
   trackBrainDump: vi.fn(),
 }));
 
+import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
+import { saveMeta } from "../recordingStore";
 import { useBrainDumpRecorder } from "../useBrainDumpRecorder";
 
 // Stopping is not instant: `onstop` fires after the encoder drains, and
@@ -219,6 +231,41 @@ describe("useBrainDumpRecorder", () => {
   // interleaved indices (0,2,4… and 1,3,5…) — the server's contiguity
   // check rejects that — and the first stream's tracks were never
   // stopped, leaving the mic indicator lit.
+  // The mic opened but the browser would not record from it. The stream used
+  // to stay open, mic indicator lit, with nothing on screen and no event.
+  it.each(["construct", "start"] as const)(
+    "lets the microphone go and reports it when the recorder fails to %s",
+    async (stage) => {
+      class FailingMediaRecorder extends ChunkingMediaRecorder {
+        constructor() {
+          super();
+          if (stage === "construct") {
+            throw new DOMException("", "NotSupportedError");
+          }
+        }
+        start() {
+          throw new DOMException("", "NotSupportedError");
+        }
+      }
+      vi.stubGlobal("MediaRecorder", FailingMediaRecorder);
+      const track = { stop: vi.fn() };
+      stubGetUserMedia(vi.fn().mockResolvedValue({ getTracks: () => [track] }));
+      const { result } = renderHook(() => useBrainDumpRecorder());
+
+      let started: boolean | undefined;
+      await act(async () => {
+        started = await result.current.start();
+      });
+
+      expect(started).toBe(false);
+      expect(track.stop).toHaveBeenCalled();
+      expect(result.current.micUnavailable).toBe(true);
+      expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_mic_failed", {
+        error_name: "NotSupportedError",
+      });
+    },
+  );
+
   it("ignores a second tap while the permission prompt is still open", async () => {
     vi.stubGlobal("MediaRecorder", ChunkingMediaRecorder);
     let grantPermission!: (stream: unknown) => void;
@@ -534,6 +581,22 @@ describe("useBrainDumpRecorder", () => {
       await expect(result.current.findRecoverable()).resolves.toBeNull();
     });
 
+    it("tags its takes with the signed-in account and offers back only that account's", async () => {
+      useAuthStore.setState({ user: { id: "u1" } as User });
+      onTestFinished(() => useAuthStore.setState({ user: null }));
+      store.getMeta.mockResolvedValue(null);
+      const { result } = renderHook(() => useBrainDumpRecorder());
+
+      await act(async () => {
+        await result.current.start();
+      });
+      await result.current.findRecoverable();
+
+      expect(savedMeta.length).toBeGreaterThan(0);
+      expect(savedMeta.every((meta) => meta.userID === "u1")).toBe(true);
+      expect(store.getMeta).toHaveBeenLastCalledWith("u1");
+    });
+
     it("offers nothing when local storage cannot be read", async () => {
       store.getMeta.mockRejectedValue(new Error("no indexeddb"));
       const { result } = renderHook(() => useBrainDumpRecorder());
@@ -543,7 +606,8 @@ describe("useBrainDumpRecorder", () => {
 
     // After a crash the upload queue is gone with the page, so every part
     // is replayed — including ones already marked uploaded, since the
-    // server's buffer may have expired and a missing part 0 is fatal.
+    // server's buffer may have expired and a missing part 0 is fatal. Each is
+    // marked resent, or the server refuses a take a skip discarded.
     it("replays every stored part when a take is adopted", async () => {
       const parts = [
         { id: "rec-crashed:0", partIndex: 0, uploaded: true },
@@ -556,7 +620,9 @@ describe("useBrainDumpRecorder", () => {
         await result.current.adoptRecovered("rec-crashed", "audio/mp4");
       });
 
-      expect(queue.enqueue.mock.calls.map(([p]) => p)).toEqual(parts);
+      expect(queue.enqueue.mock.calls.map(([p]) => p)).toEqual(
+        parts.map((part) => ({ ...part, resent: true })),
+      );
       expect(result.current.recordingId).toBe("rec-crashed");
       expect(result.current.mimeType).toBe("audio/mp4");
       expect(result.current.phase).toBe("stopped");
@@ -588,4 +654,45 @@ describe("useBrainDumpRecorder", () => {
 
     expect(track.stop).toHaveBeenCalled();
   });
+
+  // Back, or a skip while "Record again" runs, can leave the step while the
+  // mic is still opening; the unmount cleanup has already run by then.
+  it.each(["the permission prompt", "the take's first record"])(
+    "closes a microphone the step left during %s",
+    async (gate) => {
+      vi.stubGlobal("MediaRecorder", ChunkingMediaRecorder);
+      ChunkingMediaRecorder.latest = null;
+      const track = { stop: vi.fn() };
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      stubGetUserMedia(
+        vi.fn(async () => {
+          if (gate === "the permission prompt") await held;
+          return { getTracks: () => [track] };
+        }),
+      );
+      if (gate === "the take's first record") {
+        vi.mocked(saveMeta).mockImplementationOnce(() => held);
+      }
+      const { result, unmount } = renderHook(() => useBrainDumpRecorder());
+
+      const starting = result.current.start();
+      await act(async () => {
+        for (let tick = 0; tick < 10; tick++) await Promise.resolve();
+      });
+      unmount();
+      let started: boolean | undefined;
+      await act(async () => {
+        release();
+        started = await starting;
+      });
+
+      expect(started).toBe(false);
+      expect(track.stop).toHaveBeenCalled();
+      expect(ChunkingMediaRecorder.latest).toBeNull();
+      expect(savedMeta).toEqual([]);
+    },
+  );
 });

@@ -9,12 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { usePanelSidebarCollapse } from "@/app/(platform)/team/components/ExpertSidePanel/usePanelSidebarCollapse";
-import { Sidebar, useSidebar } from "@/components/ui/sidebar";
-import { SIDEBAR_COOKIE_NAME } from "@/components/ui/sidebar-cookie";
+import { Sidebar, useSidebar } from "@/components/molecules/Sidebar/Sidebar";
+import { SIDEBAR_COOKIE_NAME } from "@/components/molecules/Sidebar/sidebar-cookie";
 import { PlatformChrome } from "../PlatformChrome";
 
 let pathname = "/home";
-let isBrainDumpEnabled = false;
 let isSoulPanelOpen = false;
 
 vi.mock("next/navigation", () => ({
@@ -37,8 +36,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) =>
-      flag === actual.Flag.ONBOARDING_BRAIN_DUMP ? isBrainDumpEnabled : false,
+    useGetFlag: () => false,
   };
 });
 
@@ -122,7 +120,6 @@ function rememberSidebar(open: boolean) {
 
 beforeEach(() => {
   pathname = "/home";
-  isBrainDumpEnabled = false;
   isSoulPanelOpen = false;
   setArtifactsPanelOpen(false);
   document.cookie = `${SIDEBAR_COOKIE_NAME}=; path=/; max-age=0`;
@@ -136,13 +133,9 @@ afterEach(() => {
 });
 
 describe("the app sidebar across reloads", () => {
-  it.each([
-    { cohort: "brain-dump", brainDump: true, toggledTo: "expanded" },
-    { cohort: "default", brainDump: false, toggledTo: "collapsed" },
-  ])(
+  it.each([{ cohort: "brain-dump", brainDump: true, toggledTo: "expanded" }])(
     "keeps the $cohort cohort's toggle after a reload",
-    ({ brainDump, toggledTo }) => {
-      isBrainDumpEnabled = brainDump;
+    ({ toggledTo }) => {
       const first = load();
       fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
       expect(sidebarState()).toBe(toggledTo);
@@ -154,14 +147,9 @@ describe("the app sidebar across reloads", () => {
     },
   );
 
-  it.each([
-    { cohort: "brain-dump", brainDump: true, expected: "collapsed" },
-    { cohort: "default", brainDump: false, expected: "expanded" },
-  ])(
+  it.each([{ cohort: "brain-dump", brainDump: true, expected: "collapsed" }])(
     "starts the $cohort cohort $expected when nothing is remembered",
-    ({ brainDump, expected }) => {
-      isBrainDumpEnabled = brainDump;
-
+    ({ expected }) => {
       load();
 
       expect(sidebarState()).toBe(expected);
@@ -169,8 +157,6 @@ describe("the app sidebar across reloads", () => {
   );
 
   it("falls back to the cookie the server read when the browser has none", () => {
-    isBrainDumpEnabled = true;
-
     load(true);
 
     expect(sidebarState()).toBe("expanded");
@@ -188,7 +174,6 @@ describe("the app sidebar across reloads", () => {
   });
 
   it("does not let the builder's own collapse overwrite the remembered choice", () => {
-    isBrainDumpEnabled = true;
     rememberSidebar(true);
     pathname = "/build";
     load().unmount();

@@ -6,13 +6,13 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import React from "react";
 
 const secondaryMenuContentClassName =
-  "z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800";
+  "z-10 rounded-xl border bg-surface p-1 shadow-md";
 
+// TODO(tokens): no role for gray-100 (#F3F4F6) or gray-300 (#D1D5DB).
 const secondaryMenuItemClassName =
-  "flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700";
+  "flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100";
 
-const secondaryMenuSeparatorClassName =
-  "my-1 h-px bg-gray-300 dark:bg-gray-600";
+const secondaryMenuSeparatorClassName = "my-1 h-px bg-gray-300";
 
 export const SecondaryMenuContent = React.forwardRef<
   React.ElementRef<typeof ContextMenu.Content>,
@@ -20,6 +20,7 @@ export const SecondaryMenuContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ContextMenu.Content
     ref={ref}
+    data-slot="secondary-menu-popup"
     className={cn(secondaryMenuContentClassName, className)}
     {...props}
   />
@@ -34,10 +35,10 @@ export const SecondaryMenuItem = React.forwardRef<
 >(({ className, variant = "default", ...props }, ref) => (
   <ContextMenu.Item
     ref={ref}
+    data-slot="secondary-menu-item"
     className={cn(
       secondaryMenuItemClassName,
-      variant === "destructive" &&
-        "text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700",
+      variant === "destructive" && "text-error hover:bg-gray-100",
       className,
     )}
     {...props}
@@ -51,6 +52,7 @@ export const SecondaryMenuSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ContextMenu.Separator
     ref={ref}
+    data-slot="secondary-menu-separator"
     className={cn(secondaryMenuSeparatorClassName, className)}
     {...props}
   />
@@ -64,6 +66,7 @@ export const SecondaryDropdownMenuContent = React.forwardRef<
   <DropdownMenuPrimitive.Portal>
     <DropdownMenuPrimitive.Content
       ref={ref}
+      data-slot="secondary-menu-popup"
       className={cn(secondaryMenuContentClassName, className)}
       {...props}
     />
@@ -79,10 +82,10 @@ export const SecondaryDropdownMenuItem = React.forwardRef<
 >(({ className, variant = "default", ...props }, ref) => (
   <DropdownMenuPrimitive.Item
     ref={ref}
+    data-slot="secondary-menu-item"
     className={cn(
       secondaryMenuItemClassName,
-      variant === "destructive" &&
-        "text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700",
+      variant === "destructive" && "text-error hover:bg-gray-100",
       className,
     )}
     {...props}
@@ -96,6 +99,7 @@ export const SecondaryDropdownMenuSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.Separator
     ref={ref}
+    data-slot="secondary-menu-separator"
     className={cn(secondaryMenuSeparatorClassName, className)}
     {...props}
   />

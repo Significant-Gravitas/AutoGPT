@@ -20,28 +20,6 @@ import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
-const { memoryFlagMock } = vi.hoisted(() => ({
-  memoryFlagMock: vi.fn(() => true),
-}));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) =>
-      flag === "graphiti-memory"
-        ? memoryFlagMock()
-        : actual.useGetFlag(flag as never),
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? { enabled: true, ready: true }
-        : actual.useFlagStatus(flag as never),
-  };
-});
-
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -95,7 +73,6 @@ async function openSoulDrawer() {
 }
 
 beforeEach(() => {
-  memoryFlagMock.mockReturnValue(true);
   server.use(
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     getListExpertPodsMockHandler([]),
@@ -224,8 +201,7 @@ describe("Soul drawer — what I've learned", () => {
     expect(screen.queryByText(/Nothing recorded yet/)).toBeNull();
   });
 
-  test("asks the memory API for nothing while the memory flag is off", async () => {
-    memoryFlagMock.mockReturnValue(false);
+  test("loads private memories only after opening the expert's Soul", async () => {
     let listCalls = 0;
     server.use(
       getListMyExpertMemoryFactsMockHandler(async () => {
@@ -234,13 +210,15 @@ describe("Soul drawer — what I've learned", () => {
       }),
     );
 
-    await openSoulDrawer();
+    const user = userEvent.setup();
+    render(<TeamPage />);
+    const editSoul = await screen.findByRole("button", { name: "Edit Soul" });
+    expect(listCalls).toBe(0);
+    await user.click(editSoul);
 
     expect(
-      await screen.findByText(
-        "Nothing recorded yet. What this expert learns will appear here.",
-      ),
+      await screen.findByText("Q4 campaign brief is due Friday"),
     ).toBeDefined();
-    expect(listCalls).toBe(0);
+    expect(listCalls).toBe(1);
   });
 });

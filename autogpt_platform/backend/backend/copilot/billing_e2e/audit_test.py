@@ -21,7 +21,7 @@ from .ledger import (
     TreeCharge,
 )
 from .provider import PlannedFault
-from .scenarios import SCENARIOS, _sdk_anthropic_failing
+from .scenarios import SCENARIOS, _sdk_anthropic_failing, expected_charge_usd
 
 # A turn relaunched after the provider billed a call that streamed nothing.
 _RELAUNCHED = _sdk_anthropic_failing(
@@ -185,8 +185,11 @@ def _as_the_cli_reports(call: Call) -> AssistantMessage:
 
 
 def _turn_charged_for(*calls: Call) -> tuple[PlatformLedger, list[Usage]]:
-    """Turn 1's ledger and session usage, as if the platform charged ``calls``."""
-    microdollars = usd_to_microdollars(sum(call.invoice_usd for call in calls))
+    """Turn 1's ledger and session usage, as if the platform charged ``calls``
+    on the direct route's basis."""
+    microdollars = usd_to_microdollars(
+        sum(expected_charge_usd(_RELAUNCHED.charge, call) for call in calls)
+    )
     input_tokens = sum(call.usage.input_tokens for call in calls)
     output_tokens = sum(call.usage.output_tokens for call in calls)
     cache_read = sum(call.usage.cache_read_tokens for call in calls)

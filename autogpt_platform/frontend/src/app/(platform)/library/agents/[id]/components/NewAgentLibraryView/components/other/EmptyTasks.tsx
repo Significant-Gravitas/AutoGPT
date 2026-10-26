@@ -109,7 +109,10 @@ export function EmptyTasks({
           <div className="flex flex-col items-center gap-12">
             <div className="flex items-center justify-between gap-2">
               <div className="flex flex-col items-center gap-2">
-                <Text variant="h3" className="text-center text-[1.375rem]">
+                <Text
+                  variant="h3"
+                  className="text-center text-heading-sm leading-inherit"
+                >
                   Ready to get started?
                 </Text>
                 <Text variant="large" className="text-center">
@@ -137,8 +140,8 @@ export function EmptyTasks({
         </div>
       </RunDetailCard>
 
-      <div className="mt-4 flex flex-col gap-10 rounded-large border border-zinc-200 p-6 lg:mt-0 lg:w-[29.5rem]">
-        <Text variant="label" className="text-zinc-500">
+      <div className="mt-4 flex flex-col gap-10 rounded-large border border-border-base p-6 lg:mt-0 lg:w-[29.5rem]">
+        <Text variant="label" className="text-foreground-tertiary">
           About this workflow
         </Text>
         <div className="flex flex-col gap-2">
@@ -160,7 +163,7 @@ export function EmptyTasks({
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-20">
             <div className="flex flex-col gap-0">
-              <Text variant="body-medium" className="text-black">
+              <Text variant="body-medium" className="text-foreground-base">
                 Workflow created on
               </Text>
               <Text variant="body" className="text-textGrey">
@@ -169,7 +172,7 @@ export function EmptyTasks({
             </div>
             {isUpdated ? (
               <div className="flex flex-col gap-0">
-                <Text variant="body-medium" className="text-black">
+                <Text variant="body-medium" className="text-foreground-base">
                   Workflow updated on
                 </Text>
                 <Text variant="body" className="text-textGrey">

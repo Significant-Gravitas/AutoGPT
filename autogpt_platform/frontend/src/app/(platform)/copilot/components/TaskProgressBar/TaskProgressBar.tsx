@@ -50,8 +50,8 @@ interface Props {
   defaultExpanded?: boolean;
 }
 
-// The chat derives `todos` afresh on every streamed flush; the bar only
-// renders again when the tasks themselves change.
+// memo-boundary: the chat derives `todos` afresh on every streamed flush;
+// the comparator below renders the bar again only when the tasks change.
 export const TaskProgressBar = memo(function TaskProgressBar({
   todos,
   isStreaming = false,
@@ -71,7 +71,10 @@ export const TaskProgressBar = memo(function TaskProgressBar({
     : { duration: 0.22, ease: EASE_OUT };
 
   return (
-    <div className="mx-auto w-[95%] overflow-hidden rounded-t-3xl border border-b-0 border-zinc-200 bg-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),inset_0_5px_6px_-4px_rgba(255,255,255,0.7)]">
+    <div
+      // TODO(tokens): no exact role for bg-neutral-100; no fitting role for shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),inset_0_5px_6px_-4px_rgba(255,255,255,0.7)] #FFFFFF; #FFFFFF is card (a fill) and popover (a fill)
+      className="mx-auto w-[95%] overflow-hidden rounded-t-3xl border border-b-0 border-border-base bg-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),inset_0_5px_6px_-4px_rgba(255,255,255,0.7)]"
+    >
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -84,11 +87,12 @@ export const TaskProgressBar = memo(function TaskProgressBar({
               <Icon
                 icon={CheckmarkBadge01Icon}
                 size={22}
+                // TODO(tokens): no exact role for text-[#00a656]
                 className="flex-shrink-0 text-[#00a656]"
               />
               <Text
                 variant="body-medium"
-                className="min-w-0 flex-1 truncate text-sm text-zinc-800"
+                className="min-w-0 flex-1 truncate text-sm text-foreground-emphasis"
               >
                 All tasks complete
               </Text>
@@ -105,7 +109,7 @@ export const TaskProgressBar = memo(function TaskProgressBar({
                 />
                 <Text
                   variant="body-medium"
-                  className="min-w-0 flex-1 truncate text-sm text-zinc-800"
+                  className="min-w-0 flex-1 truncate text-sm text-foreground-emphasis"
                 >
                   {toDisplayStatus(current.status, isStreaming) === "stopped"
                     ? current.content
@@ -118,11 +122,11 @@ export const TaskProgressBar = memo(function TaskProgressBar({
               <Icon
                 icon={CheckListIcon}
                 size={16}
-                className="flex-shrink-0 text-zinc-500"
+                className="flex-shrink-0 text-foreground-tertiary"
               />
               <Text
                 variant="body-medium"
-                className="min-w-0 flex-1 text-sm text-zinc-800"
+                className="min-w-0 flex-1 text-sm text-foreground-emphasis"
               >
                 Task Progress
               </Text>
@@ -130,7 +134,7 @@ export const TaskProgressBar = memo(function TaskProgressBar({
           )}
         </div>
 
-        <span className="flex-shrink-0 text-sm tabular-nums text-zinc-900">
+        <span className="flex-shrink-0 text-sm tabular-nums text-foreground-strong">
           {allDone ? todos.length : currentIndex + 1}/{todos.length}
         </span>
         <motion.span
@@ -138,7 +142,7 @@ export const TaskProgressBar = memo(function TaskProgressBar({
           transition={
             reduceMotion ? { duration: 0 } : { duration: 0.2, ease: EASE_OUT }
           }
-          className="flex-shrink-0 text-zinc-400"
+          className="flex-shrink-0 text-foreground-subtle"
         >
           <Icon icon={ArrowDown01Icon} size={14} />
         </motion.span>

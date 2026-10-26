@@ -32,19 +32,21 @@ export function SpendMeter({ spent, budget, muted, color }: Props) {
       style={
         color
           ? ({
-              "--meter-track": `color-mix(in srgb, ${color} 45%, white)`,
-              "--meter-fill": `color-mix(in srgb, ${color} 60%, #18181b)`,
+              "--meter-track": `color-mix(in srgb, ${color} 45%, rgb(var(--color-card)))`,
+              "--meter-fill": `color-mix(in srgb, ${color} 60%, rgb(var(--color-primary)))`,
             } as CSSProperties)
           : undefined
       }
       className={cn(
-        "h-1.5 w-full bg-zinc-100",
+        "h-1.5 w-full bg-surface-hover",
         color && "h-2 ![background-color:var(--meter-track)]",
         isOverBudget
-          ? "[&>div]:bg-red-400"
+          ? // TODO(tokens): no exact role: [&>div]:bg-red-400 #F26969
+            "[&>div]:bg-red-400"
           : color
             ? "[&>div]:![background-color:var(--meter-fill)]"
-            : "[&>div]:bg-zinc-400",
+            : // TODO(tokens): no fitting role for [&>div]:bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
+              "[&>div]:bg-zinc-400",
         muted && "opacity-50",
       )}
     />

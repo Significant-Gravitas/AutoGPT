@@ -2,7 +2,7 @@
 
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InfiniteList } from "@/components/molecules/InfiniteList/InfiniteList";
@@ -127,7 +127,7 @@ export function SidebarRunsList({
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       <div className="relative overflow-hidden">
-        <div className="pointer-events-none absolute right-0 top-0 z-10 h-[46px] w-12 bg-gradient-to-l from-[#FAFAFA] to-transparent" />
+        <div className="pointer-events-none absolute right-0 top-0 z-10 h-[46px] w-12 bg-gradient-to-l from-background to-transparent" />
         <div className="scrollbar-hide overflow-x-auto">
           <TabsLineList
             className={cn(AGENT_LIBRARY_SECTION_PADDING_X, "min-w-max")}
@@ -166,7 +166,7 @@ export function SidebarRunsList({
             hasMore={!!hasMoreRuns}
             isFetchingMore={isFetchingMoreRuns}
             onEndReached={fetchMoreRuns}
-            className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden"
+            className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden"
             itemWrapperClassName="w-auto lg:w-full"
             getKey={(run) => run.id}
             renderItem={(run) => (
@@ -186,7 +186,7 @@ export function SidebarRunsList({
             AGENT_LIBRARY_SECTION_PADDING_X,
           )}
         >
-          <div className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
+          <div className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
             {schedules.length > 0 ? (
               schedules.map((s: GraphExecutionJobInfo) => (
                 <div className="w-[15rem] lg:w-full" key={s.id}>
@@ -202,7 +202,7 @@ export function SidebarRunsList({
               ))
             ) : (
               <div className="flex min-h-[50vh] flex-col items-center justify-center">
-                <Text variant="large" className="text-zinc-700">
+                <Text variant="large" className="text-foreground-body">
                   No scheduled workflows
                 </Text>
               </div>
@@ -217,10 +217,13 @@ export function SidebarRunsList({
               AGENT_LIBRARY_SECTION_PADDING_X,
             )}
           >
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
               {triggers.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <Text variant="body-medium" className="px-1 !text-zinc-500">
+                  <Text
+                    variant="body-medium"
+                    className="px-1 !text-foreground-tertiary"
+                  >
                     Webhook Triggers
                   </Text>
                   <div className="flex flex-nowrap items-center justify-start gap-4 lg:flex-col lg:gap-3">
@@ -244,7 +247,10 @@ export function SidebarRunsList({
               )}
               {triggerAgents.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <Text variant="body-medium" className="px-1 !text-zinc-500">
+                  <Text
+                    variant="body-medium"
+                    className="px-1 !text-foreground-tertiary"
+                  >
                     Trigger Workflows
                   </Text>
                   <div className="flex flex-nowrap items-center justify-start gap-4 lg:flex-col lg:gap-3">
@@ -274,10 +280,10 @@ export function SidebarRunsList({
               )}
               {triggers.length === 0 && triggerAgents.length === 0 && (
                 <div className="flex min-h-[50vh] flex-col items-center justify-center gap-2 px-6 text-center">
-                  <Text variant="large" className="text-zinc-700">
+                  <Text variant="large" className="text-foreground-body">
                     No triggers set up
                   </Text>
-                  <Text variant="body" className="!text-zinc-500">
+                  <Text variant="body" className="!text-foreground-tertiary">
                     Ask an expert to set up a trigger for this workflow (e.g.
                     &ldquo;run this when a new email arrives&rdquo;).
                   </Text>
@@ -293,7 +299,7 @@ export function SidebarRunsList({
             AGENT_LIBRARY_SECTION_PADDING_X,
           )}
         >
-          <div className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
+          <div className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
             {templates.length > 0 ? (
               templates.map((template) => (
                 <div className="w-[15rem] lg:w-full" key={template.id}>
@@ -307,7 +313,7 @@ export function SidebarRunsList({
               ))
             ) : (
               <div className="flex min-h-[50vh] flex-col items-center justify-center">
-                <Text variant="large" className="text-zinc-700">
+                <Text variant="large" className="text-foreground-body">
                   No templates saved
                 </Text>
               </div>

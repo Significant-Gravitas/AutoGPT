@@ -32,6 +32,7 @@ from typing import Any, Literal
 from autogpt_libs.auth.dependencies import IMPERSONATION_HEADER_NAME
 from fastapi import Request
 
+from backend.util import posthog_client
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -41,10 +42,6 @@ settings = Settings()
 _MAX_ID_CHARS = 128
 
 GenerationName = Literal["copilot-title", "copilot-sdk", "copilot-baseline"]
-
-# Whether an admin impersonating the user started the running turn. The
-# executor sets it for every turn, so a value never carries over.
-_turn_impersonated: ContextVar[bool] = ContextVar("_turn_impersonated", default=False)
 
 # The running turn's trace, sent as the trace id of every call it makes. The
 # executor sets it for every turn, so a value never carries over; a call made
@@ -80,12 +77,16 @@ def openrouter_attribution(
 
 
 def set_turn_impersonated(impersonated: bool) -> None:
-    """Mark the running turn as started by an impersonating admin, or not."""
-    _turn_impersonated.set(impersonated)
+    """Mark the running turn as started by an impersonating admin, or not.
+
+    The mark is the PostHog client's, so every event the turn sends carries
+    it too. The executor sets it for every turn, so a value never carries
+    over."""
+    posthog_client.set_impersonated(impersonated)
 
 
 def is_turn_impersonated() -> bool:
-    return _turn_impersonated.get()
+    return posthog_client.is_impersonated()
 
 
 def set_turn_trace_id(trace_id: str | None) -> None:

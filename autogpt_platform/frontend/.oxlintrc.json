@@ -2,8 +2,46 @@
   "categories": {
     "correctness": "off"
   },
-  "jsPlugins": ["@shadcn/lint"],
+  "jsPlugins": ["@shadcn/lint", "./scripts/eslint-rules/plugin.mts"],
   "rules": {
-    "shadcn/require-static-classes": "warn"
-  }
+    "shadcn/require-static-classes": "warn",
+    "autogpt/no-hookless-use-function": "warn"
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/__tests__/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.stories.tsx"
+      ],
+      "rules": {
+        "autogpt/no-hookless-use-function": "off"
+      }
+    },
+    {
+      "files": [
+        "src/app/(platform)/copilot/**",
+        "src/components/organisms/Conversation/**",
+        "src/components/organisms/Message/**",
+        "src/components/organisms/PromptInput/**"
+      ],
+      "excludeFiles": [
+        "**/__tests__/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.stories.tsx"
+      ],
+      "rules": {
+        "autogpt/no-hookless-use-function": "error",
+        "autogpt/no-manual-memo": "error"
+      }
+    },
+    {
+      "files": ["src/app/(platform)/copilot/useCopilotStop.ts"],
+      "rules": {
+        "autogpt/no-hookless-use-function": "warn"
+      }
+    }
+  ]
 }

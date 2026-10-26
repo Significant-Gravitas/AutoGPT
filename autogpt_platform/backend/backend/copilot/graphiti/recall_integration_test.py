@@ -30,11 +30,11 @@ from backend.copilot.dream.ratification import try_ratify_on_hit
 from backend.copilot.dream.ratification_hits import get_hit_count
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import graphiti_search
-from backend.copilot.tools.graphiti_forget import mark_edges_superseded
 from backend.copilot.tools.models import MemorySearchResponse
 
 from . import context
 from .falkordb_driver import open_driver
+from .guarded_writes import WriteOutcome, supersede_unless_recalled
 from .memory_model import MemoryForgetFailureCode
 from .recall import (
     FORGOTTEN_FACT,
@@ -56,6 +56,7 @@ from .recall_integration_fixtures import (
     recalled_facts,
     rows,
 )
+from .recall_stamp import RecallProtection
 from .scope import MemoryScope
 
 _LONG_AGO = "2025-01-01T00:00:00+00:00"
@@ -63,6 +64,8 @@ _LONG_AGO = "2025-01-01T00:00:00+00:00"
 # Only the forget's marker, or the pre-policy shape, makes a fact forgotten.
 _EDGE_SHAPES = {
     ("active", None, None, None, None): False,
+    (None, None, None, None, None): False,  # an edge from before MemoryFact
+    (None, None, _LONG_AGO, None, None): True,
     ("retracted", "user_signal", _LONG_AGO, None, _LONG_AGO): True,
     ("retracted", None, None, None, None): False,
     ("retracted", "user_signal", _LONG_AGO, None, None): False,
@@ -190,15 +193,17 @@ async def test_superseded_fact_is_not_recalled(
     _, edges = await ingest_facts(driver, scope, stub_graphiti_client, [ALICE, BOB])
     alice, bob = edges[ALICE[2]], edges[BOB[2]]
 
-    demoted, failed = await mark_edges_superseded(
+    outcomes = await supersede_unless_recalled(
         driver,
         [alice],
         reason="stale_fact",
-        user_id=scope.owner_user_id,
+        new_status="superseded",
         group_id=scope.group_id,
+        protection=RecallProtection(),
+        user_id=scope.owner_user_id,
     )
 
-    assert (demoted, failed) == ([alice], [])
+    assert outcomes == [WriteOutcome.CHANGED]
     assert await recalled_facts(scope) == {bob}
     assert await _settings_view(scope) == (1, {bob})
 
@@ -223,7 +228,7 @@ async def test_retracted_fact_is_neither_gathered_nor_ratified_by_the_dream(
 
     assert facts == []
     assert {e.uuid for e in episodes}.isdisjoint({active_episode, tentative_episode})
-    assert await try_ratify_on_hit(scope, [tentative[CAROL[2]]]) == 0
+    assert (await try_ratify_on_hit(scope, [tentative[CAROL[2]]])).promoted_count == 0
     assert (await edge_row(driver, tentative[CAROL[2]]))["status"] == "retracted"
 
 
@@ -272,23 +277,29 @@ async def test_the_forgotten_fact_cypher_and_python_agree(
             forgotten=forgotten,
         )
 
+    forgotten = forgotten_fact_predicate("e")
     found = await rows(
         driver,
         "MATCH ()-[e:RELATES_TO]->() RETURN e.uuid AS uuid, "
-        f"CASE WHEN {forgotten_fact_predicate('e')} THEN true ELSE false END AS f",
+        f"{forgotten} AS f, NOT ({forgotten}) AS kept",
     )
     in_cypher = {row["uuid"]: row["f"] for row in found}
     read_back = await EntityEdge.get_by_uuids(driver, uuids)
     assert in_cypher == {edge.uuid: is_forgotten(edge) for edge in read_back}
     assert [in_cypher[edge_uuid] for edge_uuid in uuids] == list(_EDGE_SHAPES.values())
+    # Never null, so its negation holds on every live edge, one with no
+    # status or reason set included.
+    kept = {row["uuid"]: row["kept"] for row in found}
+    assert kept == {edge_uuid: not f for edge_uuid, f in in_cypher.items()}
+    assert (kept[uuids[0]], kept[uuids[1]]) == (True, True)
     # The search for a permanent delete ranks these alone: with every fact
-    # equally close (the stub embeds everything alike), six that are not
-    # forgotten take none of the slots, however few.
-    forgotten = {edge_uuid for edge_uuid, gone in in_cypher.items() if gone}
+    # equally close (the stub embeds everything alike), those not forgotten
+    # take none of the slots, however few.
+    gone = {edge_uuid for edge_uuid, f in in_cypher.items() if f}
     every = await search_forgotten_facts(scope, "Atlas", limit=len(uuids))
-    assert {edge.uuid for edge in every} == forgotten
+    assert {edge.uuid for edge in every} == gone
     two = await search_forgotten_facts(scope, "Atlas", limit=2)
-    assert len(two) == 2 and {edge.uuid for edge in two} <= forgotten
+    assert len(two) == 2 and {edge.uuid for edge in two} <= gone
 
 
 @pytest.mark.integration

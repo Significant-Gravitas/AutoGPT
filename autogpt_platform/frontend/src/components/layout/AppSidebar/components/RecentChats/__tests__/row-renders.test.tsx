@@ -1,6 +1,6 @@
 import { SESSION_LIST_REFETCH_INTERVAL_MS } from "@/app/(platform)/copilot/useSessionList";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { server } from "@/mocks/mock-server";
 import {
   act,
@@ -18,9 +18,11 @@ const itemRenders = vi.fn();
 
 // Each chat row renders one `SidebarMenuItem`, so counting those counts the
 // rows that re-rendered.
-vi.mock("@/components/ui/sidebar", async (importOriginal) => {
+vi.mock("@/components/molecules/Sidebar/Sidebar", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/components/ui/sidebar")>();
+    await importOriginal<
+      typeof import("@/components/molecules/Sidebar/Sidebar")
+    >();
   function CountedSidebarMenuItem(
     props: ComponentProps<typeof actual.SidebarMenuItem>,
   ) {
@@ -62,11 +64,14 @@ function toSummary(seed: SessionSeed) {
   };
 }
 
-function renderRecentChats() {
-  return render(
+async function renderRecentChats() {
+  render(
     <SidebarProvider>
       <RecentChats />
     </SidebarProvider>,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Load all Otto chats" }),
   );
 }
 
@@ -115,7 +120,7 @@ afterEach(() => {
 
 describe("RecentChats — chat rows", () => {
   it("re-renders no row when a refetch returns the same sessions", async () => {
-    renderRecentChats();
+    await renderRecentChats();
     await screen.findByText("Third chat");
     await settle();
     itemRenders.mockClear();
@@ -131,7 +136,7 @@ describe("RecentChats — chat rows", () => {
   });
 
   it("re-renders only the pinned row when one chat is pinned", async () => {
-    renderRecentChats();
+    await renderRecentChats();
     await screen.findByText("Third chat");
     await settle();
     itemRenders.mockClear();
@@ -146,7 +151,7 @@ describe("RecentChats — chat rows", () => {
   });
 
   it("re-renders only the edited row while typing a rename", async () => {
-    renderRecentChats();
+    await renderRecentChats();
     await screen.findByText("Third chat");
     await settle();
 

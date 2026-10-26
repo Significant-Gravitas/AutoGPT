@@ -1,5 +1,4 @@
-"""Tests for the memory_forget tools and the demotion helpers they share a
-module with.
+"""Tests for the memory_forget tools.
 
 The retraction itself (Cypher, per-uuid failures) is pinned in
 ``graphiti/recall_forget_test.py``; here the tools are exercised with that
@@ -18,18 +17,17 @@ from backend.copilot.graphiti.memory_model import (
     MemoryForgetFailure,
     MemoryForgetFailureCode,
 )
-from backend.copilot.graphiti.recall import FORGOTTEN_FACT, live_fact_predicate
+from backend.copilot.graphiti.recall import FORGOTTEN_FACT
 from backend.copilot.graphiti.recall_fake_redis import FakeRedis
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_forget import (
     _MAX_FAILURE_DETAIL,
+    SOFT_FORGET_NOTE,
     MemoryForgetConfirmTool,
     MemoryForgetSearchTool,
     _build_confirm_message,
     _timestamp,
-    invalidate_entity_direct_neighbors,
-    mark_edges_superseded,
 )
 from backend.copilot.tools.models import (
     MemoryForgetCandidatesResponse,
@@ -37,10 +35,6 @@ from backend.copilot.tools.models import (
 )
 
 _MODULE = "backend.copilot.tools.graphiti_forget"
-
-
-async def _enabled(_user_id: str) -> bool:
-    return True
 
 
 @pytest.fixture(autouse=True)
@@ -55,9 +49,12 @@ def lock_redis(mocker) -> FakeRedis:
 
 def _mock_driver(*results) -> AsyncMock:
     """A FalkorDB driver whose queries return ``results`` in order, for
-    driving the real ``retract`` from the confirm tool."""
+    driving the real ``retract`` from the confirm tool, after the read of
+    pending dream records every forget makes first (none here)."""
     driver = AsyncMock()
-    driver.execute_query.side_effect = [(r, [], None) for r in results]
+    driver.execute_query.side_effect = [
+        r if isinstance(r, Exception) else (r, [], None) for r in ([], *results)
+    ]
     return driver
 
 
@@ -66,10 +63,7 @@ class TestExpertMemoryScope:
     async def test_forget_search_uses_expert_memory_group(self) -> None:
         search_facts = AsyncMock(return_value=[])
         session = ChatSession.new("user-abc", dry_run=False, expert_id="expert-1")
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.search_facts", search_facts),
-        ):
+        with (patch(f"{_MODULE}.search_facts", search_facts),):
             await MemoryForgetSearchTool()._execute(
                 "user-abc", session, query="private fact"
             )
@@ -82,10 +76,7 @@ class TestExpertMemoryScope:
     async def test_forget_confirm_uses_expert_memory_group(self) -> None:
         retract = AsyncMock(return_value=ForgetResult())
         session = ChatSession.new("user-abc", dry_run=False, expert_id="expert-1")
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.retract", retract),
-        ):
+        with (patch(f"{_MODULE}.retract", retract),):
             await MemoryForgetConfirmTool()._execute(
                 "user-abc", session, uuids=["private-edge"]
             )
@@ -98,8 +89,11 @@ class TestExpertMemoryScope:
 
 
 class TestForgetSearchCandidates:
+    @pytest.mark.parametrize("status", [None, "active", "tentative"])
     @pytest.mark.asyncio
-    async def test_candidates_carry_uuid_fact_and_validity(self) -> None:
+    async def test_candidates_carry_uuid_fact_and_validity(
+        self, status: str | None
+    ) -> None:
         edge = EntityEdge(
             uuid="e1",
             group_id="user_user-abc",
@@ -109,12 +103,10 @@ class TestForgetSearchCandidates:
             name="works_on",
             fact="Alice works on Atlas",
             valid_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            attributes={"status": status} if status else {},
         )
         session = ChatSession.new("user-abc", dry_run=False)
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.search_facts", AsyncMock(return_value=[edge])),
-        ):
+        with (patch(f"{_MODULE}.search_facts", AsyncMock(return_value=[edge])),):
             response = await MemoryForgetSearchTool()._execute(
                 "user-abc", session, query="atlas"
             )
@@ -126,6 +118,7 @@ class TestForgetSearchCandidates:
                 "fact": "Alice works on Atlas",
                 "valid_from": "2025-01-01 00:00:00+00:00",
                 "valid_to": "present",
+                **({"status": status} if status else {}),
             }
         ]
 
@@ -156,7 +149,6 @@ class TestForgetSearchForgottenCandidates:
         session = ChatSession.new("user-abc", dry_run=False)
         search_forgotten = AsyncMock(return_value=forgotten)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(f"{_MODULE}.search_facts", AsyncMock(return_value=live)),
             patch(f"{_MODULE}.search_forgotten_facts", search_forgotten),
             patch(f"{_MODULE}.recheck", AsyncMock(return_value=(live, []))),
@@ -289,10 +281,7 @@ class TestForgetConfirmModes:
     async def test_hard_delete_asks_for_a_hard_retract(self) -> None:
         retract = AsyncMock(return_value=ForgetResult(deleted=["e1"]))
         session = ChatSession.new("user-abc", dry_run=False)
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.retract", retract),
-        ):
+        with (patch(f"{_MODULE}.retract", retract),):
             response = await MemoryForgetConfirmTool()._execute(
                 "user-abc", session, uuids=["e1"], hard_delete=True
             )
@@ -303,12 +292,26 @@ class TestForgetConfirmModes:
         assert response.message == "1 memory edge(s) permanently deleted."
 
     @pytest.mark.asyncio
+    async def test_the_facts_derived_from_it_are_reported(self) -> None:
+        """The user hears of the dream's facts the forget retracted too."""
+        result = ForgetResult(deleted=["e1"], derived=["d1", "d2", "d3"])
+        session = ChatSession.new("user-abc", dry_run=False)
+        with (patch(f"{_MODULE}.retract", AsyncMock(return_value=result)),):
+            response = await MemoryForgetConfirmTool()._execute(
+                "user-abc", session, uuids=["e1"]
+            )
+
+        assert isinstance(response, MemoryForgetConfirmResponse)
+        assert response.derived_uuids == ["d1", "d2", "d3"]
+        assert response.message == (
+            "1 memory edge(s) retracted from memory; "
+            "3 fact(s) derived from them retracted too. " + SOFT_FORGET_NOTE
+        )
+
+    @pytest.mark.asyncio
     async def test_unavailable_graph_is_an_error_response(self) -> None:
         session = ChatSession.new("user-abc", dry_run=False)
-        with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
-            patch(f"{_MODULE}.retract", AsyncMock(side_effect=OSError("refused"))),
-        ):
+        with (patch(f"{_MODULE}.retract", AsyncMock(side_effect=OSError("refused"))),):
             response = await MemoryForgetConfirmTool()._execute(
                 "user-abc", session, uuids=["e1"]
             )
@@ -329,10 +332,9 @@ class TestForgetFailuresAreActionable:
         """End to end: a soft delete that matches nothing must return the
         per-UUID reason in both the structured `failures` field and the
         human-readable message — not a bare "0 invalidated, 1 failed"."""
-        driver = _mock_driver([])  # the edge lookup finds nothing
+        driver = _mock_driver([], [])  # the lookup finds nothing, nothing names it
         session = ChatSession.new("user-abc", dry_run=False)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(
                 "backend.copilot.graphiti.recall_forget.open_driver",
                 MagicMock(return_value=driver),
@@ -358,14 +360,19 @@ class TestForgetFailuresAreActionable:
         success count and the per-UUID failure detail."""
         driver = _mock_driver(
             [{"uuid": "kept"}],  # lookup: only "kept" exists
+            [],  # nothing names "gone" as a purged root
             [{"uuid": "kept"}],  # retract "kept"
             [],  # scrub its sentence
             [],  # find the entities to scrub (none)
             [],  # redact its episodes
+            [],  # the cascade: no earlier try,
+            [],  # no episode citing it,
+            [],  # nothing derived from it
+            [],
+            [{"count": 0}],  # no dream write still in flight cites it
         )
         session = ChatSession.new("user-abc", dry_run=False)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(
                 "backend.copilot.graphiti.recall_forget.open_driver",
                 MagicMock(return_value=driver),
@@ -387,17 +394,15 @@ class TestForgetFailuresAreActionable:
     async def test_confirm_tool_reports_a_failed_clean_up(self) -> None:
         """Retracted, but the episode redaction failed: the model is told the
         fact is forgotten and that the clean-up did not finish."""
-        driver = AsyncMock()
-        driver.execute_query.side_effect = [
-            ([{"uuid": "u1"}], [], None),  # lookup
-            ([{"uuid": "u1"}], [], None),  # retract
-            ([], [], None),  # scrub its sentence
-            ([], [], None),  # find the entities to scrub (none)
+        driver = _mock_driver(
+            [{"uuid": "u1"}],  # lookup
+            [{"uuid": "u1"}],  # retract
+            [],  # scrub its sentence
+            [],  # find the entities to scrub (none)
             RuntimeError("down"),  # redact its episodes
-        ]
+        )
         session = ChatSession.new("user-abc", dry_run=False)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(
                 "backend.copilot.graphiti.recall_forget.open_driver",
                 MagicMock(return_value=driver),
@@ -423,8 +428,148 @@ class TestBuildConfirmMessage:
     threshold and lose all detail)."""
 
     def test_no_failures_returns_summary_only(self) -> None:
-        message = _build_confirm_message(3, "retracted from memory", [])
-        assert message == "3 memory edge(s) retracted from memory."
+        message = _build_confirm_message(3, True, [])
+        assert message == "3 memory edge(s) permanently deleted."
+
+    def test_the_facts_derived_from_them_are_counted(self) -> None:
+        message = _build_confirm_message(1, True, [], 3)
+        assert message == (
+            "1 memory edge(s) permanently deleted; "
+            "3 fact(s) derived from them retracted too."
+        )
+
+    def test_edges_already_erased_are_told_apart(self) -> None:
+        message = _build_confirm_message(0, False, [], 2, 1)
+        assert message.startswith("1 memory edge(s) had already been erased.")
+        assert "0 memory edge(s) retracted from memory" not in message
+
+    def test_a_hard_forget_whose_deletion_failed_says_so(self) -> None:
+        """Its cascade ran, then deleting the edge failed: the edge and its
+        text are still there, so the message must not call it erased."""
+        failures = [
+            MemoryForgetFailure(
+                uuid="uuid-1",
+                code=MemoryForgetFailureCode.CLEANUP_ERROR,
+                reason="graph unavailable",
+            )
+        ]
+        message = _build_confirm_message(0, True, failures, 2)
+        assert message.startswith(
+            "The memory edge(s) could not be permanently deleted, but 2 fact(s) "
+            "derived from them were retracted; erasing their text may not have "
+            "finished (see below)."
+        )
+        assert "already" not in message
+        assert "uuid-1" in message
+
+    def test_resumed_edges_claim_derived_facts_only_when_there_were_any(
+        self,
+    ) -> None:
+        none_derived = _build_confirm_message(1, True, [], 0, 1)
+        assert none_derived == (
+            "1 memory edge(s) permanently deleted. "
+            "1 memory edge(s) had already been erased."
+        )
+        assert "derived" not in none_derived
+
+        derived = _build_confirm_message(1, True, [], 2, 1)
+        assert derived == (
+            "1 memory edge(s) permanently deleted. "
+            "1 memory edge(s) had already been erased. "
+            "2 fact(s) derived from these edges were retracted and erased."
+        )
+
+    def test_one_derived_count_is_credited_to_every_kind_of_edge(self) -> None:
+        """The count covers what the deleted and the already-erased edges
+        derived, so it is never credited to the deleted ones alone. A soft
+        forget erases only the already-erased edges' derived facts."""
+        hard = _build_confirm_message(2, True, [], 5, 1)
+        assert "derived from them" not in hard
+        assert hard.endswith(
+            "5 fact(s) derived from these edges were retracted and erased."
+        )
+
+        soft = _build_confirm_message(2, False, [], 5, 1)
+        assert soft.startswith(
+            "2 memory edge(s) retracted from memory. "
+            "1 memory edge(s) had already been erased. "
+            "5 fact(s) derived from these edges were retracted, and those "
+            "derived from the already-erased edges were erased too."
+        )
+        assert "retracted and erased" not in soft
+
+        failures = [
+            MemoryForgetFailure(
+                uuid="uuid-3",
+                code=MemoryForgetFailureCode.CLEANUP_ERROR,
+                reason="erase failed",
+            )
+        ]
+        failed = _build_confirm_message(2, False, failures, 5, 1)
+        assert (
+            "erasing those derived from the already-erased edges may not have "
+            "finished (see below)."
+        ) in failed
+        assert "erased too" not in failed
+
+    def test_erasure_is_claimed_only_when_nothing_failed(self) -> None:
+        """A derived fact is counted once retracted, before its text is erased,
+        so a failure means its text may still be there."""
+        clean = _build_confirm_message(0, True, [], 2, 1)
+        assert clean == (
+            "1 memory edge(s) had already been erased. "
+            "2 derived fact(s) retracted and erased."
+        )
+
+        failures = [
+            MemoryForgetFailure(
+                uuid="uuid-2",
+                code=MemoryForgetFailureCode.CLEANUP_ERROR,
+                reason="erase failed",
+            )
+        ]
+        resumed = _build_confirm_message(0, True, failures, 2, 1)
+        assert resumed.startswith(
+            "1 memory edge(s) had already been erased. 2 derived fact(s) "
+            "retracted; erasing their text may not have finished (see below)."
+        )
+        assert "retracted and erased" not in resumed
+
+        mixed = _build_confirm_message(1, True, failures, 2, 1)
+        assert "derived from these edges were retracted; erasing" in mixed
+        assert "retracted and erased" not in mixed
+
+    def test_a_soft_derived_only_result_never_claims_erasure(self) -> None:
+        soft = _build_confirm_message(0, False, [], 2)
+        assert soft == (
+            "The memory edge(s) could not be retracted from memory, but 2 fact(s) "
+            "derived from them were retracted."
+        )
+        assert "erased" not in soft
+
+    def test_a_soft_forget_says_it_is_not_a_permanent_deletion(self) -> None:
+        """A model told a user who had asked for a permanent delete that a soft
+        forget was permanent. A soft forget's message says it was not, what it
+        did instead and how to delete permanently; a hard forget's says none
+        of that, and neither does a soft forget that retracted nothing."""
+        soft = _build_confirm_message(1, False, [], 2)
+        assert soft == (
+            "1 memory edge(s) retracted from memory; 2 fact(s) derived from "
+            "them retracted too. This is not a permanent deletion: they are "
+            "hidden from recall, from the memory context chats start with and "
+            "from dreams, and their text is kept for audit. To delete them "
+            "permanently, call tool:memory_forget_confirm with the same UUIDs "
+            "and hard_delete=true."
+        )
+
+        hard = _build_confirm_message(1, True, [], 2)
+        assert hard == (
+            "1 memory edge(s) permanently deleted; "
+            "2 fact(s) derived from them retracted too."
+        )
+
+        nothing = _build_confirm_message(0, False, [])
+        assert nothing == "0 memory edge(s) retracted from memory."
 
     def test_caps_inlined_detail_and_notes_remainder(self) -> None:
         overflow = _MAX_FAILURE_DETAIL + 4
@@ -437,7 +582,7 @@ class TestBuildConfirmMessage:
             for i in range(overflow)
         ]
 
-        message = _build_confirm_message(0, "retracted from memory", failures)
+        message = _build_confirm_message(0, False, failures)
 
         # Full count is reported, but only the first N reasons are inlined.
         assert f"{overflow} failed" in message
@@ -445,177 +590,3 @@ class TestBuildConfirmMessage:
         assert message.count("uuid-") == _MAX_FAILURE_DETAIL
         # Bounded regardless of batch size — cannot grow with the input.
         assert len(message) < _MAX_FAILURE_DETAIL * 300
-
-
-class TestMarkEdgesSuperseded:
-    @pytest.mark.asyncio
-    async def test_sets_status_and_reason(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
-
-        deleted, failed = await mark_edges_superseded(
-            driver,
-            ["u1"],
-            reason="stale_fact",
-            new_status="superseded",
-            user_id="abc",
-        )
-
-        assert deleted == ["u1"]
-        assert failed == []
-        call_kwargs = driver.execute_query.call_args.kwargs
-        assert call_kwargs["new_status"] == "superseded"
-        assert call_kwargs["reason"] == "stale_fact"
-        query = driver.execute_query.call_args.args[0]
-        assert "e.status = $new_status" in query
-        assert "e.expiration_reason = $reason" in query
-        assert "e.expired_at = $now" in query
-        # ``now`` parameter is bound from Python (FalkorDB doesn't
-        # implement Cypher's no-arg ``datetime()``).
-        assert "now" in driver.execute_query.call_args.kwargs
-
-    @pytest.mark.asyncio
-    async def test_default_status_is_superseded(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
-        await mark_edges_superseded(driver, ["u1"], reason="x")
-        assert driver.execute_query.call_args.kwargs["new_status"] == "superseded"
-
-    @pytest.mark.asyncio
-    async def test_contradicted_status_supported(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
-        await mark_edges_superseded(
-            driver, ["u1"], reason="x", new_status="contradicted"
-        )
-        assert driver.execute_query.call_args.kwargs["new_status"] == "contradicted"
-
-    @pytest.mark.asyncio
-    async def test_group_id_scopes_the_match_predicate(self) -> None:
-        """Defense-in-depth: when the caller supplies group_id, the Cypher
-        MATCH must require it alongside the uuid so a wrong-driver caller
-        can't touch another user's edges."""
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
-
-        deleted, failed = await mark_edges_superseded(
-            driver,
-            ["u1"],
-            reason="stale_fact",
-            user_id="abc",
-            group_id="user_abc",
-        )
-
-        assert deleted == ["u1"]
-        assert failed == []
-        query = driver.execute_query.call_args.args[0]
-        assert "{uuid: $uuid, group_id: $group_id}" in query
-        assert driver.execute_query.call_args.kwargs["group_id"] == "user_abc"
-
-    @pytest.mark.asyncio
-    async def test_no_group_id_keeps_unscoped_match_for_ratification(self) -> None:
-        """Omitting group_id preserves the original uuid-only predicate —
-        ratification.py still calls without it (per-group driver), so the
-        param must stay optional and default to no group filter."""
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
-
-        await mark_edges_superseded(driver, ["u1"], reason="unratified")
-
-        query = driver.execute_query.call_args.args[0]
-        assert "{uuid: $uuid}" in query
-        assert "group_id" not in query
-        assert "group_id" not in driver.execute_query.call_args.kwargs
-
-    @pytest.mark.asyncio
-    async def test_expected_status_makes_the_write_conditional(self) -> None:
-        """The ratification sweep's guard: only an edge still in that status
-        and unexpired is touched, so a forget made since it was listed is
-        kept, and the edge is reported failed."""
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([], None, None)  # no longer tentative
-
-        deleted, failed = await mark_edges_superseded(
-            driver, ["u1"], reason="unratified", expected_status="tentative"
-        )
-
-        assert (deleted, failed) == ([], ["u1"])
-        query = driver.execute_query.call_args.args[0]
-        assert (
-            "WHERE e.status = $expected_status AND e.expired_at IS NULL"
-            " AND e.forgotten_at IS NULL" in query
-        )
-        assert driver.execute_query.call_args.kwargs["expected_status"] == "tentative"
-
-    @pytest.mark.asyncio
-    async def test_without_expected_status_only_a_live_fact_is_written(self) -> None:
-        """The dream's demotions: an edge retired or forgotten since the dream
-        read it is not overwritten, and is reported failed."""
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([], None, None)  # forgotten meanwhile
-
-        deleted, failed = await mark_edges_superseded(
-            driver, ["u1"], reason="stale_fact"
-        )
-
-        assert (deleted, failed) == ([], ["u1"])
-        query = driver.execute_query.call_args.args[0]
-        assert f"WHERE {live_fact_predicate('e')}" in query
-        assert "expected_status" not in driver.execute_query.call_args.kwargs
-
-
-class TestInvalidateEntityDirectNeighbors:
-    """Single-hop demotion. The instinct to write [r:RELATES_TO*1..N] is
-    exactly the runaway-demotion bug. This test pins single-hop discipline."""
-
-    @pytest.mark.asyncio
-    async def test_single_hop_pattern_in_cypher(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.return_value = (
-            [{"edge_uuid": "e1"}, {"edge_uuid": "e2"}],
-            None,
-            None,
-        )
-
-        result = await invalidate_entity_direct_neighbors(
-            driver, group_id="user_x", entity_uuid="entity-1", reason="dead_client"
-        )
-
-        assert result == ["e1", "e2"]
-        query = driver.execute_query.call_args.args[0]
-        # MUST be single-hop: bare relationship, no quantifier
-        assert "[r:RELATES_TO]" in query
-        # MUST NOT be multi-hop: variable-length pattern would propagate
-        assert "*1.." not in query
-        assert "*0.." not in query
-        # MUST set status + reason for audit trail
-        assert "r.status = 'superseded'" in query
-        assert "r.expiration_reason = $reason" in query
-        # MUST leave a retired or forgotten neighbour's audit fields alone
-        assert f"WHERE {live_fact_predicate('r')}" in query
-        assert "forgotten_at =" not in query
-
-    @pytest.mark.asyncio
-    async def test_returns_distinct_edge_uuids(self) -> None:
-        """The undirected -[r]- pattern can yield the same edge from both
-        traversal directions; without DISTINCT the duplicate uuids inflate
-        the demotion counts in DreamPassResult / the admin UI."""
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"edge_uuid": "e1"}], None, None)
-
-        await invalidate_entity_direct_neighbors(
-            driver, group_id="user_x", entity_uuid="entity-1", reason="dup_check"
-        )
-
-        query = driver.execute_query.call_args.args[0]
-        assert "RETURN DISTINCT r.uuid AS edge_uuid" in query
-
-    @pytest.mark.asyncio
-    async def test_returns_empty_on_error(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.side_effect = RuntimeError("boom")
-
-        result = await invalidate_entity_direct_neighbors(
-            driver, group_id="user_x", entity_uuid="entity-1", reason="x"
-        )
-        assert result == []

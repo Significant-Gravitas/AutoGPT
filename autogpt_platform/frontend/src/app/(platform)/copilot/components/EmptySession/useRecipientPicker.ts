@@ -10,12 +10,7 @@ const AUTOPILOT_RECIPIENT: RecipientOption = {
 };
 
 export function useRecipientPicker() {
-  const {
-    activeExperts,
-    activeExpertIds,
-    isExpertsEnabled,
-    hasExpertsSettled,
-  } = useExpertMap();
+  const { activeExperts, activeExpertIds, hasExpertsSettled } = useExpertMap();
   const [expertIdParam, setExpertIdParam] = useQueryState(
     "expertId",
     parseAsString,
@@ -57,10 +52,8 @@ export function useRecipientPicker() {
     // fallback is already the right answer. Keyed on "not settled yet" rather
     // than "fetching": an initial query that is pending but paused (offline)
     // reports `isFetching: false` while it still has no roster to resolve
-    // against. Gated on the flag because with experts off the roster never
-    // settles and the Otto fallback is the only correct answer.
-    isLoadingRecipient:
-      isExpertsEnabled && !hasExpertsSettled && !!expertIdParam,
+    // against.
+    isLoadingRecipient: !hasExpertsSettled && !!expertIdParam,
     selectRecipient(id: string | null) {
       void setExpertIdParam(id);
     },

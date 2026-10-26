@@ -924,14 +924,15 @@ class TestReadPathTraversal:
 
 class TestReadBinaryFile:
     @pytest.mark.asyncio
-    async def test_binary_file_rejected(self, sdk_cwd):
+    async def test_corrupt_image_rejected(self, sdk_cwd):
         path = os.path.join(sdk_cwd, "image.png")
         with open(path, "wb") as f:
             f.write(b"\x89PNG\r\n\x1a\n")
         result = await _handle_read_file({"file_path": "image.png"})
         assert result["isError"]
         text = result["content"][0]["text"]
-        assert "binary" in text.lower()
+        assert "Image not shown" in text
+        assert "corrupt" in text
 
     @pytest.mark.asyncio
     async def test_text_file_not_rejected_as_binary(self, sdk_cwd):

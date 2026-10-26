@@ -71,7 +71,11 @@ BLOCKED_IP_NETWORKS = [
     ipaddress.ip_network("224.0.0.0/4"),  # Multicast
     ipaddress.ip_network("240.0.0.0/4"),  # Reserved for Future Use
     # IPv6 Ranges
+    ipaddress.ip_network("::/128"),  # Unspecified; Linux connects it to ::1
     ipaddress.ip_network("::1/128"),  # Loopback
+    # Local-use NAT64 (RFC 8215): it translates to addresses inside some network,
+    # and not always with the IPv4 address in the last 32 bits.
+    ipaddress.ip_network("64:ff9b:1::/48"),
     ipaddress.ip_network("fc00::/7"),  # Unique local addresses (ULA)
     ipaddress.ip_network("fe80::/10"),  # Link-local
     ipaddress.ip_network("ff00::/8"),  # Multicast
@@ -81,22 +85,50 @@ BLOCKED_IP_NETWORKS = [
 ALLOWED_SCHEMES = ["http", "https"]
 HOSTNAME_REGEX = re.compile(r"^[A-Za-z0-9.-]+$")  # Basic DNS-safe hostname pattern
 
+# IPv6 prefixes whose last 32 bits are an IPv4 address the network may route
+# the connection to: the well-known NAT64 prefix (RFC 6052), SIIT (RFC 2765)
+# and the deprecated IPv4-compatible form (RFC 4291).
+_IPV4_IN_LOW_BITS_NETWORKS = [
+    ipaddress.ip_network("64:ff9b::/96"),
+    ipaddress.ip_network("::ffff:0:0:0/96"),
+    ipaddress.ip_network("::/96"),
+]
+
+
+def _embedded_ipv4(ip_addr: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    """The IPv4 address an IPv6 address encodes, if it is a form that embeds one."""
+    if ip_addr.ipv4_mapped:
+        return ip_addr.ipv4_mapped
+    if ip_addr.sixtofour:
+        return ip_addr.sixtofour
+    if ip_addr.teredo:
+        # (server, client): the client is the host the packets are delivered to
+        return ip_addr.teredo[1]
+    if any(ip_addr in network for network in _IPV4_IN_LOW_BITS_NETWORKS):
+        return ipaddress.IPv4Address(int(ip_addr) & 0xFFFFFFFF)
+    return None
+
 
 def _is_ip_blocked(ip: str) -> bool:
     """
     Checks if the IP address is in a blocked network.
 
-    IPv4-mapped IPv6 addresses (e.g. ``::ffff:127.0.0.1``) are normalized to
-    their IPv4 equivalent before checking, so the IPv4 blocklist cannot be
-    bypassed by encoding a private IPv4 address as IPv6.
+    IPv6 addresses that embed an IPv4 address (IPv4-mapped ``::ffff:127.0.0.1``,
+    6to4, Teredo, NAT64, SIIT and IPv4-compatible) are also checked as that IPv4
+    address, so the IPv4 blocklist cannot be bypassed by encoding a private IPv4
+    address as IPv6.
     """
     ip_addr = ipaddress.ip_address(ip)
 
-    # Normalize IPv4-mapped IPv6 → IPv4 so the IPv4 blocklist applies
-    if isinstance(ip_addr, ipaddress.IPv6Address) and ip_addr.ipv4_mapped:
-        ip_addr = ip_addr.ipv4_mapped
+    if any(ip_addr in network for network in BLOCKED_IP_NETWORKS):
+        return True
 
-    return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
+    if isinstance(ip_addr, ipaddress.IPv6Address):
+        embedded = _embedded_ipv4(ip_addr)
+        if embedded is not None:
+            return any(embedded in network for network in BLOCKED_IP_NETWORKS)
+
+    return False
 
 
 # Lower-cased: HTTP header names are case-insensitive, so a caller passing
@@ -471,8 +503,15 @@ class Requests:
         allow_redirects: bool = True,
         max_redirects: int = 10,
         drop_headers: frozenset[str] = frozenset(),
+        max_body_bytes: int | None = None,
         **kwargs,
     ) -> Response:
+        """Send a request, following redirects through the same SSRF checks.
+
+        ``max_body_bytes`` caps how much of a response body is read, counted
+        after decompression; a longer body comes back cut to that many bytes
+        plus one, so the caller can tell it was cut.
+        """
         retry_kwargs: dict[str, Any] = {
             "wait": wait_exponential_jitter(max=self.retry_max_wait),
             "retry": retry_if_result(lambda r: r.status in THROTTLE_RETRY_STATUS_CODES),
@@ -495,6 +534,7 @@ class Requests:
                 allow_redirects=allow_redirects,
                 max_redirects=max_redirects,
                 drop_headers=drop_headers,
+                max_body_bytes=max_body_bytes,
                 **kwargs,
             )
 
@@ -512,6 +552,7 @@ class Requests:
         allow_redirects: bool = True,
         max_redirects: int = 10,
         drop_headers: frozenset[str] = frozenset(),
+        max_body_bytes: int | None = None,
         **kwargs,
     ) -> Response:
         # Convert auth tuple to aiohttp.BasicAuth if necessary
@@ -609,7 +650,7 @@ class Requests:
                     try:
                         response.raise_for_status()
                     except ClientResponseError as e:
-                        body = await response.read()
+                        body = await _read_body(response, max_body_bytes)
                         raise http_status_error(
                             response.status, response.reason, body
                         ) from e
@@ -624,7 +665,7 @@ class Requests:
                         return Response(
                             response=response,
                             url=original_url,
-                            body=await response.read(),
+                            body=await _read_body(response, max_body_bytes),
                         )
 
                     # The base URL is the pinned_url we just used
@@ -660,6 +701,7 @@ class Requests:
                         json=json,
                         drop_headers=drop_headers
                         | {k.lower() for k in req_headers.keys() - new_headers.keys()},
+                        max_body_bytes=max_body_bytes,
                         **redirect_kwargs,
                     )
 
@@ -673,7 +715,7 @@ class Requests:
                 return Response(
                     response=response,
                     url=original_url,
-                    body=await response.read(),
+                    body=await _read_body(response, max_body_bytes),
                 )
 
     async def get(self, url: str, *args, **kwargs) -> Response:
@@ -696,3 +738,23 @@ class Requests:
 
     async def patch(self, url: str, *args, **kwargs) -> Response:
         return await self.request("PATCH", url, *args, **kwargs)
+
+
+_READ_CHUNK_BYTES = 64 * 1024
+
+
+async def _read_body(response: ClientResponse, limit: int | None) -> bytes:
+    """The response body, or its first ``limit + 1`` bytes when capped.
+
+    Read in chunks of the decompressed stream and stopped at the cap, so
+    neither a long body nor a short compressed one that expands is held
+    whole. Leaving the response context unread closes its connection.
+    """
+    if limit is None:
+        return await response.read()
+    body = bytearray()
+    async for chunk in response.content.iter_chunked(_READ_CHUNK_BYTES):
+        body.extend(chunk[: limit + 1 - len(body)])
+        if len(body) > limit:
+            break
+    return bytes(body)

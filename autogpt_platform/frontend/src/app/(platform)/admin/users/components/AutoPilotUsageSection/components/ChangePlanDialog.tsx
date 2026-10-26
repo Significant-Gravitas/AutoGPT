@@ -31,7 +31,7 @@ export function ChangePlanDialog({
       }}
     >
       <Dialog.Content>
-        <Text variant="body" className="text-zinc-600">
+        <Text variant="body" className="text-foreground-secondary">
           Their AutoPilot limits change right away. If they pay through Stripe,
           the next billing sync sets the plan back to what they pay for.
         </Text>

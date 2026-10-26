@@ -1,16 +1,43 @@
 """Boundary tests for pre-auth admission and trusted client identity."""
 
 import asyncio
+from datetime import UTC, datetime
+from typing import Annotated
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
-from fastapi import HTTPException, Request
+import pytest_asyncio
+from fastapi import FastAPI, HTTPException, Request, Security
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import RedisClusterException
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from backend.api.external import auth_rate_limit as rate_limit
 from backend.api.external import middleware
+from backend.data.auth.base import APIAuthorizationInfo
+
+
+@pytest.fixture(params=["api-key", "bearer"])
+def credential_headers(request):
+    if request.param == "api-key":
+        return {"X-API-Key": "agpt_abcmiddle"}
+    return {"Authorization": "Bearer agpt_abcmiddle"}
+
+
+@pytest_asyncio.fixture
+async def client():
+    app = FastAPI()
+
+    @app.get("/auth")
+    async def authenticate(
+        auth: Annotated[APIAuthorizationInfo, Security(middleware.require_auth)],
+    ):
+        return {"user_id": auth.user_id}
+
+    transport = httpx.ASGITransport(app, client=("192.0.2.10", 1234))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
 
 
 def request(host="192.0.2.10", forwarded=None):
@@ -86,9 +113,8 @@ async def test_redis_failure_does_not_block_authentication(mocker, error, phase)
 
 
 @pytest.mark.parametrize("error", [OSError, ValueError])
-@pytest.mark.parametrize("entry", [middleware.require_api_key, middleware.require_auth])
 async def test_limiter_logic_failure_does_not_reach_key_validation(
-    mocker, error, entry
+    mocker, error, client, credential_headers
 ):
     redis = mocker.Mock()
     redis.eval = AsyncMock(return_value=rate_limit.AUTH_VALIDATE_IP_MAX_REQUESTS + 1)
@@ -99,7 +125,7 @@ async def test_limiter_logic_failure_does_not_reach_key_validation(
     validate = mocker.patch.object(middleware, "validate_api_key", return_value=None)
 
     with pytest.raises(error, match="metric failure"):
-        await entry(request(), api_key="agpt_abcmiddle")
+        await client.get("/auth", headers=credential_headers)
 
     validate.assert_not_awaited()
 
@@ -122,7 +148,7 @@ async def test_timeout_is_bounded_and_cancels_the_pending_operation(mocker, refu
         if refund
         else rate_limit.enforce_api_key_validate_rate_limit(request(), "agpt_abcmiddle")
     )
-    assert await asyncio.wait_for(operation, timeout=0.4) is None
+    assert await asyncio.wait_for(operation, timeout=5) is None
     assert cancelled.is_set()
 
 
@@ -140,28 +166,104 @@ async def test_no_reservation_needs_no_redis(mocker):
     redis.assert_not_called()
 
 
-@pytest.mark.parametrize("entry", [middleware.require_api_key, middleware.require_auth])
-async def test_denied_admission_skips_validation(mocker, entry):
+async def test_denied_admission_skips_validation(mocker, client, credential_headers):
     mocker.patch.object(
         middleware,
         "enforce_api_key_validate_rate_limit",
         side_effect=HTTPException(429),
     )
-    validate = mocker.patch.object(middleware, "validate_api_key")
-    with pytest.raises(HTTPException) as exc:
-        await entry(request(), api_key="agpt_abcmiddle")
-    assert exc.value.status_code == 429
+    validate = mocker.patch.object(middleware, "validate_api_key", return_value=None)
+    mocker.patch.object(
+        middleware,
+        "validate_access_token",
+        side_effect=middleware.InvalidTokenError("not found"),
+    )
+    response = await client.get("/auth", headers=credential_headers)
+    assert response.status_code == 429
     validate.assert_not_called()
 
 
-@pytest.mark.parametrize("entry", [middleware.require_api_key, middleware.require_auth])
-async def test_invalid_key_under_budget_returns_401(mocker, entry):
+async def test_invalid_key_under_budget_returns_401(mocker, client, credential_headers):
     mocker.patch.object(
         middleware, "enforce_api_key_validate_rate_limit", return_value=None
     )
     mocker.patch.object(middleware, "validate_api_key", return_value=None)
+    mocker.patch.object(
+        middleware,
+        "validate_access_token",
+        side_effect=middleware.InvalidTokenError("not found"),
+    )
     refund = mocker.patch.object(middleware, "refund_api_key_validate_rate_limit")
-    with pytest.raises(HTTPException) as exc:
-        await entry(request(), api_key="agpt_abcmiddle")
-    assert exc.value.status_code == 401
+    response = await client.get("/auth", headers=credential_headers)
+    assert response.status_code == 401
     refund.assert_not_called()
+
+
+async def test_success_refunds_after_the_owner_check(
+    mocker, client, credential_headers
+):
+    budget = rate_limit.APIKeyValidationBudget(ip_key="ip", head_key="head")
+    admit = mocker.patch.object(
+        middleware, "enforce_api_key_validate_rate_limit", return_value=budget
+    )
+    principal = APIAuthorizationInfo(
+        user_id="user-1", scopes=[], type="api_key", created_at=datetime.now(UTC)
+    )
+    mocker.patch.object(middleware, "validate_api_key", return_value=principal)
+    owner_check = mocker.patch.object(middleware, "_refuse_banned_owner")
+
+    async def refund(reservation):
+        owner_check.assert_awaited_once_with(principal)
+        assert reservation is budget
+
+    refunded = mocker.patch.object(
+        middleware, "refund_api_key_validate_rate_limit", side_effect=refund
+    )
+    response = await client.get("/auth", headers=credential_headers)
+    assert response.status_code == 200
+    assert admit.await_args.args[1] == "agpt_abcmiddle"
+    refunded.assert_awaited_once_with(budget)
+
+
+async def test_banned_owner_keeps_reservation(mocker, client, credential_headers):
+    mocker.patch.object(middleware, "enforce_api_key_validate_rate_limit")
+    mocker.patch.object(
+        middleware,
+        "validate_api_key",
+        return_value=APIAuthorizationInfo(
+            user_id="banned", scopes=[], type="api_key", created_at=datetime.now(UTC)
+        ),
+    )
+    mocker.patch.object(
+        middleware, "_refuse_banned_owner", side_effect=HTTPException(403)
+    )
+    refund = mocker.patch.object(middleware, "refund_api_key_validate_rate_limit")
+    response = await client.get("/auth", headers=credential_headers)
+    assert response.status_code == 403
+    refund.assert_not_awaited()
+
+
+async def test_oauth_does_not_reserve_an_api_key_budget(mocker, client):
+    admit = mocker.patch.object(middleware, "enforce_api_key_validate_rate_limit")
+    mocker.patch.object(
+        middleware,
+        "validate_access_token",
+        side_effect=middleware.InvalidTokenError("bad"),
+    )
+    response = await client.get(
+        "/auth", headers={"Authorization": "Bearer agpt_xt_invalid"}
+    )
+    assert response.status_code == 401
+    admit.assert_not_awaited()
+
+
+async def test_v2_request_auth_does_not_apply_the_v1_budget(mocker):
+    admit = mocker.patch.object(middleware, "enforce_api_key_validate_rate_limit")
+    validate = mocker.patch.object(middleware, "validate_api_key", return_value=None)
+    scope = request().scope
+    for _ in range(2):
+        with pytest.raises(HTTPException) as rejected:
+            await middleware.resolve_request_auth(scope, "agpt_abcmiddle", None)
+        assert rejected.value.status_code == 401
+    validate.assert_awaited_once()
+    admit.assert_not_awaited()

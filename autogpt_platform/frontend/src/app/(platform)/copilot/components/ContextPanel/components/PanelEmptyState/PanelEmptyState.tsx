@@ -36,7 +36,7 @@ export function PanelEmptyState({
           <div
             key={index}
             className={cn(
-              "absolute flex h-20 w-16 items-center justify-center rounded-xl bg-white transition-transform duration-300 ease-out smooth-shadow-ring-sm motion-reduce:transition-none",
+              "absolute flex h-20 w-16 items-center justify-center rounded-xl bg-surface transition-transform duration-300 ease-out smooth-shadow-ring-sm motion-reduce:transition-none",
               TILE_POSITIONS[index],
             )}
           >
@@ -44,10 +44,13 @@ export function PanelEmptyState({
           </div>
         ))}
       </div>
-      <Text variant="large-medium" className="!text-zinc-900">
+      <Text variant="large-medium" className="!text-foreground-strong">
         {title}
       </Text>
-      <Text variant="body" className="mt-1.5 max-w-[17rem] !text-zinc-500">
+      <Text
+        variant="body"
+        className="mt-1.5 max-w-[17rem] !text-foreground-tertiary"
+      >
         {description}
       </Text>
       {children && (

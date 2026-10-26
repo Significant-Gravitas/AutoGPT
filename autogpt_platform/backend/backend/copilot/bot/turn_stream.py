@@ -33,8 +33,8 @@ from .adapters.base import (
 )
 from .bot_backend import BotBackend, BotStreamError, ChatTurnDeniedError
 from .config import SESSION_TTL
-from .prompt import clamp_thread_name
-from .text import format_batch, iter_chunks, split_at_boundary
+from .prompt import PendingMessage, clamp_thread_name, format_batch
+from .text import iter_chunks, split_at_boundary
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +139,7 @@ class TurnStreamer:
 
     async def stream_batch(
         self,
-        batch: list[tuple[str, str, str]],
+        batch: list[PendingMessage],
         ctx: MessageContext,
         adapter: PlatformAdapter,
         target_id: str,
@@ -295,7 +295,7 @@ class TurnStreamer:
                 chunks = self._api.stream_chat(
                     platform=ctx.platform,
                     platform_user_id=ctx.user_id,
-                    message=format_batch(batch, ctx.platform),
+                    message=format_batch(batch, ctx),
                     session_id=active_session_id,
                     platform_server_id=ctx.server_id,
                     file_ids=file_ids,
