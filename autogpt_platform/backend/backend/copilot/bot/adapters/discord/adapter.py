@@ -24,6 +24,7 @@ from backend.copilot.bot.adapters.shared import (
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
+from backend.copilot.bot.options import TurnOptions, parse_turn_options
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
 from ..base import (
@@ -39,7 +40,7 @@ from ..base import (
     ReferencedConversation,
     SocketAdapter,
 )
-from . import choice_ui, commands, config, intro
+from . import ask_command, choice_ui, commands, config, intro
 from .location import location_of
 from .references import (
     ReferenceTarget,
@@ -113,6 +114,7 @@ class DiscordAdapter(SocketAdapter):
 
         self._register_events()
         commands.register(self._tree, self._api)
+        ask_command.register(self._tree, self._api, self._dispatch_command)
 
     @property
     def platform_name(self) -> str:
@@ -578,7 +580,9 @@ class DiscordAdapter(SocketAdapter):
             if channel_type == "thread" and (bot_mentioned or replied_to_bot):
                 thread_history = await self._thread_history(message)
 
-            own_text = self._strip_mentions(message)
+            # Options lead the user's own text; read them before the reply
+            # context is put in front of it.
+            options, own_text = parse_turn_options(self._strip_mentions(message))
             # Scan ONLY the user's own typed message for references. Links inside
             # a forwarded or replied-to message are quoted context, not the
             # user's request, so they must not be auto-fetched or rewritten.
@@ -619,8 +623,51 @@ class DiscordAdapter(SocketAdapter):
                 referenced_conversations=referenced,
                 attachments=attachments,
                 skipped_attachments=skipped,
+                options=options,
             )
             await self._on_message_callback(ctx, self)
+
+    async def _dispatch_command(
+        self,
+        interaction: discord.Interaction,
+        starter: discord.Message,
+        prompt: str,
+        options: TurnOptions,
+    ) -> None:
+        """Run a ``/autogpt`` turn as if ``starter`` were the user's message:
+        a channel threads off it, a DM or thread answers in place."""
+        if self._on_message_callback is None:
+            return
+        user = interaction.user
+        location = location_of(interaction.guild, starter.channel)
+        channel_type = _interaction_channel_type(interaction)
+        # The starter is the bot's own post, so history before it is what the
+        # thread said before the command, as an @mention would see it.
+        thread_history = ()
+        if channel_type == "thread":
+            thread_history = await self._thread_history(starter)
+        ctx = MessageContext(
+            platform="discord",
+            channel_type=channel_type,
+            server_id=str(interaction.guild.id) if interaction.guild else None,
+            channel_id=str(starter.channel.id),
+            message_id=str(starter.id),
+            user_id=str(user.id),
+            username=user.display_name,
+            text=prompt,
+            # Invoking the command is an explicit call, like an @mention.
+            bot_mentioned=True,
+            server_name=location.server_name,
+            channel_name=location.channel_name,
+            public_channel_id=location.public_channel_id,
+            thread_name=location.thread_name,
+            public_thread_id=location.public_thread_id,
+            post_channel_id=location.post_channel_id,
+            thread_history=thread_history,
+            mentionable_users=((user.display_name, str(user.id)),),
+            options=options,
+        )
+        await self._on_message_callback(ctx, self)
 
     async def _extract_attachments(
         self, message: discord.Message
@@ -1090,6 +1137,14 @@ class DiscordAdapter(SocketAdapter):
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 return False
         return True
+
+
+def _interaction_channel_type(interaction: discord.Interaction) -> ChannelType:
+    if interaction.guild is None:
+        return "dm"
+    if isinstance(interaction.channel, discord.Thread):
+        return "thread"
+    return "channel"
 
 
 def _resolve_mentions(

@@ -6,7 +6,7 @@
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { cn } from "@/lib/utils";
 import { Alert02Icon, Tick01Icon } from "@hugeicons/core-free-icons";
 import type { BanAccountResult } from "../../useBanAccounts";

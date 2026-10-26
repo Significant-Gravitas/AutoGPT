@@ -4,8 +4,8 @@ import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
 
 function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
@@ -91,19 +91,29 @@ const inputGroupButtonVariants = cva(
   },
 );
 
+// Callers name the looks of the deleted ui/button by their old names; this map
+// keeps that API on the Button atom's compact family.
+const INPUT_GROUP_BUTTON_VARIANT = {
+  default: "compact-primary",
+  ghost: "compact-ghost",
+} as const;
+
 function InputGroupButton({
   className,
   type = "button",
   variant = "ghost",
   size = "xs",
   ...props
-}: Omit<React.ComponentProps<typeof Button>, "size"> &
-  VariantProps<typeof inputGroupButtonVariants>) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> &
+  VariantProps<typeof inputGroupButtonVariants> & {
+    variant?: keyof typeof INPUT_GROUP_BUTTON_VARIANT;
+  }) {
   return (
     <Button
       type={type}
       data-size={size}
-      variant={variant}
+      variant={INPUT_GROUP_BUTTON_VARIANT[variant]}
+      size="compact"
       className={cn(inputGroupButtonVariants({ size }), className)}
       {...props}
     />
@@ -115,7 +125,9 @@ const InputGroupTextarea = React.forwardRef<
   React.ComponentProps<"textarea">
 >(({ className, ...props }, ref) => {
   return (
-    <Textarea
+    <Input
+      bare
+      type="textarea"
       ref={ref}
       data-slot="input-group-control"
       className={cn(

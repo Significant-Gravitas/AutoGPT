@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkOutputSheet } from "../WorkOutputSheet";
 
 const { detailsResult } = vi.hoisted(() => ({
@@ -37,7 +37,23 @@ beforeEach(() => {
   detailsResult.current = { data: null, isLoading: false, isError: false };
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("WorkOutputSheet", () => {
+  it("describes itself to screen readers", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    render(<WorkOutputSheet {...baseProps} outputType="unknown" />);
+
+    expect(
+      screen.getByRole("dialog", { description: "This run's output." }),
+    ).toBeDefined();
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("Missing `Description`"),
+    );
+  });
+
   it("renders a table with a CSV export for table output", () => {
     setOutputs({ result: [[{ metric: "signups", value: 12 }]] });
     render(<WorkOutputSheet {...baseProps} outputType="table" />);
