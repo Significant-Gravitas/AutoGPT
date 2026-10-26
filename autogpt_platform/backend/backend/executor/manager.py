@@ -1142,6 +1142,11 @@ class ExecutionProcessor:
                 status = ExecutionStatus.TERMINATED
 
         finally:
+            # The block is done, so from here this task is the node's
+            # bookkeeping, which the run's cleanup waits for in full rather
+            # than for the unwind grace (see wait_for_done).
+            if task := asyncio.current_task():
+                node_exec_progress.track_settling(node_exec.node_exec_id, task)
             if status == ExecutionStatus.FAILED and stats.error is not None:
                 try:
                     await _finish_despite_cancel(

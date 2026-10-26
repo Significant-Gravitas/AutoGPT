@@ -2050,11 +2050,11 @@ class NodeExecutionProgress:
         """
         Wait for all cancelled tasks to complete cancellation.
 
-        A node's bookkeeping, once begun, is waited for in full: the run's
-        terminal write would otherwise fail the node before its own status
-        lands. A node's task still unwinding to that bookkeeping is waited
-        for up to NODE_UNWIND_GRACE_SECONDS, since a block may ignore the
-        cancel.
+        A node's bookkeeping, which begins once its block has finished, is
+        waited for in full: the run's terminal write would otherwise fail
+        the node before its own status lands. A node whose block is still
+        running is waited for up to NODE_UNWIND_GRACE_SECONDS, since a block
+        may ignore the cancel.
 
         Args:
             timeout: Maximum time to wait for cancellation in seconds
