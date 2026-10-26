@@ -24,8 +24,10 @@ export function getTrialMilestones(
   // A trial this short gets its reminder as soon as it starts.
   const remindsToday = reminderDate <= now;
   // Stripe charges at the exact moment the trial ends, so the safe date to
-  // promise is the day before.
-  const lastFreeDay = new Date(chargeDate.getTime() - DAY_MS);
+  // promise is the day before. Step back a calendar day, not 24 hours, so a
+  // daylight-saving change can't land it on the charge day itself.
+  const lastFreeDay = new Date(chargeDate);
+  lastFreeDay.setDate(lastFreeDay.getDate() - 1);
   const amount = formatPlanAmount(offer);
   return [
     {
@@ -80,7 +82,8 @@ export function formatReadyLine(names: string[]) {
     ...named,
     ...(others > 0 ? [`${others} more`] : []),
   ];
-  const list = new Intl.ListFormat(undefined, {
+  // The sentence around it is English, so the list is too.
+  const list = new Intl.ListFormat("en", {
     style: "long",
     type: "conjunction",
   }).format(everyone);

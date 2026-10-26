@@ -1,5 +1,5 @@
 import { trialOffer } from "@/tests/integrations/trial-fixtures";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   formatDay,
   formatReadyLine,
@@ -12,6 +12,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 function daysFromNow(days: number) {
   return new Date(NOW.getTime() + days * DAY_MS);
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("getTrialMilestones", () => {
   test("charges when the trial ends and reminds three days before", () => {
@@ -36,6 +40,20 @@ describe("getTrialMilestones", () => {
     );
   });
 
+  test("keeps the last day to cancel before the charge day across a clock change", () => {
+    vi.stubEnv("TZ", "America/New_York");
+    // 23:30 on 1 Nov 2026, the day New York's clocks go back an hour.
+    const chargeAt = new Date("2026-11-02T04:30:00Z");
+    const now = new Date(chargeAt.getTime() - 7 * DAY_MS);
+
+    const charge = getTrialMilestones(trialOffer, now)[2];
+
+    expect(charge.when).toBe(formatDay(new Date("2026-11-01T12:00:00Z")));
+    expect(charge.detail).toContain(
+      `Cancel by ${formatDay(new Date("2026-10-31T12:00:00Z"))} to pay nothing.`,
+    );
+  });
+
   test("sends the reminder today when the trial is too short to wait", () => {
     const reminder = getTrialMilestones(
       { ...trialOffer, duration_days: 3 },
@@ -50,8 +68,8 @@ describe("getTrialMilestones", () => {
 describe("formatReadyLine", () => {
   test("names up to three Experts beside Otto and counts the rest", () => {
     expect(formatReadyLine([])).toBe("Otto is ready to start");
-    expect(formatReadyLine(["Maria", "Mina", "Max", "Kai", "Lena"])).toMatch(
-      /^Otto, Maria, Mina, Max,? and 2 more are ready to start$/,
+    expect(formatReadyLine(["Maria", "Mina", "Max", "Kai", "Lena"])).toBe(
+      "Otto, Maria, Mina, Max, and 2 more are ready to start",
     );
   });
 });
