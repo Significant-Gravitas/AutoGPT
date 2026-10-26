@@ -451,9 +451,11 @@ async def delete_org(org_id: str) -> None:
     if org.deletedAt is not None:
         raise ValueError("Organization is already deleted")
 
-    await prisma.organization.update(
-        where={"id": org_id},
-        data={"deletedAt": datetime.now(timezone.utc)},
+    now = datetime.now(timezone.utc)
+    await prisma.organization.update(where={"id": org_id}, data={"deletedAt": now})
+    await prisma.orginvitation.update_many(
+        where={"orgId": org_id, "acceptedAt": None, "revokedAt": None},
+        data={"revokedAt": now},
     )
 
 
