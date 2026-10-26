@@ -26,6 +26,7 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Awaitable
 from typing import Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
@@ -35,7 +36,6 @@ from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import (
     capped_rpush,
     capped_rpush_if_hash_field,
-    pop_matching_list_prefix,
     string_compare_and_set,
 )
 
@@ -399,10 +399,10 @@ async def drain_pending_messages(
         if text_only and _carries_image(payload):
             break
         prefix.append(payload)
-    # Marked taken before they leave the queue: a sender whose push raised
-    # asks whether its message landed, and it must never be in neither place.
-    await _mark_taken(redis, session_id, _ids_in(prefix))
-    lpop_result = await pop_matching_list_prefix(redis, key, prefix)
+    # Marked taken in the same step that takes them off the queue: a sender
+    # whose push raised asks whether its message landed, and it must never be
+    # in neither place. If the mark cannot be written, nothing is taken.
+    lpop_result = await _take_prefix(redis, session_id, prefix)
     if not lpop_result:
         return []
     raw_popped: list[Any] = list(lpop_result)
@@ -451,22 +451,50 @@ def _ids_in(payloads: list[str]) -> list[str]:
     return ids
 
 
-async def _mark_taken(redis: Any, session_id: str, ids: list[str]) -> None:
-    """Remember which messages a drain took. A sender whose push raised after
-    its write landed asks whether its message was queued; once a turn has
-    drained (and perhaps saved) it, the queue alone no longer says so."""
-    if not ids:
-        return
-    try:
-        key = _taken_key(session_id)
-        await cast("Any", redis.sadd(key, *ids))
-        await cast("Any", redis.expire(key, _PENDING_TTL_SECONDS))
-    except Exception:
-        logger.warning(
-            "pending_messages: could not record drained messages for session=%s",
-            session_id,
-            exc_info=True,
-        )
+# Takes a prefix the drain inspected off the queue, only if it is still
+# there, and records its ids as taken in the same step. The record is written
+# first: if Redis refuses it, the script stops before the trim and the queue
+# keeps the messages. Both keys share the session's hash tag, so one script
+# may touch both on a cluster.
+_TAKE_PREFIX_LUA = """
+local n = tonumber(ARGV[2])
+local current = redis.call('LRANGE', KEYS[1], 0, n - 1)
+if #current ~= n then return {} end
+for i = 1, n do
+    if current[i] ~= ARGV[2 + i] then return {} end
+end
+if #ARGV > 2 + n then
+    redis.call('SADD', KEYS[2], unpack(ARGV, 3 + n))
+    redis.call('EXPIRE', KEYS[2], ARGV[1])
+end
+redis.call('LTRIM', KEYS[1], n, -1)
+return current
+"""
+
+
+async def _take_prefix(
+    redis: Any, session_id: str, prefix: list[str]
+) -> list[str | bytes]:
+    """Pop the inspected prefix and record its message ids as taken, both or
+    neither. A sender whose push raised after its write landed asks whether
+    its message was queued; once a turn has drained (and perhaps saved) it,
+    only the record still says so."""
+    if not prefix:
+        return []
+    result = await cast(
+        "Any",
+        redis.eval(
+            _TAKE_PREFIX_LUA,
+            2,
+            _buffer_key(session_id),
+            _taken_key(session_id),
+            _PENDING_TTL_SECONDS,
+            len(prefix),
+            *prefix,
+            *_ids_in(prefix),
+        ),
+    )
+    return list(result or [])
 
 
 def _from_buffer(data: Any) -> PendingMessage:
@@ -577,23 +605,41 @@ async def stash_pending_for_persist(
 async def pending_message_waiting(session_id: str, message_id: str) -> bool | None:
     """Whether the message with this id waits in the session's queue, waits
     in the persist queue a drain moves it to, or was taken by a drain. None
-    when Redis cannot say."""
-    try:
-        redis = await get_redis_async()
-        if await cast("Any", redis.sismember(_taken_key(session_id), message_id)):
-            return True
-        waiting = [
-            *await peek_pending_messages(session_id),
-            *await peek_pending_for_persist(session_id),
-        ]
-    except Exception:
-        logger.warning(
-            "pending_messages: could not look for message in session=%s",
-            session_id,
-            exc_info=True,
-        )
-        return None
-    return any(message.id == message_id for message in waiting)
+    when nothing was found and Redis could not answer every look.
+
+    The queue is read before the taken set: a drain records the message in
+    the same step that takes it, so a read that misses it in the queue finds
+    it in the set. Read the other way round, a drain between the two reads
+    would hide it from both."""
+    looks = (
+        lambda: _message_in(peek_pending_messages(session_id), message_id),
+        lambda: _message_in(peek_pending_for_persist(session_id), message_id),
+        lambda: _taken(session_id, message_id),
+    )
+    unanswered = False
+    for look in looks:
+        try:
+            if await look():
+                return True
+        except Exception:
+            unanswered = True
+            logger.warning(
+                "pending_messages: could not look for message in session=%s",
+                session_id,
+                exc_info=True,
+            )
+    return None if unanswered else False
+
+
+async def _message_in(
+    messages: Awaitable[list[PendingMessage]], message_id: str
+) -> bool:
+    return any(message.id == message_id for message in await messages)
+
+
+async def _taken(session_id: str, message_id: str) -> bool:
+    redis = await get_redis_async()
+    return bool(await cast("Any", redis.sismember(_taken_key(session_id), message_id)))
 
 
 async def peek_pending_for_persist(session_id: str) -> list[PendingMessage]:

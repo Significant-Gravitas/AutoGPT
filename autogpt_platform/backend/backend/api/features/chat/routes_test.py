@@ -1,6 +1,7 @@
 """Tests for chat API routes: session title update, file attachment validation, usage, and rate limiting."""
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import get_args
@@ -1061,7 +1062,6 @@ async def test_a_failed_send_does_not_take_back_its_retransmits_approval(
         return_value=[],
     )
     line = "Approved: hire Maya (confirmation_id: c-1)."
-    metadata = card_decision_metadata(line)
     first = await chat_routes._admit_card_answer(
         test_user_id, session_id, line, "click-1", has_attachments=False
     )
@@ -1640,11 +1640,11 @@ async def test_a_message_leaving_the_queue_is_never_in_neither_place(
     session_id = f"s-{uuid4()}"
     message = PendingMessage(content="Approved: hire Maya (confirmation_id: c-1).")
     await pending_messages_module.push_pending_message(session_id, message)
-    pop = pending_messages_module.pop_matching_list_prefix
+    take = pending_messages_module._take_prefix
     seen: list[bool | None] = []
 
-    async def pop_then_ask(*args: object, **kwargs: object):
-        popped = await pop(*args, **kwargs)
+    async def take_then_ask(*args: object, **kwargs: object):
+        popped = await take(*args, **kwargs)
         seen.append(
             await pending_messages_module.pending_message_waiting(
                 session_id, message.id
@@ -1653,7 +1653,7 @@ async def test_a_message_leaving_the_queue_is_never_in_neither_place(
         return popped
 
     mocker.patch.object(
-        pending_messages_module, "pop_matching_list_prefix", side_effect=pop_then_ask
+        pending_messages_module, "_take_prefix", side_effect=take_then_ask
     )
     drained = await pending_messages_module.drain_pending_messages(
         session_id, text_only=text_only
@@ -1661,6 +1661,38 @@ async def test_a_message_leaving_the_queue_is_never_in_neither_place(
 
     assert [m.id for m in drained] == [message.id]
     assert seen == [True]
+
+
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="needs Redis",
+)
+@pytest.mark.parametrize("text_only", [True, False], ids=["mid-turn", "turn-start"])
+async def test_a_drain_that_cannot_record_what_it_takes_takes_nothing(
+    text_only: bool,
+) -> None:
+    """Recording a message as taken fails (here the record's key holds the
+    wrong type, so Redis refuses the write). The drain must then leave the
+    message queued: popped but unrecorded, a sender whose push raised finds
+    it nowhere and gives back the answers of a decision still on its way."""
+    session_id = f"s-{uuid4()}"
+    message = PendingMessage(content="Approved: hire Maya (confirmation_id: c-1).")
+    await pending_messages_module.push_pending_message(session_id, message)
+    redis = await redis_client.get_redis_async()
+    await redis.set(pending_messages_module._taken_key(session_id), "not a set")
+    try:
+        with contextlib.suppress(Exception):
+            await pending_messages_module.drain_pending_messages(
+                session_id, text_only=text_only
+            )
+
+        queued = await pending_messages_module.peek_pending_messages(session_id)
+        assert [m.id for m in queued] == [message.id]
+        assert await pending_messages_module.pending_message_waiting(
+            session_id, message.id
+        )
+    finally:
+        await redis.delete(pending_messages_module._taken_key(session_id))
 
 
 def test_stream_chat_keeps_the_claim_a_waiting_retransmit_only_held(
