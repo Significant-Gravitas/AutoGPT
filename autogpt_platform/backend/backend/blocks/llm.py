@@ -53,6 +53,7 @@ from backend.util import json
 # them here so existing ``from backend.blocks.llm import
 # ToolContentBlock`` imports keep working.
 from backend.util.llm.conversions import ToolCall, ToolContentBlock
+from backend.util.llm.prompt_refusal import PromptRefusedError, is_prompt_refused
 from backend.util.llm.provider_billing import (
     ProviderUnavailableError,
     is_provider_out_of_credits,
@@ -332,6 +333,8 @@ async def llm_call(
                     node_exec_id=ctx.node_exec_id if ctx else None,
                 )
                 raise ProviderUnavailableError() from e
+            if is_prompt_refused(e):
+                raise PromptRefusedError() from e
             raise
 
 
@@ -671,6 +674,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 return f"JSON decode error: {e}"
 
         error_feedback_message = ""
+        refusal: PromptRefusedError | None = None
         llm_model = input_data.model
         total_provider_cost: float | None = None
 
@@ -813,6 +817,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     # account stays empty however many times we ask.
                     error_feedback_message = str(e)
                     break
+                if isinstance(e, PromptRefusedError):
+                    # A judgement on the prompt itself, like the user errors below.
+                    refusal = e
+                    break
                 is_user_error = (
                     isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
                     and e.status_code in USER_ERROR_STATUS_CODES
@@ -860,6 +868,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     provider_cost_type="cost_usd",
                 )
             )
+        if refusal is not None:
+            raise refusal
         raise RuntimeError(error_feedback_message)
 
     def response_format_instructions(

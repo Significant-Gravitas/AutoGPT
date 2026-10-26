@@ -22,20 +22,31 @@ export function HistoryView({
   onSelect,
 }: Props) {
   return (
-    <div className="flex flex-col gap-3">
+    <div
+      data-slot="skill-learning-sheet-history"
+      className="flex flex-col gap-3"
+    >
       <Text variant="small" tone="muted">
         Restoring affects future use only and cannot undo actions already taken.
         The current version stays in history.
       </Text>
-      <ul className="flex flex-col gap-2" aria-label="Version history">
+      <ul
+        data-slot="skill-learning-sheet-history-list"
+        className="flex flex-col gap-2"
+        aria-label="Version history"
+      >
         {versions.map((version) => {
           const restorable = canRestore(version, currentVersionId);
           return (
             <li
               key={version.id}
-              className="flex flex-col gap-1 rounded-lg bg-zinc-50 p-3 sm:flex-row sm:items-center sm:justify-between"
+              data-slot="skill-learning-sheet-history-item"
+              className="flex flex-col gap-1 rounded-lg bg-surface-muted p-3 sm:flex-row sm:items-center sm:justify-between"
             >
-              <div className="min-w-0">
+              <div
+                data-slot="skill-learning-sheet-history-item-info"
+                className="min-w-0"
+              >
                 <Text variant="small-medium" tone="primary">
                   v{version.version} · {version.origin_label}
                   {version.id === currentVersionId ? " · current" : ""}
@@ -48,7 +59,10 @@ export function HistoryView({
                   {version.summary ? ` · ${version.summary}` : ""}
                 </Text>
               </div>
-              <div className="flex shrink-0 gap-2">
+              <div
+                data-slot="skill-learning-sheet-history-item-actions"
+                className="flex shrink-0 gap-2"
+              >
                 <Button
                   variant="ghost"
                   size="small"

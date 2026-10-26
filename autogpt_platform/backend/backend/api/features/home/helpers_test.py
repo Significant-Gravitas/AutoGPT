@@ -1,11 +1,14 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 from backend.api.features.library.model import LibraryAgentRef
 from backend.executor.scheduler import GraphExecutionJobInfo
 
 from .activity import compose_upcoming_tasks
 from .helpers import (
+    AgentRef,
     agent_refs_by_graph,
     experts_by_graph,
     experts_by_schedule,
@@ -180,3 +183,57 @@ def test_a_removed_library_agent_still_names_its_runs_without_a_link() -> None:
     assert agents["graph-live"].library_agent_id == "lib-live"
     assert agents["graph-gone"].name == "Sum Agent"
     assert agents["graph-gone"].library_agent_id is None
+
+
+def test_a_scheduled_workflow_missing_from_the_library_is_named_by_its_schedule() -> (
+    None
+):
+    job = _job("job-1", next_run="2026-08-10T10:00:00Z").model_copy(
+        update={"agent_name": "Smart Meeting Prep"}
+    )
+    unnamed_ref = LibraryAgentRef(id="lib-1", graph_id="graph-unnamed", name="")
+    unnamed_job = job.model_copy(update={"graph_id": "graph-unnamed"})
+
+    agents = agent_refs_by_graph([], [unnamed_ref], [job, unnamed_job])
+
+    assert agents[SHARED_GRAPH] == AgentRef(
+        name="Smart Meeting Prep", library_agent_id=None
+    )
+    assert agents["graph-unnamed"].name == "Smart Meeting Prep"
+    assert agents["graph-unnamed"].library_agent_id == "lib-1"
+
+
+def test_a_library_or_expert_name_outranks_the_schedules() -> None:
+    job = _job("job-1", next_run="2026-08-10T10:00:00Z").model_copy(
+        update={"agent_name": "Old schedule name"}
+    )
+    refs = [LibraryAgentRef(id="lib-1", graph_id=SHARED_GRAPH, name="Inbox triage")]
+
+    assert agent_refs_by_graph([], refs, [job])[SHARED_GRAPH].name == "Inbox triage"
+    by_expert = agent_refs_by_graph([_expert("alice")], [], [job])
+    assert by_expert[SHARED_GRAPH].name == "Inbox triage"
+
+
+@pytest.mark.parametrize(
+    "names, expected",
+    [
+        (["Morning prep", "Evening prep"], None),
+        (["Evening prep", "Morning prep"], None),
+        (["Daily prep", "Daily prep"], "Daily prep"),
+        (["Daily prep", None], None),
+    ],
+)
+def test_a_graph_takes_a_schedule_name_only_when_its_schedules_agree(
+    names: list[str | None], expected: str | None
+) -> None:
+    # Older runs carry no schedule id, so one schedule's name may not be theirs.
+    jobs = [
+        _job(f"job-{index}", next_run="2026-08-10T10:00:00Z").model_copy(
+            update={"agent_name": name}
+        )
+        for index, name in enumerate(names)
+    ]
+
+    agent = agent_refs_by_graph([], [], jobs).get(SHARED_GRAPH)
+
+    assert (agent.name if agent else None) == expected

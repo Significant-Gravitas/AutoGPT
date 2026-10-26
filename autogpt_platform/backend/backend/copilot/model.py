@@ -19,6 +19,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
+from prisma.enums import APIKeyPermission
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
@@ -509,6 +510,21 @@ class ChatSession(ChatSessionInfo):
     guide in the system prompt. Cleared by the restart handler; never
     persisted — the durable mode signal is the tool call in message
     history."""
+
+    external_caller: bool = Field(default=False, exclude=True)
+    """Runtime flag: True when an External API client calls one tool directly
+    (the v2 MCP server). Each such call gets a fresh session with no history,
+    so the checks that look for an earlier call in this session (the
+    agent-building guide, the library search before creating an agent) could
+    never pass; the client is offered those same tools and decides itself
+    when to call them. Never persisted."""
+
+    external_permissions: frozenset[APIKeyPermission] = Field(
+        default=frozenset(), exclude=True
+    )
+    """Runtime: the permissions of the External API credential behind an
+    external call, for a tool whose effects reach past the permissions it is
+    exposed with. Never persisted."""
 
     @classmethod
     def new(

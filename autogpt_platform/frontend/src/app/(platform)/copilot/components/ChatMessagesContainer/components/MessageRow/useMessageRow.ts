@@ -23,6 +23,10 @@ export function useMessageRow({
   sessionSentFrom,
 }: Args) {
   const { role, parts, metadata } = message;
+  // These memos stay with the compiler on. They are the only hooks here, so
+  // without them this compiles as a plain function and caches nothing; and
+  // the row would cache the whole result on every prop it gets, rebuilding
+  // `renderableParts` when only, say, `isLastInTurn` changed.
   const runMetadata = useMemo(() => getWorkRunMetadata(metadata), [metadata]);
   const notice = useMemo(() => getScheduledChatNotice(metadata), [metadata]);
   const runPreview = useMemo(
