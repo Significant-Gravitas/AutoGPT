@@ -59,6 +59,19 @@ export const variants = {
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
   "body-medium-tight":
     "font-sans text-body font-medium leading-5 text-foreground-base",
+  "body-md": "font-sans text-body-md font-normal text-foreground-base",
+  "body-md-medium": "font-sans text-body-md font-medium text-foreground-base",
+  // Keeps the parent's line height, like the raw size it replaced.
+  "body-sm-medium-inherit":
+    "font-sans text-body-sm font-medium leading-inherit text-foreground-base",
+  small: "font-sans text-caption font-normal text-foreground-base",
+  "small-medium": "font-sans text-caption font-medium text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-semibold-tight":
+    "font-sans text-body font-semibold leading-5 text-foreground-base",
+  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
+  "body-mono-tight":
+    "font-mono text-body font-normal leading-5 text-foreground-base",
   "body-semibold": "font-sans text-body font-semibold text-foreground-base",
   // A search match inside a body-medium title.
   "body-bold": "font-sans text-body font-bold text-foreground-base",
@@ -72,12 +85,6 @@ export const variants = {
   // stepping up to body-lg (16px/24px) below md like the raw sizes it replaced.
   "body-tight-touch":
     "font-sans text-body font-normal leading-5 text-foreground-base max-md:text-body-lg max-md:leading-6",
-  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
-  "body-semibold-tight":
-    "font-sans text-body font-semibold leading-5 text-foreground-base",
-  // Keeps the parent's line height, like the raw size it replaced.
-  "body-sm-medium-inherit":
-    "font-sans text-body-sm font-medium leading-inherit text-foreground-base",
   // body-sm-medium-inherit that steps up to body (14px/20px) below md, like
   // the responsive raw sizes it replaced.
   "body-sm-medium-inherit-touch":
@@ -86,8 +93,6 @@ export const variants = {
   // stepping up to body (14px/20px) below md like the raw sizes it replaced.
   "small-medium-tight-touch":
     "font-sans text-caption font-medium leading-4 text-foreground-base max-md:text-body max-md:leading-5",
-  small: "font-sans text-caption font-normal text-foreground-base",
-  "small-medium": "font-sans text-caption font-medium text-foreground-base",
   "small-mono": "font-mono text-caption font-normal text-foreground-base",
   "small-semibold": "font-sans text-caption font-semibold text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
@@ -113,8 +118,17 @@ export const variants = {
   "small-medium-tight":
     "font-sans text-caption font-medium leading-4 text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-uppercase-tight":
+    "font-sans text-caption font-normal uppercase leading-4 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-mono-tight":
     "font-mono text-caption font-normal leading-4 text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-mono-tight-tracking":
+    "font-mono text-caption font-normal leading-4 tracking-tight text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1.21875rem; caption plus leading-relaxed.
+  "small-relaxed":
+    "font-sans text-caption font-normal leading-relaxed text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-medium-mono-tight":
     "font-mono text-caption font-medium leading-4 text-foreground-base",
@@ -131,9 +145,6 @@ export const variants = {
   // A link inside a block card. TODO(tokens): no role is 0.75rem/1.25rem.
   "small-medium-loose-underline":
     "font-sans text-caption font-medium leading-5 underline text-foreground-base",
-  // TODO(tokens): no role is 0.75rem/1.21875rem; caption plus leading-relaxed.
-  "small-relaxed":
-    "font-sans text-caption font-normal leading-relaxed text-foreground-base",
   // Keeps the parent's line height, e.g. a link inside an Alert paragraph.
   "small-medium-inherit":
     "font-sans text-caption font-medium leading-inherit text-foreground-base",
@@ -146,9 +157,6 @@ export const variants = {
     "font-sans text-[0.6785rem] font-medium uppercase leading-5 tracking-[0.06785rem] text-foreground-base",
   eyebrow:
     "font-sans text-caption font-medium uppercase leading-4 tracking-eyebrow text-foreground-tertiary",
-  // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
-  "body-mono-tight":
-    "font-mono text-body font-normal leading-5 text-foreground-base",
   // TODO(tokens): no mono role at caption-sm (0.6875rem/1rem, text-[11px]).
   "caption-sm-mono":
     "font-mono text-caption-sm font-normal text-foreground-base",
@@ -164,6 +172,9 @@ export const variants = {
   // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl) and no tracking token is -0.025em (tracking-tight); the raw values stay.
   "2xl-bold-tracking-tight":
     "font-sans text-2xl font-bold tracking-tight text-foreground-base",
+  // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
+  "small-mono-bold-tight":
+    "font-mono text-caption font-bold leading-4 text-foreground-base",
 } as const;
 
 export type Variant = keyof typeof variants;
@@ -183,8 +194,13 @@ export const tones = {
   error: "text-error", // #EF4444
   warning: "text-warning-foreground", // #B45309
   success: "text-success", // #149443
+  disabled: "text-foreground-disabled", // #C5C5C9
   // The parent's colour, for copy inside a control that changes it on hover.
   inherit: "text-inherit",
+  // TODO(tokens): no role for text-emerald-300 #6EE7B7 (on a dark fill).
+  "success-light": "text-emerald-300",
+  // TODO(tokens): no role for text-emerald-700 #047857.
+  "success-strong": "text-emerald-700",
   // TODO(tokens): no role for text-amber-800 #92400E.
   "warning-strong": "text-amber-800",
 } as const;
@@ -216,6 +232,8 @@ export const variantElementMap: Record<Variant, As> = {
   "body-line-through": "p",
   "body-tight-italic": "p",
   "body-medium-tight": "p",
+  "body-md": "p",
+  "body-md-medium": "p",
   "body-tight-touch": "p",
   "body-semibold-tight": "p",
   "body-sm-medium-inherit": "p",
@@ -223,7 +241,6 @@ export const variantElementMap: Record<Variant, As> = {
   "small-medium-tight-touch": "p",
   small: "p",
   "small-medium": "p",
-  "small-mono": "p",
   "small-tight": "p",
   "small-tight-underline": "p",
   "small-semibold": "p",
@@ -233,21 +250,25 @@ export const variantElementMap: Record<Variant, As> = {
   "small-line-through": "p",
   "small-medium-loose-underline": "p",
   "small-medium-tight": "p",
+  "small-uppercase-tight": "span",
   "small-mono-tight": "code",
+  "small-mono-tight-tracking": "code",
+  "body-mono-tight": "code",
+  "small-mono": "p",
+  "small-relaxed": "p",
   "small-medium-mono-tight": "code",
   "small-loose": "p",
   "small-bold-loose": "p",
   "small-medium-loose": "p",
-  "small-relaxed": "p",
   "small-medium-inherit": "span",
   "tiny-inherit": "span",
   label: "span",
   eyebrow: "span",
-  "body-mono-tight": "code",
   "caption-sm-mono": "span",
   "lg-semibold": "h3",
   "2xl-bold": "div",
   "2xl": "span",
   "lg-medium": "h3",
   "2xl-bold-tracking-tight": "h1",
+  "small-mono-bold-tight": "code",
 };
