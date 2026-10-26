@@ -95,6 +95,10 @@ EMBEDDING_BACKFILL_BATCH_SIZE = int(os.getenv("E2E_EMBEDDING_BATCH_SIZE", "100")
 EMBEDDING_BACKFILL_TIMEOUT_SECONDS = float(
     os.getenv("E2E_EMBEDDING_TIMEOUT_SECONDS", "900")
 )
+# Per request; the slowest of 13,509 in two passing CI seeds took 4.4 s.
+EMBEDDING_REQUEST_TIMEOUT_SECONDS = float(
+    os.getenv("E2E_EMBEDDING_REQUEST_TIMEOUT_SECONDS", "30")
+)
 
 SEEDED_TEST_EMAILS = [
     "test123@example.com",
@@ -1411,6 +1415,10 @@ async def main():
         if args.refresh_credentials_only:
             await refresh_seeded_credentials()
         else:
+            # Bounds each embedding request. Not in the backfill itself: the admin route
+            # runs that inside the server, whose cached client other callers share.
+            if client := get_openai_client():
+                client.timeout = EMBEDDING_REQUEST_TIMEOUT_SECONDS
             creator = TestDataCreator()
             await creator.create_all_test_data()
     finally:
