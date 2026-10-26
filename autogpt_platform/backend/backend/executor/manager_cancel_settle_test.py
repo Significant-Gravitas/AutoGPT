@@ -7,8 +7,9 @@ cancel is not reported as an error.
 import asyncio
 import logging
 import threading
+import time
 import uuid
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -49,10 +50,20 @@ async def _completed_block(**kwargs):
     return TimingInfo(cpu_time=0.1, wall_time=1.0), ExecutionStatus.COMPLETED
 
 
-class _Run:
-    """The node's collaborators, with the reconciliation charge held open."""
+async def _failing_block(**kwargs):
+    raise RuntimeError("provider down")
+    yield  # pragma: no cover - makes this an async generator
 
-    def __init__(self, charge_started, charge_answers):
+
+async def _answers_at_once():
+    return None
+
+
+class _Run:
+    """The node's collaborators, with the reconciliation charge held open
+    until ``charge_answers`` returns."""
+
+    def __init__(self, charge_started, charge_answers=_answers_at_once):
         self.charge_started = charge_started
         self.charge_answers = charge_answers
         self.db_client = MagicMock(
@@ -123,6 +134,35 @@ class _Run:
         )
 
 
+@contextmanager
+def _node_loop():
+    """The executor's node loop on its own thread, as in production, so the
+    run's thread stops the node with stop() and wait_for_done()."""
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    try:
+        yield loop
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=5)
+        loop.close()
+
+
+def _until(flag: threading.Event):
+    async def wait():
+        while not flag.is_set():
+            await asyncio.sleep(0.01)
+
+    return wait
+
+
+def _start_node(loop, run: _Run, processor, progress: NodeExecutionProgress):
+    future = asyncio.run_coroutine_threadsafe(run.node_run(processor, progress), loop)
+    progress.add_task("node-exec-1", future)
+    return future
+
+
 @pytest.mark.asyncio
 async def test_a_stop_during_the_charge_still_settles_the_node(caplog):
     processor = ExecutionProcessor()
@@ -157,90 +197,109 @@ async def test_a_stop_during_the_charge_still_settles_the_node(caplog):
 
 
 def test_the_runs_cleanup_waits_for_a_stopped_nodes_bookkeeping():
-    """As in a real stop: the node runs on the node loop, the run's thread
-    cancels it with stop(), whose future is done at once, and wait_for_done
-    must still hold the cleanup until the node's final status is written."""
-    loop = asyncio.new_event_loop()
-    thread = threading.Thread(target=loop.run_forever, daemon=True)
-    thread.start()
+    """The run's thread cancels the node with stop(), whose future is done at
+    once, and wait_for_done must still hold the cleanup until the node's
+    final status is written."""
     charge_answers = threading.Event()
-
-    async def wait_for_answer():
-        while not charge_answers.is_set():
-            await asyncio.sleep(0.01)
-
-    run = _Run(threading.Event(), wait_for_answer)
+    run = _Run(threading.Event(), _until(charge_answers))
     processor = ExecutionProcessor()
     progress = NodeExecutionProgress()
-    try:
-        with ExitStack() as stack:
-            run.patches(stack)
-            stack.enter_context(
-                patch.object(processor, "_on_node_execution", new=_completed_block)
-            )
-            future = asyncio.run_coroutine_threadsafe(
-                run.node_run(processor, progress), loop
-            )
-            progress.add_task("node-exec-1", future)
-            assert run.charge_started.wait(timeout=5)
+    with _node_loop() as loop, ExitStack() as stack:
+        run.patches(stack)
+        stack.enter_context(
+            patch.object(processor, "_on_node_execution", new=_completed_block)
+        )
+        future = _start_node(loop, run, processor, progress)
+        assert run.charge_started.wait(timeout=5)
 
-            assert progress.stop() == ["node-exec-1"]
-            assert future.done()
-            with pytest.raises(TimeoutError):
-                progress.wait_for_done(timeout=0.3)
-            assert not run.settled()
+        assert progress.stop() == ["node-exec-1"]
+        assert future.done()
+        with pytest.raises(TimeoutError):
+            progress.wait_for_done(timeout=0.3)
+        assert not run.settled()
 
-            charge_answers.set()
-            progress.wait_for_done(timeout=5)
+        charge_answers.set()
+        progress.wait_for_done(timeout=5)
 
-            assert run.settle_call()["status"] == ExecutionStatus.COMPLETED
-            run.update_graph.assert_awaited_once()
-    finally:
-        loop.call_soon_threadsafe(loop.stop)
-        thread.join(timeout=5)
-        loop.close()
+        assert run.settle_call()["status"] == ExecutionStatus.COMPLETED
+        run.update_graph.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_a_stop_while_a_failed_block_writes_its_error_still_settles_it():
-    """The block has failed and its error output is being written when the
-    stop lands: the write finishes and the node is still charged and failed."""
-    processor = ExecutionProcessor()
-    error_write_started = asyncio.Event()
-    error_write_answers = asyncio.Event()
-
-    async def charge_answers():
-        return None
-
-    run = _Run(asyncio.Event(), charge_answers)
+def test_the_runs_cleanup_waits_for_a_failed_blocks_error_write():
+    """The stop lands before the bookkeeping has begun, while a failed block
+    still writes its error output: the cleanup waits for that write and then
+    for the bookkeeping, so the node's FAILED status lands first."""
+    error_write_started = threading.Event()
+    error_write_answers = threading.Event()
+    run = _Run(threading.Event())
 
     async def write_error(**kwargs):
         error_write_started.set()
-        await error_write_answers.wait()
+        await _until(error_write_answers)()
 
     run.db_client.upsert_execution_output = AsyncMock(side_effect=write_error)
-
-    async def failing_block(**kwargs):
-        raise RuntimeError("provider down")
-        yield  # pragma: no cover - makes this an async generator
-
-    with ExitStack() as stack:
+    processor = ExecutionProcessor()
+    progress = NodeExecutionProgress()
+    with _node_loop() as loop, ExitStack() as stack:
         run.patches(stack)
         stack.enter_context(
-            patch("backend.executor.manager.execute_node", new=failing_block)
+            patch("backend.executor.manager.execute_node", new=_failing_block)
         )
-        node_run = asyncio.ensure_future(
-            run.node_run(processor, NodeExecutionProgress())
-        )
-        await error_write_started.wait()
-        node_run.cancel()
-        await asyncio.sleep(0)
-        error_write_answers.set()
-        await node_run
+        _start_node(loop, run, processor, progress)
+        assert error_write_started.wait(timeout=5)
 
-    run.db_client.upsert_execution_output.assert_awaited_once()
-    assert run.charge_calls == 1
-    settled = run.settle_call()
-    assert settled["status"] == ExecutionStatus.FAILED
-    assert settled["stats"]["reconciled_cost_delta"] == 7
-    assert run.graph_stats.node_error_count == 1
+        assert progress.stop() == ["node-exec-1"]
+        with pytest.raises(TimeoutError):
+            progress.wait_for_done(timeout=0.3)
+        assert not run.settled()
+
+        error_write_answers.set()
+        progress.wait_for_done(timeout=5)
+
+        assert run.charge_calls == 1
+        settled = run.settle_call()
+        assert settled["status"] == ExecutionStatus.FAILED
+        assert settled["stats"]["reconciled_cost_delta"] == 7
+        run.update_graph.assert_awaited_once()
+
+
+def test_a_block_that_ignores_the_stop_holds_the_cleanup_only_briefly():
+    """A block that swallows the cancel must not hold a stopped run past the
+    unwind grace, or the stop request would time out."""
+    release = threading.Event()
+    block_started = threading.Event()
+
+    async def stubborn_block(**kwargs):
+        block_started.set()
+        while not release.is_set():
+            try:
+                await asyncio.sleep(0.01)
+            except asyncio.CancelledError:
+                pass
+        return TimingInfo(cpu_time=0.1, wall_time=1.0), ExecutionStatus.COMPLETED
+
+    run = _Run(threading.Event())
+    processor = ExecutionProcessor()
+    progress = NodeExecutionProgress()
+    with _node_loop() as loop, ExitStack() as stack:
+        run.patches(stack)
+        stack.enter_context(
+            patch.object(processor, "_on_node_execution", new=stubborn_block)
+        )
+        stack.enter_context(
+            patch("backend.executor.utils.NODE_UNWIND_GRACE_SECONDS", 0.3)
+        )
+        future = _start_node(loop, run, processor, progress)
+        assert block_started.wait(timeout=5)
+
+        progress.stop()
+        started = time.monotonic()
+        progress.wait_for_done(timeout=5)
+        assert time.monotonic() - started < 2
+
+        assert future.cancelled()
+        release.set()
+        deadline = time.monotonic() + 5
+        while not run.update_graph.await_count and time.monotonic() < deadline:
+            time.sleep(0.01)
+        run.update_graph.assert_awaited_once()

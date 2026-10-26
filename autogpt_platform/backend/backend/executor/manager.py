@@ -905,6 +905,10 @@ class ExecutionProcessor:
             node_id=node_exec.node_id,
             block_name=block.name if block else "-",
         )
+        # A stop marks this node done before its task has unwound; the run's
+        # cleanup waits for the task itself too (see wait_for_done).
+        if task := asyncio.current_task():
+            node_exec_progress.track_unwinding(node_exec.node_exec_id, task)
         db_client = get_db_async_client()
         node = await db_client.get_node(node_exec.node_id)
         execution_stats = NodeExecutionStats()

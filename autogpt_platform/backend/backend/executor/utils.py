@@ -1950,26 +1950,47 @@ class ExecutionOutputEntry(BaseModel):
     produced_at: float = Field(default_factory=time.monotonic, exclude=True)
 
 
+# How long a stopped run's cleanup waits for a node's task to unwind after
+# the cancel. A block that ignores the cancel gets no more than this, so a stop
+# still ends within stop_graph_execution's 15 s wait.
+NODE_UNWIND_GRACE_SECONDS = 5.0
+
+
 class NodeExecutionProgress:
     def __init__(self):
         self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
         self.tasks: dict[str, Future] = {}
         self._lock = threading.Lock()
-        # Node runs still writing up a finished block. A stop marks their
-        # task done at once, so wait_for_done watches these as well.
-        self._settling: set[str] = set()
+        # A stop marks a node's future done at once, before its task has
+        # unwound to the bookkeeping for its block, so wait_for_done watches
+        # the task itself and then the bookkeeping. See wait_for_done.
+        self._unwinding: dict[asyncio.Future, str] = {}
+        self._settling: dict[asyncio.Future, str] = {}
 
     def add_task(self, node_exec_id: str, task: Future):
         self.tasks[node_exec_id] = task
 
-    def track_settling(self, node_exec_id: str, settle: asyncio.Future) -> None:
-        with self._lock:
-            self._settling.add(node_exec_id)
-        settle.add_done_callback(lambda _: self._settled(node_exec_id))
+    def track_unwinding(self, node_exec_id: str, task: asyncio.Future) -> None:
+        self._track(self._unwinding, node_exec_id, task)
 
-    def _settled(self, node_exec_id: str) -> None:
+    def track_settling(self, node_exec_id: str, settle: asyncio.Future) -> None:
+        self._track(self._settling, node_exec_id, settle)
+
+    def _track(
+        self,
+        pending: dict[asyncio.Future, str],
+        node_exec_id: str,
+        work: asyncio.Future,
+    ) -> None:
         with self._lock:
-            self._settling.discard(node_exec_id)
+            pending[work] = node_exec_id
+        work.add_done_callback(lambda done: self._untrack(pending, done))
+
+    def _untrack(
+        self, pending: dict[asyncio.Future, str], work: asyncio.Future
+    ) -> None:
+        with self._lock:
+            pending.pop(work, None)
 
     def add_output(self, output: ExecutionOutputEntry):
         with self._lock:
@@ -2029,6 +2050,12 @@ class NodeExecutionProgress:
         """
         Wait for all cancelled tasks to complete cancellation.
 
+        A node's bookkeeping, once begun, is waited for in full: the run's
+        terminal write would otherwise fail the node before its own status
+        lands. A node's task still unwinding to that bookkeeping is waited
+        for up to NODE_UNWIND_GRACE_SECONDS, since a block may ignore the
+        cancel.
+
         Args:
             timeout: Maximum time to wait for cancellation in seconds
         """
@@ -2038,14 +2065,18 @@ class NodeExecutionProgress:
             while self.pop_output():
                 pass
 
-            if self.is_done() and not self._settling:
+            unwound = (
+                not self._unwinding
+                or time.time() - start_time >= NODE_UNWIND_GRACE_SECONDS
+            )
+            if self.is_done() and unwound and not self._settling:
                 return
 
             time.sleep(0.1)  # Small delay to avoid busy waiting
 
         raise TimeoutError(
             "Timeout waiting for cancellation of tasks: "
-            f"{list(self.tasks.keys()) + sorted(self._settling)}"
+            f"{list(self.tasks.keys()) + sorted(self._settling.values())}"
         )
 
     def _pop_done_task(self, exec_id: str) -> bool:
