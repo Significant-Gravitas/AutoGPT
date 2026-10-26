@@ -4,6 +4,7 @@ import { useEffect, useReducer, useSyncExternalStore } from "react";
 
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { Key, storage } from "@/services/storage/local-storage";
 
 import {
   readPermission,
@@ -55,6 +56,8 @@ export function useNotificationSettings() {
   async function toggleNotifications() {
     if (isNotificationsEnabled) {
       setNotificationsEnabled(false);
+      // A deliberate "off" must not bring the chat's turn-on banner back.
+      storage.set(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED, "true");
       return;
     }
 

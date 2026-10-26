@@ -73,6 +73,10 @@ describe("NotificationSettingsControls", () => {
     await waitFor(() =>
       expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(false),
     );
+    // A deliberate "off" keeps the chat's turn-on banner from coming back.
+    expect(
+      window.localStorage.getItem("copilot-notification-banner-dismissed"),
+    ).toBe("true");
   });
 
   it("asks the browser for permission when switching on", async () => {
