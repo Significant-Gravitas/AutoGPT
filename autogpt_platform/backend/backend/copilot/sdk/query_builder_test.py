@@ -11,6 +11,7 @@ from backend.copilot.sdk.service import (
     _build_query_message,
     _format_conversation_context,
 )
+from backend.copilot.session_cleanup import prune_orphan_tool_calls
 
 # ---------------------------------------------------------------------------
 # _format_conversation_context
@@ -158,6 +159,51 @@ async def test_build_query_resume_misaligned_watermark():
     # Misaligned watermark → skip gap, return bare message
     assert result == "turn 3"
     assert stats is None
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_keeps_follow_ups_saved_after_a_pruned_block():
+    """A turn stopped mid tool call; the follow-ups it had read were saved
+    after its orphan tool-use row. The turn-start prune drops that row from
+    before them, so they no longer sit at the position of their sequence.
+    The transcript covers through the orphan row (watermark 4): the gap is
+    the two follow-ups, not skipped as a misaligned watermark."""
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="turn 1", sequence=0),
+            ChatMessage(role="assistant", content="reply 1", sequence=1),
+            ChatMessage(role="user", content="turn 2", sequence=2),
+            ChatMessage(
+                role="assistant",
+                content="",
+                sequence=3,
+                tool_calls=[
+                    {
+                        "id": "toolu_orphan",
+                        "type": "function",
+                        "function": {"name": "hire_expert", "arguments": "{}"},
+                    }
+                ],
+            ),
+            ChatMessage(role="user", content="follow-up one", sequence=4),
+            ChatMessage(role="user", content="follow-up two", sequence=5),
+            ChatMessage(role="user", content="turn 3", sequence=6),
+        ]
+    )
+    assert prune_orphan_tool_calls(session.messages) == 1
+
+    result, _ = await _build_query_message(
+        "turn 3",
+        session,
+        use_resume=True,
+        transcript_msg_count=4,
+        session_id="test-session",
+    )
+
+    assert "follow-up one" in result
+    assert "follow-up two" in result
+    assert "turn 2" not in result
+    assert result.endswith("Now, the user says:\nturn 3")
 
 
 @pytest.mark.asyncio

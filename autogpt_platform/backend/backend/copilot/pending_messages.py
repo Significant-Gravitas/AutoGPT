@@ -26,6 +26,7 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Awaitable
 from typing import Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
@@ -35,7 +36,6 @@ from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import (
     capped_rpush,
     capped_rpush_if_hash_field,
-    pop_matching_list_prefix,
     string_compare_and_set,
 )
 
@@ -55,6 +55,9 @@ _PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
 # the tool wrapper (which injects them into tool output) to sdk/service.py
 # (which persists a user row after the tool_result row).
 _PERSIST_QUEUE_KEY_PREFIX = "copilot:pending-persist:"
+# The ids a drain took from a session's queue, kept as long as the queue
+# itself would have kept them.
+_TAKEN_KEY_PREFIX = "copilot:pending-taken:"
 
 # Payload sent on the pub/sub notify channel.  Subscribers treat any
 # message as a wake-up hint; the value itself is not meaningful.
@@ -109,6 +112,10 @@ class PendingMessage(BaseModel):
     # never forwards it, so a human message stays metadata-free.
     metadata: dict[str, Any] | None = None
     model_image: ToolImage | None = None
+    # The claim owner of the card decisions this message carries, so a Stop
+    # that drops it unsaved takes back that sender's claims and approvals
+    # and no one else's. Kept in the queue only, never on the saved row.
+    card_owner: str | None = None
 
 
 def _buffer_key(session_id: str) -> str:
@@ -377,32 +384,16 @@ async def drain_pending_messages(
 ) -> list[PendingMessage]:
     """Atomically pop all pending messages for *session_id*.
 
-    Returns them in enqueue order (oldest first). Text-only consumers
-    stop before the first image, atomically removing just the inspected
-    prefix if it has not changed. Other consumers drain with ``LPOP``.
+    Returns them in enqueue order (oldest first). Every drain removes just
+    the prefix it inspected, atomically and only if it has not changed;
+    text-only consumers stop that prefix before the first image, and a prefix
+    that changed before the take is read again. The ids are marked taken in
+    the same step that takes them (see ``pending_message_waiting``).
     """
     redis = await get_redis_async()
-    key = _buffer_key(session_id)
-
-    if text_only:
-        items = await cast("Any", redis.lrange(key, 0, MAX_PENDING_MESSAGES - 1))
-        prefix: list[str] = []
-        for item in items:
-            payload = _decode_redis_item(item)
-            try:
-                message = _from_buffer(json.loads(payload))
-            except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
-                prefix.append(payload)
-                continue
-            if message.model_image is not None:
-                break
-            prefix.append(payload)
-        lpop_result = await pop_matching_list_prefix(redis, key, prefix)
-    else:
-        lpop_result = await cast("Any", redis.lpop(key, MAX_PENDING_MESSAGES))
-    if not lpop_result:
+    raw_popped = await _take_inspected_prefix(redis, session_id, text_only)
+    if not raw_popped:
         return []
-    raw_popped: list[Any] = list(lpop_result)
 
     # redis-py may return bytes or str depending on decode_responses.
     decoded: list[str] = [_decode_redis_item(item) for item in raw_popped]
@@ -425,6 +416,111 @@ async def drain_pending_messages(
             session_id,
         )
     return messages
+
+
+def _taken_key(session_id: str) -> str:
+    return f"{_TAKEN_KEY_PREFIX}{{{session_id}}}"
+
+
+def _carries_image(payload: str) -> bool:
+    try:
+        return _from_buffer(json.loads(payload)).model_image is not None
+    except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
+        return False
+
+
+def _ids_in(payloads: list[str]) -> list[str]:
+    ids: list[str] = []
+    for payload in payloads:
+        try:
+            ids.append(_from_buffer(json.loads(payload)).id)
+        except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
+            continue
+    return ids
+
+
+# A take finds the queue's head changed only when someone else took from it
+# between the read and the take: another drain, or a Stop's cleanup. Each
+# retry reads what is there now.
+_TAKE_ATTEMPTS = 3
+
+
+async def _take_inspected_prefix(
+    redis: Any, session_id: str, text_only: bool
+) -> list[str | bytes]:
+    """Read the queue's head and take it, reading again if it changed in
+    between: a miss must not leave queued messages out of this turn."""
+    for _ in range(_TAKE_ATTEMPTS):
+        items = await cast(
+            "Any", redis.lrange(_buffer_key(session_id), 0, MAX_PENDING_MESSAGES - 1)
+        )
+        prefix: list[str] = []
+        for item in items or []:
+            payload = _decode_redis_item(item)
+            if text_only and _carries_image(payload):
+                break
+            prefix.append(payload)
+        if not prefix:
+            return []
+        # Marked taken in the same step that takes them off the queue: a
+        # sender whose push raised asks whether its message landed, and it
+        # must never be in neither place. If the mark cannot be written,
+        # nothing is taken.
+        taken = await _take_prefix(redis, session_id, prefix)
+        if taken:
+            return taken
+    logger.warning(
+        "pending_messages: queue kept changing under the drain for session=%s;"
+        " leaving it for the next drain",
+        session_id,
+    )
+    return []
+
+
+# Takes a prefix the drain inspected off the queue, only if it is still
+# there, and records its ids as taken in the same step. The record is written
+# first: if Redis refuses it, the script stops before the trim and the queue
+# keeps the messages. Both keys share the session's hash tag, so one script
+# may touch both on a cluster.
+_TAKE_PREFIX_LUA = """
+local n = tonumber(ARGV[2])
+local current = redis.call('LRANGE', KEYS[1], 0, n - 1)
+if #current ~= n then return {} end
+for i = 1, n do
+    if current[i] ~= ARGV[2 + i] then return {} end
+end
+if #ARGV > 2 + n then
+    redis.call('SADD', KEYS[2], unpack(ARGV, 3 + n))
+    redis.call('EXPIRE', KEYS[2], ARGV[1])
+end
+redis.call('LTRIM', KEYS[1], n, -1)
+return current
+"""
+
+
+async def _take_prefix(
+    redis: Any, session_id: str, prefix: list[str]
+) -> list[str | bytes]:
+    """Pop the inspected prefix and record its message ids as taken, both or
+    neither. A sender whose push raised after its write landed asks whether
+    its message was queued; once a turn has drained (and perhaps saved) it,
+    only the record still says so."""
+    if not prefix:
+        return []
+    result = await cast(
+        "Any",
+        redis.eval(
+            _TAKE_PREFIX_LUA,
+            2,
+            _buffer_key(session_id),
+            _taken_key(session_id),
+            _PENDING_TTL_SECONDS,
+            len(prefix),
+            *prefix,
+            *_ids_in(prefix),
+        ),
+    )
+    return list(result or [])
 
 
 def _from_buffer(data: Any) -> PendingMessage:
@@ -530,6 +626,63 @@ async def stash_pending_for_persist(
             session_id,
             exc_info=True,
         )
+
+
+async def pending_message_waiting(session_id: str, message_id: str) -> bool | None:
+    """Whether the message with this id waits in the session's queue, waits
+    in the persist queue a drain moves it to, or was taken by a drain. None
+    when nothing was found and Redis could not answer every look.
+
+    The queue is read before the taken set: a drain records the message in
+    the same step that takes it, so a read that misses it in the queue finds
+    it in the set. Read the other way round, a drain between the two reads
+    would hide it from both."""
+    looks = (
+        lambda: _message_in(peek_pending_messages(session_id), message_id),
+        lambda: _message_in(peek_pending_for_persist(session_id), message_id),
+        lambda: _taken(session_id, message_id),
+    )
+    unanswered = False
+    for look in looks:
+        try:
+            if await look():
+                return True
+        except Exception:
+            unanswered = True
+            logger.warning(
+                "pending_messages: could not look for message in session=%s",
+                session_id,
+                exc_info=True,
+            )
+    return None if unanswered else False
+
+
+async def _message_in(
+    messages: Awaitable[list[PendingMessage]], message_id: str
+) -> bool:
+    return any(message.id == message_id for message in await messages)
+
+
+async def _taken(session_id: str, message_id: str) -> bool:
+    redis = await get_redis_async()
+    return bool(await cast("Any", redis.sismember(_taken_key(session_id), message_id)))
+
+
+async def peek_pending_for_persist(session_id: str) -> list[PendingMessage]:
+    """The drained messages still waiting to be saved as rows, unconsumed."""
+    redis = await get_redis_async()
+    items = await cast("Any", redis.lrange(_persist_queue_key(session_id), 0, -1))
+    messages: list[PendingMessage] = []
+    for item in items or []:
+        try:
+            messages.append(_from_buffer(json.loads(_decode_redis_item(item))))
+        except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
+            logger.warning(
+                "pending_messages: skipping malformed persist-queue entry for %s: %s",
+                session_id,
+                e,
+            )
+    return messages
 
 
 async def drain_pending_for_persist(session_id: str) -> list[PendingMessage]:

@@ -414,6 +414,35 @@ describe("ChatMessagesContainer — queuedMessages", () => {
     expect(container.textContent).not.toContain("credential://");
   });
 
+  it("shows a queued card decision as a note of what was decided, without its id", () => {
+    const { container } = render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={[
+          "Approved: hire Maya (confirmation_id: c-queued-1).\nNot approved: do not hire Ada, discard that proposal (confirmation_id: c-queued-2).",
+        ]}
+      />,
+    );
+    expect(screen.getByText("You approved hiring Maya")).toBeDefined();
+    expect(screen.getByText("You declined hiring Ada")).toBeDefined();
+    expect(screen.getByText("Queued")).toBeDefined();
+    expect(container.textContent).not.toContain("confirmation_id");
+    expect(container.textContent).not.toContain("c-queued-1");
+  });
+
+  it("keeps a queued message the user wrote around a decision line as their message", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={[
+          "Approved: hire Maya (confirmation_id: c-queued-1).\nAnd start Monday.",
+        ]}
+      />,
+    );
+    expect(screen.queryByText("You approved hiring Maya")).toBeNull();
+    expect(screen.getByText(/And start Monday\./)).toBeDefined();
+  });
+
   it("renders multiple queued messages as separate bubbles", () => {
     render(
       <ChatMessagesContainer
@@ -793,6 +822,49 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
     const badge = screen.getByTestId("queue-badge");
     expect(badge.getAttribute("data-session-id")).toBe("sess-123");
   });
+
+  it.each([
+    ["queued", false, true],
+    ["running", false, false],
+    ["queued", true, false],
+  ])(
+    "keeps the queue badge under a card decision note (session %s, readOnly=%s)",
+    (sessionChatStatus, readOnly, shown) => {
+      const userId = "user-decision";
+      const turnStats: TurnStatsMap = new Map([
+        [userId, { isLatestUserMessage: true, rawMessageId: "uuid-d1" }],
+      ]);
+      const messages: Message[] = [
+        {
+          id: userId,
+          role: "user" as const,
+          parts: [
+            {
+              type: "text" as const,
+              text: "Approved: hire Maya (confirmation_id: c-1).",
+              state: "done" as const,
+            },
+          ],
+        },
+      ];
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={messages}
+          turnStats={turnStats}
+          sessionChatStatus={sessionChatStatus}
+          readOnly={readOnly}
+        />,
+      );
+
+      expect(
+        screen.getByText(
+          readOnly ? "Approved hiring Maya" : "You approved hiring Maya",
+        ),
+      ).toBeDefined();
+      expect(screen.queryByTestId("queue-badge") !== null).toBe(shown);
+    },
+  );
 
   it.each([false, true])(
     "shows and copies only the delegated task (readOnly=%s)",

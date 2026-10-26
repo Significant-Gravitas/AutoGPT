@@ -14,6 +14,7 @@ import {
 
 import { handleStreamError } from "./copilotStreamErrorHandlers";
 import { useCopilotStreamStore } from "./copilotStreamStore";
+import { isDecisionOnlyText, isUnsentDecisionRow } from "./cardDecisions";
 import {
   clearKickoffPending,
   getKickoffAttemptTokenFromMetadata,
@@ -132,12 +133,18 @@ export function useCopilotRuntimeStream({
         lastSubmittedKickoffExpertId: null,
         lastSubmittedKickoffAttemptToken: null,
       });
+    const sentText = coord.lastSubmittedMessageText ?? "";
+    let keepsUnsentRow = false;
     // The backend refuses a turn over our cap (429) or without a plan (402)
     // before persisting its prompt: put the text back in an empty composer
     // and drop the bubble.
     function restoreUnsentSend() {
+      keepsUnsentRow = true;
       if (!coord.lastSubmittedMessageText) return;
-      if (kickoffExpertId) clearRecovery();
+      // A proposal card's decision line is the card's protocol, id and all:
+      // the card asks again instead.
+      if (kickoffExpertId || isDecisionOnlyText(coord.lastSubmittedMessageText))
+        clearRecovery();
       else if (isComposerEmpty()) {
         setInitialPrompt(coord.lastSubmittedMessageText);
         clearRecovery();
@@ -157,10 +164,30 @@ export function useCopilotRuntimeStream({
           setRateLimitMessage(limitFailure?.message || message);
         }
       },
-      onReconnect: () => runtime?.ensureConnected(),
+      onReconnect: () => {
+        keepsUnsentRow = true;
+        runtime?.ensureConnected();
+      },
       onPaywall: restoreUnsentSend,
       isUserStoppingRef,
     });
+    // A card decision the server refused is the card's protocol: left on
+    // screen, its unsaved row reads as the card's answer, so it goes and the
+    // card asks again. Only that row: the send memory outlives the send. The
+    // chat is read again, since a route can save the row and still fail (a
+    // turn that never started): then the card shows that answer instead.
+    const newest = runtime?.getSnapshot().segments.at(-1);
+    if (
+      !keepsUnsentRow &&
+      newest?.kind === "user" &&
+      newest.origin === "sent" &&
+      newest.sequence === null &&
+      isUnsentDecisionRow(newest.message, sentText)
+    ) {
+      clearRecovery();
+      runtime?.dropUnsentUserRow();
+      void refetchSession().catch(() => undefined);
+    }
     if (!kickoffExpertId) return;
     if (userId && kickoffAttemptToken) {
       void withKickoffLock(userId, kickoffExpertId, async () => {

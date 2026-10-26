@@ -375,7 +375,7 @@ def _session(mode: AutopilotMode, expert_id: str | None = None) -> ChatSession:
 
 async def _send(session: ChatSession, content: str) -> None:
     """What the chat route does with a message the user sends, then the row it saves."""
-    await record_card_decisions(_USER, session.session_id, content)
+    await record_card_decisions(_USER, session.session_id, content, by="click-1")
     _reply(session, content)
 
 

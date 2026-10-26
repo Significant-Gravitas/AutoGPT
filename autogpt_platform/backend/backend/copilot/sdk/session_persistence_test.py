@@ -271,6 +271,31 @@ class TestPruneOrphanToolCalls:
         assert len(messages) == 1
         assert messages[-1].role == "user"
 
+    def test_a_follow_up_saved_after_the_orphan_does_not_hide_it(self) -> None:
+        """A follow-up the model read in a tool result is saved as the turn
+        ends, after the orphan tool_use and the stop notice. Those still go;
+        the user rows after them stay."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="do something"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[self._tool_call("tc_abc")],
+            ),
+            ChatMessage(role="assistant", content=STOPPED_BY_USER_MARKER),
+            ChatMessage(
+                role="user", content="Approved: hire Maya (confirmation_id: c-1)."
+            ),
+        ]
+
+        removed = prune_orphan_tool_calls(messages)
+
+        assert removed == 2
+        assert [m.content for m in messages] == [
+            "do something",
+            "Approved: hire Maya (confirmation_id: c-1).",
+        ]
+
     def test_stop_strips_stopped_by_user_marker_and_orphan(self) -> None:
         """The service also appends a ``STOPPED_BY_USER_MARKER`` after a
         user stop when the stream loop exits cleanly; both tail rows must go."""

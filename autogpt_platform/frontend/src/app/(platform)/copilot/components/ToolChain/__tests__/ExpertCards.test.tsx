@@ -446,6 +446,8 @@ describe("expert approval", () => {
     ).toContain("red");
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
 
+    // Still in flight: the card says so and offers nothing to change.
+    onSend.mockReturnValueOnce(new Promise(() => {}));
     await user.click(screen.getByRole("button", { name: "Send decisions" }));
     expect(onSend).toHaveBeenCalledTimes(1);
     expect(onSend).toHaveBeenCalledWith(
@@ -517,7 +519,7 @@ describe("expert approval", () => {
     );
   });
 
-  it("reports a rejected send and keeps the card marked sent", async () => {
+  it("reports a rejected send and lets the card send again", async () => {
     const user = userEvent.setup();
     onSend.mockRejectedValueOnce(new Error("boom"));
     renderGroup([proposal("Otto", "a")]);
@@ -528,14 +530,18 @@ describe("expert approval", () => {
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: "Couldn't send message",
+          title: "Couldn't send your decision",
           description:
-            "boom — it is still in the thread, use Retry to send it again.",
+            "boom — the card is still open, so you can send it again.",
           variant: "destructive",
         }),
       ),
     );
-    expect(screen.getByText("Sent")).toBeDefined();
+    // Nothing reached the chat, so the card asks again, with the choice kept.
+    expect(
+      await screen.findByRole("button", { name: "Send decisions" }),
+    ).toBeDefined();
+    expect(screen.queryByText("Sent")).toBeNull();
   });
 
   it("sends the verb the proposal actually asks for", async () => {

@@ -1,0 +1,66 @@
+[
+  {
+    "kind": "hire",
+    "name": "Maya",
+    "confirmation_id": "2616d1f1-16bb-43c1-92ad-61014ac9d123",
+    "verdict": "approved",
+    "verb": "hire",
+    "line": "Approved: hire Maya (confirmation_id: 2616d1f1-16bb-43c1-92ad-61014ac9d123).",
+    "note": "You approved hiring Maya"
+  },
+  {
+    "kind": "hire",
+    "name": "Maya",
+    "confirmation_id": "2616d1f1-16bb-43c1-92ad-61014ac9d123",
+    "verdict": "declined",
+    "verb": "hire",
+    "line": "Not approved: do not hire Maya, discard that proposal (confirmation_id: 2616d1f1-16bb-43c1-92ad-61014ac9d123).",
+    "note": "You declined hiring Maya"
+  },
+  {
+    "kind": "raise",
+    "name": "Ada (Ops), Jr.",
+    "confirmation_id": "c-raise",
+    "verdict": "approved",
+    "verb": "create",
+    "line": "Approved: create Ada (Ops), Jr. (confirmation_id: c-raise).",
+    "note": "You approved creating Ada (Ops), Jr."
+  },
+  {
+    "kind": null,
+    "name": "this expert",
+    "confirmation_id": "c-unknown",
+    "verdict": "declined",
+    "verb": "create",
+    "line": "Not approved: do not create this expert, discard that proposal (confirmation_id: c-unknown).",
+    "note": "You declined creating this expert"
+  },
+  {
+    "kind": "update",
+    "name": "Otto",
+    "confirmation_id": "c-update",
+    "verdict": "approved",
+    "verb": "update",
+    "line": "Approved: update Otto (confirmation_id: c-update).",
+    "note": "You approved updating Otto"
+  },
+  {
+    "kind": "soul",
+    "name": "your Soul",
+    "confirmation_id": "c-soul",
+    "verdict": "declined",
+    "verb": "update",
+    "line": "Not approved: do not update your Soul, discard that proposal (confirmation_id: c-soul).",
+    "note": "You declined updating your Soul"
+  },
+  {
+    "kind": "hire",
+    "card_name": "Ma\u000bya\u2028 Lin\u0085",
+    "name": "Ma ya Lin",
+    "confirmation_id": "c-control",
+    "verdict": "approved",
+    "verb": "hire",
+    "line": "Approved: hire Ma ya Lin (confirmation_id: c-control).",
+    "note": "You approved hiring Ma ya Lin"
+  }
+]

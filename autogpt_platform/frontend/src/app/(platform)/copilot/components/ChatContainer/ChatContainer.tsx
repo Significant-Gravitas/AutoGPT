@@ -57,6 +57,9 @@ import type { AutopilotMode } from "../../autopilotModeStore";
 import { AutopilotModeSelector } from "../ChatInput/components/AutopilotModeSelector/AutopilotModeSelector";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
+import { getCardDecisions } from "../../cardDecisions";
+import { extractDbSequence } from "../../helpers/convertChatSessionToUiMessages";
+import { isDecisionSavedInChat } from "./helpers";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -434,11 +437,29 @@ export const ChatContainer = ({
   const handleRetry = useStableCallback(async () => {
     if (isRetryingRef.current) return;
     isRetryingRef.current = true;
+    // Neither guess is safe when the chat cannot say: sending the decision
+    // again is refused if it was saved, and continuing without it skips it.
+    async function decisionWasSaved(
+      row: UIMessage<unknown, UIDataTypes, UITools>,
+    ) {
+      const saved = await isDecisionSavedInChat(row, sessionId);
+      if (saved === null)
+        throw new Error("We couldn't check whether your decision was saved");
+      return saved;
+    }
     async function resend() {
       const lastRow = [...messages].reverse().find((m) => m.role === "user");
       // A turn an answered card started failed after the call ran: resuming it
-      // must not re-send the request that led to the call.
-      if (lastRow && isHeldCallRow(lastRow)) {
+      // must not re-send the request that led to the call. Nor must a turn a
+      // saved proposal-card decision started answer that card again: the
+      // server refuses a second answer. One never saved is sent again.
+      if (
+        lastRow &&
+        (isHeldCallRow(lastRow) ||
+          (getCardDecisions(lastRow) &&
+            (extractDbSequence(lastRow) !== null ||
+              (await decisionWasSaved(lastRow)))))
+      ) {
         await guardedOnSend(CONTINUE_AFTER_HELD_CALL);
         return;
       }

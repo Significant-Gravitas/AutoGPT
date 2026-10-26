@@ -45,6 +45,7 @@ class _FakeRedis:
         # handle both and our tests exercise both.
         self.lists: dict[str, list[str | bytes]] = {}
         self.strings: dict[str, str] = {}
+        self.sets: dict[str, set[str]] = {}
         self.ttls: dict[str, int | None] = {}
         self.published: list[tuple[str, str]] = []
 
@@ -122,6 +123,8 @@ class _FakeRedis:
         key: str,
         *args: Any,
     ) -> int | list[str | bytes]:
+        if "SADD" in script:
+            return await self._take_prefix(numkeys, key, *args)
         if "LRANGE" in script:
             current = self.lists.get(key, [])[: len(args)]
             decoded = [
@@ -140,6 +143,24 @@ class _FakeRedis:
         else:
             self.strings.pop(key, None)
         return 1
+
+    async def _take_prefix(
+        self, numkeys: int, key: str, *args: Any
+    ) -> list[str | bytes]:
+        taken_key, _ttl, count, *rest = args
+        assert numkeys == 2
+        prefix, ids = rest[: int(count)], rest[int(count) :]
+        current = self.lists.get(key, [])[: len(prefix)]
+        decoded = [
+            item.decode() if isinstance(item, bytes) else item for item in current
+        ]
+        if decoded != prefix:
+            return []
+        self.sets.setdefault(taken_key, set()).update(ids)
+        return await self.lpop(key, len(prefix)) or []
+
+    async def sismember(self, key: str, member: str) -> int:
+        return int(member in self.sets.get(key, set()))
 
     async def exists(self, key: str) -> int:
         return int(key in self.strings or key in self.lists)
@@ -788,7 +809,8 @@ async def test_text_hook_redis_error_does_not_drop_the_queue(fake_redis, monkeyp
         fake_redis, "eval", AsyncMock(side_effect=ConnectionError("offline"))
     )
     assert await drain_and_format_for_injection("images", log_prefix="test") == ""
-    assert [message.content for message in await drain_pending_messages("images")] == [
+    # Read the queue itself: every drain now pops through the same script.
+    assert [message.content for message in await peek_pending_messages("images")] == [
         "before"
     ]
 
@@ -806,7 +828,8 @@ async def test_text_hook_does_not_pop_a_prefix_another_consumer_changed(
 
     monkeypatch.setattr(fake_redis, "eval", concurrent_drain)
     assert await drain_and_format_for_injection("images", log_prefix="test") == ""
-    assert [message.content for message in await drain_pending_messages("images")] == [
+    # Read the queue itself: every drain now pops through the same script.
+    assert [message.content for message in await peek_pending_messages("images")] == [
         "new"
     ]
 

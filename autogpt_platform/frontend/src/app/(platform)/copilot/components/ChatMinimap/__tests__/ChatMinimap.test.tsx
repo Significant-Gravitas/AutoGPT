@@ -213,6 +213,18 @@ describe("minimap helpers", () => {
     expect(entries.map((e) => e.id)).toEqual(["t1"]);
   });
 
+  it("never ticks a proposal card's decision, whose line carries an id", () => {
+    const entries = toMinimapEntries([
+      textMessage("t1", "user", "hire someone for marketing"),
+      textMessage(
+        "t2",
+        "user",
+        "Approved: hire Maya (confirmation_id: 2616d1f1-16bb-43c1-92ad-61014ac9d123).",
+      ),
+    ]);
+    expect(entries.map((e) => e.id)).toEqual(["t1"]);
+  });
+
   it("truncates long titles with an ellipsis", () => {
     const entries = toMinimapEntries([
       textMessage("t1", "user", "x".repeat(100)),

@@ -21,7 +21,8 @@ def prune_orphan_tool_calls(
     messages: list[ChatMessage],
     log_prefix: str | None = None,
 ) -> int:
-    """Pop trailing orphan tool-use blocks from *messages* in place.
+    """Pop trailing orphan tool-use blocks from *messages* in place, keeping
+    any user rows saved after them.
 
     A Stop mid-tool-call leaves the session ending on an assistant message
     whose ``tool_calls`` have no matching ``role="tool"`` row — the tool
@@ -42,10 +43,16 @@ def prune_orphan_tool_calls(
     ``start_sequence`` so no delete is needed; the same rows are popped
     again on the next session load.
     """
+    # User rows after the block stay: a follow-up the model read in a tool
+    # result, saved as the turn ended, or the next turn's own message. They
+    # would otherwise hide the orphan block before them from this scan.
+    end = len(messages)
+    while end > 0 and messages[end - 1].role == "user":
+        end -= 1
     cut_index: int | None = None
     resolved_ids: set[str] = set()
 
-    for i in range(len(messages) - 1, -1, -1):
+    for i in range(end - 1, -1, -1):
         msg = messages[i]
 
         if msg.role == "tool" and msg.tool_call_id:
@@ -75,8 +82,8 @@ def prune_orphan_tool_calls(
     if cut_index is None:
         return 0
 
-    removed = len(messages) - cut_index
-    del messages[cut_index:]
+    removed = end - cut_index
+    del messages[cut_index:end]
     if log_prefix:
         logger.info(
             "%s Dropped %d trailing orphan tool-use/stop row(s) "

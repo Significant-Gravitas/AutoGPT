@@ -10,6 +10,7 @@ routes.py stays free of Redis/Lua details.
 import asyncio
 import logging
 import uuid
+from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import HTTPException
@@ -32,6 +33,7 @@ from backend.copilot.pending_messages import (
     finish_despite_cancellation,
     peek_pending_count,
     pending_message_text,
+    pending_message_waiting,
     push_pending_message,
     push_pending_message_if_session_running,
     release_client_message,
@@ -46,7 +48,10 @@ from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import incr_with_ttl
 from backend.data.workspace import build_files_block, resolve_attachable_workspace_files
-from backend.data.workspace_folder import resolve_attachable_workspace_folders
+from backend.data.workspace_folder import (
+    WorkspaceFolder,
+    resolve_attachable_workspace_folders,
+)
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
 
 if TYPE_CHECKING:
@@ -154,6 +159,8 @@ async def queue_user_message(
     file_ids: list[str] | None = None,
     require_turn_in_flight: bool = False,
     metadata: dict[str, Any] | None = None,
+    card_owner: str | None = None,
+    pending_id: str | None = None,
 ) -> QueuePendingMessageResponse:
     """Push *message* into the per-session pending buffer.
 
@@ -162,15 +169,21 @@ async def queue_user_message(
     Call-frequency rate limiting is the caller's responsibility (HTTP path
     enforces it; internal block callers skip it).
 
-    ``metadata`` lands on the user row the message is persisted as. It is
-    for internal senders only (a session messaging another session); the
-    HTTP path never passes it.
+    ``metadata`` lands on the user row the message is persisted as. Only the
+    server sets it: a session messaging another session, or the chat route
+    tagging a proposal card's decision. No request field is ever copied in.
+    ``card_owner`` is the claim owner of the card decisions the message
+    carries; it stays in the queue, for a Stop that drops the message.
+    ``pending_id`` names the queued message, so a caller whose push errored
+    can look for it.
     """
     pending = PendingMessage(
         content=message,
         file_ids=file_ids or [],
         context=context,
         metadata=metadata or None,
+        card_owner=card_owner,
+        id=pending_id or str(uuid.uuid4()),
     )
     if require_turn_in_flight:
         new_len = await push_pending_message_if_session_running(
@@ -190,6 +203,25 @@ async def queue_user_message(
         max_buffer_length=MAX_PENDING_MESSAGES,
         turn_in_flight=await is_turn_in_flight(session_id),
     )
+
+
+def with_attachments_named(
+    message: str,
+    files: list["UserWorkspaceFile"],
+    folders: list[WorkspaceFolder],
+    *,
+    files_named: bool = True,
+) -> str:
+    """The message with its attachments named after what the user typed.
+
+    A queued message carries its files as ids, named when the turn reads it
+    (``files_named=False``), but its folders only in the text. When nothing
+    typed is left, as when an answered card's line was dropped, the
+    attachments are the whole message and are all named here, as a fresh
+    turn names them."""
+    if not message:
+        return build_files_block(files, folders).lstrip()
+    return message + build_files_block(files if files_named else [], folders)
 
 
 async def resolve_attachments_for_http(
@@ -219,6 +251,9 @@ async def queue_pending_for_http(
     folder_ids: list[str] | None,
     expert_id: str | None,
     client_message_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    on_queued: Callable[[], Awaitable[None]] | None = None,
+    card_owner: str | None = None,
 ) -> QueuePendingMessageResponse:
     """HTTP-facing wrapper around :func:`queue_user_message`.
 
@@ -241,21 +276,33 @@ async def queue_pending_for_http(
     is still being pushed waits for its outcome, and gets a 503 if that
     outlasts the wait.
 
+    ``on_queued`` runs once this request's message is in the queue, judged by
+    the push itself: on success, before a 429 from the rate cap, and after
+    the caller is cancelled while a push that then lands was still going,
+    with or without a client id. A retransmit of a send already accepted
+    queues nothing of its own, so it does not run.
+
     Raises :class:`HTTPException` with status 429 if the rate cap is hit or
     400 if an expert session attaches a file outside its scope; otherwise
     returns the ``QueuePendingMessageResponse`` the handler can serialise 1:1.
     """
     sanitized_file_ids: list[str] | None = None
+    files: list["UserWorkspaceFile"] = []
     if file_ids:
         files = await resolve_attachments_for_http(
             user_id, file_ids, session_id=session_id, expert_id=expert_id
         )
         sanitized_file_ids = [wf.id for wf in files] or None
+    folders: list[WorkspaceFolder] = []
     if folder_ids:
         folders = await resolve_attachable_workspace_folders(
             user_id, folder_ids, expert_id=expert_id
         )
-        message += build_files_block([], folders)
+    message = with_attachments_named(message, files, folders, files_named=False)
+    if not message:
+        # Nothing typed is left (an answered card's line was dropped) and
+        # nothing attached resolved: there is no message to queue.
+        raise HTTPException(status_code=400, detail="There is nothing to send.")
 
     # ``PendingMessageContext`` uses the default ``extra='ignore'`` so
     # unknown keys in the loose HTTP-level ``context`` dict are silently
@@ -280,10 +327,12 @@ async def queue_pending_for_http(
                 "for session=%s",
                 session_id,
             )
+            # Nothing of this request is queued: ``on_queued`` does not run.
             return await already_accepted_response(session_id)
         if claim == "reserved":
             raise client_message_in_progress_error()
 
+    pending_id = str(uuid.uuid4())
     push = asyncio.ensure_future(
         queue_user_message(
             session_id=session_id,
@@ -291,25 +340,37 @@ async def queue_pending_for_http(
             context=queue_context,
             file_ids=sanitized_file_ids,
             require_turn_in_flight=True,
+            metadata=metadata,
+            card_owner=card_owner,
+            pending_id=pending_id,
         )
     )
     try:
         response = await asyncio.shield(push)
     except asyncio.CancelledError:
         # The append may already have landed (the push still awaits its
-        # SPUBLISH), so settle the claim by what the push did, not by the
-        # cancellation: releasing it would let a retry queue a second copy.
-        if client_message_id is not None:
-            await finish_despite_cancellation(
-                asyncio.ensure_future(
-                    _settle_claim_of_cancelled_push(
-                        push, session_id, client_message_id, claim_owner
-                    )
+        # SPUBLISH), so settle by what the push did, not by the cancellation:
+        # releasing the claim would let a retry queue a second copy.
+        await finish_despite_cancellation(
+            asyncio.ensure_future(
+                _settle_cancelled_push(
+                    push,
+                    session_id,
+                    client_message_id,
+                    claim_owner,
+                    on_queued,
+                    pending_id,
                 )
             )
+        )
         raise
     except BaseException:
-        if client_message_id is not None:
+        # The write can commit before the error (a reply lost to a timeout
+        # or a reset): settle by whether the message is queued, not by the
+        # error, or its sender's answers go back for a message still queued.
+        if await pending_message_waiting(session_id, pending_id):
+            await _finish_queued(session_id, client_message_id, claim_owner, on_queued)
+        elif client_message_id is not None:
             await release_client_message(session_id, client_message_id, claim_owner)
         raise
     if not response.turn_in_flight:
@@ -319,8 +380,7 @@ async def queue_pending_for_http(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",
         )
-    if client_message_id is not None:
-        await accept_client_message(session_id, client_message_id, claim_owner)
+    await _finish_queued(session_id, client_message_id, claim_owner, on_queued)
 
     # Push landed — now charge the rate counter.  If this tick crosses the
     # limit we still keep the queued message (next drain will pick it up)
@@ -339,21 +399,55 @@ async def queue_pending_for_http(
     return response
 
 
-async def _settle_claim_of_cancelled_push(
+async def _settle_cancelled_push(
     push: "asyncio.Future[QueuePendingMessageResponse]",
     session_id: str,
-    client_message_id: str,
+    client_message_id: str | None,
     owner: str,
+    on_queued: Callable[[], Awaitable[None]] | None,
+    pending_id: str,
 ) -> None:
     try:
-        response = await push
+        queued = (await push).turn_in_flight
     except Exception:
+        # Raised, yet perhaps written first: the queue says which.
+        queued = bool(await pending_message_waiting(session_id, pending_id))
+    if queued:
+        await _mark_queued(session_id, client_message_id, owner, on_queued)
+    elif client_message_id is not None:
         await release_client_message(session_id, client_message_id, owner)
-        return
-    if response.turn_in_flight:
+
+
+async def _finish_queued(
+    session_id: str,
+    client_message_id: str | None,
+    owner: str,
+    on_queued: Callable[[], Awaitable[None]] | None,
+) -> None:
+    """The message is in the queue: mark the send taken, as one step that
+    finishes even if the caller is cancelled meanwhile. Cut short, the send
+    would be given back (its key, its card claim and approvals) while the
+    message it sent stays queued."""
+    mark = asyncio.ensure_future(
+        _mark_queued(session_id, client_message_id, owner, on_queued)
+    )
+    try:
+        await asyncio.shield(mark)
+    except asyncio.CancelledError:
+        await finish_despite_cancellation(mark)
+        raise
+
+
+async def _mark_queued(
+    session_id: str,
+    client_message_id: str | None,
+    owner: str,
+    on_queued: Callable[[], Awaitable[None]] | None,
+) -> None:
+    if client_message_id is not None:
         await accept_client_message(session_id, client_message_id, owner)
-    else:
-        await release_client_message(session_id, client_message_id, owner)
+    if on_queued is not None:
+        await on_queued()
 
 
 def client_message_in_progress_error() -> HTTPException:

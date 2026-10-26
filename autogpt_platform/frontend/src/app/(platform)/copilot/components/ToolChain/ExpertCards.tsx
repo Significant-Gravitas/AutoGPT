@@ -3,6 +3,7 @@
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  Cancel01Icon,
   InformationCircleIcon,
   PencilEdit02Icon,
   SentIcon,
@@ -18,10 +19,16 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
+import { type Decision, decisionLine } from "../../cardDecisions";
 import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { type ArtifactRef, useCopilotUIStore } from "../../store";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
+import { AnsweredCardsContext } from "./AnsweredCardsContext";
+import {
+  answeredIdsOnServer,
+  withAnswersFoundOnServer,
+} from "./answeredOnServer";
 import { SOUL_CHANGE_TOOLS } from "./helpers";
 import { asObject, str } from "./resultHelpers";
 
@@ -39,6 +46,8 @@ interface Props {
   onDecide?: (decision: Decision) => void;
   /** Takes the decision back so Approve/Decline can be chosen again. */
   onUndo?: () => void;
+  /** The chat already holds this card's answer: shown, never asked again. */
+  resolved?: ResolvedDecision;
   /** Footer control the group adds once every proposal is decided, or
    *  the sent note after. */
   action?: ReactNode;
@@ -49,7 +58,11 @@ interface Props {
 
 export type StepDirection = "forward" | "back";
 
-export type Decision = "approved" | "declined";
+interface ResolvedDecision {
+  verdict: Decision;
+  /** Who and when, as far as the chat knows: "by you · Oct 24, 3:05 PM". */
+  detail: string | null;
+}
 
 // Same shell as the chain's action card (connect / inputs / questions) so
 // every "your turn" card in the thread reads as one family.
@@ -124,19 +137,6 @@ function proposalOf(part: ToolUIPart): Proposal | null {
   };
 }
 
-// gate/card_approval.py reads the Approved line as the answer to the confirm.
-function decisionLine(proposal: Proposal, decision: Decision): string {
-  const verb =
-    proposal.kind === "hire"
-      ? "hire"
-      : proposal.kind === "update" || proposal.kind === "soul"
-        ? "update"
-        : "create";
-  return decision === "approved"
-    ? `Approved: ${verb} ${proposal.name} (confirmation_id: ${proposal.confirmationId}).`
-    : `Not approved: do not ${verb} ${proposal.name}, discard that proposal (confirmation_id: ${proposal.confirmationId}).`;
-}
-
 function withoutDecision(
   decisions: Record<string, Decision>,
   toolCallId: string,
@@ -190,6 +190,7 @@ export function ExpertChangeCard({
   decision = null,
   onDecide,
   onUndo,
+  resolved,
   action,
   stepDirection,
 }: Props) {
@@ -299,6 +300,7 @@ export function ExpertChangeCard({
           decision={decision}
           onDecide={onDecide}
           onUndo={onUndo}
+          resolved={resolved}
           action={action}
         />
       )}
@@ -321,6 +323,7 @@ function SoulChangeCard({
   decision = null,
   onDecide,
   onUndo,
+  resolved,
   action,
 }: Props) {
   const showFooter = !!pager || !!onDecide || !!decision || !!action;
@@ -359,6 +362,7 @@ function SoulChangeCard({
           decision={decision}
           onDecide={onDecide}
           onUndo={onUndo}
+          resolved={resolved}
           action={action}
         />
       )}
@@ -368,7 +372,7 @@ function SoulChangeCard({
 
 type FooterProps = Pick<
   Props,
-  "pager" | "decision" | "onDecide" | "onUndo" | "action"
+  "pager" | "decision" | "onDecide" | "onUndo" | "resolved" | "action"
 >;
 
 function DecisionFooter({
@@ -376,12 +380,14 @@ function DecisionFooter({
   decision = null,
   onDecide,
   onUndo,
+  resolved,
   action,
 }: FooterProps) {
   return (
     <div className={FOOTER}>
       <div className="min-w-0">{pager}</div>
       <div className="flex shrink-0 items-center gap-1.5">
+        {resolved && <ResolvedLabel resolved={resolved} />}
         {decision && onUndo && (
           <Button
             variant="secondary"
@@ -417,6 +423,37 @@ function DecisionFooter({
       </div>
     </div>
   );
+}
+
+function ResolvedLabel({ resolved }: { resolved: ResolvedDecision }) {
+  const approved = resolved.verdict === "approved";
+  return (
+    <span className="flex items-center gap-1.5 text-xs">
+      <Icon
+        icon={approved ? Tick02Icon : Cancel01Icon}
+        size={14}
+        className={approved ? "text-success" : "text-foreground-tertiary"}
+      />
+      <span className="font-medium text-foreground-body">
+        {approved ? "Approved" : "Declined"}
+      </span>
+      {resolved.detail && (
+        <span className="text-foreground-subtle">{resolved.detail}</span>
+      )}
+    </span>
+  );
+}
+
+function answeredDetail(at: string | null, readOnly: boolean): string | null {
+  const date = at ? new Date(at) : null;
+  const when =
+    date && !Number.isNaN(date.getTime())
+      ? date.toLocaleString(undefined, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        })
+      : null;
+  return [readOnly ? null : "by you", when].filter(Boolean).join(" · ") || null;
 }
 
 function isSoulChange(output: Record<string, unknown>): boolean {
@@ -476,6 +513,7 @@ interface PartProps {
   decision?: Decision | null;
   onDecide?: (decision: Decision) => void;
   onUndo?: () => void;
+  resolved?: ResolvedDecision;
   action?: ReactNode;
   stepDirection?: StepDirection;
 }
@@ -491,6 +529,7 @@ export function ExpertChangePart({
   decision,
   onDecide,
   onUndo,
+  resolved,
   action,
   stepDirection,
 }: PartProps) {
@@ -506,6 +545,7 @@ export function ExpertChangePart({
         decision={decision}
         onDecide={onDecide}
         onUndo={onUndo}
+        resolved={resolved}
         action={action}
         stepDirection={stepDirection}
       />
@@ -549,7 +589,14 @@ export function ExpertChangeGroup({
   const [direction, setDirection] = useState<StepDirection | undefined>();
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [sent, setSent] = useState(false);
+  const [foundOnServer, setFoundOnServer] = useState<
+    ReadonlyMap<string, Decision>
+  >(() => new Map());
   const actions = useContext(CopilotChatActionsContext);
+  const answered = withAnswersFoundOnServer(
+    useContext(AnsweredCardsContext),
+    foundOnServer,
+  );
   const visible = parts.filter((part) =>
     isVisibleExpertPart(part, isCurrentlyStreaming),
   );
@@ -561,10 +608,24 @@ export function ExpertChangeGroup({
   const proposals = visible
     .map(proposalOf)
     .filter((proposal): proposal is Proposal => proposal !== null);
+  // A card the chat already answered is history: its answer is shown and it
+  // is never asked, or sent, again — whatever this mount chose locally.
+  const open = proposals.filter(
+    (proposal) => !answered.has(proposal.confirmationId),
+  );
   const allDecided =
-    proposals.length > 0 &&
-    proposals.every((proposal) => decisions[proposal.toolCallId]);
-  const currentProposal = readOnly ? null : proposalOf(part);
+    open.length > 0 && open.every((proposal) => decisions[proposal.toolCallId]);
+  const currentAnswer = answerFor(part);
+  const currentProposal = readOnly || currentAnswer ? null : proposalOf(part);
+
+  function answerFor(target: ToolUIPart) {
+    const proposal = proposalOf(target);
+    return proposal ? (answered.get(proposal.confirmationId) ?? null) : null;
+  }
+
+  function shownDecision(target: ToolUIPart): Decision | undefined {
+    return answerFor(target)?.verdict ?? decisions[target.toolCallId];
+  }
 
   function goTo(next: number) {
     setDirection(next > current ? "forward" : "back");
@@ -582,23 +643,55 @@ export function ExpertChangeGroup({
     setDecisions(withoutDecision(decisions, currentProposal.toolCallId));
   }
 
-  function send() {
-    if (!actions) return;
-    const message = proposals
-      .map((proposal) => decisionLine(proposal, decisions[proposal.toolCallId]))
-      .join("\n");
-    // The card stays marked sent because the message is already in the
-    // thread for Retry — the failure only needs saying.
-    void Promise.resolve(actions.onSend(message)).catch((error: unknown) =>
-      toastSendFailure({
-        title: "Couldn't send message",
-        error,
-        recovery: "it is still in the thread, use Retry to send it again",
-        paywallRecovery:
-          "it is still in the thread, use Retry once you have a plan",
-      }),
-    );
+  async function send() {
+    if (!actions || sent) return;
     setSent(true);
+    // A tab opened before another one answered still shows the buttons: it
+    // sends only what is still open, and shows the rest as answered.
+    const answeredNow = actions.sessionId
+      ? await answeredIdsOnServer(
+          actions.sessionId,
+          open.map((proposal) => proposal.confirmationId),
+        )
+      : null;
+    const toSend = answeredNow
+      ? open.filter((proposal) => !answeredNow.has(proposal.confirmationId))
+      : open;
+    if (answeredNow) {
+      // What the check found shows now; the refetch brings the chat's copy.
+      setFoundOnServer(
+        new Map(
+          open.flatMap((proposal) => {
+            const verdict = answeredNow.get(proposal.confirmationId);
+            return verdict ? [[proposal.confirmationId, verdict] as const] : [];
+          }),
+        ),
+      );
+    }
+    if (toSend.length === 0) {
+      // Nothing to send: the refetch shows the answers that stand.
+      setSent(false);
+      actions.onBackendTurn?.();
+      return;
+    }
+    const message = toSend
+      .map((proposal) =>
+        decisionLine({ ...proposal, decision: decisions[proposal.toolCallId] }),
+      )
+      .join("\n");
+    // Once sent, the card shows the answer the chat holds; a send that never
+    // landed (refused before it was saved) leaves the card asking again.
+    void Promise.resolve(actions.onSend(message))
+      .catch((error: unknown) =>
+        toastSendFailure({
+          title: "Couldn't send your decision",
+          error,
+          recovery: "the card is still open, so you can send it again",
+          paywallRecovery:
+            "the card is still open, so you can send it again once you have a plan",
+        }),
+      )
+      .finally(() => setSent(false));
   }
 
   const pager = visible.length > 1 && (
@@ -613,21 +706,21 @@ export function ExpertChangeGroup({
         <Icon icon={ArrowLeft01Icon} size={14} />
       </button>
       <span className="flex items-center gap-1.5">
-        {visible.map(({ toolCallId }, i) => (
+        {visible.map((visiblePart, i) => (
           <button
-            key={toolCallId}
+            key={visiblePart.toolCallId}
             type="button"
             aria-label={`Go to expert ${i + 1}`}
             aria-current={i === current ? "step" : undefined}
-            data-decision={decisions[toolCallId]}
+            data-decision={shownDecision(visiblePart)}
             onClick={() => goTo(i)}
             className={cn(
               "rounded-full transition-all duration-300",
               i === current ? "size-2.5 border-2" : "size-2 border",
-              decisions[toolCallId] === "approved"
+              shownDecision(visiblePart) === "approved"
                 ? // TODO(tokens): no exact role for border-emerald-500, bg-emerald-500
                   "border-emerald-500 bg-emerald-500"
-                : decisions[toolCallId] === "declined"
+                : shownDecision(visiblePart) === "declined"
                   ? // TODO(tokens): no exact role for border-red-400, bg-red-400
                     "border-red-400 bg-red-400"
                   : i === current
@@ -655,22 +748,23 @@ export function ExpertChangeGroup({
   // While the turn is still streaming another proposal part can land in
   // this group, so the send waits for the stream to settle.
   const canSend = !readOnly && !!actions && allDecided && !isCurrentlyStreaming;
-  const action = sent ? (
-    <span className="flex items-center gap-1 text-xs text-foreground-subtle">
-      <Icon icon={Tick02Icon} size={14} />
-      Sent
-    </span>
-  ) : canSend ? (
-    <Button
-      variant="primary"
-      size="icon"
-      aria-label="Send decisions"
-      onClick={send}
-      className="size-8 p-0"
-    >
-      <Icon icon={SentIcon} size={15} />
-    </Button>
-  ) : null;
+  const action =
+    sent && open.length > 0 ? (
+      <span className="flex items-center gap-1 text-xs text-foreground-subtle">
+        <Icon icon={Tick02Icon} size={14} />
+        Sent
+      </span>
+    ) : canSend ? (
+      <Button
+        variant="primary"
+        size="icon"
+        aria-label="Send decisions"
+        onClick={() => void send()}
+        className="size-8 p-0"
+      >
+        <Icon icon={SentIcon} size={15} />
+      </Button>
+    ) : null;
 
   // The shell (Details, pager, decision buttons) is the same from one
   // expert to the next, so it stays mounted; only the identity block
@@ -681,9 +775,17 @@ export function ExpertChangeGroup({
         part={part}
         isCurrentlyStreaming={isCurrentlyStreaming}
         pager={pager || undefined}
-        decision={decisions[part.toolCallId] ?? null}
+        decision={shownDecision(part) ?? null}
         onDecide={currentProposal && !sent ? decide : undefined}
         onUndo={currentProposal && !sent ? undo : undefined}
+        resolved={
+          currentAnswer
+            ? {
+                verdict: currentAnswer.verdict,
+                detail: answeredDetail(currentAnswer.at, readOnly),
+              }
+            : undefined
+        }
         action={action || undefined}
         stepDirection={direction}
       />
