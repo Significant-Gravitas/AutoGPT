@@ -1,8 +1,10 @@
 import logging
 import re
 from enum import Enum
+from time import monotonic
 from typing import Optional
 
+import regex
 from typing_extensions import TypedDict
 
 from backend.blocks._base import (
@@ -25,6 +27,12 @@ from ._auth import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Compiling the search pattern isn't covered by the timeout, and the timeout
+# is shared by every line searched in one run.
+SEARCH_PATTERN_MAX_LENGTH = 10_000
+SEARCH_TIMEOUT_SECONDS = 5.0
+SEARCH_TIMED_OUT = "Searching the CI logs timed out."
 
 # GitHub check-run conclusions that count as a pass. Everything else that is
 # completed (failure, timed_out, action_required, cancelled, stale,
@@ -212,7 +220,8 @@ class GithubGetCIResultsBlock(Block):
             return []
 
         matched_lines = []
-        regex = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
+        compiled = _compile_search_pattern(pattern)
+        deadline = monotonic() + SEARCH_TIMEOUT_SECONDS
 
         for check in check_runs:
             output_text = check.get("output_text", "") or ""
@@ -221,7 +230,7 @@ class GithubGetCIResultsBlock(Block):
 
             lines = output_text.split("\n")
             for i, line in enumerate(lines):
-                if regex.search(line):
+                if _line_matches(compiled, line, deadline):
                     # Get context (2 lines before and after)
                     start = max(0, i - 2)
                     end = min(len(lines), i + 3)
@@ -402,3 +411,26 @@ class GithubGetCIResultsBlock(Block):
             )
             if matched_lines:
                 yield "matched_lines", matched_lines
+
+
+def _compile_search_pattern(pattern: str) -> regex.Pattern[str]:
+    if len(pattern) > SEARCH_PATTERN_MAX_LENGTH:
+        raise ValueError(
+            f"Search pattern is too large to evaluate safely "
+            f"({len(pattern)} characters; maximum {SEARCH_PATTERN_MAX_LENGTH})."
+        )
+    try:
+        return regex.compile(pattern, regex.IGNORECASE | regex.MULTILINE)
+    except regex.error as error:
+        raise ValueError(f"Invalid search pattern: {error}") from error
+
+
+def _line_matches(pattern: regex.Pattern[str], line: str, deadline: float) -> bool:
+    """Search one line with whatever is left of the run's search time."""
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        raise ValueError(SEARCH_TIMED_OUT)
+    try:
+        return pattern.search(line, timeout=remaining) is not None
+    except TimeoutError as error:
+        raise ValueError(SEARCH_TIMED_OUT) from error

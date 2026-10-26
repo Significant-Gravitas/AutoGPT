@@ -293,11 +293,11 @@ jobs:
       # ``redis-cli`` ships inside the FalkorDB image; the healthcheck
       # passes ``-a`` so AUTH succeeds rather than the daemon rejecting
       # an unauthenticated PING.
-      # Pinned to a concrete release (unlike the local compose ``:latest``)
-      # so an upstream FalkorDB push can't start failing CI on unrelated
-      # PRs; bump deliberately alongside the compose stack.
+      # Pinned to the release the cloud runs (``serviceVersion`` in the infra
+      # repo's FalkorDB chart): older releases refuse Cypher newer ones run.
+      # Bump every FalkorDB pin together with that chart (OPEN-3746, #16224).
       falkordb:
-        image: falkordb/falkordb:v4.18.9
+        image: falkordb/falkordb:v4.12.5
         ports:
           - 6380:6379
         env:
