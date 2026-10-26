@@ -1195,9 +1195,10 @@ async def delete_and_revoke_credentials(
 ) -> bool | None:
     """Delete the user's credentials, then revoke their tokens at the provider.
 
-    Shared by the DELETE route and account deletion. The caller has already
-    checked that the credentials exist, belong to `user_id` and are neither
-    SDK-default, system nor AutoGPT-managed.
+    Shared by the DELETE route, the External API's credential delete and
+    account deletion, so none of them can leave a live webhook or token
+    behind. The caller has already checked that the credentials exist, belong
+    to `user_id` and are neither SDK-default, system nor AutoGPT-managed.
 
     Returns whether the provider revoked the tokens, or `None` when there is
     nothing to revoke (e.g. an API key).

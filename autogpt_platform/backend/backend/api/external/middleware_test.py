@@ -1,64 +1,63 @@
-"""The external API rejects a key or OAuth token whose user closed their account.
+"""Which lookup a credential gets, what checking it costs, and that a banned
+owner's credential is refused.
 
-Deletion revokes every key and grant, but one minted while the account was
-closing, or by an admin acting as the user afterwards, would otherwise keep
-working until the account's data is erased.
+An API key is matched on its head and then hashed with Scrypt; an OAuth access
+token is looked up by its digest. A bearer in the token format must never be
+tried as a key: one old key headed like a token would otherwise make every
+forged token cost a hash, ahead of every rate limit.
 
-A key or token whose owner is banned is refused with a 403.
+A closed account's key or token is refused with a 401: deletion revokes every
+key and grant, but one minted while the account was closing, or by an admin
+acting as the user afterwards, would otherwise keep working until the
+account's data is erased.
 """
 
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import fastapi
 import pytest
+import pytest_mock
+from autogpt_libs.api_key.keysmith import APIKeySmith
 from autogpt_libs.auth import forget_account_state, remember_account_closed
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 from prisma.enums import APIKeyPermission, APIKeyStatus
-from pytest_mock import MockerFixture
 
 from backend.api.external import middleware
-from backend.api.external.middleware import (
-    require_access_token,
-    require_api_key,
-    require_auth,
-)
+from backend.api.external.middleware import resolve_auth_info
 from backend.data.auth.api_key import APIKeyInfo
-from backend.data.auth.oauth import OAuthAccessTokenInfo
+from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.auth.oauth import (
+    ACCESS_TOKEN_PREFIX,
+    REFRESH_TOKEN_PREFIX,
+    InvalidTokenError,
+    OAuthAccessTokenInfo,
+)
 
-MODULE = "backend.api.external.middleware"
-OPEN_USER = "open-external-user"
-CLOSED_USER = "closed-external-user"
-BEARER = HTTPAuthorizationCredentials(scheme="Bearer", credentials="agpt_xt_token")
-CLOSED = "This account is closed."
+_NOW = datetime.now(UTC)
 
-
-@pytest.fixture(autouse=True)
-def closed_account() -> Iterator[None]:
-    remember_account_closed(CLOSED_USER)
-    yield
-    for user_id in (OPEN_USER, CLOSED_USER):
-        forget_account_state(user_id)
+EVERY_CREDENTIAL = pytest.mark.parametrize(
+    "headers",
+    [
+        {"X-API-Key": "key"},
+        # MCP clients can only send an API key this way.
+        {"Authorization": "Bearer key"},
+        {"Authorization": f"Bearer {ACCESS_TOKEN_PREFIX}token"},
+    ],
+    ids=["api-key", "api-key-as-bearer", "access-token"],
+)
 
 
 @pytest.mark.parametrize(
     "state, status",
     [("banned", 403), ("until_tomorrow", 403), ("lapsed", 200), ("unbanned", 200)],
 )
-@pytest.mark.parametrize(
-    "path, headers",
-    [
-        ("/auth", {"X-API-Key": "key"}),
-        ("/auth", {"Authorization": "Bearer token"}),
-        ("/api-key", {"X-API-Key": "key"}),
-        ("/access-token", {"Authorization": "Bearer token"}),
-    ],
-)
+@EVERY_CREDENTIAL
 def test_a_credential_answers_by_its_owners_ban_state(
-    mocker, auth_row, state, status, path, headers
+    mocker, auth_row, state, status, headers
 ):
     user_id = auth_row(state)
     mocker.patch.object(middleware, "validate_api_key", return_value=_key(user_id))
@@ -66,13 +65,108 @@ def test_a_credential_answers_by_its_owners_ban_state(
         middleware, "validate_access_token", return_value=(_token(user_id), None)
     )
 
-    response = _client().get(path, headers=headers)
+    response = _client().get("/auth", headers=headers)
 
     assert response.status_code == status
     if status == 403:
         assert response.json()["detail"]["code"] == "account_banned"
     else:
         assert response.json() == {"user_id": user_id}
+
+
+@pytest.fixture
+def closed_owner(auth_row) -> Iterator[str]:
+    """Closing an account bans its sign-in too; the closed answer wins."""
+    user_id = auth_row("banned")
+    remember_account_closed(user_id)
+    yield user_id
+    forget_account_state(user_id)
+
+
+@EVERY_CREDENTIAL
+def test_a_closed_accounts_credential_is_refused_as_closed(
+    mocker, closed_owner, headers
+):
+    mocker.patch.object(middleware, "validate_api_key", return_value=_key(closed_owner))
+    mocker.patch.object(
+        middleware, "validate_access_token", return_value=(_token(closed_owner), None)
+    )
+
+    response = _client().get("/auth", headers=headers)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "This account is closed."}
+
+
+def _bearer(token: str) -> HTTPAuthorizationCredentials:
+    return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+
+def _principal() -> APIAuthorizationInfo:
+    return APIAuthorizationInfo(
+        user_id="user-1", scopes=[], type="api_key", created_at=datetime.now(UTC)
+    )
+
+
+async def test_a_token_shaped_bearer_is_never_tried_as_an_api_key(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    validate_key = mocker.patch(
+        "backend.api.external.middleware.validate_api_key", new_callable=AsyncMock
+    )
+    mocker.patch(
+        "backend.api.external.middleware.validate_access_token",
+        new_callable=AsyncMock,
+        side_effect=InvalidTokenError("not found"),
+    )
+
+    with pytest.raises(HTTPException) as rejected:
+        await resolve_auth_info(api_key=None, bearer=_bearer("agpt_xt_forged"))
+
+    assert rejected.value.status_code == 401
+    validate_key.assert_not_awaited()
+
+
+async def test_an_api_key_sent_as_a_bearer_still_authenticates(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """MCP clients can only send a key as a bearer."""
+    principal = _principal()
+    mocker.patch(
+        "backend.api.external.middleware.validate_api_key",
+        new_callable=AsyncMock,
+        return_value=principal,
+    )
+    validate_token = mocker.patch(
+        "backend.api.external.middleware.validate_access_token",
+        new_callable=AsyncMock,
+    )
+
+    assert await resolve_auth_info(api_key=None, bearer=_bearer("agpt_key")) is (
+        principal
+    )
+    validate_token.assert_not_awaited()
+
+
+async def test_a_token_shaped_value_sent_as_an_api_key_is_tried_as_one(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The header says what it is; the v2 limiter counts it as a key too."""
+    validate_key = mocker.patch(
+        "backend.api.external.middleware.validate_api_key",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    with pytest.raises(HTTPException):
+        await resolve_auth_info(api_key="agpt_xt_value", bearer=None)
+
+    validate_key.assert_awaited_once_with("agpt_xt_value")
+
+
+def test_no_api_key_is_issued_with_an_oauth_token_prefix() -> None:
+    assert ACCESS_TOKEN_PREFIX in APIKeySmith.RESERVED_PREFIXES
+    assert REFRESH_TOKEN_PREFIX in APIKeySmith.RESERVED_PREFIXES
 
 
 def _client() -> TestClient:
@@ -82,117 +176,28 @@ def _client() -> TestClient:
     async def by_auth(auth=fastapi.Security(middleware.require_auth)):
         return {"user_id": auth.user_id}
 
-    @app.get("/api-key")
-    async def by_api_key(auth=fastapi.Security(middleware.require_api_key)):
-        return {"user_id": auth.user_id}
-
-    @app.get("/access-token")
-    async def by_access_token(auth=fastapi.Security(middleware.require_access_token)):
-        return {"user_id": auth.user_id}
-
     return TestClient(app)
 
 
 def _key(user_id: str) -> APIKeyInfo:
     return APIKeyInfo(
         id="key-1",
-        name="integration",
+        name="Key",
         head="agpt_",
         tail="abcd",
         status=APIKeyStatus.ACTIVE,
         user_id=user_id,
-        scopes=[APIKeyPermission.IDENTITY],
-        created_at=datetime.now(timezone.utc),
+        scopes=[APIKeyPermission.EXECUTE_GRAPH],
+        created_at=_NOW,
     )
 
 
 def _token(user_id: str) -> OAuthAccessTokenInfo:
-    now = datetime.now(timezone.utc)
     return OAuthAccessTokenInfo(
         id="token-1",
         user_id=user_id,
-        scopes=[APIKeyPermission.IDENTITY],
-        created_at=now,
-        expires_at=now + timedelta(hours=1),
+        scopes=[APIKeyPermission.EXECUTE_GRAPH],
+        created_at=_NOW,
+        expires_at=_NOW + timedelta(hours=1),
         application_id="app-1",
     )
-
-
-def _validate_key(mocker: MockerFixture, user_id: str) -> None:
-    mocker.patch(
-        f"{MODULE}.validate_api_key",
-        new_callable=AsyncMock,
-        return_value=_key(user_id),
-    )
-
-
-def _validate_token(mocker: MockerFixture, user_id: str) -> None:
-    mocker.patch(
-        f"{MODULE}.validate_access_token",
-        new_callable=AsyncMock,
-        return_value=(_token(user_id), MagicMock()),
-    )
-
-
-async def _by_key() -> object:
-    return await require_api_key(api_key="agpt_key")
-
-
-async def _by_token() -> object:
-    return await require_access_token(bearer=BEARER)
-
-
-async def _auth_by_key() -> object:
-    return await require_auth(api_key="agpt_key", bearer=None)
-
-
-async def _auth_by_token() -> object:
-    return await require_auth(api_key=None, bearer=BEARER)
-
-
-KEY_CHECKS = [_by_key, _auth_by_key]
-TOKEN_CHECKS = [_by_token, _auth_by_token]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("check", KEY_CHECKS)
-async def test_a_closed_accounts_api_key_is_refused(mocker: MockerFixture, check):
-    _validate_key(mocker, CLOSED_USER)
-
-    with pytest.raises(HTTPException) as raised:
-        await check()
-
-    assert (raised.value.status_code, raised.value.detail) == (401, CLOSED)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("check", TOKEN_CHECKS)
-async def test_a_closed_accounts_oauth_token_is_refused(mocker: MockerFixture, check):
-    _validate_token(mocker, CLOSED_USER)
-
-    with pytest.raises(HTTPException) as raised:
-        await check()
-
-    assert (raised.value.status_code, raised.value.detail) == (401, CLOSED)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("check", KEY_CHECKS)
-async def test_an_open_accounts_api_key_still_works(mocker: MockerFixture, check):
-    _validate_key(mocker, OPEN_USER)
-
-    info = await check()
-
-    assert isinstance(info, APIKeyInfo)
-    assert info.user_id == OPEN_USER
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("check", TOKEN_CHECKS)
-async def test_an_open_accounts_oauth_token_still_works(mocker: MockerFixture, check):
-    _validate_token(mocker, OPEN_USER)
-
-    info = await check()
-
-    assert isinstance(info, OAuthAccessTokenInfo)
-    assert info.user_id == OPEN_USER

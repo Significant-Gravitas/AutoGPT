@@ -4,6 +4,7 @@ import {
   AlertTitle,
 } from "@/components/molecules/Alert/Alert";
 import Link from "next/link";
+import { Text } from "@/components/atoms/Text/Text";
 import { useGetV2GetLibraryAgentByGraphId } from "@/app/api/__generated__/endpoints/library/library";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useQueryStates, parseAsString } from "nuqs";
@@ -40,7 +41,9 @@ export const TriggerAgentBanner = () => {
           }
           className="underline"
         >
-          Workflow Library
+          <Text variant="body-tight" as="span" tone="inherit">
+            Workflow Library
+          </Text>
         </Link>
         .
       </AlertDescription>
