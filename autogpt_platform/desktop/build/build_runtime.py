@@ -555,6 +555,9 @@ class Build:
         removed = {
             # First: what imports a test directory is read from the sources.
             "tests of third-party packages": slim.unused_test_directories(packages),
+            "pip seeded by the interpreter, absent from the runtime lock": (
+                slim.unused_pip(packages, lock_export.export(LOCK))
+            ),
             "Google API descriptions the backend does not name": (
                 slim.unused_discovery_documents(packages, [backend, packages])
             ),
@@ -794,6 +797,7 @@ def never_shipped(out: Path) -> list[Path]:
         *(out / "prisma").rglob("*.dll.node"),
         *(out / "prisma").rglob("*.so.node"),
         *(out / "prisma").rglob("*.dylib.node"),
+        *slim.unused_pip(out / site_zip.PACKAGES, lock_export.export(LOCK)),
     ]
     return [path for path in candidates if path.exists()]
 
@@ -928,8 +932,14 @@ MAX_RELATIVE_PATH = 130
 # part of it files only Windows has: Linux would be about 1.9 to 2.0 GB.
 # Their budgets leave room over that until a build has printed their numbers
 # (the `[seal]` line), and are then to be set from them.
-# Windows: 23,616 with the standard library as files (1,087 of them).
-MAX_FILES = 24_500 if WINDOWS else 30_000
+# Windows' old basis was 23,616 expected files after restoring loose stdlib
+# (10b834df3a, 2026-10-03). Current-source CI run 40352729690/job 121679690040,
+# merge 7f93531574, measured 25,539, including 839 seeded pip files. Removing
+# pip projects at most 24,700; this is not a rebuilt measurement. Application
+# modules, migrations and docs have grown since the old basis. 25,000 leaves
+# 300 files over that projection and still rejects the unpruned tree. Confirm
+# the count at the next hosted seal; keep the byte and path budgets unchanged.
+MAX_FILES = 25_000 if WINDOWS else 30_000
 MAX_BYTES = 1_600_000_000 if WINDOWS else 2_300_000_000
 
 # OTP applications RabbitMQ and its Elixir-based CLI load.

@@ -220,6 +220,105 @@ def test_modules_outside_the_tests_still_import_pytest_which_is_why_it_ships():
     )
 
 
+def test_seeded_pip_is_not_a_locked_dependency_or_a_runtime_import():
+    assert not any(
+        re.match(r"pip(?:\s|[<>=!~;\[]|$)", requirement, re.IGNORECASE)
+        for requirement in lock_export.export(LOCK)
+    )
+    removed = set(backend_tests.removable(BACKEND))
+    for package in (
+        BACKEND,
+        PLATFORM / "autogpt_libs" / "autogpt_libs",
+        DESKTOP / "runtime" / "autogpt_desktop",
+    ):
+        assert "pip" not in top_level_imports(package, lambda path: path in removed)
+
+
+def test_seeded_pip_and_its_metadata_go_without_other_packages(tmp_path: Path):
+    site = write(
+        tmp_path / "site",
+        {
+            "pip/__init__.py": "",
+            "pip/_vendor/library.py": "",
+            "pip/__pycache__/__init__.cpython-313.pyc": "",
+            "pip-25.2.dist-info/METADATA": "Name: pip\n",
+            "setuptools/__init__.py": "",
+            "pkg_resources/__init__.py": "",
+            "pip_tools/__init__.py": "",
+            "pip_tools-1.0.dist-info/METADATA": "Name: pip-tools\n",
+        },
+    )
+    unused = slim.unused_pip(site, ["setuptools==80.9.0", "pip-tools==1.0"])
+    assert names(unused, site) == ["pip", "pip-25.2.dist-info"]
+    assert slim.remove(unused) == 4
+    assert slim.unused_pip(site, []) == []
+    assert (site / "setuptools" / "__init__.py").is_file()
+    assert (site / "pkg_resources" / "__init__.py").is_file()
+    assert (site / "pip_tools" / "__init__.py").is_file()
+    assert (site / "pip_tools-1.0.dist-info" / "METADATA").is_file()
+
+
+@pytest.mark.parametrize(
+    "requirement",
+    ["pip==25.2", "Pip>=25", "pip ; python_version > '3'", "pip @ file:///wheel"],
+)
+def test_a_locked_pip_is_never_pruned(tmp_path: Path, requirement: str):
+    site = write(tmp_path / "site", {"pip/__init__.py": ""})
+    assert slim.unused_pip(site, [requirement]) == []
+
+
+def test_seal_rejects_leftover_seeded_pip(tmp_path: Path):
+    out = write(
+        tmp_path / "runtime",
+        {"site/pip/__init__.py": "", "site/pip-25.2.dist-info/METADATA": "Name: pip\n"},
+    )
+    assert names(build_runtime.never_shipped(out), out) == [
+        "site/pip",
+        "site/pip-25.2.dist-info",
+    ]
+
+
+@pytest.mark.parametrize("relocated", [False, True])
+@pytest.mark.parametrize("required", [False, True])
+def test_prune_handles_seeded_pip_before_and_after_relocation(
+    tmp_path: Path, monkeypatch, relocated: bool, required: bool
+):
+    build = build_runtime.Build(tmp_path / "runtime", tmp_path / "cache")
+    write(
+        build.out,
+        {
+            "python/python.exe": "",
+            "erlang/lib/stdlib-1/ebin/stdlib.app": "",
+            "rabbitmq/plugins/rabbit-4.3.6/ebin/rabbit.app": (
+                "{application, rabbit, [{applications, [rabbitmq_prelaunch]}]}."
+            ),
+            "rabbitmq/plugins/rabbitmq_prelaunch-4.3.6/ebin/rabbitmq_prelaunch.app": (
+                "{application, rabbitmq_prelaunch, [{applications, []}]}."
+            ),
+            "rabbitmq/escript/rabbitmqctl": "",
+        },
+    )
+    site = write(
+        build.out / "site" if relocated else build.site_packages,
+        {
+            "pip/__init__.py": "",
+            "pip-25.2.dist-info/METADATA": "Name: pip\n",
+            "setuptools/__init__.py": "",
+            "pkg_resources/__init__.py": "",
+        },
+    )
+    requirements = ["setuptools==80.9.0", *(["pip==25.2"] if required else [])]
+    monkeypatch.setattr(lock_export, "export", lambda _: requirements)
+
+    build.step_prune()
+
+    assert (site / "pip" / "__init__.py").is_file() == required
+    assert (site / "pip-25.2.dist-info" / "METADATA").is_file() == required
+    assert (site / "setuptools" / "__init__.py").is_file()
+    assert (site / "pkg_resources" / "__init__.py").is_file()
+    assert build_runtime.never_shipped(build.out) == []
+
+
 def test_a_root_that_is_no_longer_a_dependency_is_said_so(tmp_path: Path):
     project = {
         "tool": {
@@ -1404,10 +1503,39 @@ def test_the_budgets_are_the_ones_the_size_work_was_held_to():
     """Loosening one is a decision, made here."""
     assert build_runtime.MAX_RELATIVE_PATH == 130
     if sys.platform == "win32":
-        # 23,616 files: 22,530 with the packages zipped, and the standard
-        # library's 1,087, which must stay files (site_zip.py).
-        assert build_runtime.MAX_FILES == 24_500
+        assert build_runtime.MAX_FILES == 25_000
         assert build_runtime.MAX_BYTES == 1_600_000_000
+    else:
+        assert build_runtime.MAX_FILES == 30_000
+        assert build_runtime.MAX_BYTES == 2_300_000_000
+
+
+def test_current_source_count_fits_only_after_seeded_pip_is_removed(
+    tmp_path: Path, monkeypatch
+):
+    """CI run 40352729690/job 121679690040, not a rebuilt bundle fixture."""
+    monkeypatch.setattr(site_zip, "longest_path", lambda _: (130, "x" * 130))
+    monkeypatch.setattr(build_runtime, "where_it_is", lambda _: [])
+    monkeypatch.setattr(site_zip, "count", lambda _: (25_539 - 839, 1_547_000_000))
+    assert build_runtime.over_budget(tmp_path) == []
+
+    monkeypatch.setattr(site_zip, "count", lambda _: (25_539, 1_547_000_000))
+    expected = ["25539 files, and the budget is 25000"] if build_runtime.WINDOWS else []
+    assert build_runtime.over_budget(tmp_path) == expected
+
+
+def test_file_budget_accepts_its_limit_and_rejects_one_more(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr(site_zip, "longest_path", lambda _: (0, ""))
+    monkeypatch.setattr(build_runtime, "where_it_is", lambda _: [])
+    limit = build_runtime.MAX_FILES
+    monkeypatch.setattr(site_zip, "count", lambda _: (limit, 0))
+    assert build_runtime.over_budget(tmp_path) == []
+    monkeypatch.setattr(site_zip, "count", lambda _: (limit + 1, 0))
+    assert build_runtime.over_budget(tmp_path) == [
+        f"{limit + 1} files, and the budget is {limit}"
+    ]
 
 
 def test_what_a_run_or_an_older_build_leaves_is_never_shipped(tmp_path: Path):

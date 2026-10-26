@@ -85,6 +85,25 @@ def remove(paths: Iterable[Path]) -> int:
 # --- Python packages ------------------------------------------------------
 
 
+def unused_pip(packages: Path, requirements: Iterable[str]) -> list[Path]:
+    """The interpreter's seeded installer, unless the runtime lock needs it.
+
+    uv installs the bundle's dependencies from outside this interpreter; its
+    sync can leave seeded pip behind. Keep all locked packages, including a
+    future explicit or transitive pip requirement, regardless of its marker.
+    """
+    if any(
+        re.match(r"pip(?:\s|[<>=!~;\[]|$)", line, re.IGNORECASE)
+        for line in requirements
+    ):
+        return []
+    return [
+        path
+        for path in [packages / "pip", *sorted(packages.glob("pip-*.dist-info"))]
+        if path.exists()
+    ]
+
+
 def build_only_files(root: Path) -> list[Path]:
     return [
         path
