@@ -8,7 +8,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/__legacy__/ui/card";
+} from "@/components/atoms/Card/Card";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 import { InfoIcon } from "lucide-react";
@@ -67,7 +67,7 @@ export default function SharePage() {
       <ExecutionShareChrome>
         <div className="flex items-center justify-center py-16">
           <div className="mx-auto w-full max-w-md p-6">
-            <Card className="border-dashed">
+            <Card variant="outlined" className="border-dashed">
               <CardContent className="pt-6">
                 <div className="space-y-4 text-center">
                   <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
@@ -116,7 +116,7 @@ export default function SharePage() {
           </Alert>
         </div>
 
-        <Card className="mb-6">
+        <Card variant="outlined" className="mb-6">
           <CardHeader>
             <CardTitle className="text-2xl">
               {executionData.graph_name}
@@ -145,7 +145,7 @@ export default function SharePage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card variant="outlined">
           <CardHeader>
             <CardTitle>Output</CardTitle>
           </CardHeader>
