@@ -31,6 +31,8 @@ export function SecretPasteNotice({ className }: Props) {
         saved in the chat. To let Otto use a key, add it under{" "}
         <Link
           href="/settings/integrations"
+          target="_blank"
+          rel="noopener noreferrer"
           className="font-medium underline underline-offset-2"
         >
           Integrations
