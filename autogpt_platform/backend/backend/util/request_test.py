@@ -761,8 +761,11 @@ def _local_requests(**kwargs) -> Requests:
 
 @pytest.mark.asyncio
 async def test_a_body_at_the_limit_is_read_in_full():
+    async def exactly_at_limit(request: web.Request) -> web.Response:
+        return web.Response(body=b"x" * 4096)
+
     app = web.Application()
-    app.router.add_get("/", lambda request: web.Response(body=b"x" * 4096))
+    app.router.add_get("/", exactly_at_limit)
     runner, base = await _serve(app)
 
     try:
@@ -775,8 +778,11 @@ async def test_a_body_at_the_limit_is_read_in_full():
 
 @pytest.mark.asyncio
 async def test_a_body_over_the_limit_is_refused():
+    async def one_byte_over(request: web.Request) -> web.Response:
+        return web.Response(body=b"x" * 4097)
+
     app = web.Application()
-    app.router.add_get("/", lambda request: web.Response(body=b"x" * 4097))
+    app.router.add_get("/", one_byte_over)
     runner, base = await _serve(app)
 
     try:
@@ -808,8 +814,11 @@ async def test_a_stream_without_a_declared_length_stops_at_the_limit():
 
 @pytest.mark.asyncio
 async def test_an_error_body_over_the_limit_is_refused_too():
+    async def failing_with_a_long_body(request: web.Request) -> web.Response:
+        return web.Response(status=500, body=b"x" * 4097)
+
     app = web.Application()
-    app.router.add_get("/", lambda request: web.Response(status=500, body=b"x" * 4097))
+    app.router.add_get("/", failing_with_a_long_body)
     runner, base = await _serve(app)
 
     try:
