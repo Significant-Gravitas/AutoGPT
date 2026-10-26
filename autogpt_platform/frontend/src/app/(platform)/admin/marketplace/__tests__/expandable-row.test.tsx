@@ -65,4 +65,14 @@ describe("ExpandableRow status badge", () => {
     renderRow(SubmissionStatus.REJECTED);
     expect(screen.getByText("Rejected")).toBeDefined();
   });
+
+  test("shows an approved submission as Approved", () => {
+    renderRow(SubmissionStatus.APPROVED);
+    expect(screen.getByText("Approved")).toBeDefined();
+  });
+
+  test("shows a submission that was never sent for review as Draft", () => {
+    renderRow(SubmissionStatus.DRAFT);
+    expect(screen.getByText("Draft")).toBeDefined();
+  });
 });
