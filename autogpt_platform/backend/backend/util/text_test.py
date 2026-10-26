@@ -4,7 +4,11 @@ import asyncio
 
 import pytest
 
-from backend.util.text import MAX_FORMAT_FIELD_SIZE, TextFormatter
+from backend.util.text import (
+    MAX_FORMAT_FIELD_SIZE,
+    TextFormatter,
+    _check_percent_format,
+)
 
 
 @pytest.fixture
@@ -266,16 +270,14 @@ async def test_huge_bytes_percent_width_blocked(fmt: TextFormatter):
         await fmt.format_string("{{ '%" + TOO_WIDE + "d'.encode() % 1 }}")
 
 
-@pytest.mark.asyncio
-async def test_star_width_on_a_literal_percent_keeps_the_argument_order(
-    fmt: TextFormatter,
-):
-    # Python's own answer: the literal percent's * width uses the first argument
-    expected = "%*%%*d" % (1, 5, 1)
-    assert await fmt.format_string("{{ '%*%%*d' % (1, 5, 1) }}") == expected
+# CPython rejects a literal "%%" that carries a width, but it reads a "*" size
+# for it first, so the cap counts the arguments the same way.
 
 
-@pytest.mark.asyncio
-async def test_huge_star_width_after_a_literal_percent_blocked(fmt: TextFormatter):
-    with pytest.raises((ValueError, OverflowError)):
-        await fmt.format_string("{{ '%*%%*d' % (1, " + TOO_WIDE + ", 1) }}")
+def test_star_size_on_a_literal_percent_is_counted_in_the_argument_order():
+    with pytest.raises(OverflowError):
+        _check_percent_format("%*%%*d", (1, MAX_FORMAT_FIELD_SIZE + 1, 1))
+
+
+def test_star_sizes_within_the_cap_pass_after_a_literal_percent():
+    _check_percent_format("%*%%*d", (1, 5, 1))
