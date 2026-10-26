@@ -333,6 +333,24 @@ describe("Otto's first turn on Home — the team", () => {
     });
   });
 
+  it.each(["allow", "inputs", "workflow"] as const)(
+    "shows a hire whose schedule waits on %s as needing setup, not ready",
+    async (resolution) => {
+      serve({
+        hires: [nadia, robin],
+        setup: [makeSetupItem("nadia", { resolution, providers: [] })],
+      });
+      renderHome();
+
+      const team = await findTeam();
+      const rows = within(team).getAllByRole("listitem");
+      expect(within(rows[0]).getByRole("status").textContent).toBe(
+        "Needs setup",
+      );
+      expect(within(rows[1]).getByRole("status").textContent).toBe("Ready");
+    },
+  );
+
   it("names the connection when a hire waits on one and on other setup", async () => {
     serve({
       hires: [nadia],
@@ -574,6 +592,57 @@ describe("Otto's first turn on Home — the one ask", () => {
       screen.queryByRole("region", { name: "One thing I need from you" }),
     ).toBeNull();
   });
+
+  it("re-reads the setup gaps after an install, not the read already on its way", async () => {
+    let rosterReads = 0;
+    serve({
+      hires: (read) => {
+        rosterReads = read;
+        return [
+          { ...nadia, setup_status: read === 1 ? "installing" : "ready" },
+        ];
+      },
+    });
+    let setupReads = 0;
+    server.use(
+      http.get("/api/proxy/api/experts/setup", async () => {
+        setupReads += 1;
+        // Sent while Nadia installs, so it cannot see her schedule's gap; it
+        // lands after the roster has said her install finished.
+        if (setupReads === 1) {
+          while (rosterReads < 2) await delay(50);
+          await delay(500);
+          return HttpResponse.json([]);
+        }
+        return HttpResponse.json([makeSetupItem("nadia")]);
+      }),
+    );
+    const painted: string[] = [];
+    const observer = new MutationObserver(() => {
+      const team = screen.queryByRole("region", { name: "Your team" });
+      const status = team
+        ? within(team).queryByRole("status")?.textContent
+        : undefined;
+      if (status) painted.push(status);
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    renderHome();
+
+    await screen.findByRole(
+      "button",
+      { name: "Connect Notion" },
+      { timeout: 10_000 },
+    );
+    observer.disconnect();
+    expect(painted).not.toContain("Ready");
+    expect(within(await findTeam()).getByRole("status").textContent).toBe(
+      "Needs a connection",
+    );
+  }, 20_000);
 
   it("keeps a hire that was already checked when a later install's re-read fails", async () => {
     serve({

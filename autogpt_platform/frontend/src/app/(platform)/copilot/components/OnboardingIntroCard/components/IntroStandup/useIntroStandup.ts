@@ -1,4 +1,5 @@
 import {
+  getListExpertSetupItemsQueryKey,
   useGrantExpertCredentials,
   useListExpertSetupItems,
   useListExperts,
@@ -171,10 +172,16 @@ function useUncheckedHires(args: {
     }
   }
 
+  const queryClient = useQueryClient();
   const { refetchSetup } = args;
   useEffect(() => {
-    if (finished.at > 0) void refetchSetup();
-  }, [finished.at, refetchSetup]);
+    if (finished.at === 0) return;
+    // A read still on its way was sent before the install finished, and with
+    // no data yet a refetch joins it instead of asking again.
+    void queryClient
+      .cancelQueries({ queryKey: getListExpertSetupItemsQueryKey() })
+      .then(() => refetchSetup());
+  }, [finished.at, queryClient, refetchSetup]);
 
   const ids = args.setupUpdatedAt >= current.at ? [] : current.ids;
   return { ids, failed: ids.length > 0 && args.setupFailed };
