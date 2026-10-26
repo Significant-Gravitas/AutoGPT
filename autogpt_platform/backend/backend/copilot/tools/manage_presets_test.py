@@ -401,6 +401,28 @@ async def test_update_trigger_config_on_a_flat_preset_is_stored_nested(session):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("trigger_config", [None, {"events": ["push"]}])
+async def test_graph_inputs_on_a_flat_trigger_are_refused(session, trigger_config):
+    """As the trigger view refuses them: with no mask yet, every stored input is
+    trigger config, so new graph inputs would land inside it."""
+    _, ldb, tdb = _triggered_preset_db({"repo": "owner/repo"})
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+    ):
+        result = await UpdatePresetTool()._execute(
+            user_id=_USER,
+            session=session,
+            preset_id="preset-1",
+            inputs={"topic": "weather"},
+            trigger_config=trigger_config,
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "preset_update_failed"
+    tdb.update_triggered_preset.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_update_trigger_config_without_a_trigger_is_rejected(session):
     current, ldb, tdb = _triggered_preset_db({"topic": "weather"})
     current.webhook_id = None
@@ -464,7 +486,7 @@ async def test_update_webhook_rejected(session):
             user_id=_USER,
             session=session,
             preset_id="preset-1",
-            inputs={"events": []},
+            trigger_config={"events": []},
         )
     assert isinstance(result, ErrorResponse)
     assert result.error == "preset_update_failed"
@@ -657,7 +679,10 @@ async def test_update_webhook_registration_error(session):
         patch(f"{_PATH}.triggers_db", return_value=tdb),
     ):
         result = await UpdatePresetTool()._execute(
-            user_id=_USER, session=session, preset_id="preset-1", inputs={"repo": "x"}
+            user_id=_USER,
+            session=session,
+            preset_id="preset-1",
+            trigger_config={"repo": "x"},
         )
     assert isinstance(result, ErrorResponse)
     assert result.error == "preset_update_failed"
@@ -679,7 +704,10 @@ async def test_update_expert_workspace_unavailable(session):
         patch(f"{_PATH}.triggers_db", return_value=tdb),
     ):
         result = await UpdatePresetTool()._execute(
-            user_id=_USER, session=session, preset_id="preset-1", inputs={"repo": "x"}
+            user_id=_USER,
+            session=session,
+            preset_id="preset-1",
+            trigger_config={"repo": "x"},
         )
 
     assert isinstance(result, ErrorResponse)

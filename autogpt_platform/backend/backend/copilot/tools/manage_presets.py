@@ -377,6 +377,17 @@ class UpdatePresetTool(BaseTool):
             # key, beside the graph's own inputs. Merging graph inputs into that
             # mask pollutes the config and leaves the graph input unchanged.
             mask_key = stored_trigger_mask_key(current.inputs)
+            if new_inputs and current.webhook_id and not mask_key:
+                # Without a mask the backend reads every stored input as trigger
+                # config, so a graph input saved now would land inside it.
+                return ErrorResponse(
+                    message=(
+                        "This trigger was saved in an older format. Save its "
+                        "trigger settings first, then set its inputs."
+                    ),
+                    error="preset_update_failed",
+                    session_id=session_id,
+                )
             if new_trigger_config and not (mask_key or current.webhook_id):
                 return ErrorResponse(
                     message="This preset has no webhook trigger to configure.",
