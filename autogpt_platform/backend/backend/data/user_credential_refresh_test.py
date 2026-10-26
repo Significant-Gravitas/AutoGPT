@@ -288,3 +288,62 @@ async def test_oauth_list_replace_uses_one_transaction_and_owner_lock(seam):
     seam.prisma.integrationcredential.find_many.assert_awaited_once_with(
         where={"ownerType": "USER", "ownerId": "user-a"}
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", [1, 3])
+async def test_oauth_list_sets_cas_timeouts_once_before_row_locks(seam, count):
+    credentials = [
+        seam.credential.model_copy(update={"id": f"credential-{index}"})
+        for index in range(count)
+    ]
+    rows = []
+    for credential in credentials:
+        ciphertext = f"stored-{credential.id}"
+        seam.payloads[ciphertext] = credential.model_dump()
+        rows.append(
+            SimpleNamespace(
+                id=credential.id, status="active", encryptedPayload=ciphertext
+            )
+        )
+    seam.prisma.integrationcredential.find_many.return_value = rows
+    commands = []
+
+    async def execute(sql, *args):
+        commands.append(sql)
+        return 1
+
+    async def query(sql, *args):
+        commands.append(sql)
+        return [{"id": args[0]}]
+
+    seam.prisma.execute_raw.side_effect = execute
+    seam.prisma.query_raw.side_effect = query
+    await seam.save_list("user-a", credentials)
+
+    first_row_lock = next(
+        index for index, sql in enumerate(commands) if "FOR UPDATE" in sql
+    )
+    for setting in (
+        "SET LOCAL statement_timeout = '4000ms'",
+        "SET LOCAL lock_timeout = '3000ms'",
+    ):
+        assert commands.count(setting) == 1
+        assert commands.index(setting) < first_row_lock
+    assert sum("FOR UPDATE" in sql for sql in commands) == count
+    assert sum(sql.startswith("UPDATE") for sql in commands) == count
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["begin", "complete"])
+async def test_single_refresh_transaction_keeps_both_cas_timeouts(seam, phase):
+    if phase == "begin":
+        await seam.begin("user-a", seam.credential, "nonce", time.time() + 20)
+    else:
+        await seam.complete("user-a", seam.credential, "checkpoint", time.time() + 20)
+    commands = [call.args[0] for call in seam.prisma.execute_raw.await_args_list]
+    assert commands[:2] == [
+        "SET LOCAL statement_timeout = '4000ms'",
+        "SET LOCAL lock_timeout = '3000ms'",
+    ]
+    assert sum(sql.startswith("SET LOCAL") for sql in commands) == 2

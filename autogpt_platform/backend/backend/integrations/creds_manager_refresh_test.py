@@ -318,7 +318,10 @@ async def test_absolute_deadline_leaves_pending_and_no_writer(boundary, monkeypa
     with pytest.raises(refresh.CredentialRefreshRequired):
         await asyncio.wait_for(rig.load(), 1)
     getattr(rig, boundary + "_release").set()
-    await asyncio.sleep(0)
+    for _ in range(100):
+        if not refresh._operations:
+            break
+        await asyncio.sleep(0.001)
     assert not rig.owners and not refresh._operations
     assert rig.saved.metadata.get(refresh.REFRESH_PENDING)
     assert "committed" not in rig.events
@@ -336,7 +339,10 @@ async def test_noncooperative_provider_is_retained_and_cannot_commit_after_deadl
     with pytest.raises(refresh.CredentialRefreshRequired):
         await asyncio.wait_for(rig.load(), 1)
     rig.provider_release.set()
-    await asyncio.sleep(0.01)
+    for _ in range(100):
+        if not refresh._operations:
+            break
+        await asyncio.sleep(0.001)
     assert not refresh._operations and not rig.owners
     assert "committed" not in rig.events
 

@@ -564,6 +564,11 @@ async def set_user_credentials(
         )
         existing_by_id = {row.id: row for row in existing_rows}
 
+        if any(
+            cred.type == "oauth2" and cred.id in existing_by_id for cred in credentials
+        ):
+            await _set_credential_cas_timeouts(tx)
+
         org_id: str | None = None
         for cred in credentials:
             encrypted = cryptor.encrypt(cred.model_dump())
@@ -681,6 +686,7 @@ async def _write_user_credential_cas(
     display_name: str | None = None,
 ) -> bool:
     async with transaction(timeout=timedelta(seconds=5)) as tx:
+        await _set_credential_cas_timeouts(tx)
         return await _write_user_credential_cas_in_transaction(
             tx,
             user_id,
@@ -691,6 +697,11 @@ async def _write_user_credential_cas(
             expected_status=expected_status,
             display_name=display_name,
         )
+
+
+async def _set_credential_cas_timeouts(tx: Prisma) -> None:
+    await tx.execute_raw("SET LOCAL statement_timeout = '4000ms'")
+    await tx.execute_raw("SET LOCAL lock_timeout = '3000ms'")
 
 
 async def _write_user_credential_cas_in_transaction(
@@ -704,8 +715,6 @@ async def _write_user_credential_cas_in_transaction(
     expected_status: str = "active",
     display_name: str | None = None,
 ) -> bool:
-    await tx.execute_raw("SET LOCAL statement_timeout = '4000ms'")
-    await tx.execute_raw("SET LOCAL lock_timeout = '3000ms'")
     rows = await query_raw_with_schema(
         """SELECT "id" FROM {schema_prefix}"IntegrationCredential"
            WHERE "id" = $1 AND "ownerType" = 'USER' AND "ownerId" = $2

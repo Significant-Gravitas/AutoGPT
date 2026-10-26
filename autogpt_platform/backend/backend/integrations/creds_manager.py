@@ -357,7 +357,9 @@ class IntegrationCredentialsManager:
                         or not oauth_handler.needs_refresh(credentials)
                     ):
                         return credentials
-                    fresh_credentials = await oauth_handler.refresh_tokens(credentials)
+                    fresh_credentials = await self._refresh_preserving_revision(
+                        credentials, oauth_handler
+                    )
                     await self.store.update_creds(user_id, fresh_credentials)
                     await _invoke_creds_changed_hook(
                         user_id, fresh_credentials.provider
@@ -598,11 +600,27 @@ class IntegrationCredentialsManager:
                 credentials.provider,
                 credentials.id,
             )
-            fresh_credentials = await oauth_handler.refresh_tokens(credentials)
+            fresh_credentials = await self._refresh_preserving_revision(
+                credentials, oauth_handler
+            )
             await self.store.update_creds(user_id, fresh_credentials)
             await _invoke_creds_changed_hook(user_id, fresh_credentials.provider)
             credentials = fresh_credentials
         return credentials
+
+    async def _refresh_preserving_revision(
+        self,
+        credentials: OAuth2Credentials,
+        handler: "BaseOAuthHandler | BaseDeviceAuthHandler",
+    ) -> OAuth2Credentials:
+        revision = credentials.metadata.get(REFRESH_REVISION)
+        fresh = await handler.refresh_tokens(credentials)
+        metadata = {**fresh.metadata}
+        if revision is None:
+            metadata.pop(REFRESH_REVISION, None)
+        else:
+            metadata[REFRESH_REVISION] = revision
+        return fresh.model_copy(update={"metadata": metadata})
 
     async def update(
         self,
