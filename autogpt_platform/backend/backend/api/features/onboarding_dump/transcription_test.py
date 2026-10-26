@@ -8,68 +8,54 @@ from pytest_mock import MockerFixture
 from backend.api.features.onboarding_dump import transcription
 
 
-def test_stitch_drops_the_duplicated_overlap_at_the_seam():
-    stitched = transcription.stitch_transcripts(
-        [
-            "so the first thing I want to automate is the weekly order email",
-            "the weekly order email goes out every monday morning",
-        ]
-    )
-
-    assert stitched == (
-        "so the first thing I want to automate is the weekly order email "
-        "goes out every monday morning"
-    )
-
-
-def test_stitch_matches_the_seam_case_insensitively():
-    stitched = transcription.stitch_transcripts(
-        ["we ship on friday", "Friday is when the boxes go out"]
-    )
-
-    assert stitched == "we ship on friday is when the boxes go out"
-
-
-def test_stitch_matches_the_seam_across_the_terminal_punctuation():
-    """STT models end every segment as if it were a whole utterance.
-
-    The same spoken word therefore comes back as ``schedule.`` on the left
-    of the seam and ``schedule`` on the right. Comparing raw words finds
-    no overlap at all, and the deliberate 5s overlap is duplicated into
-    the transcript at every 10-minute seam.
-    """
-    stitched = transcription.stitch_transcripts(
-        [
-            "and then I have to go and rebuild the whole schedule.",
-            "Rebuild the whole schedule, and that eats my monday.",
-        ]
-    )
-
-    assert stitched == (
-        "and then I have to go and rebuild the whole schedule. "
-        "and that eats my monday."
-    )
-
-
-def test_stitch_joins_segments_that_do_not_overlap():
-    stitched = transcription.stitch_transcripts(
-        ["alpha beta gamma", "delta epsilon zeta"]
-    )
-
-    assert stitched == "alpha beta gamma delta epsilon zeta"
-
-
-def test_stitch_keeps_a_phrase_that_legitimately_repeats_outside_the_seam():
-    stitched = transcription.stitch_transcripts(
-        [
-            "we ship on friday we ship on friday every single week",
-            "every single week without fail",
-        ]
-    )
-
-    assert stitched == (
-        "we ship on friday we ship on friday every single week without fail"
-    )
+@pytest.mark.parametrize(
+    "segments, expected",
+    [
+        pytest.param(
+            [
+                "so the first thing I want to automate is the weekly order email",
+                "the weekly order email goes out every monday morning",
+            ],
+            "so the first thing I want to automate is the weekly order email "
+            "goes out every monday morning",
+            id="drops_the_duplicated_overlap_at_the_seam",
+        ),
+        pytest.param(
+            ["we ship on friday", "Friday is when the boxes go out"],
+            "we ship on friday is when the boxes go out",
+            id="matches_the_seam_case_insensitively",
+        ),
+        # STT ends every segment as a whole utterance, so the same word reads
+        # "schedule." left of the seam and "schedule" right of it.
+        pytest.param(
+            [
+                "and then I have to go and rebuild the whole schedule.",
+                "Rebuild the whole schedule, and that eats my monday.",
+            ],
+            "and then I have to go and rebuild the whole schedule. "
+            "and that eats my monday.",
+            id="matches_the_seam_across_the_terminal_punctuation",
+        ),
+        pytest.param(
+            ["alpha beta gamma", "delta epsilon zeta"],
+            "alpha beta gamma delta epsilon zeta",
+            id="joins_segments_that_do_not_overlap",
+        ),
+        pytest.param(
+            [
+                "we ship on friday we ship on friday every single week",
+                "every single week without fail",
+            ],
+            "we ship on friday we ship on friday every single week without fail",
+            id="keeps_a_phrase_that_legitimately_repeats_outside_the_seam",
+        ),
+        pytest.param(
+            ["", "hello there", "  "], "hello there", id="ignores_empty_segments"
+        ),
+    ],
+)
+def test_stitch_transcripts(segments, expected):
+    assert transcription.stitch_transcripts(segments) == expected
 
 
 def test_stitch_does_not_collapse_a_repeat_longer_than_the_overlap_window():
@@ -80,10 +66,6 @@ def test_stitch_does_not_collapse_a_repeat_longer_than_the_overlap_window():
     # repetition longer than the window is left intact rather than being
     # mistaken for a duplicated overlap and silently deleted.
     assert stitched.split() == phrase + phrase
-
-
-def test_stitch_ignores_empty_segments():
-    assert transcription.stitch_transcripts(["", "hello there", "  "]) == "hello there"
 
 
 @pytest.mark.asyncio

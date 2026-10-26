@@ -1,5 +1,7 @@
 """Tests for dynamic field utilities."""
 
+import pytest
+
 from backend.util.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
@@ -9,106 +11,70 @@ from backend.util.dynamic_fields import (
 
 
 class TestExtractBaseFieldName:
-    """Test extracting base field names from dynamic field names."""
-
-    def test_extract_dict_field(self):
-        """Test extracting base name from dictionary fields."""
-        assert extract_base_field_name("values_#_name") == "values"
-        assert extract_base_field_name("data_#_key1_#_key2") == "data"
-        assert extract_base_field_name("config_#_database_#_host") == "config"
-
-    def test_extract_list_field(self):
-        """Test extracting base name from list fields."""
-        assert extract_base_field_name("items_$_0") == "items"
-        assert extract_base_field_name("results_$_5_$_10") == "results"
-        assert extract_base_field_name("nested_$_0_$_1_$_2") == "nested"
-
-    def test_extract_object_field(self):
-        """Test extracting base name from object fields."""
-        assert extract_base_field_name("user_@_name") == "user"
-        assert extract_base_field_name("response_@_data_@_items") == "response"
-        assert extract_base_field_name("obj_@_attr1_@_attr2") == "obj"
-
-    def test_extract_mixed_fields(self):
-        """Test extracting base name from mixed dynamic fields."""
-        assert extract_base_field_name("data_$_0_#_key") == "data"
-        assert extract_base_field_name("items_#_user_@_name") == "items"
-        assert extract_base_field_name("complex_$_0_@_attr_#_key") == "complex"
-
-    def test_extract_regular_field(self):
-        """Test extracting base name from regular (non-dynamic) fields."""
-        assert extract_base_field_name("regular_field") == "regular_field"
-        assert extract_base_field_name("simple") == "simple"
-        assert extract_base_field_name("") == ""
-
-    def test_extract_field_with_underscores(self):
-        """Test fields with regular underscores (not dynamic delimiters)."""
-        assert extract_base_field_name("field_name_here") == "field_name_here"
-        assert extract_base_field_name("my_field_#_key") == "my_field"
+    @pytest.mark.parametrize(
+        "field, base",
+        [
+            ("values_#_name", "values"),
+            ("data_#_key1_#_key2", "data"),
+            ("config_#_database_#_host", "config"),
+            ("items_$_0", "items"),
+            ("results_$_5_$_10", "results"),
+            ("nested_$_0_$_1_$_2", "nested"),
+            ("user_@_name", "user"),
+            ("response_@_data_@_items", "response"),
+            ("obj_@_attr1_@_attr2", "obj"),
+            ("data_$_0_#_key", "data"),
+            ("items_#_user_@_name", "items"),
+            ("complex_$_0_@_attr_#_key", "complex"),
+            ("regular_field", "regular_field"),
+            ("simple", "simple"),
+            ("", ""),
+            # A plain underscore is not a delimiter.
+            ("field_name_here", "field_name_here"),
+            ("my_field_#_key", "my_field"),
+        ],
+    )
+    def test_extract_base_field_name(self, field, base):
+        assert extract_base_field_name(field) == base
 
 
 class TestIsDynamicField:
-    """Test identifying dynamic fields."""
-
-    def test_is_dynamic_dict_field(self):
-        """Test identifying dictionary dynamic fields."""
-        assert is_dynamic_field("values_#_name") is True
-        assert is_dynamic_field("data_#_key1_#_key2") is True
-
-    def test_is_dynamic_list_field(self):
-        """Test identifying list dynamic fields."""
-        assert is_dynamic_field("items_$_0") is True
-        assert is_dynamic_field("results_$_5_$_10") is True
-
-    def test_is_dynamic_object_field(self):
-        """Test identifying object dynamic fields."""
-        assert is_dynamic_field("user_@_name") is True
-        assert is_dynamic_field("response_@_data_@_items") is True
-
-    def test_is_dynamic_mixed_field(self):
-        """Test identifying mixed dynamic fields."""
-        assert is_dynamic_field("data_$_0_#_key") is True
-        assert is_dynamic_field("items_#_user_@_name") is True
-
-    def test_is_not_dynamic_field(self):
-        """Test identifying non-dynamic fields."""
-        assert is_dynamic_field("regular_field") is False
-        assert is_dynamic_field("field_name_here") is False
-        assert is_dynamic_field("simple") is False
-        assert is_dynamic_field("") is False
+    @pytest.mark.parametrize(
+        "field, dynamic",
+        [
+            ("values_#_name", True),
+            ("data_#_key1_#_key2", True),
+            ("items_$_0", True),
+            ("results_$_5_$_10", True),
+            ("user_@_name", True),
+            ("response_@_data_@_items", True),
+            ("data_$_0_#_key", True),
+            ("items_#_user_@_name", True),
+            ("regular_field", False),
+            ("field_name_here", False),
+            ("simple", False),
+            ("", False),
+        ],
+    )
+    def test_is_dynamic_field(self, field, dynamic):
+        assert is_dynamic_field(field) is dynamic
 
 
 class TestGetDynamicFieldDescription:
-    """Test generating descriptions for dynamic fields."""
-
-    def test_dict_field_description(self):
-        """Test descriptions for dictionary fields."""
-        desc = get_dynamic_field_description("values", "values_#_name")
-        assert "Dictionary value for values['name']" == desc
-
-        desc = get_dynamic_field_description("config", "config_#_database")
-        assert "Dictionary value for config['database']" == desc
-
-    def test_list_field_description(self):
-        """Test descriptions for list fields."""
-        desc = get_dynamic_field_description("items", "items_$_0")
-        assert "List item for items[0]" == desc
-
-        desc = get_dynamic_field_description("results", "results_$_5")
-        assert "List item for results[5]" == desc
-
-    def test_object_field_description(self):
-        """Test descriptions for object fields."""
-        desc = get_dynamic_field_description("user", "user_@_name")
-        assert "Object attribute for user.name" == desc
-
-        desc = get_dynamic_field_description("response", "response_@_data")
-        assert "Object attribute for response.data" == desc
-
-    def test_fallback_description(self):
-        """Test fallback description for non-dynamic fields."""
-        desc = get_dynamic_field_description("field", "field")
-        assert "Dynamic value for field" == desc
+    @pytest.mark.parametrize(
+        "base, field, description",
+        [
+            ("values", "values_#_name", "Dictionary value for values['name']"),
+            ("config", "config_#_database", "Dictionary value for config['database']"),
+            ("items", "items_$_0", "List item for items[0]"),
+            ("results", "results_$_5", "List item for results[5]"),
+            ("user", "user_@_name", "Object attribute for user.name"),
+            ("response", "response_@_data", "Object attribute for response.data"),
+            ("field", "field", "Dynamic value for field"),
+        ],
+    )
+    def test_get_dynamic_field_description(self, base, field, description):
+        assert get_dynamic_field_description(base, field) == description
 
 
 class TestGroupFieldsByBaseName:

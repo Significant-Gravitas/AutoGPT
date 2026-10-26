@@ -1,21 +1,22 @@
 """Tests for the shared ThinkingStripper."""
 
+import pytest
+
 from backend.copilot.thinking_stripper import ThinkingStripper
 
 
-def test_basic_thinking_tag() -> None:
-    """<thinking>...</thinking> blocks are fully stripped."""
-    s = ThinkingStripper()
-    assert s.process("<thinking>internal reasoning here</thinking>Hello!") == "Hello!"
-
-
-def test_internal_reasoning_tag() -> None:
-    """<internal_reasoning>...</internal_reasoning> blocks are stripped."""
-    s = ThinkingStripper()
-    assert (
-        s.process("<internal_reasoning>step by step</internal_reasoning>Answer")
-        == "Answer"
-    )
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("<thinking>internal reasoning here</thinking>Hello!", "Hello!"),
+        ("<internal_reasoning>step by step</internal_reasoning>Answer", "Answer"),
+        ("I am thinking about this problem", "I am thinking about this problem"),
+        ("A<thinking>x</thinking>B<internal_reasoning>y</internal_reasoning>C", "ABC"),
+        ("Before<thinking></thinking>After", "BeforeAfter"),
+    ],
+)
+def test_reasoning_blocks_are_stripped_in_one_chunk(text, expected) -> None:
+    assert ThinkingStripper().process(text) == expected
 
 
 def test_split_across_chunks() -> None:
@@ -26,36 +27,12 @@ def test_split_across_chunks() -> None:
     assert out == "Hello  world"
 
 
-def test_plain_text_preserved() -> None:
-    """Plain text with the word 'thinking' is not stripped."""
-    s = ThinkingStripper()
-    assert (
-        s.process("I am thinking about this problem")
-        == "I am thinking about this problem"
-    )
-
-
-def test_multiple_blocks() -> None:
-    """Multiple reasoning blocks in one stream are all stripped."""
-    s = ThinkingStripper()
-    result = s.process(
-        "A<thinking>x</thinking>B<internal_reasoning>y</internal_reasoning>C"
-    )
-    assert result == "ABC"
-
-
 def test_flush_discards_unclosed() -> None:
     """Unclosed reasoning block is discarded on flush."""
     s = ThinkingStripper()
     s.process("Start<thinking>never closed")
     flushed = s.flush()
     assert "never closed" not in flushed
-
-
-def test_empty_block() -> None:
-    """Empty reasoning blocks are handled gracefully."""
-    s = ThinkingStripper()
-    assert s.process("Before<thinking></thinking>After") == "BeforeAfter"
 
 
 def test_flush_emits_remaining_plain_text() -> None:
