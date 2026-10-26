@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import tempfile
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -52,6 +53,7 @@ from backend.copilot.tools.skills import (
     StoredSkill,
     StoreSkillResponse,
     StoreSkillTool,
+    _claim_skills_cache,
     _is_safe_relative,
     _list_user_skills_from_workspace,
     _read_skills_cache,
@@ -929,16 +931,57 @@ async def test_copy_to_expert_keeps_the_installed_origin():
 class _FakeRedis:
     def __init__(self):
         self.store: dict[str, str] = {}
+        self.ttls: dict[str, int | None] = {}
 
     async def get(self, key):
         return self.store.get(key)
 
-    async def set(self, key, value, ex=None):
+    async def set(self, key, value, ex=None, nx=False):
+        # redis-py: None when nx refuses a held key, True when set.
+        if nx and key in self.store:
+            return None
         self.store[key] = value
+        self.ttls[key] = ex
+        return True
 
     async def delete(self, *keys):
         for key in keys:
             self.store.pop(key, None)
+
+    async def eval(self, script, numkeys, key, claim, *args):
+        # The index's two scripts: write, or release, only while the rebuild's
+        # claim holds.
+        assert script in (skills._WRITE_IF_CLAIMED, skills._RELEASE_IF_CLAIMED)
+        if self.store.get(key) != claim:
+            return 0
+        if script == skills._RELEASE_IF_CLAIMED:
+            await self.delete(key)
+            return 1
+        value, ttl = args
+        await self.set(key, value, ex=ttl)
+        return True
+
+
+@contextmanager
+def _cached_skills(fake: _FakeWorkspaceManager):
+    """``_patch_skills_path`` with a skill index cache that keeps what it is
+    given, and expert rows that list nothing for the heal to copy. Yields the
+    cache."""
+    redis = _FakeRedis()
+    experts = MagicMock()
+    experts.get_expert = AsyncMock(return_value=MagicMock(skills=[]))
+    experts.add_expert_skill_name = AsyncMock()
+    experts.add_expert_skill_names = AsyncMock()
+    experts.remove_expert_skill_name = AsyncMock()
+    with (
+        _patch_skills_path(fake),
+        patch(
+            "backend.copilot.tools.skills.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ),
+        patch("backend.copilot.tools.skills.experts_db", return_value=experts),
+    ):
+        yield redis
 
 
 @pytest.mark.asyncio
@@ -949,6 +992,8 @@ async def test_origin_survives_the_index_cache():
         "backend.copilot.tools.skills.get_redis_async",
         new=AsyncMock(return_value=_FakeRedis()),
     ):
+        claim = await _claim_skills_cache("user-1")
+        assert claim is not None
         await _write_skills_cache(
             "user-1",
             [
@@ -963,6 +1008,7 @@ async def test_origin_survives_the_index_cache():
                 ),
                 ParsedSkill(name="legacy", description="d", body=""),
             ],
+            claim=claim,
         )
         cached = await _read_skills_cache("user-1")
     assert cached is not None
