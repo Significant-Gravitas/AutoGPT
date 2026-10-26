@@ -160,7 +160,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@types/twemoji": "13.1.2",
-    "@vitejs/plugin-react": "5.1.2",
+    "@vitejs/plugin-react": "5.2.0",
     "@vitest/coverage-v8": "4.1.11",
     "babel-plugin-react-compiler": "1.0.0",
     "concurrently": "9.2.1",
