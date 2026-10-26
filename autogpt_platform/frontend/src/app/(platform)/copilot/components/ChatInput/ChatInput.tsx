@@ -3,10 +3,13 @@ import type { MentionInput } from "./useChatMentions";
 import {
   PromptInputButton,
   PromptInputSubmit,
-} from "@/components/ai-elements/prompt-input";
+} from "@/components/organisms/PromptInput/PromptInput";
 import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
+import {
+  InputGroup,
+  InputGroupAddon,
+} from "@/components/molecules/InputGroup/InputGroup";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
@@ -557,7 +560,7 @@ export const ChatInput = memo(function ChatInput({
               className={cn(
                 "max-md:max-h-32",
                 stacked && "px-0.5 py-1",
-                isCompact && "text-sm leading-5 md:text-sm",
+                isCompact && "text-body leading-5 md:text-body md:leading-5",
               )}
             />
             {isRecording && !value && (

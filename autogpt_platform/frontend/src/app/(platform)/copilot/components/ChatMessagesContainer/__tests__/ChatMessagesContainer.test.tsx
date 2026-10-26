@@ -37,7 +37,7 @@ vi.mock("use-stick-to-bottom", () => ({
   ConversationScrollButton: () => null,
 }));
 
-vi.mock("@/components/ai-elements/conversation", () => ({
+vi.mock("@/components/organisms/Conversation/Conversation", () => ({
   Conversation: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="conversation">{children}</div>
   ),
@@ -47,7 +47,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
   ConversationScrollButton: () => null,
 }));
 
-vi.mock("@/components/ai-elements/message", () => ({
+vi.mock("@/components/organisms/Message/Message", () => ({
   Message: ({
     children,
     from,

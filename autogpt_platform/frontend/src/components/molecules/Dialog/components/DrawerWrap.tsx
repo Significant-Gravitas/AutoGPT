@@ -1,4 +1,4 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
@@ -38,7 +38,7 @@ export function DrawerWrap({
 
   const closeBtn = (
     <Button
-      variant="link"
+      variant="legacy-link"
       aria-label="Close"
       onClick={handleClose}
       data-slot="drawer-close"

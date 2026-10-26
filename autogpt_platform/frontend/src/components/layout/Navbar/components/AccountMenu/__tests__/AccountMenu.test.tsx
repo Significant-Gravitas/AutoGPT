@@ -1,5 +1,4 @@
-import { getReplay } from "@sentry/nextjs";
-import { IconType } from "@/components/__legacy__/ui/icons";
+import { IconType } from "@/components/layout/Navbar/helpers";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AccountMenu } from "../AccountMenu";
@@ -23,10 +22,6 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/auth/actions", () => ({
   getCurrentUser: vi.fn().mockResolvedValue({ user: null }),
-}));
-
-vi.mock("@sentry/nextjs", () => ({
-  getReplay: vi.fn(),
 }));
 
 vi.mock("@/components/molecules/Popover/Popover", () => {
@@ -85,7 +80,6 @@ const baseGroups: MenuItemGroup[] = [
 describe("AccountMenu", () => {
   beforeEach(() => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
-    vi.mocked(getReplay).mockClear();
   });
 
   afterEach(() => {
@@ -247,6 +241,5 @@ describe("AccountMenu", () => {
     expect(document.querySelectorAll('script[src*="tally.so"]')).toHaveLength(
       0,
     );
-    expect(getReplay).not.toHaveBeenCalled();
   });
 });

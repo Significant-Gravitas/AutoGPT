@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -42,7 +43,9 @@ function CoPilotUsageSection() {
 
   return (
     <div className="my-6 space-y-4">
-      <h3 className="text-lg font-medium">Expert Usage & Storage</h3>
+      <Text variant="lg-medium" as="h3" tone="inherit">
+        Expert Usage & Storage
+      </Text>
       <div
         // TODO(tokens): no exact role (border-neutral-200 #E5E5E5)
         className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4"
@@ -63,7 +66,11 @@ function CoPilotUsageSection() {
         )}
         <StorageBar />
       </div>
-      <Button className="w-full" onClick={() => router.push("/copilot")}>
+      <Button
+        variant="legacy-default"
+        className="w-full"
+        onClick={() => router.push("/copilot")}
+      >
         Open Otto
       </Button>
     </div>
@@ -179,7 +186,9 @@ export default function CreditsPage() {
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Top-up Form */}
         <div className="space-y-4">
-          <h3 className="text-lg font-medium">Top-up Credits</h3>
+          <Text variant="lg-medium" as="h3" tone="inherit">
+            Top-up Credits
+          </Text>
 
           <p
             // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
@@ -225,6 +234,7 @@ export default function CreditsPage() {
             </div>
 
             <Button
+              variant="legacy-default"
               type="submit"
               className="w-full"
               disabled={isRequestingTopUp || checkoutRedirect.isRedirecting}
@@ -235,7 +245,9 @@ export default function CreditsPage() {
 
           {/* Auto Top-up Form */}
           <form onSubmit={submitAutoTopUpConfig} className="my-6 space-y-4">
-            <h3 className="text-lg font-medium">Automatic Refill Settings</h3>
+            <Text variant="lg-medium" as="h3" tone="inherit">
+              Automatic Refill Settings
+            </Text>
 
             <div>
               <label
@@ -287,21 +299,25 @@ export default function CreditsPage() {
               />
             </div>
 
-            <p className="text-sm">
+            <Text variant="body-tight" tone="inherit">
               <b>Note:</b> For your safety, we will top up your balance{" "}
               <b>at most once</b> per workflow execution to prevent unintended
               excessive charges. Therefore, ensure that the automatic top-up
               amount is sufficient for your workflow&apos;s operation.
-            </p>
+            </Text>
 
             {autoTopUpConfig?.amount ? (
               <>
-                <Button type="submit" className="w-full">
+                <Button
+                  variant="legacy-default"
+                  type="submit"
+                  className="w-full"
+                >
                   Save Changes
                 </Button>
                 <Button
                   className="w-full"
-                  variant="destructive"
+                  variant="legacy-destructive"
                   onClick={() =>
                     updateAutoTopUpConfig(0, 0).then(() => {
                       toast({ title: "Auto top-up config disabled! 🎉" });
@@ -312,7 +328,7 @@ export default function CreditsPage() {
                 </Button>
               </>
             ) : (
-              <Button type="submit" className="w-full">
+              <Button variant="legacy-default" type="submit" className="w-full">
                 Enable Auto-Refill
               </Button>
             )}
@@ -324,7 +340,10 @@ export default function CreditsPage() {
 
         <div className="my-6 space-y-4">
           {/* Payment Portal */}
-          <h3 className="text-lg font-medium">Manage Your Payment Methods</h3>
+
+          <Text variant="lg-medium" as="h3" tone="inherit">
+            Manage Your Payment Methods
+          </Text>
           <p
             // TODO(tokens): no exact role (text-neutral-600 #525252)
             className="text-neutral-600"
@@ -333,6 +352,7 @@ export default function CreditsPage() {
             billing portal.
           </p>
           <Button
+            variant="legacy-default"
             type="submit"
             className="w-full"
             onClick={() => openBillingPortal()}
@@ -341,7 +361,10 @@ export default function CreditsPage() {
           </Button>
 
           {/* Transaction History */}
-          <h3 className="text-lg font-medium">Transaction History</h3>
+
+          <Text variant="lg-medium" as="h3" tone="inherit">
+            Transaction History
+          </Text>
           {transactionHistory.transactions.length === 0 && (
             <p
               // TODO(tokens): no exact role (text-neutral-600 #525252)
@@ -393,6 +416,7 @@ export default function CreditsPage() {
           </Table>
           {transactionHistory.next_transaction_time && (
             <Button
+              variant="legacy-default"
               type="submit"
               className="w-full"
               onClick={() => fetchTransactionHistory()}
@@ -403,7 +427,9 @@ export default function CreditsPage() {
 
           {refundRequests.length > 0 && (
             <>
-              <h3 className="text-lg font-medium">Your Refund Requests</h3>
+              <Text variant="lg-medium" as="h3" tone="inherit">
+                Your Refund Requests
+              </Text>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -439,7 +465,7 @@ export default function CreditsPage() {
           )}
 
           <Button
-            variant="destructive"
+            variant="legacy-destructive"
             onClick={() => openRefundModal()}
             className="w-full"
           >

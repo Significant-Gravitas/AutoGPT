@@ -2,7 +2,10 @@
 
 import { CredentialMentionText } from "../../CredentialMention/CredentialMentionText";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  Message,
+  MessageContent,
+} from "@/components/organisms/Message/Message";
 import { cn } from "@/lib/utils";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import type {

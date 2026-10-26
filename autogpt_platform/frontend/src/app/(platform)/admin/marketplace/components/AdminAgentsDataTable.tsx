@@ -8,7 +8,7 @@ import {
 } from "@/components/molecules/Table/components/TablePrimitives";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
-import { PaginationControls } from "../../../../../components/__legacy__/ui/pagination-controls";
+import { PaginationControls } from "@/components/molecules/PaginationControls/PaginationControls";
 import { getAdminListingsWithVersions } from "@/app/(platform)/admin/marketplace/actions";
 import { ExpandableRow } from "./ExpandleRow";
 import { SearchAndFilterAdminMarketplace } from "./SearchFilterForm";

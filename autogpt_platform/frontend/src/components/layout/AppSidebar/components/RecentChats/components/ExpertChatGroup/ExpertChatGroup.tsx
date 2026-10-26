@@ -3,6 +3,7 @@
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import {
   Tooltip,
@@ -13,11 +14,11 @@ import {
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
 import {
-  Collapsible,
+  CollapsibleRoot,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { SidebarMenu } from "@/components/ui/sidebar";
+} from "@/components/molecules/Collapsible/Collapsible";
+import { SidebarMenu } from "@/components/molecules/Sidebar/Sidebar";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import Link, { useLinkStatus } from "next/link";
@@ -67,7 +68,7 @@ export function ExpertChatGroup({
   const runningSessions = sessions.filter((session) => session.is_processing);
 
   return (
-    <Collapsible
+    <CollapsibleRoot
       open={isOpen}
       onOpenChange={setIsOpen}
       className="group/expert-group"
@@ -78,7 +79,10 @@ export function ExpertChatGroup({
       <div className="group/expert-header relative mb-1 flex items-center rounded-md hover:bg-surface-hover">
         <CollapsibleTrigger
           aria-label={`${label} chats`}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-sm font-medium text-foreground-strong max-md:py-2 max-md:text-base"
+          // The size and weight reach ManagedExpertImage's fallback initials (a
+          // span that sets its colour, not its size or weight), and the weight
+          // ExpertAvatar's initial; every other piece of copy is a toned Text.
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-body font-medium leading-5 max-md:py-2 max-md:text-body-lg max-md:leading-6"
         >
           {isAutopilot ? (
             <AutopilotAvatar
@@ -145,14 +149,21 @@ export function ExpertChatGroup({
                   isAutopilot ? Infinity : count + EXPERT_CHAT_PAGE_SIZE,
                 )
               }
-              className="mt-0.5 w-full rounded-md px-2 py-1 text-left text-xs font-medium text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-emphasis max-md:py-2.5 max-md:text-sm"
+              className="mt-0.5 w-full rounded-md px-2 py-1 text-left text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-emphasis max-md:py-2.5"
             >
-              {isAutopilot ? "Load all" : "Load more"}
+              <Text
+                as="span"
+                variant="small-medium-tight-touch"
+                tone="inherit"
+                className="block"
+              >
+                {isAutopilot ? "Load all" : "Load more"}
+              </Text>
             </button>
           )}
         </GroupBody>
       </CollapsibleContent>
-    </Collapsible>
+    </CollapsibleRoot>
   );
 }
 
@@ -178,7 +189,7 @@ function NewChatLink({ href, label }: { href: string; label: string }) {
           aria-label={name}
           className={cn(
             // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour), not a focus ring
-            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-foreground-tertiary transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-surface-active hover:text-foreground-strong focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 md:opacity-0",
+            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-foreground-tertiary transition-opacity hover:bg-surface-active hover:text-foreground-strong focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 md:opacity-0",
             NEW_CHAT_SLOT_SIZE_CLASS,
             NEW_CHAT_LINK_OFFSET_CLASS,
           )}

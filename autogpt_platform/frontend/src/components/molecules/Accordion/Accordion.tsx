@@ -1,13 +1,58 @@
 "use client";
 
+import * as AccordionPrimitive from "@radix-ui/react-accordion";
+import { ChevronDown } from "lucide-react";
 import * as React from "react";
 
-import {
-  Accordion as BaseAccordion,
-  AccordionContent as BaseAccordionContent,
-  AccordionItem as BaseAccordionItem,
-  AccordionTrigger as BaseAccordionTrigger,
-} from "@/components/ui/accordion";
+import { cn } from "@/lib/utils";
+
+const BaseAccordion = AccordionPrimitive.Root;
+
+const BaseAccordionItem = React.forwardRef<
+  React.ElementRef<typeof AccordionPrimitive.Item>,
+  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item>
+>(({ className, ...props }, ref) => (
+  <AccordionPrimitive.Item
+    ref={ref}
+    className={cn("border-b", className)}
+    {...props}
+  />
+));
+BaseAccordionItem.displayName = "AccordionItem";
+
+const BaseAccordionTrigger = React.forwardRef<
+  React.ElementRef<typeof AccordionPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
+>(({ className, children, ...props }, ref) => (
+  <AccordionPrimitive.Header className="flex">
+    <AccordionPrimitive.Trigger
+      ref={ref}
+      className={cn(
+        "flex flex-1 items-center justify-between py-4 text-left text-body font-medium leading-5 transition-all hover:underline [&[data-state=open]>svg]:rotate-180",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500 transition-transform duration-200 dark:text-neutral-400" />
+    </AccordionPrimitive.Trigger>
+  </AccordionPrimitive.Header>
+));
+BaseAccordionTrigger.displayName = AccordionPrimitive.Trigger.displayName;
+
+const BaseAccordionContent = React.forwardRef<
+  React.ElementRef<typeof AccordionPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content>
+>(({ className, children, ...props }, ref) => (
+  <AccordionPrimitive.Content
+    ref={ref}
+    className="overflow-hidden text-body leading-5 data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
+    {...props}
+  >
+    <div className={cn("pb-4 pt-0", className)}>{children}</div>
+  </AccordionPrimitive.Content>
+));
+BaseAccordionContent.displayName = AccordionPrimitive.Content.displayName;
 
 const Accordion = React.forwardRef<
   React.ElementRef<typeof BaseAccordion>,

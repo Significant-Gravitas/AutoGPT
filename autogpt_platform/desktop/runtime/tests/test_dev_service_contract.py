@@ -59,9 +59,14 @@ def test_upgraded_profile_keeps_ports_and_wires_private_services(tmp_path: Path)
     bundle = Bundle(tmp_path / "runtime")
     secret = settings.ensure_secrets(bundle, data)
     backend = settings.backend_environment(
-        bundle, data, after, secret, {"AUTOGPT_DESKTOP": "false"}
+        bundle,
+        data,
+        after,
+        secret,
+        {"AUTOGPT_DESKTOP": "false", "TRUSTED_PROXY_COUNT": "9"},
     )
     assert backend["AUTOGPT_DESKTOP"] == "1"
+    assert backend["TRUSTED_PROXY_COUNT"] == "1"
     assert backend["SWAP_CREDENTIAL_SERVICE_PORT"] == str(after["swap_credential"])
     assert backend["SWAPCREDENTIALSERVICE_HOST"] == "127.0.0.1"
     frontend = settings.frontend_environment(backend, after, secret, data)

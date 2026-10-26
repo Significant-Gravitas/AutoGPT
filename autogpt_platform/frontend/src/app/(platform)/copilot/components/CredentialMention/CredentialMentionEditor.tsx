@@ -7,7 +7,7 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
 } from "react";
-import { PromptInputTextarea } from "@/components/ai-elements/prompt-input";
+import { PromptInputTextarea } from "@/components/organisms/PromptInput/PromptInput";
 import { parseCredentialMentions } from "./helpers";
 import { isKey } from "@/lib/keyboard";
 import { isTouchDevice } from "@/lib/platform";

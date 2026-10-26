@@ -8,7 +8,18 @@ import { cn } from "@/lib/utils";
 
 const Dialog = DialogPrimitive.Root;
 
-const DialogTrigger = DialogPrimitive.Trigger;
+// With `asChild` the child is the trigger element and keeps its own slot.
+const DialogTrigger = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Trigger>
+>((props, ref) => (
+  <DialogPrimitive.Trigger
+    ref={ref}
+    {...(props.asChild ? {} : { "data-slot": "dialog-trigger" })}
+    {...props}
+  />
+));
+DialogTrigger.displayName = DialogPrimitive.Trigger.displayName;
 
 const DialogPortal = DialogPrimitive.Portal;
 
@@ -28,6 +39,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     data-dialog-overlay
+    data-slot="dialog-overlay"
     className={cn(
       "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
@@ -43,12 +55,9 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 function hasDialogDescription(node: React.ReactNode): boolean {
   return React.Children.toArray(node).some((child) => {
     if (!React.isValidElement(child)) return false;
-    const type = child.type as { displayName?: string } | string;
-    if (type === DialogPrimitive.Description) return true;
     if (
-      typeof type === "object" &&
-      type !== null &&
-      type.displayName === DialogPrimitive.Description.displayName
+      child.type === DialogPrimitive.Description ||
+      child.type === DialogDescription
     ) {
       return true;
     }
@@ -80,6 +89,7 @@ const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         data-dialog-content
+        data-slot="dialog-popup"
         onPointerDownOutside={(e) => {
           if (isExternalPickerOpen()) {
             e.preventDefault();
@@ -109,13 +119,21 @@ const DialogContent = React.forwardRef<
       >
         {children}
         {!hasDialogDescription(children) && !("aria-describedby" in props) ? (
-          <DialogPrimitive.Description className="sr-only">
+          <DialogPrimitive.Description
+            data-slot="dialog-description"
+            className="sr-only"
+          >
             Dialog
           </DialogPrimitive.Description>
         ) : null}
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-surface transition-opacity data-[state=open]:bg-neutral-100 data-[state=open]:text-neutral-500 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 disabled:pointer-events-none dark:ring-offset-neutral-950 dark:data-[state=open]:bg-neutral-800 dark:data-[state=open]:text-neutral-400 dark:focus:ring-neutral-300">
-          <Cross2Icon className="h-4 w-4" />
-          <span className="sr-only">Close</span>
+        <DialogPrimitive.Close
+          data-slot="dialog-close"
+          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-surface transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-neutral-100 data-[state=open]:text-neutral-500 dark:ring-offset-neutral-950 dark:focus:ring-neutral-300 dark:data-[state=open]:bg-neutral-800 dark:data-[state=open]:text-neutral-400"
+        >
+          <Cross2Icon data-slot="dialog-close-icon" className="h-4 w-4" />
+          <span data-slot="dialog-close-label" className="sr-only">
+            Close
+          </span>
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
     </DialogPortal>
@@ -128,6 +146,7 @@ const DialogHeader = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
+    data-slot="dialog-header"
     className={cn(
       "flex flex-col space-y-1.5 text-center sm:text-left",
       className,
@@ -142,6 +161,7 @@ const DialogFooter = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
+    data-slot="dialog-footer"
     className={cn(
       "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
       className,
@@ -159,6 +179,7 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
+    data-slot="dialog-title"
     className={cn(
       "text-lg font-semibold leading-none tracking-tight",
       className,
@@ -175,6 +196,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
+    data-slot="dialog-description"
     className={cn(
       "text-body leading-5 text-neutral-500 dark:text-neutral-400",
       className,

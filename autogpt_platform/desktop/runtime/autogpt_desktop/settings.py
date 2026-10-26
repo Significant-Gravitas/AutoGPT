@@ -237,6 +237,7 @@ def backend_environment(
         **user,
         **TELEMETRY_DISABLED_ENV,
         "AUTOGPT_DESKTOP": "1",
+        "TRUSTED_PROXY_COUNT": "1",
         **_bundled_tools(bundle),
         # Where the backend's file logging goes if settings.env turns it on.
         # Its default is a `logs` directory beside the code: in the bundle.
