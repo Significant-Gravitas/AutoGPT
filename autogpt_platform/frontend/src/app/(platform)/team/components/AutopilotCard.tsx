@@ -39,7 +39,7 @@ export function AutopilotCard({
   return (
     <section
       aria-label={AUTOPILOT_NAME}
-      className="flex flex-col overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm"
+      className="flex flex-col overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm"
     >
       <Link
         href="/team/autopilot"
@@ -52,6 +52,7 @@ export function AutopilotCard({
           <AutopilotAvatar
             size={88}
             backgroundColor={AUTOPILOT_COVER_COLOR}
+            // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3
             className="relative z-10 -mt-12 ml-1 rounded-full border border-[#e3e3e3] ring-4 ring-background"
           />
         </div>

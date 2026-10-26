@@ -2,14 +2,14 @@
 
 import * as React from "react";
 import { Calendar as CalendarIcon } from "lucide-react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
-import { Calendar } from "@/components/__legacy__/ui/calendar";
+} from "@/components/molecules/Popover/Popover";
+import { Calendar } from "@/components/atoms/Calendar/Calendar";
 
 function toLocalISODateString(d: Date) {
   const year = d.getFullYear();
@@ -84,40 +84,45 @@ export const DateInput = ({
 
   const triggerStyles = cn(
     // Base styles matching other form components
-    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
-    "font-normal text-black w-full text-sm",
-    "placeholder:font-normal !placeholder:text-zinc-500",
+    "rounded-3xl border border-border-base bg-surface px-4 shadow-none",
+    "font-normal text-foreground-base w-full text-body leading-5",
+    "placeholder:font-normal !placeholder:text-placeholder",
     // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    "focus:border-foreground-subtle focus:shadow-none focus:outline-none focus:ring-1 focus:ring-foreground-subtle focus:ring-offset-0",
     // Error state
-    error &&
-      "border-1.5 border-red-500 focus:border-red-500 focus:ring-red-500",
+    error && "border-1.5 border-error focus:border-error focus:ring-error",
     // Placeholder styling
-    !selected && "text-zinc-400",
+    !selected && "text-foreground-subtle",
     "justify-start text-left",
     // Size variants
     size === "default" && "h-[2.875rem] py-2.5",
     className,
     size === "small" && [
-      "min-h-[2.25rem]", // 36px minimum
+      "min-h-9", // 36px minimum
       "py-2",
-      "text-sm leading-[22px]",
-      "placeholder:text-sm placeholder:leading-[22px]",
+      "text-body",
+      "placeholder:text-body",
     ],
   );
 
   return (
-    <div className="flex flex-col gap-1">
+    <div data-slot="date-input" className="flex flex-col gap-1">
       {label && !hideLabel && (
-        <label htmlFor={id} className="text-sm font-medium text-gray-700">
+        // TODO(tokens): no role is gray-700 #374151.
+        <label
+          data-slot="date-input-label"
+          htmlFor={id}
+          className="text-body font-medium leading-5 text-gray-700"
+        >
           {label}
         </label>
       )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
+            data-slot="date-input-trigger"
             type="button"
-            variant="ghost"
+            variant="legacy-ghost"
             className={triggerStyles}
             disabled={isDisabled}
             autoFocus={autoFocus}
@@ -127,13 +132,22 @@ export const DateInput = ({
             aria-describedby={ariaDescribedBy}
           >
             <CalendarIcon
+              data-slot="date-input-icon"
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
             />
             {buttonText}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" sideOffset={6}>
+        {/* TODO(tokens): today's popover look. No exact role: border-neutral-200
+            #E5E5E5; text-neutral-950 #0A0A0A is the `focus` role, a ring colour,
+            not a text colour (SECRT-3154). */}
+        <PopoverContent
+          data-slot="date-input-popup"
+          className="w-auto rounded-medium border-neutral-200 p-0 text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
+          sideOffset={6}
+        >
           <Calendar
+            data-slot="date-input-calendar"
             mode="single"
             selected={selected}
             onSelect={setDate}
@@ -145,7 +159,14 @@ export const DateInput = ({
           />
         </PopoverContent>
       </Popover>
-      {error && <span className="text-sm text-red-500">{error}</span>}
+      {error && (
+        <span
+          data-slot="date-input-error"
+          className="text-body leading-5 text-error"
+        >
+          {error}
+        </span>
+      )}
     </div>
   );
 };

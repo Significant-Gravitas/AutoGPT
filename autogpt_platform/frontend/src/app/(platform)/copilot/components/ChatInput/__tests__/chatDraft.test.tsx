@@ -8,13 +8,14 @@ vi.mock("@/lib/auth/hooks/useAuthStore", () => ({
   useAuthStore: (selector: (state: typeof auth) => unknown) => selector(auth),
 }));
 vi.mock("@/app/(platform)/copilot/store", () => ({
-  useCopilotUIStore: () => ({
-    initialPrompt: prompts.initialPrompt,
-    setInitialPrompt: (value: string | null) => {
-      prompts.initialPrompt = value;
-    },
-    notifyMessageSent: vi.fn(),
-  }),
+  useCopilotUIStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      initialPrompt: prompts.initialPrompt,
+      setInitialPrompt: (value: string | null) => {
+        prompts.initialPrompt = value;
+      },
+      notifyMessageSent: vi.fn(),
+    }),
 }));
 import { useChatDraftAccess } from "../useChatDraft";
 import { useChatInput } from "../useChatInput";
@@ -196,5 +197,21 @@ describe("acting on a draft without showing it", () => {
     } finally {
       setItem.mockRestore();
     }
+  });
+  it("keeps no copy of a draft once browser storage holds it", () => {
+    const draft = renderHook(() => useChatDraftAccess("session:chat-stored"));
+    const setItem = vi
+      .spyOn(window.sessionStorage, "setItem")
+      .mockImplementation(() => {
+        throw new Error("QuotaExceededError");
+      });
+    act(() => draft.result.current.write("Refused by storage"));
+    setItem.mockRestore();
+    act(() => draft.result.current.write("Stored"));
+
+    sessionStorage.clear();
+
+    // Storage is what holds the draft now, so clearing it clears the draft.
+    expect(draft.result.current.read()).toBe("");
   });
 });

@@ -62,7 +62,8 @@
           "object": "Gmail Send",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "Gmail Send",
       "editable": false,
@@ -239,11 +240,11 @@
           "kind": "block",
           "key": "block:b8a934d5-fca0-4be3-9fc2-a99bf63bd385",
           "name": "Google Sheets Update Row",
-          "effect": "external",
+          "effect": "external_judged",
           "irreversible": false,
           "block_id": "b8a934d5-fca0-4be3-9fc2-a99bf63bd385"
         },
-        "reason": "Otto does not know what Google Sheets Update Row does, so he asks.",
+        "reason": "Runs Google Sheets Update Row, which reaches outside the platform.",
         "reason_kind": "subject",
         "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
@@ -252,7 +253,8 @@
           "object": "Google Sheets Update Row",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "Google Sheets Update Row",
       "editable": false,
@@ -475,7 +477,8 @@
           "object": "Execute Code Step",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "Execute Code Step",
       "editable": false,
@@ -628,7 +631,8 @@
           "object": "Send Web Request",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "Send Web Request",
       "editable": false,
@@ -775,7 +779,8 @@
           "object": "Post To X",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "Post To X",
       "editable": false,
@@ -1124,7 +1129,8 @@
           "object": "Gmail Send",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "Gmail Send",
       "editable": false,
@@ -1299,7 +1305,8 @@
           "object": "Morning digest",
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "Morning digest",
       "editable": false,
@@ -1358,12 +1365,205 @@
           "object": null,
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "Run a command in the sandbox",
       "editable": false,
       "status": "WAITING"
     },
     "schema": null
+  },
+  {
+    "story": "Workflow Step",
+    "review": {
+      "node_exec_id": "copilot-node-gate-workflow_step:8381086bb449da65",
+      "node_id": "copilot-node-gate-workflow_step",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "workflow_step",
+        "arguments": {
+          "to": ["dana@acme.com"],
+          "cc": ["finance@acme.com"],
+          "subject": "Q3 invoices missing PO numbers",
+          "body": "Hi Dana,\n\nThe Q3 invoice pack is in the shared Invoices folder. Three of them are still missing a PO number:\n\n- INV-2041\n- INV-2044\n- INV-2051\n\nCould you look before Friday?\n\nThanks,\nOtto"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "to",
+            "label": "To",
+            "format": null
+          },
+          {
+            "key": "cc",
+            "label": "Cc",
+            "format": null
+          },
+          {
+            "key": "subject",
+            "label": "Subject",
+            "format": null
+          },
+          {
+            "key": "body",
+            "label": "Body",
+            "format": null
+          }
+        ],
+        "references": [],
+        "reference_totals": {},
+        "tool_call_id": "",
+        "turn": 1,
+        "mode": "auto",
+        "subject": {
+          "kind": "block",
+          "key": "block:6c27abc2-e51d-499e-a85f-5a0041ba94f0",
+          "name": "Gmail Send",
+          "effect": "external",
+          "irreversible": true,
+          "block_id": "6c27abc2-e51d-499e-a85f-5a0041ba94f0"
+        },
+        "reason": "A step of Morning digest, which reaches outside the platform.",
+        "reason_kind": "subject",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Run",
+          "object": "Gmail Send",
+          "object_key": null
+        },
+        "spend": null,
+        "workflow": {
+          "graph_exec_id": "run-digest",
+          "node_exec_id": "node-exec-send",
+          "graph_id": "g-digest",
+          "graph_version": 1,
+          "name": "Morning digest"
+        }
+      },
+      "instructions": "Run “Gmail Send”",
+      "editable": false,
+      "status": "WAITING"
+    },
+    "schema": {
+      "properties": {
+        "credentials": {
+          "credentials_provider": ["google"],
+          "credentials_types": ["oauth2"],
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
+            },
+            "provider": {
+              "const": "google",
+              "title": "Provider",
+              "type": "string"
+            },
+            "type": {
+              "const": "oauth2",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": ["id", "provider", "type"],
+          "title": "CredentialsMetaInput[Literal[<ProviderName.GOOGLE: 'google'>], Literal['oauth2']]",
+          "type": "object",
+          "credentials_scopes": ["https://www.googleapis.com/auth/gmail.send"],
+          "description": "The Google integration requires OAuth2 authentication."
+        },
+        "to": {
+          "advanced": false,
+          "description": "Recipient email addresses",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "To",
+          "type": "array"
+        },
+        "subject": {
+          "advanced": false,
+          "description": "Email subject",
+          "secret": false,
+          "title": "Subject",
+          "type": "string"
+        },
+        "body": {
+          "advanced": false,
+          "description": "Email body (plain text or HTML)",
+          "secret": false,
+          "title": "Body",
+          "type": "string"
+        },
+        "cc": {
+          "advanced": true,
+          "description": "CC recipients",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Cc",
+          "type": "array"
+        },
+        "bcc": {
+          "advanced": true,
+          "description": "BCC recipients",
+          "items": {
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Bcc",
+          "type": "array"
+        },
+        "content_type": {
+          "advanced": true,
+          "anyOf": [
+            {
+              "enum": ["auto", "plain", "html"],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
+          "secret": false,
+          "title": "Content Type"
+        },
+        "attachments": {
+          "advanced": true,
+          "description": "Files to attach",
+          "items": {
+            "format": "file",
+            "type": "string"
+          },
+          "secret": false,
+          "title": "Attachments",
+          "type": "array"
+        }
+      },
+      "required": ["credentials", "to", "subject", "body"],
+      "title": "Input",
+      "type": "object"
+    }
   }
 ]

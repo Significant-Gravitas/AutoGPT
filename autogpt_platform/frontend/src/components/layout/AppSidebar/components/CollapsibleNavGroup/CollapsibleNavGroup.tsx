@@ -1,16 +1,17 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import {
-  Collapsible,
+  CollapsibleRoot,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@/components/molecules/Collapsible/Collapsible";
 import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import type { ReactNode } from "react";
 
@@ -28,7 +29,7 @@ export function CollapsibleNavGroup({
   onOpenChange,
 }: Props) {
   return (
-    <Collapsible
+    <CollapsibleRoot
       defaultOpen
       open={open}
       onOpenChange={onOpenChange}
@@ -37,10 +38,16 @@ export function CollapsibleNavGroup({
       <SidebarGroup className="py-1">
         <SidebarGroupLabel
           asChild
-          className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden max-md:h-11 max-md:text-sm"
+          className="leading-inherit text-foreground-tertiary group-data-[collapsible=icon]:hidden max-md:h-11"
         >
           <CollapsibleTrigger>
-            {label}
+            <Text
+              as="span"
+              variant="body-sm-medium-inherit-touch"
+              tone="inherit"
+            >
+              {label}
+            </Text>
             <Icon
               icon={ArrowDown01Icon}
               className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none max-md:size-5"
@@ -51,6 +58,6 @@ export function CollapsibleNavGroup({
           <SidebarGroupContent>{children}</SidebarGroupContent>
         </CollapsibleContent>
       </SidebarGroup>
-    </Collapsible>
+    </CollapsibleRoot>
   );
 }

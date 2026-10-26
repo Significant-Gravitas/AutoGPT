@@ -280,7 +280,7 @@ class TurnDenial(BaseModel):
     directly into the executor.
     """
 
-    reason: Literal["paywalled", "rate_limited", "unavailable"]
+    reason: Literal["banned", "paywalled", "rate_limited", "unavailable"]
     message: str
     button_label: str | None = None
     button_url: str | None = None

@@ -1,22 +1,28 @@
 """Route tests for /sessions/{session_id}/at-reset: setting, listing and
 cancelling a resume or send at the budget reset.
 
-The session checks, the budget reads and the scheduler are mocked at the
-boundary; ``backend/copilot/at_reset_test.py`` covers when the turn fires.
+The session checks, the budget reads, the scheduler and Redis (the chat's job
+lock) are mocked at the boundary; ``backend/copilot/at_reset_test.py`` covers
+when the turn fires.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
+import httpx
 import pytest
 import pytest_mock
 from autogpt_libs.auth.dependencies import get_request_context
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from backend.api.features.chat import at_reset as at_reset_routes
+from backend.copilot import at_reset_lock
 from backend.copilot.at_reset import NoResetAhead
+from backend.copilot.at_reset_lock_fixtures import FakeAtResetRedis
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE, as_model_prompt
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.executor.scheduler import CopilotTurnJobInfo
@@ -77,6 +83,14 @@ def run_at(mocker: pytest_mock.MockerFixture) -> AsyncMock:
     return mocker.patch.object(
         at_reset_routes, "next_reset_run_at", AsyncMock(return_value=RUN_AT)
     )
+
+
+@pytest.fixture(autouse=True)
+def job_locks(mocker: pytest_mock.MockerFixture) -> FakeAtResetRedis:
+    """Redis, where each chat's at-reset job is locked across replicas."""
+    redis = FakeAtResetRedis()
+    mocker.patch.object(at_reset_lock, "get_redis_async", AsyncMock(return_value=redis))
+    return redis
 
 
 def _when(body: dict) -> datetime:
@@ -155,6 +169,58 @@ def test_a_second_send_joins_the_message_already_waiting(scheduler, session, run
     joined = "draft the launch post\n\nalso the changelog"
     assert response.json()["message"] == joined
     assert scheduler.add_copilot_turn_schedule.await_args.kwargs["message"] == joined
+
+
+class _ChatJobs:
+    """The scheduler's jobs for the chat, in memory. A listing reads them and
+    then waits to be let go, the window two writers race in."""
+
+    def __init__(self) -> None:
+        self.jobs: dict[str, CopilotTurnJobInfo] = {}
+        self.listed = asyncio.Event()
+        self.let_go = asyncio.Event()
+
+    async def get_execution_schedules(self, **_) -> list[CopilotTurnJobInfo]:
+        jobs = list(self.jobs.values())
+        self.listed.set()
+        await self.let_go.wait()
+        return jobs
+
+    async def add_copilot_turn_schedule(
+        self, *, purpose: str, message: str, schedule_id: str, **_
+    ) -> None:
+        self.jobs[schedule_id] = _job(purpose, message)
+
+
+@pytest.mark.asyncio
+async def test_two_sends_at_once_both_end_up_in_the_waiting_message(
+    session, run_at, mocker: pytest_mock.MockerFixture
+):
+    # Two tabs, or two API replicas: each read the waiting message before the
+    # other set its own, so the second set replaced the first.
+    jobs = _ChatJobs()
+    mocker.patch.object(at_reset_routes, "get_scheduler_client", return_value=jobs)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as http:
+
+        async def send(message: str) -> httpx.Response:
+            return await http.post(
+                f"/sessions/{SESSION}/at-reset",
+                json={"kind": "send", "message": message},
+            )
+
+        first = asyncio.create_task(send("draft the launch post"))
+        await jobs.listed.wait()
+        second = asyncio.create_task(send("also the changelog"))
+        await asyncio.sleep(0.2)
+        jobs.let_go.set()
+        responses = await asyncio.gather(first, second)
+
+    assert [r.status_code for r in responses] == [200, 200]
+    (waiting,) = jobs.jobs.values()
+    assert waiting.message == "draft the launch post\n\nalso the changelog"
 
 
 def test_a_joined_send_longer_than_a_message_is_413(scheduler, session, run_at):
@@ -245,6 +311,33 @@ def test_unreadable_usage_is_503(scheduler, session, run_at):
     assert response.headers["Retry-After"] == "30"
 
 
+@pytest.mark.parametrize(
+    "method, path, body",
+    [
+        ("POST", f"/sessions/{SESSION}/at-reset", {"kind": "send", "message": "x"}),
+        ("POST", f"/sessions/{SESSION}/at-reset", {"kind": "resume"}),
+        ("DELETE", f"/sessions/{SESSION}/at-reset/send", None),
+    ],
+)
+def test_a_job_it_cannot_lock_is_503_and_left_alone(
+    method, path, body, scheduler, session, run_at, mocker: pytest_mock.MockerFixture
+):
+    # Going on without the lock could lose a send another tab just wrote.
+    mocker.patch.object(
+        at_reset_lock,
+        "get_redis_async",
+        AsyncMock(side_effect=RedisConnectionError("down")),
+    )
+
+    response = client.request(method, path, json=body)
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"
+    scheduler.get_execution_schedules.assert_not_awaited()
+    scheduler.add_copilot_turn_schedule.assert_not_awaited()
+    scheduler.cancel_at_reset_turn.assert_not_awaited()
+
+
 def _job(purpose: str, message: str) -> CopilotTurnJobInfo:
     return CopilotTurnJobInfo.model_validate(
         {
@@ -294,6 +387,25 @@ def test_cancel_is_204_whether_or_not_one_was_set(
     scheduler.cancel_at_reset_turn.assert_awaited_once_with(
         user_id=test_user_id, session_id=SESSION, kind="send"
     )
+
+
+def test_a_cancel_holds_the_jobs_lock_while_it_cancels(scheduler, session, job_locks):
+    # A cancel landing between a put-back's check and its re-add finds no job
+    # to remove, and the re-add then brings the cancelled job back.
+    key = f"copilot:at_reset_lock:at-reset-send-{SESSION}"
+    held_while_cancelling: list[bool] = []
+
+    def cancel(**_) -> bool:
+        held_while_cancelling.append(job_locks.is_locked(key))
+        return True
+
+    scheduler.cancel_at_reset_turn.side_effect = cancel
+
+    response = client.delete(f"/sessions/{SESSION}/at-reset/send")
+
+    assert response.status_code == 204
+    assert held_while_cancelling == [True]
+    assert not job_locks.is_locked(key)
 
 
 def test_cancel_an_unknown_kind_is_422(scheduler, session):

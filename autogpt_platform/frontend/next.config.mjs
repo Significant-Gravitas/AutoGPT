@@ -1,3 +1,4 @@
+import { withPostHogConfig } from "@posthog/nextjs-config";
 import { withSentryConfig } from "@sentry/nextjs";
 
 // Allow Docker builds to skip source-map generation (halves memory usage).
@@ -7,6 +8,14 @@ const enableSourceMaps = process.env.NEXT_PUBLIC_SOURCEMAPS !== "false";
 // CI's e2e image build skips lint and type checks; CI runs `pnpm lint` and
 // `pnpm types` as their own jobs.
 const skipBuildChecks = process.env.NEXT_SKIP_BUILD_CHECKS === "true";
+
+// Read by the React Compiler coverage test too, so both cover the same files.
+export const reactCompilerSources = [
+  "/src/app/(platform)/copilot/",
+  "/src/components/organisms/Conversation/",
+  "/src/components/organisms/Message/",
+  "/src/components/organisms/PromptInput/",
+];
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -19,6 +28,10 @@ const nextConfig = {
     NEXT_PUBLIC_VERCEL_TARGET_ENV: process.env.VERCEL_TARGET_ENV ?? "",
     // Sentry initialises in the browser too, so its kill switch must reach it.
     DISABLE_SENTRY: process.env.DISABLE_SENTRY ?? "",
+    // The build's commit, which Sentry's plugin also names its release, so
+    // PostHog events can be split by deploy.
+    NEXT_PUBLIC_REVISION:
+      process.env.SENTRY_RELEASE || process.env.VERCEL_GIT_COMMIT_SHA || "",
   },
   // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
   poweredByHeader: false,
@@ -35,6 +48,21 @@ const nextConfig = {
       {
         source: "/api/store/media/:path*",
         destination: "/api/proxy/api/store/media/:path*",
+      },
+    ];
+  },
+  // These /profile pages have no page left for the layout's redirect to run on.
+  async redirects() {
+    return [
+      {
+        source: "/profile",
+        destination: "/settings/profile",
+        permanent: false,
+      },
+      {
+        source: "/profile/integrations",
+        destination: "/settings/integrations",
+        permanent: false,
       },
     ];
   },
@@ -55,6 +83,14 @@ const nextConfig = {
     middlewareClientMaxBodySize: "256mb",
     // Limit parallel webpack workers to reduce peak memory during builds.
     cpus: 2,
+    // The React Compiler memoises components and hooks it can prove follow
+    // React's rules. Copilot only for now; every other folder builds exactly
+    // as before. Plain strings, since Turbopack only takes serialisable
+    // loader options; the compiler matches them against each file's path.
+    reactCompiler: {
+      compilationMode: "infer",
+      sources: reactCompilerSources,
+    },
   },
   // Work around cssnano "Invalid array length" bug in Next.js's bundled
   // cssnano-simple comment parser when processing very large CSS chunks.
@@ -186,7 +222,7 @@ const skipSentryPlugin =
   !enableSourceMaps ||
   !process.env.SENTRY_AUTH_TOKEN;
 
-export default skipSentryPlugin
+const configWithSentry = skipSentryPlugin
   ? nextConfig
   : withSentryConfig(nextConfig, {
       // For all available options, see:
@@ -204,7 +240,7 @@ export default skipSentryPlugin
       // Upload a larger set of source maps for prettier stack traces (increases build time)
       widenClientFileUpload: true,
 
-      // Automatically annotate React components to show their full name in breadcrumbs and session replay
+      // Automatically annotate React components to show their full name in breadcrumbs
       reactComponentAnnotation: {
         enabled: true,
       },
@@ -232,3 +268,26 @@ export default skipSentryPlugin
       // https://vercel.com/docs/cron-jobs
       automaticVercelMonitors: true,
     });
+
+// Build-only credentials, never NEXT_PUBLIC_ and never in `env` above, so they
+// stay out of the browser bundle. Named apart from the backend's public
+// POSTHOG_API_KEY so the two keys can't be mixed up.
+const postHogUploadConfigured = Boolean(
+  process.env.NODE_ENV === "production" &&
+    enableSourceMaps &&
+    process.env.POSTHOG_SOURCEMAP_UPLOAD_KEY &&
+    process.env.POSTHOG_SOURCEMAP_PROJECT_ID,
+);
+
+export default postHogUploadConfigured
+  ? withPostHogConfig(configWithSentry, {
+      personalApiKey: process.env.POSTHOG_SOURCEMAP_UPLOAD_KEY,
+      projectId: process.env.POSTHOG_SOURCEMAP_PROJECT_ID,
+      host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+      sourcemaps: {
+        enabled: enableSourceMaps,
+        // Sentry also uploads these maps; neither plugin should delete them first.
+        deleteAfterUpload: false,
+      },
+    })
+  : configWithSentry;

@@ -216,13 +216,25 @@ describe("CredentialsProvider device-auth upserts", () => {
   }
 
   async function mountProbe() {
-    render(
+    const view = render(
       <CredentialsProvider>
         <UpsertProbe provider="stripe_link" />
       </CredentialsProvider>,
       { wrapper: TestWrapper },
     );
     await waitFor(() => expect(apiMock.listCredentials).toHaveBeenCalled());
+    return view;
+  }
+
+  // The real useAuth is a store subscription, so a login or logout re-renders
+  // the provider; the mock only takes effect on the next render.
+  function setLoggedIn(view: ReturnType<typeof render>, value: boolean) {
+    isLoggedIn.value = value;
+    view.rerender(
+      <CredentialsProvider>
+        <UpsertProbe provider="stripe_link" />
+      </CredentialsProvider>,
+    );
   }
 
   /** Click reload and wait for that specific request to have been issued. */
@@ -279,18 +291,18 @@ describe("CredentialsProvider device-auth upserts", () => {
     // pendingUpsertsRef outlives a session unless cleared. Left in place it
     // would be merged into the next user's list on the same mounted provider,
     // exposing the previous account's credential metadata.
-    await mountProbe();
+    const view = await mountProbe();
     await act(async () => {
       screen.getByTestId("do-upsert").click();
     });
     expect(savedIds()).toContain("cred-device");
 
-    isLoggedIn.value = false;
+    await act(async () => setLoggedIn(view, false));
     await act(async () => {
       screen.getByTestId("do-reload").click();
     });
 
-    isLoggedIn.value = true;
+    await act(async () => setLoggedIn(view, true));
     apiMock.listCredentials.mockResolvedValue([] as never);
     await reloadAndSettle();
 

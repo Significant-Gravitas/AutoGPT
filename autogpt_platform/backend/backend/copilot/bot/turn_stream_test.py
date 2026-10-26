@@ -8,6 +8,7 @@ from backend.copilot.prompting import NO_REPLY
 from backend.platform_linking.models import ChannelCard
 
 from .adapters.base import ChannelType, MessageContext, StreamDraftOutcome
+from .prompt import PendingMessage
 from .turn_stream import DraftStreamer, TurnStreamer, _send_clarification
 
 _MODULE = "backend.copilot.bot.turn_stream"
@@ -151,7 +152,10 @@ class TestStreamBatchDrafts:
         api = _api(["Hello", " world"])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
         assert adapter.send_stream_draft.await_count >= 1
         first = adapter.send_stream_draft.await_args_list[0]
@@ -167,7 +171,10 @@ class TestStreamBatchDrafts:
         api = _api(["Hello", " world"])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_stream_draft.assert_not_awaited()
         adapter.send_message.assert_awaited_once()
@@ -188,7 +195,10 @@ class TestNoReply:
         api = _api([NO_REPLY])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "thanks!")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="thanks!")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_message.assert_not_awaited()
         adapter.send_link.assert_not_awaited()
@@ -206,7 +216,10 @@ class TestNoReply:
         api = _api(["\n  ", NO_REPLY, "\n"])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "ok")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="ok")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_message.assert_not_awaited()
 
@@ -216,7 +229,10 @@ class TestNoReply:
         api = _api(["NO", "_RE", "PLY"])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "ok")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="ok")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_message.assert_not_awaited()
         adapter.send_stream_draft.assert_not_awaited()
@@ -229,7 +245,10 @@ class TestNoReply:
         api = _api([text])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_message.assert_awaited_once()
         assert adapter.send_message.await_args.args[1] == text
@@ -240,7 +259,10 @@ class TestNoReply:
         api = _api(["no_reply"])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_message.assert_awaited_once()
         assert adapter.send_message.await_args.args[1] == "no_reply"
@@ -254,7 +276,10 @@ class TestNoReply:
         api = _api(["a paragraph long enough to flush.\n\n", NO_REPLY])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
         sent = [c.args[1] for c in adapter.send_message.await_args_list]
         assert any(NO_REPLY in s for s in sent)
@@ -266,7 +291,10 @@ class TestNoReply:
         api = _api([])
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
         adapter.send_message.assert_awaited_once()
         assert "didn't produce a response" in adapter.send_message.await_args.args[1]
@@ -561,7 +589,10 @@ class TestApprovalCards:
 
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "post")], ctx, adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="post")],
+                ctx,
+                adapter,
+                "42",
             )
 
         api.open_card.assert_awaited_once_with(
@@ -582,7 +613,10 @@ class TestApprovalCards:
             patch(f"{_MODULE}.copilot_session_url", return_value="https://x/c"),
         ):
             await TurnStreamer(_card_api([])).stream_batch(
-                [("Bently", "user-1", "post")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="post")],
+                _ctx(),
+                adapter,
+                "42",
             )
 
         adapter.send_link.assert_awaited_once()
@@ -606,7 +640,10 @@ class TestApprovalCards:
             patch(f"{_MODULE}.copilot_session_url", return_value="https://x/c"),
         ):
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "post")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="post")],
+                _ctx(),
+                adapter,
+                "42",
             )
 
         adapter.send_choice_buttons.assert_not_awaited()

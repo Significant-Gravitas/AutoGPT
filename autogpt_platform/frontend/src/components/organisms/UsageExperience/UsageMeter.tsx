@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatUsagePercent } from "@/services/usageExperience/helpers";
 import { cn } from "@/lib/utils";
@@ -11,12 +12,15 @@ interface Props {
 export function UsageMeter({ label, percent, detail }: Props) {
   const value = Math.min(100, Math.max(0, percent));
   return (
-    <div className="space-y-2">
-      <div className="flex justify-between gap-2">
-        <Text variant="small-medium" className="!text-zinc-700">
+    <div data-slot="usage-meter" className="space-y-2">
+      <div
+        data-slot="usage-meter-header"
+        className="flex justify-between gap-2"
+      >
+        <Text variant="small-medium" className="!text-foreground-body">
           {label}
         </Text>
-        <Text variant="small" className="tabular-nums !text-zinc-500">
+        <Text variant="small" tone="muted" className="tabular-nums">
           {formatUsagePercent(value)} used
         </Text>
       </div>
@@ -26,18 +30,21 @@ export function UsageMeter({ label, percent, detail }: Props) {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={value}
-        className="h-1.5 overflow-hidden rounded-full bg-zinc-100"
+        data-slot="usage-meter-track"
+        className="h-1.5 overflow-hidden rounded-full bg-surface-hover"
       >
         <div
+          data-slot="usage-meter-fill"
           className={cn(
-            "h-full rounded-full transition-[width]",
-            value >= 100 ? "bg-orange-500" : "bg-purple-500",
+            "w-(--usage-meter-width) h-full rounded-full transition-[width]",
+            // TODO(tokens): no role for orange-500, the full-meter fill.
+            value >= 100 ? "bg-orange-500" : "bg-brand",
           )}
-          style={{ width: `${value}%` }}
+          style={{ "--usage-meter-width": `${value}%` } as CSSProperties}
         />
       </div>
       {detail && (
-        <Text variant="small" className="!text-xs !text-zinc-500">
+        <Text variant="small" tone="muted" className="!text-xs">
           {detail}
         </Text>
       )}

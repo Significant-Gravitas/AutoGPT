@@ -37,10 +37,20 @@ interface SessionChatMessage {
   metadata: Record<string, unknown> | null;
 }
 
-function getRunMetadata(metadata: unknown): Record<string, unknown> | null {
-  return metadata &&
-    typeof metadata === "object" &&
-    (metadata as Record<string, unknown>).kind === "expert_run"
+// Assistant rows the backend posts on its own, outside any turn: a run-post
+// WorkCard, or the note a skipped scheduled chat leaves. Each is its own bubble
+// so it never reads as part of a neighbouring reply.
+const STANDALONE_METADATA_KINDS = new Set([
+  "expert_run",
+  "scheduled_chat_notice",
+]);
+
+function getStandaloneBubbleMetadata(
+  metadata: unknown,
+): Record<string, unknown> | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const kind = (metadata as Record<string, unknown>).kind;
+  return typeof kind === "string" && STANDALONE_METADATA_KINDS.has(kind)
     ? (metadata as Record<string, unknown>)
     : null;
 }
@@ -460,10 +470,11 @@ export function convertChatSessionMessagesToUiMessages(
     // be keyed ``-seq-5``, and a cross-page assistant at seq=7 would fail
     // the ``firstSeq === lastSeq + 1`` check (7 !== 5+1) and split into two
     // bubbles instead of joining the ongoing turn.
-    // A run-post carries structured ``metadata`` the thread renders as a
-    // WorkCard. Keep it as its own bubble — never fold it into a neighbouring
-    // assistant turn (either direction), or the card loses its identity.
-    const runMetadata = getRunMetadata(msg.metadata);
+    // A run-post or a skipped-run note carries structured ``metadata`` the
+    // thread renders as a card. Keep it as its own bubble — never fold it
+    // into a neighbouring assistant turn (either direction), or the card
+    // loses its identity.
+    const standaloneMetadata = getStandaloneBubbleMetadata(msg.metadata);
     // The still-running turn opens its own bubble even when it follows an
     // assistant row: merging it into the completed answer above would make
     // the resume path (which replays that turn alone) drop both.
@@ -475,8 +486,8 @@ export function convertChatSessionMessagesToUiMessages(
       !opensActiveTurn &&
       prevUI &&
       prevUI.role === "assistant" &&
-      !getRunMetadata(prevUI.metadata) &&
-      !runMetadata
+      !getStandaloneBubbleMetadata(prevUI.metadata) &&
+      !standaloneMetadata
     ) {
       prevUI.parts.push(...parts);
       const oldId = prevUI.id;

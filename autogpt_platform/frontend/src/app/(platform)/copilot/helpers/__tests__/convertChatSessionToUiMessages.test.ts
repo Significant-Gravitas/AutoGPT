@@ -33,6 +33,35 @@ describe("convertChatSessionMessagesToUiMessages", () => {
     expect(result.messages[1].metadata).toMatchObject({ kind: "expert_run" });
   });
 
+  it("keeps a skipped-run note as its own bubble between two replies", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "assistant", content: "Here is your briefing.", sequence: 0 },
+        {
+          role: "assistant",
+          content: "Skipped: daily usage limit reached. It didn't run.",
+          sequence: 1,
+          metadata: {
+            kind: "scheduled_chat_notice",
+            hidden_from_model: true,
+            headline: "Skipped: daily usage limit reached",
+            body: "It didn't run.",
+          },
+        },
+        { role: "assistant", content: "Next briefing.", sequence: 2 },
+      ],
+      { isComplete: true },
+    );
+
+    // Folded either way, the card would vanish into a reply.
+    expect(result.messages).toHaveLength(3);
+    expect(result.messages[1].metadata).toMatchObject({
+      kind: "scheduled_chat_notice",
+    });
+    expect(result.messages[2].metadata).toBeUndefined();
+  });
+
   it("does not attach metadata to legacy assistant messages", () => {
     const result = convertChatSessionMessagesToUiMessages(
       SESSION_ID,
@@ -362,12 +391,12 @@ function uiUser(
 describe("concatWithAssistantMerge", () => {
   it("returns b unchanged when a is empty", () => {
     const b = [uiAssistant(SESSION_ID, 0, "hi")];
-    expect(concatWithAssistantMerge([], b)).toEqual(b);
+    expect(concatWithAssistantMerge([], b)).toBe(b);
   });
 
   it("returns a unchanged when b is empty", () => {
     const a = [uiAssistant(SESSION_ID, 0, "hi")];
-    expect(concatWithAssistantMerge(a, [])).toEqual(a);
+    expect(concatWithAssistantMerge(a, [])).toBe(a);
   });
 
   it("merges two ASSISTANT bubbles whose DB sequences are strictly adjacent", () => {

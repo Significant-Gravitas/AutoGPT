@@ -68,7 +68,6 @@ class HireExpertTool(BaseTool):
                 "template_id": {
                     "type": "string",
                     "description": ("Roster template to hire; never invent an id."),
-                    "entity": "expert_template",
                 },
                 "name": {
                     "type": "string",

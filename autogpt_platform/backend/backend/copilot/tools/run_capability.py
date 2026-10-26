@@ -34,7 +34,7 @@ from backend.data.activity_event import ActivityEventDraft
 
 from .ayrshare_managed import connect_for_block as ayrshare_connect_for_block
 from .ayrshare_managed import is_ayrshare
-from .base import GATE_APPROVED, BaseTool
+from .base import GATE_APPROVED, GATE_DECIDED, BaseTool
 from .capability_gates import gate_denied, gate_denied_error
 from .describe_capability import (
     MCP_RUN_PARAMETERS,
@@ -172,6 +172,7 @@ class RunCapabilityTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         approved = bool(kwargs.pop(GATE_APPROVED, False))
+        decided = bool(kwargs.pop(GATE_DECIDED, False))
         session_id = session.session_id
         if not user_id:
             return ErrorResponse(
@@ -206,7 +207,7 @@ class RunCapabilityTool(BaseTool):
             ).from_outside()
         if entry.kind == "block":
             return await _run_block(
-                entry, user_id, session, payload, validate_only, approved
+                entry, user_id, session, payload, validate_only, approved, decided
             )
         if entry.kind == "tool":
             return await _describe_tool(entry, session)
@@ -239,6 +240,7 @@ async def _run_block(
     payload: dict[str, Any],
     validate_only: bool,
     approved: bool,
+    decided: bool = False,
 ) -> ToolResponseBase:
     if gate_denied(BLOCK_GATE):
         return gate_denied_error("blocks", session.session_id)
@@ -308,6 +310,7 @@ async def _run_block(
         input_data=payload,
         validate_only=validate_only,
         gate_approved=approved,
+        gate_decided=decided,
     )
 
 

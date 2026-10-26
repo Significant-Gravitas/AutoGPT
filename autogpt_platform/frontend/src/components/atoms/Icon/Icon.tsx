@@ -16,7 +16,14 @@ export function Icon({
   strokeWidth = ICON_STROKE_WIDTH,
   ...props
 }: Props) {
-  return <HugeiconsIcon size={size} strokeWidth={strokeWidth} {...props} />;
+  return (
+    <HugeiconsIcon
+      data-slot="icon"
+      size={size}
+      strokeWidth={strokeWidth}
+      {...props}
+    />
+  );
 }
 
 /**

@@ -780,6 +780,35 @@ class TestEnsureChatSession:
 class TestEvaluateTurnGate:
     _PATH = "backend.platform_linking.chat"
 
+    @pytest.fixture(autouse=True)
+    def _not_banned(self):
+        with patch(f"{self._PATH}.is_user_banned", AsyncMock(return_value=False)):
+            yield
+
+    @pytest.mark.asyncio
+    async def test_a_banned_owner_is_denied_before_the_paywall(self):
+        paywall = AsyncMock(return_value=True)
+        with (
+            patch(f"{self._PATH}.is_user_banned", AsyncMock(return_value=True)),
+            patch(f"{self._PATH}.is_user_paywalled", paywall),
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial == TurnDenial(
+            reason="banned", message="This account has been banned."
+        )
+        paywall.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_ban_fails_closed(self):
+        with patch(
+            f"{self._PATH}.is_user_banned", AsyncMock(side_effect=ConnectionError())
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial is not None
+        assert denial.reason == "unavailable"
+
     @pytest.mark.asyncio
     async def test_paywalled_returns_denial_with_button(self):
         with (

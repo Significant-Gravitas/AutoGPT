@@ -5,6 +5,7 @@ import {
 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
 import { server } from "@/mocks/mock-server";
 import { environment } from "@/services/environment";
+import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 import {
   installGtagShim,
   removeGtagShim,
@@ -29,7 +30,6 @@ import { translateText } from "@/tests/integrations/translation";
 
 const posthog = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("@posthog/react", () => ({
-  useFeatureFlagVariantKey: () => undefined,
   usePostHog: () => posthog,
 }));
 
@@ -221,7 +221,6 @@ test.each([
     const start = await card.findByRole("button", {
       name: "Start 7-day trial",
     });
-    expect(start.getAttribute("data-fast-goal")).not.toBe("plan_cta_click");
     fireEvent.click(start);
     await waitFor(() =>
       expect(checkoutLocation.assign).toHaveBeenCalledWith(
@@ -333,7 +332,7 @@ test("refreshes a rejected offer and submits its new token on retry", async () =
   });
 });
 
-test("retains paid checkout, Google Ads value, and DataFast metadata while a trial is eligible", async () => {
+test("retains paid checkout and Google Ads value while a trial is eligible", async () => {
   mockStatus();
   vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
   vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
@@ -350,10 +349,6 @@ test("retains paid checkout, Google Ads value, and DataFast metadata while a tri
   const pro = within(
     screen.getByRole("region", { name: "Pro plan" }),
   ).getByRole("button", { name: /^Get Pro/ });
-  expect(pro.getAttribute("data-fast-goal")).toBe("plan_cta_click");
-  expect(pro.getAttribute("data-fast-goal-plan")).toBe("pro");
-  expect(pro.getAttribute("data-fast-goal-cycle")).toBe("monthly");
-  expect(pro.getAttribute("data-fast-goal-surface")).toBe("onboarding_paywall");
   fireEvent.click(pro);
   await waitFor(() =>
     expect(checkoutLocation.href).toBe("https://checkout.stripe.com/paid"),
@@ -384,9 +379,6 @@ test("switches to the offered billing cycle without starting either checkout", a
   expect(
     screen.queryByRole("button", { name: "Start 7-day trial" }),
   ).toBeNull();
-  const toggle = screen.getByRole("button", { name: /Monthly billing/i });
-  expect(toggle.getAttribute("data-fast-goal")).toBe("paywall_billing_toggle");
-  expect(toggle.getAttribute("data-fast-goal-cycle")).toBe("monthly");
   fireEvent.click(alternative);
   expect(useOnboardingWizardStore.getState().selectedBilling).toBe("monthly");
   await screen.findByRole("button", { name: "Start 7-day trial" });
@@ -516,3 +508,51 @@ test("also flushes the draft from the standalone fallback trial card", async () 
   expect(await card.findByRole("alert")).toBeDefined();
   expect(checkoutLocation.assign).not.toHaveBeenCalled();
 });
+
+test.each(["failed", "left with Back"])(
+  "a %s Pro checkout leaves no spinner on Pro once the trial redirects",
+  async (outcome) => {
+    mockStatus();
+    server.use(
+      http.post("*/api/credits/subscription", () =>
+        outcome === "failed"
+          ? HttpResponse.json({ detail: "Please try again" }, { status: 503 })
+          : HttpResponse.json({ url: "https://checkout.stripe.com/paid" }),
+      ),
+      getPostTrialsStartTrialCheckoutMockHandler200({
+        url: "https://checkout.stripe.com/trial",
+      }),
+    );
+    render(<SubscriptionStep />);
+    const card = within(
+      await screen.findByRole("region", { name: "Pro plan" }),
+    );
+    const start = await card.findByRole("button", {
+      name: "Start 7-day trial",
+    });
+    const pro = card.getByRole("button", { name: /^Get Pro/ });
+
+    fireEvent.click(pro);
+    if (outcome === "failed") {
+      await waitFor(() => expect(pro.hasAttribute("disabled")).toBe(false));
+      expect(useOnboardingWizardStore.getState().selectedPlan).toBeNull();
+    } else {
+      await waitFor(() =>
+        expect(checkoutLocation.href).toBe("https://checkout.stripe.com/paid"),
+      );
+      expect(pro.querySelector(".animate-spin")).not.toBeNull();
+      restoreFromBackForwardCache();
+      expect(pro.hasAttribute("disabled")).toBe(false);
+    }
+    expect(pro.querySelector(".animate-spin")).toBeNull();
+
+    fireEvent.click(start);
+    await waitFor(() =>
+      expect(checkoutLocation.assign).toHaveBeenCalledWith(
+        "https://checkout.stripe.com/trial",
+      ),
+    );
+    expect(pro.hasAttribute("disabled")).toBe(true);
+    expect(pro.querySelector(".animate-spin")).toBeNull();
+  },
+);

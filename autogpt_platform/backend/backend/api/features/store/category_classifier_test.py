@@ -1,7 +1,10 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
+
+from backend.util.clients import OPENROUTER_BASE_URL
 
 from . import category_classifier
 from .categories import StoreCategory
@@ -27,12 +30,28 @@ def test_parse_category(answer, expected):
 
 def _client(content: str):
     client = MagicMock()
+    client.base_url = httpx.URL(OPENROUTER_BASE_URL)
     client.chat.completions.create = AsyncMock(
         return_value=SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
         )
     )
     return client
+
+
+@pytest.mark.asyncio
+async def test_the_classification_asks_for_no_reasoning(monkeypatch):
+    # Haiku 5.5 spent all 16 tokens thinking on 1 listing in 5 and answered
+    # nothing, leaving it uncategorised.
+    client = _client("sales")
+    monkeypatch.setattr(category_classifier, "get_openai_client", lambda **_: client)
+    monkeypatch.setattr(category_classifier, "_MODEL", "anthropic/claude-haiku-5.5")
+
+    await category_classifier.classify_category("Lead Finder", "Find prospects", "")
+
+    kwargs = client.chat.completions.create.await_args.kwargs
+    assert kwargs["extra_body"] == {"reasoning": {"enabled": False}}
+    assert kwargs["temperature"] == 0
 
 
 async def test_classifies_a_listing(monkeypatch):

@@ -7,12 +7,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/__legacy__/ui/dialog";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { LuCopy } from "react-icons/lu";
-import { Label } from "@/components/__legacy__/ui/label";
-import { Input } from "@/components/__legacy__/ui/input";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Label } from "@/components/atoms/Label/Label";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
+import { Text } from "@/components/atoms/Text/Text";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
+import { Button } from "@/components/atoms/Button/Button";
 
 import { useAPIkeysModals } from "./useAPIkeysModals";
 import { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
@@ -34,7 +35,7 @@ export const APIKeysModals = () => {
     <div className="mb-4 flex justify-end">
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogTrigger asChild>
-          <Button>Create Key</Button>
+          <Button variant="legacy-default">Create Key</Button>
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
@@ -46,7 +47,7 @@ export const APIKeysModals = () => {
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="name">Name</Label>
-              <Input
+              <BaseInput
                 id="name"
                 value={keyState.newKeyName}
                 onChange={(e) =>
@@ -60,7 +61,7 @@ export const APIKeysModals = () => {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="description">Description (Optional)</Label>
-              <Input
+              <BaseInput
                 id="description"
                 value={keyState.newKeyDescription}
                 onChange={(e) =>
@@ -74,32 +75,43 @@ export const APIKeysModals = () => {
             </div>
             <div className="grid gap-2">
               <Label>Permissions</Label>
-              {Object.values(APIKeyPermission).map((permission) => (
-                <div className="flex items-center space-x-2" key={permission}>
-                  <Checkbox
-                    id={permission}
-                    checked={keyState.selectedPermissions.includes(permission)}
-                    onCheckedChange={(checked: boolean) => {
-                      setKeyState((prev) => ({
-                        ...prev,
-                        selectedPermissions: checked
-                          ? [...prev.selectedPermissions, permission]
-                          : prev.selectedPermissions.filter(
-                              (p) => p !== permission,
-                            ),
-                      }));
-                    }}
-                  />
-                  <Label htmlFor={permission}>{permission}</Label>
-                </div>
-              ))}
+              <div className="max-h-48 space-y-2 overflow-y-auto">
+                {Object.values(APIKeyPermission).map((permission) => (
+                  <div className="flex items-center space-x-2" key={permission}>
+                    <Checkbox
+                      id={permission}
+                      checked={keyState.selectedPermissions.includes(
+                        permission,
+                      )}
+                      onCheckedChange={(checked: boolean) => {
+                        setKeyState((prev) => ({
+                          ...prev,
+                          selectedPermissions: checked
+                            ? [...prev.selectedPermissions, permission]
+                            : prev.selectedPermissions.filter(
+                                (p) => p !== permission,
+                              ),
+                        }));
+                      }}
+                    />
+                    <Label htmlFor={permission}>{permission}</Label>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
+            <Button
+              variant="legacy-outline"
+              onClick={() => setIsCreateOpen(false)}
+            >
               Cancel
             </Button>
-            <Button onClick={handleCreateKey} disabled={isCreating}>
+            <Button
+              variant="legacy-default"
+              onClick={handleCreateKey}
+              disabled={isCreating}
+            >
               Create
             </Button>
           </DialogFooter>
@@ -116,15 +128,29 @@ export const APIKeysModals = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center space-x-2">
-            <code className="ph-no-capture flex-1 rounded-md bg-secondary p-2 text-sm">
+            <Text
+              variant="body-mono-tight"
+              as="code"
+              tone="inherit"
+              className="ph-no-capture flex-1 rounded-md bg-secondary p-2"
+            >
               {keyState.newApiKey}
-            </code>
-            <Button size="icon" variant="outline" onClick={handleCopyKey}>
+            </Text>
+            <Button
+              size="legacy-icon"
+              variant="legacy-outline"
+              onClick={handleCopyKey}
+            >
               <LuCopy className="h-4 w-4" />
             </Button>
           </div>
           <DialogFooter>
-            <Button onClick={() => setIsKeyDialogOpen(false)}>Close</Button>
+            <Button
+              variant="legacy-default"
+              onClick={() => setIsKeyDialogOpen(false)}
+            >
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

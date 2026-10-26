@@ -169,7 +169,7 @@ describe("handleStreamError", () => {
       title: string;
       description: string;
     };
-    expect(arg.title).toBe("AutoPilot is temporarily unavailable");
+    expect(arg.title).toBe("Your expert is temporarily unavailable");
     expect(arg.description).toMatch(/try again shortly/i);
     expect(onRateLimit).not.toHaveBeenCalled();
   });

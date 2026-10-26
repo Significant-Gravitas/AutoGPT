@@ -29,7 +29,7 @@ function ScrollableTabsDemo() {
           <h3 className="mb-4 text-lg font-semibold">
             Short Content (Tabs Hidden)
           </h3>
-          <div className="h-[300px] overflow-y-auto border border-zinc-200">
+          <div className="h-[300px] overflow-y-auto border border-border-base">
             <ScrollableTabs defaultValue="tab1" className="h-full">
               <ScrollableTabsList>
                 <ScrollableTabsTrigger value="tab1">
@@ -67,7 +67,7 @@ function ScrollableTabsDemo() {
           <h3 className="mb-4 text-lg font-semibold">
             Long Content (Tabs Visible)
           </h3>
-          <div className="h-[400px] overflow-y-auto border border-zinc-200">
+          <div className="h-[400px] overflow-y-auto border border-border-base">
             <ScrollableTabs defaultValue="tab1" className="h-full">
               <ScrollableTabsList>
                 <ScrollableTabsTrigger value="tab1">
@@ -166,7 +166,7 @@ function ScrollableTabsDemo() {
 
         <div>
           <h3 className="mb-4 text-lg font-semibold">Many Tabs</h3>
-          <div className="h-[500px] overflow-y-auto border border-zinc-200">
+          <div className="h-[500px] overflow-y-auto border border-border-base">
             <ScrollableTabs defaultValue="overview" className="h-full">
               <ScrollableTabsList>
                 <ScrollableTabsTrigger value="overview">
@@ -301,7 +301,7 @@ export const Default = {
 export const ShortContent = {
   render: () => (
     <div className="p-8">
-      <div className="h-[200px] overflow-y-auto border border-zinc-200">
+      <div className="h-[200px] overflow-y-auto border border-border-base">
         <ScrollableTabs defaultValue="account" className="h-full">
           <ScrollableTabsList>
             <ScrollableTabsTrigger value="account">
@@ -332,7 +332,7 @@ export const ShortContent = {
 export const LongContent = {
   render: () => (
     <div className="p-8">
-      <div className="h-[600px] overflow-y-auto border border-zinc-200">
+      <div className="h-[600px] overflow-y-auto border border-border-base">
         <ScrollableTabs defaultValue="tab1" className="h-full">
           <ScrollableTabsList>
             <ScrollableTabsTrigger value="tab1">Account</ScrollableTabsTrigger>

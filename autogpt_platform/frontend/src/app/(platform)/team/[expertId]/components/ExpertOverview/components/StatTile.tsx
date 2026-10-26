@@ -14,10 +14,10 @@ interface Props {
 /** A headline number: the figure carries the tile, so no chart. */
 export function StatTile({ label, icon, value, detail, isLoading }: Props) {
   return (
-    <div className="flex flex-col gap-1 rounded-2xl bg-white p-4 smooth-shadow-ring-sm">
-      <div className="flex items-center gap-1.5 text-zinc-500">
+    <div className="flex flex-col gap-1 rounded-2xl bg-surface p-4 smooth-shadow-ring-sm">
+      <div className="flex items-center gap-1.5 text-foreground-tertiary">
         <Icon icon={icon} size={14} aria-hidden />
-        <Text variant="small-medium" className="!text-zinc-500">
+        <Text variant="small-medium" className="!text-foreground-tertiary">
           {label}
         </Text>
       </div>
@@ -27,13 +27,13 @@ export function StatTile({ label, icon, value, detail, isLoading }: Props) {
         <Text
           variant="h3"
           as="p"
-          className="!font-sans !text-[1.75rem] !font-semibold tabular-nums !leading-9 !text-zinc-900"
+          className="!font-sans !text-heading !font-semibold tabular-nums !leading-9 !text-foreground-strong"
         >
           {value ?? "—"}
         </Text>
       )}
       {detail ? (
-        <Text variant="small" className="!text-zinc-500">
+        <Text variant="small" className="!text-foreground-tertiary">
           {detail}
         </Text>
       ) : null}

@@ -1,4 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ErrorEvent } from "@sentry/nextjs";
+
+const mirrorEvent = vi.hoisted(() => vi.fn((event: ErrorEvent) => event));
+vi.mock("@/services/analytics/sentry-posthog", () => ({
+  createPostHogSentryProcessor: () => mirrorEvent,
+}));
 
 const { initMock, reportingObserverIntegrationMock } = vi.hoisted(() => ({
   initMock: vi.fn(),
@@ -22,7 +28,6 @@ vi.mock("@sentry/nextjs", () => {
     httpClientIntegration: stubIntegration("HttpClient"),
     featureFlagsIntegration: stubIntegration("FeatureFlags"),
     replayIntegration: stubIntegration("Replay"),
-    replayCanvasIntegration: stubIntegration("ReplayCanvas"),
     captureRouterTransitionStart: vi.fn(),
   };
 });
@@ -32,6 +37,20 @@ afterEach(() => {
 });
 
 describe("Sentry client instrumentation", () => {
+  it("passes each navigation Next starts on to Sentry", async () => {
+    const Sentry = await import("@sentry/nextjs");
+    const { onRouterTransitionStart } = await import(
+      "../../instrumentation-client"
+    );
+
+    onRouterTransitionStart("/link/t-1", "push");
+
+    expect(Sentry.captureRouterTransitionStart).toHaveBeenCalledWith(
+      "/link/t-1",
+      "push",
+    );
+  });
+
   it("does not forward browser deprecation reports to Sentry", async () => {
     await import("../../instrumentation-client");
 
@@ -97,8 +116,41 @@ describe("Sentry client instrumentation", () => {
     };
 
     expect(beforeSend).toBeTypeOf("function");
+    mirrorEvent.mockClear();
     expect(beforeSend(rscFallback, {})).toBeNull();
+    expect(mirrorEvent).not.toHaveBeenCalled();
     expect(beforeSend(fetchError, {})).toBe(fetchError);
+    expect(mirrorEvent).toHaveBeenCalledExactlyOnceWith(fetchError);
+  });
+
+  it("sends errors whose trace context carries no IP address or email", async () => {
+    await import("../../instrumentation-client");
+
+    const { beforeSend } = initMock.mock.calls[0][0];
+    const event = beforeSend(
+      {
+        exception: { values: [{ type: "Error", value: "boom" }] },
+        contexts: {
+          trace: {
+            trace_id: "a".repeat(32),
+            span_id: "b".repeat(16),
+            data: {
+              "client.address": "203.0.113.7",
+              "user.email": "ada@example.com",
+              user: "ada@example.com",
+              "user.id": "user-1",
+              "url.path": "/library",
+            },
+          },
+        },
+      },
+      {},
+    );
+
+    expect(event.contexts.trace.data).toEqual({
+      "user.id": "user-1",
+      "url.path": "/library",
+    });
   });
 
   it("drops a browser-injected script's iframe probe but keeps our own frame errors", async () => {
@@ -135,9 +187,37 @@ describe("Sentry client instrumentation", () => {
       },
     };
 
+    mirrorEvent.mockClear();
     expect(beforeSend(injectedProbe, {})).toBeNull();
+    expect(mirrorEvent).not.toHaveBeenCalled();
     expect(beforeSend(blocked, {})).toBe(blocked);
     expect(beforeSend(ourWarning, {})).toBe(ourWarning);
+    expect(mirrorEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("traces every transaction but profiles one in ten", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    await import("../../instrumentation-client");
+
+    const { tracesSampleRate, profilesSampleRate } = initMock.mock.calls[0][0];
+
+    expect(tracesSampleRate).toBe(1);
+    expect(profilesSampleRate).toBe(0.1);
+  });
+
+  it("records no session replay", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    await import("../../instrumentation-client");
+
+    const options = initMock.mock.calls[0][0];
+    expect(options).not.toHaveProperty("replaysSessionSampleRate");
+    expect(options).not.toHaveProperty("replaysOnErrorSampleRate");
+    const names = options.integrations.map(
+      (integration: { name: string }) => integration.name,
+    );
+    expect(names).not.toContain("Replay");
   });
 
   it("tags events with the environment the deployment names for itself", async () => {

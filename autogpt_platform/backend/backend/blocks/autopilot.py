@@ -36,6 +36,7 @@ from backend.copilot.permissions import (
     all_known_tool_names,
     validate_block_identifiers,
 )
+from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockExecutionError
@@ -264,6 +265,30 @@ class AutoPilotBlock(Block):
                 "True (default): 'blocks' is a deny-list — listed blocks are blocked, "
                 "all others are allowed. An empty 'blocks' list means allow everything. "
                 "False: 'blocks' is an allow-list — only listed blocks are permitted."
+            ),
+            default=True,
+            advanced=True,
+        )
+
+        providers: list[str] = SchemaField(
+            description=(
+                "Connected-account providers (e.g. 'github') whose accounts "
+                "the run may use: from code in the sandbox, and through blocks "
+                "that act with that provider's credentials. Works with "
+                "providers_exclude. Leave empty to apply no provider filter."
+            ),
+            default=[],
+            advanced=True,
+        )
+
+        providers_exclude: bool = SchemaField(
+            description=(
+                "Controls how the 'providers' list is interpreted. "
+                "True (default): 'providers' is a deny-list — listed providers "
+                "are blocked, all others are allowed. An empty 'providers' list "
+                "means allow everything. False: 'providers' is an allow-list — "
+                "of the supported connected-account providers, only listed "
+                "ones are permitted. Other providers are not covered."
             ),
             default=True,
             advanced=True,
@@ -746,12 +771,12 @@ def _out_of_budget_message(pause: "TurnPause") -> str:
     allowance = "the trial's" if pause.reason == "trial" else "your plan's"
     credits_url = f"{Settings().config.frontend_base_url.rstrip('/')}/profile/credits"
     message = (
-        f"Out of AutoPilot budget: {allowance} AutoPilot allowance is used up, "
+        f"Out of budget: {allowance} allowance is used up, "
         "and your credit balance doesn't cover a run (it needs at least "
         f"${PER_TURN_SPEND_FLOOR_USD:.2f}). Add credits at {credits_url} to "
         "run it on credits."
         if credits_can_pay_block_turns()
-        else f"Out of AutoPilot budget: {allowance} AutoPilot allowance is used up."
+        else f"Out of budget: {allowance} allowance is used up."
     )
     if pause.resets_at is None:
         return message
@@ -834,11 +859,22 @@ async def _build_and_validate_permissions(
                 "You may also use the first 8 characters of a block UUID."
             )
 
+    unknown_providers = [
+        p for p in input_data.providers if p not in SUPPORTED_PROVIDERS
+    ]
+    if unknown_providers:
+        return (
+            f"Unknown provider(s) in 'providers': {unknown_providers}. "
+            f"Known providers: {sorted(SUPPORTED_PROVIDERS)}."
+        )
+
     return CopilotPermissions(
         tools=list(input_data.tools),
         tools_exclude=input_data.tools_exclude,
         blocks=input_data.blocks,
         blocks_exclude=input_data.blocks_exclude,
+        providers=list(input_data.providers),
+        providers_exclude=input_data.providers_exclude,
     )
 
 

@@ -55,6 +55,7 @@ export function SubscriptionStep() {
                 ...trial,
                 startTrial,
                 isStarting: trial.isStarting || saving,
+                isBlocked: trial.isBlocked || subscription.isUpdatingTier,
                 error: saveError ?? trial.error,
               }}
             />
