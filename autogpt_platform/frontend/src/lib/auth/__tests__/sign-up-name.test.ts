@@ -118,7 +118,7 @@ describe("an email sign-up", () => {
   });
 
   it.each([undefined, "   "])(
-    "without a name (%j) stores none",
+    'without a name (%j) stores none and is greeted as "there"',
     async (given) => {
       const { auth, signup } = await createAuth();
 
@@ -133,6 +133,7 @@ describe("an email sign-up", () => {
 
       const user = await sessionUser(auth, "jane.doe87@example.com");
       expect(user.user_metadata.name).toBe("");
+      expect(getGreetingName(user)).toBeNull();
       expect(platformUsers.get(user.id)?.name).toBeNull();
     },
   );
