@@ -30,14 +30,15 @@ async def test_the_migration_clears_only_the_auto_filled_names(
             f"Jane.Doe{suffix}",
             ["credential"],
         ),
-        "linked_google_later": (
-            f"sam{suffix}@example.com",
-            f"sam{suffix}",
-            ["credential", "google"],
-        ),
         "copied_without_account": (f"lee{suffix}@example.com", f"lee{suffix}", []),
         "given": (f"jo{suffix}@example.com", "Jo", ["credential"]),
         "google_only": (f"john{suffix}@example.com", f"John{suffix}", ["google"]),
+        # Google first, password added later: the name may be Google's.
+        "google_then_password": (
+            f"max{suffix}@example.com",
+            f"Max{suffix}",
+            ["google", "credential"],
+        ),
     }
     ids = {key: str(uuid.uuid4()) for key in accounts}
     try:
@@ -58,10 +59,10 @@ async def test_the_migration_clears_only_the_auto_filled_names(
                 where={"id": {"in": list(ids.values())}}
             )
         }
-        for key in ("auto_filled", "linked_google_later", "copied_without_account"):
+        for key in ("auto_filled", "copied_without_account"):
             assert identities[ids[key]] == ""
             assert users[ids[key]] is None
-        for key in ("given", "google_only"):
+        for key in ("given", "google_only", "google_then_password"):
             assert identities[ids[key]] == accounts[key][1]
             assert users[ids[key]] == accounts[key][1]
     finally:
