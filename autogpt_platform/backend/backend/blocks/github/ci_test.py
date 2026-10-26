@@ -14,16 +14,33 @@ CHECK_RUNS = [
 
 
 class _RecordingPattern:
-    """Stands in for a compiled pattern and records each search's timeout."""
+    """Stands in for a compiled pattern: records each search's timeout and
+    advances the test's clock by ``seconds_per_search``."""
 
-    def __init__(self, raises: type[Exception] | None = None):
+    def __init__(
+        self,
+        clock: "_Clock | None" = None,
+        seconds_per_search: float = 0.0,
+        raises: type[Exception] | None = None,
+    ):
         self.timeouts: list[float] = []
+        self.clock = clock
+        self.seconds_per_search = seconds_per_search
         self.raises = raises
 
     def search(self, line: str, *, timeout: float) -> None:
         self.timeouts.append(timeout)
+        if self.clock:
+            self.clock.now += self.seconds_per_search
         if self.raises:
             raise self.raises
+
+
+class _Clock:
+    now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
 
 
 @pytest.mark.asyncio
@@ -41,15 +58,18 @@ async def test_search_in_logs_finds_matching_lines_with_context():
 
 
 @pytest.mark.asyncio
-async def test_search_in_logs_gives_every_search_the_time_left(mocker):
-    pattern = _RecordingPattern()
+async def test_search_in_logs_shares_one_time_budget_across_the_lines(mocker):
+    clock = _Clock()
+    mocker.patch("backend.blocks.github.ci.monotonic", clock.monotonic)
+    pattern = _RecordingPattern(clock, seconds_per_search=SEARCH_TIMEOUT_SECONDS / 2)
     mocker.patch("backend.blocks.github.ci.regex.compile", return_value=pattern)
 
-    await GithubGetCIResultsBlock.search_in_logs(CHECK_RUNS, "error")
+    # The lint check has three lines: each search gets what the last left,
+    # and the third is refused before it's searched
+    with pytest.raises(ValueError, match="timed out"):
+        await GithubGetCIResultsBlock.search_in_logs(CHECK_RUNS[:1], "error")
 
-    assert len(pattern.timeouts) == 3
-    assert all(0 < timeout <= SEARCH_TIMEOUT_SECONDS for timeout in pattern.timeouts)
-    assert pattern.timeouts == sorted(pattern.timeouts, reverse=True)
+    assert pattern.timeouts == [SEARCH_TIMEOUT_SECONDS, SEARCH_TIMEOUT_SECONDS / 2]
 
 
 @pytest.mark.asyncio

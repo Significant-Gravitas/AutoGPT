@@ -1,7 +1,7 @@
 import logging
 import re
-import time
 from enum import Enum
+from time import monotonic
 from typing import Optional
 
 import regex
@@ -212,7 +212,7 @@ class GithubGetCIResultsBlock(Block):
 
         matched_lines = []
         compiled = _compile_search_pattern(pattern)
-        deadline = time.monotonic() + SEARCH_TIMEOUT_SECONDS
+        deadline = monotonic() + SEARCH_TIMEOUT_SECONDS
 
         for check in check_runs:
             output_text = check.get("output_text", "") or ""
@@ -418,7 +418,7 @@ def _compile_search_pattern(pattern: str) -> regex.Pattern[str]:
 
 def _line_matches(pattern: regex.Pattern[str], line: str, deadline: float) -> bool:
     """Search one line with whatever is left of the run's search time."""
-    remaining = deadline - time.monotonic()
+    remaining = deadline - monotonic()
     if remaining <= 0:
         raise ValueError(SEARCH_TIMED_OUT)
     try:
