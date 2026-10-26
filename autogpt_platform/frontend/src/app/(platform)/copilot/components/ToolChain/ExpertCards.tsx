@@ -62,6 +62,9 @@ interface Props {
   /** Which way the pager just moved — the identity block slides in from
    *  that side while the shell (Details, pager, decision) stays put. */
   stepDirection?: StepDirection;
+  /** For a card that offered the hand-off: whether the stored approval was
+   *  "hire and hand off", so paging back shows what will be sent. */
+  handedOff?: boolean;
 }
 
 export type StepDirection = "forward" | "back";
@@ -246,6 +249,7 @@ export function ExpertChangeCard({
   action,
   stepDirection,
   waiting = false,
+  handedOff = false,
 }: Props) {
   const [showCharter, setShowCharter] = useState(false);
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
@@ -360,6 +364,13 @@ export function ExpertChangeCard({
           onUndo={onUndo}
           action={action}
           waiting={waiting}
+          chosen={
+            task && decision === "approved"
+              ? handedOff
+                ? "Hire and hand off chosen"
+                : "Hire only chosen"
+              : undefined
+          }
           handoff={
             task && onDecide && onHandOff
               ? { name, task, onHandOff, onDecide }
@@ -437,6 +448,8 @@ type FooterProps = Pick<
   Props,
   "pager" | "decision" | "onDecide" | "onUndo" | "action" | "waiting"
 > & {
+  /** What a stored approval will send, for cards offering two approvals. */
+  chosen?: string;
   handoff?: {
     name: string;
     task: HandoffTask;
@@ -453,6 +466,7 @@ function DecisionFooter({
   action,
   handoff,
   waiting = false,
+  chosen,
 }: FooterProps) {
   if (handoff && !decision) {
     return (
@@ -473,6 +487,9 @@ function DecisionFooter({
     <div className={FOOTER}>
       <div className="min-w-0">{pager}</div>
       <div className="flex shrink-0 items-center gap-1.5">
+        {chosen && (
+          <span className="text-xs text-foreground-tertiary">{chosen}</span>
+        )}
         {decision && onUndo && (
           <Button
             variant="secondary"
@@ -573,6 +590,7 @@ interface PartProps {
   action?: ReactNode;
   stepDirection?: StepDirection;
   waiting?: boolean;
+  handedOff?: boolean;
 }
 
 /** The expert is still being written while the row has no output — hold
@@ -590,6 +608,7 @@ export function ExpertChangePart({
   action,
   stepDirection,
   waiting,
+  handedOff,
 }: PartProps) {
   if (part.state === "output-error") return <GenericTool part={part} />;
   const output = asObject(part.output);
@@ -607,6 +626,7 @@ export function ExpertChangePart({
         action={action}
         stepDirection={stepDirection}
         waiting={waiting}
+        handedOff={handedOff}
       />
     );
   }
@@ -817,6 +837,7 @@ export function ExpertChangeGroup({
         action={action || undefined}
         stepDirection={direction}
         waiting={isCurrentlyStreaming}
+        handedOff={!!handOffs[part.toolCallId]}
       />
     </div>
   );

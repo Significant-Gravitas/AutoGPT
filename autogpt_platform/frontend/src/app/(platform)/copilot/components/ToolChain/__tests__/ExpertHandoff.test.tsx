@@ -148,6 +148,22 @@ describe("hiring an expert for a task already in the chat", () => {
     );
   });
 
+  it("shows which choice was made when paging back before the send", async () => {
+    const user = userEvent.setup();
+    renderGroup([hire("a"), hire("b", "Nadia")]);
+
+    await user.click(
+      screen.getByRole("button", { name: `Hire James and hand off ${TITLE}` }),
+    );
+    await user.click(screen.getByRole("button", { name: "Hire only" }));
+    expect(screen.getByText("Hire only chosen")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Previous expert" }));
+    expect(screen.getByText("Hire and hand off chosen")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Unapprove" })).toBeDefined();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("keeps the plain Approve card for a hire with no task", async () => {
     const user = userEvent.setup();
     renderGroup([hire("a", "James", false)]);
