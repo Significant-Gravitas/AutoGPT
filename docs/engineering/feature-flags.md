@@ -36,7 +36,7 @@ removing the rollout flags does not make missing services a supported no-op.
 Community rebuilds and execution summaries can perform model work.
 
 Retired provider definitions can remain during a rolling deployment for older
-releases. Removing code consumers does not delete PostHog or LaunchDarkly
+releases. Removing code consumers does not delete the flags' PostHog
 configuration. Use the [Tuesday audit prompt](feature-flag-audit-prompt.md) to
 identify further retirement candidates.
 
