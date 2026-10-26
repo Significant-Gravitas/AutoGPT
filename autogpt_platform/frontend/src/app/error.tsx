@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { IconCircleAlert } from "@/components/__legacy__/ui/icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { CircleAlertGlyph } from "@/components/atoms/Icon/drawnIcons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import Link from "next/link";
@@ -21,7 +22,7 @@ export default function Error({
     <div className="fixed inset-0 flex items-center justify-center bg-background">
       <div className="w-full max-w-md px-4 text-center sm:px-6">
         <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
-          <IconCircleAlert className="size-10" />
+          <Icon icon={CircleAlertGlyph} aria-label="Icon" className="size-10" />
         </div>
         <Text
           variant="2xl-bold-tracking-tight"

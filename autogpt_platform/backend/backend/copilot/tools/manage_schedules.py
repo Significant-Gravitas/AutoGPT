@@ -3,6 +3,7 @@
 import logging
 from typing import Any, Literal
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
 from backend.api.features.schedule_visibility import (
@@ -17,6 +18,7 @@ from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .base import BaseTool
+from .external_scope import external_tenant, in_tenant
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -26,11 +28,14 @@ def _is_in_session_scope(
     job: GraphExecutionJobInfo | CopilotTurnJobInfo, session: ChatSession
 ) -> bool:
     """Personal AutoPilot manages every schedule on the account; an expert
-    only its own. Neither sees a chat's resume or send at the budget reset:
-    the user set those from the chat, and cancels them there."""
+    only its own, and an External API call only its organization's. None of them
+    sees a chat's resume or send at the budget reset: the user set those from the
+    chat, and cancels them there."""
     if isinstance(job, CopilotTurnJobInfo) and job.purpose != "followup":
         return False
-    return session.expert_id is None or job.expert_id == session.expert_id
+    return (
+        session.expert_id is None or job.expert_id == session.expert_id
+    ) and in_tenant(job.organization_id or None, external_tenant(session))
 
 
 async def _find_scoped_schedule(
@@ -140,6 +145,10 @@ class ListSchedulesTool(BaseTool):
         return "list_schedules"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_SCHEDULE]
+
+    @property
     def description(self) -> str:
         return (
             "List the user's scheduled jobs (agent runs and copilot "
@@ -237,6 +246,10 @@ class DeleteScheduleTool(BaseTool):
     @property
     def name(self) -> str:
         return "delete_schedule"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_SCHEDULE]
 
     @property
     def description(self) -> str:

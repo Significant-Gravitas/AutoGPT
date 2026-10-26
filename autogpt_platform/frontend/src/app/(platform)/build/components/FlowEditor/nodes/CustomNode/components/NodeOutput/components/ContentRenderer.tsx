@@ -2,6 +2,7 @@
 
 import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
+import { Text } from "@/components/atoms/Text/Text";
 
 export const TextRenderer: React.FC<{
   value: any;
@@ -14,7 +15,16 @@ export const TextRenderer: React.FC<{
       ? text.slice(0, truncateLengthLimit) + "..."
       : text;
 
-  return <div className="break-words bg-zinc-50 p-3 text-xs">{truncated}</div>;
+  return (
+    <Text
+      variant="small-tight"
+      tone="inherit"
+      as="div"
+      className="break-words bg-surface-muted p-3"
+    >
+      {truncated}
+    </Text>
+  );
 };
 
 export const ContentRenderer: React.FC<{
@@ -40,14 +50,14 @@ export const ContentRenderer: React.FC<{
     !shortContent
   ) {
     return (
-      <div className="overflow-x-auto [&>*]:rounded-xlarge [&>*]:!text-xs [&_pre]:whitespace-pre-wrap [&_pre]:break-words">
+      <div className="overflow-x-auto [&>*]:rounded-xlarge [&>*]:!text-caption [&>*]:!leading-4 [&_pre]:whitespace-pre-wrap [&_pre]:break-words">
         {renderer?.render(value, metadata)}
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto [&>*]:rounded-xlarge [&>*]:!text-xs">
+    <div className="overflow-x-auto [&>*]:rounded-xlarge">
       <TextRenderer value={value} truncateLengthLimit={200} />
     </div>
   );
