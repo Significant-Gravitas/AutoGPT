@@ -395,6 +395,30 @@ describe("useBrainDumpRecorder", () => {
 
       expect(onMicAnswer).toHaveBeenCalledExactlyOnceWith("unavailable");
     });
+
+    it("starts no take when the caller no longer wants one", async () => {
+      const track = { stop: vi.fn() };
+      stubGetUserMedia(vi.fn().mockResolvedValue({ getTracks: () => [track] }));
+      const onMicAnswer = vi.fn();
+      const { result } = renderHook(() => useBrainDumpRecorder());
+
+      let started: boolean | undefined;
+      await act(async () => {
+        started = await result.current.start({
+          onMicAnswer,
+          shouldRecord: () => false,
+        });
+      });
+
+      expect(started).toBe(false);
+      expect(onMicAnswer).toHaveBeenCalledExactlyOnceWith("granted");
+      expect(track.stop).toHaveBeenCalled();
+      expect(result.current.recordingId).toBeNull();
+      expect(trackBrainDump).not.toHaveBeenCalledWith(
+        "brain_dump_started",
+        expect.anything(),
+      );
+    });
   });
 
   // A dismissed prompt asks again, and a blocked site can be allowed from

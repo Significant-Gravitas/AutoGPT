@@ -70,17 +70,17 @@ export const BrainDumpEvent = {
   // browser's `error_name` (NotFoundError, NotReadableError, …).
   BRAIN_DUMP_MIC_FAILED: "brain_dump_mic_failed",
   BRAIN_DUMP_TYPED_FALLBACK: "brain_dump_typed_fallback",
-  // The "Otto might ask" prompt moved on, by its timer (`trigger: auto`) or
+  // The "Otto might ask" prompt moved on, by its timer (`via: auto`) or
   // "Another question" (`click`), with the `screen`, the `prompt_index` now
   // shown and the role's `prompt_set`. Never sent for the first prompt.
   BRAIN_DUMP_PROMPT_ADVANCED: "brain_dump_prompt_advanced",
   // A way back to Talk after the microphone was refused: `result` is what
   // the browser answered (`granted`, `denied`, or `unavailable` for any
-  // other mic error), `trigger` is the link used or `permission_change`
-  // when the user allowed the site in its settings. `permission_state` is
-  // the Permissions API state when the retry began, or the one it changed
-  // to for `permission_change`; `unknown` where the API is missing.
-  BRAIN_DUMP_PERMISSION_RETRY: "brain_dump_permission_retry",
+  // other mic error), `via` is the link used or `permission_change` when
+  // the user allowed the site in its settings. `permission_state` is the
+  // Permissions API state when the retry began, or the one it changed to
+  // for `permission_change`; `unknown` where the API is missing.
+  BRAIN_DUMP_PERMISSION_RETRIED: "brain_dump_permission_retried",
   // The welcome dialog shown on first copilot landing was closed — the
   // greeting fetch and reveal animation start from this moment.
   WELCOME_DIALOG_CLOSED: "welcome_dialog_closed",

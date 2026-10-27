@@ -10,6 +10,8 @@ interface Props {
   // Without it there is no "Another question": the phone's rest screen
   // shows the prompt as a hint only.
   onAnother?: () => void;
+  // The question the user just asked for, read out once; empty otherwise.
+  announcement?: string;
   align?: "left" | "center";
   compact?: boolean;
   className?: string;
@@ -18,6 +20,7 @@ interface Props {
 export function OttoMightAsk({
   question,
   onAnother,
+  announcement = "",
   align = "center",
   compact = false,
   className,
@@ -74,13 +77,14 @@ export function OttoMightAsk({
         </Button>
       )}
       {/* The only announcement of the prompt layer: the ambient cards are
-          hidden from assistive tech. */}
+          hidden from assistive tech, and a question the timer swaps in is
+          left for the user to find. */}
       <p
         aria-live="polite"
         data-testid="otto-might-ask-announcer"
         className="sr-only"
       >
-        {`Otto might ask: ${question}`}
+        {announcement && `Otto might ask: ${announcement}`}
       </p>
     </div>
   );

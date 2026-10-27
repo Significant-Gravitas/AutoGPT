@@ -67,26 +67,67 @@ describe("usePromptRotation", () => {
     expect(trackBrainDump).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ["typing", 20_000],
-    ["recording", 15_000],
-  ] as const)("auto-advances every %s interval", async (screen, interval) => {
-    const { result } = renderRotation({ role: "Operations", screen });
+  it("auto-advances every 20 seconds while typing", async () => {
+    const { result } = renderRotation({ role: "Operations", screen: "typing" });
 
-    await wait(interval - 1);
+    await wait(19_999);
     expect(result.current.index).toBe(4);
 
     await wait(1);
     expect(result.current.question).toEqual(OPERATIONS[5]);
     expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_prompt_advanced", {
-      trigger: "auto",
-      screen,
+      via: "auto",
+      screen: "typing",
       prompt_index: 5,
       prompt_set: "Operations",
     });
 
-    await wait(interval);
+    await wait(20_000);
     expect(result.current.index).toBe(6);
+  });
+
+  it("only moves on a click while recording", async () => {
+    const { result } = renderRotation({
+      role: "Operations",
+      screen: "recording",
+    });
+
+    await wait(120_000);
+    expect(result.current.index).toBe(4);
+    expect(trackBrainDump).not.toHaveBeenCalled();
+
+    act(() => result.current.advance("click"));
+    expect(result.current.index).toBe(5);
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_prompt_advanced", {
+      via: "click",
+      screen: "recording",
+      prompt_index: 5,
+      prompt_set: "Operations",
+    });
+  });
+
+  it("announces only a question the user asked for", async () => {
+    const { result, rerender } = renderRotation({
+      role: "Operations",
+      screen: "typing",
+    });
+    expect(result.current.announcement).toBe("");
+
+    await wait(20_000);
+    expect(result.current.index).toBe(5);
+    expect(result.current.announcement).toBe("");
+
+    act(() => result.current.advance("click"));
+    expect(result.current.announcement).toBe(OPERATIONS[6].text);
+
+    // Another screen mounts its own prompt; the old click is not read again.
+    rerender({ role: "Operations", screen: "recording" });
+    expect(result.current.announcement).toBe("");
+    rerender({ role: "Operations", screen: "typing" });
+
+    await wait(20_000);
+    expect(result.current.index).toBe(7);
+    expect(result.current.announcement).toBe("");
   });
 
   it("rotates at rest only without the ambient cards, every 12 seconds", async () => {
@@ -101,7 +142,7 @@ describe("usePromptRotation", () => {
     expect(phone.result.current.index).toBe(5);
     expect(trackBrainDump).toHaveBeenCalledWith(
       "brain_dump_prompt_advanced",
-      expect.objectContaining({ screen: "rest", trigger: "auto" }),
+      expect.objectContaining({ screen: "rest", via: "auto" }),
     );
   });
 
@@ -114,7 +155,7 @@ describe("usePromptRotation", () => {
     });
     expect(result.current.index).toBe(5);
     expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_prompt_advanced", {
-      trigger: "click",
+      via: "click",
       screen: "typing",
       prompt_index: 5,
       prompt_set: "Operations",
@@ -223,7 +264,7 @@ describe("usePromptRotation", () => {
   it("clears its timer when unmounted", () => {
     const { unmount } = renderRotation({
       role: "Operations",
-      screen: "recording",
+      screen: "typing",
     });
     expect(vi.getTimerCount()).toBeGreaterThan(0);
 

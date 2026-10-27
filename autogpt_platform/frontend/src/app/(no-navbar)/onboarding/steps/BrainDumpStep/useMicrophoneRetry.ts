@@ -11,10 +11,13 @@ type Recorder = Pick<
   "permissionDenied" | "clearPermissionDenied" | "start"
 >;
 
-type MicRetryTrigger = "retry_link" | "record_instead";
+type MicRetryVia = "retry_link" | "record_instead";
 
 interface Args {
   recorder: Recorder;
+  // Whether the user still wants the take once the prompt is answered: the
+  // typed text may have been sent while it was open.
+  canRecord: () => boolean;
   // The retry opened the microphone and the take is running.
   onRecording: () => void;
 }
@@ -23,7 +26,7 @@ interface Args {
 // refuses with the same error whether the prompt was blocked or only
 // closed, and a block is one click to undo by the address bar, so neither
 // is treated as final.
-export function useMicrophoneRetry({ recorder, onRecording }: Args) {
+export function useMicrophoneRetry({ recorder, canRecord, onRecording }: Args) {
   const permission = useMicrophonePermission({
     onChange: handlePermissionChange,
   });
@@ -37,14 +40,14 @@ export function useMicrophoneRetry({ recorder, onRecording }: Args) {
     if (state !== "granted" && state !== "prompt") return;
     recorder.clearPermissionDenied();
     if (state !== "granted") return;
-    trackBrainDump("brain_dump_permission_retry", {
+    trackBrainDump("brain_dump_permission_retried", {
       result: "granted",
       permission_state: state,
-      trigger: "permission_change",
+      via: "permission_change",
     });
   }
 
-  async function retry(trigger: MicRetryTrigger) {
+  async function retry(via: MicRetryVia) {
     if (isRetryingRef.current) return;
     isRetryingRef.current = true;
     const permissionState = permission.state;
@@ -54,12 +57,13 @@ export function useMicrophoneRetry({ recorder, onRecording }: Args) {
     try {
       started = await recorder.start({
         onMicAnswer(result) {
-          trackBrainDump("brain_dump_permission_retry", {
+          trackBrainDump("brain_dump_permission_retried", {
             result,
             permission_state: permissionState,
-            trigger,
+            via,
           });
         },
+        shouldRecord: canRecord,
       });
     } finally {
       isRetryingRef.current = false;

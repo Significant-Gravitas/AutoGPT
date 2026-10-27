@@ -23,11 +23,18 @@ const COPY = {
     reason: "The microphone prompt was closed, so write here instead.",
     howTo: "To talk,",
   },
+  // The site is allowed but the operating system refused the browser, as
+  // Chrome on a Mac without microphone access in System Settings does.
+  system: {
+    reason: "Your computer blocked the microphone, so write here instead.",
+    howTo:
+      "To talk, let your browser use the microphone in your computer's privacy settings, then",
+  },
 } as const;
 
 export function MicBlockedNotice({ isBlocked, permission, onRetry }: Props) {
   if (!isBlocked) return null;
-  const copy = permission === "prompt" ? COPY.dismissed : COPY.blocked;
+  const copy = noticeCopy(permission);
 
   return (
     <div
@@ -57,4 +64,10 @@ export function MicBlockedNotice({ isBlocked, permission, onRetry }: Props) {
       </Text>
     </div>
   );
+}
+
+function noticeCopy(permission: MicrophonePermission) {
+  if (permission === "prompt") return COPY.dismissed;
+  if (permission === "granted") return COPY.system;
+  return COPY.blocked;
 }

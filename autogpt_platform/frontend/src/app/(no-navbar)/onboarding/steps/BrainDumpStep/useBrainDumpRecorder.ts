@@ -34,6 +34,9 @@ interface StartOptions {
   // Called once the browser has answered, before the take starts, so a
   // caller can report the answer ahead of `brain_dump_started`.
   onMicAnswer?: (answer: MicAnswer) => void;
+  // Asked once the microphone opens: the caller may have moved on while the
+  // permission prompt was open, and then no take is started.
+  shouldRecord?: () => boolean;
 }
 
 export function useBrainDumpRecorder({ promptSet }: Args = {}) {
@@ -136,7 +139,7 @@ export function useBrainDumpRecorder({ promptSet }: Args = {}) {
     }
   }
 
-  async function openMicAndRecord({ onMicAnswer }: StartOptions) {
+  async function openMicAndRecord({ onMicAnswer, shouldRecord }: StartOptions) {
     // Permission is requested on the first tap, never on screen load —
     // a browser prompt before the user has read the headline is how
     // denial rates go up.
@@ -154,7 +157,7 @@ export function useBrainDumpRecorder({ promptSet }: Args = {}) {
     setMicUnavailable(false);
     // Back during the prompt, or a skip during "Record again", can leave the
     // step before the mic opens, and its unmount cleanup has already run.
-    if (unmountedRef.current) {
+    if (unmountedRef.current || shouldRecord?.() === false) {
       stream.getTracks().forEach((track) => track.stop());
       return false;
     }

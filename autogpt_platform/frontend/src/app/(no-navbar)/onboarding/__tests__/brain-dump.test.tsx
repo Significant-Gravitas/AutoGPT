@@ -505,6 +505,17 @@ describe("onboarding brain dump — typed fallback", () => {
     getUserMedia.mockRejectedValue(
       new DOMException("denied", "NotAllowedError"),
     );
+    // happy-dom reports every permission as granted, which reads as the
+    // system refusing an allowed site.
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: {
+        query: vi.fn().mockResolvedValue(new FakePermissionStatus("denied")),
+      },
+    });
+    onTestFinished(() => {
+      Reflect.deleteProperty(navigator, "permissions");
+    });
     landOnPainPointsStep();
 
     render(<OnboardingPage />);
@@ -1306,7 +1317,7 @@ describe("onboarding brain dump — Otto might ask", () => {
       await screen.findByText(ENGINEERING.questions[5].text),
     ).toBeDefined();
     expect(posthog.capture).toHaveBeenCalledWith("brain_dump_prompt_advanced", {
-      trigger: "click",
+      via: "click",
       screen: "typing",
       prompt_index: 5,
       prompt_set: "Engineering",
@@ -1473,18 +1484,18 @@ describe("onboarding brain dump — a refused microphone", () => {
       await screen.findByRole("button", { name: "Send recording" }),
     ).toBeDefined();
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(captured("brain_dump_permission_retry")).toEqual([
+    expect(captured("brain_dump_permission_retried")).toEqual([
       [
-        "brain_dump_permission_retry",
+        "brain_dump_permission_retried",
         {
           result: "granted",
           permission_state: "prompt",
-          trigger: "retry_link",
+          via: "retry_link",
         },
       ],
     ]);
     const names = capturedNames();
-    expect(names.indexOf("brain_dump_permission_retry")).toBeLessThan(
+    expect(names.indexOf("brain_dump_permission_retried")).toBeLessThan(
       names.indexOf("brain_dump_started"),
     );
   });
@@ -1501,13 +1512,13 @@ describe("onboarding brain dump — a refused microphone", () => {
     await waitFor(() =>
       expect(captured("brain_dump_permission_denied")).toHaveLength(2),
     );
-    expect(captured("brain_dump_permission_retry")).toEqual([
+    expect(captured("brain_dump_permission_retried")).toEqual([
       [
-        "brain_dump_permission_retry",
+        "brain_dump_permission_retried",
         {
           result: "denied",
           permission_state: "denied",
-          trigger: "record_instead",
+          via: "record_instead",
         },
       ],
     ]);
@@ -1527,13 +1538,13 @@ describe("onboarding brain dump — a refused microphone", () => {
     });
 
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-    expect(captured("brain_dump_permission_retry")).toEqual([
+    expect(captured("brain_dump_permission_retried")).toEqual([
       [
-        "brain_dump_permission_retry",
+        "brain_dump_permission_retried",
         {
           result: "granted",
           permission_state: "granted",
-          trigger: "permission_change",
+          via: "permission_change",
         },
       ],
     ]);

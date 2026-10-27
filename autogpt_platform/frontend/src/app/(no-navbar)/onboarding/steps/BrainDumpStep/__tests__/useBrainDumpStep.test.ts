@@ -1145,11 +1145,14 @@ describe("useBrainDumpStep — a refused microphone", () => {
     expect(result.current.screen).toBe("recording");
     expect(result.current.isMicBlocked).toBe(false);
     // No Permissions API in this browser.
-    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_permission_retry", {
-      result: "granted",
-      permission_state: "unknown",
-      trigger: "retry_link",
-    });
+    expect(trackBrainDump).toHaveBeenCalledWith(
+      "brain_dump_permission_retried",
+      {
+        result: "granted",
+        permission_state: "unknown",
+        via: "retry_link",
+      },
+    );
   });
 
   it("stays on typing and counts one fallback when refused again", async () => {
@@ -1162,11 +1165,14 @@ describe("useBrainDumpStep — a refused microphone", () => {
 
     expect(result.current.screen).toBe("typing");
     expect(result.current.isMicBlocked).toBe(true);
-    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_permission_retry", {
-      result: "denied",
-      permission_state: "unknown",
-      trigger: "record_instead",
-    });
+    expect(trackBrainDump).toHaveBeenCalledWith(
+      "brain_dump_permission_retried",
+      {
+        result: "denied",
+        permission_state: "unknown",
+        via: "record_instead",
+      },
+    );
     expect(trackedCount("brain_dump_typed_fallback")).toBe(1);
   });
 
@@ -1184,7 +1190,7 @@ describe("useBrainDumpStep — a refused microphone", () => {
     expect(result.current.screen).toBe("typing");
     expect(result.current.isMicBlocked).toBe(false);
     expect(trackBrainDump).toHaveBeenCalledWith(
-      "brain_dump_permission_retry",
+      "brain_dump_permission_retried",
       expect.objectContaining({ result: "unavailable" }),
     );
   });
@@ -1205,6 +1211,40 @@ describe("useBrainDumpStep — a refused microphone", () => {
     });
 
     expect(recorderState.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets the microphone go when it is allowed after the typed text was sent", async () => {
+    let allow!: () => void;
+    let started: boolean | undefined;
+    recorderState.start.mockImplementation(
+      (options?: { shouldRecord?: () => boolean }) =>
+        new Promise<boolean>((resolve) => {
+          allow = () => {
+            started = options?.shouldRecord?.() !== false;
+            resolve(started);
+          };
+        }),
+    );
+    finalizeBrainDump.mockReturnValue(
+      deferred<ReturnType<typeof completed>>().promise,
+    );
+    const { result } = await renderRefused();
+
+    act(() => {
+      void result.current.handleRetryMicrophone();
+      result.current.setTypedText("I run a bakery.");
+    });
+    act(() => {
+      void result.current.handleSubmitTyped();
+    });
+    await waitFor(() => expect(result.current.screen).toBe("processing"));
+
+    await act(async () => {
+      allow();
+    });
+
+    expect(started).toBe(false);
+    expect(result.current.screen).toBe("processing");
   });
 
   it("goes back to the orb from record instead when nothing was refused", async () => {
@@ -1239,11 +1279,14 @@ describe("useBrainDumpStep — a refused microphone", () => {
 
     expect(result.current.isMicBlocked).toBe(false);
     expect(result.current.screen).toBe("typing");
-    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_permission_retry", {
-      result: "granted",
-      permission_state: "granted",
-      trigger: "permission_change",
-    });
+    expect(trackBrainDump).toHaveBeenCalledWith(
+      "brain_dump_permission_retried",
+      {
+        result: "granted",
+        permission_state: "granted",
+        via: "permission_change",
+      },
+    );
   });
 
   it("clears it without a retry event when the block is only reset", async () => {
@@ -1263,7 +1306,7 @@ describe("useBrainDumpStep — a refused microphone", () => {
     });
 
     expect(result.current.isMicBlocked).toBe(false);
-    expect(trackedCount("brain_dump_permission_retry")).toBe(0);
+    expect(trackedCount("brain_dump_permission_retried")).toBe(0);
   });
 });
 

@@ -13,6 +13,7 @@ interface Props {
   onSubmit: () => void;
   isTooLong: boolean;
   question: string;
+  announcement: string;
   onAnotherQuestion: () => void;
   isMicBlocked: boolean;
   micPermission: MicrophonePermission;
@@ -25,6 +26,7 @@ export function TypingComposer({
   onSubmit,
   isTooLong,
   question,
+  announcement,
   onAnotherQuestion,
   isMicBlocked,
   micPermission,
@@ -44,6 +46,7 @@ export function TypingComposer({
       <OttoMightAsk
         question={question}
         onAnother={onAnotherQuestion}
+        announcement={announcement}
         align="left"
       />
       {/* Fewer rows on a short laptop screen, and one fewer while the

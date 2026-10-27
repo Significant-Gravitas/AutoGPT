@@ -7,12 +7,15 @@ const BLOCKED =
   "Your browser blocked the microphone, so write here instead. To talk, allow the microphone in your browser's site settings (the lock or microphone icon by the address bar), then try the microphone again.";
 const DISMISSED =
   "The microphone prompt was closed, so write here instead. To talk, try the microphone again.";
+const SYSTEM =
+  "Your computer blocked the microphone, so write here instead. To talk, let your browser use the microphone in your computer's privacy settings, then try the microphone again.";
 
 describe("MicBlockedNotice", () => {
   it.each([
     ["denied", BLOCKED],
     ["unknown", BLOCKED],
     ["prompt", DISMISSED],
+    ["granted", SYSTEM],
   ] as const)(
     "explains a %s microphone and how to get it back",
     (permission, copy) => {

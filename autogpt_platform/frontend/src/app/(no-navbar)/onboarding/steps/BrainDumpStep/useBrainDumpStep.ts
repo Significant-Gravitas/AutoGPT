@@ -52,8 +52,15 @@ export function useBrainDumpStep() {
 
   const [screen, setScreen] = useState<ScreenState>("rest");
   const prompt = usePromptRotation({ role, screen });
+  // For answers that arrive after the render that asked, like a permission
+  // prompt answered once the typed text is already on its way.
+  const screenRef = useRef(screen);
+  useEffect(() => {
+    screenRef.current = screen;
+  });
   const microphone = useMicrophoneRetry({
     recorder,
+    canRecord: () => screenRef.current === "typing",
     onRecording: () => setScreen("recording"),
   });
   // A refused microphone is one fallback to typing per visit, however many

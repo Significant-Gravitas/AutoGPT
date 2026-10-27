@@ -13,16 +13,17 @@ import { useIsWideLayout } from "./useIsWideLayout";
 // the ambient layer shows.
 const FIRST_INDEX = 4;
 
-// Where the live prompt is on screen, and how long each question stays.
-// At rest it only shows where the ambient cards do not fit.
-const AUTO_ADVANCE_MS = {
+// Where the live prompt is on screen. At rest it only shows where the
+// ambient cards do not fit.
+type PromptScreen = "rest" | "typing" | "recording";
+type AdvanceVia = "auto" | "click";
+
+// How long each question stays. While recording it only moves on a click: a
+// question changing mid-answer pulls the speaker off their thought.
+const AUTO_ADVANCE_MS: Partial<Record<PromptScreen, number>> = {
   rest: 12_000,
   typing: 20_000,
-  recording: 15_000,
-} as const;
-
-type PromptScreen = keyof typeof AUTO_ADVANCE_MS;
-type AdvanceTrigger = "auto" | "click";
+};
 
 interface Args {
   role: string;
@@ -33,9 +34,12 @@ export function usePromptRotation({ role, screen }: Args) {
   const promptSet = promptSetNameForRole(role);
   const hasAmbientCards = useIsWideLayout();
   const reduceMotion = useReducedMotion() === true;
-  const [rotation, setRotation] = useState({ promptSet, index: FIRST_INDEX });
-  const index = rotation.promptSet === promptSet ? rotation.index : FIRST_INDEX;
+  const [rotation, setRotation] = useState<Rotation>(firstRotation(promptSet));
+  const current =
+    rotation.promptSet === promptSet ? rotation : firstRotation(promptSet);
+  const { index } = current;
   const shownOn = livePromptScreen(screen, hasAmbientCards);
+  const question = BRAIN_DUMP_PROMPT_SETS[promptSet].questions[index];
   const seenRef = useRef(new Set<string>());
 
   useEffect(() => {
@@ -45,27 +49,46 @@ export function usePromptRotation({ role, screen }: Args) {
   // Restarted on every advance, so a click buys the new question its full
   // time on screen.
   useEffect(() => {
-    if (!shownOn || reduceMotion) return;
+    const interval = shownOn ? AUTO_ADVANCE_MS[shownOn] : undefined;
+    if (!shownOn || !interval || reduceMotion) return;
     const timer = setInterval(() => {
       if (document.visibilityState !== "visible") return;
       setRotation(advanceFrom({ promptSet, index, screen: shownOn }, "auto"));
-    }, AUTO_ADVANCE_MS[shownOn]);
+    }, interval);
     return () => clearInterval(timer);
   }, [shownOn, reduceMotion, promptSet, index]);
 
-  function advance(trigger: AdvanceTrigger) {
+  function advance(via: AdvanceVia) {
     if (!shownOn) return;
-    setRotation(advanceFrom({ promptSet, index, screen: shownOn }, trigger));
+    setRotation(advanceFrom({ promptSet, index, screen: shownOn }, via));
   }
 
   return {
-    question: BRAIN_DUMP_PROMPT_SETS[promptSet].questions[index],
+    question,
     index,
     promptSet,
     advance,
+    // Only a question the user asked for is read out: one announced on
+    // every timer tick would talk over a screen reader, and into the take.
+    announcement:
+      current.clickedOn !== null && current.clickedOn === shownOn
+        ? question.text
+        : "",
     // Read when an event is sent, never while rendering.
     promptsSeen: () => seenRef.current.size,
   };
+}
+
+interface Rotation {
+  promptSet: PromptSetName;
+  index: number;
+  // The screen "Another question" was last clicked on, until the timer
+  // moves the question on.
+  clickedOn: PromptScreen | null;
+}
+
+function firstRotation(promptSet: PromptSetName): Rotation {
+  return { promptSet, index: FIRST_INDEX, clickedOn: null };
 }
 
 function livePromptScreen(
@@ -79,15 +102,19 @@ function livePromptScreen(
 
 function advanceFrom(
   from: { promptSet: PromptSetName; index: number; screen: PromptScreen },
-  trigger: AdvanceTrigger,
-) {
+  via: AdvanceVia,
+): Rotation {
   const { questions } = BRAIN_DUMP_PROMPT_SETS[from.promptSet];
   const next = (from.index + 1) % questions.length;
   trackBrainDump("brain_dump_prompt_advanced", {
-    trigger,
+    via,
     screen: from.screen,
     prompt_index: next,
     prompt_set: from.promptSet,
   });
-  return { promptSet: from.promptSet, index: next };
+  return {
+    promptSet: from.promptSet,
+    index: next,
+    clickedOn: via === "click" ? from.screen : null,
+  };
 }

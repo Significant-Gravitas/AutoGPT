@@ -29,6 +29,7 @@ function LivePrompt() {
     <OttoMightAsk
       question={prompt.question.text}
       onAnother={() => prompt.advance("click")}
+      announcement={prompt.announcement}
     />
   );
 }
@@ -55,19 +56,19 @@ describe("OttoMightAsk", () => {
     expect(await screen.findByText(QUESTIONS[5].text)).toBeDefined();
     expect(screen.queryByText(QUESTIONS[4].text)).toBeNull();
     expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_prompt_advanced", {
-      trigger: "click",
+      via: "click",
       screen: "recording",
       prompt_index: 5,
       prompt_set: "Sales/BD",
     });
   });
 
-  it("announces the current question politely", async () => {
+  it("announces a question only once the user asks for it", async () => {
     render(<LivePrompt />);
     const region = screen.getByTestId("otto-might-ask-announcer");
 
     expect(region.getAttribute("aria-live")).toBe("polite");
-    expect(region.textContent).toBe(`Otto might ask: ${QUESTIONS[4].text}`);
+    expect(region.textContent).toBe("");
 
     await userEvent.click(
       screen.getByRole("button", { name: "Another question" }),

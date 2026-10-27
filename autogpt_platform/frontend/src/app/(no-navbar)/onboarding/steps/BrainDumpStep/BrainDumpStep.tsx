@@ -92,6 +92,7 @@ export function BrainDumpStep() {
                     isTooLong={dump.isTypedTooLong}
                     onSubmit={dump.handleSubmitTyped}
                     question={dump.prompt.question.text}
+                    announcement={dump.prompt.announcement}
                     onAnotherQuestion={showAnotherQuestion}
                     isMicBlocked={dump.isMicBlocked}
                     micPermission={dump.micPermission}
@@ -102,6 +103,7 @@ export function BrainDumpStep() {
                     <OttoMightAsk
                       question={dump.prompt.question.text}
                       onAnother={showAnotherQuestion}
+                      announcement={dump.prompt.announcement}
                     />
                     <RecordingControls
                       onStop={dump.handleStop}
