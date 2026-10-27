@@ -219,12 +219,15 @@ class SubscriptionWelcomeData(LifecycleData):
 class PaymentFailedData(LifecycleData):
     amount_display: str
     card: CardDetails
-    next_retry_label: str
+    next_retry_label: str | None = None
 
 
 class PaymentFinalNoticeData(LifecycleData):
     amount_display: str
-    pauses_label: str
+    payment_url: str | None = None
+    last_attempt_label: str | None = None
+    # Transitional: old queued notices carry a renewal date, not an attempt date.
+    pauses_label: str | None = None
 
 
 class SubscriptionCancelledData(LifecycleData):
@@ -252,6 +255,7 @@ class TrialUpdateData(LifecycleData):
         "payment_failed",
     ]
     ends_label: str
+    started_label: str | None = None
     onboarding_credit_amount: int
     offer_version: str
 
@@ -438,6 +442,11 @@ class AudienceAction(Enum):
     # given after checkout opened: they fill in someone MailerLite already has
     # and never create anyone (see `mailerlite.record_onboarding_profile`).
     ONBOARDING_PROFILE = "onboarding_profile"
+    # The subscription status and its dates, from the lifecycle snapshot
+    # PostHog gets too. Only the fields that differ are written, into someone
+    # MailerLite already has; nobody is created (see
+    # `mailerlite.record_lifecycle`).
+    LIFECYCLE_FIELDS = "lifecycle_fields"
 
 
 class SubscriberField(str, Enum):
@@ -467,13 +476,21 @@ class SubscriberField(str, Enum):
 
 
 class SubscriptionStatus(str, Enum):
-    """Exactly one of these is a subscriber's `subscription_status`."""
+    """Exactly one of these is a subscriber's `subscription_status`: the same
+    values, by the same rules, as the PostHog person property
+    (`data/posthog_lifecycle.py`). Only a paying subscriber is `subscribed`.
+    GTM segments on these, so a value changes only together with MailerLite."""
 
     SIGNED = "signed"
     IN_TRIAL = "in_trial"
+    # The user canceled their trial.
     TRIAL_CANCELED = "trial_canceled"
+    # The trial ended without a payment and without the user canceling it.
+    TRIAL_EXPIRED = "trial_expired"
     SUBSCRIBED = "subscribed"
     SUBSCRIPTION_CANCELED = "subscription_canceled"
+    # A payment failed and Stripe is retrying it; access is lost meanwhile.
+    PAYMENT_FAILED = "payment_failed"
     SUBSCRIPTION_ENDED = "subscription_ended"
 
 

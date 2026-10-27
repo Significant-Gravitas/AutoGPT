@@ -32,8 +32,8 @@ export function BotCardServerList({
 }: Props) {
   if (serverLinks.length === 0) {
     return (
-      <div className="rounded-large border border-dashed border-zinc-200 px-4 py-3">
-        <Text variant="small" as="span" className="text-zinc-500">
+      <div className="rounded-large border border-dashed border-border-base px-4 py-3">
+        <Text variant="small" as="span" className="text-foreground-tertiary">
           No {serverNoun}s linked yet. Use &quot;{addBotLabel}&quot; to invite
           the bot — already added it? Run <code>/setup</code> there to finish
           connecting.
@@ -77,12 +77,12 @@ function BotCardServerRow({
   const displayLabel = link.server_name ?? link.platform_server_id;
 
   return (
-    <li className="flex items-center justify-between gap-3 rounded-large border border-zinc-200 px-4 py-3">
+    <li className="flex items-center justify-between gap-3 rounded-large border border-border-base px-4 py-3">
       <div className="flex min-w-0 items-center gap-3">
         <Icon
           icon={UserMultipleIcon}
           size={20}
-          className="shrink-0 text-zinc-500"
+          className="shrink-0 text-foreground-tertiary"
         />
         <div className="flex min-w-0 flex-col">
           <Text
@@ -95,7 +95,10 @@ function BotCardServerRow({
           {botMissing ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+                <span
+                  // TODO(tokens): no exact role (text-amber-600 #D97706)
+                  className="inline-flex items-center gap-1 text-xs text-amber-600"
+                >
                   <Icon icon={AlertCircleIcon} size={14} /> Name unavailable
                 </span>
               </TooltipTrigger>
@@ -105,7 +108,11 @@ function BotCardServerRow({
               </TooltipContent>
             </Tooltip>
           ) : (
-            <Text variant="small" as="span" className="text-zinc-500">
+            <Text
+              variant="small"
+              as="span"
+              className="text-foreground-tertiary"
+            >
               Linked by you
             </Text>
           )}

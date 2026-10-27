@@ -14,7 +14,7 @@ import {
 } from "@/providers/posthog/posthog-provider";
 import { AdsConversionTracker } from "@/services/analytics/AdsConversionTracker";
 import { AttributionReporter } from "@/services/analytics/AttributionReporter";
-import { LaunchDarklyProvider } from "@/services/feature-flags/feature-flag-provider";
+import { FeatureFlagProvider } from "@/services/feature-flags/feature-flag-provider";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider, ThemeProviderProps } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
@@ -27,7 +27,7 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
       <NuqsAdapter>
         <PostHogProvider>
           <BackendAPIProvider>
-            {/* All four read useSearchParams (directly or via useAuth), which
+            {/* All of these read useSearchParams (directly or via useAuth), which
                 bails out of static rendering unless it sits under Suspense. */}
             <Suspense fallback={null}>
               <SentryUserTracker />
@@ -38,13 +38,13 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
             </Suspense>
             <CredentialsProvider>
               <OrgTeamProvider>
-                <LaunchDarklyProvider>
+                <FeatureFlagProvider>
                   <OnboardingProvider>
                     <ThemeProvider forcedTheme="light" {...props}>
                       <TooltipProvider>{children}</TooltipProvider>
                     </ThemeProvider>
                   </OnboardingProvider>
-                </LaunchDarklyProvider>
+                </FeatureFlagProvider>
               </OrgTeamProvider>
             </CredentialsProvider>
           </BackendAPIProvider>

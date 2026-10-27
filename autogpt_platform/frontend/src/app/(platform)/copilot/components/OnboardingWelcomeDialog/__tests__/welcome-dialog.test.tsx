@@ -9,20 +9,6 @@ vi.mock("posthog-js", () => ({
   default: { capture: (...a: unknown[]) => capture(...a) },
 }));
 
-// All off by default, so every existing assertion keeps describing the
-// flag-off deck; the team tests below turn both flags on.
-const flags = vi.hoisted(() => ({ current: {} as Record<string, boolean> }));
-vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
-  const actual =
-    await importActual<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) => flags.current[flag] ?? false,
-  };
-});
-
 const toastSpy = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: (...args: unknown[]) => toastSpy(...args),
@@ -81,7 +67,6 @@ async function advanceToCard(index: number) {
 beforeEach(() => {
   capture.mockClear();
   toastSpy.mockClear();
-  flags.current = {};
 });
 
 describe("OnboardingWelcomeDialog — deck", () => {
@@ -91,10 +76,10 @@ describe("OnboardingWelcomeDialog — deck", () => {
     expect(
       (await screen.findByRole("dialog", { name: "Welcome to AutoGPT" }))
         .textContent,
-    ).toContain("Meet Otto.");
+    ).toContain("Meet your Head of AI.");
     expect(
       screen.getByText(
-        "It does the work. Ask once, or put it on a schedule. It delivers while you do something else.",
+        "Otto is yours alone — never shared. It listens, diagnoses, and builds the team that does the work.",
       ),
     ).toBeDefined();
     expect(screen.getByRole("button", { name: "Next" })).toBeDefined();
@@ -104,19 +89,21 @@ describe("OnboardingWelcomeDialog — deck", () => {
 
   it("walks forward and back through the deck", async () => {
     render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
-    const user = await advanceToCard(1);
+    const user = await advanceToCard(2);
 
     expect(
       await screen.findByText("It works inside your tools."),
     ).toBeDefined();
     expect(capture).toHaveBeenCalledWith("capability_card_viewed", {
-      card_index: 1,
-      deck: "autopilot",
+      card_index: 2,
+      deck: "team",
     });
 
     await user.click(screen.getByRole("button", { name: "Previous card" }));
 
-    expect(await screen.findByText("Meet Otto.")).toBeDefined();
+    expect(
+      await screen.findByText("Hire an expert, or create your own."),
+    ).toBeDefined();
   });
 
   it("renders nothing and completes no step while closed", async () => {
@@ -125,7 +112,7 @@ describe("OnboardingWelcomeDialog — deck", () => {
     render(<OnboardingWelcomeDialog isOpen={false} onClose={vi.fn()} />);
 
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.queryByText("Meet Otto.")).toBeNull();
+    expect(screen.queryByText("Meet your Head of AI.")).toBeNull();
     expect(steps).toEqual([]);
   });
 });
@@ -138,14 +125,14 @@ describe("OnboardingWelcomeDialog — completion", () => {
     render(<OnboardingWelcomeDialog isOpen onClose={onClose} />);
     const user = await advanceToCard(3);
 
-    expect(await screen.findByText("It remembers everything.")).toBeDefined();
-    await user.click(screen.getByRole("button", { name: "Meet Otto" }));
+    expect(await screen.findByText("Every morning, a briefing.")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Meet your team" }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
     expect(capture).toHaveBeenCalledWith("capability_cards_completed", {
       card_index: 3,
-      deck: "autopilot",
+      deck: "team",
     });
   });
 
@@ -154,7 +141,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     const onClose = vi.fn();
 
     render(<OnboardingWelcomeDialog isOpen onClose={onClose} />);
-    const user = await advanceToCard(1);
+    const user = await advanceToCard(2);
     await screen.findByText("It works inside your tools.");
 
     await user.click(screen.getByRole("button", { name: "Skip" }));
@@ -162,8 +149,8 @@ describe("OnboardingWelcomeDialog — completion", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
     expect(capture).toHaveBeenCalledWith("capability_cards_skipped", {
-      card_index: 1,
-      deck: "autopilot",
+      card_index: 2,
+      deck: "team",
     });
   });
 
@@ -172,7 +159,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     const onClose = vi.fn();
 
     render(<OnboardingWelcomeDialog isOpen onClose={onClose} />);
-    await screen.findByText("Meet Otto.");
+    await screen.findByText("Meet your Head of AI.");
 
     await userEvent.keyboard("{Escape}");
 
@@ -180,7 +167,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
     expect(capture).toHaveBeenCalledWith("capability_cards_skipped", {
       card_index: 0,
-      deck: "autopilot",
+      deck: "team",
     });
   });
 
@@ -188,7 +175,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     recordCompletedSteps(500);
 
     render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
-    await screen.findByText("Meet Otto.");
+    await screen.findByText("Meet your Head of AI.");
 
     await userEvent.click(screen.getByRole("button", { name: "Skip" }));
 
@@ -209,7 +196,7 @@ describe("OnboardingWelcomeDialog — connect tools CTA", () => {
     const onClose = vi.fn();
 
     render(<OnboardingWelcomeDialog isOpen onClose={onClose} />);
-    const user = await advanceToCard(1);
+    const user = await advanceToCard(2);
     await screen.findByText("It works inside your tools.");
 
     await user.click(
@@ -237,7 +224,7 @@ describe("OnboardingWelcomeDialog — connect tools CTA", () => {
     const onClose = vi.fn();
 
     render(<OnboardingWelcomeDialog isOpen onClose={onClose} />);
-    const user = await advanceToCard(1);
+    const user = await advanceToCard(2);
     await user.click(
       screen.getByRole("button", { name: "Connect your tools" }),
     );
@@ -266,7 +253,7 @@ describe("OnboardingWelcomeDialog — connect tools CTA", () => {
     stubConnectPanelEndpoints();
 
     render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
-    const user = await advanceToCard(1);
+    const user = await advanceToCard(2);
     await screen.findByText("It works inside your tools.");
     await user.click(
       screen.getByRole("button", { name: "Connect your tools" }),
@@ -275,17 +262,12 @@ describe("OnboardingWelcomeDialog — connect tools CTA", () => {
 
     await user.click(screen.getByRole("button", { name: "Next" }));
 
-    expect(await screen.findByText("It learns how you operate.")).toBeDefined();
+    expect(await screen.findByText("Every morning, a briefing.")).toBeDefined();
   });
 });
 
 describe("OnboardingWelcomeDialog — the team deck", () => {
-  beforeEach(() => {
-    flags.current = {
-      "onboarding-expert-team": true,
-      "hire-experts": true,
-    };
-  });
+  beforeEach(() => {});
 
   it("frames Otto as the Head of AI that builds a team", async () => {
     render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
@@ -319,35 +301,11 @@ describe("OnboardingWelcomeDialog — the team deck", () => {
     ).toBeDefined();
     expect(screen.queryByText("It remembers everything.")).toBeNull();
   });
-
-  it("keeps the old deck when only the team flag is on", async () => {
-    flags.current = { "onboarding-expert-team": true };
-
-    render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
-
-    expect(await screen.findByText("Meet Otto.")).toBeDefined();
-  });
-});
-
-it("keeps the last card valid when team flags change in either direction", async () => {
-  flags.current = { "onboarding-expert-team": true, "hire-experts": true };
-  const { rerender } = render(
-    <OnboardingWelcomeDialog isOpen onClose={vi.fn()} />,
-  );
-  await advanceToCard(3);
-  expect(await screen.findByText("Every morning, a briefing.")).toBeDefined();
-  flags.current = {};
-  rerender(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
-  expect(await screen.findByText("It remembers everything.")).toBeDefined();
-  flags.current = { "onboarding-expert-team": true, "hire-experts": true };
-  rerender(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
-  expect(await screen.findByText("Every morning, a briefing.")).toBeDefined();
 });
 
 it.each(["completed", "skipped"] as const)(
   "identifies the team deck in view and %s events",
   async (outcome) => {
-    flags.current = { "onboarding-expert-team": true, "hire-experts": true };
     recordCompletedSteps();
     render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
     const user = await advanceToCard(3);

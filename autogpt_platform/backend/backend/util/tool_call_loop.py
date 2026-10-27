@@ -81,6 +81,7 @@ class ToolCallResult:
     tool_name: str
     content: str
     is_error: bool = False
+    image_blocks: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass

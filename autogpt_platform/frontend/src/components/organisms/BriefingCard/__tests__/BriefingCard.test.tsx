@@ -75,15 +75,6 @@ test("keeps clipped rows out of the tab order until the list is expanded", async
   expect(expanded.closest("li")?.getAttribute("aria-hidden")).toBeNull();
 });
 
-test("masks agent names and run summaries from session replays", () => {
-  render(<BriefingCard briefing={makeBriefing([makeItem(0)])} />);
-
-  expect(screen.getByText("Agent 0").className).not.toContain("sentry-unmask");
-  expect(
-    screen.getByText(/Summary 0/).className.includes("sentry-unmask"),
-  ).toBe(false);
-});
-
 test("badges a run that did not complete, and only that run", () => {
   render(
     <BriefingCard

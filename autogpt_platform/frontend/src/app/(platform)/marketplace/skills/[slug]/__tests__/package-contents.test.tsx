@@ -24,7 +24,6 @@ configure({ asyncUtilTimeout: 10000 });
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockNotFound = vi.hoisted(() => vi.fn());
-const flag = vi.hoisted(() => ({ enabled: true, ready: true }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -42,14 +41,6 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({ useAuth: mockUseAuth }));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return { ...actual, useFlagStatus: () => flag };
-});
 
 const SLUG = "webapp-testing";
 const SCRIPT_PATH = "scripts/with_server.py";
@@ -92,8 +83,6 @@ const PACKAGE: SkillPackageFile[] = [
 
 describe("Marketplace skill package contents", () => {
   beforeEach(() => {
-    flag.enabled = true;
-    flag.ready = true;
     mockNotFound.mockClear();
     mockUseAuth.mockReturnValue({
       user: { id: "user-1" },

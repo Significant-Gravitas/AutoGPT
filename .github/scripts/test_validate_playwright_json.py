@@ -46,6 +46,24 @@ class ValidatePlaywrightJSONTests(unittest.TestCase):
     def test_accepts_clean_single_attempt_report(self):
         self.assertEqual(validate_report(valid_report()), 1)
 
+    def test_known_failures_are_only_accepted_when_allowed(self):
+        report = valid_report()
+        test = report["suites"][0]["specs"][0]["tests"][0]
+        test["expectedStatus"] = "failed"
+        test["results"][0]["status"] = "failed"
+        test["results"][0]["errors"] = [{"message": "the bug is still there"}]
+
+        with self.assertRaisesRegex(ValueError, "expectedStatus must be passed"):
+            validate_report(report)
+        self.assertEqual(validate_report(report, allow_known_failures=True), 1)
+
+    def test_a_known_failure_that_passed_is_rejected(self):
+        report = valid_report()
+        report["suites"][0]["specs"][0]["tests"][0]["expectedStatus"] = "failed"
+
+        with self.assertRaisesRegex(ValueError, "must be failed for a known failure"):
+            validate_report(report, allow_known_failures=True)
+
     def test_rejects_configured_retries(self):
         report = valid_report()
         report["config"]["projects"][0]["retries"] = 2

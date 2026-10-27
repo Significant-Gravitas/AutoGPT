@@ -1,4 +1,4 @@
-"""Backend selection: launchdarkly (default), posthog, and the dual diff run."""
+"""Backend selection: posthog (default), launchdarkly, and the dual diff run."""
 
 import asyncio
 import json
@@ -9,12 +9,14 @@ import uuid
 import pytest
 import sentry_sdk
 import sentry_sdk.feature_flags
+import urllib3.connectionpool
 from fastapi import HTTPException
 from ldclient import Context, LDClient
 from ldclient.config import Config as LDConfig
 from ldclient.evaluation import EvaluationDetail
 from ldclient.integrations.test_data import TestData
 from posthog import Posthog
+from posthog.types import FeatureFlagResult
 from sentry_sdk.tracing import Span
 
 import backend.util.feature_flag as ff
@@ -23,9 +25,12 @@ from backend.util.feature_flag import (
     Flag,
     evaluate_feature_flag,
     feature_flag,
+    frontend,
     is_feature_enabled,
 )
 from backend.util.settings import AppEnvironment, Config, FeatureFlagBackend
+
+SERVER_READ_EXPERIMENT = "server-read-experiment"
 
 
 @pytest.fixture(autouse=True)
@@ -60,6 +65,8 @@ _FORCE_PREFIXES = (
 
 @pytest.fixture
 def ld_client(mocker):
+    """LaunchDarkly serving from a ready client; a dual test switches after."""
+    use_backend(mocker, FeatureFlagBackend.LAUNCHDARKLY)
     client = mocker.Mock(spec=LDClient)
     mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
     client.is_initialized.return_value = True
@@ -92,39 +99,83 @@ def use_backend(mocker, backend: FeatureFlagBackend):
 
 
 def stub_posthog(mocker, *, value, payload=None):
-    """Stand in for a PostHog evaluation snapshot for one flag."""
-    snapshot = mocker.Mock()
-    snapshot.get_flag.return_value = value
-    snapshot.get_flag_payload.return_value = payload
+    """Stand in for PostHog's answer for one flag."""
     client = mocker.Mock()
-    client.evaluate_flags.return_value = snapshot
+    client.get_feature_flag_result.return_value = (
+        FeatureFlagResult.from_value_and_payload("flag", value, payload)
+    )
     mocker.patch.object(ph, "get_flag_client", return_value=client)
     return client
 
 
-class TestDefaultBackendIsUnchanged:
-    """Phase 1 is a no-op until the setting is flipped."""
+class TestTheDefaultBackend:
+    def test_the_default_is_posthog(self):
+        # The field's default, since a developer's .env may set the variable.
+        default = Config.model_fields["feature_flag_backend"].default
+        assert default is FeatureFlagBackend.POSTHOG
 
-    def test_the_default_is_launchdarkly(self):
-        assert (
-            ff.settings.config.feature_flag_backend is FeatureFlagBackend.LAUNCHDARKLY
-        )
+
+class TestPostHogWithoutAKey:
+    """The default backend as a self-hosted install and CI run it."""
+
+    @pytest.fixture(autouse=True)
+    def no_key(self, mocker, monkeypatch: pytest.MonkeyPatch):
+        use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        mocker.patch.object(ph.settings.secrets, "posthog_api_key", "")
+        mocker.patch.object(ff.settings.secrets, "posthog_secret_key", "")
+        monkeypatch.setattr(ph, "_client", None)
+        monkeypatch.setattr(ph, "_init_attempted", False)
+        monkeypatch.setattr(ph, "_shut_down", False)
 
     @pytest.mark.asyncio
-    async def test_the_default_never_touches_posthog(
-        self, mocker, ld_client, user_context
+    @pytest.mark.parametrize("attributes", [None, {"country": "US"}])
+    async def test_a_read_serves_its_default_without_a_user_lookup(
+        self, mocker, attributes
     ):
+        user_id = str(uuid.uuid4())
+        lookup = mocker.patch(
+            "backend.util.feature_flag._fetch_user_context_status",
+            return_value=(Context.create(user_id), True),
+        )
+
+        value = await ff.get_feature_flag_value(
+            Flag.GENERIC_TRIGGER_AGENTS.value, user_id, True, attributes=attributes
+        )
+
+        assert value is True
+        lookup.assert_not_called()
+
+    def test_startup_warns_once_and_logs_no_error(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            ff.initialize_feature_flags()
+
+        assert [(r.levelno, r.getMessage()) for r in caplog.records] == [
+            (
+                logging.WARNING,
+                "PostHog API key not configured; flag reads will not resolve",
+            )
+        ]
+
+
+class TestLaunchDarklyBackendLeavesPostHogAlone:
+    @pytest.fixture(autouse=True)
+    def launchdarkly(self, mocker):
+        use_backend(mocker, FeatureFlagBackend.LAUNCHDARKLY)
+
+    @pytest.mark.asyncio
+    async def test_a_read_never_touches_posthog(self, mocker, ld_client, user_context):
         posthog = mocker.patch.object(ph, "evaluate_flag")
         ld_client.variation_detail.return_value = served(True)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
         ld_client.variation_detail.assert_called_once()
         posthog.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_the_default_reads_launchdarkly_for_raw_values(
-        self, ld_client, user_context
-    ):
+    async def test_a_raw_value_is_read_from_launchdarkly(self, ld_client, user_context):
         ld_client.variation_detail.return_value = served({"daily": 5})
 
         assert await ff.get_feature_flag_value("copilot-cost-limits", "system") == {
@@ -153,22 +204,26 @@ class TestAnUnknownBackendValue:
     """Settings is built at import of every module that reads a flag, so a
     rejected value is a boot crash rather than a misconfigured flag read."""
 
-    def test_a_typo_falls_back_to_launchdarkly(self, monkeypatch):
-        monkeypatch.setenv("FEATURE_FLAG_BACKEND", "posthogg")
-        assert Config().feature_flag_backend is FeatureFlagBackend.LAUNCHDARKLY
+    def test_a_typo_falls_back_to_the_default(self, monkeypatch):
+        monkeypatch.setenv("FEATURE_FLAG_BACKEND", "launch-darkly")
+        assert Config().feature_flag_backend is FeatureFlagBackend.POSTHOG
 
     def test_the_value_is_case_insensitive(self, monkeypatch):
         monkeypatch.setenv("FEATURE_FLAG_BACKEND", "PostHog")
         assert Config().feature_flag_backend is FeatureFlagBackend.POSTHOG
 
 
+@pytest.mark.usefixtures("posthog_events_dropped")
 class TestPostHogBackend:
     @pytest.mark.asyncio
     async def test_an_enabled_flag_is_authoritative(self, mocker, user_context):
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         stub_posthog(mocker, value=True)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
 
     @pytest.mark.asyncio
     async def test_a_conclusive_off_is_authoritative(self, mocker, user_context):
@@ -176,29 +231,41 @@ class TestPostHogBackend:
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         stub_posthog(mocker, value=False)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            True,
+        )
 
     @pytest.mark.asyncio
     async def test_an_unresolved_flag_is_not(self, mocker, user_context):
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         stub_posthog(mocker, value=None)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_an_unconfigured_client_is_not(self, mocker, user_context):
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         mocker.patch.object(ph, "get_flag_client", return_value=None)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_an_evaluation_that_raises_is_not(self, mocker, user_context):
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         client = stub_posthog(mocker, value=True)
-        client.evaluate_flags.side_effect = Exception("evaluation exploded")
+        client.get_feature_flag_result.side_effect = Exception("evaluation exploded")
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_a_degraded_user_context_is_not(self, mocker):
@@ -209,7 +276,10 @@ class TestPostHogBackend:
             return_value=(Context.create("u-1"), False),
         )
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, False)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_a_payload_flag_returns_its_payload(self, mocker, user_context):
@@ -226,7 +296,10 @@ class TestPostHogBackend:
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         stub_posthog(mocker, value=True, payload={"some": "object"})
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            False,
+        )
 
     @pytest.mark.asyncio
     async def test_targeting_attributes_are_passed_as_person_properties(self, mocker):
@@ -251,14 +324,16 @@ class TestPostHogBackend:
             return_value=(context, True),
         )
 
-        await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+        await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
 
-        _, kwargs = client.evaluate_flags.call_args
+        _, kwargs = client.get_feature_flag_result.call_args
         assert kwargs["person_properties"] == {
             "role": "admin",
             "email": "x@agpt.co",
             "email_domain": "agpt.co",
             "created_at": "2026-05-07T12:00:00+00:00",
+            "is_anonymous": False,
+            "environment": ff.settings.config.app_env.value,
         }
 
     @pytest.mark.asyncio
@@ -291,16 +366,98 @@ class TestPostHogBackend:
         assert result == expected
 
     @pytest.mark.asyncio
-    async def test_an_anonymous_context_carries_no_person_properties(self, mocker):
-        """The `"system"`-keyed config flags have no user to describe."""
+    async def test_an_anonymous_context_carries_only_is_anonymous_and_the_environment(
+        self, mocker
+    ):
+        """The `"system"`-keyed config flags have no user to describe and are not
+        the shared signed-out key, but can still differ between dev and prod."""
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         client = stub_posthog(mocker, value=True, payload={"TIER": 1.5})
 
         await ff.get_feature_flag_value("copilot-tier-multipliers", "system")
 
-        args, kwargs = client.evaluate_flags.call_args
-        assert args[0] == "system"
-        assert kwargs["person_properties"] is None
+        args, kwargs = client.get_feature_flag_result.call_args
+        assert args[1] == "system"
+        assert kwargs["person_properties"] == {
+            "is_anonymous": False,
+            "environment": ff.settings.config.app_env.value,
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_split_on_is_anonymous_leaves_out_only_the_shared_signed_out_key(
+        self, mocker
+    ):
+        """A 20% rollout "where is_anonymous is not true" buckets consented
+        visitors by their own id and never the visitors nobody can measure."""
+        use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        posthog_client = _posthog_with_a_split_on_is_anonymous()
+        mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
+        frontend._anonymous_flags.cache_clear()
+        frontend._defined_flags.cache_clear()
+        try:
+            anonymous = await frontend.evaluate_frontend_flags(None)
+            visitors = [
+                await frontend.evaluate_frontend_flags(None, f"{i:08d}-visitor")
+                for i in range(200)
+            ]
+        finally:
+            frontend._anonymous_flags.cache_clear()
+            frontend._defined_flags.cache_clear()
+            posthog_client.shutdown()
+
+        split = frontend.FrontendFlag.TASK_PROGRESS_BAR
+        share = sum(v.flags.get(split) is True for v in visitors) / len(visitors)
+        # One assertion, so a failure shows both halves.
+        assert (anonymous.flags.get(split), 0.1 < share < 0.3) == (False, True), share
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "flag_key,events",
+        [(SERVER_READ_EXPERIMENT, 1), (Flag.GENERIC_TRIGGER_AGENTS.value, 0)],
+    )
+    async def test_only_an_experiment_read_sends_posthog_its_exposure_event(
+        self, mocker, monkeypatch, flag_key, events
+    ):
+        """`$feature_flag_called` is billed per event, and only an experiment
+        counts its exposures with it."""
+        use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        mocker.patch.object(ff, "EXPERIMENT_FLAGS", frozenset({SERVER_READ_EXPERIMENT}))
+        monkeypatch.setattr(
+            urllib3.connectionpool.HTTPConnectionPool, "urlopen", _refuse_network
+        )
+        posthog_client = _posthog_rolled_out(flag_key)
+        capture = mocker.patch.object(posthog_client, "capture")
+        mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
+        try:
+            value = await ff.get_feature_flag_value(flag_key, "u-1")
+        finally:
+            posthog_client.shutdown()
+
+        sent = [call.args[0] for call in capture.call_args_list]
+        assert (value, sent) == (True, ["$feature_flag_called"] * events)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "app_env,expected",
+        [
+            (AppEnvironment.DEVELOPMENT, (True, True)),
+            (AppEnvironment.PRODUCTION, (False, True)),
+        ],
+    )
+    async def test_a_dev_only_rollout_evaluates_in_process(
+        self, mocker, user_context, app_env, expected
+    ):
+        """A release condition on ``environment`` decides in process, per app env."""
+        use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        mocker.patch.object(ff.settings.config, "app_env", app_env)
+        posthog_client = _posthog_rolled_out_to_dev_only()
+        mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
+        try:
+            result = await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
+        finally:
+            posthog_client.shutdown()
+
+        assert result == expected
 
     def test_lifecycle_starts_only_posthog(self, mocker):
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
@@ -323,6 +480,29 @@ class TestPostHogBackend:
 
 class TestDualBackend:
     @pytest.mark.asyncio
+    async def test_the_shadow_read_of_an_experiment_sends_posthog_no_exposure(
+        self, mocker, monkeypatch, ld_client, user_context
+    ):
+        """LaunchDarkly's answer is the one served, so PostHog's arm was never shown."""
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        ld_client.variation_detail.return_value = served(True)
+        monkeypatch.setattr(
+            urllib3.connectionpool.HTTPConnectionPool, "urlopen", _refuse_network
+        )
+        mocker.patch.object(ff, "EXPERIMENT_FLAGS", frozenset({SERVER_READ_EXPERIMENT}))
+        posthog_client = _posthog_rolled_out(SERVER_READ_EXPERIMENT)
+        capture = mocker.patch.object(posthog_client, "capture")
+        read = mocker.spy(posthog_client, "get_feature_flag_result")
+        mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
+        try:
+            await ff.get_feature_flag_value(SERVER_READ_EXPERIMENT, "u-1")
+            await drain_shadow_evaluations()
+        finally:
+            posthog_client.shutdown()
+
+        assert (read.call_count, capture.call_count) == (1, 0)
+
+    @pytest.mark.asyncio
     async def test_launchdarkly_answers_even_when_posthog_disagrees(
         self, mocker, ld_client, user_context
     ):
@@ -330,7 +510,10 @@ class TestDualBackend:
         ld_client.variation_detail.return_value = served(True)
         stub_posthog(mocker, value=False)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
 
     @pytest.mark.asyncio
     async def test_a_disagreement_is_logged_as_a_structured_record(
@@ -344,7 +527,7 @@ class TestDualBackend:
         with caplog.at_level(
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
-            await evaluate_feature_flag(Flag.HIRE_EXPERTS, user_id)
+            await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, user_id)
             await drain_shadow_evaluations()
 
         [message] = [
@@ -353,7 +536,7 @@ class TestDualBackend:
             if record.name == "backend.util.feature_flag.mismatch"
         ]
         record = _mismatch_record(message)
-        assert record["flag"] == Flag.HIRE_EXPERTS.value
+        assert record["flag"] == Flag.GENERIC_TRIGGER_AGENTS.value
         assert record["launchdarkly"] == {"value": True, "evaluated": True}
         assert record["posthog"] == {"value": False, "evaluated": True}
         assert user_id not in message
@@ -370,7 +553,7 @@ class TestDualBackend:
         with caplog.at_level(
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
-            await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+            await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
             await drain_shadow_evaluations()
 
         assert not [
@@ -390,7 +573,7 @@ class TestDualBackend:
         with caplog.at_level(
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
-            result = await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+            result = await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
             await drain_shadow_evaluations()
 
         assert result == (False, True)
@@ -418,7 +601,7 @@ class TestDualBackend:
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
             for _ in range(3):
-                await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+                await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
                 await evaluate_feature_flag(Flag.CHAT_MODE_OPTION, "u-1")
             await drain_shadow_evaluations()
 
@@ -428,7 +611,7 @@ class TestDualBackend:
             if r.name == "backend.util.feature_flag.mismatch"
         ]
         assert sorted(flags) == sorted(
-            [Flag.HIRE_EXPERTS.value, Flag.CHAT_MODE_OPTION.value]
+            [Flag.GENERIC_TRIGGER_AGENTS.value, Flag.CHAT_MODE_OPTION.value]
         )
 
     @pytest.mark.asyncio
@@ -443,7 +626,7 @@ class TestDualBackend:
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
             for _ in range(3):
-                await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+                await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
             await drain_shadow_evaluations()
 
         assert (
@@ -493,7 +676,7 @@ class TestDualBackend:
         ld_client.variation_detail.return_value = served(True)
         mocker.patch.object(ph, "evaluate_flag", side_effect=Exception("boom"))
 
-        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
+        assert await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, "u-1") is True
         await drain_shadow_evaluations()
 
     @pytest.mark.asyncio
@@ -554,6 +737,7 @@ class TestLaunchDarklyAnswers:
     ):
         """A switched-off flag still answers with its off variation; a flag
         LaunchDarkly does not have answers nothing, whatever the default."""
+        use_backend(mocker, FeatureFlagBackend.LAUNCHDARKLY)
         td = TestData.data_source()
         configure(td)
         ld = _launchdarkly_with(td)
@@ -585,7 +769,7 @@ class TestDualStaysOffTheRequestPath:
         mocker.patch.object(ph, "evaluate_flag", side_effect=slow_posthog)
 
         result = await asyncio.wait_for(
-            evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1"), timeout=5
+            evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1"), timeout=5
         )
 
         assert result == (True, True)
@@ -605,7 +789,7 @@ class TestDualStaysOffTheRequestPath:
             return_value=(Context.create("u-1"), False),
         )
 
-        await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+        await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
         await drain_shadow_evaluations()
 
         lookup.assert_called_once_with("u-1")
@@ -625,7 +809,7 @@ class TestDualStaysOffTheRequestPath:
         mocker.patch.object(ph, "evaluate_flag", side_effect=never_finishes)
 
         for _ in range(5):
-            await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+            await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
 
         assert len(ff._shadow_evaluations) == 2
         for task in list(ff._shadow_evaluations):
@@ -657,7 +841,7 @@ class TestShutdownStopsShadowEvaluations:
             return False, True
 
         mocker.patch.object(ph, "evaluate_flag", side_effect=never_finishes)
-        await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+        await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
         assert len(ff._shadow_evaluations) == 1
 
         ff.shutdown_feature_flags()
@@ -678,7 +862,9 @@ class TestShutdownStopsShadowEvaluations:
 
         mocker.patch.object(ph, "evaluate_flag", side_effect=never_finishes)
         loop = asyncio.new_event_loop()
-        loop.run_until_complete(evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1"))
+        loop.run_until_complete(
+            evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
+        )
         # What an AppService's cleanup does to its loop before flags shut down.
         loop.close()
 
@@ -698,7 +884,10 @@ class TestShutdownStopsShadowEvaluations:
         get_client = mocker.patch.object(ph, "get_flag_client")
 
         ff.shutdown_feature_flags()
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
         await drain_shadow_evaluations()
 
         get_client.assert_not_called()
@@ -739,9 +928,12 @@ class TestForcedFlagsInEveryBackend:
             ff, "get_client", side_effect=Exception("set_config was not called")
         )
         posthog = mocker.patch.object(ph, "evaluate_flag")
-        monkeypatch.setenv("FORCE_FLAG_HIRE_EXPERTS", "true")
+        monkeypatch.setenv("FORCE_FLAG_GENERIC_TRIGGER_AGENTS", "true")
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
         posthog.assert_not_called()
 
     @pytest.mark.asyncio
@@ -760,8 +952,11 @@ class TestForcedFlagsInEveryBackend:
         mocker.patch.object(ph, "get_flag_client", return_value=None)
         monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
-        await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
+        await ff.create_feature_flag_dependency(Flag.GENERIC_TRIGGER_AGENTS)("u-1")
         assert await _gated_route()(user_id="u-1") == "served"
 
     @pytest.mark.asyncio
@@ -775,14 +970,20 @@ class TestForcedFlagsInEveryBackend:
         mocker.patch.object(ph, "is_configured", return_value=True)
         stub_posthog(mocker, value=True)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
-        await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
+        await ff.create_feature_flag_dependency(Flag.GENERIC_TRIGGER_AGENTS)("u-1")
         assert await _gated_route()(user_id="u-1") == "served"
 
         stub_posthog(mocker, value=False)
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            False,
+            True,
+        )
         with pytest.raises(HTTPException) as off:
-            await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+            await ff.create_feature_flag_dependency(Flag.GENERIC_TRIGGER_AGENTS)("u-1")
         assert off.value.status_code == 404
 
 
@@ -805,8 +1006,10 @@ class TestSentryFlagContext:
         ld_client.variation_detail.return_value = served(True)
         stub_posthog(mocker, value=backend is FeatureFlagBackend.POSTHOG)
 
-        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
-        assert sentry_flags.get() == [{"flag": Flag.HIRE_EXPERTS.value, "result": True}]
+        assert await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, "u-1") is True
+        assert sentry_flags.get() == [
+            {"flag": Flag.GENERIC_TRIGGER_AGENTS.value, "result": True}
+        ]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("initialized", [True, False])
@@ -827,11 +1030,11 @@ class TestSentryFlagContext:
         client.is_initialized.return_value = False
         mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
 
-        await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
+        await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
 
         assert sentry_flags.get() == [
-            {"flag": Flag.HIRE_EXPERTS.value, "result": False},
-            {"flag": f"{Flag.HIRE_EXPERTS.value}.fallback", "result": True},
+            {"flag": Flag.GENERIC_TRIGGER_AGENTS.value, "result": False},
+            {"flag": f"{Flag.GENERIC_TRIGGER_AGENTS.value}.fallback", "result": True},
         ]
 
     @pytest.mark.asyncio
@@ -840,13 +1043,15 @@ class TestSentryFlagContext:
     ):
         ld_client.variation_detail.return_value = served("on")
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1", True) == (
+        assert await evaluate_feature_flag(
+            Flag.GENERIC_TRIGGER_AGENTS, "u-1", True
+        ) == (
             True,
             False,
         )
         assert sentry_flags.get() == [
-            {"flag": Flag.HIRE_EXPERTS.value, "result": True},
-            {"flag": f"{Flag.HIRE_EXPERTS.value}.fallback", "result": True},
+            {"flag": Flag.GENERIC_TRIGGER_AGENTS.value, "result": True},
+            {"flag": f"{Flag.GENERIC_TRIGGER_AGENTS.value}.fallback", "result": True},
         ]
 
     @pytest.mark.asyncio
@@ -875,17 +1080,21 @@ class TestSentryFlagContext:
         ld_client.is_initialized.return_value = initialized
         ld_client.variation_detail.return_value = served(answer)
         # A stale earlier answer must not be what an error from this route carries.
-        sentry_sdk.feature_flags.add_feature_flag(Flag.HIRE_EXPERTS.value, True)
+        sentry_sdk.feature_flags.add_feature_flag(
+            Flag.GENERIC_TRIGGER_AGENTS.value, True
+        )
 
         with pytest.raises(HTTPException):
             if gate == "decorator":
                 await _gated_route()(user_id="u-1")
             else:
-                await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+                await ff.create_feature_flag_dependency(Flag.GENERIC_TRIGGER_AGENTS)(
+                    "u-1"
+                )
 
         assert {f["flag"]: f["result"] for f in sentry_flags.get()} == {
-            Flag.HIRE_EXPERTS.value: False,
-            f"{Flag.HIRE_EXPERTS.value}.fallback": True,
+            Flag.GENERIC_TRIGGER_AGENTS.value: False,
+            f"{Flag.GENERIC_TRIGGER_AGENTS.value}.fallback": True,
         }
 
     @pytest.mark.asyncio
@@ -899,26 +1108,28 @@ class TestSentryFlagContext:
         scope = sentry_sdk.get_current_scope()
         previous, scope.span = scope.span, span
         try:
-            await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
+            await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
         finally:
             scope.span = previous
 
-        assert span._flags == {f"flag.evaluation.{Flag.HIRE_EXPERTS.value}": False}
+        assert span._flags == {
+            f"flag.evaluation.{Flag.GENERIC_TRIGGER_AGENTS.value}": False
+        }
 
     @pytest.mark.asyncio
     async def test_a_real_answer_clears_an_earlier_fallback(
         self, ld_client, user_context, sentry_flags
     ):
         sentry_sdk.feature_flags.add_feature_flag(
-            f"{Flag.HIRE_EXPERTS.value}.fallback", True
+            f"{Flag.GENERIC_TRIGGER_AGENTS.value}.fallback", True
         )
         ld_client.variation_detail.return_value = served(True)
 
-        await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
+        await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, "u-1")
 
         assert {f["flag"]: f["result"] for f in sentry_flags.get()} == {
-            f"{Flag.HIRE_EXPERTS.value}.fallback": False,
-            Flag.HIRE_EXPERTS.value: True,
+            f"{Flag.GENERIC_TRIGGER_AGENTS.value}.fallback": False,
+            Flag.GENERIC_TRIGGER_AGENTS.value: True,
         }
 
     @pytest.mark.asyncio
@@ -932,9 +1143,13 @@ class TestSentryFlagContext:
         )
         ld_client.variation_detail.return_value = served(True)
 
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        assert await evaluate_feature_flag(Flag.GENERIC_TRIGGER_AGENTS, "u-1") == (
+            True,
+            True,
+        )
 
 
+@pytest.mark.usefixtures("posthog_events_dropped")
 class TestTheCountryRuleInEveryBackend:
     """The trial's country targeting, through each vendor's real evaluator."""
 
@@ -1065,6 +1280,81 @@ def _posthog_with_an_employee_cohort() -> Posthog:
     return client
 
 
+def _posthog_with_a_split_on_is_anonymous() -> Posthog:
+    """A 20% rollout whose condition leaves out `is_anonymous: true`."""
+    client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
+    client.feature_flags = [
+        {
+            "id": 2,
+            "key": "task-progress-bar",
+            "active": True,
+            "filters": {
+                "groups": [
+                    {
+                        "properties": [
+                            {
+                                "key": "is_anonymous",
+                                "type": "person",
+                                "operator": "is_not",
+                                "value": ["true"],
+                            }
+                        ],
+                        "rollout_percentage": 20,
+                    }
+                ]
+            },
+        }
+    ]
+    client._get_flags_decision = _no_remote_flags
+    return client
+
+
+def _posthog_rolled_out(flag_key: str) -> Posthog:
+    client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
+    client.feature_flags = [
+        {
+            "id": 1,
+            "key": flag_key,
+            "active": True,
+            "filters": {"groups": [{"properties": [], "rollout_percentage": 100}]},
+        }
+    ]
+    return client
+
+
+def _refuse_network(pool, method, url, *args, **kwargs):
+    raise urllib3.exceptions.ProtocolError(f"no network in tests: {method} {url}")
+
+
+def _posthog_rolled_out_to_dev_only() -> Posthog:
+    """A flag whose one release condition is ``environment = dev``."""
+    client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
+    client.feature_flags = [
+        {
+            "id": 1,
+            "key": Flag.GENERIC_TRIGGER_AGENTS.value,
+            "active": True,
+            "filters": {
+                "groups": [
+                    {
+                        "properties": [
+                            {
+                                "key": "environment",
+                                "type": "person",
+                                "operator": "exact",
+                                "value": ["dev"],
+                            }
+                        ],
+                        "rollout_percentage": 100,
+                    }
+                ]
+            },
+        }
+    ]
+    client._get_flags_decision = _no_remote_flags
+    return client
+
+
 def _no_remote_flags(*args, **kwargs):
     raise ConnectionError("remote /flags is unavailable in tests")
 
@@ -1072,7 +1362,7 @@ def _no_remote_flags(*args, **kwargs):
 def _gated_route():
     """A route behind the decorator, which holds a raw flag key rather than a Flag."""
 
-    @feature_flag(Flag.HIRE_EXPERTS.value)
+    @feature_flag(Flag.GENERIC_TRIGGER_AGENTS.value)
     async def route(user_id: str) -> str:
         return "served"
 

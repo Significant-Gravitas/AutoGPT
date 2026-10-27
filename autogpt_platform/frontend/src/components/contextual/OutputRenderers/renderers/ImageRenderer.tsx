@@ -116,6 +116,7 @@ function renderImage(
       <img
         src={imageUrl}
         alt={altText}
+        // TODO(tokens): no exact role for border-gray-200 #e5e7eb; #e5e7eb is sidebar-border, the sidebar only
         className="h-auto max-w-full rounded-md border border-gray-200"
         loading="lazy"
       />
