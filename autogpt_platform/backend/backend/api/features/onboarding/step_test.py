@@ -86,6 +86,21 @@ def test_complete_step_accepts_tab_intros(step, mocker):
     assert mock_complete.await_args.args[1] == step
 
 
+def test_capability_cards_step_is_no_longer_accepted(mocker):
+    # The welcome overlay that recorded this step is gone, so the endpoint no
+    # longer takes it; stored rows that contain it still read (see below).
+    mock_complete = mocker.patch(
+        "backend.api.features.onboarding.routes.complete_onboarding_step",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.post("/onboarding/step", params={"step": "CAPABILITY_CARDS"})
+
+    assert response.status_code == 422
+    mock_complete.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "step",
     [
@@ -175,7 +190,12 @@ def test_user_onboarding_response_model_accepts_deprecated_stored_values():
     onboarding = UserOnboarding.model_validate(
         {
             "userId": "test-user-id",
-            "completedSteps": ["MARKETPLACE_VISIT", "RE_RUN_AGENT", "RUN_AGENTS"],
+            "completedSteps": [
+                "MARKETPLACE_VISIT",
+                "RE_RUN_AGENT",
+                "RUN_AGENTS",
+                "CAPABILITY_CARDS",
+            ],
             "walletShown": False,
             "notified": ["BUILDER_SAVE_AGENT"],
             "rewardedFor": ["MARKETPLACE_VISIT"],
@@ -195,6 +215,7 @@ def test_user_onboarding_response_model_accepts_deprecated_stored_values():
         OnboardingStep.MARKETPLACE_VISIT,
         OnboardingStep.RE_RUN_AGENT,
         OnboardingStep.RUN_AGENTS,
+        OnboardingStep.CAPABILITY_CARDS,
     ]
 
 

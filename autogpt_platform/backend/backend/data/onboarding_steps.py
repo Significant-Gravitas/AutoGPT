@@ -55,8 +55,7 @@ class OnboardingStep(StrEnum):
     # No longer rewarded but exist for analytical purposes
     BUILDER_OPEN = "BUILDER_OPEN"
     BUILDER_RUN_AGENT = "BUILDER_RUN_AGENT"
-    # Copilot home first-run: the capability-cards modal was completed or
-    # skipped. Unrewarded; recorded so it shows only once per user.
+    # deprecated: no longer set (welcome overlay removed 2026-10)
     CAPABILITY_CARDS = "CAPABILITY_CARDS"
     # First-visit intro card for a tab, dismissed via its CTA or otherwise.
     # Unrewarded; recorded so each tab introduces itself only once per user.
@@ -76,7 +75,6 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.CONGRATS,
     OnboardingStep.ONBOARDING_COMPLETE,
     OnboardingStep.BUILDER_OPEN,
-    OnboardingStep.CAPABILITY_CARDS,
     OnboardingStep.AGENTS_TAB_INTRO,
     OnboardingStep.MARKETPLACE_TAB_INTRO,
     OnboardingStep.BUILD_TAB_INTRO,
