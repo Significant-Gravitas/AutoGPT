@@ -121,6 +121,10 @@ describe("Continue with Microsoft", () => {
       /didn't share an email address/,
     );
     expect(getSocialSignInError("something_new")).toMatch(/didn't finish/);
+    // Codes come from the URL, so an object's own names are just unknown codes.
+    for (const code of ["__proto__", "constructor", "toString"]) {
+      expect(getSocialSignInError(code)).toMatch(/didn't finish/);
+    }
     // A refusal from one of our sign-up checks: its own text is never shown,
     // since anyone can put anything in the URL.
     expect(

@@ -156,7 +156,7 @@ export function isWaitlistSignInError(code: string | null): boolean {
 
 export function getSocialSignInError(code: string | null): string | null {
   if (!code) return null;
-  if (SIGN_IN_ERRORS[code]) return SIGN_IN_ERRORS[code];
+  if (Object.hasOwn(SIGN_IN_ERRORS, code)) return SIGN_IN_ERRORS[code];
   if (code.endsWith(".")) return REFUSED_SIGN_UP;
   return "That sign-in didn't finish. Try again, or use another sign-in method.";
 }
