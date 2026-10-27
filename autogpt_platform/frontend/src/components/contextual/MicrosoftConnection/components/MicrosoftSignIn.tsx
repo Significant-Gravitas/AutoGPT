@@ -16,6 +16,7 @@ interface Props {
   recovery: MicrosoftSetupReason | null;
   onSignIn: () => void;
   onDeviceConnected: (credential?: CredentialsMetaResponse) => void;
+  onSkip?: () => void;
 }
 
 export function MicrosoftSignIn({
@@ -26,6 +27,7 @@ export function MicrosoftSignIn({
   recovery,
   onSignIn,
   onDeviceConnected,
+  onSkip,
 }: Props) {
   return (
     <div className="flex flex-col gap-4">
@@ -52,6 +54,11 @@ export function MicrosoftSignIn({
         />
       )}
       {recovery && <MicrosoftAdminSetup reason={recovery} onRetry={onSignIn} />}
+      {onSkip && (
+        <Button variant="ghost" onClick={onSkip}>
+          Not now
+        </Button>
+      )}
     </div>
   );
 }

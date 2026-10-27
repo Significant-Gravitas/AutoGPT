@@ -51,6 +51,12 @@ export function useMicrosoftConnection({ scopes }: Args) {
     });
   }
 
+  // A new attempt starts clean: the last one's error no longer applies.
+  function signIn() {
+    setRecovery(null);
+    void oauth.connect();
+  }
+
   function allow(requested: string[]) {
     if (!credential || requested.length === 0) return;
     setRecovery(null);
@@ -70,6 +76,7 @@ export function useMicrosoftConnection({ scopes }: Args) {
     pending: pendingScopes(check),
     recovery,
     oauth,
+    signIn,
     allow,
     recheck,
     select: setSelectedID,

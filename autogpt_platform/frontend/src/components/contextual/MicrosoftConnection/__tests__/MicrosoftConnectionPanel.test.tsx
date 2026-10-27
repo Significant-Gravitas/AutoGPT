@@ -133,6 +133,69 @@ describe("Microsoft connection", () => {
     ).toBeNull();
   });
 
+  it("clears the last error when signing in again", async () => {
+    render(<MicrosoftConnectionPanel browserAvailable onDone={vi.fn()} />);
+    const signIn = await screen.findByRole("button", {
+      name: "Sign in with Microsoft",
+    });
+    await waitFor(() => expect(signIn.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(signIn);
+    expect(
+      await screen.findByText(
+        "Your Microsoft administrator needs to approve access.",
+      ),
+    ).toBeTruthy();
+
+    let answer = () => {};
+    const answered = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    server.use(
+      http.get("*/api/integrations/:provider/login", async () => {
+        await answered;
+        return HttpResponse.json({ detail: "Try later" }, { status: 503 });
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText(
+          "Your Microsoft administrator needs to approve access.",
+        ),
+      ).toBeNull(),
+    );
+    answer();
+    expect(
+      await screen.findByText(/Microsoft sign-in did not finish/),
+    ).toBeTruthy();
+  });
+
+  it("offers a skip only until an account is connected", async () => {
+    const onSkip = vi.fn();
+    const { unmount } = render(
+      <MicrosoftConnectionPanel
+        browserAvailable
+        onDone={vi.fn()}
+        onSkip={onSkip}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Not now" }));
+    expect(onSkip).toHaveBeenCalledOnce();
+    unmount();
+
+    credentials = [work];
+    render(
+      <MicrosoftConnectionPanel
+        browserAvailable
+        onDone={vi.fn()}
+        onSkip={onSkip}
+      />,
+    );
+    expect(await screen.findByRole("button", { name: "Done" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Not now" })).toBeNull();
+  });
+
   it("shows every service's status and asks only for what is missing", async () => {
     credentials = [work];
     render(<MicrosoftConnectionPanel browserAvailable onDone={vi.fn()} />);

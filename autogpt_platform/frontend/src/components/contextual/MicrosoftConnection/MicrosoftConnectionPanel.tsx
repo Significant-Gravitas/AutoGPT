@@ -19,6 +19,8 @@ interface Props {
   scopes?: string[];
   doneLabel?: string;
   onDone: (credential?: CredentialsMetaResponse) => void;
+  /** Offers "Not now" until an account is connected. */
+  onSkip?: () => void;
 }
 
 export function MicrosoftConnectionPanel({
@@ -26,6 +28,7 @@ export function MicrosoftConnectionPanel({
   scopes,
   doneLabel = "Done",
   onDone,
+  onSkip,
 }: Props) {
   const connection = useMicrosoftConnection({ scopes });
   const { credential, check } = connection;
@@ -38,8 +41,9 @@ export function MicrosoftConnectionPanel({
         loading={connection.isLoading}
         pending={connection.oauth.isPending}
         recovery={connection.recovery}
-        onSignIn={connection.oauth.connect}
+        onSignIn={connection.signIn}
         onDeviceConnected={connection.handleConnected}
+        onSkip={onSkip}
       />
     );
   }
@@ -127,11 +131,7 @@ export function MicrosoftConnectionPanel({
           Check again
         </Button>
         {browserAvailable && (
-          <Button
-            variant="ghost"
-            size="small"
-            onClick={connection.oauth.connect}
-          >
+          <Button variant="ghost" size="small" onClick={connection.signIn}>
             Connect another account
           </Button>
         )}
