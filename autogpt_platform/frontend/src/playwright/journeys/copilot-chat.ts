@@ -139,8 +139,21 @@ export async function finishedChatStream(page: Page, method: "GET" | "POST") {
   return (await handle.jsonValue()) as string;
 }
 
-/** The start of `text`, to see an answer begin streaming. */
-export function firstWords(text: string, count = 5) {
+// A new chat's first answer waits on the chat, the turn's setup and the CLI;
+// slow CI runners have taken up to 19 s, past the 15 s expect default.
+const FIRST_ANSWER_TIMEOUT = 45_000;
+
+/** Waits for `answer` to start streaming into the chat just sent. */
+export async function expectAnswerToStart(page: Page, answer: string) {
+  const sentAt = Date.now();
+  await expect(
+    page.getByRole("log").getByText(firstWords(answer)),
+    "the answer should start streaming",
+  ).toBeVisible({ timeout: FIRST_ANSWER_TIMEOUT });
+  console.log(`first answer started ${Date.now() - sentAt} ms after the send`);
+}
+
+function firstWords(text: string, count = 5) {
   return text.split(" ").slice(0, count).join(" ");
 }
 
