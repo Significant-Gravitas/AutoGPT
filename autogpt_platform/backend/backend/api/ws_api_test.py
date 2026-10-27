@@ -254,6 +254,32 @@ async def test_websocket_router_answers_a_subscribe_that_failed(
 
 
 @pytest.mark.asyncio
+async def test_websocket_router_sends_nothing_after_the_client_left(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> None:
+    """A second send on a closed socket raises out of the loop as a traceback."""
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
+    mock_websocket.receive_text.side_effect = [
+        WSMessage(
+            method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
+            data={"graph_exec_id": "test-graph-exec-1"},
+        ).model_dump_json(),
+        WebSocketDisconnect(),
+    ]
+    mock_manager.subscribe_graph_exec.side_effect = WebSocketDisconnect()
+
+    await websocket_router(
+        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+    )
+
+    mock_websocket.send_text.assert_not_called()
+    mock_manager.disconnect_socket.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_handle_subscribe_success(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:

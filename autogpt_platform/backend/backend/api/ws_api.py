@@ -8,7 +8,7 @@ from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
-from backend.api.conn_manager import ConnectionManager
+from backend.api.conn_manager import ConnectionManager, _is_ws_close_race
 from backend.api.model import (
     WSMessage,
     WSMethod,
@@ -303,6 +303,9 @@ async def websocket_router(
                 )
                 continue
             except Exception as e:
+                # The client left mid-handler: there is no one to reply to.
+                if _is_ws_close_race(e, websocket):
+                    break
                 logger.error(
                     f"Error while handling '{message.method.value}' message "
                     f"for user #{user_id}: {e}"
