@@ -50,10 +50,13 @@ working until they are disconnected.
   are keyed on tenant plus Microsoft's object ID, never the email address.
   An address only counts when Microsoft vouches for it: a personal account's
   own Outlook.com, Hotmail, Live or MSN address, or a work address with
-  `xms_edov`. Any other address joins no existing account (Better Auth
+  `xms_edov`. A guest's address is never trusted: a guest signs in through
+  an organization that isn't its own, which vouches for addresses it never
+  verified. Any other address joins no existing account (Better Auth
   answers `account_not_linked`) and creates none
   (`microsoft-sign-up-policy.ts` answers `unconfirmed_email`), whether or not
-  email verification is on. Emailing a confirmation link instead would not be
+  email verification is on. Only the redirect flow signs in: Better Auth's
+  ID-token sign-in is switched off for Microsoft. Emailing a confirmation link instead would not be
   safe: the mailbox's owner could confirm it, and the other person's
   Microsoft login would still sign in to the account.
 
@@ -92,13 +95,20 @@ On the environment's app (dev: `autogpt-dev`, prod: `AutoGPT`):
 4. **Certificates & secrets:** the bot's existing secret also serves sign-in.
    Rotate by adding a new secret, deploying it, then removing the old one.
 
-Dev is configured (2026-10-26); prod still needs steps 1–3.
+Then set `MICROSOFT_BROWSER_SIGN_IN=true`. A secret alone doesn't turn browser
+sign-in on, because the bot's app has one long before it has the redirect.
+Until the flag is on, Microsoft connects with sign-in codes through the same
+app. Continue with Microsoft has its own switch, below.
+
+Dev's app is configured (2026-10-26) but still needs the flag; prod needs
+steps 1–3 and then the flags.
 
 ## Environment variables
 
 | Where | Setting | Notes |
 |---|---|---|
 | backend | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT_ID` | Shared with the Teams bot. Without a secret, connections use sign-in codes. |
+| backend | `MICROSOFT_BROWSER_SIGN_IN=true` | Browser sign-in instead of sign-in codes, once the app has the redirect above. |
 | frontend | `AUTH_MICROSOFT_CLIENT_ID`, `AUTH_MICROSOFT_CLIENT_SECRET` | Same app as the backend. |
 | frontend | `NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED=true` | Shows the login button. |
 
@@ -107,7 +117,7 @@ Dev is configured (2026-10-26); prod still needs steps 1–3.
 `.env.default` ships no Microsoft settings. The backend then uses AutoGPT's
 public client (`ce01a4d6-…`) with sign-in codes, so a fresh local install can
 still connect Microsoft and use Copilot. Browser sign-in and Continue with
-Microsoft need an app with a secret and the redirects above.
+Microsoft need an app with a secret, the redirects above and their switches.
 
 ## Testing locally
 
