@@ -57,6 +57,7 @@ import { ExpertChangeGroup } from "@/app/(platform)/copilot/components/ToolChain
 import { BudgetLowHint } from "@/app/(platform)/copilot/components/UsageLimits/BudgetLowHint";
 import type { UsageSnapshot } from "@/services/usageExperience/useUsageExperience";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { isKey } from "@/lib/keyboard";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import type { User } from "@/lib/auth/types";
 import { tourTarget } from "@/lib/tour-targets";
@@ -697,7 +698,7 @@ describe("contextual tips — showing one", () => {
     await screen.findByText("You have two chats now");
     let outsideEscapeWasHandled: boolean | null = null;
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape")
+      if (isKey(event, "Escape"))
         outsideEscapeWasHandled = event.defaultPrevented;
     }
     window.addEventListener("keydown", onKeyDown);
