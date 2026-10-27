@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
+from backend.copilot import budget_gate
 from backend.copilot import model as chat_model
 from backend.copilot import rate_limit, stream_registry, tools
 from backend.copilot.baseline import service as baseline
@@ -55,6 +56,10 @@ class Executor:
         self._processor = CoPilotProcessor()
         monkeypatch.setattr(
             chat_model, "get_chat_session", AsyncMock(return_value=session)
+        )
+        # Where a refused turn saves its not-started marker.
+        monkeypatch.setattr(
+            budget_gate, "upsert_chat_session", AsyncMock(return_value=session)
         )
         monkeypatch.setattr(processor, "ChatConfig", MagicMock(return_value=config))
         monkeypatch.setattr(

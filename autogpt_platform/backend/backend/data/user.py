@@ -834,8 +834,7 @@ def forget_user_email_verification(user_id: str) -> None:
 
 @cache_user_lookup
 async def _user_proved_email(user_id: str) -> bool:
-    """A verified auth identity, or a Google sign-in. Only ever called
-    positionally, so ``forget_user_email_verification`` hits its one key."""
+    """A verified auth identity, or a Google sign-in."""
     try:
         identity = await AuthUser.prisma().find_unique(where={"id": user_id})
         if identity is None:

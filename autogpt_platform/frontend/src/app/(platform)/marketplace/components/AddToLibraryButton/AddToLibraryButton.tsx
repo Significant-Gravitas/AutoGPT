@@ -35,7 +35,8 @@ function UndoActions({
         variant="primary"
         size="small"
         as="NextLink"
-        className="bg-neutral-200 text-zinc-900 hover:bg-neutral-300 hover:text-zinc-800"
+        // TODO(tokens): no exact role: bg-neutral-200 #E5E5E5, hover:bg-neutral-300 #D4D4D4
+        className="bg-neutral-200 text-foreground-strong hover:bg-neutral-300 hover:text-foreground-emphasis"
         href={libraryHref}
       >
         Open workflow
@@ -44,7 +45,8 @@ function UndoActions({
         variant="ghost"
         size="small"
         loading={isUndoing}
-        className="border-none text-zinc-200 hover:bg-transparent hover:text-zinc-400"
+        // TODO(tokens): no fitting role for text-zinc-200 #DADADC; #DADADC is surface-active (a surface fill), border-base (a border colour)
+        className="border-none text-zinc-200 hover:bg-transparent hover:text-foreground-subtle"
         onClick={async () => {
           setIsUndoing(true);
           try {

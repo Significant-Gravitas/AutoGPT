@@ -26,9 +26,11 @@ AssignmentSource = Literal["posthog", "launchdarkly", "backend"]
 
 
 class Experiment(str, Enum):
-    """Experiments the frontend shows; each is a multivariate PostHog flag."""
+    """Experiments, each a multivariate PostHog flag read by the frontend or backend."""
 
     SUBSCRIPTION_PRICING = "subscription-pricing-page-initial-state"
+    # Backend-decided: the arm sets the trial's Stripe Checkout text.
+    TRIAL_CHECKOUT_NO_CHARGE_COPY = "trial-checkout-no-charge-copy"
 
     @classmethod
     def __get_pydantic_json_schema__(

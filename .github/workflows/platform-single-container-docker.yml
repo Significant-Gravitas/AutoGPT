@@ -354,19 +354,21 @@ jobs:
             single-container.attest=type=sbom
             single-container.output=type=image,name=${{ env.DEPLOY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
 
+      # Pass only the digest. The bake metadata copies the release notes into
+      # every target's provenance, and an environment variable over 128 KiB
+      # stops bash from starting ("Argument list too long").
       - name: Capture pushed digest
         id: digest
         shell: bash
         env:
-          BUILD_METADATA: ${{ steps.build.outputs.metadata }}
+          DIGEST: ${{ fromJSON(steps.build.outputs.metadata)['single-container']['containerimage.digest'] }}
         run: |
           set -euo pipefail
-          digest="$(jq -er '."single-container"."containerimage.digest"' <<<"$BUILD_METADATA")"
-          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "build did not return a valid sha256 digest" >&2
             exit 1
           fi
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Pull the exact pushed digest
         shell: bash
@@ -477,5 +479,5 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
           repository: significantgravitas/autogpt
-          short-description: Run the AutoGPT Platform, including FalkorDB-backed memory, in one container.
+          short-description: Self-host your AI team. Hire experts, delegate work, and review results with AutoGPT.
           readme-filepath: ./autogpt_platform/single-container/README.md

@@ -91,10 +91,11 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
   const remaining = MAX_BIO_LENGTH - formState.description.length;
   const counterColor =
     remaining < 0
-      ? "text-red-500"
+      ? "text-error"
       : remaining < 30
-        ? "text-amber-600"
-        : "text-zinc-400";
+        ? // TODO(tokens): no exact role (text-amber-600 #D97706)
+          "text-amber-600"
+        : "text-foreground-subtle";
 
   function applyAction(action: MarkdownAction) {
     const textarea = textareaRef.current;
@@ -163,7 +164,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
       className="flex w-full flex-col gap-2"
     >
       <div className="flex items-center justify-between px-4">
-        <Text variant="body-medium" as="span" className="text-black">
+        <Text variant="body-medium" as="span" className="text-foreground-base">
           Bio
         </Text>
         <Text
@@ -191,7 +192,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => applyAction(action)}
               disabled={isPreview}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-black"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground-secondary transition-colors hover:bg-surface-hover hover:text-foreground-base"
             >
               {action.icon}
             </button>
@@ -201,7 +202,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           type="button"
           aria-pressed={isPreview}
           onClick={() => setIsPreview((v) => !v)}
-          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-black"
+          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-foreground-body transition-colors hover:bg-surface-hover hover:text-foreground-base"
         >
           {isPreview ? (
             <Icon icon={EyeClosedIcon} size={14} />
@@ -214,25 +215,27 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
       {isPreview ? (
         <div
           className={cn(
-            "min-h-[8.75rem] w-full rounded-3xl border border-zinc-200 bg-white px-4 py-2.5",
-            "text-sm leading-[22px] text-black",
+            "min-h-[8.75rem] w-full rounded-3xl border border-border-base bg-surface px-4 py-2.5",
+            "text-sm leading-5.5 text-foreground-base",
           )}
         >
           {formState.description.trim() ? (
             <div
               className={cn(
-                "max-w-none break-words text-sm leading-[22px] text-black",
-                "[&_p]:my-2 first:[&_p]:mt-0 last:[&_p]:mb-0",
+                "max-w-none break-words text-sm leading-5.5 text-foreground-base",
+                "[&_p]:my-2 [&_p]:first:mt-0 [&_p]:last:mb-0",
                 "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5",
                 "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
                 "[&_li]:my-1 [&_li]:pl-1",
                 "[&_li>p]:my-0",
-                "[&_a]:text-purple-600 [&_a]:underline hover:[&_a]:text-purple-700",
+                // TODO(tokens): no fitting role for [&_a]:text-purple-600 #6C2EDF; #6C2EDF is brand-hover, a hover fill; no exact role (hover:[&_a]:text-purple-700 #5424AE)
+                "[&_a]:text-purple-600 [&_a]:underline [&_a]:hover:text-purple-700",
                 "[&_strong]:font-semibold",
                 "[&_em]:italic",
-                "[&_del]:text-zinc-500 [&_del]:line-through",
-                "[&_code]:rounded [&_code]:bg-zinc-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em]",
-                "[&_blockquote]:border-l-2 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_blockquote]:text-zinc-600",
+                "[&_del]:text-foreground-tertiary [&_del]:line-through",
+                // TODO(tokens): no exact text token ([&_code]:text-[0.85em])
+                "[&_code]:rounded [&_code]:bg-surface-hover [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em]",
+                "[&_blockquote]:border-l-2 [&_blockquote]:border-border-strong [&_blockquote]:pl-3 [&_blockquote]:text-foreground-secondary",
                 "[&_h1]:my-2 [&_h1]:text-base [&_h1]:font-semibold",
                 "[&_h2]:my-2 [&_h2]:text-base [&_h2]:font-semibold",
                 "[&_h3]:my-2 [&_h3]:text-sm [&_h3]:font-semibold",
@@ -243,7 +246,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
               </ReactMarkdown>
             </div>
           ) : (
-            <Text variant="body" as="span" className="text-zinc-400">
+            <Text variant="body" as="span" className="text-foreground-subtle">
               Nothing to preview yet.
             </Text>
           )}
@@ -260,7 +263,8 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           value={formState.description}
           error={errors.description}
           onChange={(e) => onChange("description", e.target.value)}
-          className="!rounded-3xl !rounded-tr-md scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200 hover:scrollbar-thumb-zinc-300"
+          // TODO(tokens): no fitting role for hover:scrollbar-thumb-zinc-300 #C5C5C9; #C5C5C9 is border-strong (a border) and foreground-disabled (a text colour)
+          className="!rounded-3xl !rounded-tr-md scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active hover:scrollbar-thumb-zinc-300"
         />
       )}
     </motion.div>

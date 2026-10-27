@@ -72,25 +72,26 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
         role="alert"
         className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm font-medium text-zinc-700">
+        <p className="text-sm font-medium text-foreground-body">
           This artifact couldn&apos;t be rendered
         </p>
-        <p className="max-w-md break-words text-xs text-zinc-500">
+        <p className="max-w-md break-words text-xs text-foreground-tertiary">
           Something in{" "}
           <span className="font-mono">{this.props.artifactTitle}</span> threw an
           error while rendering. The chat and sidebar are still working.
         </p>
-        <pre className="max-h-32 max-w-md overflow-auto whitespace-pre-wrap break-words rounded-md bg-zinc-100 px-3 py-2 text-left text-xs text-zinc-700">
+        <pre className="max-h-32 max-w-md overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-hover px-3 py-2 text-left text-xs text-foreground-body">
           {message}
         </pre>
         <button
           type="button"
           onClick={this.handleCopy}
-          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          // TODO(tokens): no exact role for focus-visible:ring-violet-400
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-xs font-medium text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
           Copy error details
         </button>
-        <p className="max-w-md text-xs text-zinc-400">
+        <p className="max-w-md text-xs text-foreground-subtle">
           Paste this into the chat so a working version can be regenerated.
         </p>
       </div>

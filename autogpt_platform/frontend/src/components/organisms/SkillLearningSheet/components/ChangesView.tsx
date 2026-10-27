@@ -27,19 +27,30 @@ export function ChangesView({ version, versions, onSelect }: Props) {
   const after = version.body ?? "";
   const changes = stepChanges(before, after);
   return (
-    <div className="flex flex-col gap-4">
-      <label className="flex flex-col gap-1">
+    <div
+      data-slot="skill-learning-sheet-changes"
+      className="flex flex-col gap-4"
+    >
+      <label
+        data-slot="skill-learning-sheet-changes-version-field"
+        className="flex flex-col gap-1"
+      >
         <Text variant="small-medium" tone="primary">
           Version
         </Text>
         <select
+          data-slot="skill-learning-sheet-changes-version-picker"
           className="rounded-md border border-border-base px-2 py-1 text-sm"
           value={version.id}
           onChange={(event) => onSelect(event.target.value)}
           aria-label="Choose a version"
         >
           {versions.map((item) => (
-            <option key={item.id} value={item.id}>
+            <option
+              key={item.id}
+              data-slot="skill-learning-sheet-changes-version-option"
+              value={item.id}
+            >
               v{item.version} · {item.origin_label} · {item.state_label}
             </option>
           ))}
@@ -55,9 +66,17 @@ export function ChangesView({ version, versions, onSelect }: Props) {
           No step changed in this version.
         </Text>
       ) : (
-        <ul className="flex flex-col gap-3" aria-label="Changes by step">
+        <ul
+          data-slot="skill-learning-sheet-changes-list"
+          className="flex flex-col gap-3"
+          aria-label="Changes by step"
+        >
           {changes.map((change) => (
-            <li key={change.step} className="rounded-lg bg-surface-muted p-3">
+            <li
+              key={change.step}
+              data-slot="skill-learning-sheet-changes-item"
+              className="rounded-lg bg-surface-muted p-3"
+            >
               <Text variant="small-medium" tone="primary">
                 {change.step}
               </Text>
@@ -85,6 +104,7 @@ export function ChangesView({ version, versions, onSelect }: Props) {
       <PackageFiles before={base?.files} after={version.files} />
       {showRaw ? (
         <pre
+          data-slot="skill-learning-sheet-changes-raw-diff"
           // TODO(tokens): no foreground role for zinc-100 (#EFEFF0) on the dark
           // code surface.
           className="overflow-x-auto rounded-lg bg-action-hover p-3 text-xs text-zinc-100"

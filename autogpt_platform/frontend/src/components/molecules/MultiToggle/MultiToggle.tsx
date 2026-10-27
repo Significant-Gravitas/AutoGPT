@@ -49,6 +49,7 @@ export function MultiToggle({
       role="group"
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledBy}
+      data-slot="multi-toggle"
       className={cn("flex flex-wrap gap-2", className)}
     >
       {items.map((item) => {
@@ -65,6 +66,7 @@ export function MultiToggle({
             disabled={item.disabled}
             onClick={() => handleToggle(item.value)}
             onKeyDown={(e) => handleKeyDown(e, item.value)}
+            data-slot="multi-toggle-item"
             // TODO(tokens): no role for purple-50 (#F1EBFE) or purple-100
             // (#EFE8FE); zinc-700 and zinc-200 have only text and surface
             // roles, not a border or text one.

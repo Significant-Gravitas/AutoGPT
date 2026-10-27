@@ -34,10 +34,10 @@ export function AutopilotScene() {
             >
               <Icon
                 icon={ArrowRight01Icon}
-                size={16}
-                className="shrink-0 text-purple-500"
+                size={18}
+                className="shrink-0 text-brand"
               />
-              <Text variant="body" as="span">
+              <Text variant="large" as="span" className="md:text-lead">
                 {point}
               </Text>
             </motion.li>
@@ -48,7 +48,7 @@ export function AutopilotScene() {
           animate={{ opacity: 1 }}
           transition={reveal(POINTS.length)}
         >
-          <Text variant="body" as="p" tone="muted">
+          <Text variant="large" as="p" tone="muted" className="md:text-lead">
             and more…
           </Text>
         </motion.div>

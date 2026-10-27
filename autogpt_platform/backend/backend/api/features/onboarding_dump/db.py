@@ -29,18 +29,21 @@ async def owns_dump(user_id: str, recording_id: str) -> bool:
     return dump is not None and dump.recordingId == recording_id
 
 
-# A take that has reached any of these is being processed, or is already
-# done. Re-claiming it would knock it back to the start of the pipeline.
-# ``failed`` is deliberately absent: retrying a failed take must reset it.
-_IN_FLIGHT_STATUSES = frozenset(
+# A take still being processed. A new typed or skipped take cannot displace
+# one: unlike part 0 of a voice upload, they carry no earlier server-side
+# event that can establish which tab's request is newer.
+_PROCESSING_STATUSES = frozenset(
     {
         BrainDumpStatus.recording_uploaded,
         BrainDumpStatus.transcribing,
         BrainDumpStatus.transcribed,
         BrainDumpStatus.extracting,
-        BrainDumpStatus.completed,
     }
 )
+
+# Re-claiming the same take in any of these would knock it back to the start
+# of the pipeline. ``failed`` is deliberately absent: retrying it must reset it.
+_IN_FLIGHT_STATUSES = _PROCESSING_STATUSES | {BrainDumpStatus.completed}
 
 # Everything a single take owns. One row per user means a new take
 # inherits whatever the last one left here, so unless these are cleared
@@ -78,20 +81,20 @@ async def start_dump(
     """Claim the row for ``recording_id``, resetting any prior take's state.
 
     A take already moving through the pipeline is returned untouched when
-    recovery replays part 0 or finalize is retried. Typed and skipped
-    finalizes also cannot displace an active take with a different id: unlike
-    part 0 of a voice upload, they carry no earlier server-side event that can
-    establish which tab's request is newer. A different voice recording id is
-    a deliberate new take and claims the row, taking every take-owned column
-    with it.
+    recovery replays part 0 or finalize is retried, and a typed or skipped
+    take with a different id cannot displace one still being processed. Any
+    other new id is a deliberate new take, a re-take after a finished one
+    included, and claims the row, taking every take-owned column with it.
     """
     existing = await get_dump(user_id)
-    if (
-        existing
-        and existing.status in _IN_FLIGHT_STATUSES
-        and (
+    if existing and (
+        (
             existing.recordingId == recording_id
-            or input_mode != BrainDumpInputMode.voice
+            and existing.status in _IN_FLIGHT_STATUSES
+        )
+        or (
+            input_mode != BrainDumpInputMode.voice
+            and existing.status in _PROCESSING_STATUSES
         )
     ):
         return existing

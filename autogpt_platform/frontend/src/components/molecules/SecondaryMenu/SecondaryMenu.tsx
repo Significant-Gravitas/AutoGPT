@@ -20,6 +20,7 @@ export const SecondaryMenuContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ContextMenu.Content
     ref={ref}
+    data-slot="secondary-menu-popup"
     className={cn(secondaryMenuContentClassName, className)}
     {...props}
   />
@@ -34,6 +35,7 @@ export const SecondaryMenuItem = React.forwardRef<
 >(({ className, variant = "default", ...props }, ref) => (
   <ContextMenu.Item
     ref={ref}
+    data-slot="secondary-menu-item"
     className={cn(
       secondaryMenuItemClassName,
       variant === "destructive" && "text-error hover:bg-gray-100",
@@ -50,6 +52,7 @@ export const SecondaryMenuSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ContextMenu.Separator
     ref={ref}
+    data-slot="secondary-menu-separator"
     className={cn(secondaryMenuSeparatorClassName, className)}
     {...props}
   />
@@ -63,6 +66,7 @@ export const SecondaryDropdownMenuContent = React.forwardRef<
   <DropdownMenuPrimitive.Portal>
     <DropdownMenuPrimitive.Content
       ref={ref}
+      data-slot="secondary-menu-popup"
       className={cn(secondaryMenuContentClassName, className)}
       {...props}
     />
@@ -78,6 +82,7 @@ export const SecondaryDropdownMenuItem = React.forwardRef<
 >(({ className, variant = "default", ...props }, ref) => (
   <DropdownMenuPrimitive.Item
     ref={ref}
+    data-slot="secondary-menu-item"
     className={cn(
       secondaryMenuItemClassName,
       variant === "destructive" && "text-error hover:bg-gray-100",
@@ -94,6 +99,7 @@ export const SecondaryDropdownMenuSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.Separator
     ref={ref}
+    data-slot="secondary-menu-separator"
     className={cn(secondaryMenuSeparatorClassName, className)}
     {...props}
   />

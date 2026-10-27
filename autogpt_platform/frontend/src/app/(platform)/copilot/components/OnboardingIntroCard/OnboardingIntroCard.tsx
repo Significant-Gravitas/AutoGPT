@@ -1,11 +1,10 @@
 "use client";
 
-import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import {
   GREETING_ORB_LAYOUT_ID,
   ORB_FLIP_TRANSITION,
   ORB_FLIP_TRANSITION_REDUCED,
-  SMALL_ORB_PARAMS,
 } from "../../helpers/greetingOrb";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -14,22 +13,23 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
-import { SuggestedTaskList } from "../SuggestedTasks/SuggestedTaskList";
+import { SuggestedTaskCards } from "../SuggestedTasks/SuggestedTaskCards";
 import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
 
 interface Props {
-  name: string;
+  name: string | null;
   greeting: string;
   suggestions: ReturnType<typeof useSuggestedTasks>;
   transcript?: string;
   disabled?: boolean;
 }
 
-// The orb travels into this card's heading from the loader, so the
+// Otto's avatar travels into this card's heading from the loader, so the
 // heading is revealed on its arrival and everything below waits for the
 // trip to finish.
 const HEADING_START = 0.2;
@@ -110,29 +110,37 @@ export function OnboardingIntroCard({
               ? ORB_FLIP_TRANSITION_REDUCED
               : ORB_FLIP_TRANSITION
           }
-          className="relative block size-8 shrink-0"
+          className="relative block size-10 shrink-0"
         >
-          <GlassOrb params={SMALL_ORB_PARAMS} />
+          <AutopilotAvatar size={40} transparent className="size-full" />
         </motion.span>
         <motion.div {...reveal(HEADING_START)}>
           <Text variant="large-medium" tone="primary">
-            Hey, <span className="text-zinc-900">{name}</span>
+            Hey
+            {name ? (
+              <>
+                , <span className="text-foreground-strong">{name}</span>
+              </>
+            ) : (
+              " there"
+            )}
           </Text>
         </motion.div>
         {transcript && (
           <motion.div className="ml-auto" {...reveal(HEADING_START)}>
-            <Tooltip>
+            <Tooltip inheritDelay>
               <TooltipTrigger asChild>
                 <button
                   type="button"
                   onClick={handleCopyTranscript}
                   aria-label="Copy your recording's transcript"
-                  className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                  className="rounded-full p-2 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
                 >
                   {isCopied ? (
                     <Icon
                       icon={Tick02Icon}
                       size={16}
+                      // TODO(tokens): no exact role for text-emerald-600
                       className="text-emerald-600"
                     />
                   ) : (
@@ -140,9 +148,11 @@ export function OnboardingIntroCard({
                   )}
                 </button>
               </TooltipTrigger>
-              <TooltipContent>
-                {isCopied ? "Copied!" : "Copy everything you told me"}
-              </TooltipContent>
+              <TooltipPortal>
+                <TooltipContent>
+                  {isCopied ? "Copied!" : "Copy everything you told me"}
+                </TooltipContent>
+              </TooltipPortal>
             </Tooltip>
           </motion.div>
         )}
@@ -155,10 +165,8 @@ export function OnboardingIntroCard({
       </motion.div>
 
       {suggestions.tasks.length > 0 && (
-        // Negative margins let the list's border breathe outward while the
-        // row content (px-4) stays aligned with the text above it.
-        <motion.div {...reveal(promptsStart)} className="-mx-5 mt-5">
-          <SuggestedTaskList
+        <motion.div {...reveal(promptsStart)} className="mt-5">
+          <SuggestedTaskCards
             tasks={suggestions.tasks}
             sendingId={suggestions.sendingId}
             disabled={disabled}

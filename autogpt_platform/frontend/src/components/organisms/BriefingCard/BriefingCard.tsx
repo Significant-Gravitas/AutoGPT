@@ -10,6 +10,7 @@ import {
 import type { BriefingResponse } from "@/app/api/__generated__/models/briefingResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
 import { cn } from "@/lib/utils";
 import { RunRow } from "./components/RunRow";
 import { COLLAPSED_ROWS, formatBriefingDate, hasRecapContent } from "./helpers";
@@ -44,8 +45,11 @@ export function BriefingCard({ briefing, className }: Props) {
   const hasMore = run_items.length > COLLAPSED_ROWS;
 
   return (
-    <section className={cn("text-left", className)}>
-      <div className="mb-2 flex items-center gap-2 px-2">
+    <section data-slot="briefing-card" className={cn("text-left", className)}>
+      <div
+        data-slot="briefing-card-header"
+        className="mb-2 flex items-center gap-2 px-2"
+      >
         <Icon icon={News01Icon} size={16} className="text-foreground-subtle" />
         <Text variant="body" className="text-foreground-body">
           Recap
@@ -62,9 +66,10 @@ export function BriefingCard({ briefing, className }: Props) {
         </Text>
       </div>
 
-      <div
-        // TODO(tokens): no shadow-colour role for zinc-950 (#09090B).
-        className="overflow-hidden rounded-3xl bg-surface shadow-zinc-950 smooth-shadow-ring-sm"
+      <AttentionCard.Root
+        variant="elevated"
+        density="flush"
+        data-slot="briefing-card-panel"
       >
         <motion.div
           // Real height, not a layout transform: the page below has to reflow
@@ -72,10 +77,12 @@ export function BriefingCard({ briefing, className }: Props) {
           initial={false}
           animate={{ height: height ?? "auto" }}
           transition={heightTransition}
+          data-slot="briefing-card-viewport"
           className="relative"
         >
           <ul
             ref={listRef}
+            data-slot="briefing-card-list"
             className={cn(
               "h-full divide-y divide-separator",
               isShowingAll
@@ -111,6 +118,9 @@ export function BriefingCard({ briefing, className }: Props) {
           <button
             type="button"
             onClick={toggleShowAll}
+            data-slot="briefing-card-toggle"
+            // The hairline stays the button's own top border: a separate
+            // Separator would move the button, and its focus outline, 1px.
             className="flex w-full items-center justify-center gap-1.5 border-t border-separator px-4 py-3 text-foreground-tertiary transition-colors hover:bg-surface-muted hover:text-foreground-strong"
           >
             <Text variant="small-medium" className="text-inherit">
@@ -128,7 +138,7 @@ export function BriefingCard({ briefing, className }: Props) {
             />
           </button>
         ) : null}
-      </div>
+      </AttentionCard.Root>
     </section>
   );
 }
@@ -150,6 +160,7 @@ function ScrollArrow({
       initial={false}
       animate={{ opacity: isVisible ? 1 : 0 }}
       transition={{ duration: shouldReduceMotion ? 0 : 0.15 }}
+      data-slot="briefing-card-scroll-arrow"
       className={cn(
         "pointer-events-none absolute inset-x-0 flex h-12 items-center justify-center",
         isUp
@@ -163,6 +174,7 @@ function ScrollArrow({
         tabIndex={isVisible ? 0 : -1}
         aria-hidden={!isVisible}
         aria-label={isUp ? "Scroll up" : "Scroll down"}
+        data-slot="briefing-card-scroll-arrow-control"
         className={cn(
           // TODO(tokens): no shadow-colour role for zinc-950 (#09090B).
           "flex size-8 items-center justify-center rounded-full bg-surface text-foreground-tertiary shadow-zinc-950 transition-colors smooth-shadow-ring-sm hover:text-foreground-strong",

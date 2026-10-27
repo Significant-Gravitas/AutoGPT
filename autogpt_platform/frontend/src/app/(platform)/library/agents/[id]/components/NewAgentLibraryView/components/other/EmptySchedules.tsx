@@ -8,10 +8,10 @@ export function EmptySchedules() {
     <div className="flex h-full flex-col items-center justify-center gap-20">
       <EmptySchedulesIllustration />
       <div className="flex flex-col items-center gap-2">
-        <Text variant="h4" className="text-center text-[1.375rem]">
+        <Text variant="h4" className="text-center leading-inherit">
           Nothing scheduled yet
         </Text>
-        <Text variant="large" className="text-zinc-700">
+        <Text variant="large" className="text-foreground-body">
           Create a new run, and you&apos;ll have the option to schedule your
           workflow to run automatically.
         </Text>

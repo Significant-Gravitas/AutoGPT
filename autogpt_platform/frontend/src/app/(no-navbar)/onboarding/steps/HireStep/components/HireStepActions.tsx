@@ -28,7 +28,7 @@ export function HireStepActions({
     <div className="flex flex-col items-center gap-2">
       {isPending ? (
         <Skeleton
-          className="h-10 w-56 rounded-xl"
+          className="h-10 w-56 rounded-full"
           data-testid="hire-step-primary-pending"
         />
       ) : isHiringAll || primaryLabel ? (
@@ -38,7 +38,7 @@ export function HireStepActions({
           onClick={onPrimary}
           disabled={isCardHiring}
           loading={isHiringAll}
-          className="h-10 w-56 rounded-xl"
+          className="h-10 w-56"
         >
           {isHiringAll ? "Hiring…" : primaryLabel}
         </Button>
@@ -50,7 +50,7 @@ export function HireStepActions({
           size="xs"
           onClick={onSecondary}
           disabled={isCardHiring}
-          className="text-zinc-500 hover:text-zinc-900"
+          className="text-foreground-tertiary hover:text-foreground-strong"
         >
           {secondaryLabel}
         </Button>

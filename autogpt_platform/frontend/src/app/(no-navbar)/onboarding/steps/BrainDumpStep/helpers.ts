@@ -97,10 +97,6 @@ export function newRecordingId() {
   return crypto.randomUUID();
 }
 
-export function isPermissionDenied(error: unknown) {
-  return error instanceof DOMException && error.name === "NotAllowedError";
-}
-
 export const BRAIN_DUMP_HEADLINE = "Talk to me about your work";
 
 // The backend's quality gate rejects dumps with these codes when the
@@ -119,6 +115,32 @@ export function isInsufficientDump(errorCode: unknown) {
     typeof errorCode === "string" &&
     INSUFFICIENT_DUMP_ERROR_CODES.some((code) => code === errorCode)
   );
+}
+
+// Why a take failed: the backend's `error_code`, the HTTP status a request
+// was refused with, or "network" when no answer came back.
+export type FailureCause = string | number | null;
+
+const FAILURE_REASONS: Record<string, string> = {
+  storage_failed: "We couldn't store your recording on our side.",
+  no_audio_received: "Your recording didn't reach us.",
+  upload_failed: "Part of your recording didn't reach us.",
+  transcription_failed: "We couldn't turn your recording into text.",
+  transcription_unavailable: "Our speech-to-text service is unavailable.",
+  quality_check_unavailable: "We couldn't check what you told us just now.",
+  superseded:
+    "Something newer you sent, maybe from another tab, replaced this.",
+  "429": "You've tried a few times already. Wait a bit first.",
+  "503": "Personalization is unavailable for a moment.",
+  network: "We couldn't reach the server. Check your connection.",
+};
+
+export function failureReason(cause: FailureCause) {
+  return cause === null ? null : (FAILURE_REASONS[String(cause)] ?? null);
+}
+
+export function failureCauseOf(error: unknown): FailureCause {
+  return error instanceof ApiError ? error.status : "network";
 }
 
 export function typedCharsLeftHint(length: number) {

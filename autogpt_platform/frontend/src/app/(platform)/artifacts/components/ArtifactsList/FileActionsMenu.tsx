@@ -51,7 +51,7 @@ export function FileActionsMenu({ file, className }: Props) {
             type="button"
             aria-label={`Actions for ${file.name}`}
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900",
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-strong",
               className,
             )}
             data-testid="artifacts-card-menu"
@@ -108,7 +108,8 @@ export function FileActionsMenu({ file, className }: Props) {
           <DropdownMenuItem
             onSelect={handleDelete}
             disabled={isDeleting}
-            className="text-red-600 focus:bg-red-50 focus:text-red-700"
+            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover, a hover fill
+            className="text-red-600 focus:bg-error-surface focus:text-error-foreground"
             data-testid="artifacts-delete"
           >
             {isDeleting ? (

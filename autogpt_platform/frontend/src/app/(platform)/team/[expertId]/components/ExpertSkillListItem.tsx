@@ -44,13 +44,13 @@ export function ExpertSkillListItem({
 
   return (
     <div
-      className="group relative flex h-full flex-col gap-3 rounded-2xl bg-white p-4 transition-shadow smooth-shadow-ring-sm hover:shadow-md"
+      className="group relative flex h-full flex-col gap-3 rounded-2xl bg-surface p-4 transition-shadow smooth-shadow-ring-sm hover:shadow-md"
       data-testid="expert-skill-row"
     >
       <div className="flex items-start gap-3">
         <div
           className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700",
+            "flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-surface text-accent-strong",
             accentClassName,
             "border-0",
           )}
@@ -63,10 +63,16 @@ export function ExpertSkillListItem({
             learning ? "pr-24" : "pr-16",
           )}
         >
-          <Text variant="body-medium" className="break-words !text-zinc-900">
+          <Text
+            variant="body-md-medium"
+            className="break-words !text-foreground-strong"
+          >
             {entry.name}
           </Text>
-          <Text variant="small" className="line-clamp-2 !text-zinc-500">
+          <Text
+            variant="small"
+            className="line-clamp-2 !text-foreground-tertiary"
+          >
             {details?.description ?? "Skill details unavailable."}
           </Text>
           {learning ? (
@@ -86,14 +92,23 @@ export function ExpertSkillListItem({
           {shown.map((trigger) => (
             <span
               key={trigger}
-              className="max-w-full truncate rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-0.5 text-xs text-zinc-600"
+              className="flex min-w-0 max-w-full rounded-full border border-border-base bg-surface-muted px-2.5 py-0.5"
             >
-              {trigger}
+              <Text
+                variant="small-tight"
+                as="span"
+                tone="secondary"
+                className="truncate"
+              >
+                {trigger}
+              </Text>
             </span>
           ))}
           {hiddenCount > 0 ? (
-            <span className="rounded-full px-1.5 py-0.5 text-xs text-zinc-500">
-              +{hiddenCount}
+            <span className="flex rounded-full px-1.5 py-0.5">
+              <Text variant="small-tight" as="span" tone="muted">
+                +{hiddenCount}
+              </Text>
             </span>
           ) : null}
         </div>
@@ -107,7 +122,7 @@ export function ExpertSkillListItem({
             leadingIcon={WorkHistoryIcon}
             onClick={learning.onDetails}
             aria-label={`Learning details for ${entry.name}`}
-            className="text-zinc-500"
+            className="text-foreground-tertiary"
           />
         ) : null}
         {entry.library ? (
@@ -118,7 +133,7 @@ export function ExpertSkillListItem({
             size="icon-sm"
             aria-label="Open in library"
             leadingIcon={LinkSquare02Icon}
-            className="text-zinc-500"
+            className="text-foreground-tertiary"
           />
         ) : null}
         {onRemove ? (
@@ -129,7 +144,8 @@ export function ExpertSkillListItem({
             disabled={isSaving}
             onClick={() => onRemove(entry.name)}
             aria-label={`Remove ${entry.name}`}
-            className="text-zinc-500 hover:text-red-600"
+            // TODO(tokens): no fitting role for hover:text-red-600 #D93636; #D93636 is error-hover (a hover fill)
+            className="text-foreground-tertiary hover:text-red-600"
           />
         ) : null}
       </div>

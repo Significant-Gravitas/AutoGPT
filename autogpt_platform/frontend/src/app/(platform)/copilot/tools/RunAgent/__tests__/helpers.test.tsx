@@ -257,7 +257,7 @@ describe("getAccordionMeta", () => {
   it("describes an error fallback", () => {
     const meta = getAccordionMeta(errorOut);
     expect(meta.title).toBe("Error");
-    expect(meta.titleClassName).toContain("text-red-500");
+    expect(meta.titleClassName).toContain("text-error");
   });
 });
 

@@ -38,6 +38,7 @@ export function ManagedExpertImage({
       <span
         role="img"
         aria-label={label}
+        data-slot="expert-avatar"
         style={{ width: size, height: size }}
         className={cn(
           classes,
@@ -50,8 +51,13 @@ export function ManagedExpertImage({
   }
 
   return (
-    <picture className={classes} style={{ width: size, height: size }}>
+    <picture
+      data-slot="expert-avatar"
+      className={classes}
+      style={{ width: size, height: size }}
+    >
       <source
+        data-slot="expert-avatar-source"
         type={`image/${format}`}
         srcSet={
           format === "png" && pixels * 2 > pngMaxPixels
@@ -65,6 +71,7 @@ export function ManagedExpertImage({
         width={size}
         height={size}
         unoptimized
+        data-slot="expert-avatar-image"
         className="h-full w-full object-contain"
         onError={() => setFormat(format === "webp" ? "png" : null)}
       />

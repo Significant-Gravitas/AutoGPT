@@ -8,16 +8,17 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
-import { Button } from "@/components/__legacy__/ui/button";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
+} from "@/components/atoms/Select/components/SelectPrimitives";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
 
 interface RefundModalProps {
   isOpen: boolean;
@@ -77,21 +78,29 @@ export const RefundModal = ({
         <div className="py-4">
           <div className="space-y-4">
             {error && (
-              <div className="flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+              <Text
+                variant="body-tight"
+                as="div"
+                className="flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 p-3 text-destructive"
+              >
                 <AlertCircle className="h-4 w-4" />
                 <p>{error}</p>
-              </div>
+              </Text>
             )}
 
             {transactions.length === 0 ? (
-              <p className="text-sm text-gray-500">
+              <Text
+                variant="body-tight"
+                // TODO(tokens): no exact role (text-gray-500 #6B7280)
+                className="text-gray-500"
+              >
                 No eligible transactions found for refund.
-              </p>
+              </Text>
             ) : (
               <div className="space-y-2">
-                <label className="text-sm font-medium">
+                <Text variant="body-medium-tight" as="label" tone="inherit">
                   Select Transaction
-                </label>
+                </Text>
                 <Select
                   value={selectedTransactionId}
                   onValueChange={setSelectedTransactionId}
@@ -124,8 +133,10 @@ export const RefundModal = ({
             )}
 
             <div className="space-y-2">
-              <label htmlFor="refundReason" className="text-sm font-medium">
-                Reason for Refund
+              <label htmlFor="refundReason">
+                <Text variant="body-medium-tight" as="span" tone="inherit">
+                  Reason for Refund
+                </Text>
               </label>
               <Textarea
                 id="refundReason"
@@ -138,10 +149,12 @@ export const RefundModal = ({
           </div>
         </div>
         <div className="flex justify-end space-x-4">
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="legacy-outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button onClick={handleRefundRequest}>Request Refund</Button>
+          <Button variant="legacy-default" onClick={handleRefundRequest}>
+            Request Refund
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

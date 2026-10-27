@@ -9,6 +9,9 @@ import { useOnboardingWizardStore } from "../../store";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   BRAIN_DUMP_HEADLINE,
+  failureCauseOf,
+  failureReason,
+  type FailureCause,
   isInsufficientDump,
   isTypedTextTooLong,
   SILENCE_NUDGE_SECONDS,
@@ -21,6 +24,11 @@ import {
 } from "./recordingStore";
 import { useBrainDumpRecorder } from "./useBrainDumpRecorder";
 
+// A skip whose discard and record are still on the wire. Module scope, so the
+// remount that Back from Hire causes waits for it before sending a new take,
+// which the late skip would otherwise replace.
+let pendingSkip: Promise<void> = Promise.resolve();
+
 export type ScreenState =
   | "rest"
   | "recording"
@@ -29,10 +37,6 @@ export type ScreenState =
   | "recovery"
   | "failed"
   | "insufficient";
-
-// Takes a skip left behind whose local cleanup is still running. Module scope,
-// so the remount that Back from Hire causes does not offer one back.
-const releasingTakeIDs = new Set<string>();
 
 export function useBrainDumpStep() {
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
@@ -50,6 +54,7 @@ export function useBrainDumpStep() {
   const [submittedMode, setSubmittedMode] = useState<"voice" | "typed">(
     "voice",
   );
+  const [failure, setFailure] = useState<FailureCause>(null);
   const [typedText, setTypedText] = useState("");
   const [reachedTimeLimit, setReachedTimeLimit] = useState(false);
 
@@ -79,7 +84,7 @@ export function useBrainDumpStep() {
   useEffect(() => {
     async function checkForRecovery() {
       const meta = await recorder.findRecoverable();
-      if (!meta || releasingTakeIDs.has(meta.recordingId)) return;
+      if (!meta) return;
       const parts = await getParts(meta.recordingId).catch(() => []);
       if (parts.length === 0) return;
       setRecoverable(meta);
@@ -140,7 +145,7 @@ export function useBrainDumpStep() {
       Sentry.captureException(error, {
         tags: { component: "useBrainDumpStep", action: "send" },
       });
-      setScreen("failed");
+      fail(null);
     }
   }
 
@@ -199,15 +204,17 @@ export function useBrainDumpStep() {
     durationSecs: number,
   ) {
     if (!recordingId) {
-      setScreen("failed");
+      fail(null);
       return;
     }
     const allUploaded = await recorder.flushUploads();
     if (!allUploaded) {
-      setScreen("failed");
+      fail(recorder.isOffline ? "network" : "upload_failed");
       return;
     }
 
+    await pendingSkip;
+    await saveWizardAnswers();
     const startedAt = performance.now();
     let finalizeLatencyMs: number;
     try {
@@ -230,12 +237,14 @@ export function useBrainDumpStep() {
         // to personalize from, so the recovery screen offers a fresh take
         // instead of a retry of this one. Nothing is cleared until the
         // user picks their next move.
-        if (rejected) setInsufficientMode("voice");
-        setScreen(rejected ? "insufficient" : "failed");
+        if (rejected) {
+          setInsufficientMode("voice");
+          setScreen("insufficient");
+        } else fail(errorCode ?? null);
         return;
       }
-    } catch {
-      setScreen("failed");
+    } catch (error) {
+      fail(failureCauseOf(error));
       return;
     }
 
@@ -320,6 +329,8 @@ export function useBrainDumpStep() {
     setSubmittedMode("typed");
     setScreen("processing");
     const recordingId = recorder.recordingId ?? crypto.randomUUID();
+    await pendingSkip;
+    await saveWizardAnswers();
     try {
       const response = await finalizeBrainDump({
         recording_id: recordingId,
@@ -333,10 +344,12 @@ export function useBrainDumpStep() {
         const errorCode =
           response.status === 200 ? response.data.error_code : response.status;
         const rejected = isInsufficientDump(errorCode);
-        if (rejected) setInsufficientMode("typed");
         // The typed text stays in the composer, so "Type instead" from
         // the recovery screen reopens it with nothing lost.
-        setScreen(rejected ? "insufficient" : "failed");
+        if (rejected) {
+          setInsufficientMode("typed");
+          setScreen("insufficient");
+        } else fail(errorCode ?? null);
         return;
       }
     } catch (error) {
@@ -344,7 +357,8 @@ export function useBrainDumpStep() {
       // back to it with the limit spelled out.
       const tooLong = isTypedTextTooLong(error);
       setIsTypedTooLong(tooLong);
-      setScreen(tooLong ? "typing" : "failed");
+      if (tooLong) setScreen("typing");
+      else fail(failureCauseOf(error));
       return;
     }
     trackBrainDump("brain_dump_completed", {
@@ -363,29 +377,52 @@ export function useBrainDumpStep() {
     const recordedId = recorder.recordingId;
     recorder.resetQueue();
     setIntroPath("B");
-    if (recordedId) releasingTakeIDs.add(recordedId);
+    await saveWizardAnswers();
     // Nothing below can change where a skip goes, so the user is not kept
     // waiting on it.
     nextStep();
-    // Someone who talked for minutes and then skipped leaves multi-MB
-    // blobs behind, and an unfinalized meta row makes the next visit
-    // offer back a take they explicitly abandoned.
+    const skip = recordSkip(recordedId);
+    pendingSkip = skip;
+    await skip;
+  }
+
+  // The server builds the team from the role in the saved progress, and a
+  // change reaches it only 200 ms later unless flushed.
+  async function saveWizardAnswers() {
+    await useOnboardingWizardStore
+      .getState()
+      .flushProgress?.()
+      .catch(() => undefined);
+  }
+
+  async function recordSkip(recordedId: string | null) {
+    // The recording stays in the browser, so Back offers it again until
+    // onboarding finishes, and the skip is its own take on the server: under
+    // the recording's id, a later send of it would read as already done.
+    // The discard goes first, because it also closes a half-uploaded take
+    // that would otherwise hold the row against the skip.
     if (recordedId) {
-      await releaseTake(recordedId);
-      releasingTakeIDs.delete(recordedId);
+      await markSkipped(recordedId);
+      await discardBrainDump({ recording_id: recordedId }).catch(
+        () => undefined,
+      );
     }
     try {
       await finalizeBrainDump({
-        recording_id: recordedId ?? crypto.randomUUID(),
+        recording_id: crypto.randomUUID(),
         input_mode: "skipped",
       });
     } catch {
       // Path B is the safe default anyway.
     }
-    if (recordedId) {
-      await discardBrainDump({ recording_id: recordedId }).catch(
-        () => undefined,
-      );
+  }
+
+  async function markSkipped(recordingId: string) {
+    try {
+      const meta = await getMetaById(recordingId);
+      if (meta) await saveMeta({ ...meta, skipped: true });
+    } catch {
+      // Unmarked, it stays on offer until the user discards it.
     }
   }
 
@@ -401,9 +438,8 @@ export function useBrainDumpStep() {
   // Marking finalized before clearing is belt and braces: if the delete
   // fails, the flag alone is enough to stop the take being offered back.
   async function releaseTake(recordingId: string) {
-    // Best-effort: the dump is either already safe on the server or
-    // deliberately abandoned, so a storage error here must not strand
-    // the user on the loading screen.
+    // Best-effort: the dump is already safe on the server, so a storage
+    // error here must not strand the user on the loading screen.
     try {
       // By id, not "the newest take": a second tab may have started a
       // more recent one, and finalizing that instead would leave the
@@ -420,6 +456,7 @@ export function useBrainDumpStep() {
     if (!recoverable) return;
     trackBrainDump("brain_dump_recovery_used");
     setScreen("processing");
+    await pendingSkip;
     await recorder.adoptRecovered(
       recoverable.recordingId,
       recoverable.mimeType,
@@ -471,15 +508,24 @@ export function useBrainDumpStep() {
     }
   }
 
+  function fail(cause: FailureCause) {
+    setFailure(cause);
+    setScreen("failed");
+  }
+
   async function handleDownloadRecording() {
-    const recordingId = recorder.recordingId;
-    if (!recordingId) return;
+    // Before "Use that recording" adopts it, a kept take is only on offer.
+    const take = recorder.recordingId
+      ? { recordingId: recorder.recordingId, mimeType: recorder.mimeType }
+      : recoverable;
+    if (!take) return;
+    const { recordingId, mimeType } = take;
     trackBrainDump("brain_dump_download");
     const parts = await getParts(recordingId).catch(() => []);
     if (parts.length === 0) return;
     const blob = new Blob(
       parts.map((part) => part.blob),
-      { type: recorder.mimeType },
+      { type: mimeType },
     );
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -494,6 +540,7 @@ export function useBrainDumpStep() {
     screen,
     insufficientMode,
     submittedMode,
+    failureReason: failureReason(failure),
     typedText,
     setTypedText: handleTypedTextChange,
     elapsedSeconds: recorder.elapsedSeconds,
@@ -520,5 +567,6 @@ export function useBrainDumpStep() {
     // Going back to the orb is a dead end when the browser already refused
     // the microphone, so the way back is offered only when it can work.
     isMicBlocked: recorder.permissionDenied,
+    isMicUnavailable: recorder.micUnavailable,
   };
 }

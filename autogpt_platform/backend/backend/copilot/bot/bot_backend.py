@@ -17,6 +17,7 @@ from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 from pydantic import BaseModel
 
 from backend.copilot import stream_registry, woken_turns
+from backend.copilot.config import CopilotLLMModel
 from backend.copilot.model import get_chat_session
 from backend.copilot.response_model import (
     StreamError,
@@ -29,6 +30,7 @@ from backend.platform_linking.models import (
     MAX_BOT_MESSAGE_CHARS,
     BotChatRequest,
     BotEventInput,
+    BotExpert,
     BotGuildInput,
     CardAnswer,
     CardTurn,
@@ -390,6 +392,7 @@ class BotBackend:
         platform_user_id: str,
         platform_server_id: str | None,
         session_id: str | None,
+        expert_id: str | None = None,
     ) -> EnsureSessionResult:
         """Resolve (or create) the copilot session for this conversation.
 
@@ -404,6 +407,18 @@ class BotBackend:
             platform_user_id=platform_user_id,
             platform_server_id=platform_server_id,
             session_id=session_id,
+            expert_id=expert_id,
+        )
+
+    async def list_user_experts(
+        self, platform: str, platform_user_id: str, platform_server_id: str | None
+    ) -> list[BotExpert]:
+        """The hired experts this conversation can route a turn to (none in a
+        server: expert sessions are DM-only)."""
+        return await self._client.list_user_experts(
+            platform=Platform(platform.upper()),
+            platform_user_id=platform_user_id,
+            platform_server_id=platform_server_id,
         )
 
     async def upload_workspace_files(
@@ -505,7 +520,10 @@ class BotBackend:
         session_id: Optional[str] = None,
         platform_server_id: Optional[str] = None,
         file_ids: Optional[list[str]] = None,
+        expert_id: str | None = None,
+        model: CopilotLLMModel | None = None,
         on_session_id: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_notice: Optional[Callable[[str], Awaitable[None]]] = None,
         on_setup_required: SetupRequiredCallback | None = None,
         on_setup_dropped: SetupDroppedCallback | None = None,
         on_clarification_needed: ClarificationNeededCallback | None = None,
@@ -527,6 +545,8 @@ class BotBackend:
                 session_id=session_id,
                 platform_server_id=platform_server_id,
                 file_ids=file_ids or [],
+                expert_id=expert_id,
+                model=model,
             )
         )
         if handle.denial is not None:
@@ -535,6 +555,8 @@ class BotBackend:
             raise ChatTurnDeniedError(handle.denial)
         if on_session_id:
             await on_session_id(handle.session_id)
+        if handle.notice and on_notice:
+            await on_notice(handle.notice)
         async for chunk in self.stream_turn(
             handle,
             on_setup_required=on_setup_required,

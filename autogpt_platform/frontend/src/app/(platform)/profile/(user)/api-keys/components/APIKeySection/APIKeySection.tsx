@@ -1,7 +1,8 @@
 "use client";
 
 import { Loader2, MoreVertical } from "lucide-react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Table,
   TableBody,
@@ -9,8 +10,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/__legacy__/ui/table";
-import { Badge } from "@/components/__legacy__/ui/badge";
+} from "@/components/molecules/Table/components/TablePrimitives";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,19 +48,26 @@ export function APIKeysSection() {
                 <TableRow key={key.id} data-testid="api-key-row">
                   <TableCell>{key.name}</TableCell>
                   <TableCell data-testid="api-key-id">
-                    <div className="rounded-md border p-1 px-2 text-xs">
+                    <Text
+                      variant="small-tight"
+                      as="div"
+                      tone="inherit"
+                      className="rounded-md border p-1 px-2"
+                    >
                       {`${key.head}******************${key.tail}`}
-                    </div>
+                    </Text>
                   </TableCell>
                   <TableCell>
                     <Badge
                       variant={
-                        key.status === "ACTIVE" ? "default" : "destructive"
+                        key.status === "ACTIVE" ? "solid" : "destructive"
                       }
                       className={
                         key.status === "ACTIVE"
-                          ? "border-green-600 bg-green-100 text-green-800"
-                          : "border-red-600 bg-red-100 text-red-800"
+                          ? // TODO(tokens): no exact role (bg-green-100 #B7E2C7, text-green-800 #0C5A29)
+                            "border-success bg-green-100 text-green-800"
+                          : // TODO(tokens): no exact role (bg-red-100 #FDECEC, text-red-800 #832525)
+                            "border-error-hover bg-red-100 text-red-800"
                       }
                     >
                       {key.status}
@@ -78,8 +86,8 @@ export function APIKeysSection() {
                       <DropdownMenuTrigger asChild>
                         <Button
                           data-testid="api-key-actions"
-                          variant="ghost"
-                          size="sm"
+                          variant="legacy-ghost"
+                          size="legacy-sm"
                         >
                           <MoreVertical className="h-4 w-4" />
                         </Button>

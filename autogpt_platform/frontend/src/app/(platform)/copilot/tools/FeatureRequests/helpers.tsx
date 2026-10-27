@@ -248,9 +248,10 @@ export function ToolIcon({
     <Icon
       icon={icon}
       size={14}
+      // TODO(tokens): no exact role for neutral-500 #737373, neutral-400 #A3A3A3
       className={
         isError
-          ? "text-red-500"
+          ? "text-error"
           : isStreaming
             ? "text-neutral-500"
             : "text-neutral-400"

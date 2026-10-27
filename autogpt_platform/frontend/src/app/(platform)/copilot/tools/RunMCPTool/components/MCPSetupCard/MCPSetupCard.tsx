@@ -388,7 +388,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // as the state machine driving that row's callbacks.
   useEffect(() => {
     if (!chainActions) return;
-    chainActions.register({
+    chainActions.register(actionId, {
       id: actionId,
       ready: connected,
       buildMessage: () => null,
@@ -441,7 +441,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     // owns the error display.
     return (
       <div className="mt-2 grid gap-2">
-        <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+        {/* TODO(tokens): no exact role for green-200 #94D5AC */}
+        <div className="rounded-lg border border-green-200 bg-success-surface px-3 py-2 text-sm text-success-foreground">
           Connected to {service}.{" "}
           <button
             type="button"
@@ -487,7 +488,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           <div
             role="alert"
             aria-live="polite"
-            className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            // TODO(tokens): no exact role for red-200 #FAC5C5
+            className="mt-2 rounded-lg border border-red-200 bg-error-surface px-3 py-2 text-sm text-error-foreground"
           >
             {error ?? grantError}
           </div>
@@ -501,15 +503,18 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               disabled={loading}
               nameSuffix={service}
               className="grid gap-1"
+              // TODO(tokens): no exact role for gray-700 #374151
               labelClassName="text-xs font-medium text-gray-700"
               selectClassName="rounded border bg-background px-2 py-1.5 text-sm"
             />
             <label
               htmlFor={manualTokenInputId}
+              // TODO(tokens): no exact role for gray-700 #374151
               className="text-xs font-medium text-gray-700"
             >
               {`${mcpAuthTokenLabel(manualAuthScheme)} for ${service}`}
             </label>
+            {/* TODO(tokens): no exact role for gray-500 #6B7280 */}
             <p id={manualTokenHintId} className="text-xs text-gray-500">
               {mcpAuthTokenHint(manualAuthScheme)}
             </p>

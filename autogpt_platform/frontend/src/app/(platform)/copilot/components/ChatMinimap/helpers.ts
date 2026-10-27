@@ -91,7 +91,9 @@ export function tickScale(index: number, hovered: number | null): number {
 }
 
 export function tickColor(distance: number | null): string {
-  if (distance === 0) return "bg-zinc-800";
+  if (distance === 0) return "bg-action";
+  // TODO(tokens): no fitting role for bg-zinc-500 #83838C; #83838C is foreground-tertiary (a text colour) and placeholder (a text colour)
   if (distance === 1) return "bg-zinc-500";
+  // TODO(tokens): no fitting role for bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
   return "bg-zinc-400";
 }

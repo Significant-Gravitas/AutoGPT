@@ -23,7 +23,7 @@ export function PublicMCPPanel({ serverURL, actions }: Props) {
         value={serverURL}
         readOnly
       />
-      <Text variant="small" className="text-zinc-600">
+      <Text variant="small" className="text-foreground-secondary">
         This server can be used without connecting an account.
       </Text>
       {toolCount !== null && (
@@ -34,13 +34,13 @@ export function PublicMCPPanel({ serverURL, actions }: Props) {
         </Text>
       )}
       {toolCount !== null && (
-        <Text variant="small" className="text-zinc-600">
+        <Text variant="small" className="text-foreground-secondary">
           This service needs no sign-in, so nothing was saved. Add it to a
           workflow or ask an expert to use it.
         </Text>
       )}
       {error && (
-        <Text variant="small" role="alert" className="text-red-700">
+        <Text variant="small" role="alert" className="text-error-foreground">
           {error}
         </Text>
       )}

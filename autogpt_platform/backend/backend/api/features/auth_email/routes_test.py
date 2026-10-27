@@ -11,8 +11,10 @@ from autogpt_libs.auth.config import Settings as AuthSettings
 from pytest_mock import MockerFixture
 
 from backend.api.features.auth_email import routes as auth_email_routes
+from backend.api.rest_api import app as rest_app
+from backend.util.exceptions import EmailUndeliverableError
 
-app = fastapi.FastAPI()
+app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
 # Mirror the prefix rest_api.py mounts it under, so these tests exercise the
 # same paths the service actually serves.
 app.include_router(auth_email_routes.auth_email_router, prefix="/api/auth/email")
@@ -64,6 +66,59 @@ def test_valid_request_sends_and_returns_204(send_mock):
     assert "Reset your AutoGPT Platform password" == subject
     assert VALID_BODY["url"] in body
     assert VALID_BODY["url"] in text
+
+
+def test_an_undeliverable_address_answers_422_and_logs_the_type_not_the_address(
+    send_mock, caplog
+):
+    send_mock.side_effect = EmailUndeliverableError(
+        "Postmark refused the recipient (error 406)"
+    )
+
+    res = _post()
+
+    assert res.status_code == 422
+    assert res.json() == {"detail": "email_undeliverable"}
+    assert "Mail provider won't deliver reset_password auth email" in caplog.text
+    assert VALID_BODY["to"] not in caplog.text
+
+
+def test_suppression_lookup_answers_from_the_mailer(send_mock, monkeypatch):
+    monkeypatch.setattr(
+        auth_email_routes,
+        "get_notification_manager_client",
+        lambda: MagicMock(is_email_suppressed=lambda to: to == "bounced@example.com"),
+    )
+
+    answers = [
+        client.post("/api/auth/email/suppression", json={"to": to}).json()
+        for to in ("bounced@example.com", "user@example.com")
+    ]
+
+    assert answers == [{"suppressed": True}, {"suppressed": False}]
+
+
+def test_suppression_lookup_needs_the_frontend_service_token(
+    mocker: MockerFixture, monkeypatch
+):
+    """Without it the route would tell anyone which addresses bounced."""
+    mocker.patch.dict(
+        os.environ,
+        {"JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks"},
+        clear=False,
+    )
+    mocker.patch.object(auth_config, "_settings", AuthSettings())
+    lookup = MagicMock()
+    monkeypatch.setattr(
+        auth_email_routes,
+        "get_notification_manager_client",
+        lambda: MagicMock(is_email_suppressed=lookup),
+    )
+
+    res = client.post("/api/auth/email/suppression", json={"to": "a@example.com"})
+
+    assert res.status_code == 401
+    lookup.assert_not_called()
 
 
 def test_set_password_email_says_why_it_came_and_when_it_expires(send_mock):

@@ -91,7 +91,7 @@ export function SearchFeatureRequestsTool({ part }: Props) {
         />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 
@@ -183,7 +183,7 @@ export function CreateFeatureRequestTool({ part }: Props) {
         />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 

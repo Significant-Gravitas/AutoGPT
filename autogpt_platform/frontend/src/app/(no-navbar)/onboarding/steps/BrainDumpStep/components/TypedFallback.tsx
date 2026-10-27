@@ -30,7 +30,7 @@ export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
             label="Your brain dump"
             hideLabel
             rows={6}
-            className="rounded-xl border-zinc-200"
+            className="rounded-xl border-border-base"
             placeholder="What repeats every week? What would you hand off first?"
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -46,7 +46,6 @@ export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
               role="alert"
               id={LIMIT_HINT_ID}
               className="text-left"
-              unmask
             >
               {TYPED_TOO_LONG_COPY}
             </Text>
@@ -56,7 +55,6 @@ export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
               tone="muted"
               id={LIMIT_HINT_ID}
               className="min-h-[1.125rem] text-right"
-              unmask
             >
               {typedCharsLeftHint(value.length)}
             </Text>
@@ -66,7 +64,7 @@ export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
           size="small"
           onClick={onSubmit}
           disabled={!value.trim()}
-          className="h-10 w-56 rounded-xl"
+          className="h-10 w-56"
         >
           I&apos;m done
         </Button>

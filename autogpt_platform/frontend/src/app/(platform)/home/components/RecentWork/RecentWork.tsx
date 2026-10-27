@@ -45,7 +45,10 @@ export function RecentWork({ dashboard, className }: Props) {
           >
             This week
           </Text>
-          <span aria-hidden="true" className="hidden text-zinc-300 sm:inline">
+          <span
+            aria-hidden="true"
+            className="hidden text-foreground-disabled sm:inline"
+          >
             ·
           </span>
           <Text variant="small" as="span" tone="muted" className="tabular-nums">
@@ -55,6 +58,7 @@ export function RecentWork({ dashboard, className }: Props) {
             <Text
               variant="small"
               as="span"
+              // TODO(tokens): no exact role (text-rose-600 #E11D48)
               className="tabular-nums text-rose-600"
             >
               {failed} failed
@@ -69,7 +73,7 @@ export function RecentWork({ dashboard, className }: Props) {
           description="Runs, files, integrations and schedules from your experts and workflows will appear here."
         />
       ) : (
-        <div className="divide-y divide-zinc-200">
+        <div className="divide-y divide-border-base">
           {briefing.narrative ? <BriefingByline briefing={briefing} /> : null}
           {[...team, ...workflows].map((group) => (
             <WorkGroup

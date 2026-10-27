@@ -24,18 +24,18 @@ export function ExpertFileRow({ file }: Props) {
       target="_blank"
       rel="noreferrer"
       title={file.name}
-      className="group flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-zinc-50"
+      className="group flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-surface-muted"
     >
       <FileThumbnail file={file} />
       <span className="flex min-w-0 flex-1 flex-col">
         <Text
-          variant="body-medium"
+          variant="body-md-medium"
           as="span"
-          className="truncate !text-zinc-900"
+          className="truncate !text-foreground-strong"
         >
           {file.name}
         </Text>
-        <Text variant="small" as="span" className="!text-zinc-500">
+        <Text variant="small" as="span" className="!text-foreground-tertiary">
           {formatRelativeDate(file.created_at)} ·{" "}
           {formatFileSize(file.size_bytes)}
         </Text>
@@ -44,7 +44,7 @@ export function ExpertFileRow({ file }: Props) {
         icon={Download01Icon}
         size={16}
         aria-hidden
-        className="shrink-0 text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+        className="shrink-0 text-foreground-subtle opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100"
       />
     </a>
   );

@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from "@/components/__legacy__/ui/dialog";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 import {

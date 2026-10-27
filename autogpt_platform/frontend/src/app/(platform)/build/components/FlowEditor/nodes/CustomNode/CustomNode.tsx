@@ -105,7 +105,7 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
 
     const node = (
       <NodeContainer selected={selected} nodeId={nodeId} hasErrors={hasErrors}>
-        <div className="rounded-xlarge bg-white">
+        <div className="rounded-xlarge bg-node-surface">
           <NodeHeader data={data} nodeId={nodeId} />
           {isAgent && <SubAgentUpdateFeature nodeID={nodeId} nodeData={data} />}
           {isWebhook && <WebhookDisclaimer nodeId={nodeId} />}
@@ -115,7 +115,7 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
             uiType={data.uiType}
             isMCPWithTool={isMCPWithTool}
             className={cn(
-              "bg-white px-4",
+              "bg-surface px-4",
               isWebhook && "pointer-events-none opacity-50",
             )}
             showHandles={showHandles}

@@ -59,11 +59,12 @@ function ToolStatusIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
+  // TODO(tokens): no exact role for neutral-400 #A3A3A3
   return <Icon icon={Folder01Icon} size={14} className="text-neutral-400" />;
 }
 
@@ -82,6 +83,7 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
               style={{ backgroundColor: folder.color }}
             />
           ) : (
+            // TODO(tokens): no exact role for neutral-600 #525252
             <Icon icon={Folder01Icon} size={14} className="text-neutral-600" />
           )}
           <ContentCardTitle>{folder.name}</ContentCardTitle>
@@ -93,15 +95,19 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
           ` · ${folder.subfolder_count} subfolder${folder.subfolder_count !== 1 ? "s" : ""}`}
       </ContentHint>
       {folder.agents && folder.agents.length > 0 && (
+        // TODO(tokens): no exact role for neutral-200 #E5E5E5
         <div className="mt-2 space-y-1 border-t border-neutral-200 pt-2">
           {folder.agents.map((a) => (
             <div key={a.id} className="flex items-center gap-1.5">
               <Icon
                 icon={FileEmpty02Icon}
                 size={12}
+                // TODO(tokens): no exact role for neutral-600 #525252
                 className="text-neutral-600"
               />
-              <span className="text-xs text-zinc-600">{a.name}</span>
+              <span className="text-xs text-foreground-secondary">
+                {a.name}
+              </span>
             </div>
           ))}
         </div>
@@ -147,9 +153,11 @@ function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
       initialExpandedItems={allIDs}
       elements={elements}
       openIcon={
+        // TODO(tokens): no exact role for neutral-600 #525252
         <Icon icon={FolderOpenIcon} size={16} className="text-neutral-600" />
       }
       closeIcon={
+        // TODO(tokens): no exact role for neutral-600 #525252
         <Icon icon={Folder01Icon} size={16} className="text-neutral-600" />
       }
       className="max-h-64"
@@ -167,10 +175,11 @@ function FolderTreeNodes({ element }: { element: TreeNode }) {
       <TreeFile
         value={element.id}
         fileIcon={
+          // TODO(tokens): no exact role for neutral-600 #525252
           <Icon icon={FileEmpty02Icon} size={14} className="text-neutral-600" />
         }
       >
-        <span className="text-sm text-zinc-700">{element.name}</span>
+        <span className="text-sm text-foreground-body">{element.name}</span>
       </TreeFile>
     );
   }
@@ -277,7 +286,7 @@ export function FolderTool({ part }: Props) {
         <ToolStatusIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 

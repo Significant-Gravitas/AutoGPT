@@ -61,6 +61,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/memory/facts",
     "DELETE /api/memory/facts/{fact_uuid}",
     "GET /api/memory/overview",
+    "DELETE /api/memory/understanding",
+    "GET /api/memory/understanding",
     "GET /api/oauth/app/{client_id}",
     "PATCH /api/oauth/apps/{app_id}/logo",
     "PATCH /api/oauth/apps/{app_id}/status",
@@ -78,7 +80,6 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/orgs/{org_id}/invitations",
     "DELETE /api/orgs/{org_id}/invitations/{invitation_id}",
     "GET /api/orgs/{org_id}/members",
-    "POST /api/orgs/{org_id}/members",
     "DELETE /api/orgs/{org_id}/members/{uid}",
     "PATCH /api/orgs/{org_id}/members/{uid}",
     "POST /api/orgs/{org_id}/transfer-ownership",
@@ -294,7 +295,9 @@ OPEN_WHILE_PAYWALLED = {
     "PATCH /api/workspace/folders/{folder_id}",
     # No signed-in user to check: public pages, provider webhooks and token
     # endpoints. A webhook's runs check their owner (add_graph_execution).
+    "GET /.well-known/oauth-protected-resource/api/v2/mcp",
     "POST /api/auth/email/send",
+    "POST /api/auth/email/suppression",
     "POST /api/auth/user/preferences/from-email",
     "GET /api/chat/config/ttl",
     "GET /api/chat/schema/tool-responses",

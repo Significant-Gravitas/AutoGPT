@@ -36,6 +36,7 @@ export const ScrollableTabsTrigger = React.forwardRef<HTMLButtonElement, Props>(
         }}
         data-scrollable-tab-trigger
         data-value={value}
+        data-slot="scrollable-tabs-trigger"
         onClick={handleClick}
         // TODO(tokens): no role for neutral-400 (#A3A3A3).
         className={cn(

@@ -35,7 +35,7 @@ vi.mock("../components/ScaleLoader/ScaleLoader", () => ({
 vi.mock("../components/ArtifactPanel/ArtifactPanel", () => ({
   ArtifactPanel: () => null,
 }));
-vi.mock("@/components/ui/sidebar", () => ({
+vi.mock("@/components/molecules/Sidebar/Sidebar", () => ({
   SidebarProvider: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),

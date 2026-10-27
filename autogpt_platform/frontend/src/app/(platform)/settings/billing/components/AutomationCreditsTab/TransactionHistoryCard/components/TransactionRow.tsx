@@ -41,20 +41,22 @@ export function TransactionRow({
   const posted = formatActivityDate(transaction.transaction_time);
   return (
     <>
-      <tr className="border-b border-zinc-100">
+      <tr className="border-b border-separator">
         <td className="py-4 pl-3 pr-2 sm:pl-5">
           <TransactionActivity transaction={transaction} />
         </td>
         <td className="p-0 sm:px-2 sm:py-4">
           <Text variant="small" title={posted.full} className="hidden sm:block">
             {posted.date}
-            <span className="mt-1 block text-zinc-600">{posted.time}</span>
+            <span className="mt-1 block text-foreground-secondary">
+              {posted.time}
+            </span>
           </Text>
         </td>
         <td className="px-2 py-4 text-right">
           <TransactionAmount amount={transaction.amount} />
           {isRunActive(transaction) && (
-            <Text variant="small" className="text-zinc-600">
+            <Text variant="small" className="text-foreground-secondary">
               so far
             </Text>
           )}
@@ -64,7 +66,7 @@ export function TransactionRow({
             id={`transaction-details-${transaction.id}`}
             variant="ghost"
             size="small"
-            className="min-h-11 w-full min-w-0 px-1 text-zinc-600"
+            className="min-h-11 w-full min-w-0 px-1 text-foreground-secondary"
             onClick={() => onToggle(transaction.id)}
             aria-label={`${open ? "Close" : "Open"} details for ${activityName(transaction)}, ${posted.date} at ${posted.time}`}
             aria-expanded={open}
@@ -78,7 +80,7 @@ export function TransactionRow({
         </td>
       </tr>
       {open && (
-        <tr className="border-b border-zinc-100">
+        <tr className="border-b border-separator">
           <td colSpan={4} className="p-0">
             <TransactionReceipt
               transaction={transaction}
@@ -103,7 +105,10 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
       <span
         className={cn(
           "hidden size-8 shrink-0 items-center justify-center rounded-small sm:flex",
-          agent ? "bg-purple-50 text-purple-700" : "bg-zinc-100 text-zinc-600",
+          // TODO(tokens): no exact role (bg-purple-50 #F1EBFE, text-purple-700 #5424AE)
+          agent
+            ? "bg-purple-50 text-purple-700"
+            : "bg-surface-hover text-foreground-secondary",
         )}
       >
         <Icon icon={agent ? Robot01Icon : CreditCardIcon} size={16} />
@@ -112,6 +117,7 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
         {href ? (
           <Link
             href={href}
+            // TODO(tokens): no exact role (text-purple-700 #5424AE)
             className="inline-flex min-h-6 items-center break-words text-purple-700"
           >
             {name}
@@ -121,7 +127,7 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
             {name}
           </Text>
         )}
-        <Text variant="small" className="mt-1 text-zinc-600">
+        <Text variant="small" className="mt-1 text-foreground-secondary">
           {isRunActive(transaction)
             ? statusLabel(transaction.execution_status || "")
             : activityDescription(transaction)}
@@ -129,7 +135,7 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
         <Text
           variant="small"
           title={posted.full}
-          className="mt-2 text-zinc-600 sm:hidden"
+          className="mt-2 text-foreground-secondary sm:hidden"
         >
           {posted.date} · {posted.time}
         </Text>
