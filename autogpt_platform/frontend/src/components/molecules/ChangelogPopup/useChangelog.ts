@@ -1,17 +1,27 @@
 "use client";
 
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { useEffect, useRef, useState } from "react";
 import {
   AUTO_DISMISS_MS,
   CHANGELOG_INDEX_MD_URL,
   STORAGE_KEY,
 } from "./changelog-constants";
-import { ChangelogEntry, parseChangelogIndex } from "./helpers";
+import {
+  ChangelogEntry,
+  isReleaseBeforeAccount,
+  parseChangelogIndex,
+} from "./helpers";
 
 export function useChangelog() {
+  const accountCreatedAt = useAuthStore((state) => state.user?.created_at);
   const [isVisible, setIsVisible] = useState(false);
   const [isFading, setIsFading] = useState(false);
   const [latestEntry, setLatestEntry] = useState<ChangelogEntry | null>(null);
+  // Read at render, so a session that switches to a newer account hides it too.
+  const isBeforeAccount =
+    latestEntry !== null &&
+    isReleaseBeforeAccount(latestEntry, accountCreatedAt);
 
   const autoDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -113,13 +123,13 @@ export function useChangelog() {
   }, []);
 
   useEffect(() => {
-    if (!isVisible || isFading || !latestEntry) return;
+    if (!isVisible || isFading || !latestEntry || isBeforeAccount) return;
     markAsSeen(latestEntry.slug);
     startAutoDismiss();
-  }, [isVisible, isFading, latestEntry]);
+  }, [isVisible, isFading, latestEntry, isBeforeAccount]);
 
   return {
-    isVisible,
+    isVisible: isVisible && !isBeforeAccount,
     isFading,
     latestEntry,
     dismiss,

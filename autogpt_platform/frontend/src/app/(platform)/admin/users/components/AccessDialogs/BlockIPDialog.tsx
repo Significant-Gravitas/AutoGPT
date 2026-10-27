@@ -81,7 +81,7 @@ export function BlockIPDialog({ ip, ownIP, showTrigger }: Props) {
       ) : null}
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="body" className="text-zinc-600">
+          <Text variant="body" className="text-foreground-secondary">
             No one can sign up or sign in from this address until the block
             ends.{" "}
             {users === 1

@@ -18,7 +18,7 @@ export function ExpertHireCard({ expert, firstName, actions }: Props) {
   const workflowCount = expert.workflows.length;
 
   return (
-    <aside className="rounded-2xl bg-white p-5 smooth-shadow-ring-sm">
+    <aside className="rounded-2xl bg-surface p-5 smooth-shadow-ring-sm">
       <div className="[&_a]:w-full [&_button]:w-full">{actions}</div>
 
       <ul className="mt-5 flex flex-col gap-2.5">
@@ -34,12 +34,16 @@ export function ExpertHireCard({ expert, firstName, actions }: Props) {
         </Perk>
       </ul>
 
-      <div className="mt-5 border-t border-zinc-100 pt-4">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
-          <Icon icon={Coins01Icon} size={16} className="text-zinc-500" />
+      <div className="mt-5 border-t border-separator pt-4">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground-strong">
+          <Icon
+            icon={Coins01Icon}
+            size={16}
+            className="text-foreground-tertiary"
+          />
           Included with your plan
         </h2>
-        <p className="mt-1.5 text-sm leading-6 text-zinc-600">
+        <p className="mt-1.5 text-sm leading-6 text-foreground-secondary">
           {`Hiring ${firstName} costs nothing extra. Their work draws on your existing balance`}
           {weeklyBudget
             ? `, capped at ${creditsToUsdLabel(weeklyBudget)} a week — a limit you can change once they are on your team.`
@@ -58,10 +62,11 @@ function Perk({
   children: ReactNode;
 }) {
   return (
-    <li className="flex items-start gap-2 text-sm text-zinc-700">
+    <li className="flex items-start gap-2 text-sm text-foreground-body">
       <Icon
         icon={icon}
         size={16}
+        // TODO(tokens): no exact role: text-emerald-600 #059669
         className="mt-0.5 shrink-0 text-emerald-600"
         aria-hidden
       />

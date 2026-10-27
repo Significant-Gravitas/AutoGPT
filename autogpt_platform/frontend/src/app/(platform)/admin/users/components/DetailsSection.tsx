@@ -42,7 +42,7 @@ export function DetailsSection({ user }: Props) {
         <Row label="User ID">
           <span className="flex items-start gap-1">
             <span
-              className="min-w-0 break-all font-mono text-[13px]"
+              className="min-w-0 break-all font-mono text-body-sm leading-inherit"
               translate="no"
             >
               {user.id}
@@ -84,7 +84,7 @@ export function DetailsSection({ user }: Props) {
         <Row label="Joined">{formatDate(user.createdAt)}</Row>
         <Row label="Status">
           {user.banned ? (
-            <span className="text-red-700">
+            <span className="text-error-foreground">
               {user.banExpires
                 ? `Banned until ${formatDate(user.banExpires)}`
                 : "Banned permanently"}
@@ -101,7 +101,11 @@ export function DetailsSection({ user }: Props) {
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex gap-3">
-      <Text variant="small" as="dt" className="w-[88px] shrink-0 text-zinc-500">
+      <Text
+        variant="small"
+        as="dt"
+        className="w-[88px] shrink-0 text-foreground-tertiary"
+      >
         {label}
       </Text>
       <Text variant="body" as="dd" className="min-w-0 flex-1">

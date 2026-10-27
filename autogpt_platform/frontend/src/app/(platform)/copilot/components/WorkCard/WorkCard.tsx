@@ -18,12 +18,12 @@ export function WorkCard({ metadata, preview }: Props) {
 
   return (
     <div
-      className="max-w-md rounded-2xl bg-white p-4 ring-1 ring-inset ring-zinc-200/60"
+      className="max-w-md rounded-2xl bg-surface p-4 ring-1 ring-inset ring-border-base/60"
       data-testid="work-card"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-zinc-900">
+          <p className="truncate text-sm font-medium text-foreground-strong">
             {metadata.graphName}
           </p>
           <div className="mt-1">
@@ -39,7 +39,9 @@ export function WorkCard({ metadata, preview }: Props) {
         </Button>
       </div>
       {preview ? (
-        <p className="mt-2 line-clamp-2 text-sm text-zinc-500">{preview}</p>
+        <p className="mt-2 line-clamp-2 text-sm text-foreground-tertiary">
+          {preview}
+        </p>
       ) : null}
 
       <WorkOutputSheet

@@ -342,6 +342,7 @@ merges the website pageviews into the new user:
 | `brain_dump_restarted` | browser | live | — | Recording starts over. |
 | `brain_dump_download` | browser | live | — | The recording is downloaded after a failure. |
 | `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused. |
+| `brain_dump_mic_failed` | browser | live | `error_name` | The microphone fails to open, for any reason, a refused permission included. |
 | `brain_dump_typed_fallback` | browser | live | `reason` | The user types instead of speaking. |
 | `transcription_failed` | browser | live | `error_code`, `finalize_latency_ms` | Finalize returns a failure. |
 | `welcome_dialog_closed` | browser | live | — | The first-landing welcome dialog closes. |
@@ -378,6 +379,7 @@ merges the website pageviews into the new user:
 | `chat_tool_called` | backend | live | `chat_session_id`, `tool_name`, `tool_call_id` | The copilot calls a tool. |
 | `chat_outcome` | backend | live | `outcome_type` (`agent_run_success`, `schedule_created`), `chat_session_id`; `agent_run_success`: `graph_id`, `execution_id`, `library_agent_id`; `schedule_created`: `target` (`agent`: `graph_id`, `schedule_id`, `cron`, `library_agent_id`; `followup`: `schedule_id`, `target_chat_session_id`, `is_recurring`) | A moment of value in a chat: the copilot started a (non-dry) run or created a schedule for the user. `agent_run_started` / `schedule_created` still count the run or schedule itself. |
 | `chat_library_check_outcome` | backend | live | `chat_session_id`, `outcome`, `matches_count`, `top_score` | The create-agent library check ends. |
+| `chat_read_screen_shadow_decision` | backend | live | `tool_name`, `tool_call_id`, `source_kind` (`web`, `file`, `shell`, `mcp`, `block`, `workflow`, `chat`, `skill`, …), `chat_session_id`, `trace_id` (the reply's trace, the `$ai_trace_id` of its generations and spans, shared by the subtasks it spawns; the tool call's `$ai_span` with the same `tool_call_id` names the turn), `expert_id`, `verdict` (`allow`, `hold`, `judge_error`), `reason_code`, `judge` (`jev`, `content`; null when the shadow itself failed), `llm_model`, `jev_model`, `rubric_version`, `latency_ms`, `impersonated`, `judgement_id`, `sample_rate` | With `copilot-read-screen` serving `shadow`, the prompt-injection check judges an outside read in a sampled interactive chat (`backend/copilot/gate/shadow.py`). Nothing is held. No content, URL or judge wording is sent. |
 | `voice_mode_started` | browser | live | `entry` | Voice mode is switched on. |
 | `voice_mode_stopped` | browser | live | `turns`, `state` | Switched off by the user. |
 | `voice_mode_timed_out` | browser | live | `turns`, `state` | Closed by the silence timeout. |

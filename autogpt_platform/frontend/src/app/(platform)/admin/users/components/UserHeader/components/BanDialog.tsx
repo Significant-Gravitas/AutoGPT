@@ -59,13 +59,13 @@ export function BanDialog({ user }: Props) {
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="body" className="text-zinc-600">
+          <Text variant="body" className="text-foreground-secondary">
             They&apos;re signed out and can&apos;t sign in again until the ban
             ends, but for up to 5 minutes they can still get a token that works
             for an hour. Their API keys, schedules and triggers keep running.
           </Text>
           {related > 0 ? (
-            <Text variant="small" className="text-zinc-500">
+            <Text variant="small" className="text-foreground-tertiary">
               Only this account. To include the{" "}
               {related === 1
                 ? "1 related account"
@@ -98,7 +98,7 @@ export function BanDialog({ user }: Props) {
               options={DURATION_OPTIONS}
               wrapperClassName="mb-0"
             />
-            <Text variant="small" className="text-zinc-500">
+            <Text variant="small" className="text-foreground-tertiary">
               {banEnd
                 ? `Ends ${formatDateTime(banEnd)} (${formatTimeUntil(banEnd)})`
                 : "Doesn't end on its own."}

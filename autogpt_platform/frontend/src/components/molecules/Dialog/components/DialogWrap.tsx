@@ -102,13 +102,18 @@ export function DialogWrap({
 
   return (
     <RXDialog.Portal>
-      <RXDialog.Overlay data-dialog-overlay className={modalStyles.overlay} />
+      <RXDialog.Overlay
+        data-dialog-overlay
+        data-slot="dialog-overlay"
+        className={modalStyles.overlay}
+      />
       <RXDialog.Content
         data-dialog-content
         onInteractOutside={handleInteractOutside}
         onPointerDownOutside={handlePointerDownOutside}
         onFocusOutside={handleFocusOutside}
         onEscapeKeyDown={handleEscapeKeyDown}
+        data-slot="dialog-popup"
         className={cn(
           modalStyles.content,
           isCompact && compactStyles.content,
@@ -119,6 +124,7 @@ export function DialogWrap({
         }}
       >
         <div
+          data-slot="dialog-header"
           className={cn(
             "flex items-center justify-between px-2",
             title ? (isCompact ? compactStyles.header : "pb-6") : "pb-0",
@@ -126,12 +132,15 @@ export function DialogWrap({
         >
           {title ? (
             <RXDialog.Title
+              data-slot="dialog-title"
               className={isCompact ? compactStyles.title : modalStyles.title}
             >
               {title}
             </RXDialog.Title>
           ) : (
-            <RXDialog.Title className="sr-only">Dialog</RXDialog.Title>
+            <RXDialog.Title data-slot="dialog-title" className="sr-only">
+              Dialog
+            </RXDialog.Title>
           )}
 
           {isForceOpen ? null : (
@@ -140,20 +149,31 @@ export function DialogWrap({
               size={isCompact ? "icon-sm" : "icon"}
               onClick={handleClose}
               aria-label="Close"
+              data-slot="dialog-close"
               className={cn(
-                "absolute right-4 top-4 z-50 bg-white",
+                "absolute right-4 top-4 z-50 bg-surface",
                 isCompact ? compactStyles.close : "size-[2.5rem]",
               )}
               withTooltip={false}
             >
-              <Icon icon={Cancel01Icon} width="1rem" />
+              <Icon
+                data-slot="dialog-close-icon"
+                icon={Cancel01Icon}
+                width="1rem"
+              />
             </Button>
           )}
         </div>
-        <RXDialog.Description className="sr-only">Dialog</RXDialog.Description>
-        <div className="flex min-h-0 flex-1 flex-col">
+        <RXDialog.Description
+          data-slot="dialog-description"
+          className="sr-only"
+        >
+          Dialog
+        </RXDialog.Description>
+        <div data-slot="dialog-body" className="flex min-h-0 flex-1 flex-col">
           <div
             ref={scrollRef}
+            data-slot="dialog-viewport"
             className={cn(
               "flex-1 overflow-y-auto overflow-x-hidden px-2",
               scrollbarStyles,

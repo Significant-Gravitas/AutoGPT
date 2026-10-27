@@ -41,9 +41,11 @@ JUDGED_UNUSABLE = quality.QualityRejection(
 )
 
 
-def _llm_client(content: str) -> MagicMock:
+def _llm_client(content: str, finish_reason: str = "stop") -> MagicMock:
     response = MagicMock()
-    response.choices = [MagicMock(message=MagicMock(content=content))]
+    response.choices = [
+        MagicMock(message=MagicMock(content=content), finish_reason=finish_reason)
+    ]
     client = MagicMock()
     client.chat.completions.create = AsyncMock(return_value=response)
     return client
@@ -263,6 +265,24 @@ def _no_choices_client() -> MagicMock:
     client = MagicMock()
     client.chat.completions.create = AsyncMock(return_value=response)
     return client
+
+
+@pytest.mark.asyncio
+async def test_the_judge_asks_for_no_reasoning_and_logs_why_a_verdict_is_missing(
+    llm, caplog
+):
+    # Thinking counts against the 100-token cap on Haiku 5.5, so a judge that
+    # thinks answers nothing; the log has to say so without the content.
+    client = _llm_client('{"usa', finish_reason="length")
+    llm(client)
+
+    with caplog.at_level(logging.ERROR, logger=quality.logger.name):
+        rejection = await quality.check_transcript_quality("Automate my invoices.")
+
+    assert rejection is not None and rejection.reason == "judge_malformed"
+    kwargs = client.chat.completions.create.await_args.kwargs
+    assert kwargs["extra_body"] == {"reasoning": {"enabled": False}}
+    assert "judge_malformed (finish_reason=length, 5 chars)" in caplog.text
 
 
 @pytest.mark.asyncio

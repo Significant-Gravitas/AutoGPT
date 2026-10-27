@@ -1,7 +1,7 @@
 import {
   getPersistedSidebarOpen,
   useOptionalSidebar,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
 export function usePanelSidebarCollapse(isPanelOpen: boolean) {

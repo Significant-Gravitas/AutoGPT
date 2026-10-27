@@ -8,7 +8,7 @@ from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
@@ -39,6 +39,8 @@ from backend.data.execution import (
 )
 from backend.data.graph import Link, Node
 from backend.data.model import (
+    Credentials,
+    CredentialsMetaInput,
     GraphExecutionStats,
     NodeExecutionStats,
     OAuth2Credentials,
@@ -112,6 +114,7 @@ from .utils import (
     GRAPH_EXECUTION_QUEUE_NAME,
     GRAPH_EXECUTION_ROUTING_KEY,
     LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+    NODE_UNWIND_GRACE_SECONDS,
     CancelExecutionEvent,
     ExecutionOutputEntry,
     LogMetadata,
@@ -307,6 +310,24 @@ def execute_graph(
 T = TypeVar("T")
 
 
+async def _finish_despite_cancel(work: Awaitable[T]) -> T:
+    """Await ``work`` to its end even if the caller is cancelled meanwhile,
+    any number of times, then re-raise the cancel. A failure of ``work``
+    itself wins over the cancel, since it is the more useful error to
+    surface."""
+    task = asyncio.ensure_future(work)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+        task.result()
+        raise
+
+
 async def execute_node(
     node: Node,
     data: NodeExecutionEntry,
@@ -440,10 +461,10 @@ async def execute_node(
     # platform's OpenRouter key instead of user credentials).
     _dry_run_creds = get_dry_run_credentials(input_data) if _dry_run_input else None
 
-    # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
-    # changes during execution. ⚠️ This means a set of credentials can only be used by
-    # one (running) block at a time; simultaneous execution of blocks using same
-    # credentials is not supported.
+    # Last-minute fetch credentials. OAuth credentials come with a system-wide lease
+    # that stops them being refreshed or replaced during execution. ⚠️ This means
+    # an OAuth credential can only be used by one (running) block at a time;
+    # simultaneous execution of blocks using the same one is not supported.
     creds_locks: list[AsyncRedisLock] = []
     credential_leases: dict[str, CredentialLease] = {}
     runtime_credential_leases: dict[str, CredentialLease] = {}
@@ -499,7 +520,9 @@ async def execute_node(
                     await enforce_codex_access(user_id)
                 continue
             try:
-                lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)
+                credentials, lease = await _get_node_credentials(
+                    creds_manager, user_id, credentials_meta
+                )
             except ValueError:
                 # Credential was deleted or doesn't exist.
                 # If the field has a default, run without credentials.
@@ -511,8 +534,8 @@ async def execute_node(
                     input_data[field_name] = None
                     continue
                 raise
-            credential_leases[field_name] = lease
-            credentials = lease.credentials
+            if lease is not None:
+                credential_leases[field_name] = lease
             if not (
                 provider_matches(
                     credentials.provider,
@@ -525,8 +548,8 @@ async def execute_node(
                 )
             if provider_matches(credentials.provider, "codex"):
                 await enforce_codex_access(user_id)
-            extra_exec_kwargs[field_name] = lease.credentials
-            if _uses_provider_runtime(lease):
+            extra_exec_kwargs[field_name] = credentials
+            if lease is not None and _uses_provider_runtime(lease):
                 runtime_credential_leases[field_name] = lease
 
         # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
@@ -611,6 +634,32 @@ async def execute_node(
         # Restore scope AFTER error has been captured
         scope._user = original_user
         scope._tags = original_tags
+
+
+async def _get_node_credentials(
+    creds_manager: IntegrationCredentialsManager,
+    user_id: str,
+    credentials_meta: CredentialsMetaInput,
+) -> tuple[Credentials, CredentialLease | None]:
+    """Load a node's credentials, leased only if they can change mid-run.
+
+    Only OAuth credentials change under a running block: a refresh replaces the
+    tokens, and a provider runtime checkpoints rotated ones through the lease.
+    A lease on any other kind would protect nothing, and would make every other
+    node on the same credential wait for this one, up to the lock's 60 s TTL,
+    including the tools an Orchestrator runs on its own API key. The caller
+    checks that the stored type matches ``credentials_meta``, so an OAuth
+    credential never runs unleased.
+    """
+    if credentials_meta.type == "oauth2":
+        lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)
+        return lease.credentials, lease
+    credentials = await creds_manager.get(user_id, credentials_meta.id)
+    if credentials is None:
+        raise ValueError(
+            f"Credentials #{credentials_meta.id} for user #{user_id} not found"
+        )
+    return credentials, None
 
 
 async def _release_credential_leases(
@@ -834,15 +883,22 @@ class ExecutionProcessor:
         transaction named after its block."""
         block = get_block(node_exec.block_id)
         with node_transaction(node_exec, block) as span:
-            return await self._run_node(
-                node_exec,
-                block,
-                node_exec_progress,
-                nodes_input_masks,
-                graph_stats_pair,
-                nodes_to_skip,
-                span,
+            # Its own task, even when a caller such as the Orchestrator runs a
+            # tool node inline from a longer-lived task: a stop's cleanup waits
+            # for this task (see wait_for_done), so it must end with the node.
+            node_run = asyncio.ensure_future(
+                self._run_node(
+                    node_exec,
+                    block,
+                    node_exec_progress,
+                    nodes_input_masks,
+                    graph_stats_pair,
+                    nodes_to_skip,
+                    span,
+                )
             )
+            node_exec_progress.track_unwinding(node_exec.node_exec_id, node_run)
+            return await node_run
 
     async def _run_node(
         self,
@@ -884,6 +940,35 @@ class ExecutionProcessor:
         execution_stats.cputime = timing_info.cpu_time
         record_node_result(span, status, execution_stats)
 
+        # A stop cancels this task, even after the block has finished. The
+        # block's charge, its final status and the run's totals must still be
+        # written, so a cancel arriving now waits for them before it is
+        # re-raised. The run's cleanup waits for them too (see wait_for_done):
+        # its terminal sweep would otherwise fail the node first.
+        settle = asyncio.ensure_future(
+            self._settle_node(
+                node=node,
+                node_exec=node_exec,
+                status=status,
+                execution_stats=execution_stats,
+                graph_stats_pair=graph_stats_pair,
+                db_client=db_client,
+                log_metadata=log_metadata,
+            )
+        )
+        node_exec_progress.track_settling(node_exec.node_exec_id, settle)
+        return await _finish_despite_cancel(settle)
+
+    async def _settle_node(
+        self,
+        node: Node,
+        node_exec: NodeExecutionEntry,
+        status: ExecutionStatus,
+        execution_stats: NodeExecutionStats,
+        graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
+        db_client: "DatabaseManagerAsyncClient",
+        log_metadata: LogMetadata,
+    ) -> NodeExecutionStats:
         # Log platform cost + reconcile dynamic billing BEFORE graph/node stats
         # are aggregated and persisted — otherwise the reconciled delta never
         # lands in `graph_stats.cost` or the persisted node stats. RUN-only
@@ -1067,10 +1152,21 @@ class ExecutionProcessor:
                 status = ExecutionStatus.TERMINATED
 
         finally:
+            # The block is done, so from here the node's own task (started in
+            # on_node_execution) is its bookkeeping, which the run's cleanup
+            # waits for in full rather than for the unwind grace.
+            if task := asyncio.current_task():
+                node_exec_progress.track_settling(node_exec.node_exec_id, task)
             if status == ExecutionStatus.FAILED and stats.error is not None:
-                await persist_output(
-                    "error", str(stats.error) or type(stats.error).__name__
-                )
+                try:
+                    await _finish_despite_cancel(
+                        persist_output(
+                            "error", str(stats.error) or type(stats.error).__name__
+                        )
+                    )
+                except asyncio.CancelledError:
+                    # The block has already failed: settle it, don't end here.
+                    pass
             tracing.set_data("executor.node.output_count", outputs)
         return status
 
@@ -1603,9 +1699,12 @@ class ExecutionProcessor:
             log_metadata.info(f"Stopping node execution {node_id}")
             inflight_exec.stop()
 
+        # One unwind grace for all nodes together, so several blocks that
+        # ignore the cancel can't add up past stop_graph_execution's wait.
+        unwind_until = time.time() + NODE_UNWIND_GRACE_SECONDS
         for node_id, inflight_exec in running_node_execution.items():
             try:
-                inflight_exec.wait_for_done(timeout=3600.0)
+                inflight_exec.wait_for_done(timeout=3600.0, unwind_until=unwind_until)
             except TimeoutError:
                 log_metadata.exception(
                     f"Node execution #{node_id} did not stop in time, "

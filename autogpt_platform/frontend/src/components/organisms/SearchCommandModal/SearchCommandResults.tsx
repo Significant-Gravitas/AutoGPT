@@ -41,17 +41,28 @@ export function SearchCommandResults({
     <div
       role="listbox"
       aria-label="Search results"
+      data-slot="search-command-results"
       className="flex flex-col gap-1"
     >
       {buckets.map((bucket) => {
         const entries = grouped.get(bucket.key) ?? [];
         if (entries.length === 0) return null;
         return (
-          <div key={bucket.key} className="px-2">
-            <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+          <div
+            key={bucket.key}
+            data-slot="search-command-results-group"
+            className="px-2"
+          >
+            <div
+              data-slot="search-command-results-group-label"
+              className="px-3 pb-1 pt-2 text-caption-sm font-semibold uppercase leading-inherit tracking-wide text-foreground-tertiary"
+            >
               {bucket.label}
             </div>
-            <div className="flex flex-col">
+            <div
+              data-slot="search-command-results-group-list"
+              className="flex flex-col"
+            >
               {entries.map((entry) => (
                 <SearchCommandResultItem
                   key={entry.item.id}

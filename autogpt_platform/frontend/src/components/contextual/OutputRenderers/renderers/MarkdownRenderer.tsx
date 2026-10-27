@@ -84,7 +84,7 @@ function renderPlainLink(url: string, label: React.ReactNode = url) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-blue-600 underline"
+      className="text-info-foreground underline"
     >
       {label}
     </a>
@@ -200,7 +200,8 @@ const MARKDOWN_COMPONENTS: Components = {
   // Custom components for better rendering
   pre: ({ children, ...props }) => (
     <pre
-      className="my-4 overflow-x-auto rounded-md bg-gray-900 p-4 dark:bg-gray-950"
+      // TODO(tokens): no exact role for bg-gray-900 #111827
+      className="my-4 overflow-x-auto rounded-md bg-gray-900 p-4"
       {...props}
     >
       {children}
@@ -212,7 +213,8 @@ const MARKDOWN_COMPONENTS: Components = {
     if (isInline) {
       return (
         <code
-          className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+          // TODO(tokens): no exact role for bg-gray-100 #f3f4f6, text-gray-800 #1f2937
+          className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm text-gray-800"
           {...props}
         >
           {children}
@@ -221,7 +223,11 @@ const MARKDOWN_COMPONENTS: Components = {
     }
     // Block code is handled by rehype-highlight
     return (
-      <code className="font-mono text-sm text-gray-100" {...props}>
+      <code
+        // TODO(tokens): no exact role for text-gray-100 #f3f4f6
+        className="font-mono text-sm text-gray-100"
+        {...props}
+      >
         {children}
       </code>
     );
@@ -231,7 +237,7 @@ const MARKDOWN_COMPONENTS: Components = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-black underline decoration-1 underline-offset-2 transition-colors"
+      className="text-foreground-base underline decoration-1 underline-offset-2 transition-colors"
       {...props}
     >
       <InsideLinkContext.Provider value={true}>
@@ -241,7 +247,8 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   blockquote: ({ children, ...props }) => (
     <blockquote
-      className="my-4 border-l-4 border-blue-500 pl-4 italic text-gray-700 dark:border-blue-400 dark:text-gray-300"
+      // TODO(tokens): no exact role for text-gray-700 #374151
+      className="my-4 border-l-4 border-info pl-4 italic text-gray-700"
       {...props}
     >
       {children}
@@ -250,7 +257,8 @@ const MARKDOWN_COMPONENTS: Components = {
   table: ({ children, ...props }) => (
     <div className="my-4 overflow-x-auto">
       <table
-        className="min-w-full divide-y divide-gray-200 border-y border-gray-200 dark:divide-gray-700 dark:border-gray-700"
+        // TODO(tokens): no exact role for divide-gray-200 #e5e7eb, border-gray-200 #e5e7eb; #e5e7eb is sidebar-border, the sidebar only
+        className="min-w-full divide-y divide-gray-200 border-y border-gray-200"
         {...props}
       >
         {children}
@@ -259,7 +267,8 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   th: ({ children, ...props }) => (
     <th
-      className="bg-gray-50 px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+      // TODO(tokens): no exact role for bg-gray-50 #f9fafb, text-gray-700 #374151
+      className="bg-gray-50 px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-700"
       {...props}
     >
       {children}
@@ -267,7 +276,8 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   td: ({ children, ...props }) => (
     <td
-      className="border-t border-gray-200 px-4 py-3.5 text-sm text-gray-600 dark:border-gray-700 dark:text-gray-400"
+      // TODO(tokens): no exact role for border-gray-200 #e5e7eb, text-gray-600 #4b5563; #e5e7eb is sidebar-border, the sidebar only
+      className="border-t border-gray-200 px-4 py-3.5 text-sm text-gray-600"
       {...props}
     >
       {children}
@@ -279,7 +289,8 @@ const MARKDOWN_COMPONENTS: Components = {
       return (
         <input
           type="checkbox"
-          className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
+          // TODO(tokens): no exact role for border-gray-300 #d1d5db
+          className="mr-2 h-4 w-4 rounded border-gray-300 text-info-foreground focus:ring-info disabled:cursor-not-allowed disabled:opacity-70"
           disabled
           {...props}
         />
@@ -305,7 +316,8 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   li: ({ children, ...props }: any) => (
     <li
-      className={`text-gray-700 dark:text-gray-300 ${
+      // TODO(tokens): no exact role for text-gray-700 #374151
+      className={`text-gray-700 ${
         props.className?.includes("task-list-item") ? "flex items-start" : ""
       }`}
       {...props}
@@ -316,7 +328,8 @@ const MARKDOWN_COMPONENTS: Components = {
   // Better heading styles
   h1: ({ children, ...props }) => (
     <h1
-      className="my-6 text-3xl font-bold text-gray-900 dark:text-gray-100"
+      // TODO(tokens): no exact role for text-gray-900 #111827
+      className="my-6 text-3xl font-bold text-gray-900"
       {...props}
     >
       {children}
@@ -324,7 +337,8 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   h2: ({ children, ...props }) => (
     <h2
-      className="my-5 text-2xl font-semibold text-gray-800 dark:text-gray-200"
+      // TODO(tokens): no exact role for text-gray-800 #1f2937
+      className="my-5 text-2xl font-semibold text-gray-800"
       {...props}
     >
       {children}
@@ -332,7 +346,8 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   h3: ({ children, ...props }) => (
     <h3
-      className="my-4 text-xl font-semibold text-gray-800 dark:text-gray-200"
+      // TODO(tokens): no exact role for text-gray-800 #1f2937
+      className="my-4 text-xl font-semibold text-gray-800"
       {...props}
     >
       {children}
@@ -340,7 +355,8 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   h4: ({ children, ...props }) => (
     <h4
-      className="my-3 text-lg font-medium text-gray-700 dark:text-gray-300"
+      // TODO(tokens): no exact role for text-gray-700 #374151
+      className="my-3 text-lg font-medium text-gray-700"
       {...props}
     >
       {children}
@@ -348,7 +364,8 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   h5: ({ children, ...props }) => (
     <h5
-      className="my-2 text-base font-medium text-gray-700 dark:text-gray-300"
+      // TODO(tokens): no exact role for text-gray-700 #374151
+      className="my-2 text-base font-medium text-gray-700"
       {...props}
     >
       {children}
@@ -356,7 +373,8 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   h6: ({ children, ...props }) => (
     <h6
-      className="my-2 text-sm font-medium text-gray-600 dark:text-gray-400"
+      // TODO(tokens): no exact role for text-gray-600 #4b5563
+      className="my-2 text-sm font-medium text-gray-600"
       {...props}
     >
       {children}
@@ -364,11 +382,19 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   // Horizontal rule
   hr: ({ ...props }) => (
-    <hr className="my-6 border-gray-300 dark:border-gray-700" {...props} />
+    <hr
+      // TODO(tokens): no exact role for border-gray-300 #d1d5db
+      className="my-6 border-gray-300"
+      {...props}
+    />
   ),
   // Strikethrough (GFM)
   del: ({ children, ...props }) => (
-    <del className="text-gray-500 line-through dark:text-gray-500" {...props}>
+    <del
+      // TODO(tokens): no exact role for text-gray-500 #6b7280
+      className="text-gray-500 line-through"
+      {...props}
+    >
       {children}
     </del>
   ),
@@ -416,7 +442,8 @@ const MARKDOWN_COMPONENTS: Components = {
 
     return (
       <p
-        className="my-3 leading-relaxed text-gray-700 dark:text-gray-300"
+        // TODO(tokens): no exact role for text-gray-700 #374151
+        className="my-3 leading-relaxed text-gray-700"
         {...props}
       >
         {children}
@@ -434,7 +461,7 @@ function renderMarkdown(
   return (
     <div className="markdown-output">
       <ReactMarkdown
-        className="prose prose-sm dark:prose-invert max-w-none"
+        className="prose prose-sm max-w-none"
         remarkPlugins={[
           remarkGfm, // GitHub Flavored Markdown (tables, task lists, strikethrough)
           [remarkMath, { singleDollarTextMath: true }], // Math support for LaTeX

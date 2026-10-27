@@ -24,13 +24,13 @@ export function ExpertSection({
         id={headingId}
         className={
           quiet
-            ? "flex items-baseline gap-2 text-lg font-semibold tracking-[-0.01em] text-zinc-800"
-            : "flex items-baseline gap-2 text-2xl font-semibold tracking-[-0.02em] text-zinc-900"
+            ? "flex items-baseline gap-2 text-lg font-semibold tracking-title text-foreground-emphasis"
+            : "flex items-baseline gap-2 text-2xl font-semibold tracking-heading text-foreground-strong"
         }
       >
         {title}
         {count !== undefined ? (
-          <span className="text-base font-normal tabular-nums text-zinc-400">
+          <span className="text-base font-normal tabular-nums text-foreground-subtle">
             {count}
           </span>
         ) : null}
@@ -39,8 +39,8 @@ export function ExpertSection({
         <p
           className={
             quiet
-              ? "mt-1 text-sm leading-5 text-zinc-500"
-              : "mt-1.5 text-base leading-6 text-zinc-500"
+              ? "mt-1 text-sm leading-5 text-foreground-tertiary"
+              : "mt-1.5 text-base leading-6 text-foreground-tertiary"
           }
         >
           {description}

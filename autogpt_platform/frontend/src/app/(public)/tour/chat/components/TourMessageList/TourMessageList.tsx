@@ -5,8 +5,11 @@ import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+} from "@/components/organisms/Conversation/Conversation";
+import {
+  Message,
+  MessageContent,
+} from "@/components/organisms/Message/Message";
 import type { TourMessage, TourPart } from "../../script/types";
 import { TourAgentCard } from "../TourAgentCard/TourAgentCard";
 import { TourArtifactCard } from "../TourArtifactCard/TourArtifactCard";

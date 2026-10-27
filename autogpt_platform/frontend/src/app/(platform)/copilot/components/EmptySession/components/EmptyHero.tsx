@@ -2,12 +2,12 @@
 
 import type { ReactNode } from "react";
 import { Text } from "@/components/atoms/Text/Text";
-import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
+import { TextGenerateEffect } from "./TextGenerateEffect/TextGenerateEffect";
 import { getExpertIntroSuffix } from "../helpers";
 import { EditNameDialog } from "./EditNameDialog/EditNameDialog";
 
 interface Props {
-  name: string;
+  name: string | null;
   /** Null holds the line back (recipient still resolving) without moving
    * the composer below it. */
   intro: string | null;
@@ -30,18 +30,28 @@ export function EmptyHero({
     <>
       <div className="mb-1 flex items-center justify-center gap-3 pt-8 md:pt-0">
         <Text variant="h4" tone="primary">
-          Hey, <span className="text-zinc-900">{name}</span>
-          <EditNameDialog currentName={name} />
+          Hey
+          {name ? (
+            <>
+              , <span className="text-foreground-strong">{name}</span>
+            </>
+          ) : (
+            " there"
+          )}
+          <EditNameDialog currentName={name ?? ""} />
         </Text>
       </div>
       {intro === null ? (
-        <div aria-hidden className="mb-8 text-[1.375rem] leading-normal">
+        <div aria-hidden className="mb-8 text-heading-sm leading-normal">
           &nbsp;
         </div>
       ) : recipientPicker ? (
-        <div className="mb-8 text-[1.375rem] leading-relaxed tracking-normal text-zinc-900">
+        <div className="mb-8 text-heading-sm leading-relaxed tracking-normal text-foreground-strong">
           {isExpert ? "I'm" : "Tell"}{" "}
-          <span className="mr-1 inline-block align-middle [&_button]:ml-0 [&_button]:text-lg">
+          <span
+            // TODO(tokens): no role holds 18px (text-lg); the type scale goes 16px (body-lg) to 20px (lead). SECRT-3152
+            className="mr-1 inline-block align-middle [&_button]:ml-0 [&_button]:text-lg"
+          >
             {recipientPicker}
           </span>
           {isExpert
@@ -52,7 +62,7 @@ export function EmptyHero({
         // Keyed on the text so switching recipient re-types the line.
         <TextGenerateEffect
           key={intro}
-          className="mb-8 !font-normal [&>div]:!mt-0 [&_div]:!text-[1.375rem] [&_div]:!leading-normal [&_div]:!tracking-normal"
+          className="mb-8 !font-normal [&>div]:!mt-0 [&_div]:!text-heading-sm [&_div]:!leading-normal [&_div]:!tracking-normal"
           duration={0.6}
           words={intro}
         />

@@ -47,14 +47,16 @@ export function Emoji({ text, size = 24 }: Props) {
       attributes: () => ({
         width: String(size),
         height: String(size),
+        "data-slot": "emoji-image",
       }),
     })
     .replace(/\salt="[^"]*"/, ' alt=""');
 
   return (
     <span
-      className="inline-flex items-center"
-      style={{ width: size, height: size }}
+      data-slot="emoji"
+      className="h-(--emoji-size) w-(--emoji-size) inline-flex items-center"
+      style={{ "--emoji-size": `${size}px` } as React.CSSProperties}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

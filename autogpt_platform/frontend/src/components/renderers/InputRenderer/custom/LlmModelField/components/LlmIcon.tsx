@@ -55,10 +55,10 @@ export function LlmIcon({ value, size = 20 }: Props) {
   const fallback = value?.trim().slice(0, 1).toUpperCase() || "?";
   return (
     <div
-      className="flex items-center justify-center rounded-xsmall bg-zinc-100"
+      className="flex items-center justify-center rounded-xsmall bg-surface-hover"
       style={{ width: size, height: size }}
     >
-      <Text variant="small" className="text-zinc-500">
+      <Text variant="small" className="text-foreground-tertiary">
         {fallback}
       </Text>
     </div>

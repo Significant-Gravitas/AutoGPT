@@ -1,9 +1,12 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// text-emerald-700 #047857.
+
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { cn } from "@/lib/utils";
 import { Alert02Icon, Tick01Icon } from "@hugeicons/core-free-icons";
 import type { BanAccountResult } from "../../useBanAccounts";
@@ -34,7 +37,7 @@ export function AccountChecklist({
   return (
     <ul
       className={cn(
-        "divide-y divide-zinc-200 overflow-y-auto rounded-xl border border-zinc-200",
+        "divide-y divide-border-base overflow-y-auto rounded-xl border border-border-base",
         maxHeightClassName,
       )}
     >
@@ -53,7 +56,7 @@ export function AccountChecklist({
               htmlFor={`ban-${account.id}`}
               className={cn(
                 "flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2",
-                account.banned && "text-zinc-400 line-through",
+                account.banned && "text-foreground-subtle line-through",
               )}
             >
               <Text
@@ -65,13 +68,21 @@ export function AccountChecklist({
                 {account.email}
               </Text>
               {account.name.trim() ? (
-                <Text variant="small" as="span" className="text-zinc-500">
+                <Text
+                  variant="small"
+                  as="span"
+                  className="text-foreground-tertiary"
+                >
                   {account.name}
                 </Text>
               ) : null}
             </label>
             {account.banned ? (
-              <Text variant="small" as="span" className="text-zinc-500">
+              <Text
+                variant="small"
+                as="span"
+                className="text-foreground-tertiary"
+              >
                 already banned
               </Text>
             ) : (
@@ -101,9 +112,9 @@ function ResultMark({ result }: { result: BanAccountResult }) {
     );
   }
   return (
-    <span className="flex items-center gap-1 text-red-700">
+    <span className="flex items-center gap-1 text-error-foreground">
       <Icon icon={Alert02Icon} size={14} />
-      <Text variant="small" as="span" className="text-red-700">
+      <Text variant="small" as="span" className="text-error-foreground">
         {result.error ?? "failed"}
       </Text>
     </span>

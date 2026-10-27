@@ -1,5 +1,9 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-500 #6B7280, bg-green-500 #16A34A, text-gray-400 #9CA3AF,
+// text-pink-600 #D7428B.
+
 import { useState } from "react";
 import {
   TableRow,
@@ -8,15 +12,16 @@ import {
   TableHeader,
   TableHead,
   TableBody,
-} from "@/components/__legacy__/ui/table";
-import { Badge } from "@/components/__legacy__/ui/badge";
+} from "@/components/molecules/Table/components/TablePrimitives";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { ChevronDown, ChevronRight, Eye } from "lucide-react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import type { StoreListingWithVersionsAdminView } from "@/app/api/__generated__/models/storeListingWithVersionsAdminView";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { ApproveRejectButtons } from "./ApproveRejectButton";
 import { DownloadAgentAdminButton } from "./DownloadAgentButton";
 
@@ -24,13 +29,29 @@ import { DownloadAgentAdminButton } from "./DownloadAgentButton";
 const getStatusBadge = (status: SubmissionStatus) => {
   switch (status) {
     case SubmissionStatus.PENDING:
-      return <Badge className="bg-amber-500">Pending</Badge>;
+      return (
+        <Badge variant="solid" className="bg-warning">
+          Pending
+        </Badge>
+      );
     case SubmissionStatus.APPROVED:
-      return <Badge className="bg-green-500">Approved</Badge>;
+      return (
+        <Badge variant="solid" className="bg-green-500">
+          Approved
+        </Badge>
+      );
     case SubmissionStatus.REJECTED:
-      return <Badge className="bg-red-500">Rejected</Badge>;
+      return (
+        <Badge variant="solid" className="bg-error">
+          Rejected
+        </Badge>
+      );
     default:
-      return <Badge className="bg-gray-500">Draft</Badge>;
+      return (
+        <Badge variant="solid" className="bg-gray-500">
+          Draft
+        </Badge>
+      );
   }
 };
 
@@ -82,7 +103,7 @@ export function ExpandableRow({
                 <Link
                   href={`/admin/marketplace/preview/${latestVersion.listing_version_id}`}
                 >
-                  <Button size="sm" variant="outline">
+                  <Button size="legacy-sm" variant="legacy-outline">
                     <Eye className="mr-2 h-4 w-4" />
                     Preview
                   </Button>
@@ -106,7 +127,14 @@ export function ExpandableRow({
         <TableRow>
           <TableCell colSpan={7} className="border-t-0 p-0">
             <div className="bg-muted/30 px-4 py-3">
-              <h4 className="mb-2 text-sm font-semibold">Version History</h4>
+              <Text
+                variant="body-semibold-tight"
+                as="h4"
+                tone="inherit"
+                className="mb-2"
+              >
+                Version History
+              </Text>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -136,7 +164,9 @@ export function ExpandableRow({
                           v{version.listing_version || "?"}
                           {version.listing_version_id ===
                             listing.active_listing_version_id && (
-                            <Badge className="ml-2 bg-blue-500">Active</Badge>
+                            <Badge variant="solid" className="ml-2 bg-info">
+                              Active
+                            </Badge>
                           )}
                         </TableCell>
                         <TableCell>{getStatusBadge(version.status)}</TableCell>
@@ -204,7 +234,10 @@ export function ExpandableRow({
                                 <Link
                                   href={`/admin/marketplace/preview/${version.listing_version_id}`}
                                 >
-                                  <Button size="sm" variant="outline">
+                                  <Button
+                                    size="legacy-sm"
+                                    variant="legacy-outline"
+                                  >
                                     <Eye className="mr-2 h-4 w-4" />
                                     Preview
                                   </Button>

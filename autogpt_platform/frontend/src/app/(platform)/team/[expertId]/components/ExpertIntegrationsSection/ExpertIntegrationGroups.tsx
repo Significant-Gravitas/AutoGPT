@@ -100,37 +100,43 @@ export function ExpertIntegrationGroups({
         <motion.div
           key={group.id}
           variants={reduceMotion ? REDUCED_ITEM_VARIANTS : ITEM_VARIANTS}
+          // ui/accordion's content wrapper sets text-sm, which the profile tab
+          // ran at 15px/1.5rem; its slot takes the same size here.
+          className="[&_[data-slot=accordion-panel]]:text-body-md"
         >
           <Accordion
             type="single"
             collapsible
             defaultValue={group.id}
-            className="w-full overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm"
+            className="w-full overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm"
           >
             <AccordionItem value={group.id} className="border-b-0">
-              <AccordionTrigger className="px-3 py-2.5 pr-4 hover:no-underline [&>svg]:size-4 [&>svg]:text-zinc-500">
+              <AccordionTrigger
+                textSize="body-md"
+                className="px-3 py-2.5 pr-4 hover:no-underline [&>svg]:size-4 [&>svg]:text-foreground-tertiary"
+              >
                 <div className="flex items-center gap-2.5">
                   <IntegrationLogo
                     provider={group.icon}
                     alt={`${group.name} logo`}
                     size={20}
-                    className="rounded-full bg-white"
+                    className="rounded-full bg-surface"
                   />
-                  <Text variant="body-medium" as="span" tone="primary">
+                  <Text variant="body-md-medium" as="span" tone="primary">
                     {group.name}
                   </Text>
                   <Text
                     variant="small-medium"
                     as="span"
                     tone="secondary"
-                    className="inline-flex items-center justify-center rounded-md bg-zinc-100 px-1.5 py-0.5 tabular-nums"
+                    className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 tabular-nums"
                   >
                     {group.integrations.length}
                   </Text>
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-0 pb-0 pt-0">
-                <div className="flex flex-col divide-y divide-zinc-100 border-t border-zinc-200">
+                <div className="flex flex-col divide-y divide-separator border-t border-border-base">
                   {group.integrations.map((integration) => (
                     <ExpertIntegrationRow
                       key={integration.credential_id}
@@ -164,24 +170,28 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
     >
       <div className="flex flex-col gap-0.5">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" as="span" tone="primary">
+          <Text variant="body-md-medium" as="span" tone="primary">
             {name}
           </Text>
           <Text
             variant="small"
             as="span"
             tone="secondary"
-            className="inline-flex items-center justify-center rounded-md bg-zinc-100 px-1.5 py-0.5 leading-4"
+            className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 leading-4"
           >
             {TYPE_LABELS[integration.type] ?? integration.type}
           </Text>
         </div>
-        <Text variant="body" as="span" tone="muted">
+        <Text variant="body-md" as="span" tone="muted">
           {CONNECTION_LABELS[integration.type] ?? "Configured"}
         </Text>
       </div>
       <div className="flex items-center gap-3">
-        <Text variant="eyebrow" className="text-emerald-600">
+        <Text
+          // TODO(tokens): no exact role: text-emerald-600 #059669
+          variant="eyebrow"
+          className="text-emerald-600"
+        >
           Ready
         </Text>
         <button
@@ -190,7 +200,8 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
           disabled={isRemoving}
           aria-busy={isRemoving}
           aria-label={`Remove ${name}`}
-          className="inline-flex size-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-red-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 disabled:cursor-not-allowed disabled:opacity-50"
+          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
+          className="inline-flex size-7 items-center justify-center rounded-md text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-error focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isRemoving ? (
             <Icon icon={Loading03Icon} size={16} className="animate-spin" />

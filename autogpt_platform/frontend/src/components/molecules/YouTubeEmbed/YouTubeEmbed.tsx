@@ -38,6 +38,7 @@ export function YouTubeEmbed({
   if (showPlayer && embedUrl) {
     return (
       <iframe
+        data-slot="youtube-embed"
         className={cn("h-full w-full", className)}
         src={embedUrl}
         title={title}
@@ -52,16 +53,30 @@ export function YouTubeEmbed({
     <div
       role="group"
       aria-label={title}
+      data-slot="youtube-embed"
       className={cn(
-        "flex h-full w-full flex-col items-center justify-center gap-3 overflow-auto bg-zinc-100 p-4 text-center",
+        "flex h-full w-full flex-col items-center justify-center gap-3 overflow-auto bg-surface-hover p-4 text-center",
         className,
       )}
     >
-      <Icon icon={YoutubeIcon} size={28} className="text-zinc-400" />
-      <Text variant="body" tone="secondary" className="max-w-sm">
+      <Icon
+        data-slot="youtube-embed-icon"
+        icon={YoutubeIcon}
+        size={28}
+        className="text-foreground-subtle"
+      />
+      <Text
+        variant="body"
+        tone="secondary"
+        data-slot="youtube-embed-notice"
+        className="max-w-sm"
+      >
         {getNoticeText({ hasVideoId: videoId !== null, canAllowHere })}
       </Text>
-      <div className="flex flex-wrap items-center justify-center gap-2">
+      <div
+        data-slot="youtube-embed-actions"
+        className="flex flex-wrap items-center justify-center gap-2"
+      >
         {watchUrl && (
           <Button
             as="NextLink"
@@ -71,12 +86,18 @@ export function YouTubeEmbed({
             variant="secondary"
             size="small"
             leadingIcon={YoutubeIcon}
+            data-slot="youtube-embed-watch"
           >
             Watch on YouTube
           </Button>
         )}
         {canLoadOnce && (
-          <Button variant="primary" size="small" onClick={loadVideo}>
+          <Button
+            variant="primary"
+            size="small"
+            onClick={loadVideo}
+            data-slot="youtube-embed-load"
+          >
             Load video
           </Button>
         )}
@@ -86,6 +107,7 @@ export function YouTubeEmbed({
             size="small"
             disabled={!settingsReady}
             onClick={openSettings}
+            data-slot="youtube-embed-settings"
           >
             Cookie settings
           </Button>

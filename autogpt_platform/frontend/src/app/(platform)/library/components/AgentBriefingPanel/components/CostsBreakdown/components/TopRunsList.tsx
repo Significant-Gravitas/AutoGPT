@@ -24,10 +24,14 @@ export function TopRunsList({ runs, agentLookup }: Props) {
 
   return (
     <section className="flex flex-col gap-2 lg:mt-[1rem]">
-      <Text variant="body-medium" className="text-neutral-800 lg:mb-[.5rem]">
+      <Text
+        // TODO(tokens): no exact role for text-neutral-800 (#262626)
+        variant="body-medium"
+        className="text-neutral-800 lg:mb-[.5rem]"
+      >
         Most expensive tasks
       </Text>
-      <ul className="flex flex-col divide-y divide-zinc-100 rounded-medium border border-zinc-100 bg-white">
+      <ul className="flex flex-col divide-y divide-separator rounded-medium border border-separator bg-surface">
         {visible.map((run) => {
           const agent = agentLookup.get(run.graph_id);
           const label = agent?.name ?? `Workflow ${run.graph_id.slice(0, 8)}`;
@@ -38,10 +42,18 @@ export function TopRunsList({ runs, agentLookup }: Props) {
           const row = (
             <div className="flex items-center justify-between gap-3 px-3 py-2">
               <div className="min-w-0 flex-1">
-                <Text variant="body" className="truncate text-neutral-800">
+                <Text
+                  // TODO(tokens): no exact role for text-neutral-800 (#262626)
+                  variant="body"
+                  className="truncate text-neutral-800"
+                >
                   {label}
                 </Text>
-                <Text variant="small" className="text-neutral-400">
+                <Text
+                  // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
+                  variant="small"
+                  className="text-neutral-400"
+                >
                   {formatRelativeDate(run.started_at)}
                   {run.node_error_count > 0
                     ? ` · ${run.node_error_count} error${run.node_error_count === 1 ? "" : "s"}`
@@ -50,6 +62,7 @@ export function TopRunsList({ runs, agentLookup }: Props) {
               </div>
               <Text
                 variant="body-medium"
+                // TODO(tokens): no exact role for text-neutral-800 (#262626)
                 className="tabular-nums text-neutral-800"
               >
                 {formatCents(run.cost_cents)}
@@ -60,7 +73,7 @@ export function TopRunsList({ runs, agentLookup }: Props) {
           return (
             <li key={run.execution_id}>
               {href ? (
-                <Link href={href} className="block hover:bg-zinc-50">
+                <Link href={href} className="block hover:bg-surface-muted">
                   {row}
                 </Link>
               ) : (

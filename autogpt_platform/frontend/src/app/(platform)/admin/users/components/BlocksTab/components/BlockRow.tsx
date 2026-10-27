@@ -31,12 +31,15 @@ export function BlockRow({ block }: Props) {
         <Icon
           icon={isIP ? GlobeIcon : MailAtSign01Icon}
           size={16}
-          className="shrink-0 text-zinc-500"
+          className="shrink-0 text-foreground-tertiary"
         />
         <Text
           variant={isIP ? "body" : "body-medium"}
           as="span"
-          className={cn("truncate", isIP && "font-mono text-[13px]")}
+          className={cn(
+            "truncate",
+            isIP && "font-mono text-body-sm leading-inherit",
+          )}
           translate="no"
         >
           {isIP ? formatBlockedAddress(block.value) : block.value}
@@ -45,12 +48,16 @@ export function BlockRow({ block }: Props) {
       <OverflowText
         value={block.reason}
         variant="body"
-        className="text-zinc-700"
+        className="text-foreground-body"
       />
-      <Text variant="small" as="span" className="truncate text-zinc-500">
+      <Text
+        variant="small"
+        as="span"
+        className="truncate text-foreground-tertiary"
+      >
         {block.created_by_email ?? "unknown"}
       </Text>
-      <Text variant="small" as="span" className="text-zinc-500">
+      <Text variant="small" as="span" className="text-foreground-tertiary">
         {formatDateTime(block.created_at)}
       </Text>
       <Text
@@ -58,10 +65,10 @@ export function BlockRow({ block }: Props) {
         as="span"
         className={
           !block.expires_at
-            ? "text-zinc-500"
+            ? "text-foreground-tertiary"
             : endsSoon
-              ? "text-amber-700"
-              : "text-zinc-700"
+              ? "text-warning-foreground"
+              : "text-foreground-body"
         }
       >
         {formatEnds(block.expires_at)}

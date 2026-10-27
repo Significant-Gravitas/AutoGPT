@@ -86,7 +86,7 @@ export function CredentialRow({
     <div
       ref={containerRef}
       className={cn(
-        "flex min-w-[20rem] items-center gap-3 rounded-medium border border-zinc-200 bg-white p-3 transition-colors",
+        "flex min-w-[20rem] items-center gap-3 rounded-medium border border-border-base bg-surface p-3 transition-colors",
         asSelectTrigger && isNodeVariant
           ? "min-w-0 flex-1 overflow-hidden border-0 bg-transparent"
           : asSelectTrigger
@@ -102,10 +102,13 @@ export function CredentialRow({
           : undefined
       }
     >
-      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900">
-        <ProviderIcon className="h-3 w-3 text-white" />
+      <div
+        // TODO(tokens): no exact role for bg-gray-900 #111827
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900"
+      >
+        <ProviderIcon className="h-3 w-3 text-action-foreground" />
       </div>
-      <TypeIcon className="h-5 w-5 shrink-0 text-zinc-800" />
+      <TypeIcon className="h-5 w-5 shrink-0 text-foreground-emphasis" />
       <div
         className={cn(
           "relative flex min-w-0 flex-1 flex-nowrap items-center gap-4",
@@ -123,7 +126,7 @@ export function CredentialRow({
             {getCredentialDisplayName(credential, displayName)}
           </Text>
           {isRealCredentialType && (
-            <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-[0.625rem] font-medium leading-tight text-zinc-500">
+            <span className="shrink-0 rounded bg-surface-hover px-1.5 py-0.5 text-tiny font-medium leading-tight text-foreground-tertiary">
               {getCredentialTypeLabel(credType)}
             </span>
           )}
@@ -143,6 +146,7 @@ export function CredentialRow({
       {(showCaret || (asSelectTrigger && !readOnly)) && (
         <Icon
           icon={ArrowDown01Icon}
+          // TODO(tokens): no exact role for text-gray-400 #9ca3af
           className="h-4 w-4 shrink-0 text-gray-400"
         />
       )}
@@ -150,10 +154,15 @@ export function CredentialRow({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
+              // TODO(tokens): no exact role for hover:bg-gray-100 #f3f4f6
               className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
               onClick={(e) => e.stopPropagation()}
             >
-              <Icon icon={MoreVerticalIcon} className="h-5 w-5 text-gray-400" />
+              <Icon
+                // TODO(tokens): no exact role for text-gray-400 #9ca3af
+                icon={MoreVerticalIcon}
+                className="h-5 w-5 text-gray-400"
+              />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

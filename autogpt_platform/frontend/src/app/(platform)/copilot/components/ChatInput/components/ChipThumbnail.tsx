@@ -19,7 +19,7 @@ interface Props {
 export function ChipThumbnail({ attachment, stacked, fallback }: Props) {
   const [failed, setFailed] = useState(false);
   const className = cn(
-    "size-[18px] shrink-0 rounded-full bg-zinc-200 object-cover",
+    "size-[18px] shrink-0 rounded-full bg-surface-active object-cover",
     stacked ? "-ml-1" : "-ml-1.5",
   );
 

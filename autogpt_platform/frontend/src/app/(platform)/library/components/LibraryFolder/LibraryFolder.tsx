@@ -65,8 +65,10 @@ export function LibraryFolder({
       data-folder-id={id}
       className={`group relative inline-flex h-[10.625rem] w-full max-w-[25rem] cursor-pointer flex-col items-start justify-between gap-2.5 rounded-medium border p-4 shadow-sm backdrop-blur-md transition-all duration-200 hover:shadow-md ${
         isDragOver
-          ? "border-blue-400 bg-blue-50 ring-2 ring-blue-200"
-          : "border-indigo-200/40 bg-gradient-to-br from-indigo-50/40 via-white/70 to-purple-50/30"
+          ? // TODO(tokens): no exact role for border-blue-400 (#60A5FA), ring-blue-200 (#BFDBFE)
+            "border-blue-400 bg-info-surface ring-2 ring-blue-200"
+          : // TODO(tokens): no exact role for border-indigo-200/40 (#C7D2FE), from-indigo-50/40 (#EEF2FF), to-purple-50/30 (#F1EBFE)
+            "border-indigo-200/40 bg-gradient-to-br from-indigo-50/40 via-white/70 to-purple-50/30"
       }`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -88,7 +90,7 @@ export function LibraryFolder({
           <div className="flex items-center gap-2">
             <Text
               variant="small"
-              className="text-zinc-500"
+              className="text-foreground-tertiary"
               data-testid="library-folder-agent-count"
             >
               {agentCount} {agentCount === 1 ? "workflow" : "workflows"}
@@ -118,7 +120,8 @@ export function LibraryFolder({
             e.stopPropagation();
             onEdit?.();
           }}
-          className="h-8 w-8 border border-neutral-200 bg-white/80 p-2 text-neutral-500 hover:bg-white hover:text-neutral-700"
+          // TODO(tokens): no exact role for border-neutral-200 (#E5E5E5), text-neutral-500 (#737373), hover:text-neutral-700 (#404040)
+          className="h-8 w-8 border border-neutral-200 bg-surface/80 p-2 text-neutral-500 hover:bg-surface hover:text-neutral-700"
         >
           <Icon icon={PencilIcon} className="h-4 w-4" />
         </Button>
@@ -130,7 +133,8 @@ export function LibraryFolder({
             e.stopPropagation();
             onDelete?.();
           }}
-          className="h-8 w-8 border border-neutral-200 bg-white/80 p-2 text-neutral-500 hover:bg-white hover:text-neutral-700"
+          // TODO(tokens): no exact role for border-neutral-200 (#E5E5E5), text-neutral-500 (#737373), hover:text-neutral-700 (#404040)
+          className="h-8 w-8 border border-neutral-200 bg-surface/80 p-2 text-neutral-500 hover:bg-surface hover:text-neutral-700"
         >
           <Icon icon={Delete02Icon} className="h-4 w-4" />
         </Button>

@@ -13,7 +13,7 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import Link, { useLinkStatus } from "next/link";
 import { memo, useRef } from "react";
 import {
@@ -69,7 +69,7 @@ function ChatLinkLoader() {
   return (
     <LoadingSpinner
       size="small"
-      className="ml-auto !size-4 shrink-0 text-zinc-500"
+      className="ml-auto !size-4 shrink-0 text-foreground-tertiary"
     />
   );
 }
@@ -131,7 +131,7 @@ export const RecentChatItem = memo(function RecentChatItem({
             }
             onSubmitRename(session.id);
           }}
-          className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 max-md:py-2 max-md:text-base"
+          className="w-full rounded-md border border-border-strong bg-surface px-2 py-1 text-body leading-5 text-foreground-emphasis outline-none focus:border-brand focus:ring-1 focus:ring-brand max-md:py-2 max-md:text-body-lg max-md:leading-6"
         />
       </SidebarMenuItem>
     );
@@ -143,12 +143,14 @@ export const RecentChatItem = memo(function RecentChatItem({
         asChild
         isActive={isActive}
         tooltip={title}
-        className="font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal hover:!bg-zinc-100 max-md:h-11 max-md:!pr-11 max-md:text-[15px]"
+        // leading-5 keeps SidebarMenuButton's 20px line-height under max-md:text-body-md.
+        className="font-normal hover:!bg-surface-hover data-[active=true]:!bg-surface-hover data-[active=true]:font-normal max-md:h-11 max-md:!pr-11 max-md:text-body-md max-md:leading-5"
       >
         <Link href={`/home?sessionId=${session.id}`}>
           {session.is_processing ? (
             <LoadingSpinner
               size="small"
+              // TODO(tokens): no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a hover fill), not a text colour
               className="size-4 shrink-0 text-purple-600"
             />
           ) : hasPlatformLogo ? (
@@ -219,7 +221,8 @@ export const RecentChatItem = memo(function RecentChatItem({
           <DropdownMenuItem
             onClick={() => onDelete(session.id, session.title)}
             disabled={isDeleting}
-            className="text-red-600 focus:bg-red-50 focus:text-red-600"
+            // TODO(tokens): no fitting role for text-red-600, focus:text-red-600 #D93636; #D93636 is error-hover (a hover fill), not a text colour
+            className="text-red-600 focus:bg-error-surface focus:text-red-600"
           >
             <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
             Delete chat
