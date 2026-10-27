@@ -43,7 +43,7 @@ export function StepHeader({
           {isRecording ? (
             <ElapsedTime seconds={elapsedSeconds} />
           ) : (
-            <Text variant="h4">
+            <Text variant="h3">
               {stateHeadline(screen, restHeadline, insufficientMode)}
             </Text>
           )}
@@ -51,7 +51,7 @@ export function StepHeader({
       </RevealItem>
       {screen === "rest" && (
         <RevealItem className="flex flex-col items-center gap-4">
-          <Text variant="body" tone="muted" className="max-w-lg">
+          <Text variant="large" tone="muted" className="max-w-xl md:text-lead">
             Tell me what you do and what eats up your week.{" "}
             <Text variant="body-medium" as="span">
               Otto uses it to pick your experts and plan your first week.
