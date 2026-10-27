@@ -557,10 +557,12 @@ export function ToolResult({ row, readOnly = false }: Props) {
   const output = asObject(row.output);
   const pendingQuestions = useContext(PendingQuestionsContext);
 
-  // The latest unanswered clarifying questions render as an interactive
-  // answer form right on their chain row (older ones keep the read-only
-  // card from toolCard).
-  if (pendingQuestions?.callIds.includes(row.key)) {
+  // The latest unanswered clarifying questions are one card, so one form
+  // hosts them: on the lifted copy of the first asking row, the one the chain
+  // keeps mounted for its action card. Any other copy (a running row animating
+  // out as its output lands, or a later ask_question in the same message)
+  // keeps the read-only card from toolCard.
+  if (row.lifted && pendingQuestions?.callIds[0] === row.key) {
     return (
       <QuestionsForm
         key={pendingQuestions.dockId}
