@@ -45,6 +45,7 @@ FROM rabbitmq:4.3.6@sha256:3e5cc23235b0eb850f604e8ace10d9a9b6d05be3e36730e53522e
 
 # FalkorDB provides the Graphiti memory store. Copy only the server and module;
 # its browser UI is not part of the appliance image.
+# Ahead of infra's 4.12.5 until every FalkorDB pin and the Redis license bundle move together (OPEN-3746, #16224).
 FROM falkordb/falkordb-server:v4.20.1@sha256:8b676c2e72271f5d06541136eb214b0db50180636cc86f7ee38d63287e9b8d13 AS falkordb
 
 # autogpt-backend is supplied by Docker Bake from the existing backend

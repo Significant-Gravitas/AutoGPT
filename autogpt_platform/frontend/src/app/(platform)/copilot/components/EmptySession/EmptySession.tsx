@@ -104,6 +104,7 @@ export function EmptySession({
   const { inputPlaceholder } = useHomeComposer({
     enabled:
       !intro.isVisible && !intro.isAwaitingGreeting && !isKickoffStarting,
+    greetingPath: intro.isVisible ? intro.path : null,
   });
 
   if (isKickoffStarting) {
@@ -197,6 +198,7 @@ export function EmptySession({
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
                   expertId={expertId}
                   expertName={expertName}
+                  assistantName={selectedExpert?.name ?? expertName ?? null}
                   recipientPicker={
                     intro.isVisible ? recipientPicker : undefined
                   }

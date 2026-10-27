@@ -4,7 +4,7 @@
 // bg-gray-50 #F9FAFB, text-gray-500 #6B7280.
 
 import { useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Dialog,
   DialogContent,
@@ -13,9 +13,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/molecules/Dialog/components/DialogPrimitives";
-import { Label } from "@/components/__legacy__/ui/label";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
-import { Input } from "@/components/__legacy__/ui/input";
+import { Label } from "@/components/atoms/Label/Label";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { useRouter } from "next/navigation";
 import { addDollars } from "@/app/(platform)/admin/spending/actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -66,8 +66,8 @@ export function AdminAddMoneyButton({
   return (
     <>
       <Button
-        size="sm"
-        variant="default"
+        size="legacy-sm"
+        variant="legacy-default"
         onClick={(e) => {
           e.stopPropagation();
           setIsAddMoneyDialogOpen(true);
@@ -110,7 +110,7 @@ export function AdminAddMoneyButton({
                   <div className="flex items-center justify-center rounded-l-md border border-r-0 bg-gray-50 px-3 text-gray-500">
                     $
                   </div>
-                  <Input
+                  <BaseInput
                     id="dollarAmount"
                     type="number"
                     step="0.01"
@@ -138,13 +138,17 @@ export function AdminAddMoneyButton({
             <DialogFooter>
               <Button
                 type="button"
-                variant="outline"
+                variant="legacy-outline"
                 onClick={() => setIsAddMoneyDialogOpen(false)}
                 disabled={isSubmitting}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button
+                variant="legacy-default"
+                type="submit"
+                disabled={isSubmitting}
+              >
                 {isSubmitting ? "Adding..." : "Add Dollars"}
               </Button>
             </DialogFooter>

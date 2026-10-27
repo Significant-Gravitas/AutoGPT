@@ -9,7 +9,7 @@ import {
 
 // DotDistortionShader paints a canvas/WebGL frame that happy-dom cannot run and
 // that is purely decorative — stub it so the real chat tree can render.
-vi.mock("@/components/ui/dot-distortion-shader", () => ({
+vi.mock("../components/DotDistortionShader/DotDistortionShader", () => ({
   DotDistortionShader: () => null,
 }));
 
@@ -18,7 +18,7 @@ import {
   installCookiebot,
   removeCookiebot,
 } from "@/tests/integrations/cookiebot";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 
 const { posthog } = vi.hoisted(() => ({
   posthog: { __loaded: true, is_capturing: () => true, capture: vi.fn() },

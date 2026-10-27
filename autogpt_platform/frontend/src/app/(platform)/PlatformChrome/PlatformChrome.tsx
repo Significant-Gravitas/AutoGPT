@@ -12,7 +12,7 @@ import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import { cn } from "@/lib/utils";
 
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
@@ -64,8 +64,9 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
 
   if (showAppSidebar) {
     // The browser's cookie stays current across client navigation; the layout's does not.
+    // Expanded until the user collapses it, so a new user can see their chats.
     const openOutsideBuilder =
-      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? false;
+      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? true;
     return (
       <SidebarProvider
         persistState

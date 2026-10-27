@@ -96,7 +96,9 @@
       // folders the React Compiler compiles. Tests are never compiled.
       "files": [
         "src/app/(platform)/copilot/**",
-        "src/components/ai-elements/**"
+        "src/components/organisms/Conversation/**",
+        "src/components/organisms/Message/**",
+        "src/components/organisms/PromptInput/**"
       ],
       "excludedFiles": [
         "**/__tests__/**",
@@ -154,7 +156,7 @@
         "src/app/(platform)/copilot/useLoadMoreMessages.ts",
         "src/app/(platform)/copilot/useSettleGate.ts",
         "src/app/(platform)/copilot/voice/useVoiceMode.ts",
-        "src/components/ai-elements/message.tsx"
+        "src/components/organisms/Message/Message.tsx"
       ],
       "rules": { "react-hooks/exhaustive-deps": "warn" }
     },

@@ -1,11 +1,12 @@
 "use client";
 
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { TypingText } from "@/components/molecules/TypingText/TypingText";
-import { cn } from "@/lib/utils";
-import { Tick02Icon } from "@hugeicons/core-free-icons";
+import {
+  ChecklistMark,
+  type ChecklistState,
+} from "../components/ChecklistMark";
 import { usePreparingStep } from "./usePreparingStep";
 
 interface Props {
@@ -38,30 +39,30 @@ export function PreparingStep({ onComplete }: Props) {
         />
       </div>
 
-      <ul className="flex flex-col gap-2">
-        {checklist.map((item, i) => (
-          <li key={item} className="flex items-center gap-2">
-            <Icon
-              icon={Tick02Icon}
-              size={16}
-              className={cn(
-                "shrink-0 transition-colors",
-                i < completedItems
-                  ? "text-foreground-strong"
-                  : "text-foreground-disabled",
-              )}
-            />
-            <Text
-              variant="body"
-              as="span"
-              tone={i < completedItems ? "primary" : "muted"}
-              className="transition-colors"
-            >
-              {item}
-            </Text>
-          </li>
-        ))}
+      <ul className="flex flex-col gap-3">
+        {checklist.map((item, i) => {
+          const state = getChecklistState(i, completedItems);
+          return (
+            <li key={item} className="flex items-center gap-3">
+              <ChecklistMark key={state} state={state} />
+              <Text
+                variant={state === "active" ? "large-medium" : "large"}
+                as="span"
+                tone={state === "pending" ? "muted" : "primary"}
+                className="transition-colors"
+              >
+                {item}
+              </Text>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
+}
+
+function getChecklistState(index: number, completedItems: number) {
+  if (index < completedItems) return "done" satisfies ChecklistState;
+  if (index === completedItems) return "active" satisfies ChecklistState;
+  return "pending" satisfies ChecklistState;
 }

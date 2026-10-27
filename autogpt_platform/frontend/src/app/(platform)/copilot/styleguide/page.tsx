@@ -4,12 +4,12 @@ import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import {
   Conversation,
   ConversationContent,
-} from "@/components/ai-elements/conversation";
+} from "@/components/organisms/Conversation/Conversation";
 import {
   Message,
   MessageContent,
   MessageResponse,
-} from "@/components/ai-elements/message";
+} from "@/components/organisms/Message/Message";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   CredentialsProvidersContext,
@@ -28,6 +28,8 @@ import { FindBlocksTool } from "../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../tools/RunBlock/RunBlock";
 import { SearchDocsTool } from "../tools/SearchDocs/SearchDocs";
+import { DrawnLineLoader } from "../components/DrawnLineLoader/DrawnLineLoader";
+import { ThinkingIndicator } from "../components/ChatMessagesContainer/components/ThinkingIndicator";
 import { ReasoningCollapse } from "../components/ChatMessagesContainer/components/ReasoningCollapse";
 import { GenericTool } from "../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../tools/ViewAgentOutput/ViewAgentOutput";
@@ -254,6 +256,16 @@ export default function StyleguidePage() {
                     </span>
                   </MessageContent>
                 </Message>
+              </SubSection>
+
+              <SubSection label="Thinking indicator">
+                <div className="flex flex-col gap-6">
+                  <ThinkingIndicator active />
+                  <DrawnLineLoader
+                    size={64}
+                    className="text-foreground-secondary"
+                  />
+                </div>
               </SubSection>
 
               <SubSection label="Error state">
