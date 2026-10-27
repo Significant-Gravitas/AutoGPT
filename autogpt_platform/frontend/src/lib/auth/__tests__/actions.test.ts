@@ -127,6 +127,39 @@ describe("validateSession", () => {
     expect(result.redirectPath).toBeUndefined();
   });
 
+  it("does not throw when called without a path and there is no session", async () => {
+    const warnSpy = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+    getServerSessionMock.mockResolvedValue(null);
+
+    const result = await validateSession(undefined);
+
+    expect(result).toEqual({
+      user: null,
+      isValid: false,
+      redirectPath: undefined,
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      "validateSession called with non-string currentPath:",
+      "undefined",
+    );
+  });
+
+  it("does not throw from the catch block when called without a path", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    getServerSessionMock.mockRejectedValue(new Error("db unavailable"));
+
+    const result = await validateSession(undefined);
+
+    expect(result.isValid).toBe(false);
+    expect(result.redirectPath).toBeUndefined();
+    expect(console.error).toHaveBeenCalledWith(
+      "Session validation error:",
+      expect.any(Error),
+    );
+  });
+
   it("falls back to a login redirect when the session lookup throws", async () => {
     getServerSessionMock.mockRejectedValue(new Error("db unavailable"));
 
