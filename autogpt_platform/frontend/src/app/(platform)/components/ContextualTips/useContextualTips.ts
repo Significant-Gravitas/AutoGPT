@@ -117,23 +117,37 @@ function useSecondChatMoment(isLoggedIn: boolean, userID: string | null) {
     enabled: isLoggedIn,
   });
   const orgID = useOrgTeamStore((store) => store.activeOrgID);
-  const listKey = `${userID}:${orgID}`;
-  const mostSeen = useRef<{ listKey: string; count: number } | null>(null);
-  const switched = useRef<{ listKey: string; at: number } | null>(null);
+  const mostSeen = useRef<ListCount | null>(null);
+  const switchedAt = useRef<{ list: ListCount; at: number } | null>(null);
   const count = sessions.length;
 
   useEffect(() => {
     if (!isLoggedIn || !isListLoaded) return;
     const previous = mostSeen.current;
-    if (previous && previous.listKey !== listKey) {
-      if (switched.current?.listKey !== listKey)
-        switched.current = { listKey, at: Date.now() };
-      if (dataUpdatedAt !== undefined && dataUpdatedAt <= switched.current.at)
+    const list = { userID, orgID, count };
+    if (previous && isAnotherList(previous, list)) {
+      if (!switchedAt.current || isAnotherList(switchedAt.current.list, list))
+        switchedAt.current = { list, at: Date.now() };
+      if (dataUpdatedAt !== undefined && dataUpdatedAt <= switchedAt.current.at)
         return;
     }
-    const seen = previous?.listKey === listKey ? previous : null;
+    const seen = previous && !isAnotherList(previous, list) ? previous : null;
     if (isFirstSecondChat(seen?.count ?? null, count))
       requestTip("second-chat");
-    mostSeen.current = { listKey, count: Math.max(seen?.count ?? 0, count) };
-  }, [isLoggedIn, isListLoaded, count, listKey, dataUpdatedAt]);
+    mostSeen.current = { ...list, count: Math.max(seen?.count ?? 0, count) };
+  }, [isLoggedIn, isListLoaded, count, userID, orgID, dataUpdatedAt]);
+}
+
+interface ListCount {
+  userID: string | null;
+  orgID: string | null;
+  count: number;
+}
+
+// Another account, or one organization replaced by another. The page's org
+// arriving for the first time is not a switch: until then the list shown is
+// the same one.
+function isAnotherList(seen: ListCount, now: ListCount) {
+  if (seen.userID !== now.userID) return true;
+  return seen.orgID !== null && seen.orgID !== now.orgID;
 }

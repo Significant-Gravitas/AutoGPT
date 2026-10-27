@@ -343,6 +343,36 @@ describe("contextual tips — the first second chat", () => {
     );
   });
 
+  it("keeps counting when the page's organization first loads", async () => {
+    // On load the active org is unknown until the org list arrives; the
+    // chats shown meanwhile are the same list, so its second chat counts.
+    act(() => useOrgTeamStore.setState({ activeOrgID: null }));
+    sessionList.current = {
+      sessions: [{ id: "a" }],
+      isLoading: false,
+      isListLoaded: true,
+      dataUpdatedAt: 1,
+    };
+    const { rerender } = render(<Page />);
+
+    act(() => useOrgTeamStore.setState({ activeOrgID: "org-personal" }));
+    await act(async () => {});
+    sessionList.current = {
+      sessions: [{ id: "a" }, { id: "b" }],
+      isLoading: false,
+      isListLoaded: true,
+      dataUpdatedAt: Date.now() + 60_000,
+    };
+    rerender(<Page />);
+
+    await waitFor(() =>
+      expect(useContextualTipStore.getState().requested).toContain(
+        "second-chat",
+      ),
+    );
+    act(() => useOrgTeamStore.setState({ activeOrgID: null }));
+  });
+
   it("starts counting afresh in another organization", async () => {
     // The chat list is per organization: switching from a personal org with
     // one chat to a team's with three is not starting a second chat.
