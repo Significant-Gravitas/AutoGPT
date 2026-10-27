@@ -19,8 +19,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { CreditsStage } from "./CreditsStage";
+import { useEffect, useRef, useState } from "react";
 import { ConnectToolsPanel } from "./ConnectToolsPanel";
 
 interface Props {
@@ -34,8 +33,6 @@ interface CapabilityCard {
   body: string;
   /** Stage art: a zinc icon in a white tile. */
   icon?: IconSvgElement;
-  /** Custom stage art, drawn instead of the icon tile. */
-  stage?: ReactNode;
   /** Expands the dialog into the embedded provider picker. */
   cta?: { label: string };
 }
@@ -56,11 +53,6 @@ const TEAM_CARDS: CapabilityCard[] = [
     body: "Slack, Gmail, Notion, GitHub and 40+ more. 500+ blocks under the hood.",
     icon: ElectricPlugsIcon,
     cta: { label: "Connect your tools" },
-  },
-  {
-    title: "Chats and automations are paid for separately.",
-    body: "Chat usage covers your chats with Otto and experts. Automation credits pay for workflow runs and images.",
-    stage: <CreditsStage />,
   },
   {
     title: "Every morning, a briefing.",
@@ -224,8 +216,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                             className="absolute inset-0"
                             data-testid="capability-card"
                           >
-                            {card.stage}
-                            {!card.stage && card.icon && (
+                            {card.icon && (
                               <div className="flex h-full items-center justify-center">
                                 <div className="flex size-14 items-center justify-center rounded-2xl bg-surface shadow-md">
                                   <Icon

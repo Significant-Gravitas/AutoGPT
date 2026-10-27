@@ -123,7 +123,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     const onClose = vi.fn();
 
     render(<OnboardingWelcomeDialog isOpen onClose={onClose} />);
-    const user = await advanceToCard(4);
+    const user = await advanceToCard(3);
 
     expect(await screen.findByText("Every morning, a briefing.")).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Meet your team" }));
@@ -131,7 +131,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
     expect(capture).toHaveBeenCalledWith("capability_cards_completed", {
-      card_index: 4,
+      card_index: 3,
       deck: "team",
     });
   });
@@ -262,9 +262,7 @@ describe("OnboardingWelcomeDialog — connect tools CTA", () => {
 
     await user.click(screen.getByRole("button", { name: "Next" }));
 
-    expect(
-      await screen.findByText("Chats and automations are paid for separately."),
-    ).toBeDefined();
+    expect(await screen.findByText("Every morning, a briefing.")).toBeDefined();
   });
 });
 
@@ -297,16 +295,6 @@ describe("OnboardingWelcomeDialog — the team deck", () => {
     ).toBeDefined();
 
     await user.click(screen.getByRole("button", { name: "Next" }));
-    expect(
-      await screen.findByText("Chats and automations are paid for separately."),
-    ).toBeDefined();
-    expect(
-      screen.getByText(
-        "Chat usage covers your chats with Otto and experts. Automation credits pay for workflow runs and images.",
-      ),
-    ).toBeDefined();
-
-    await user.click(screen.getByRole("button", { name: "Next" }));
     expect(await screen.findByText("Every morning, a briefing.")).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Meet your team" }),
@@ -320,9 +308,9 @@ it.each(["completed", "skipped"] as const)(
   async (outcome) => {
     recordCompletedSteps();
     render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
-    const user = await advanceToCard(4);
+    const user = await advanceToCard(3);
     expect(capture).toHaveBeenCalledWith("capability_card_viewed", {
-      card_index: 4,
+      card_index: 3,
       deck: "team",
     });
     if (outcome === "completed") {
@@ -331,7 +319,7 @@ it.each(["completed", "skipped"] as const)(
       await user.keyboard("{Escape}");
     }
     expect(capture).toHaveBeenCalledWith(`capability_cards_${outcome}`, {
-      card_index: 4,
+      card_index: 3,
       deck: "team",
     });
   },
