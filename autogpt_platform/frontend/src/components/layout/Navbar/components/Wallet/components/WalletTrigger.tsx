@@ -22,6 +22,7 @@ interface Props {
   completedCount: number | null;
   totalCount: number;
   flash: boolean;
+  unseen: boolean;
 }
 
 export function WalletTrigger({
@@ -34,6 +35,7 @@ export function WalletTrigger({
   completedCount,
   totalCount,
   flash,
+  unseen,
 }: Props) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
 
@@ -65,6 +67,14 @@ export function WalletTrigger({
                 aria-hidden
                 className={cn("inline-block", !compact && "xl:hidden")}
               />
+              {compact && unseen && (
+                <span
+                  aria-hidden
+                  data-testid="wallet-unseen-dot"
+                  // TODO(tokens): no exact role for bg-violet-600 (#7C3AED)
+                  className="absolute right-0.5 top-0.5 size-2 rounded-full bg-violet-600 ring-2 ring-sidebar"
+                />
+              )}
               {!compact && (
                 <ClassicBalance
                   formattedCredits={formattedCredits}

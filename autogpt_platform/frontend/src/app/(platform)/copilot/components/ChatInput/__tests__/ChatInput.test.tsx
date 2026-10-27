@@ -285,6 +285,76 @@ describe("ChatInput composer row", () => {
     expect(aligns).toEqual(["inline-start", "inline-end"]);
   });
 
+  it("leaves focus in a menu the user opened while it was still loading", () => {
+    // Home re-enables the composer once it has loaded; a profile menu opened
+    // before then lost focus to it, and Radix closes a popover on focus-out.
+    const { rerender } = render(
+      <>
+        <div role="dialog" aria-label="Profile menu">
+          <button type="button">Show me around</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </>,
+    );
+    const menuItem = screen.getByRole("button", { name: "Show me around" });
+    menuItem.focus();
+
+    rerender(
+      <>
+        <div role="dialog" aria-label="Profile menu">
+          <button type="button">Show me around</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </>,
+    );
+
+    expect(document.activeElement).toBe(menuItem);
+  });
+
+  it("takes focus from a dialog that is on its way out", () => {
+    // A sheet closing (picking a chat in the phone's sidebar) stays mounted
+    // through its exit animation, with focus still inside it.
+    const { rerender } = render(
+      <>
+        <div role="dialog" aria-label="Sidebar" data-state="closed">
+          <button type="button">A chat</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </>,
+    );
+    screen.getByRole("button", { name: "A chat", hidden: true }).focus();
+
+    rerender(
+      <>
+        <div role="dialog" aria-label="Sidebar" data-state="closed">
+          <button type="button">A chat</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </>,
+    );
+
+    expect(document.activeElement).toBe(screen.getByTestId("textarea"));
+  });
+
+  it("still takes focus inside the dialog it lives in", () => {
+    const { rerender } = render(
+      <div role="dialog" aria-label="Expert chat">
+        <button type="button">Close</button>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </div>,
+    );
+    screen.getByRole("button", { name: "Close" }).focus();
+
+    rerender(
+      <div role="dialog" aria-label="Expert chat">
+        <button type="button">Close</button>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </div>,
+    );
+
+    expect(document.activeElement).toBe(screen.getByTestId("textarea"));
+  });
+
   it("focuses the message box when the addon gutter is clicked", () => {
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
