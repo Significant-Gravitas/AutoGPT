@@ -30,7 +30,7 @@ interface Props {
    *  Kept above the collapse, so Hide and Show do not reset it. */
   moreChoice: boolean | null;
   onMoreChoice: (isOpen: boolean) => void;
-  /** Where focus goes when the last row is removed. */
+  /** Where focus goes when a removed row has no neighbour left. */
   fallbackFocusID: string;
   onSend: (task: SuggestedTask) => void;
   onRemove: (task: SuggestedTask) => void;
@@ -66,8 +66,13 @@ export function SuggestedTaskList({
     const willMoreOpen = isMoreOpen || (isTop && moreChoice === null);
     if (isTop && moreChoice === null) onMoreChoice(true);
     const rows = [...top, ...(willMoreOpen ? more : [])];
+    // The last task takes the block, and its toggle, with it.
+    const isLast = top.length + more.length === 1;
     onRemove(task);
-    focusTaskRow(getNeighbourID(rows, task), fallbackFocusID);
+    focusTaskRow(
+      getNeighbourID(rows, task),
+      isLast ? undefined : fallbackFocusID,
+    );
   }
 
   function renderRows(rows: SuggestedTask[], showWhy: boolean) {

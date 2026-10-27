@@ -115,6 +115,7 @@ interface HarnessProps {
   initiallyCollapsed?: boolean;
   onToggle?: (openRows: number) => void;
   showTeam?: boolean;
+  disabled?: boolean;
 }
 
 // Holds the collapsed state the way the page does, and reports each toggle.
@@ -123,6 +124,7 @@ function Harness({
   initiallyCollapsed = false,
   onToggle = () => {},
   showTeam,
+  disabled,
 }: HarnessProps) {
   const [isCollapsed, setIsCollapsed] = useState(initiallyCollapsed);
   function toggle(openRows: number) {
@@ -134,6 +136,7 @@ function Harness({
       suggestions={suggestions}
       collapse={{ isCollapsed, toggle }}
       showTeam={showTeam}
+      disabled={disabled}
     />
   );
 }
@@ -288,6 +291,24 @@ describe("SuggestedTasksBlock — Hide and Show", () => {
 
     expect(suggestions.sendTask).toHaveBeenCalledExactlyOnceWith(TASKS[0]);
     expect(suggestions.removeTask).toHaveBeenCalledExactlyOnceWith(TASKS[3]);
+  });
+});
+
+describe("SuggestedTasksBlock — focus after Remove", () => {
+  it("moves focus to the next row's Remove button while the rows are locked", async () => {
+    // One of the first three is started, so the more tasks are open.
+    render(<Harness disabled />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Remove: Watch competitor pricing" }),
+    );
+
+    // The next row's own button is disabled, so it cannot take focus.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Remove: Book the team offsite" }),
+      ),
+    );
   });
 });
 

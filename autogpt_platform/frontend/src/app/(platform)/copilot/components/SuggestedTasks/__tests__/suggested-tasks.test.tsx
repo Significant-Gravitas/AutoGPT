@@ -1172,6 +1172,24 @@ describe("Suggested first tasks — keyboard and screen readers", () => {
     );
   });
 
+  it("moves focus to the composer when the last task is removed", async () => {
+    stored[0] = { ...stored[0], state: "dismissed" };
+    stored[2] = { ...stored[2], state: "dismissed" };
+    renderHome();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: removeName(TASKS[1]) }),
+    );
+
+    // The list, and its Hide toggle, go with the last task.
+    await waitFor(() =>
+      expect(document.activeElement?.tagName).toBe("TEXTAREA"),
+    );
+    expect(
+      document.activeElement?.closest(`[${TOUR_TARGET_ATTRIBUTE}="composer"]`),
+    ).not.toBeNull();
+  });
+
   it("keeps the more tasks open through an Undo and through Hide and Show", async () => {
     stored = ALL_TASKS.map((task) => ({ ...task }));
     renderHome();

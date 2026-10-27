@@ -1,5 +1,7 @@
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
 import type { SuggestedTaskState } from "@/app/api/__generated__/models/suggestedTaskState";
+import { isTouchDevice } from "@/lib/platform";
+import { TOUR_TARGET_ATTRIBUTE } from "@/lib/tour-targets";
 import { Key, storage } from "@/services/storage/local-storage";
 import type { ExpertIdentity, ExpertIdentityMap } from "../../useExpertMap";
 import {
@@ -93,18 +95,36 @@ export function getStartHereID(tasks: SuggestedTask[]) {
 // Each row's own control carries this, so focus can find a row by its task.
 export const TASK_CONTROL_ATTRIBUTE = "data-task-control";
 
-// Focuses a row's control once the list has re-rendered, or the element
-// `fallbackID` names when there is no such row.
+// Focuses a row once the list has re-rendered: its own control, or its
+// Remove button while that control is locked. With no such row, the element
+// `fallbackID` names; with neither (the list went with its last task), the
+// composer, so focus never drops to the page.
 export function focusTaskRow(taskID: string | null, fallbackID?: string) {
   requestAnimationFrame(() => {
-    const row = taskID
-      ? document.querySelector<HTMLElement>(
-          `[${TASK_CONTROL_ATTRIBUTE}="${taskID.replace(/["\\]/g, "\\$&")}"]`,
-        )
-      : null;
     const fallback = fallbackID ? document.getElementById(fallbackID) : null;
-    (row ?? fallback)?.focus();
+    (findRowFocus(taskID) ?? fallback ?? findComposer())?.focus();
   });
+}
+
+function findRowFocus(taskID: string | null) {
+  if (!taskID) return null;
+  const control = document.querySelector<HTMLElement>(
+    `[${TASK_CONTROL_ATTRIBUTE}="${taskID.replace(/["\\]/g, "\\$&")}"]`,
+  );
+  if (!control || !control.matches(":disabled")) return control;
+  return (
+    control
+      .closest("li")
+      ?.querySelector<HTMLElement>("button:not(:disabled), a[href]") ?? null
+  );
+}
+
+// Not on a touch screen, where focus opens the keyboard.
+function findComposer() {
+  if (isTouchDevice()) return null;
+  return document.querySelector<HTMLElement>(
+    `[${TOUR_TARGET_ATTRIBUTE}="composer"] textarea:not(:disabled)`,
+  );
 }
 
 // The row to focus when `task` leaves the shown rows: the next one, else the
