@@ -1,8 +1,6 @@
 from math import isclose
 from typing import Any
 
-from pydantic import model_validator
-
 from backend.sdk import (
     APIKeyCredentials,
     BlockCategory,
@@ -13,12 +11,7 @@ from backend.sdk import (
 
 from ._base import SINGLE_QUESTION, ParallelDecisionBase, is_refusal
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from ._schemas import (
-    NoulCriteria,
-    ParallelDecisionInput,
-    ParallelDecisionOutput,
-    noul_question,
-)
+from ._schemas import NoulQuestion, ParallelDecisionInput, ParallelDecisionOutput
 from ._test import NOUL_ANSWER, TEST_CONTEXT, TEST_EVIDENCE, mock_response
 
 
@@ -28,16 +21,6 @@ class ParallelYesNoDecisionBlock(ParallelDecisionBase):
             description="A statement or question that is either true or false, "
             "e.g. 'Does Clay offer an official command-line interface?'",
             min_length=1,
-        )
-        true_means: str = SchemaField(
-            default="",
-            advanced=True,
-            description="What counts as true. Set together with false_means.",
-        )
-        false_means: str = SchemaField(
-            default="",
-            advanced=True,
-            description="What counts as false. Set together with true_means.",
         )
         data: Any = SchemaField(
             default=None,
@@ -53,13 +36,6 @@ class ParallelYesNoDecisionBlock(ParallelDecisionBase):
                 "Anything less certain goes to unsure. 0.5 never gives unsure."
             ),
         )
-
-        @model_validator(mode="after")
-        def _check_criteria(self):
-            # Checked here, not in run(), so a bad input fails before any charge.
-            if bool(self.true_means) != bool(self.false_means):
-                raise ValueError("Set both true_means and false_means, or neither.")
-            return self
 
     class Output(ParallelDecisionOutput):
         probability: float = SchemaField(
@@ -104,11 +80,9 @@ class ParallelYesNoDecisionBlock(ParallelDecisionBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        criteria = _criteria(input_data.true_means, input_data.false_means)
+        question = NoulQuestion(type="noul", question=input_data.question)
         result = await self.decide(
-            credentials,
-            input_data,
-            {SINGLE_QUESTION: noul_question(input_data.question, criteria)},
+            credentials, input_data, {SINGLE_QUESTION: question.to_api()}
         )
         for output in self.evidence(result):
             yield output
@@ -120,12 +94,6 @@ class ParallelYesNoDecisionBlock(ParallelDecisionBase):
         probability = answer["noul"]
         yield "probability", probability
         yield _pin(probability, input_data.min_probability), input_data.data
-
-
-def _criteria(true_means: str, false_means: str) -> NoulCriteria | None:
-    if not true_means:
-        return None
-    return NoulCriteria(true=true_means, false=false_means)
 
 
 def _pin(probability: float, min_probability: float) -> str:

@@ -8,7 +8,7 @@ import pytest
 from backend.blocks.parallel import _api
 from backend.blocks.parallel._api import DECISION_REQUEST_COST_USD
 from backend.blocks.parallel._base import SINGLE_QUESTION
-from backend.blocks.parallel._config import TEST_CREDENTIALS
+from backend.blocks.parallel._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.parallel._test import (
     CHOICE_ANSWER,
     NOUL_ANSWER,
@@ -100,23 +100,6 @@ async def test_yes_no_refusal_goes_to_unsure_not_no():
 
 
 @pytest.mark.asyncio
-async def test_yes_no_sends_criteria_only_when_both_given():
-    fake = FakeDecisions({SINGLE_QUESTION: NOUL_ANSWER})
-    block = ParallelYesNoDecisionBlock()
-    await run_block(block, fake, question="Is it?")
-    await run_block(block, fake, question="Is it?", true_means="T", false_means="F")
-    assert fake.calls[0]["questions"] == {
-        SINGLE_QUESTION: {"type": "noul", "instructions": "Is it?"}
-    }
-    assert fake.calls[1]["questions"][SINGLE_QUESTION]["criteria"] == {
-        "true": "T",
-        "false": "F",
-    }
-    with pytest.raises(ValueError, match="both true_means and false_means"):
-        await run_block(block, fake, question="Is it?", true_means="T")
-
-
-@pytest.mark.asyncio
 async def test_missing_context_is_sent_as_empty_object():
     fake = FakeDecisions({SINGLE_QUESTION: NOUL_ANSWER})
     await run_block(ParallelYesNoDecisionBlock(), fake, question="Is it?")
@@ -175,13 +158,25 @@ async def test_score_handles_refusal_without_a_zero_score():
 @pytest.mark.parametrize("name", ["bad name", "trailing\n", ""])
 async def test_ask_many_rejects_names_the_api_would_reject(name):
     fake = FakeDecisions({})
-    with pytest.raises(ValueError, match="Question names may only use"):
+    with pytest.raises(ValueError, match="should match pattern"):
         await run_block(
             ParallelAskManyDecisionsBlock(),
             fake,
             questions={name: {"type": "noul", "question": "Is it?"}},
         )
     assert fake.calls == []
+
+
+def test_ask_many_bad_names_fail_the_pre_run_schema_check():
+    # The executor checks inputs against the JSON schema before charging the
+    # run; the model validator only runs after the charge.
+    error = ParallelAskManyDecisionsBlock.Input.validate_data(
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "questions": {"bad name": {"type": "noul", "question": "Is it?"}},
+        }
+    )
+    assert error is not None and "bad name" in error
 
 
 @pytest.mark.asyncio
@@ -191,13 +186,21 @@ async def test_ask_many_maps_every_question_type():
         ParallelAskManyDecisionsBlock(),
         fake,
         questions={
-            "a": {"type": "noul", "question": "A?"},
+            "a": {
+                "type": "noul",
+                "question": "A?",
+                "criteria": {"true": "T", "false": "F"},
+            },
             "b": {"type": "choice", "question": "B?", "options": TEST_OPTIONS},
             "c": {"type": "score", "question": "C?", "levels": TEST_LEVELS},
         },
     )
     assert fake.calls[0]["questions"] == {
-        "a": {"type": "noul", "instructions": "A?"},
+        "a": {
+            "type": "noul",
+            "instructions": "A?",
+            "criteria": {"true": "T", "false": "F"},
+        },
         "b": {"type": "choice", "instructions": "B?", "criteria": TEST_OPTIONS},
         "c": {"type": "score", "instructions": "C?", "criteria": TEST_LEVELS},
     }
@@ -232,8 +235,8 @@ class FakeRequests:
     def __init__(self, **kwargs):
         FakeRequests.sent = {"init": kwargs}
 
-    async def post(self, url, json):
-        FakeRequests.sent.update(url=url, json=json)
+    async def post(self, url, json, **kwargs):
+        FakeRequests.sent.update(url=url, json=json, kwargs=kwargs)
         return FakeRequests.response
 
 
@@ -252,6 +255,9 @@ async def test_make_decision_sends_the_documented_body(monkeypatch):
         "questions": questions,
         "include_excerpts": False,
     }
+    # The key travels in x-api-key, which redirects would carry to any host.
+    assert FakeRequests.sent["kwargs"] == {"allow_redirects": False}
+    assert FakeRequests.sent["init"]["retry_max_attempts"] == 3
 
 
 @pytest.mark.asyncio

@@ -94,16 +94,12 @@ class NoulQuestion(BaseModel):
     criteria: NoulCriteria | None = None
 
     def to_api(self) -> dict[str, Any]:
-        return noul_question(self.question, self.criteria)
+        body: dict[str, Any] = {"type": "noul", "instructions": self.question}
+        if self.criteria is not None:
+            body["criteria"] = self.criteria.model_dump()
+        return body
 
 
 Question = Annotated[
     ChoiceQuestion | ScoreQuestion | NoulQuestion, Field(discriminator="type")
 ]
-
-
-def noul_question(question: str, criteria: NoulCriteria | None) -> dict[str, Any]:
-    body: dict[str, Any] = {"type": "noul", "instructions": question}
-    if criteria is not None:
-        body["criteria"] = criteria.model_dump()
-    return body

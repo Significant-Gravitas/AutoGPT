@@ -1,7 +1,6 @@
-import re
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import model_validator
+from pydantic import StringConstraints
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -23,12 +22,16 @@ from ._test import (
     mock_response,
 )
 
-QUESTION_NAME = re.compile(r"[A-Za-z0-9_-]+")
+# Names the API accepts. Pydantic checks it when the input is built, but
+# that is after the run is charged; propertyNames puts it in the JSON schema
+# the executor checks before charging.
+QUESTION_NAME_PATTERN = r"^[A-Za-z0-9_-]+$"
+QuestionName = Annotated[str, StringConstraints(pattern=QUESTION_NAME_PATTERN)]
 
 
 class ParallelAskManyDecisionsBlock(ParallelDecisionBase):
     class Input(ParallelDecisionInput):
-        questions: dict[str, Question] = SchemaField(
+        questions: dict[QuestionName, Question] = SchemaField(
             description=(
                 "1 to 100 named questions, answered in one request. Names may "
                 "use letters, numbers, underscores and hyphens. Each question is "
@@ -38,18 +41,8 @@ class ParallelAskManyDecisionsBlock(ParallelDecisionBase):
             ),
             min_length=1,
             max_length=100,
+            json_schema_extra={"propertyNames": {"pattern": QUESTION_NAME_PATTERN}},
         )
-
-        @model_validator(mode="after")
-        def _check_names(self):
-            # Checked here, not in run(), so a bad input fails before any charge.
-            bad = [n for n in self.questions if not QUESTION_NAME.fullmatch(n)]
-            if bad:
-                raise ValueError(
-                    "Question names may only use letters, numbers, underscores "
-                    f"and hyphens: {', '.join(map(repr, bad))}"
-                )
-            return self
 
     class Output(ParallelDecisionOutput):
         answers: dict[str, dict[str, Any]] = SchemaField(

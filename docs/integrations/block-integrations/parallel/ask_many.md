@@ -19,7 +19,7 @@ The block sends the context and its question to `POST https://api.parallel.ai/v1
 |-------|-------------|------|----------|
 | context | Text or JSON describing what the question is about, e.g. {"company": "Clay", "website": "https://www.clay.com"}. Parallel searches the web for current evidence about it. | Context | No |
 | include_excerpts | Return the evidence passages with each citation. Turn off to keep outputs small; the decision still uses the passages. | bool | No |
-| questions | 1 to 100 named questions, answered in one request. Names may use letters, numbers, underscores and hyphens. Each question is noul (yes/no: question, optional true/false criteria), choice (question, options) or score (question, levels, lowest first). Questions in one request share one set of web evidence, so group questions about the same entity or topic and use separate blocks for unrelated ones. | Dict[str, Any] | Yes |
+| questions | 1 to 100 named questions, answered in one request. Names may use letters, numbers, underscores and hyphens. Each question is noul (yes/no: question, optional true/false criteria), choice (question, options) or score (question, levels, lowest first). Questions in one request share one set of web evidence, so group questions about the same entity or topic and use separate blocks for unrelated ones. | Questions | Yes |
 
 ### Outputs
 

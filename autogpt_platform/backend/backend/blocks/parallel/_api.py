@@ -28,10 +28,16 @@ async def make_decision(
     requests = Requests(
         trusted_origins=[PARALLEL_API_URL],
         raise_for_status=False,
+        # Unbounded by default; cap it so a lasting 429/5xx reaches the
+        # error message below instead of retrying until the block times out.
+        retry_max_attempts=3,
         extra_headers={"x-api-key": credentials.api_key.get_secret_value()},
     )
     response = await requests.post(
         f"{PARALLEL_API_URL}/v1/decisions",
+        # Requests re-sends extra_headers on every hop and only strips
+        # Authorization/Cookie, so a redirect would leak x-api-key.
+        allow_redirects=False,
         json={
             "state": state,
             "questions": questions,
