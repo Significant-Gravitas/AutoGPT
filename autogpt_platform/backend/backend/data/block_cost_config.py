@@ -1096,12 +1096,6 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     # matches the 1.5× margin already baked into TOKEN_COST for every
     # direct LLM block. E2B sandbox infra (~$0.00028/s) is absorbed into
     # the margin.
-    # A run is billed when it uses either platform credential: the platform
-    # E2B key (the sandbox) or the platform Anthropic key (the model spend).
-    # Keying on E2B alone left a run on the user's own E2B key with the
-    # platform Anthropic key matching no entry, so the platform paid Anthropic
-    # and billed nothing. Both entries bill the same way and the first match
-    # wins, so a run on both platform keys is billed once.
     ClaudeCodeBlock: [
         BlockCost(
             cost_amount=150,
@@ -1113,18 +1107,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "type": e2b_credentials.type,
                 }
             },
-        ),
-        BlockCost(
-            cost_amount=150,
-            cost_type=BlockCostType.COST_USD,
-            cost_filter={
-                "anthropic_credentials": {
-                    "id": anthropic_credentials.id,
-                    "provider": anthropic_credentials.provider,
-                    "type": anthropic_credentials.type,
-                }
-            },
-        ),
+        )
     ],
     # Ayrshare post blocks use the @cost(...) decorator directly on each block
     # class (see backend/blocks/ayrshare/_cost.py). They can't be listed here

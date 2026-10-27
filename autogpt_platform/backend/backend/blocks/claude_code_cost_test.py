@@ -18,10 +18,7 @@ from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.model import NodeExecutionStats
 from backend.executor import utils as executor_utils
 from backend.executor.utils import block_usage_cost
-from backend.integrations.credentials_store import (
-    anthropic_credentials,
-    e2b_credentials,
-)
+from backend.integrations.credentials_store import e2b_credentials
 
 
 @pytest.fixture(autouse=True)
@@ -47,30 +44,25 @@ def _own_meta(provider: str) -> dict:
 
 
 def test_claude_code_registered_as_cost_usd_150():
-    """Sanity: BLOCK_COSTS holds COST_USD, 150 cr/$ entries, one per platform
-    credential the run can spend (E2B sandbox, Anthropic model)."""
+    """Sanity: BLOCK_COSTS holds the COST_USD, 150 cr/$ entry. There is none for
+    the platform Anthropic key: the block refuses it (see claude_code_test)."""
     entries = BLOCK_COSTS[ClaudeCodeBlock]
-    assert len(entries) == 2
-    for entry in entries:
-        assert entry.cost_type == BlockCostType.COST_USD
-        assert entry.cost_amount == 150
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.cost_type == BlockCostType.COST_USD
+    assert entry.cost_amount == 150
 
 
 @pytest.mark.parametrize(
     "e2b_meta, anthropic_meta, expected_credits",
     [
-        # Platform sandbox with the user's own Anthropic key: billed as before.
+        # Platform sandbox with the user's own Anthropic key: billed.
         (_meta(e2b_credentials), _own_meta("anthropic"), 75),
-        # The user's own sandbox with the platform Anthropic key: the platform
-        # pays Anthropic, so the run is billed.
-        (_own_meta("e2b"), _meta(anthropic_credentials), 75),
-        # Both platform credentials: billed once, not twice.
-        (_meta(e2b_credentials), _meta(anthropic_credentials), 75),
         # Both of the user's own: nothing of the platform's is spent.
         (_own_meta("e2b"), _own_meta("anthropic"), 0),
     ],
 )
-def test_run_is_billed_when_it_spends_either_platform_credential(
+def test_run_is_billed_when_it_uses_the_platform_sandbox(
     e2b_meta, anthropic_meta, expected_credits
 ):
     stats = NodeExecutionStats(provider_cost=0.50, provider_cost_type="cost_usd")
