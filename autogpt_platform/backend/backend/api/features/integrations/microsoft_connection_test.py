@@ -62,6 +62,27 @@ async def test_explicit_upgrade_cannot_switch_same_email_identity(mocker):
 
 
 @pytest.mark.asyncio
+async def test_upgrade_with_fewer_permissions_cannot_switch_identity(mocker):
+    # The upgrade names a connection; another account signed in on it, with
+    # less granted than the connection has, is still another account.
+    old, new = credential("personal", "consumer"), credential("work", "company")
+    old.scopes = ["User.Read", "Mail.ReadWrite"]
+    mocker.patch.object(
+        routes.creds_manager.store, "get_creds_by_id", AsyncMock(return_value=old)
+    )
+    create = mocker.patch.object(routes.creds_manager, "create", AsyncMock())
+    update = mocker.patch.object(routes.creds_manager, "update", AsyncMock())
+
+    with pytest.raises(HTTPException, match="different Microsoft account"):
+        await routes._merge_or_create_credential(
+            "owner", ProviderName.MICROSOFT, new, old.id
+        )
+
+    create.assert_not_awaited()
+    update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_verification_scopes_credential_lookup_to_signed_in_user(mocker):
     lookup = mocker.patch.object(
         routes.creds_manager, "get", AsyncMock(return_value=None)

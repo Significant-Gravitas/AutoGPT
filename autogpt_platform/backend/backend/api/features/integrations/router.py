@@ -1746,6 +1746,9 @@ async def _merge_or_create_credential(
             and provider_matches(existing.provider, credentials.provider)
             and not set(credentials.scopes).issuperset(set(existing.scopes))
         ):
+            # Another Microsoft account is never a re-auth of this one, even
+            # when it was granted less.
+            _refuse_another_microsoft_account(existing, credentials)
             # Narrowing re-auth: keep existing intact, persist new alongside.
             # The frontend `executeOAuthFlow` has already pre-screened that
             # the new credential covers the scopes the card asked for; the
@@ -1828,13 +1831,7 @@ async def _upgrade_existing_credential(
             detail="Credential provider does not match the requested provider",
         )
 
-    if new_credentials.provider in MICROSOFT_PROVIDERS and not same_microsoft_account(
-        existing, new_credentials
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="This is a different Microsoft account. Add it as a separate connection.",
-        )
+    _refuse_another_microsoft_account(existing, new_credentials)
 
     if (
         existing.username
@@ -1874,6 +1871,23 @@ async def _upgrade_existing_credential(
         merged.username = existing.username
     await creds_manager.update(user_id, merged)
     return merged
+
+
+def _refuse_another_microsoft_account(
+    existing: OAuth2Credentials, new_credentials: OAuth2Credentials
+) -> None:
+    """Upgrading names a connection; whoever signs in must be its account.
+
+    Microsoft accounts can share an email address (a personal and a work
+    account), so the username can't tell them apart.
+    """
+    if new_credentials.provider in MICROSOFT_PROVIDERS and not same_microsoft_account(
+        existing, new_credentials
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="This is a different Microsoft account. Add it as a separate connection.",
+        )
 
 
 # --------------------------- UTILITIES ---------------------------- #
