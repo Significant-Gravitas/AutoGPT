@@ -22,6 +22,15 @@ describe("assertMicrosoftSignUpConfirmed", () => {
     ).not.toThrow();
   });
 
+  it("refuses one through an ID token too", () => {
+    expect(() =>
+      assertMicrosoftSignUpConfirmed(
+        { emailVerified: false },
+        { path: "/sign-in/social", body: { provider: "microsoft" } },
+      ),
+    ).toThrow("unconfirmed_email");
+  });
+
   it("leaves other sign-up methods alone", () => {
     expect(() =>
       assertMicrosoftSignUpConfirmed(
@@ -37,6 +46,12 @@ describe("assertMicrosoftSignUpConfirmed", () => {
     ).not.toThrow();
     expect(() =>
       assertMicrosoftSignUpConfirmed({ emailVerified: false }, null),
+    ).not.toThrow();
+    expect(() =>
+      assertMicrosoftSignUpConfirmed(
+        { emailVerified: false },
+        { path: "/sign-in/social", body: { provider: "google" } },
+      ),
     ).not.toThrow();
   });
 });

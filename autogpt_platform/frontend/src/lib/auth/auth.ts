@@ -110,6 +110,7 @@ function hasPlatformUser(userId: string) {
 type HookContext = {
   path?: string;
   params?: { id?: string };
+  body?: unknown;
   headers?: Headers;
   request?: Request;
   context?: { options: BetterAuthOptions };

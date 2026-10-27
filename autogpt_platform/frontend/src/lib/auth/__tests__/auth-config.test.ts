@@ -235,6 +235,8 @@ describe("auth config", () => {
       prompt: "select_account",
       disableDefaultScope: true,
       scope: ["openid", "profile", "email", "User.Read"],
+      // Only the redirect flow, which the sign-up policy guards, signs in.
+      disableIdTokenSignIn: true,
     });
   });
 

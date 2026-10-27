@@ -1,6 +1,8 @@
 // "Continue with Microsoft". Signing in only proves who someone is; mail,
 // files and the rest are a separate, optional step afterwards.
 
+import { isWaitlistError } from "@/app/api/auth/utils";
+
 // Microsoft's fixed tenant for personal (consumer) accounts.
 const PERSONAL_TENANT_ID = "9188040d-6c67-4c5b-b112-36a304b66dad";
 
@@ -55,17 +57,23 @@ interface MicrosoftProfile {
   tid?: string;
   email?: string;
   xms_edov?: unknown;
+  // Who authenticated the person. Absent, or naming the issuing tenant, for a
+  // member; a guest's own provider (live.com, another tenant) otherwise.
+  idp?: string;
 }
 
 /** Microsoft vouches for a personal account's own Outlook.com address, and
  *  for a work or school address when the organization has verified that
  *  domain (`xms_edov`). A personal account can carry any other address, and
  *  keeps it after its owner loses the mailbox; any other work address is
- *  whatever an organization's admin typed in. */
+ *  whatever an organization's admin typed in. A guest signs in through an
+ *  organization that isn't its own, which then vouches for addresses it never
+ *  verified, so a guest's address is never trusted. */
 export function isMicrosoftEmailVerified(profile: MicrosoftProfile): boolean {
   if (profile.tid === PERSONAL_TENANT_ID) {
     return isMicrosoftMailbox(profile.email);
   }
+  if (profile.idp && !profile.idp.includes(profile.tid ?? "")) return false;
   const verified = profile.xms_edov;
   return (
     verified === true ||
@@ -106,6 +114,9 @@ export function getMicrosoftLoginProvider() {
     prompt: "select_account" as const,
     disableDefaultScope: true,
     scope: ["openid", "profile", "email", "User.Read"],
+    // Only the redirect flow, which microsoft-sign-up-policy.ts guards, signs
+    // in. An ID token handed straight to /sign-in/social would skip it.
+    disableIdTokenSignIn: true,
     mapProfileToUser: microsoftProfileToUser,
   };
 }
@@ -119,6 +130,15 @@ const SIGN_IN_ERRORS: Record<string, string> = {
     "An AutoGPT account already uses that email. Log in the way you usually do.",
   access_denied: "Microsoft sign-in was cancelled.",
 };
+
+/** A sign-up the signup gate refused. Better Auth sends a refusal from our
+ *  hooks back with its message as the code, spaces turned into underscores. */
+export function isWaitlistSignInError(code: string | null): boolean {
+  if (!code) return false;
+  return (
+    code === "FORBIDDEN" || isWaitlistError(null, code.replaceAll("_", " "))
+  );
+}
 
 export function getSocialSignInError(code: string | null): string | null {
   if (!code) return null;

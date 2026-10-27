@@ -8,7 +8,10 @@ import {
   getEmailVerificationNotice,
 } from "@/lib/auth/email-verification";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { getSocialSignInError } from "@/lib/auth/microsoft-login";
+import {
+  getSocialSignInError,
+  isWaitlistSignInError,
+} from "@/lib/auth/microsoft-login";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,12 +34,10 @@ export function useLoginPage() {
   const [loadingProvider, setLoadingProvider] = useState<LoginProvider | null>(
     null,
   );
-  // A social sign-in that fails returns here with Better Auth's error code;
-  // a sign-up the waitlist refused comes back as FORBIDDEN.
+  // A social sign-in that fails returns here with Better Auth's error code.
   const signInErrorCode = searchParams.get("error");
-  const [showNotAllowedModal, setShowNotAllowedModal] = useState(
-    signInErrorCode === "FORBIDDEN",
-  );
+  const isWaitlisted = isWaitlistSignInError(signInErrorCode);
+  const [showNotAllowedModal, setShowNotAllowedModal] = useState(isWaitlisted);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(
     null,
   );
@@ -150,10 +151,7 @@ export function useLoginPage() {
   return {
     form,
     feedback:
-      feedback ??
-      (signInErrorCode === "FORBIDDEN"
-        ? null
-        : getSocialSignInError(signInErrorCode)),
+      feedback ?? (isWaitlisted ? null : getSocialSignInError(signInErrorCode)),
     nextUrl,
     verificationEmail,
     verificationNotice,

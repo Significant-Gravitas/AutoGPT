@@ -1,9 +1,11 @@
 // @vitest-environment node
 // The browser environment's Request and Response drop Cookie and Set-Cookie,
 // which carry the OAuth state from one leg of the sign-in to the other.
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
+import { isWaitlistSignInError } from "../microsoft-login";
 
 // Runs the real Better Auth handler with this app's auth options (from
 // ../auth) on an in-memory database, with Microsoft's token endpoint answered
@@ -235,6 +237,15 @@ describe("Continue with Microsoft", () => {
       "a work address its organization never verified",
       { tid: "another-tenant", email: "pat@company.example" },
     ],
+    [
+      "a personal account invited into another organization as a guest",
+      {
+        tid: "attacker-tenant",
+        idp: "live.com",
+        email: "pat@company.example",
+        xms_edov: true,
+      },
+    ],
   ])("keeps %s out of the account that uses it", async (_case, claims) => {
     const { handler, db } = await createAuthHandler();
     existingAccount(db, "pat@company.example");
@@ -268,4 +279,66 @@ describe("Continue with Microsoft", () => {
       expect(db.UserAuthSession).toEqual([]);
     },
   );
+
+  it("refuses a sign-in that hands over a Microsoft ID token directly", async () => {
+    const { handler, db } = await createAuthHandler();
+    // A token Microsoft really signed for this app: only the switch that
+    // turns ID-token sign-in off can refuse it.
+    const keys = await generateKeyPair("RS256");
+    const jwk = await exportJWK(keys.publicKey);
+    server.use(
+      http.get(
+        "https://login.microsoftonline.com/common/discovery/v2.0/keys",
+        () =>
+          HttpResponse.json({
+            keys: [{ ...jwk, kid: "signing-key", alg: "RS256", use: "sig" }],
+          }),
+      ),
+      http.get(
+        "https://graph.microsoft.com/v1.0/me/photos/*",
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    const token = await new SignJWT({
+      tid: PERSONAL_TENANT,
+      oid: "personal-id",
+      email: "pat@gmail.example",
+      name: "Pat",
+    })
+      .setProtectedHeader({ alg: "RS256", kid: "signing-key" })
+      .setIssuer(`https://login.microsoftonline.com/${PERSONAL_TENANT}/v2.0`)
+      .setAudience("microsoft-client-id")
+      .setSubject("pairwise")
+      .setIssuedAt()
+      .setExpirationTime("10m")
+      .sign(keys.privateKey);
+
+    const response = await handler(
+      new Request(`${baseURL}/api/auth/sign-in/social`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: baseURL },
+        body: JSON.stringify({ provider: "microsoft", idToken: { token } }),
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(db.UserAuthIdentity).toEqual([]);
+    expect(db.UserAuthSession).toEqual([]);
+  });
+
+  it("sends a sign-up the waitlist refuses back as one /login recognizes", async () => {
+    vi.stubEnv("AUTH_SIGNUP_ALLOWLIST", "@allowed.example");
+    const { handler, db } = await createAuthHandler();
+
+    const landing = await continueWithMicrosoft(handler, {
+      sub: "pairwise",
+      oid: "personal-id",
+      tid: PERSONAL_TENANT,
+      email: "pat@outlook.com",
+    });
+
+    const code = new URL(landing ?? "", baseURL).searchParams.get("error");
+    expect(isWaitlistSignInError(code)).toBe(true);
+    expect(db.UserAuthIdentity).toEqual([]);
+  });
 });

@@ -39,6 +39,20 @@ describe("Continue with Microsoft on the login page", () => {
     ).toBeDefined();
   });
 
+  test("shows the waitlist answer when the sign-up isn't allowed", async () => {
+    mockSearchParams = new URLSearchParams({
+      error:
+        "This_email_address_is_not_allowed_to_register._Please_contact_support_for_assistance.",
+    });
+
+    render(<LoginPage />);
+
+    expect(
+      await screen.findByRole("dialog", { name: "Email Not Allowed" }),
+    ).toBeDefined();
+    expect(screen.queryByText(/didn't finish/)).toBeNull();
+  });
+
   test("explains a sign-up Microsoft could not vouch for", () => {
     mockSearchParams = new URLSearchParams({ error: "unconfirmed_email" });
 
