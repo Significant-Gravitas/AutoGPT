@@ -18,12 +18,12 @@ const INTRO_PATH_KEY = "autogpt:onboarding-intro-path";
 
 const GENERIC_CHECKLIST = [
   "Personalizing your experience",
-  "Connecting automation engines",
+  "Setting up your team",
   "Building your space",
 ];
 const DUMP_CHECKLIST = [
   "Reading your brain dump",
-  "Briefing Otto on your work",
+  "Setting up your team",
   "Building your space",
   "Finding tools for your work",
 ];
@@ -130,7 +130,6 @@ describe("PreparingStep checklist copy", () => {
       expect(await screen.findByText(item)).toBeDefined();
     }
     expect(screen.queryByText("Personalizing your experience")).toBeNull();
-    expect(screen.queryByText("Connecting automation engines")).toBeNull();
   });
 
   it("shows the generic checklist on the skip path (intro path B)", async () => {
@@ -142,7 +141,7 @@ describe("PreparingStep checklist copy", () => {
       expect(await screen.findByText(item)).toBeDefined();
     }
     expect(screen.queryByText("Reading your brain dump")).toBeNull();
-    expect(screen.queryByText("Briefing Otto on your work")).toBeNull();
+    expect(screen.queryByText("Finding tools for your work")).toBeNull();
   });
 
   it("shows the generic checklist when no intro path was recorded", async () => {

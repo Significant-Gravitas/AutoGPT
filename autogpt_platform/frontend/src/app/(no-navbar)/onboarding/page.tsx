@@ -23,6 +23,7 @@ export default function OnboardingPage() {
     handlePreparingComplete,
     isPaymentEnabled,
     isSelfHostConnectEnabled,
+    canHireTeam,
     steps,
     preparingStep,
     totalSteps,
@@ -139,7 +140,10 @@ export default function OnboardingPage() {
           <PlanTrialStep hasPaywall={isPaymentEnabled} />
         )}
         {currentStep === preparingStep && (
-          <PreparingStep onComplete={handlePreparingComplete} />
+          <PreparingStep
+            onComplete={handlePreparingComplete}
+            canHire={canHireTeam}
+          />
         )}
       </div>
 
