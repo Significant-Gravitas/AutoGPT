@@ -2,6 +2,7 @@ import type { MicrosoftAccessCheck } from "@/app/api/__generated__/models/micros
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { MICROSOFT_STATUS_LABELS } from "@/lib/microsoft-setup";
+import { canAllow } from "../helpers";
 
 interface Props {
   check?: MicrosoftAccessCheck;
@@ -42,9 +43,7 @@ export function MicrosoftServiceList({
               {MICROSOFT_STATUS_LABELS[item.status]}
             </Text>
           </div>
-          {browserAvailable &&
-          item.status === "permission_needed" &&
-          item.scopes?.length ? (
+          {browserAvailable && canAllow(item) ? (
             <Button
               size="small"
               variant="secondary"

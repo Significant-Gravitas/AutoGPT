@@ -68,12 +68,16 @@ const workCheck = {
   ],
 };
 
+const WORK_IQ = "api://workiq.svc.cloud.microsoft/WorkIQAgent.Ask";
+
 let credentials: unknown[] = [];
 let loginRequests: URL[] = [];
+let workCheckOverride: unknown = null;
 
 beforeEach(() => {
   credentials = [];
   loginRequests = [];
+  workCheckOverride = null;
   server.use(
     http.get("*/api/integrations/:provider/credentials", ({ params }) =>
       HttpResponse.json(params.provider === "microsoft" ? credentials : []),
@@ -95,7 +99,7 @@ beforeEach(() => {
       const body = (await request.json()) as { credential_id: string };
       return HttpResponse.json(
         body.credential_id === "work-id"
-          ? workCheck
+          ? (workCheckOverride ?? workCheck)
           : {
               verified: true,
               account_type: "personal",
@@ -241,6 +245,54 @@ describe("Microsoft connection", () => {
         ),
       ).toBeNull(),
     );
+  });
+
+  it("leaves Work IQ to its own Allow", async () => {
+    credentials = [work];
+    workCheckOverride = {
+      ...workCheck,
+      capabilities: [
+        {
+          ...capability("teams", "Teams chats", "permission_needed"),
+          scopes: ["Chat.ReadWrite"],
+        },
+        {
+          ...capability("work_iq", "Work IQ", "permission_needed"),
+          scopes: [WORK_IQ],
+        },
+      ],
+    };
+    render(<MicrosoftConnectionPanel browserAvailable onDone={vi.fn()} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Allow everything listed" }),
+    );
+    await waitFor(() => expect(loginRequests).toHaveLength(1));
+    expect(loginRequests[0].searchParams.get("scopes")).toBe("Chat.ReadWrite");
+    expect(screen.getByRole("button", { name: "Allow Work IQ" })).toBeTruthy();
+  });
+
+  it("gives Work IQ its own sign-in code", async () => {
+    credentials = [work];
+    workCheckOverride = {
+      ...workCheck,
+      capabilities: [
+        {
+          ...capability("work_iq", "Work IQ", "permission_needed"),
+          scopes: [WORK_IQ],
+        },
+      ],
+    };
+    render(
+      <MicrosoftConnectionPanel browserAvailable={false} onDone={vi.fn()} />,
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Connect Work IQ" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Connect Microsoft" }),
+    ).toBeNull();
   });
 
   it("lets an admin approve everything for the organization", async () => {

@@ -164,19 +164,13 @@ async def test_admins_can_approve_every_work_service_at_once(mocker) -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "error, asks_for_work_iq",
-    [
-        # "Needs your permission" is also what a tenant without Work IQ's
-        # service reports: asking for it there fails the whole approval
-        # (AADSTS650052), as it did live on 10-27.
-        (65001, False),
-        (90094, True),
-    ],
-)
-async def test_organization_approval_asks_for_work_iq_only_when_an_admin_must(
-    mocker, error, asks_for_work_iq
+@pytest.mark.parametrize("error", [65001, 90094])
+async def test_organization_approval_leaves_work_iq_to_its_own_approval(
+    mocker, error
 ) -> None:
+    # Asking for Work IQ in a tenant without its service fails the whole
+    # approval (AADSTS650052, live on 10-27), and "needs your permission" or
+    # "needs your admin" can't tell that tenant apart.
     _work_iq(mocker, error=error)
     mocker.patch(
         "backend.integrations.microsoft_access.browser_sign_in_available",
@@ -192,4 +186,4 @@ async def test_organization_approval_asks_for_work_iq_only_when_an_admin_must(
 
     url = result.admin_consent_url or ""
     assert "Chat.ReadWrite" in url
-    assert ("workiq" in url) is asks_for_work_iq
+    assert "workiq" not in url

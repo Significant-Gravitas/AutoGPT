@@ -8,7 +8,7 @@ import { DeviceAuthConnectButton } from "@/components/contextual/DeviceAuth/Devi
 import { MICROSOFT_PROVIDER } from "@/lib/microsoft-setup";
 import { MicrosoftServiceList } from "./components/MicrosoftServiceList";
 import { MicrosoftSignIn } from "./components/MicrosoftSignIn";
-import { needsWorkIQSetup } from "./helpers";
+import { needsWorkIQSetup, workIQToAllow } from "./helpers";
 import { MicrosoftAdminSetup } from "./MicrosoftAdminSetup";
 import { useMicrosoftConnection } from "./useMicrosoftConnection";
 import { WorkIQAdminConsent } from "./WorkIQAdminConsent";
@@ -32,6 +32,7 @@ export function MicrosoftConnectionPanel({
 }: Props) {
   const connection = useMicrosoftConnection({ scopes });
   const { credential, check } = connection;
+  const workIQ = workIQToAllow(check);
 
   if (!credential) {
     return (
@@ -92,6 +93,14 @@ export function MicrosoftConnectionPanel({
             onSuccess={connection.handleConnected}
           />
         ))}
+      {!browserAvailable && workIQ && (
+        <DeviceAuthConnectButton
+          provider={MICROSOFT_PROVIDER}
+          providerName="Work IQ"
+          scopes={workIQ.scopes}
+          onSuccess={connection.handleConnected}
+        />
+      )}
       {check?.admin_consent_url && (
         <div className="flex flex-col gap-2">
           <Button
