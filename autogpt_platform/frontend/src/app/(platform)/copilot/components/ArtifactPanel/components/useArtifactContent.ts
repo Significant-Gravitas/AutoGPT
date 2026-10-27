@@ -193,8 +193,8 @@ export function useArtifactContent(
       fetchArtifactResponse(artifact.sourceUrl)
         .then((res) => res.blob())
         .then(async (blob) => {
-          await validatePDFBlob(blob);
-          objectUrl = URL.createObjectURL(blob);
+          const pdfBlob = await validatePDFBlob(blob);
+          objectUrl = URL.createObjectURL(pdfBlob);
           if (cancelled) {
             URL.revokeObjectURL(objectUrl);
             objectUrl = null;

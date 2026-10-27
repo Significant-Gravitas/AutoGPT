@@ -426,6 +426,54 @@ describe("ArtifactContent", () => {
     });
   });
 
+  it.each([
+    { caseName: "application/octet-stream", type: "application/octet-stream" },
+    { caseName: "an empty content type", type: "" },
+  ])(
+    "previews a PDF served as $caseName once its signature checks out",
+    async ({ type }) => {
+      const createObjectURL = vi
+        .fn()
+        .mockReturnValue("blob:http://localhost/octet-pdf");
+      vi.stubGlobal(
+        "URL",
+        Object.assign(URL, {
+          createObjectURL,
+          revokeObjectURL: vi.fn(),
+        }),
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          blob: () => Promise.resolve(new Blob(["%PDF-1.7"], { type })),
+        }),
+      );
+
+      const artifact = makeArtifact({
+        id: "octet-stream-pdf",
+        title: "report.pdf",
+        mimeType: "application/pdf",
+      });
+
+      const { container } = render(
+        <ArtifactContent
+          artifact={artifact}
+          isSourceView={false}
+          classification={makeClassification({ type: "pdf" })}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(container.querySelector("iframe")?.getAttribute("src")).toBe(
+          "blob:http://localhost/octet-pdf",
+        );
+      });
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      expect(createObjectURL.mock.calls[0][0].type).toBe("application/pdf");
+    },
+  );
+
   // ── Fetch error ───────────────────────────────────────────────────
 
   it.each([
@@ -446,6 +494,21 @@ describe("ArtifactContent", () => {
           type: "application/pdf",
         },
       ),
+    },
+    {
+      caseName: "octet-stream response without a PDF signature",
+      blob: new Blob(
+        ["<script>window.parent.document.body.remove()</script>"],
+        {
+          type: "application/octet-stream",
+        },
+      ),
+    },
+    {
+      caseName: "HTML response that starts with a PDF signature",
+      blob: new Blob(["%PDF-<script>alert(1)</script>"], {
+        type: "text/html",
+      }),
     },
   ])(
     "rejects $caseName before creating a PDF preview URL",
