@@ -6,6 +6,7 @@ proven against Postgres in ``suggested_tasks_db_test.py``.
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from unittest.mock import AsyncMock
 
 import fastapi
 import fastapi.testclient
@@ -15,7 +16,16 @@ from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
 from pytest_mock import MockerFixture
 
-from backend.api.features.onboarding_dump import intro, routes
+from backend.api.features.experts import experts_db
+from backend.api.features.experts.models import Expert
+from backend.api.features.onboarding_dump import (
+    intro,
+    role_tasks,
+    routes,
+    service,
+    suggested_tasks,
+)
+from backend.api.features.onboarding_dump.models import SuggestedTasksUpdate
 from backend.api.rest_api import app as rest_app
 
 app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
@@ -98,6 +108,29 @@ def rows(mocker: MockerFixture) -> RowStore:
         f"{module}.replace_suggested_prompts", new=store.replace_suggested_prompts
     )
     return store
+
+
+@pytest.fixture(autouse=True)
+def wizard(mocker: MockerFixture) -> dict[str, AsyncMock]:
+    """No role picked and nobody hired, unless a test says otherwise.
+
+    The reads are stubbed under the wrappers, so a read and its degrade
+    both run: a read shows a list through ``service.wizard_answers`` and
+    ``service.safe_templates``, a change stores one straight from
+    ``service.read_wizard_answers`` and ``suggested_tasks.list_templates``.
+    """
+    mocks = {
+        "read_wizard_answers": AsyncMock(return_value=(None, [])),
+        "list_templates": AsyncMock(return_value=[]),
+        "list_experts": AsyncMock(return_value=[]),
+    }
+    mocker.patch.object(
+        service, "read_wizard_answers", new=mocks["read_wizard_answers"]
+    )
+    mocker.patch.object(service, "list_templates", new=mocks["list_templates"])
+    mocker.patch.object(suggested_tasks, "list_templates", new=mocks["list_templates"])
+    mocker.patch.object(experts_db, "list_experts", new=mocks["list_experts"])
+    return mocks
 
 
 def states() -> dict[str, str]:
@@ -257,3 +290,155 @@ def test_an_empty_id_list_is_refused(rows: RowStore):
     rows.put(STORED)
 
     assert update([], "dismissed").status_code == 422
+
+
+def test_a_user_who_picked_a_role_starts_from_that_roles_tasks(
+    rows: RowStore, wizard: dict[str, AsyncMock]
+):
+    rows.put([])
+    wizard["read_wizard_answers"].return_value = ("Marketing", [])
+
+    body = client.get(URL).json()
+
+    assert body["stored"] is False
+    assert [t["title"] for t in body["tasks"]] == [
+        t.title for t in role_tasks.ROLE_FALLBACK_TASKS["Marketing"]
+    ]
+
+
+OWNED = [
+    {**STORED[0], "expert_template_id": "tpl-max", "why": "Cash comes first."},
+    {**STORED[1], "expert_template_id": "tpl-maria"},
+    STORED[2],
+]
+
+
+def _hired(template_id: str, expert_id: str) -> Expert:
+    return Expert.model_construct(
+        id=expert_id, name=expert_id, source_template_id=template_id
+    )
+
+
+def test_each_owned_task_names_its_hired_expert(
+    rows: RowStore, wizard: dict[str, AsyncMock]
+):
+    rows.put(OWNED)
+    wizard["list_experts"].return_value = [_hired("tpl-max", "expert-max")]
+
+    tasks = client.get(URL).json()["tasks"]
+
+    assert [(t["expert_template_id"], t["expert_id"]) for t in tasks] == [
+        ("tpl-max", "expert-max"),
+        ("tpl-maria", None),
+        (None, None),
+    ]
+    assert tasks[0]["why"] == "Cash comes first."
+
+
+def test_a_change_answers_with_owners_but_never_stores_the_expert_id(
+    rows: RowStore, wizard: dict[str, AsyncMock]
+):
+    rows.put(OWNED)
+    wizard["list_experts"].return_value = [_hired("tpl-max", "expert-max")]
+
+    body = update(["0"], "sent", session_id="session-1").json()
+
+    assert body["tasks"][0]["expert_id"] == "expert-max"
+    assert rows.row is not None
+    assert all("expert_id" not in row for row in rows.row.suggestedPrompts)
+    assert rows.row.suggestedPrompts[0]["expert_template_id"] == "tpl-max"
+
+
+def test_an_unreadable_roster_leaves_every_task_with_otto(
+    rows: RowStore, wizard: dict[str, AsyncMock]
+):
+    rows.put(OWNED)
+    wizard["list_experts"].side_effect = RuntimeError("database down")
+
+    response = client.get(URL)
+
+    assert response.status_code == 200
+    assert [t["expert_id"] for t in response.json()["tasks"]] == [None] * 3
+
+
+GENERIC_TITLES = [p.title for p in intro.fallback_prompts()]
+MARKETING_TITLES = [t.title for t in role_tasks.ROLE_FALLBACK_TASKS["Marketing"]]
+
+
+@pytest.mark.parametrize(
+    "failing, titles",
+    [("read_wizard_answers", GENERIC_TITLES), ("list_templates", MARKETING_TITLES)],
+    ids=["wizard answers", "roster"],
+)
+def test_a_failed_read_still_shows_a_list_and_stores_nothing(
+    rows: RowStore, wizard: dict[str, AsyncMock], failing: str, titles: list[str]
+):
+    rows.put([])
+    wizard["read_wizard_answers"].return_value = ("Marketing", [])
+    wizard["list_templates"].return_value = [
+        _template("tpl-maya", "Marketing"),
+        _template("tpl-max", "Sales"),
+    ]
+    wizard[failing].side_effect = RuntimeError("database down")
+
+    response = client.get(URL)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stored"] is False
+    assert [t["title"] for t in body["tasks"]] == titles
+    assert [t["expert_template_id"] for t in body["tasks"]] == [None] * len(titles)
+    assert rows.writes == 0
+
+
+@pytest.mark.parametrize("failing", ["read_wizard_answers", "list_templates"])
+async def test_a_change_to_the_starters_stores_nothing_when_a_read_fails(
+    rows: RowStore, wizard: dict[str, AsyncMock], failing: str
+):
+    """A list stored from a failed read would stay degraded for good."""
+    rows.put([])
+    wizard["read_wizard_answers"].return_value = ("Marketing", [])
+    wizard[failing].side_effect = RuntimeError("database down")
+
+    with pytest.raises(RuntimeError):
+        await suggested_tasks.update_suggested_tasks(
+            "test-user-id", SuggestedTasksUpdate(task_ids=["0"], state="dismissed")
+        )
+
+    assert rows.writes == 0
+    assert rows.row is not None
+    assert rows.row.suggestedPrompts == []
+
+
+async def test_the_roster_is_keyed_by_the_template_each_expert_was_hired_from(
+    wizard: dict[str, AsyncMock],
+):
+    max_hire = _hired("tpl-max", "expert-max")
+    own = Expert.model_construct(id="expert-own", name="Own", source_template_id=None)
+    wizard["list_experts"].return_value = [max_hire, own]
+
+    assert await suggested_tasks.roster_by_template("test-user-id") == {
+        "tpl-max": max_hire
+    }
+
+
+async def test_an_unreadable_roster_reads_as_nobody_hired(
+    wizard: dict[str, AsyncMock],
+):
+    wizard["list_experts"].side_effect = RuntimeError("database down")
+
+    assert await suggested_tasks.roster_by_template("test-user-id") == {}
+
+
+def _template(template_id: str, role: str) -> Expert:
+    return Expert.model_construct(
+        id=template_id,
+        name=template_id,
+        role=role,
+        avatar_url=None,
+        tagline=f"{template_id} handles {role.lower()}.",
+        is_template=True,
+        source_template_id=None,
+        is_archived=False,
+        workflows=[],
+    )

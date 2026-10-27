@@ -231,6 +231,26 @@ async def replace_suggested_prompts(
     return updated == 1
 
 
+async def replace_plan(
+    user_id: str,
+    recording_id: str,
+    read_at: datetime,
+    prompts: list[dict[str, Any]],
+    team: dict[str, Any],
+) -> bool:
+    """Write the ranked prompts and the capped team together, unless the row
+    changed since ``read_at`` or now belongs to another take.
+
+    Returns ``False`` when it did not land, so the caller re-reads, as
+    ``replace_suggested_prompts`` does.
+    """
+    updated = await OnboardingBrainDump.prisma().update_many(
+        where={"userId": user_id, "recordingId": recording_id, "updatedAt": read_at},
+        data={"suggestedPrompts": Json(prompts), "recommendedExperts": Json(team)},
+    )
+    return updated == 1
+
+
 # Postgres caps a statement at 32,767 bind parameters, and the first sweep
 # after this shipped clears every recording ever stored.
 _CLEAR_AUDIO_BATCH = 1000

@@ -211,8 +211,8 @@ def hire_waits_for_setup(monkeypatch):
     """Most tests assert on what a hire installs, so let them read it back
     once the background setup has finished."""
 
-    async def hire_and_finish_setup(user_id, template_id, name, surface=None):
-        result = await _hire_without_waiting(user_id, template_id, name, surface)
+    async def hire_and_finish_setup(user_id, template_id, name, surface=None, via=None):
+        result = await _hire_without_waiting(user_id, template_id, name, surface, via)
         await _finish_hire_setup()
         row = await prisma.models.Expert.prisma().find_unique(
             where={"id": result.expert.id}, include=experts_db._WORKFLOW_INCLUDE
@@ -6167,6 +6167,58 @@ async def test_expert_hired_carries_the_hiring_surface(
         test_user.id,
         "expert_hired",
         _expert_hired(result, template.id, surface="onboarding"),
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_hired_says_the_plan_made_a_fresh_or_a_revived_hire(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        hired = await experts_db.hire_expert(
+            test_user.id, template.id, None, "onboarding", via="plan"
+        )
+    emit.assert_called_once_with(
+        test_user.id,
+        "expert_hired",
+        _expert_hired(hired, template.id, surface="onboarding", via="plan"),
+    )
+
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        revived = await experts_db.hire_expert(
+            test_user.id, template.id, None, "onboarding", via="plan"
+        )
+
+    assert revived.expert.id == hired.expert.id
+    emit.assert_called_once_with(
+        test_user.id,
+        "expert_hired",
+        _expert_hired(revived, template.id, surface="onboarding", via="plan"),
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_hired_names_no_via_when_a_person_rehires_a_plan_hire(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(
+        test_user.id, template.id, None, "onboarding", via="plan"
+    )
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        revived = await experts_db.hire_expert(
+            test_user.id, template.id, None, "expert_page"
+        )
+
+    assert revived.expert.id == hired.expert.id
+    emit.assert_called_once_with(
+        test_user.id,
+        "expert_hired",
+        _expert_hired(revived, template.id, surface="expert_page"),
     )
 
 

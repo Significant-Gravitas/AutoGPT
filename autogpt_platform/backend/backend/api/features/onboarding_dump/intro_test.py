@@ -127,8 +127,13 @@ async def test_an_over_long_greeting_keeps_most_of_itself(
 def test_both_copies_of_the_instructions_ask_for_the_same_length():
     """The fallback instructions must not cap the greeting below what the
     system message allows, and the clip must sit above both."""
+    # The optional ``why`` clause under each prompt has its own, shorter cap.
+    why_limit = str(intro.MAX_WHY_CHARS)
     for text in (intro._LOCAL_PROMPT, intro.COVERAGE_CONTRACT):
-        assert re.findall(r"(\d+) characters", text) == [str(intro.GREETING_CHAR_LIMIT)]
+        lengths = re.findall(r"(\d+) characters", text)
+        assert [n for n in lengths if n != why_limit] == [
+            str(intro.GREETING_CHAR_LIMIT)
+        ]
     assert intro.GREETING_CHAR_LIMIT < intro.MAX_GREETING_CHARS
 
 
@@ -173,3 +178,34 @@ def test_the_fallback_greeting_names_nobody():
 def _sent(client: MagicMock, role: str) -> str:
     messages = client.chat.completions.create.await_args.kwargs["messages"]
     return next(m["content"] for m in messages if m["role"] == role)
+
+
+def test_the_local_prompt_offers_an_optional_why_per_prompt():
+    assert '"why" (optional)' in intro._LOCAL_PROMPT
+    assert f"at most {intro.MAX_WHY_CHARS} characters" in intro._LOCAL_PROMPT
+
+
+def test_a_prompt_keeps_its_why_and_one_without_still_parses():
+    at_cap = "x" * intro.MAX_WHY_CHARS
+    prompts = intro._parse_prompts(
+        [
+            {
+                "title": "Rewrite listings",
+                "prompt": "Do it.",
+                "why": " Listings  eat your evenings. ",
+            },
+            {"title": "Find shops", "prompt": "Do it."},
+            {"title": "Answer reviews", "prompt": "Do it.", "why": at_cap},
+            {"title": "Track orders", "prompt": "Do it.", "why": at_cap + "x"},
+            {"title": "Plan a drop", "prompt": "Do it.", "why": 7},
+        ]
+    )
+
+    assert [p.why for p in prompts] == [
+        "Listings eat your evenings.",
+        None,
+        at_cap,
+        None,  # too long to read as one clause
+        None,
+    ]
+    assert all(p.expert_template_id is None for p in prompts)

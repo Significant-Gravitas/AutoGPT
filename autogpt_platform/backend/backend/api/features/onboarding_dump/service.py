@@ -22,6 +22,7 @@ from backend.api.features.experts.models import Expert
 from backend.api.features.onboarding_dump import (
     db,
     intro,
+    plan_job,
     prompts,
     quality,
     recommend,
@@ -405,14 +406,24 @@ async def _run_background_jobs(
     greeting's LLM calls had finished — and would never start at all if
     something escaped the first one. Gathered here they are genuinely
     concurrent, and none can take the others down.
+
+    The plan job reads what the greeting and team jobs stored, so it runs
+    after them, only when both stored something, and before the dump is
+    marked completed: the plan step waits on that status, so it never shows
+    the unranked list.
     """
-    wizard_context = await _safe_understanding(user_id)
+    wizard_context = await wizard_answers(user_id)
     results = await asyncio.gather(
         _run_completion(user_id, recording_id, transcript, input_mode),
         _run_provider_recommendations(user_id, recording_id, transcript),
         _run_expert_recommendations(user_id, recording_id, transcript, wizard_context),
         return_exceptions=True,
     )
+    if results[0] is True and results[2] is True:
+        user_role, pain_points = wizard_context
+        await plan_job.store_ranked_plan(
+            user_id, recording_id, transcript, user_role, pain_points
+        )
     if results[0] is True:
         try:
             await db.update_dump(
@@ -506,65 +517,74 @@ async def _run_expert_recommendations(
     recording_id: str,
     transcript: str,
     wizard_context: tuple[str | None, list[str]],
-) -> None:
+) -> bool:
     """The team job, third leg of the background gather.
 
     Like the provider job it writes one column and never the dump status,
     so it cannot strand the loading screen. It always writes *something*:
     a row left with a null column is "still running" to the reader, and
-    the client would poll it until its own ceiling.
+    the client would poll it until its own ceiling. Returns whether the
+    team was stored, which the plan job needs.
     """
     user_role, pain_points = wizard_context
     team = await recommend_experts.generate_expert_recommendations(
         transcript,
         user_role=user_role,
         pain_points=pain_points,
-        templates=await _safe_templates(),
+        templates=await safe_templates(),
     )
-    await _store_team(user_id, recording_id, team)
+    return await _store_team(user_id, recording_id, team)
 
 
 async def _store_team(
     user_id: str, recording_id: str, team: ExpertRecommendations
-) -> None:
+) -> bool:
     try:
-        await db.update_dump(
+        return await db.update_dump(
             user_id, recording_id, recommendedExperts=Json(team.model_dump())
         )
     except Exception as e:  # background task, nowhere to raise
         logger.warning(
             "Brain dump expert recommendations not stored for user %s: %s", user_id, e
         )
+        return False
 
 
-async def _safe_understanding(user_id: str) -> tuple[str | None, list[str]]:
+async def wizard_answers(user_id: str) -> tuple[str | None, list[str]]:
     """``(user_role, pain_points)`` from the signup wizard's answers.
 
-    The wizard's saved progress holds them from the role step on. The
-    understanding gets its copy only at the wizard's last step, after the
-    hire step, so it answers only for an account with no saved answers.
     A read that fails costs the recommendation its wizard context, not
-    the recommendation.
+    the recommendation. Paths that store what they build from the answers
+    use ``read_wizard_answers``, which raises instead.
     """
-    saved = await _saved_wizard_answers(user_id)
+    try:
+        return await read_wizard_answers(user_id)
+    except Exception as e:
+        logger.warning(f"Brain dump team: wizard answers read failed: {e}")
+        return None, []
+
+
+async def read_wizard_answers(user_id: str) -> tuple[str | None, list[str]]:
+    """``(user_role, pain_points)``, raising when a read fails.
+
+    The wizard's saved progress holds them from the role step on. The
+    understanding gets its copy only at the wizard's last step, so it
+    answers only for an account with no saved answers.
+    """
+    saved = _saved_wizard_answers((await get_user_onboarding(user_id)).wizardProgress)
     if saved is not None:
         return saved
-    try:
-        understanding = await get_business_understanding(user_id)
-    except Exception as e:
-        logger.warning("Brain dump team: understanding read failed: %s", e)
-        return None, []
+    understanding = await get_business_understanding(user_id)
     if understanding is None:
         return None, []
     return understanding.user_role, understanding.pain_points
 
 
-async def _saved_wizard_answers(user_id: str) -> tuple[str, list[str]] | None:
+def _saved_wizard_answers(stored: object) -> tuple[str, list[str]] | None:
     try:
-        stored = (await get_user_onboarding(user_id)).wizardProgress
         progress = OnboardingWizardProgress.model_validate(stored) if stored else None
-    except Exception as e:
-        logger.warning(f"Brain dump team: wizard progress read failed: {e}")
+    except ValidationError as e:
+        logger.warning(f"Brain dump team: wizard progress unreadable: {e}")
         return None
     if progress is None:
         return None
@@ -575,7 +595,7 @@ async def _saved_wizard_answers(user_id: str) -> tuple[str, list[str]] | None:
     return role, list(progress.painPoints)
 
 
-async def _safe_templates() -> list[Expert]:
+async def safe_templates() -> list[Expert]:
     try:
         return await list_templates()
     except Exception as e:
@@ -591,11 +611,11 @@ async def get_recommended_experts(user_id: str) -> RecommendedExpertsResponse:
     a final answer here rather than leaving the client polling.
     """
     dump = await db.get_dump(user_id)
-    team, pending = await _team_for_intro(user_id, dump)
+    team, pending = await team_for_dump(user_id, dump)
     return RecommendedExpertsResponse(ready=not pending, team=team)
 
 
-async def _team_for_intro(
+async def team_for_dump(
     user_id: str, dump: OnboardingBrainDump | None
 ) -> tuple[ExpertRecommendations | None, bool]:
     """``(team, pending)`` for one user, shared by /intro and this reader.
@@ -604,7 +624,7 @@ async def _team_for_intro(
     not pending is always an object — possibly with no experts — so the
     "raise your own" door is always there to render.
     """
-    if dump is None or _nothing_to_reflect(dump):
+    if dump is None or nothing_to_reflect(dump):
         # Path B and every other take with nothing to read: the job never
         # ran, and the wizard's answers are the whole basis for a team.
         return await _fallback_team(user_id), False
@@ -628,9 +648,9 @@ async def _team_for_intro(
 
 
 async def _fallback_team(user_id: str) -> ExpertRecommendations:
-    user_role, pain_points = await _safe_understanding(user_id)
+    user_role, pain_points = await wizard_answers(user_id)
     return recommend_experts.fallback_expert_recommendations(
-        user_role, pain_points, await _safe_templates()
+        user_role, pain_points, await safe_templates()
     )
 
 
@@ -778,8 +798,8 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
     if await _retire_greeting_if_chatted(user_id):
         return IntroCardResponse(path="A", greeting="", greeting_done=True)
 
-    team, team_pending = await _team_for_intro(user_id, dump)
-    if dump is None or _nothing_to_reflect(dump):
+    team, team_pending = await team_for_dump(user_id, dump)
+    if dump is None or nothing_to_reflect(dump):
         return IntroCardResponse(
             path="B",
             greeting=prompts.PATH_B_GREETING,
@@ -803,7 +823,7 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
     )
 
 
-def _nothing_to_reflect(dump: OnboardingBrainDump) -> bool:
+def nothing_to_reflect(dump: OnboardingBrainDump) -> bool:
     """Whether ``dump`` holds anything worth greeting the user about."""
     return (
         dump.inputMode == BrainDumpInputMode.skipped
@@ -821,7 +841,7 @@ def _greeting_still_writing(dump: OnboardingBrainDump) -> bool:
 
     A terminal status means no more is coming, whatever the column holds.
     """
-    if _nothing_to_reflect(dump):
+    if nothing_to_reflect(dump):
         return False
     return not (dump.greeting or "").strip() and dump.status not in (
         BrainDumpStatus.completed,
@@ -876,6 +896,9 @@ def _stored_prompts(raw: object) -> list[SuggestedPrompt]:
                 if item.get("icon") in intro.PROMPT_ICONS
                 else intro.DEFAULT_PROMPT_ICON
             ),
+            expert_template_id=_optional_text(item.get("expert_template_id")),
+            why=intro.parse_why(item.get("why")),
+            expert_name=_optional_text(item.get("expert_name")),
         )
         for item in raw
         if isinstance(item, dict)
@@ -883,6 +906,10 @@ def _stored_prompts(raw: object) -> list[SuggestedPrompt]:
         and isinstance(item.get("prompt"), str)
     ]
     return parsed or intro.fallback_prompts()
+
+
+def _optional_text(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 async def mark_greeting_done(user_id: str) -> None:

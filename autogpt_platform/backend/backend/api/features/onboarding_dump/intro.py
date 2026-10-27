@@ -15,7 +15,7 @@ import os
 
 from langfuse import get_client
 
-from backend.api.features.onboarding_dump.models import SuggestedPrompt
+from backend.api.features.onboarding_dump.models import MAX_WHY_CHARS, SuggestedPrompt
 from backend.api.features.onboarding_dump.parsing import parse_response_json
 from backend.api.features.onboarding_dump.providers import (
     known_providers,
@@ -134,6 +134,10 @@ details from the title so work can start immediately.
 chart-bar, envelope, magnifying-glass, calendar-check, bell, \
 rocket-launch, file-text, globe, code, newspaper, users, shopping-cart, \
 chats, lightning, target, robot, clock, megaphone, currency-dollar.
+  - "why" (optional): one short clause, at most {MAX_WHY_CHARS} characters, \
+second person, naming the thing they said this task fixes ("Because \
+listings eat your evenings."). Leave the key out when nothing they said \
+ties to the task.
 
 Example of the required jump in specificity (do NOT copy these, derive \
 your own from the transcript):
@@ -298,9 +302,19 @@ def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
                 title=title.strip()[:MAX_TITLE_CHARS],
                 prompt=prompt.strip()[:MAX_PROMPT_CHARS],
                 icon=icon if icon in PROMPT_ICONS else DEFAULT_PROMPT_ICON,
+                why=parse_why(item.get("why")),
             )
         )
     return prompts
+
+
+def parse_why(raw: object) -> str | None:
+    """The optional ``why`` clause, or None when it is missing, empty or
+    too long to read as one: a clipped clause reads worse than none."""
+    if not isinstance(raw, str):
+        return None
+    why = " ".join(raw.split())
+    return why if 0 < len(why) <= MAX_WHY_CHARS else None
 
 
 def fallback_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
