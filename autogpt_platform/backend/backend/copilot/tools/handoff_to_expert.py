@@ -49,7 +49,9 @@ from .expert_delegation import (
     resolve_target_expert,
     safe_caller_name,
     sent_from_metadata,
+    team_owner,
     unknown_target_message,
+    user_first_name,
 )
 from .models import (
     DelegatedExpertInfo,
@@ -241,7 +243,9 @@ class HandoffToExpertTool(BaseTool):
         return await run_copilot_turn_via_queue(
             session_id=inner_session_id,
             user_id=user_id,
-            message=_transfer_message(caller, context, prompt),
+            message=_transfer_message(
+                caller, context, prompt, await user_first_name(user_id)
+            ),
             timeout=0,
             permissions=get_current_permissions(),
             tool_call_id=(
@@ -371,16 +375,20 @@ def _refused_transfer_message(
     )
 
 
-def _transfer_message(caller: str, context: str, prompt: str) -> str:
+def _transfer_message(
+    caller: str, context: str, prompt: str, user_name: str | None = None
+) -> str:
     """Frame the task as transferred, not borrowed.
 
     Delegation's preamble asks the receiver to report back to the teammate who
     called. A handoff has no one to report to, so the receiver is told to own
-    the task and speak to the user directly.
+    the task and speak to the user directly. ``user_name`` is the user's first
+    name, if known.
     """
     name = safe_caller_name(caller)
+    team = team_owner(user_name)
     preamble = (
-        f"[Task handed to you by {name}, a teammate on this user's team. It "
+        f"[Task handed to you by {name}, a teammate on {team} team. It "
         "is yours now: they are not waiting on a report and cannot answer "
         "follow-ups. Take it to completion and tell the user the outcome "
         "yourself. If something only the user can provide is missing, ask "

@@ -953,6 +953,53 @@ class TestCallerNameFraming:
         assert "from a teammate," in mock_turn.await_args.kwargs["message"]
 
 
+class TestUserNameFraming:
+    """The teammate writes about the user in its report. Calling them "this
+    user" left the model to pick a pronoun, and it picked "he" (SECRT-3161),
+    so the preamble names the user when their name is known."""
+
+    @pytest.mark.asyncio
+    async def test_the_preamble_names_the_users_team(
+        self, roster, mock_turn, mock_sessions, user_understanding
+    ):
+        user_understanding.get_business_understanding.return_value = MagicMock(
+            user_name="Priya Raman"
+        )
+
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id=None),
+            expert_id="expert-b",
+            prompt="plan the serum launch",
+            wait_for_result=0,
+        )
+
+        message = mock_turn.await_args.kwargs["message"]
+        assert "a teammate on Priya's team" in message
+        assert "this user's" not in message
+        user_understanding.get_business_understanding.assert_awaited_once_with("alice")
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_name_keeps_the_neutral_wording(
+        self, roster, mock_turn, mock_sessions, user_understanding
+    ):
+        user_understanding.get_business_understanding.side_effect = RuntimeError(
+            "db down"
+        )
+
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id=None),
+            expert_id="expert-b",
+            prompt="plan the serum launch",
+            wait_for_result=0,
+        )
+
+        assert "a teammate on this user's team" in (
+            mock_turn.await_args.kwargs["message"]
+        )
+
+
 @pytest.mark.asyncio
 class TestRefusedDelegationCleanup:
     """A delegation refused after its session row exists would otherwise show

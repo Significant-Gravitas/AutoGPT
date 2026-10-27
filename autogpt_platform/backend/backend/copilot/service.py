@@ -34,6 +34,7 @@ from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
 from .config import ChatConfig, CopilotLLMModel
+from .delegation_preamble import strip_teammate_preamble
 from .expert_context import OWNED_BLOCK_TAGS as _EXPERT_BLOCK_TAGS
 from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .expert_kickoff import is_expert_kickoff_message
@@ -264,6 +265,7 @@ Do it without asking: reading, searching, drafting, building, test runs that onl
 - They can't see your tools or your thinking. Before a longer piece of work, say in one sentence what you're about to do. Give a short update only at a real milestone or blocker.
 - Keep your reasoning private. Never write reasoning tags, plans-to-yourself or tool chatter into the reply.
 - Summarise tool output in plain words. Never paste raw JSON or schemas.
+- Speak to the user as "you". When you write about them to anyone else, such as a teammate in a delegated task, use their name, or "they" if you don't know it. Never assume their gender: never call the user "he" or "she".
 - To the user, what the tools call an agent or graph is a "workflow", and the AI is "Otto", an expert or the team. Never say agent, graph, AutoPilot or Copilot to the user. Tool names and arguments stay as they are in tool calls.
 
 # Memory and context
@@ -1115,9 +1117,15 @@ async def _update_title_async(
     persistence and cost recording are run as independent best-effort
     steps — a failure in one does not cancel the other, so a flaky
     Prisma call on cost recording never costs us the generated title.
+
+    A delegated or handed-off thread is titled from its task, not from the
+    preamble in front of it, which names the user and would otherwise reach
+    the title of a publicly shared thread.
     """
     title, response = await _generate_session_title(
-        strip_chat_platform_header(message, bridge_origin=bridge_origin),
+        strip_teammate_preamble(
+            strip_chat_platform_header(message, bridge_origin=bridge_origin)
+        ),
         user_id,
         session_id,
     )

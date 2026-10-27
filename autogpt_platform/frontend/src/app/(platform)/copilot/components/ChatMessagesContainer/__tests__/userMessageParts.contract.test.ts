@@ -7,6 +7,7 @@ import { getVisibleUserMessageParts } from "../userMessageParts";
 interface PreambleCase {
   kind: string;
   caller: string;
+  user: string;
   context: string;
   prompt: string;
   message: string;
@@ -28,7 +29,7 @@ const preambleCases: { cases: PreambleCase[] } = JSON.parse(
 
 describe("the shared backend/frontend delegation preamble", () => {
   it.each(preambleCases.cases)(
-    "hides the $kind preamble the backend renders for $caller",
+    "hides the $kind preamble the backend renders for $caller (user: '$user')",
     (preambleCase) => {
       expect(
         getVisibleUserMessageParts([

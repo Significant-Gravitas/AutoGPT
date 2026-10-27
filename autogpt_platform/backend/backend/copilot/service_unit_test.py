@@ -33,6 +33,7 @@ from backend.copilot.service import (
 )
 from backend.copilot.service import config as service_config
 from backend.copilot.service import settings
+from backend.copilot.tools.delegate_to_expert import _handoff_message
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.settings import Config
 
@@ -356,6 +357,35 @@ class TestUpdateTitleAsync:
     """``_update_title_async`` runs title persistence and cost recording
     as independent best-effort steps — a failure in one does NOT
     cancel the other."""
+
+    @pytest.mark.parametrize(
+        ("first_message", "title_source"),
+        [
+            (
+                _handoff_message("Otto", "", "Plan the serum launch.", "Priya"),
+                "Plan the serum launch.",
+            ),
+            ("I'm Priya. Plan the serum launch.", "I'm Priya. Plan the serum launch."),
+        ],
+        ids=["teammate-task", "typed-by-the-user"],
+    )
+    @pytest.mark.asyncio
+    async def test_a_teammate_task_is_titled_from_the_task_not_its_framing(
+        self, first_message: str, title_source: str
+    ):
+        """The preamble names the user, and the title goes out with a
+        public share, so the title model sees only the task."""
+        gen = AsyncMock(return_value=("Serum Launch", None))
+        with (
+            patch("backend.copilot.service._generate_session_title", new=gen),
+            patch(
+                "backend.copilot.service.update_session_title",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            await _update_title_async("sess-1", first_message, user_id="u1")
+
+        assert gen.await_args.args[0] == title_source
 
     @pytest.mark.asyncio
     async def test_title_success_cost_success(self):

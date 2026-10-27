@@ -43,6 +43,22 @@ def stub_user_lookup_in_helpers(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def user_understanding(monkeypatch):
+    """Back the teammate preambles' user-name lookup with no stored profile.
+
+    Tests that need a name set
+    ``user_understanding.get_business_understanding.return_value``.
+    """
+    client = MagicMock()
+    client.get_business_understanding = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "backend.copilot.tools.expert_delegation.understanding_db",
+        MagicMock(return_value=client),
+    )
+    return client
+
+
+@pytest.fixture(autouse=True)
 def stub_learning_registry(monkeypatch):
     """Route the skill registry's learning hooks to an in-memory store.
 

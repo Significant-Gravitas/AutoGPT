@@ -7,8 +7,12 @@ genuinely does not.
 
 from datetime import datetime, timezone
 
+import pytest
+
 from backend.copilot.model import ChatMessage as ChatMessageDomain
 from backend.copilot.sharing.models import _redact_secret_keys, sanitize_chat_message
+from backend.copilot.tools.delegate_to_expert import _handoff_message
+from backend.copilot.tools.handoff_to_expert import _transfer_message
 
 
 def _msg(**overrides) -> ChatMessageDomain:
@@ -324,3 +328,49 @@ class TestSanitizeChatMessage:
                 },
             }
         }
+
+
+class TestTeammatePreamble:
+    """A delegated or handed-off thread opens with a server-written preamble
+    that names the user ("a teammate on Priya's team"). A public share must
+    not carry it: the reader sees the task, as the owner's UI shows it."""
+
+    _PROFILE = "<user_context>\n## User\nName: Priya Raman\n</user_context>\n\n"
+
+    @pytest.mark.parametrize(
+        "row",
+        [
+            _handoff_message("Otto", "", "Plan the serum launch.", "Priya"),
+            _transfer_message("Ari", "", "Plan the serum launch.", "Priya"),
+        ],
+        ids=["delegation", "handoff"],
+    )
+    def test_a_shared_teammate_task_shows_the_task_without_the_users_name(
+        self, row: str
+    ):
+        sanitized = sanitize_chat_message(
+            _msg(role="user", content=self._PROFILE + row)
+        )
+        assert sanitized.content == "Plan the serum launch."
+        assert "Priya" not in (sanitized.content or "")
+
+    def test_rows_stored_before_the_name_are_hidden_too(self):
+        row = _handoff_message("Otto", "Launch is Friday.", "Draft the email.", None)
+        assert "this user's team" in row
+        sanitized = sanitize_chat_message(_msg(role="user", content=row))
+        assert sanitized.content == "[Context: Launch is Friday.]\n\nDraft the email."
+
+    @pytest.mark.parametrize(
+        "typed",
+        [
+            "[Delegated task from Avery]\n\nKeep this user-written note.",
+            "Please explain this wrapper:\n\n"
+            + _handoff_message("Otto", "", "Task", "Priya"),
+        ],
+    )
+    def test_text_the_user_typed_is_left_alone(self, typed: str):
+        assert sanitize_chat_message(_msg(role="user", content=typed)).content == typed
+
+    def test_only_user_rows_are_touched(self):
+        row = _handoff_message("Otto", "", "Plan the serum launch.", "Priya")
+        assert sanitize_chat_message(_msg(role="assistant", content=row)).content == row

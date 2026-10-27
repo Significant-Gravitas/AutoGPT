@@ -12,19 +12,24 @@ turn, so a bound that lives in only one of them is no bound at all — the model
 just passes the task on with the other tool.
 """
 
+import asyncio
 import logging
 from typing import Any
 
 from backend.api.features.experts.models import Expert
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tree import MAX_DEPTH
-from backend.data.db_accessors import experts_db
+from backend.data.db_accessors import experts_db, understanding_db
 
 logger = logging.getLogger(__name__)
 
 # Long enough for a real name, short enough that a crafted one cannot bury the
 # preamble's own instructions under padding.
 CALLER_NAME_LIMIT = 80
+# The same guard for the user's first name, which is one word.
+USER_NAME_LIMIT = 40
+# The name is cosmetic, so its lookup gets seconds, not the RPC client's retries.
+USER_NAME_LOOKUP_TIMEOUT_SECONDS = 2.0
 
 # How many hops a single task may travel between experts, whether delegated or
 # handed over. The turn envelope enforces the same bound for every spawn kind;
@@ -34,6 +39,11 @@ MAX_DELEGATION_DEPTH = MAX_DEPTH
 # The preamble delimits itself with square brackets, so a name containing them
 # can close the framing early and open a block of its own.
 _FRAMING_DELIMITERS = str.maketrans("", "", "[]")
+
+# Titles people put in front of their name, skipped when picking a first name.
+_NAME_TITLES = frozenset(
+    {"mr", "mrs", "ms", "miss", "mx", "dr", "prof", "sir", "dame", "lord", "lady"}
+)
 
 
 def sent_from_metadata(
@@ -63,6 +73,45 @@ def safe_caller_name(caller: str) -> str:
     """
     one_line = " ".join(caller.split()).translate(_FRAMING_DELIMITERS)
     return one_line[:CALLER_NAME_LIMIT].strip() or "a teammate"
+
+
+async def user_first_name(user_id: str) -> str | None:
+    """The user's first name for a preamble, or ``None`` when it is unknown.
+
+    Read from the profile the onboarding fills in, the same ``Name:`` Otto
+    sees in ``<user_context>``. Best-effort and time-boxed: a failed or slow
+    lookup only costs the preamble its name, never the handoff, whose own
+    retrying RPC client could otherwise hold the call for minutes.
+    """
+    try:
+        understanding = await asyncio.wait_for(
+            understanding_db().get_business_understanding(user_id),
+            USER_NAME_LOOKUP_TIMEOUT_SECONDS,
+        )
+    except Exception as e:
+        logger.warning(f"User name lookup for a teammate preamble failed: {e!r}")
+        return None
+    return first_name(understanding.user_name if understanding else None)
+
+
+def first_name(name: str | None) -> str | None:
+    """The first word of a stored name after any leading title, bracket-free
+    and capped, or ``None``. "Dr. Priya Shah" is Priya, not "Dr.", and a
+    "Mr." or "Mrs." must not put back the gender this name is meant to avoid.
+    """
+    words = (name or "").translate(_FRAMING_DELIMITERS).split()
+    while words and words[0].rstrip(".").lower() in _NAME_TITLES:
+        words = words[1:]
+    return words[0][:USER_NAME_LIMIT] if words else None
+
+
+def team_owner(user_name: str | None) -> str:
+    """Whose team the preamble puts the teammate on.
+
+    Named, so the teammate refers to the user by name instead of guessing a
+    pronoun. Unnamed keeps the wording every earlier row was stored with.
+    """
+    return f"{user_name}'s" if user_name else "this user's"
 
 
 async def resolve_target_expert(user_id: str, reference: str) -> Expert | None:

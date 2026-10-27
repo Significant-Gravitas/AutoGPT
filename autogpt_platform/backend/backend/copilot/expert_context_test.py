@@ -19,6 +19,7 @@ import pytest
 
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
+    USER_ADDRESS_RULE,
     Expert,
     ExpertRoutine,
     ExpertWorkflowRef,
@@ -29,18 +30,19 @@ from backend.copilot.expert_context import (
     OWNED_BLOCK_TAGS,
     ExpertSessionUnavailableError,
     build_expert_identity_suffix,
+    render_expert_identity_suffix,
 )
 from backend.copilot.rate_limit import SubscriptionTier
+from backend.copilot.service import _CACHEABLE_SYSTEM_PROMPT
 
 _EC = "backend.copilot.expert_context"
 
 
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
 # constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
-# Last re-pinned for the say-each-rule-once rewrite (workflow wording, the
-# approval-card fallback and the one-thing greeting).
+# Last re-pinned for the rule on how to refer to the user (SECRT-3161).
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "85a26576ca6105b8f115174fc188b32e46b8b43c3b7cda1edf6d399796909897"
+    "3da21c157d9a55b0ddbb9e2fddffb5d39baf205c0b8e18658848a25e7a05e8d0"
 )
 
 
@@ -264,6 +266,22 @@ class TestBuildExpertIdentitySuffix:
         assert "Nothing recorded yet." not in result
         for rule in PROTECTED_SOUL_RULES:
             assert rule and rule in result
+
+    def test_every_expert_is_told_how_to_refer_to_the_user(self):
+        """SECRT-3161: an expert called the user "he" without knowing their
+        gender. The rule is protected, so the user cannot edit it away, and
+        it is read from code on every turn rather than from the expert's
+        row, so an expert hired before the rule existed gets it too."""
+        hired_before_the_rule = _expert().model_copy(
+            update={"protected_soul_rules": []}
+        )
+
+        suffix = render_expert_identity_suffix(hired_before_the_rule)
+
+        assert USER_ADDRESS_RULE in PROTECTED_SOUL_RULES
+        assert f"- {USER_ADDRESS_RULE}" in suffix
+        assert '"you"' in USER_ADDRESS_RULE and '"they"' in USER_ADDRESS_RULE
+        assert "gender" in USER_ADDRESS_RULE
 
     @pytest.mark.asyncio
     async def test_voice_preferences_are_fenced_as_untrusted_quoted_data(self):
@@ -713,10 +731,17 @@ class TestInjectUserContextExpertWiring:
     @pytest.mark.asyncio
     async def test_cacheable_system_prompt_is_byte_identical(self):
         """The prompt-cache contract: _CACHEABLE_SYSTEM_PROMPT must not change."""
-        from backend.copilot.service import _CACHEABLE_SYSTEM_PROMPT
-
         digest = hashlib.sha256(_CACHEABLE_SYSTEM_PROMPT.encode()).hexdigest()
         assert digest == _PRE_CHANGE_PROMPT_SHA256
+
+    def test_otto_is_told_how_to_refer_to_the_user(self):
+        """SECRT-3161: Otto wrote "he wants you to run the launch planning for
+        him" into a delegated task for a user whose gender it never learned."""
+        talking = _CACHEABLE_SYSTEM_PROMPT.split("# Talking to the user", 1)[1]
+        talking = talking.split("\n# ", 1)[0]
+        assert 'Speak to the user as "you"' in talking
+        assert 'use their name, or "they" if you don\'t know it' in talking
+        assert "Never assume their gender" in talking
 
     @pytest.mark.asyncio
     async def test_expert_block_injected_for_expert_session(self):

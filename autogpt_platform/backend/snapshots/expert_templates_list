@@ -28,7 +28,8 @@
     "pod_id": null,
     "protected_soul_rules": [
       "The expert discloses that it is AI when acting externally.",
-      "The expert asks for approval before acting externally."
+      "The expert asks for approval before acting externally.",
+      "The expert speaks to the user as \"you\" and refers to them by name, or as \"they\" when it doesn't know their name, never assuming their gender."
     ],
     "role": "Marketing Specialist",
     "schedules_paused_at": null,

@@ -15,8 +15,11 @@ const handoff =
   "yourself. If something only the user can provide is missing, ask " +
   "them.]";
 
+const namedDelegation = delegation.replace("this user's", "Priya's");
+const namedHandoff = handoff.replace("this user's", "Priya's");
+
 describe("getVisibleUserMessageParts", () => {
-  it.each([delegation, handoff])(
+  it.each([delegation, handoff, namedDelegation, namedHandoff])(
     "removes the generated preamble while preserving task content: %s",
     (preamble) => {
       const text = `${preamble}\n\n[Context: Launch on Friday.]\n\nReview **all** links.\n\n- [ ] Footer`;
@@ -31,6 +34,18 @@ describe("getVisibleUserMessageParts", () => {
       expect(parts[0]).toEqual({ type: "text", text });
     },
   );
+
+  it("counts an emoji expert name in characters, as the backend caps it", () => {
+    // 45 code points, 90 UTF-16 code units: within the backend's 80-character
+    // name cap, past 80 units.
+    const caller = "🚀".repeat(45);
+    const text = `${delegation.replace("Avery", caller)}\n\nDraft the update.`;
+    const parts: UIMessage["parts"] = [{ type: "text", text }];
+
+    expect(getVisibleUserMessageParts(parts)).toEqual([
+      { type: "text", text: "Draft the update." },
+    ]);
+  });
 
   it("preserves attachments and later text parts verbatim", () => {
     const attachment = {
