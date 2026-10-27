@@ -18,11 +18,13 @@ const FIRST_INDEX = 4;
 type PromptScreen = "rest" | "typing" | "recording";
 type AdvanceVia = "auto" | "click";
 
-// How long each question stays. While recording it only moves on a click: a
-// question changing mid-answer pulls the speaker off their thought.
-const AUTO_ADVANCE_MS: Partial<Record<PromptScreen, number>> = {
+// How long each question stays. It keeps moving while recording, so a
+// speaker who runs dry has something new to pick up; it is never announced,
+// so it cannot talk into the take, and the user can pause it (togglePause).
+const AUTO_ADVANCE_MS: Record<PromptScreen, number> = {
   rest: 12_000,
   typing: 20_000,
+  recording: 15_000,
 };
 
 interface Args {
@@ -35,6 +37,9 @@ export function usePromptRotation({ role, screen }: Args) {
   const hasAmbientCards = useIsWideLayout();
   const reduceMotion = useReducedMotion() === true;
   const [rotation, setRotation] = useState<Rotation>(firstRotation(promptSet));
+  // One switch for every idea that changes on its own: the live prompt and
+  // the ambient cards (WCAG 2.2.2).
+  const [isPaused, setIsPaused] = useState(false);
   const current =
     rotation.promptSet === promptSet ? rotation : firstRotation(promptSet);
   const { index } = current;
@@ -49,18 +54,22 @@ export function usePromptRotation({ role, screen }: Args) {
   // Restarted on every advance, so a click buys the new question its full
   // time on screen.
   useEffect(() => {
-    const interval = shownOn ? AUTO_ADVANCE_MS[shownOn] : undefined;
-    if (!shownOn || !interval || reduceMotion) return;
+    if (!shownOn || reduceMotion || isPaused) return;
+    const interval = AUTO_ADVANCE_MS[shownOn];
     const timer = setInterval(() => {
       if (document.visibilityState !== "visible") return;
       setRotation(advanceFrom({ promptSet, index, screen: shownOn }, "auto"));
     }, interval);
     return () => clearInterval(timer);
-  }, [shownOn, reduceMotion, promptSet, index]);
+  }, [shownOn, reduceMotion, isPaused, promptSet, index]);
 
   function advance(via: AdvanceVia) {
     if (!shownOn) return;
     setRotation(advanceFrom({ promptSet, index, screen: shownOn }, via));
+  }
+
+  function togglePause() {
+    setIsPaused((paused) => !paused);
   }
 
   return {
@@ -68,6 +77,8 @@ export function usePromptRotation({ role, screen }: Args) {
     index,
     promptSet,
     advance,
+    isPaused,
+    togglePause,
     // Only a question the user asked for is read out: one announced on
     // every timer tick would talk over a screen reader, and into the take.
     announcement:

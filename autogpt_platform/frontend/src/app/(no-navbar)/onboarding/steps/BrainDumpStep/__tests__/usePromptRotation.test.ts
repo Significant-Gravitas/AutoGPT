@@ -86,24 +86,49 @@ describe("usePromptRotation", () => {
     expect(result.current.index).toBe(6);
   });
 
-  it("only moves on a click while recording", async () => {
+  it("keeps moving every 15 seconds while recording, unannounced", async () => {
     const { result } = renderRotation({
       role: "Operations",
       screen: "recording",
     });
 
-    await wait(120_000);
+    await wait(14_999);
     expect(result.current.index).toBe(4);
-    expect(trackBrainDump).not.toHaveBeenCalled();
 
-    act(() => result.current.advance("click"));
+    await wait(1);
     expect(result.current.index).toBe(5);
+    expect(result.current.announcement).toBe("");
     expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_prompt_advanced", {
-      via: "click",
+      via: "auto",
       screen: "recording",
       prompt_index: 5,
       prompt_set: "Operations",
     });
+
+    act(() => result.current.advance("click"));
+    expect(result.current.index).toBe(6);
+  });
+
+  it("holds still while paused and picks up again when resumed", async () => {
+    const { result } = renderRotation({
+      role: "Operations",
+      screen: "recording",
+    });
+
+    act(() => result.current.togglePause());
+    expect(result.current.isPaused).toBe(true);
+    await wait(120_000);
+    expect(result.current.index).toBe(4);
+    expect(vi.getTimerCount()).toBe(0);
+
+    // "Another question" still works while paused.
+    act(() => result.current.advance("click"));
+    expect(result.current.index).toBe(5);
+
+    act(() => result.current.togglePause());
+    expect(result.current.isPaused).toBe(false);
+    await wait(15_000);
+    expect(result.current.index).toBe(6);
   });
 
   it("announces only a question the user asked for", async () => {

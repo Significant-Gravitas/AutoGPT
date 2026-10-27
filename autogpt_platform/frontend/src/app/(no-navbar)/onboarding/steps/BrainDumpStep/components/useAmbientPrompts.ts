@@ -2,19 +2,27 @@ import { useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { BRAIN_DUMP_PROMPT_SETS, promptSetNameForRole } from "../prompts";
 
-const SWAP_MS = 7_000;
-const REDUCED_MOTION_SWAP_MS = 14_000;
-// Four cards carry questions; the two quotes never change.
-const QUESTION_CARDS = 4;
+const SWAP_MS = 3_500;
+const REDUCED_MOTION_SWAP_MS = 7_000;
+
+export type AmbientSlot = "question" | "example";
 
 interface Args {
   role: string;
-  // Off while recording, so nothing changes under someone mid-answer, and
-  // wherever the layer is not on screen.
+  // What each card carries, in the order the cards are laid out.
+  slots: AmbientSlot[];
+  // Off wherever the layer is not on screen, and while the user has paused
+  // the cards.
   isRotating: boolean;
 }
 
-export function useAmbientPrompts({ role, isRotating }: Args) {
+export interface AmbientContent {
+  label: string;
+  text: string;
+  isQuote: boolean;
+}
+
+export function useAmbientPrompts({ role, slots, isRotating }: Args) {
   const promptSet = promptSetNameForRole(role);
   const reduceMotion = useReducedMotion() === true;
   const [rotation, setRotation] = useState({ promptSet, swaps: 0 });
@@ -36,21 +44,47 @@ export function useAmbientPrompts({ role, isRotating }: Args) {
   }, [promptSet, reduceMotion, isRotating]);
 
   const { questions, examples } = BRAIN_DUMP_PROMPT_SETS[promptSet];
-  return {
-    questions: Array.from(
-      { length: QUESTION_CARDS },
-      (_, card) => questions[questionOnCard(card, swaps, questions.length)],
-    ),
-    examples,
-    reduceMotion,
-  };
+  const dealt = dealCards(slots, swaps, {
+    question: questions.length,
+    example: examples.length,
+  });
+  const cards: AmbientContent[] = dealt.map((index, card) => {
+    if (slots[card] === "example")
+      return {
+        label: "For example",
+        text: `“${examples[index]}”`,
+        isQuote: true,
+      };
+    return { ...questions[index], isQuote: false };
+  });
+  return { cards, reduceMotion };
 }
 
-// The cards take turns: swap n lands on card n % 4 and brings in the next
-// question after the four dealt at the start.
-function questionOnCard(card: number, swaps: number, total: number) {
-  if (swaps <= card) return card;
-  const lastSwap =
-    card + QUESTION_CARDS * Math.floor((swaps - 1 - card) / QUESTION_CARDS);
-  return (QUESTION_CARDS + lastSwap) % total;
+// Which card the next swap lands on, for the six-card layout: it hops
+// across the page rather than walking down one side, so each change pulls
+// the eye somewhere new.
+const SWAP_ORDER = [3, 1, 5, 0, 4, 2];
+
+function swapOrder(cardCount: number) {
+  if (cardCount === SWAP_ORDER.length) return SWAP_ORDER;
+  return Array.from({ length: cardCount }, (_, card) => card);
+}
+
+// Deals the opening hand (questions and quotes in order), then replays every
+// swap: the swapped card takes the next item of its own kind nobody has seen
+// yet, wrapping round once the set runs out.
+export function dealCards(
+  slots: AmbientSlot[],
+  swaps: number,
+  sizes: Record<AmbientSlot, number>,
+) {
+  const next: Record<AmbientSlot, number> = { question: 0, example: 0 };
+  const shown = slots.map((slot) => next[slot]++ % sizes[slot]);
+  const order = swapOrder(slots.length);
+  for (let swap = 0; swap < swaps; swap++) {
+    const card = order[swap % order.length];
+    const slot = slots[card];
+    shown[card] = next[slot]++ % sizes[slot];
+  }
+  return shown;
 }

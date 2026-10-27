@@ -4,56 +4,86 @@ import { cn } from "@/lib/utils";
 import type { ScreenState } from "../useBrainDumpStep";
 import { useIsWideLayout } from "../useIsWideLayout";
 import { AmbientCard } from "./AmbientCard";
-import { useAmbientPrompts } from "./useAmbientPrompts";
+import { type AmbientSlot, useAmbientPrompts } from "./useAmbientPrompts";
 
 interface Props {
   role: string;
   screen: ScreenState;
+  isPaused: boolean;
+  onTogglePause: () => void;
 }
 
-type Card = { position: string; driftSecs: number; delaySecs: number } & (
-  | { question: number; besideComposer?: boolean }
-  | { example: number }
-);
+interface Card {
+  position: string;
+  driftSecs: number;
+  delaySecs: number;
+  slot: AmbientSlot;
+  besideComposer?: boolean;
+}
 
 // Left column then right. The middle pair sits beside the composer, so it
 // steps out while the user types.
 const CARDS: Card[] = [
-  { position: "left-[3%] top-[5%]", driftSecs: 9, delaySecs: 0, question: 0 },
+  {
+    position: "left-[3%] top-[5%]",
+    driftSecs: 9,
+    delaySecs: 0,
+    slot: "question",
+  },
   {
     position: "left-[7%] top-[36%]",
     driftSecs: 11,
     delaySecs: 1.5,
-    question: 1,
+    slot: "question",
     besideComposer: true,
   },
-  { position: "left-[4%] top-[66%]", driftSecs: 13, delaySecs: 3, example: 0 },
-  { position: "right-[3%] top-[7%]", driftSecs: 11, delaySecs: 2, question: 2 },
+  {
+    position: "left-[4%] top-[66%]",
+    driftSecs: 13,
+    delaySecs: 3,
+    slot: "example",
+  },
+  {
+    position: "right-[3%] top-[7%]",
+    driftSecs: 11,
+    delaySecs: 2,
+    slot: "question",
+  },
   {
     position: "right-[6%] top-[38%]",
     driftSecs: 13,
     delaySecs: 0.5,
-    question: 3,
+    slot: "question",
     besideComposer: true,
   },
   {
     position: "right-[4%] top-[68%]",
     driftSecs: 9,
     delaySecs: 2.5,
-    example: 1,
+    slot: "example",
   },
 ];
 
+const SLOTS = CARDS.map((card) => card.slot);
 const HIDDEN_ON: ScreenState[] = ["recovery", "failed", "insufficient"];
 
-// Starter ideas around the column on wide screens (see useIsWideLayout). Text, not controls: no
-// border, shadow, hover or focus, and hidden from assistive tech, so that
-// nobody mistakes them for buttons. The live prompt is the accessible one.
-export function AmbientPrompts({ role, screen }: Props) {
+// Starter ideas around the column on wide screens (see useIsWideLayout). Text,
+// not controls: no border, shadow, hover or focus, and hidden from assistive
+// tech; the live prompt is the accessible one. They keep changing while the
+// user talks, for inspiration mid-thought, and a click on any card pauses or
+// resumes them all (the keyboard route is the focus-only toggle beside the
+// layer, so WCAG 2.2.2 holds without a visible control).
+export function AmbientPrompts({
+  role,
+  screen,
+  isPaused,
+  onTogglePause,
+}: Props) {
   const isShown = useIsWideLayout() && !HIDDEN_ON.includes(screen);
   const ambient = useAmbientPrompts({
     role,
-    isRotating: isShown && screen !== "recording",
+    slots: SLOTS,
+    isRotating: isShown && !isPaused,
   });
   if (HIDDEN_ON.includes(screen)) return null;
   const isTyping = screen === "typing";
@@ -62,33 +92,27 @@ export function AmbientPrompts({ role, screen }: Props) {
     <div
       aria-hidden="true"
       data-testid="ambient-prompts"
+      data-paused={isPaused}
       className={cn(
         "pointer-events-none absolute inset-0 z-0 hidden select-none transition-opacity duration-500 xl:block",
         (isTyping || screen === "recording") && "opacity-50",
       )}
     >
-      {CARDS.map((card) => {
-        const isQuote = "example" in card;
+      {CARDS.map((card, index) => {
+        const isHidden = isTyping && Boolean(card.besideComposer);
         return (
           <AmbientCard
             key={card.position}
             position={card.position}
-            label={
-              isQuote ? "For example" : ambient.questions[card.question].label
-            }
-            text={
-              isQuote
-                ? `“${ambient.examples[card.example]}”`
-                : ambient.questions[card.question].text
-            }
-            isQuote={isQuote}
-            isHidden={isTyping && "besideComposer" in card}
+            content={ambient.cards[index]}
+            isHidden={isHidden}
             drift={
-              isShown && !ambient.reduceMotion
+              isShown && !isPaused && !ambient.reduceMotion
                 ? { durationSecs: card.driftSecs, delaySecs: card.delaySecs }
                 : null
             }
             reduceMotion={ambient.reduceMotion}
+            onClick={isHidden ? undefined : onTogglePause}
           />
         );
       })}
