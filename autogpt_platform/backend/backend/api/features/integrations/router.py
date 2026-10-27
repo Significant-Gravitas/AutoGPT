@@ -73,12 +73,24 @@ from backend.integrations.managed_providers.ayrshare import (
     get_sso_link as get_ayrshare_sso_link,
 )
 from backend.integrations.mcp_catalog import get_mcp_catalog
+from backend.integrations.microsoft_access import (
+    MicrosoftAccessCheck,
+    check_microsoft_access,
+)
 from backend.integrations.oauth import (
     CREDENTIALS_BY_PROVIDER,
     DEVICE_HANDLERS_BY_NAME,
     HANDLERS_BY_NAME,
 )
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
+from backend.integrations.oauth.microsoft_identity import (
+    MICROSOFT_PROVIDERS,
+    MicrosoftIdentity,
+    microsoft_identity,
+    same_microsoft_account,
+)
+from backend.integrations.oauth.microsoft_recovery import MicrosoftAuthError
+from backend.integrations.oauth.microsoft_tokens import browser_sign_in_available
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.service_identity import (
     service_for_catalog_entry,
@@ -136,6 +148,24 @@ class LoginResponse(BaseModel):
     login_url: str
     state_token: str
     cancel_url: str | None = None
+
+
+@router.post(
+    "/microsoft/check",
+    dependencies=[Depends(enforce_payment_paywall)],
+    summary="Verify Microsoft connection capabilities",
+)
+async def verify_microsoft_connection(
+    credential_id: Annotated[str, Body(embed=True)],
+    user_id: Annotated[str, Security(get_user_id)],
+) -> MicrosoftAccessCheck:
+    credential = await creds_manager.get(user_id, credential_id)
+    if (
+        not isinstance(credential, OAuth2Credentials)
+        or credential.provider not in MICROSOFT_PROVIDERS
+    ):
+        raise HTTPException(404, "Microsoft connection not found.")
+    return await check_microsoft_access(credential)
 
 
 @router.get(
@@ -264,6 +294,7 @@ class CredentialsMetaResponse(BaseModel):
     service: str = ""
     service_name: str | None = None
     service_icon: str | None = None
+    microsoft_identity: MicrosoftIdentity | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -319,6 +350,12 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         service=identity.service,
         service_name=identity.name,
         service_icon=identity.icon,
+        microsoft_identity=(
+            microsoft_identity(cred)
+            if isinstance(cred, OAuth2Credentials)
+            and cred.provider in MICROSOFT_PROVIDERS
+            else None
+        ),
     )
 
 
@@ -481,6 +518,11 @@ async def _exchange_code_for_credentials(
                 provider=provider.value,
             )
 
+    except MicrosoftAuthError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=e.recovery.model_dump(),
+        ) from None
     except Exception as e:
         logger.error(
             f"OAuth2 Code->Token exchange failed for provider {provider.value}: {e}"
@@ -679,6 +721,8 @@ async def device_auth_initiate(
 
     try:
         initiation = await handler.initiate_device_auth(requested_scopes)
+    except MicrosoftAuthError as e:
+        raise HTTPException(400, detail=e.recovery.model_dump()) from None
     except Exception as e:
         # The message carries the upstream response body verbatim; keep it in
         # the logs rather than handing it to the caller.
@@ -779,6 +823,8 @@ async def device_auth_poll(
 
     try:
         result = await handler.poll_for_tokens(device_code)
+    except MicrosoftAuthError as e:
+        raise HTTPException(400, detail=e.recovery.model_dump()) from None
     except Exception as e:
         # As above: `poll_for_tokens` embeds the raw upstream body in its
         # error, so log it and return something generic.
@@ -1701,6 +1747,10 @@ async def _merge_or_create_credential(
             and not is_system_credential(c.id)
             and c.username is not None
             and c.username == credentials.username
+            and (
+                credentials.provider not in MICROSOFT_PROVIDERS
+                or same_microsoft_account(c, credentials)
+            )
         ),
         None,
     )
@@ -1751,6 +1801,14 @@ async def _upgrade_existing_credential(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Credential provider does not match the requested provider",
+        )
+
+    if new_credentials.provider in MICROSOFT_PROVIDERS and not same_microsoft_account(
+        existing, new_credentials
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="This is a different Microsoft account. Add it as a separate connection.",
         )
 
     if (
@@ -2067,10 +2125,13 @@ async def list_providers(
 
     def _native(name: str) -> ProviderMetadata:
         identity = service_for_provider(name)
+        auth_types: list[CredentialsType] = get_supported_auth_types(name)
+        if name in MICROSOFT_PROVIDERS and not browser_sign_in_available():
+            auth_types = [kind for kind in auth_types if kind != "oauth2"]
         return ProviderMetadata(
             name=name,
             description=get_provider_description(name),
-            supported_auth_types=get_supported_auth_types(name),
+            supported_auth_types=auth_types,
             service=identity.service,
             service_name=identity.name,
             service_icon=identity.icon,

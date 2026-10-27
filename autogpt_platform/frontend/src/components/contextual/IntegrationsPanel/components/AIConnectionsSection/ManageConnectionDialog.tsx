@@ -257,6 +257,10 @@ function Microsoft365CopilotConnectionDialog({
       : undefined;
 
   const accountName = credential?.username ?? "Microsoft 365 Copilot";
+  // Copilot now runs on the account's one Microsoft connection; removing it
+  // removes mail, calendar and files too. Older Copilot-only connections
+  // still disconnect on their own.
+  const isFullConnection = credential?.provider === "microsoft";
 
   function setManageOpen(open: boolean) {
     if (!open) setForceMessage(null);
@@ -267,7 +271,7 @@ function Microsoft365CopilotConnectionDialog({
     if (!credentialId) return;
     const target = {
       id: credentialId,
-      provider: "microsoft_365_copilot",
+      provider: credential?.provider ?? "microsoft_365_copilot",
       name: accountName,
     };
     const result = await remove([target], force);
@@ -374,9 +378,9 @@ function Microsoft365CopilotConnectionDialog({
               variant="small"
               className="text-[#8A8A90]"
             >
-              Disconnecting stops new chats using this Copilot subscription.
-              Your chat history is kept, and your other integrations are
-              unaffected.
+              {isFullConnection
+                ? "Disconnecting removes this Microsoft account from AutoGPT, including its mail, calendar and files. Your chat history is kept."
+                : "Disconnecting stops new chats using this Copilot subscription. Your chat history is kept, and your other integrations are unaffected."}
             </Text>
           </div>
         </Dialog.Content>

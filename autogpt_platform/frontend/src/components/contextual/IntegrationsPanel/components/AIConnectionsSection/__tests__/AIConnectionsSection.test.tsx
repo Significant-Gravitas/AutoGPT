@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import {
   getGetV2ListChatConnectionsMockHandler200,
   getPutV2SetDefaultChatTransportMockHandler200,
@@ -47,6 +48,46 @@ vi.mock("@/components/contextual/DeviceAuth/DeviceAuthConnectButton", () => {
 });
 
 import { AIConnectionsSection } from "../AIConnectionsSection";
+
+const workConnection = {
+  id: "work-id",
+  provider: "microsoft",
+  type: "oauth2",
+  title: "Pat Example (work account)",
+  username: "pat@company.example",
+  scopes: ["User.Read"],
+  service: "microsoft",
+  microsoft_identity: {
+    tenant_id: "company-tenant",
+    account_id: "pat",
+    account_type: "work",
+  },
+};
+
+function mockMicrosoftConnection(credentials: unknown[]) {
+  server.use(
+    http.get("*/api/integrations/providers", () => HttpResponse.json([])),
+    http.get("*/api/integrations/:provider/credentials", ({ params }) =>
+      HttpResponse.json(params.provider === "microsoft" ? credentials : []),
+    ),
+    http.post("*/api/integrations/microsoft/check", () =>
+      HttpResponse.json({
+        verified: true,
+        account_type: "work",
+        message: "Connected.",
+        admin_consent_url: null,
+        capabilities: [
+          {
+            service: "copilot",
+            name: "Microsoft 365 Copilot",
+            status: "available",
+            scopes: [],
+          },
+        ],
+      }),
+    ),
+  );
+}
 
 function platform(isDefault: boolean): AIConnectionOffer {
   return {
@@ -203,8 +244,9 @@ describe("AIConnectionsSection", () => {
     ).toBe("true");
   });
 
-  it("refreshes connected subscriptions and closes the Microsoft sign-in dialog on success", async () => {
+  it("refreshes connected subscriptions once the Microsoft connection is done", async () => {
     mockTransports([platform(true)]);
+    mockMicrosoftConnection([]);
     render(<AIConnectionsSection />);
     await userEvent.click(
       await screen.findByRole("button", { name: "Microsoft 365 Copilot" }),
@@ -212,10 +254,12 @@ describe("AIConnectionsSection", () => {
     const dialog = await screen.findByRole("dialog");
 
     mockTransports([platform(true), microsoft(false)]);
+    mockMicrosoftConnection([workConnection]);
     await userEvent.click(
-      within(dialog).getByRole("button", {
-        name: "Connect Microsoft 365 Copilot",
-      }),
+      await within(dialog).findByRole("button", { name: "Connect Microsoft" }),
+    );
+    await userEvent.click(
+      await within(dialog).findByRole("button", { name: "Done" }),
     );
 
     expect(await screen.findByText("Connected")).toBeDefined();

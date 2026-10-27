@@ -19,15 +19,21 @@ interface Props {
   provider: string;
   providerName: string;
   onSuccess: (credentials?: CredentialsMetaResponse) => void;
+  scopes?: string[];
+  onError?: (error: unknown) => void;
+  onTrouble?: () => void;
 }
 
 export function DeviceAuthConnectButton({
   provider,
   providerName,
   onSuccess,
+  scopes,
+  onError,
+  onTrouble,
 }: Props) {
   const { connect, cancel, phase, userCode, verificationUrl } =
-    useDeviceAuthConnect({ provider, onSuccess });
+    useDeviceAuthConnect({ provider, onSuccess, scopes, onError });
 
   // `awaiting_user` spans the initiate round-trip, when there is no code and
   // no URL yet. Rendering the code panel then shows an empty box above a link
@@ -56,6 +62,11 @@ export function DeviceAuthConnectButton({
         <Button type="button" variant="primary" size="large" onClick={connect}>
           Connect {providerName}
         </Button>
+        {onTrouble && (
+          <Button variant="ghost" onClick={onTrouble}>
+            Having trouble signing in?
+          </Button>
+        )}
       </div>
     );
   }
@@ -113,6 +124,11 @@ export function DeviceAuthConnectButton({
           Cancel
         </Button>
       </div>
+      {onTrouble && (
+        <Button variant="ghost" onClick={onTrouble}>
+          Having trouble signing in?
+        </Button>
+      )}
     </div>
   );
 }

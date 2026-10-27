@@ -1,5 +1,6 @@
 import { OAuthPopupResultMessage } from "./types";
 import { NextResponse } from "next/server";
+import { microsoftCallbackMessage } from "@/lib/microsoft-setup";
 
 /**
  * Safely encode a value as JSON for embedding in a script tag.
@@ -15,10 +16,33 @@ function safeJsonStringify(value: unknown): string {
 // This route is intended to be used as the callback for integration OAuth flows,
 // controlled by the CredentialsInput component. The CredentialsInput opens the login
 // page in a pop-up window, which then redirects to this route to close the loop.
+const HTML_HEADERS = {
+  "Content-Type": "text/html",
+  "Cache-Control": "no-store",
+  "Referrer-Policy": "no-referrer",
+};
+
+// Microsoft's organization-wide approval returns here with no code to
+// exchange: it opened in its own tab, so all that's left is to say it worked.
+const ORGANIZATION_APPROVED_PAGE = `<!DOCTYPE html>
+<html>
+  <body style="font-family: system-ui, sans-serif; padding: 2rem;">
+    <p>Approved for your organization. You can close this tab and choose
+    "Check again" in AutoGPT.</p>
+  </body>
+</html>`;
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  if (searchParams.get("admin_consent") === "True") {
+    return new NextResponse(ORGANIZATION_APPROVED_PAGE, {
+      headers: HTML_HEADERS,
+    });
+  }
   const code = searchParams.get("code");
   const state = searchParams.get("state");
+  const providerError = searchParams.get("error");
+  const providerDescription = searchParams.get("error_description") ?? "";
 
   const message: OAuthPopupResultMessage =
     code && state
@@ -30,7 +54,12 @@ export async function GET(request: Request) {
           // state-keyed listeners route the failure to the right flow
           // instead of timing out silently.
           ...(state ? { state } : {}),
-          message: "OAuth callback is missing its code or state",
+          message:
+            providerError && /AADSTS\d+/.test(providerDescription)
+              ? microsoftCallbackMessage(providerError, providerDescription)
+              : providerError
+                ? "Sign-in was not completed. Return to the connection page to retry or open setup help."
+                : "OAuth callback is missing its code or state",
         };
 
   // Emit via three channels so the result reaches the originating page
@@ -71,8 +100,6 @@ export async function GET(request: Request) {
     </script>
   </body>
 </html>`,
-    {
-      headers: { "Content-Type": "text/html" },
-    },
+    { headers: HTML_HEADERS },
   );
 }
