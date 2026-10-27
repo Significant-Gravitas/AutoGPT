@@ -11,6 +11,7 @@ import ctypes
 import gzip
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -26,6 +27,7 @@ BUILD = Path(__file__).resolve().parent
 sys.path.insert(0, str(BUILD))
 
 import installed_smoke_windows as smoke
+import windows_private_acl as acl
 from artifacts import ARTIFACTS
 
 DESKTOP = BUILD.parent
@@ -45,6 +47,7 @@ NATIVE_SECONDS = 90
 CLEANUP_SECONDS = 10
 SOURCES = {
     "probe": "build/postgres_windows_check.py",
+    "private_acl": "build/windows_private_acl.py",
     "artifacts": "build/artifacts.py",
     "installed_driver": "build/installed_smoke_windows.py",
     "runtime_package": "runtime/autogpt_desktop/__init__.py",
@@ -252,11 +255,15 @@ def archive_parts(name: str) -> tuple[str, ...]:
     return parts
 
 
-def extract_archive(archive: Path, destination: Path) -> None:
+def extract_archive(archive: Path, destination: Path, *, deadline=None) -> None:
     require(not destination.exists() and destination.parent.is_dir())
     expanded = archive.with_suffix(".tar")
     total = 0
-    deadline = time.monotonic() + 30
+    deadline = (
+        min(time.monotonic() + 30, deadline)
+        if deadline is not None
+        else time.monotonic() + 30
+    )
     with gzip.open(archive, "rb") as source, expanded.open("xb") as output:
         while chunk := source.read(1024 * 1024):
             total += len(chunk)
@@ -321,7 +328,16 @@ def write_capture(private: Path, name: str, stdout: bytes, stderr: bytes) -> Non
             output.write(raw[:MAX_OUTPUT])
 
 
-def initialize_once(postgres, bundle, data, private: Path, observation: dict) -> None:
+def initialize_once(
+    postgres,
+    bundle,
+    data,
+    private: Path,
+    observation: dict,
+    *,
+    password=None,
+    deadline=None,
+) -> None:
     require(
         not data.postgres.exists()
         and not (data.config / "first-run.incomplete").exists()
@@ -333,7 +349,9 @@ def initialize_once(postgres, bundle, data, private: Path, observation: dict) ->
             (arg[len("--pwfile=") :] for arg in argv if arg.startswith("--pwfile=")), ""
         )
         try:
-            result = original(argv, timeout=INITIALIZE_SECONDS, **kwargs)
+            result = original(
+                argv, timeout=native_timeout(INITIALIZE_SECONDS, deadline), **kwargs
+            )
         except BaseException as exc:
             observation.update(empty_native(), status="error")
             try:
@@ -380,7 +398,11 @@ def initialize_once(postgres, bundle, data, private: Path, observation: dict) ->
 
     postgres.run_tool = measured
     try:
-        postgres.initialize(bundle, data, secrets.token_urlsafe(32))
+        postgres.initialize(
+            bundle,
+            data,
+            password if password is not None else secrets.token_urlsafe(32),
+        )
     finally:
         postgres.run_tool = original
     require(observation.get("status") == "passed" and not observation["capture_failed"])
@@ -469,7 +491,17 @@ def expired_native(private: Path, now: float | None = None) -> str | None:
     return None
 
 
-def worker(private: Path) -> int:
+def native_timeout(cap, deadline):
+    if deadline is None:
+        return cap
+    require(type(deadline) in {int, float} and math.isfinite(deadline))
+    remaining = deadline - CLEANUP_SECONDS - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError
+    return min(cap, remaining)
+
+
+def worker(private: Path, deadline=None) -> int:
     smoke.require_clean_host()
     smoke.plain_path(private)
     require(private.name == "private" and (private / "runtime/postgres").is_dir())
@@ -490,6 +522,14 @@ def worker(private: Path) -> int:
         bundle = Bundle(private / "runtime")
         data = DataDir(private / "data")
         data.prepare()
+        password = None
+        if deadline is not None:
+            with smoke.plain_path(private / "pair.secret").open(
+                "r", encoding="ascii"
+            ) as source:
+                password = source.read(65)
+            require(bool(re.fullmatch(r"[A-Za-z0-9_-]{43}", password)))
+            native_timeout(VERSION_SECONDS, deadline)
         os.chdir(bundle.root)
         for name in ("postgres", "initdb"):
             record = report["versions"][name]
@@ -499,7 +539,7 @@ def worker(private: Path) -> int:
                     [str(bundle.postgres_bin(name)), "--version"],
                     capture_output=True,
                     env=postgres._tool_env(bundle),
-                    timeout=VERSION_SECONDS,
+                    timeout=native_timeout(VERSION_SECONDS, deadline),
                 )
                 record.update(
                     native_result(result.returncode, result.stdout, result.stderr)
@@ -523,7 +563,15 @@ def worker(private: Path) -> int:
                 raise
         report["stage"] = "initialize"
         start_native(private, "initialize")
-        initialize_once(postgres, bundle, data, private, report["initialization"])
+        initialize_once(
+            postgres,
+            bundle,
+            data,
+            private,
+            report["initialization"],
+            password=password,
+            deadline=deadline,
+        )
         (private / "initialize.done").touch(exist_ok=False)
         report["stage"] = "verify"
         verify_cluster(data)
@@ -629,7 +677,7 @@ def cleanup_summary(record: dict, forced=False) -> dict:
     }
 
 
-def supervise(private: Path, env: dict, owned) -> dict:
+def supervise(private: Path, env: dict, owned, *, deadline=None) -> dict:
     report = worker_template()
     report["cleanup"] = {
         "status": "failed",
@@ -642,12 +690,22 @@ def supervise(private: Path, env: dict, owned) -> dict:
     report["timed_out"] = False
     report["worker_report_rejected"] = False
     started = time.monotonic()
+    shared_deadline = deadline
+    deadline = started + NATIVE_SECONDS if deadline is None else deadline
     process = None
     forced = False
     cleanup_error = False
     supervision_failed = False
     try:
         try:
+            require(
+                type(deadline) in {int, float}
+                and math.isfinite(deadline)
+                and deadline <= started + NATIVE_SECONDS
+            )
+            if started >= deadline - CLEANUP_SECONDS:
+                report["timed_out"] = True
+                raise TimeoutError
             with (private / "logs/worker.log").open("xb") as output:
                 try:
                     process = subprocess.Popen(
@@ -659,6 +717,11 @@ def supervise(private: Path, env: dict, owned) -> dict:
                             str(Path(__file__).resolve()),
                             "--worker",
                             str(private),
+                            *(
+                                []
+                                if shared_deadline is None
+                                else ["--deadline", str(deadline)]
+                            ),
                         ],
                         cwd=private / "runtime",
                         env=env,
@@ -687,7 +750,9 @@ def supervise(private: Path, env: dict, owned) -> dict:
                                 else report["versions"][expired]
                             )
                             record["status"] = "timeout"
-                        if expired or now - started >= WORKER_SECONDS:
+                        if expired or now >= min(
+                            started + WORKER_SECONDS, deadline - CLEANUP_SECONDS
+                        ):
                             report["timed_out"] = True
                             raise TimeoutError
                         require(
@@ -704,9 +769,7 @@ def supervise(private: Path, env: dict, owned) -> dict:
                             process.wait(
                                 timeout=max(
                                     0.01,
-                                    min(
-                                        3, NATIVE_SECONDS - (time.monotonic() - started)
-                                    ),
+                                    min(3, deadline - time.monotonic()),
                                 )
                             )
                         except Exception:  # noqa: BLE001 - Close the handle.
@@ -743,9 +806,7 @@ def supervise(private: Path, env: dict, owned) -> dict:
             report["status"] = "failed"
     finally:
         try:
-            budget = min(
-                CLEANUP_SECONDS, max(0, NATIVE_SECONDS - (time.monotonic() - started))
-            )
+            budget = min(CLEANUP_SECONDS, max(0, deadline - time.monotonic()))
             cleanup = owned.cleanup(timeout=budget)
             forced |= bool(report["worker_cleanup"]["active_children"])
             forced |= any(
@@ -768,7 +829,7 @@ def supervise(private: Path, env: dict, owned) -> dict:
         )
         if (
             report["cleanup"]["status"] != "passed"
-            or report["native_elapsed_ms"] >= NATIVE_SECONDS * 1000
+            or report["native_elapsed_ms"] >= (deadline - started) * 1000
         ):
             if report["status"] == "passed":
                 report["stage"] = "cleanup"
@@ -776,15 +837,195 @@ def supervise(private: Path, env: dict, owned) -> dict:
     return report
 
 
+def control_sibling(work: Path) -> Path:
+    smoke.plain_path(work)
+    require(work.is_dir() and bool(work.name))
+    suffix = "c" if work.name.endswith("b") else "b"
+    control = work.with_name(work.name[:-1] + suffix)
+    smoke.plain_path(control)
+    require(control != work and not control.exists())
+    require(control.parent == work.parent and len(str(control)) == len(str(work)))
+    for protected in (BUILD, DESKTOP.parents[1]):
+        require(
+            not control.is_relative_to(protected)
+            and not protected.is_relative_to(control)
+        )
+    return control
+
+
+def payload_manifest(root: Path, deadline) -> dict:
+    smoke.plain_path(root)
+    require(root.is_dir())
+    result = {}
+    total = 0
+    for path in root.rglob("*"):
+        acl.check_time(deadline - CLEANUP_SECONDS)
+        smoke.plain_path(path)
+        require(len(result) < 8192)
+        if path.is_dir():
+            value = ("directory", None)
+        else:
+            require(path.is_file())
+            size = path.stat().st_size
+            total += size
+            require(size <= MAX_ARCHIVE and total <= MAX_EXPANDED)
+            value = ("file", smoke.sha256(path))
+        result[path.relative_to(root).as_posix()] = value
+    return result
+
+
+def prepare_control(private, archive, env, payload, deadline):
+    work = private.parent
+    control = control_sibling(work)
+    security = acl.PairACL(work, control, deadline - CLEANUP_SECONDS)
+    security.inspect_baseline(payload)
+    security.create_private_tree()
+    other = control / "private"
+    with (private / "pair.secret").open("rb") as source, (other / "pair.secret").open(
+        "xb"
+    ) as target:
+        password = source.read(65)
+        require(bool(re.fullmatch(rb"[A-Za-z0-9_-]{43}", password)))
+        target.write(password)
+    acl.check_time(deadline - CLEANUP_SECONDS)
+    require(archive == private / "postgres.tar.gz" and smoke.sha256(archive) == PIN)
+    control_archive = other / "postgres.tar.gz"
+    with archive.open("rb") as source, control_archive.open("xb") as target:
+        size = 0
+        while chunk := source.read(1024 * 1024):
+            acl.check_time(deadline - CLEANUP_SECONDS)
+            size += len(chunk)
+            require(size <= MAX_ARCHIVE)
+            target.write(chunk)
+    require(size > 0 and smoke.sha256(control_archive) == PIN)
+    (other / "runtime").mkdir()
+    extract_archive(
+        control_archive, other / "runtime/postgres", deadline=deadline - CLEANUP_SECONDS
+    )
+    require(payload_manifest(private / "runtime/postgres", deadline) == payload)
+    require(payload_manifest(other / "runtime/postgres", deadline) == payload)
+    sys.path.insert(0, str(DESKTOP / "runtime"))
+    from autogpt_desktop.layout import DataDir
+
+    DataDir(other / "data").prepare()
+    other_env = smoke.private_environment(other, dict(os.environ))
+    other_env.update(GITHUB_ACTIONS="true", RUNNER_ENVIRONMENT="github-hosted")
+    require(
+        {
+            key: value.replace(str(other), str(private)).replace(
+                str(other)[len(other.drive) :], str(private)[len(private.drive) :]
+            )
+            for key, value in other_env.items()
+        }
+        == env
+    )
+    evidence = security.compare(payload)
+    acl.check_time(deadline - CLEANUP_SECONDS)
+    return other, other_env, evidence
+
+
+def clean_arm(report):
+    return (
+        report["cleanup"]
+        == {
+            "status": "passed",
+            "forced_cleanup": False,
+            "survivors": 0,
+            "listeners": 0,
+            "inspection_failed": False,
+        }
+        and report["worker_cleanup"]
+        == {"active_children": 0, "inspection_failed": False}
+        and not report["timed_out"]
+        and not report["worker_report_rejected"]
+        and report["worker_exit_code"] in {0, 1}
+        and all(
+            record["status"] == "passed"
+            and record["literal"] == f"{name} (PostgreSQL) 18.6"
+            for name, record in report["versions"].items()
+        )
+        and not report["initialization"]["output_rejected"]
+        and not report["initialization"]["capture_failed"]
+    )
+
+
+def comparison_template():
+    return {
+        "control_status": "not_run",
+        "reason": "baseline_not_reproduced",
+        "outcome": "inconclusive",
+        "inputs_match": False,
+        "security": None,
+        "control_result": None,
+        "sequence_elapsed_ms": 0,
+        "timing_scope": "pair_including_preparation_and_cleanup",
+    }
+
+
+def run_pair(private, archive, env):
+    started = time.monotonic()
+    deadline = started + NATIVE_SECONDS
+    comparison = comparison_template()
+    with (private / "pair.secret").open("x", encoding="ascii") as output:
+        output.write(secrets.token_urlsafe(32))
+    payload = payload_manifest(private / "runtime/postgres", deadline)
+    owned = smoke.OwnedProcesses(private / "runtime", private / "data")
+    baseline = supervise(private, env, owned, deadline=deadline)
+    baseline["acl_comparison"] = comparison
+    try:
+        if not clean_arm(baseline):
+            comparison["reason"] = "baseline_guard_failed"
+            return baseline
+        if not (
+            baseline["status"] == "failed"
+            and baseline["stage"] == "initialize"
+            and baseline["initialization"]["status"] == "failed"
+            and baseline["initialization"]["windows_status"] == 0xC0000135
+        ):
+            return baseline
+        comparison["reason"] = "guard_failed"
+        acl.check_time(deadline - CLEANUP_SECONDS)
+        other, other_env, evidence = prepare_control(
+            private, archive, env, payload, deadline
+        )
+        comparison["security"] = evidence
+        acl.check_time(deadline - CLEANUP_SECONDS)
+        owned = smoke.OwnedProcesses(other / "runtime", other / "data")
+        result = supervise(other, other_env, owned, deadline=deadline)
+        comparison["control_result"] = result
+        comparison["control_status"] = result["status"]
+        require(payload_manifest(other / "runtime/postgres", deadline) == payload)
+        require(payload_manifest(private / "runtime/postgres", deadline) == payload)
+        comparison["inputs_match"] = True
+        comparison["reason"] = "completed"
+        if clean_arm(result):
+            if result["status"] == "passed":
+                comparison["outcome"] = "acl_dependent"
+            elif result["initialization"]["windows_status"] == 0xC0000135:
+                comparison["outcome"] = "same_status"
+    except TimeoutError:
+        comparison.update(reason="deadline", outcome="inconclusive")
+    except Exception:  # noqa: BLE001 - Retain the authoritative baseline failure.
+        comparison.update(reason="guard_failed", outcome="inconclusive")
+    finally:
+        elapsed = max(0, int((time.monotonic() - started) * 1000))
+        comparison["sequence_elapsed_ms"] = min(3600000, elapsed)
+        if elapsed >= NATIVE_SECONDS * 1000:
+            baseline["status"] = "failed"
+            comparison.update(reason="deadline", outcome="inconclusive")
+    return baseline
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--work-dir", type=Path)
     group.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--deadline", type=float, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.worker:
         try:
-            return worker(args.worker)
+            return worker(args.worker, args.deadline)
         except Exception:  # noqa: BLE001 - Do not expose private worker exceptions.
             return 1
     work = args.work_dir
@@ -797,8 +1038,10 @@ def main(argv=None) -> int:
         "source_sha256": {},
         "expected_archive_sha256": PIN,
         "archive_sha256": None,
+        "acl_comparison": comparison_template(),
     }
     try:
+        require(args.deadline is None)
         smoke.require_clean_host()
         private = smoke.prepare_work_dir(work, BUILD)
         commit = os.environ.get("GITHUB_SHA", "")
@@ -815,8 +1058,7 @@ def main(argv=None) -> int:
         (private / "runtime").mkdir()
         extract_archive(archive, private / "runtime/postgres")
         summary["stage"] = "versions"
-        owned = smoke.OwnedProcesses(private / "runtime", private / "data")
-        summary.update(supervise(private, env, owned))
+        summary.update(run_pair(private, archive, env))
     except Exception:  # noqa: BLE001 - Record failure without private exception text.
         summary["status"] = "failed"
     if private is not None:

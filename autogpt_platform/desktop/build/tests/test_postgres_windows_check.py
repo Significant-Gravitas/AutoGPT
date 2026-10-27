@@ -733,6 +733,229 @@ class ProbeTests(unittest.TestCase):
         self.assertTrue(result["cleanup"]["forced_cleanup"])
         self.assertTrue(launch.call_args.kwargs["stdout"].closed)
 
+    def pair_report(self, code=3221225781):
+        report = self.probe.worker_template()
+        report.update(
+            status="passed" if code == 0 else "failed",
+            stage="complete" if code == 0 else "initialize",
+        )
+        report["initialization"] = self.probe.native_result(code, b"", b"")
+        for name in ("postgres", "initdb"):
+            report["versions"][name] = dict(
+                self.probe.native_result(0, b"", b""),
+                literal=f"{name} (PostgreSQL) 18.6",
+            )
+        report.update(
+            worker_cleanup={"active_children": 0, "inspection_failed": False},
+            cleanup=self.probe.cleanup_summary(self.clean_record()),
+            worker_exit_code=0 if code == 0 else 1,
+            timed_out=False,
+            worker_report_rejected=False,
+            native_elapsed_ms=321,
+        )
+        return report
+
+    def run_pair_fixture(
+        self, baseline, control=None, *, preparation_error=None, preparation_seconds=7
+    ):
+        private = self.root / "baseline" / "private"
+        private.mkdir(parents=True)
+        control_private = self.root / "baselinb" / "private"
+        clock = [100.0]
+
+        def supervised(path, env, owned, *, deadline):
+            self.assertEqual(deadline, 190)
+            if path == private:
+                clock[0] += 20
+                return baseline
+            self.assertEqual(path, control_private)
+            self.assertEqual(clock[0], 127)
+            return control
+
+        def prepare(*args):
+            self.assertEqual(args[-1], 190)
+            clock[0] += preparation_seconds
+            if preparation_error:
+                raise preparation_error
+            return control_private, {}, {}
+
+        with patch.object(
+            self.probe.time, "monotonic", side_effect=lambda: clock[0]
+        ), patch.object(self.probe, "payload_manifest", return_value={}), patch.object(
+            self.probe, "prepare_control", side_effect=prepare
+        ) as prepared, patch.object(
+            self.probe.smoke, "OwnedProcesses"
+        ), patch.object(
+            self.probe, "supervise", side_effect=supervised
+        ) as supervised_mock:
+            result = self.probe.run_pair(private, self.root / "archive", {})
+        return result, prepared, supervised_mock
+
+    def test_pair_control_pass_never_overrides_failed_baseline(self):
+        baseline = self.pair_report()
+        result, prepared, supervised = self.run_pair_fixture(
+            baseline, self.pair_report(0)
+        )
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["initialization"]["windows_status"], 3221225781)
+        self.assertEqual(result["acl_comparison"]["control_status"], "passed")
+        self.assertEqual(result["acl_comparison"]["outcome"], "acl_dependent")
+        self.assertEqual(result["acl_comparison"]["sequence_elapsed_ms"], 27000)
+        self.assertEqual(supervised.call_count, 2)
+        prepared.assert_called_once()
+
+    def test_pair_never_runs_second_arm_after_baseline_guard_failure(self):
+        for field, value in (
+            ("timed_out", True),
+            ("worker_report_rejected", True),
+            ("cleanup", {"status": "failed"}),
+            ("worker_cleanup", {"active_children": 1, "inspection_failed": False}),
+        ):
+            with self.subTest(field=field), tempfile.TemporaryDirectory(
+                dir=self.root
+            ) as temp:
+                old = self.root
+                self.root = Path(temp)
+                try:
+                    baseline = self.pair_report()
+                    baseline[field] = value
+                    result, prepared, supervised = self.run_pair_fixture(baseline)
+                    self.assertEqual(
+                        result["acl_comparison"]["control_status"], "not_run"
+                    )
+                    prepared.assert_not_called()
+                    self.assertEqual(supervised.call_count, 1)
+                finally:
+                    self.root = old
+
+    def test_pair_clean_baseline_pass_labels_control_not_run(self):
+        result, prepared, supervised = self.run_pair_fixture(self.pair_report(0))
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["acl_comparison"]["control_status"], "not_run")
+        prepared.assert_not_called()
+        self.assertEqual(supervised.call_count, 1)
+
+    def test_pair_control_guard_exception_keeps_baseline_and_no_private_text(self):
+        result, _, supervised = self.run_pair_fixture(
+            self.pair_report(), preparation_error=ValueError("private-SID-secret")
+        )
+        self.assertEqual(result["initialization"]["windows_status"], 3221225781)
+        self.assertEqual(result["acl_comparison"]["reason"], "guard_failed")
+        self.assertNotIn("private-SID-secret", json.dumps(result))
+        self.assertEqual(supervised.call_count, 1)
+
+    def test_pair_preparation_consumes_shared_budget_without_second_launch(self):
+        result, prepared, supervised = self.run_pair_fixture(
+            self.pair_report(), preparation_seconds=61
+        )
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["acl_comparison"]["control_status"], "not_run")
+        self.assertEqual(result["acl_comparison"]["reason"], "deadline")
+        self.assertEqual(result["acl_comparison"]["sequence_elapsed_ms"], 81000)
+        prepared.assert_called_once()
+        self.assertEqual(supervised.call_count, 1)
+
+    def test_control_failure_and_cleanup_failure_never_claim_acl_dependency(self):
+        for change in ({}, {"timed_out": True}, {"cleanup": {"status": "failed"}}):
+            with self.subTest(change=change), tempfile.TemporaryDirectory(
+                dir=self.root
+            ) as temp:
+                original_root = self.root
+                self.root = Path(temp)
+                try:
+                    control = self.pair_report()
+                    control.update(change)
+                    result, _, supervised = self.run_pair_fixture(
+                        self.pair_report(), control
+                    )
+                    self.assertEqual(result["status"], "failed")
+                    self.assertEqual(
+                        result["acl_comparison"]["outcome"],
+                        "inconclusive" if change else "same_status",
+                    )
+                    self.assertEqual(supervised.call_count, 2)
+                finally:
+                    self.root = original_root
+
+    def test_native_timeout_uses_remaining_budget_and_never_extends_caps(self):
+        with patch.object(self.probe.time, "monotonic", return_value=100):
+            self.assertEqual(self.probe.native_timeout(60, 190), 60)
+            self.assertEqual(self.probe.native_timeout(60, 115), 5)
+            self.assertEqual(self.probe.native_timeout(5, 190), 5)
+            with self.assertRaises(TimeoutError):
+                self.probe.native_timeout(60, 110)
+            for value in (True, float("nan"), float("inf")):
+                with self.assertRaises(ValueError):
+                    self.probe.native_timeout(60, value)
+
+    def test_pair_secret_is_private_and_actual_initializer_uses_supplied_secret(self):
+        from autogpt_desktop import postgres
+        from autogpt_desktop.layout import Bundle, DataDir
+
+        data = DataDir(self.root / "data")
+        data.prepare()
+        (self.root / "logs").mkdir()
+        secret = "never-export-this-synthetic-secret"
+
+        def fake_tool(argv, **kwargs):
+            pwfile = Path(argv[3].split("=", 1)[1])
+            self.assertEqual(pwfile.read_text(), secret + "\n")
+            self.initialized_fixture(data)
+            return subprocess.CompletedProcess(argv, 0, b"", b"")
+
+        observation = {}
+        with patch.object(postgres, "run_tool", side_effect=fake_tool):
+            self.probe.initialize_once(
+                postgres,
+                Bundle(self.root),
+                data,
+                self.root,
+                observation,
+                password=secret,
+            )
+        self.assertNotIn(secret, json.dumps(observation))
+        self.assertFalse(list(data.run.glob("postgres-password.*")))
+
+    def test_worker_schema_rejects_private_fields_and_noninteger_statuses(self):
+        import copy
+
+        original = self.probe.worker_template()
+        for change in (
+            lambda r: r.update(secret="private"),
+            lambda r: r["initialization"].update(argv="private"),
+            lambda r: r["initialization"].update(child_exit_code=True),
+            lambda r: r["initialization"].update(windows_status=0x100000000),
+            lambda r: r["worker_cleanup"].update(active_children=True),
+        ):
+            report = copy.deepcopy(original)
+            change(report)
+            with self.assertRaises(ValueError):
+                self.probe.safe_worker_result(report)
+
+    def test_supervisor_shared_deadline_reserves_cleanup_before_launch(self):
+        _, owned, _ = self.supervisor_fixture()
+        with patch.object(self.probe.time, "monotonic", return_value=181), patch.object(
+            self.probe.subprocess, "Popen"
+        ) as launch:
+            result = self.probe.supervise(self.root, {}, owned, deadline=190)
+        launch.assert_not_called()
+        self.assertTrue(result["timed_out"])
+        owned.cleanup.assert_called_once_with(timeout=9)
+
+    def test_sibling_is_equal_length_and_existing_path_is_untouched(self):
+        work = self.root / "baseline"
+        work.mkdir()
+        other = self.probe.control_sibling(work)
+        self.assertEqual(other.parent, work.parent)
+        self.assertEqual(len(str(other)), len(str(work)))
+        self.assertNotEqual(other, work)
+        other.mkdir()
+        sentinel = other / "sentinel"
+        sentinel.write_text("preserve")
+        with self.assertRaises(ValueError):
+            self.probe.control_sibling(work)
+        self.assertEqual(sentinel.read_text(), "preserve")
+
 
 if __name__ == "__main__":
     unittest.main()
