@@ -361,33 +361,41 @@ def test_an_unreadable_roster_leaves_every_task_with_otto(
     assert [t["expert_id"] for t in response.json()["tasks"]] == [None] * 3
 
 
-GENERIC_TITLES = [p.title for p in intro.fallback_prompts()]
 MARKETING_TITLES = [t.title for t in role_tasks.ROLE_FALLBACK_TASKS["Marketing"]]
 
 
-@pytest.mark.parametrize(
-    "failing, titles",
-    [("read_wizard_answers", GENERIC_TITLES), ("list_templates", MARKETING_TITLES)],
-    ids=["wizard answers", "roster"],
-)
-def test_a_failed_read_still_shows_a_list_and_stores_nothing(
-    rows: RowStore, wizard: dict[str, AsyncMock], failing: str, titles: list[str]
+def test_a_failed_roster_read_still_shows_the_role_set_and_stores_nothing(
+    rows: RowStore, wizard: dict[str, AsyncMock]
 ):
+    # The titles and their order do not depend on the roster, only owners do.
     rows.put([])
     wizard["read_wizard_answers"].return_value = ("Marketing", [])
-    wizard["list_templates"].return_value = [
-        _template("tpl-maya", "Marketing"),
-        _template("tpl-max", "Sales"),
-    ]
-    wizard[failing].side_effect = RuntimeError("database down")
+    wizard["list_templates"].side_effect = RuntimeError("database down")
 
     response = client.get(URL)
 
     assert response.status_code == 200
     body = response.json()
     assert body["stored"] is False
-    assert [t["title"] for t in body["tasks"]] == titles
-    assert [t["expert_template_id"] for t in body["tasks"]] == [None] * len(titles)
+    assert [t["title"] for t in body["tasks"]] == MARKETING_TITLES
+    assert [t["expert_template_id"] for t in body["tasks"]] == [None] * len(
+        MARKETING_TITLES
+    )
+    assert rows.writes == 0
+
+
+async def test_a_failed_role_read_hands_out_no_ids_rather_than_another_list(
+    rows: RowStore, wizard: dict[str, AsyncMock]
+):
+    # Without the role the starters would be the generic set, while the next
+    # change stores the role's set under the same ids: an x on one would
+    # remove another. The read fails instead, and the client asks again.
+    rows.put([])
+    wizard["read_wizard_answers"].side_effect = RuntimeError("database down")
+
+    with pytest.raises(RuntimeError):
+        await suggested_tasks.get_suggested_tasks("test-user-id")
+
     assert rows.writes == 0
 
 

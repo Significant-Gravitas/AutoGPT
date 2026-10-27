@@ -26,7 +26,15 @@ def test_two_short_sentences_are_kept_whole():
     ],
 )
 def test_the_invitation_the_greeting_ends_on_is_left_out(invitation: str):
-    assert heard_from(f"{HEARD} {invitation}") == HEARD
+    # One sentence first, so only the filter keeps the invitation out.
+    assert (
+        heard_from(f"You sell stickers on Etsy. {invitation}")
+        == "You sell stickers on Etsy."
+    )
+
+
+def test_a_full_width_question_is_left_out_like_any_question():
+    assert heard_from("你在 Etsy 上卖贴纸。从哪里开始？") == "你在 Etsy 上卖贴纸。"
 
 
 def test_every_trailing_invitation_is_left_out_not_just_the_last():
@@ -102,3 +110,11 @@ def test_a_first_sentence_too_long_with_no_space_keeps_every_character_it_can(
 
     assert heard == first[: plan_service.MAX_HEARD_CHARS - 1] + "…"
     assert heard is not None and len(heard) == plan_service.MAX_HEARD_CHARS
+
+
+def test_a_greeting_in_chinese_or_japanese_is_cut_at_its_full_stops():
+    greeting = "你在 Etsy 上卖贴纸。每天晚上都在改商品描述。我来组建一个团队吧！"
+
+    assert plan_service.heard_from(greeting) == (
+        "你在 Etsy 上卖贴纸。每天晚上都在改商品描述。"
+    )

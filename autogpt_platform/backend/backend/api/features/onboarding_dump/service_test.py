@@ -1824,10 +1824,20 @@ async def test_a_failed_wizard_read_costs_the_team_its_context_not_the_team(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failing", ["progress", "understanding"])
 async def test_a_failed_wizard_read_fails_a_list_about_to_be_stored(
-    onboarding: AsyncMock,
+    onboarding: AsyncMock, extraction: dict[str, AsyncMock], failing: str
 ):
-    onboarding.side_effect = RuntimeError("database down")
+    # Either read: the saved progress, or the understanding it falls back to.
+    if failing == "progress":
+        onboarding.side_effect = RuntimeError("database down")
+    else:
+        onboarding.return_value = UserOnboarding.model_construct(
+            userId=USER_ID, wizardProgress=None
+        )
+        extraction["get_business_understanding"].side_effect = RuntimeError(
+            "database down"
+        )
 
     with pytest.raises(RuntimeError):
         await service.read_wizard_answers(USER_ID)

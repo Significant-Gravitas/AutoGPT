@@ -30,6 +30,7 @@ from backend.api.features.onboarding_dump import (
     suggested_tasks,
 )
 from backend.api.features.onboarding_dump.models import (
+    ExpertRecommendations,
     RecommendedExpert,
     SuggestedPrompt,
     SuggestedTask,
@@ -141,14 +142,18 @@ async def hire_plan(user_id: str) -> PlanHireResponse:
 def heard_from(greeting: str) -> str | None:
     """The first two sentences of the greeting, without its invitation,
     in at most ``MAX_HEARD_CHARS``."""
-    sentences = [s for s in re.split(r"(?<=[.!?…])\s+", greeting.strip()) if s]
+    # Western sentences end at punctuation and a space; Chinese and Japanese
+    # ones at a full-width mark with no space after it.
+    sentences = [
+        s for s in re.split(r"(?<=[.!?…])\s+|(?<=[。！？])", greeting.strip()) if s
+    ]
     while sentences and (
-        sentences[-1].endswith("?") or _INVITATION.match(sentences[-1])
+        sentences[-1].endswith(("?", "？")) or _INVITATION.match(sentences[-1])
     ):
         sentences.pop()
     if not sentences:
         return None
-    two = " ".join(sentences[:2])
+    two = _join(sentences[:2])
     if len(two) <= MAX_HEARD_CHARS:
         return two
     first = sentences[0]
@@ -187,11 +192,27 @@ async def _pipeline_team(
     user_id: str, dump: OnboardingBrainDump
 ) -> list[RecommendedExpert]:
     """The team the dump's team job stored, or the role team when it stored
-    none (its write failed), from reads that raise like the role plan's."""
+    none (its write failed, or a failed roster read left it empty), from
+    reads that raise like the role plan's."""
     team = plan_job.stored_team(dump.recommendedExperts)
-    if team is not None and team.source != "disabled":
+    if team is not None and team.source != "disabled" and _has_answer(team):
         return team.experts
     return (await _role_plan(user_id))[1]
+
+
+def _has_answer(team: ExpertRecommendations) -> bool:
+    # No experts and no expert to raise is what a roster that could not be
+    # read leaves; a real "nobody fits" still suggests raising one.
+    return bool(team.experts) or team.raise_suggestion is not None
+
+
+def _join(sentences: list[str]) -> str:
+    """Two sentences as one line: a space between them, except after a
+    full-width mark, which carries its own."""
+    first, *rest = sentences
+    return first + "".join(
+        ("" if first.endswith(("。", "！", "？")) else " ") + s for s in rest
+    )
 
 
 def _pending(dump: OnboardingBrainDump) -> bool:

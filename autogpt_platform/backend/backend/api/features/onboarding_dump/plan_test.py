@@ -284,9 +284,10 @@ async def test_a_call_that_outlives_the_timeout_returns_none(
 ):
     mocker.patch.object(plan, "_TIMEOUT_SECONDS", 0.01)
 
+    # A complete answer, but too late: only the timeout makes this None.
     async def slow(*args: Any, **kwargs: Any) -> JevCallResult:
         await asyncio.sleep(5)
-        raise AssertionError("never reached")
+        return _result(_answers([1.0] * len(PROMPTS), [OTTO_SURE] * len(PROMPTS)))
 
     jev.side_effect = slow
 

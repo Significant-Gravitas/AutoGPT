@@ -971,8 +971,10 @@ def test_the_plan_is_pending_while_the_pipeline_runs(
     upload_part()
     finalize()
     assert dumps.row is not None
+    # As the row reads while the greeting job is still writing.
     dumps.row.status = BrainDumpStatus.extracting
-    stored_before = list(dumps.row.suggestedPrompts)
+    dumps.row.suggestedPrompts = []
+    dumps.row.greeting = None
 
     body = client.get(PLAN_URL).json()
 
@@ -981,7 +983,7 @@ def test_the_plan_is_pending_while_the_pipeline_runs(
     assert body["source"] == "fallback"
     assert body["skipped_dump"] is False
     assert body["tasks"][0]["title"].startswith("Build a list of 25 companies")
-    assert dumps.row.suggestedPrompts == stored_before
+    assert dumps.row.suggestedPrompts == []
 
 
 def test_a_skipped_dump_gets_the_role_plan_stored_on_first_read(
@@ -1368,6 +1370,29 @@ def test_a_plan_whose_read_fails_is_an_error_not_a_stored_degraded_plan(
     assert len(dumps.row.suggestedPrompts) == len(FOUNDER_TITLES)
 
 
+def test_a_team_left_empty_by_a_failed_roster_read_is_replaced_by_the_role_team(
+    dumps: DumpStore,
+    plan_world: dict[str, AsyncMock],
+    lenient_client: fastapi.testclient.TestClient,
+):
+    # The team job read no roster and stored nobody, with nothing to raise
+    # either: that is no answer, so the plan and the hire use the role team.
+    finalize(input_mode="typed", text=TRANSCRIPT)
+    assert dumps.row is not None
+    dumps.row.recommendedExperts = {
+        "source": "fallback",
+        "diagnosis": "",
+        "experts": [],
+        "raise_suggestion": None,
+    }
+
+    body = lenient_client.get(PLAN_URL).json()
+
+    assert [e["name"] for e in body["team"]] == ["Max", "Maria"]
+    lenient_client.post(PLAN_HIRE_URL)
+    assert plan_world["hire_expert"].await_count == 2
+
+
 @FAILED_READS
 def test_a_dump_whose_team_was_never_stored_fails_the_hire_rather_than_hire_nobody(
     failing_read: str,
@@ -1390,25 +1415,40 @@ def test_a_dump_whose_team_was_never_stored_fails_the_hire_rather_than_hire_nobo
     plan_world["hire_expert"].assert_not_awaited()
 
 
-@FAILED_READS
-def test_home_still_lists_tasks_when_a_read_fails_but_stores_none_of_them(
-    failing_read: str,
+def test_home_still_lists_tasks_when_the_roster_read_fails_but_stores_none(
     dumps: DumpStore,
     plan_world: dict[str, AsyncMock],
     lenient_client: fastapi.testclient.TestClient,
 ):
     finalize(input_mode="skipped")
     assert dumps.row is not None
-    plan_world[failing_read].side_effect = RuntimeError("database unavailable")
+    plan_world["list_templates"].side_effect = RuntimeError("database unavailable")
 
     response = lenient_client.get(SUGGESTED_TASKS_URL)
 
     assert response.status_code == 200
     body = response.json()
     assert body["stored"] is False
-    assert body["tasks"]
-    # Without the role or the roster, nobody can be named an owner.
+    assert [t["title"] for t in body["tasks"]] == FOUNDER_TITLES
+    # Without the roster, nobody can be named an owner.
     assert all(t["expert_template_id"] is None for t in body["tasks"])
+    assert dumps.row.suggestedPrompts == []
+
+
+def test_home_lists_nothing_when_the_role_read_fails_rather_than_another_list(
+    dumps: DumpStore,
+    plan_world: dict[str, AsyncMock],
+    lenient_client: fastapi.testclient.TestClient,
+):
+    # The generic set under the role set's ids would let an x remove a task
+    # the user never saw.
+    finalize(input_mode="skipped")
+    assert dumps.row is not None
+    plan_world["read_wizard_answers"].side_effect = RuntimeError("database down")
+
+    response = lenient_client.get(SUGGESTED_TASKS_URL)
+
+    assert response.status_code == 500
     assert dumps.row.suggestedPrompts == []
 
 

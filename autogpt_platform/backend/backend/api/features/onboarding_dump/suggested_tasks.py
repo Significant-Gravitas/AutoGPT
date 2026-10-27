@@ -197,13 +197,12 @@ def _storable(task: SuggestedTask) -> dict[str, Any]:
 async def _default_tasks(user_id: str, *, storing: bool) -> list[SuggestedTask]:
     """The role's starters for a user who picked one, the generic set otherwise.
 
-    A list about to be stored is built from reads that raise: a template or
-    wizard read that failed would otherwise store a degraded list for good.
+    The role is read so that a failed read raises, on every path: a list
+    built without it is a different list under the same ids. The roster
+    read raises only when the list is about to be stored; for a read, a
+    failed one only leaves the tasks without owners.
     """
-    if storing:
-        user_role, pain_points = await service.read_wizard_answers(user_id)
-    else:
-        user_role, pain_points = await service.wizard_answers(user_id)
+    user_role, pain_points = await service.read_wizard_answers(user_id)
     if not user_role:
         return as_tasks(intro.fallback_prompts())
     templates = await list_templates() if storing else await service.safe_templates()
