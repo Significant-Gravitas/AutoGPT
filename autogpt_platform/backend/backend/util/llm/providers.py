@@ -888,7 +888,9 @@ def _decode_ollama_image(image: object) -> bytes:
             "Ollama images must contain base64-encoded image data"
         )
     try:
-        return base64.b64decode(image, validate=True)
+        return base64.b64decode(
+            image.replace("\r", "").replace("\n", ""), validate=True
+        )
     except (binascii.Error, ValueError) as exc:
         raise ValueError(
             "Ollama images must contain base64-encoded image data"

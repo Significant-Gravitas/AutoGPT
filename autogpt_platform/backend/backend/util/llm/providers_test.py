@@ -10,6 +10,7 @@ fields each provider exposes.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import socket
 from contextlib import contextmanager
@@ -1082,6 +1083,23 @@ class TestOllama:
             )
 
         assert captured["messages"][0]["images"] == [b"image-bytes"]
+
+    @pytest.mark.asyncio
+    async def test_accepts_line_wrapped_base64_images(self):
+        image = bytes(range(256)) * 2
+        wrapped = base64.encodebytes(image).decode()
+        assert "\n" in wrapped
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llava",
+                api_key="",
+                messages=[{"role": "user", "content": "describe", "images": [wrapped]}],
+                max_tokens=10,
+            )
+
+        assert captured["messages"][0]["images"] == [image]
 
     @pytest.mark.asyncio
     async def test_force_json_output_requests_json_format(self):
