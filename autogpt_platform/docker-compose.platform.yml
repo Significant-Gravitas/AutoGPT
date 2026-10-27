@@ -211,7 +211,8 @@ services:
         done
         redis-cli --cluster create redis-0:17000 redis-1:17001 redis-2:17002 --cluster-replicas 0 --cluster-yes
   falkordb:
-    image: falkordb/falkordb:latest
+    # The version infra deploys; bump every FalkorDB pin together (OPEN-3746, #16224).
+    image: falkordb/falkordb:v4.12.5
     # Published on 127.0.0.1 only, for the backend outside Docker and tools on this machine.
     ports:
       - "127.0.0.1:6380:6379" # FalkorDB Redis protocol (6380 to avoid clash with Redis on 6379)

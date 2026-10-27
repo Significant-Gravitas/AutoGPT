@@ -45,7 +45,7 @@ export function ExpertSummaryCard({
         className="flex flex-col gap-2 rounded-2xl bg-surface p-4 smooth-shadow-ring-sm"
       >
         <div className="flex items-center justify-between gap-2">
-          <Text variant="body-medium" tone="primary">
+          <Text variant="body-md-medium" tone="primary">
             Activity
           </Text>
           {summary ? <ActivityStatus isActive={summary.isActive} /> : null}
@@ -90,7 +90,7 @@ export function ExpertSummaryCard({
               <Text variant="h4" tone="primary" className="tabular-nums">
                 {streak ?? 0}
               </Text>
-              <Text variant="body" tone="muted">
+              <Text variant="body-md" tone="muted">
                 day streak
               </Text>
             </div>

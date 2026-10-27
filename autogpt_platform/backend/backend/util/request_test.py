@@ -1,15 +1,20 @@
+from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
 import pytest
 from aiohttp import web
 
 from backend.util.request import (
+    Requests,
+    ResponseTooLargeError,
     _is_ip_blocked,
+    _read_body,
     _remove_insecure_headers,
     pin_url,
     resolve_and_check_blocked,
     validate_url_host,
 )
+from backend.util.settings import Config
 
 
 @pytest.mark.parametrize(
@@ -738,3 +743,127 @@ async def test_untrusted_request_connects_only_to_the_pinned_address(
     assert response.json() == {"ok": True}
     assert vetted == ["pinned.invalid"]
     assert seen == ["pinned.invalid"]
+
+
+# --- Response bodies are read under a size limit ---
+
+
+async def _serve(app: web.Application) -> tuple[web.AppRunner, str]:
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    return runner, f"http://127.0.0.1:{runner.addresses[0][1]}"
+
+
+def _local_requests(**kwargs) -> Requests:
+    return Requests(trusted_origins=["127.0.0.1"], **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_a_body_at_the_limit_is_read_in_full():
+    async def exactly_at_limit(request: web.Request) -> web.Response:
+        return web.Response(body=b"x" * 4096)
+
+    app = web.Application()
+    app.router.add_get("/", exactly_at_limit)
+    runner, base = await _serve(app)
+
+    try:
+        response = await _local_requests(max_response_bytes=4096).get(base)
+    finally:
+        await runner.cleanup()
+
+    assert response.content == b"x" * 4096
+
+
+@pytest.mark.asyncio
+async def test_a_body_over_the_limit_is_refused():
+    async def one_byte_over(request: web.Request) -> web.Response:
+        return web.Response(body=b"x" * 4097)
+
+    app = web.Application()
+    app.router.add_get("/", one_byte_over)
+    runner, base = await _serve(app)
+
+    try:
+        with pytest.raises(ResponseTooLargeError):
+            await _local_requests(max_response_bytes=4096).get(base)
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_stream_without_a_declared_length_stops_at_the_limit():
+    async def stream(request: web.Request) -> web.StreamResponse:
+        response = web.StreamResponse()
+        await response.prepare(request)
+        for _ in range(64):
+            await response.write(b"x" * 1024)
+        return response
+
+    app = web.Application()
+    app.router.add_get("/", stream)
+    runner, base = await _serve(app)
+
+    try:
+        with pytest.raises(ResponseTooLargeError):
+            await _local_requests(max_response_bytes=16 * 1024).get(base)
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_error_body_over_the_limit_is_refused_too():
+    async def failing_with_a_long_body(request: web.Request) -> web.Response:
+        return web.Response(status=500, body=b"x" * 4097)
+
+    app = web.Application()
+    app.router.add_get("/", failing_with_a_long_body)
+    runner, base = await _serve(app)
+
+    try:
+        with pytest.raises(ResponseTooLargeError):
+            await _local_requests(max_response_bytes=4096, retry_max_attempts=1).get(
+                base
+            )
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_declared_length_over_the_limit_is_refused_before_any_read():
+    class NeverRead:
+        def iter_chunked(self, size: int):
+            raise AssertionError("the body was read")
+
+    response = MagicMock(
+        method="GET", status=200, content_length=10**12, content=NeverRead()
+    )
+
+    with pytest.raises(ResponseTooLargeError):
+        await _read_body(response, 1024)
+
+    response.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_a_head_response_is_not_refused_for_the_size_of_the_resource():
+    async def big(request: web.Request) -> web.Response:
+        return web.Response(body=b"x" * 4097)
+
+    app = web.Application()
+    app.router.add_get("/", big)  # aiohttp answers HEAD for it too
+    runner, base = await _serve(app)
+
+    try:
+        response = await _local_requests(max_response_bytes=4096).head(base)
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert response.headers.get("Content-Length") == "4097"
+    assert response.content == b""
+
+
+def test_the_default_limit_follows_the_file_size_setting():
+    assert Requests().max_response_bytes == Config().max_file_size_mb * 1024 * 1024

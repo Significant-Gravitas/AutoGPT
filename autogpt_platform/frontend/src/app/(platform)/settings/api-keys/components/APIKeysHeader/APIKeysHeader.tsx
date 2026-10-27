@@ -1,8 +1,12 @@
 "use client";
 import { Button } from "@/components/atoms/Button/Button";
+import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+
+const API_DOCS_URL =
+  "https://agpt.co/docs/platform/api-and-integrations/api-guide";
 
 interface Props {
   onCreate: () => void;
@@ -20,6 +24,11 @@ export function APIKeysHeader({ onCreate }: Props) {
           className="mt-4 max-w-[600px] text-foreground-body"
         >
           Manage API keys that let external tools access your AutoGPT account.
+          See the{" "}
+          <Link href={API_DOCS_URL} isExternal variant="secondary">
+            API docs
+          </Link>{" "}
+          to get started.
         </Text>
       </div>
 

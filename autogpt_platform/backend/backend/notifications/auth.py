@@ -7,7 +7,7 @@ from typing import Literal, assert_never
 from prisma.enums import AccountDeletionSource
 from pydantic import BaseModel
 
-from backend.notifications.renderer import RenderedEmail, build_urls
+from backend.notifications.renderer import RenderedEmail, build_urls, otto_asset_url
 from backend.notifications.template_env import create_body_environment
 from backend.util.clients import get_notification_manager_client
 from backend.util.settings import Settings
@@ -40,6 +40,8 @@ class AuthEmailContent(BaseModel):
     # Close with the shared inbox (which also takes replies) instead of
     # Discord, for an email about the person's own account.
     close_with_inbox: bool = False
+    # (lead, rest) progress steps, for the templates that show them.
+    steps: list[tuple[str, str]] = []
 
 
 def render_auth_email(
@@ -53,18 +55,21 @@ def render_auth_email(
         raise ValueError(f"The {email_type} email needs an action URL")
     if reason:
         content = content.model_copy(update={"reason": reason})
+    assets = settings.config.email_asset_base_url.rstrip("/")
     context = {
         "content": content,
         "action_url": action_url,
-        "assets": settings.config.email_asset_base_url.rstrip("/"),
+        "assets": assets,
+        "otto_asset_url": otto_asset_url(assets),
         "urls": build_urls(""),
         "inbox": settings.config.billing_reply_to_email,
     }
+    template = _TEMPLATES.get(email_type, "auth")
     return RenderedEmail(
         subject=content.subject,
         preheader=content.preheader,
-        html=_html_env.get_template("auth.html.j2").render(**context),
-        text=_text_env.get_template("auth.txt.j2").render(**context).strip(),
+        html=_html_env.get_template(f"{template}.html.j2").render(**context),
+        text=_text_env.get_template(f"{template}.txt.j2").render(**context).strip(),
     )
 
 
@@ -92,6 +97,11 @@ def _deletion_reason(source: AccountDeletionSource) -> str:
             assert_never(source)
 
 
+# Often the first email a new user gets, so it has its own fuller layout. The
+# rest use the compact auth layout.
+_TEMPLATES: dict[AuthEmailType, str] = {"verify_email": "auth_verify"}
+
+
 _CONTENT: dict[AuthEmailType, AuthEmailContent] = {
     "reset_password": AuthEmailContent(
         subject="Reset your AutoGPT Platform password",
@@ -105,13 +115,24 @@ _CONTENT: dict[AuthEmailType, AuthEmailContent] = {
     ),
     "verify_email": AuthEmailContent(
         subject="Verify your AutoGPT Platform email",
-        eyebrow="ACCOUNT · VERIFY EMAIL",
+        eyebrow="ONE LAST STEP",
         headline="Confirm your email address",
-        intro="Confirm this address for your AutoGPT account.",
-        preheader="Use the button below to verify your email.",
-        action="Verify email",
+        intro=(
+            "You're one click away from AutoGPT. Confirm that this is your "
+            "email address and your account is ready to use."
+        ),
+        preheader="One click to confirm your address and finish setting up AutoGPT.",
+        action="Confirm email address",
         reason="This link was requested from the AutoGPT sign-up form.",
         expiry="24 hours",
+        steps=[
+            ("Create your account.", "Done."),
+            ("Confirm your email.", "You're here."),
+            (
+                "Start working.",
+                "Describe a task in plain language and Otto takes it from there.",
+            ),
+        ],
     ),
     "change_email": AuthEmailContent(
         subject="Confirm your new AutoGPT Platform email",

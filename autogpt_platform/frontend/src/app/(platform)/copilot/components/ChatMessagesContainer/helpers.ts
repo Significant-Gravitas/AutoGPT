@@ -376,54 +376,68 @@ export function resolveWorkspaceUrls(
   return resolved;
 }
 
-export type ReviewTarget =
-  | { kind: "chat" }
-  /** graphId is set for a run_agent run, so its status can say when to stop polling. */
-  | { kind: "graph"; graphExecId: string; graphId?: string };
+export interface RunReviewTarget {
+  graphExecId: string;
+  /** Set for a run_agent run, so its status can say when to stop polling. */
+  graphId?: string;
+}
+
+export interface ReviewTargets {
+  /** The newest output that can have reviews is the chat's own. */
+  chat: boolean;
+  runs: RunReviewTarget[];
+}
 
 /**
- * The newest tool output that can have pending reviews for the chat to show:
- * a run_block ReviewRequiredResponse, or a run_agent ExecutionStartedResponse
- * that paused or had not finished when the tool returned (a run AutoPilot
- * starts can pause at an irreversible block after it started).
+ * The runs whose pending reviews the chat shows: every run that was paused
+ * when its tool returned (several can each wait on a spend approval), and the
+ * newest output's run while it is in flight, since a run AutoPilot starts can
+ * pause at an irreversible block after it started.
  */
-export function extractReviewTarget(
+export function extractReviewTargets(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
-): ReviewTarget | null {
+): ReviewTargets {
+  const runs = new Map<string, RunReviewTarget>();
+  let newest: "chat" | "run" | null = null;
   for (let i = messages.length - 1; i >= 0; i--) {
     const parts = messages[i].parts;
     for (let j = parts.length - 1; j >= 0; j--) {
-      const part = parts[j];
-      if (!("output" in part) || !part.output) continue;
-      const out =
-        typeof part.output === "string"
-          ? (() => {
-              try {
-                return JSON.parse(part.output);
-              } catch {
-                return null;
-              }
-            })()
-          : part.output;
-      if (!out || typeof out !== "object") continue;
-      if (isChatReview(out)) return { kind: "chat" };
-      if ("execution_id" in out && "status" in out) {
-        const { execution_id, status, graph_id } = out as {
-          execution_id: string;
-          status: string;
-          graph_id?: string;
-        };
-        if (REVIEWABLE_STATUSES.has(status)) {
-          return {
-            kind: "graph",
-            graphExecId: execution_id,
-            graphId: graph_id,
-          };
-        }
+      const out = readToolOutput(parts[j]);
+      if (!out) continue;
+      if (isChatReview(out)) {
+        newest ??= "chat";
+        continue;
       }
+      if (!("execution_id" in out && "status" in out)) continue;
+      const { execution_id, status, graph_id } = out as {
+        execution_id: string;
+        status: string;
+        graph_id?: string;
+      };
+      if (!REVIEWABLE_STATUSES.has(status)) continue;
+      if ((status === "REVIEW" || newest === null) && !runs.has(execution_id)) {
+        runs.set(execution_id, {
+          graphExecId: execution_id,
+          graphId: graph_id,
+        });
+      }
+      newest ??= "run";
     }
   }
-  return null;
+  return { chat: newest === "chat", runs: [...runs.values()] };
+}
+
+function readToolOutput(part: MessagePart): object | null {
+  if (!("output" in part) || !part.output) return null;
+  if (typeof part.output !== "string") {
+    return typeof part.output === "object" ? part.output : null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(part.output);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 // A block review, or an action the auto-mode gate parked for approval.
