@@ -34,7 +34,7 @@ export function AmbientCard({
         position,
         isHidden ? "opacity-0" : "pointer-events-auto cursor-pointer",
       )}
-      animate={drift ? { y: [0, -6, 0] } : { y: 0 }}
+      animate={drift ? { y: [0, -7, 0, 5, 0] } : { y: 0 }}
       transition={
         drift
           ? {
