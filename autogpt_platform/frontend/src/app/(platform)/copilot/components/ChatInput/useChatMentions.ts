@@ -181,7 +181,8 @@ export function useChatMentions({
     if (pendingCaret === null) return;
     const textarea = textareaRef.current;
     if (textarea && textarea.value.length >= pendingCaret) {
-      // Back from the connect dialog, which has no trigger to hand focus to.
+      // A no-op while typing; the connect dialog has no trigger to hand focus
+      // back to, so returning from it relies on this.
       textarea.focus?.();
       textarea.setSelectionRange(pendingCaret, pendingCaret);
     }
@@ -234,18 +235,27 @@ export function useChatMentions({
     setActive(null);
   }
 
+  // Puts the caret back after the `@query` the dialog was opened from, but
+  // only while the message is as it was then. In an expert chat the dialog
+  // closes before the grant lands, and anything typed meanwhile (`@sentry`
+  // becoming `@sentry2`) means the saved range no longer fits.
+  function returnToMention(request: ActiveMention): boolean {
+    const text = textareaRef.current?.value ?? value;
+    if (text !== value) return false;
+    if (text.slice(request.start, request.end) !== `@${request.query}`)
+      return false;
+    setPendingCaret(request.end);
+    return true;
+  }
+
   function cancelConnect() {
+    if (connectRequest) returnToMention(connectRequest);
     setConnectRequest(null);
   }
 
   function resumeAfterConnect(request: ActiveMention) {
     setConnectRequest(null);
-    // The live text, not this render's: in an expert chat the dialog closes
-    // before the grant lands, so the user may already be typing again.
-    const text = textareaRef.current?.value ?? value;
-    if (text.slice(request.start, request.end) !== `@${request.query}`) return;
-    setActive(request);
-    setPendingCaret(request.end);
+    if (returnToMention(request)) setActive(request);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLElement>): boolean {

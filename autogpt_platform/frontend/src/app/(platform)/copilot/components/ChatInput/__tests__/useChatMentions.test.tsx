@@ -599,6 +599,33 @@ describe("useChatMentions", () => {
     expect(result.current.connectRequest).toBeNull();
   });
 
+  it("does not reopen once the user has typed on while the grant was in flight", () => {
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "ask @sentry",
+          setValue: vi.fn(),
+          addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
+          includeWorkspaceFiles: false,
+        }),
+      { wrapper: Wrapper },
+    );
+    const textarea = {
+      value: "ask @sentry2",
+      selectionStart: 12,
+      setSelectionRange: vi.fn(),
+    };
+    act(() => result.current.bindInput(textarea));
+
+    act(() =>
+      result.current.resumeAfterConnect({ query: "sentry", start: 4, end: 11 }),
+    );
+    expect(result.current.isOpen).toBe(false);
+    expect(textarea.setSelectionRange).not.toHaveBeenCalled();
+  });
+
   it("does not reopen when the @query is no longer where it was", () => {
     const { result } = renderHook(
       () =>

@@ -283,7 +283,7 @@ describe("Connect an integration from the @ mention list", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it("closing the dialog leaves the message as typed", async () => {
+  it("closing the dialog leaves the message as typed, with the caret back after it", async () => {
     arrangeSentry();
     const onSend = vi.fn();
     render(<Composer onSend={onSend} />);
@@ -292,10 +292,11 @@ describe("Connect an integration from the @ mention list", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(screen.getByRole("textbox")).toHaveProperty(
-      "value",
-      "Check @sentry",
-    );
+    const textbox = screen.getByRole("textbox");
+    expect(textbox).toHaveProperty("value", "Check @sentry");
+    await waitFor(() => expect(document.activeElement).toBe(textbox));
+    expect(textbox).toHaveProperty("selectionStart", 13);
+    expect(screen.queryByRole("listbox")).toBeNull();
     expect(onSend).not.toHaveBeenCalled();
   });
 });
