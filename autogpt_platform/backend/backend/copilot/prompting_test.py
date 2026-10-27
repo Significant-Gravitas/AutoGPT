@@ -131,7 +131,7 @@ class TestCredentialsSurfacingGuardrails:
         assert "refused a credential the user already has" in result
         assert "To only connect an account" in result
         assert 'input={"connect": true}' in result
-        assert "The card collects credentials only" in result
+        assert "The card collects credentials and picker inputs only" in result
 
     def test_prompt_states_the_one_connect_convention(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
@@ -456,6 +456,15 @@ class TestPlainLanguageRules:
         notes = prompting.SHARED_TOOL_NOTES
         assert "Use sensible defaults instead of asking" in notes
         assert "ask it before you start building" in notes
+
+    def test_accounts_are_set_up_in_the_users_words(self):
+        """A first-day user was told to paste a workspace id from a URL and to
+        type a header named Authorization with a Bearer token (SECRT-3139)."""
+        notes = " ".join(prompting.SHARED_TOOL_NOTES.split())
+        assert "Never ask the user to find or paste an id" in notes
+        assert "`Authorization: Bearer`" in notes
+        assert "explain it once" in notes
+        assert "`resource_picker`" in notes
 
     def test_only_cite_opened_pages(self):
         assert "Only cite pages you actually opened" in prompting.SHARED_TOOL_NOTES
