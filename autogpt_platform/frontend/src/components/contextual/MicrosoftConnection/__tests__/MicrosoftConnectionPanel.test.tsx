@@ -220,6 +220,29 @@ describe("Microsoft connection", () => {
     ).toBeTruthy();
   });
 
+  it("clears a failed permission's error when checking again", async () => {
+    credentials = [work];
+    render(<MicrosoftConnectionPanel browserAvailable onDone={vi.fn()} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Allow Teams chats" }),
+    );
+    expect(
+      await screen.findByText(
+        "Your Microsoft administrator needs to approve access.",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText(
+          "Your Microsoft administrator needs to approve access.",
+        ),
+      ).toBeNull(),
+    );
+  });
+
   it("lets an admin approve everything for the organization", async () => {
     credentials = [work];
     render(<MicrosoftConnectionPanel browserAvailable onDone={vi.fn()} />);

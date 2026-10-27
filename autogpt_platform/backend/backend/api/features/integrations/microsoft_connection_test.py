@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
+from backend.api.external.v1 import integrations as external
 from backend.api.features.integrations import router as routes
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth.microsoft import MicrosoftDeviceAuthHandler
@@ -102,3 +103,13 @@ def test_browser_sign_in_is_refused_until_the_deployment_turns_it_on(mocker):
 
     assert refused.value.status_code == 400
     assert "sign-in code" in refused.value.detail
+
+
+def test_external_api_points_microsoft_to_settings():
+    with pytest.raises(HTTPException) as refused:
+        external._get_oauth_handler_for_external(
+            "microsoft", "https://client.example/callback"
+        )
+
+    assert refused.value.status_code == 400
+    assert "Settings" in refused.value.detail
