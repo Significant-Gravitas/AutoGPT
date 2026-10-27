@@ -15,16 +15,19 @@ test("first run: a new user is walked through the real UI and can replay it", as
   await completeOnboardingWizard(page, { role: "Engineering" });
 
   await expect(
-    page.getByRole("dialog", { name: "Work happens in chats" }),
+    page.getByRole("dialog", { name: "Every task gets its own chat" }),
   ).toBeVisible({ timeout: 30000 });
   await expect(page.getByText("Meet your Head of AI.")).toHaveCount(0);
 
-  for (const title of ["Experts can own a task", "Results land in Files"]) {
+  for (const title of [
+    "Experts take tasks off your plate",
+    "Your results are saved in Files",
+  ]) {
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await expect(page.getByRole("dialog", { name: title })).toBeVisible();
   }
   // The allowance step is there only where billing is on.
-  const startHere = page.getByRole("dialog", { name: "Start here" });
+  const startHere = page.getByRole("dialog", { name: "Start with one task" });
   for (let step = 0; step < 2 && !(await startHere.isVisible()); step++) {
     await page.getByRole("button", { name: "Next", exact: true }).click();
   }
@@ -42,6 +45,6 @@ test("first run: a new user is walked through the real UI and can replay it", as
   await page.getByTestId("profile-popout-menu-trigger").click();
   await page.getByRole("button", { name: "Show me around" }).click();
   await expect(
-    page.getByRole("dialog", { name: "Work happens in chats" }),
+    page.getByRole("dialog", { name: "Every task gets its own chat" }),
   ).toBeVisible();
 });

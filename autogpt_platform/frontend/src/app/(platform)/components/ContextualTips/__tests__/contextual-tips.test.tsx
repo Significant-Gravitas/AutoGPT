@@ -400,7 +400,7 @@ describe("contextual tips — showing one", () => {
 
     expect(
       await screen.findByText(
-        "Chats and experts use your trial allowance, and automations use credits. Check both here.",
+        "Chats and experts use your trial allowance. Automations use credits. You can check both here.",
       ),
     ).toBeDefined();
   });

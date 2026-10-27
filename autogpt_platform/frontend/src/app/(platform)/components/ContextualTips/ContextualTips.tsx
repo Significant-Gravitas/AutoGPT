@@ -1,7 +1,9 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { BulbIcon } from "@hugeicons/core-free-icons";
 import {
   Popover,
   PopoverAnchor,
@@ -122,9 +124,12 @@ function ContextualTip({
           className="z-[120] w-[18rem] max-w-[calc(100vw-2rem)] rounded-2xl border-border-base p-4 shadow-xl"
         >
           <div className="flex flex-col gap-2">
-            <Text variant="small-medium" className="text-violet-700">
-              Tip
-            </Text>
+            <span className="flex items-center gap-1.5 text-foreground-secondary">
+              <Icon icon={BulbIcon} size={14} aria-hidden />
+              <Text variant="small-medium" tone="inherit">
+                Tip
+              </Text>
+            </span>
             <Text
               as="h2"
               id={titleID}

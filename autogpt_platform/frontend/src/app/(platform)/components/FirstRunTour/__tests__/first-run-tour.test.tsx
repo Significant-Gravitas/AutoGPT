@@ -143,10 +143,10 @@ describe("first-run walkthrough", () => {
     openTour();
 
     const steps = [
-      ["Work happens in chats", "1 of 5"],
-      ["Experts can own a task", "2 of 5"],
-      ["Results land in Files", "3 of 5"],
-      ["Keep an eye on your allowance", "4 of 5"],
+      ["Every task gets its own chat", "1 of 5"],
+      ["Experts take tasks off your plate", "2 of 5"],
+      ["Your results are saved in Files", "3 of 5"],
+      ["See what you have left", "4 of 5"],
     ];
     for (const [title, counter] of steps) {
       expect(await screen.findByRole("dialog", { name: title })).toBeDefined();
@@ -155,10 +155,12 @@ describe("first-run walkthrough", () => {
     }
 
     expect(
-      await screen.findByRole("dialog", { name: "Start here" }),
+      await screen.findByRole("dialog", { name: "Start with one task" }),
     ).toBeDefined();
     expect(
-      screen.getByText("Pick a first task and Otto gets going on it."),
+      screen.getByText(
+        "Pick a suggestion and Otto gets going. Or describe your own in the box below.",
+      ),
     ).toBeDefined();
     await userEvent.click(screen.getByRole("button", { name: /Start here/ }));
 
@@ -190,7 +192,7 @@ describe("first-run walkthrough", () => {
 
     expect(
       await screen.findByText(
-        "Your trial includes an allowance for chats and experts. See what's left here, and earn extra credits.",
+        "Your trial includes an allowance for chats and experts. Check what's left here, and earn extra credits.",
       ),
     ).toBeDefined();
   });
@@ -204,7 +206,7 @@ describe("first-run walkthrough", () => {
 
     expect(
       await screen.findByText(
-        "Your allowance and credits live here, next to your profile.",
+        "Your allowance and credits are here, next to your profile.",
       ),
     ).toBeDefined();
   });
@@ -255,7 +257,9 @@ describe("first-run walkthrough", () => {
       act(() => useFirstRunTourStore.getState().goTo("start"));
 
       expect(
-        await screen.findByText("Pick a first task and Otto gets going on it."),
+        await screen.findByText(
+          "Pick a suggestion and Otto gets going. Or describe your own in the box below.",
+        ),
       ).toBeDefined();
       await waitFor(() =>
         expect(scrollIntoView.mock.contexts).toContain(
@@ -295,7 +299,9 @@ describe("first-run walkthrough", () => {
     );
 
     expect(await screen.findByText("5 of 5")).toBeDefined();
-    expect(screen.getByRole("dialog", { name: "Start here" })).toBeDefined();
+    expect(
+      screen.getByRole("dialog", { name: "Start with one task" }),
+    ).toBeDefined();
   });
 
   it("carries on to the next step when the one showing drops out", async () => {
@@ -307,7 +313,7 @@ describe("first-run walkthrough", () => {
       );
     expect(
       await screen.findByRole("dialog", {
-        name: "Keep an eye on your allowance",
+        name: "See what you have left",
       }),
     ).toBeDefined();
 
@@ -321,7 +327,9 @@ describe("first-run walkthrough", () => {
     );
 
     expect(await screen.findByText("4 of 4")).toBeDefined();
-    expect(screen.getByRole("dialog", { name: "Start here" })).toBeDefined();
+    expect(
+      screen.getByRole("dialog", { name: "Start with one task" }),
+    ).toBeDefined();
   });
 
   it("opens the collapsed sidebar, where a new account's wallet is hidden", async () => {
@@ -421,7 +429,9 @@ describe("first-run walkthrough", () => {
     try {
       renderTour();
       openTour();
-      await screen.findByRole("dialog", { name: "Work happens in chats" });
+      await screen.findByRole("dialog", {
+        name: "Every task gets its own chat",
+      });
       await waitFor(() =>
         expect(screen.getByTestId("sheet-state").textContent).toBe("open"),
       );
@@ -469,14 +479,14 @@ describe("first-run walkthrough", () => {
       openTour();
 
       const card = await screen.findByRole("dialog", {
-        name: "Work happens in chats",
+        name: "Every task gets its own chat",
       });
       await waitFor(() =>
         expect(card.closest("[aria-hidden=true]")).toBeNull(),
       );
       await waitFor(() =>
         expect(
-          screen.getByRole("dialog", { name: "Work happens in chats" }),
+          screen.getByRole("dialog", { name: "Every task gets its own chat" }),
         ).toBeDefined(),
       );
       // The card mounts again a couple of frames after the sheet: look the
@@ -501,7 +511,7 @@ describe("first-run walkthrough", () => {
 
     expect(
       await screen.findByText(
-        "Each task gets its own chat. They all stay here, ready to pick up. Open the menu to find it.",
+        "Ask Otto for something and it starts a new chat. They all stay here, so you can pick any of them back up. Open the menu to find it.",
       ),
     ).toBeDefined();
   });
@@ -510,11 +520,11 @@ describe("first-run walkthrough", () => {
     hidden.add("chats");
     renderTour();
     openTour();
-    await screen.findByRole("dialog", { name: "Work happens in chats" });
+    await screen.findByRole("dialog", { name: "Every task gets its own chat" });
 
     const announcement = document.querySelector('[aria-live="polite"]');
     expect(announcement?.textContent).toBe(
-      "Step 1 of 5. Work happens in chats. Each task gets its own chat. They all stay here, ready to pick up. Open the menu to find it.",
+      "Step 1 of 5. Every task gets its own chat. Ask Otto for something and it starts a new chat. They all stay here, so you can pick any of them back up. Open the menu to find it.",
     );
   });
 
@@ -525,7 +535,7 @@ describe("first-run walkthrough", () => {
 
     expect(
       await screen.findByText(
-        "Otto is getting your first tasks ready. They'll show up on Home in a moment.",
+        "Otto is getting your first tasks ready. They'll show up here in a moment.",
       ),
     ).toBeDefined();
   });
@@ -543,7 +553,7 @@ describe("first-run walkthrough", () => {
     );
 
     openTour("menu");
-    await screen.findByRole("dialog", { name: "Work happens in chats" });
+    await screen.findByRole("dialog", { name: "Every task gets its own chat" });
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(capture).toHaveBeenCalledWith("first_run_tour_skipped", {
@@ -567,7 +577,7 @@ describe("first-run walkthrough", () => {
 
     composer.blur();
     openTour("menu");
-    await screen.findByRole("dialog", { name: "Work happens in chats" });
+    await screen.findByRole("dialog", { name: "Every task gets its own chat" });
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(document.activeElement).toBe(composer));
   });
@@ -608,7 +618,7 @@ describe("first-run walkthrough", () => {
     await waitFor(() => expect(document.activeElement).toBe(next));
     await userEvent.tab();
     const dialog = screen.getByRole("dialog", {
-      name: "Work happens in chats",
+      name: "Every task gets its own chat",
     });
     expect(dialog.contains(document.activeElement)).toBe(true);
     await userEvent.tab();

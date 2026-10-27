@@ -3,6 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 
@@ -41,17 +42,10 @@ export function TourStepCard({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2.5">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border-base bg-surface-muted text-foreground-emphasis">
           <Icon icon={icon} size={16} aria-hidden />
         </span>
-        <Text
-          variant="small"
-          tone="secondary"
-          className="tabular-nums"
-          dir="auto"
-        >
-          {stepNumber} of {stepCount}
-        </Text>
+        <StepProgress stepNumber={stepNumber} stepCount={stepCount} />
       </div>
       <div className="flex flex-col gap-1">
         <Text
@@ -77,7 +71,7 @@ export function TourStepCard({
             variant="ghost"
             size="xs"
             onClick={altAction.onClick}
-            className="-ml-2.5 w-fit text-violet-700 underline-offset-4 hover:bg-transparent hover:underline"
+            className="-ml-2.5 w-fit text-foreground-emphasis underline decoration-border-strong underline-offset-4 hover:bg-transparent hover:decoration-foreground-emphasis"
           >
             {altAction.label}
           </Button>
@@ -120,6 +114,39 @@ export function TourStepCard({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+interface StepProgressProps {
+  stepNumber: number;
+  stepCount: number;
+}
+
+function StepProgress({ stepNumber, stepCount }: StepProgressProps) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <div aria-hidden className="flex items-center gap-1">
+        {Array.from({ length: stepCount }, (_, index) => (
+          <span
+            key={index}
+            className={cn(
+              "h-1 rounded-full transition-[width,background-color] duration-300 ease-out motion-reduce:transition-none",
+              index + 1 === stepNumber ? "w-4 bg-foreground-emphasis" : "w-1.5",
+              index + 1 < stepNumber && "bg-foreground-tertiary",
+              index + 1 > stepNumber && "bg-surface-active",
+            )}
+          />
+        ))}
+      </div>
+      <Text
+        variant="small"
+        tone="secondary"
+        className="tabular-nums"
+        dir="auto"
+      >
+        {stepNumber} of {stepCount}
+      </Text>
     </div>
   );
 }

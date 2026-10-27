@@ -40,39 +40,39 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: "chats",
     icon: BubbleChatIcon,
-    title: "Work happens in chats",
-    body: "Each task gets its own chat. They all stay here, ready to pick up.",
+    title: "Every task gets its own chat",
+    body: "Ask Otto for something and it starts a new chat. They all stay here, so you can pick any of them back up.",
     targets: ["chats"],
     inSidebar: true,
   },
   {
     id: "team",
     icon: UserGroupIcon,
-    title: "Experts can own a task",
-    body: "Your team lives here, so you can see who is working on what.",
+    title: "Experts take tasks off your plate",
+    body: "Otto can add experts to your team to own a task from start to finish. Team shows who's on what.",
     targets: ["team", "workspace"],
     inSidebar: true,
   },
   {
     id: "files",
     icon: Folder01Icon,
-    title: "Results land in Files",
-    body: "Everything your team makes is saved here. Home recaps what got done.",
+    title: "Your results are saved in Files",
+    body: "Reports, drafts and anything else your team makes are kept here. Home sums up what got done.",
     targets: ["files", "workspace"],
     inSidebar: true,
   },
   {
     id: "allowance",
     icon: Wallet01Icon,
-    title: "Keep an eye on your allowance",
+    title: "See what you have left",
     body: ({ isTrial }) =>
       isTrial
-        ? "Your trial includes an allowance for chats and experts. See what's left here, and earn extra credits."
-        : "See how much of your plan's allowance is left here, plus your credits.",
+        ? "Your trial includes an allowance for chats and experts. Check what's left here, and earn extra credits."
+        : "Check how much of your plan's allowance is left, and the credits your automations use.",
     // The wallet draws nothing until credits load; its footer stands in.
     targets: ["wallet", "account"],
     bodyFor: {
-      account: "Your allowance and credits live here, next to your profile.",
+      account: "Your allowance and credits are here, next to your profile.",
     },
     inSidebar: true,
     requiresBilling: true,
@@ -80,14 +80,14 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: "start",
     icon: Rocket01Icon,
-    title: "Start here",
-    body: "Pick a first task and Otto gets going on it.",
+    title: "Start with one task",
+    body: "Pick a suggestion and Otto gets going. Or describe your own in the box below.",
     targets: ["first-tasks", "composer"],
     bodyFor: {
       composer: "Tell Otto what you need, in your own words.",
     },
     bodyWhenMissing:
-      "Otto is getting your first tasks ready. They'll show up on Home in a moment.",
+      "Otto is getting your first tasks ready. They'll show up here in a moment.",
   },
 ];
 

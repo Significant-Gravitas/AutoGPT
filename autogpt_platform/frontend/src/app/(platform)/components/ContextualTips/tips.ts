@@ -23,7 +23,7 @@ export const TIPS: Record<TipID, Tip> = {
     step: "CHATS_TIP",
     targets: ["chats", "menu"],
     title: "You have two chats now",
-    body: "Each task gets its own chat. Switch between them here.",
+    body: "Each task keeps its own chat. Switch between them here.",
   },
   "first-cost": {
     step: "COST_TIP",
@@ -32,14 +32,14 @@ export const TIPS: Record<TipID, Tip> = {
     title: "Where costs come from",
     body: ({ isTrial }) =>
       isTrial
-        ? "Chats and experts use your trial allowance, and automations use credits. Check both here."
-        : "Chats and experts use your plan's allowance, and automations use credits. Check both here.",
+        ? "Chats and experts use your trial allowance. Automations use credits. You can check both here."
+        : "Chats and experts use your plan's allowance. Automations use credits. You can check both here.",
   },
   "first-expert": {
     step: "EXPERT_TIP",
     targets: ["team", "workspace", "menu"],
     title: "Experts can own tasks",
-    body: "Once you approve, this expert joins your team and can take tasks off your plate. Team shows who owns what.",
+    body: "Approve this expert and they join your team to take it from here. Team shows who owns what.",
   },
 };
 

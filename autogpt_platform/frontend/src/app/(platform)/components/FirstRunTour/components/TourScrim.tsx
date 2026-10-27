@@ -48,7 +48,7 @@ export function TourScrim({ boxes, dim = true }: Props) {
           <rect
             width="100%"
             height="100%"
-            className="fill-zinc-950/50"
+            className="fill-zinc-950/55"
             mask={`url(#${maskID})`}
           />
         </svg>
@@ -56,7 +56,14 @@ export function TourScrim({ boxes, dim = true }: Props) {
       {boxes.map((box, index) => (
         <div
           key={index}
-          className="absolute rounded-xl shadow-[0_0_0_2px_theme(colors.violet.500),0_0_0_6px_theme(colors.violet.500/0.25)] transition-[top,left,width,height] duration-300 ease-out motion-reduce:transition-none"
+          className={cn(
+            "absolute rounded-xl transition-[top,left,width,height] duration-300 ease-out motion-reduce:transition-none",
+            // Over the dim the lit hole is the highlight; the edge only
+            // crisps it. On an undimmed page a dark ring has to carry it.
+            dim
+              ? "shadow-[0_0_0_1.5px_rgb(255_255_255/0.9),0_0_0_6px_rgb(255_255_255/0.14)]"
+              : "shadow-[0_0_0_2px_rgb(var(--color-surface)),0_0_0_4px_rgb(var(--color-foreground-strong)),0_8px_24px_-8px_rgb(0_0_0/0.25)]",
+          )}
           style={{
             top: box.top,
             left: box.left,

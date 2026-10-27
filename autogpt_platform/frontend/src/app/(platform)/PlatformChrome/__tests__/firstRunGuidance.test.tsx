@@ -131,21 +131,25 @@ describe("first run, as the user sees it", () => {
     renderInApp(<Home />);
 
     expect(
-      await screen.findByRole("dialog", { name: "Work happens in chats" }),
+      await screen.findByRole("dialog", {
+        name: "Every task gets its own chat",
+      }),
     ).toBeDefined();
     expect(screen.getByText("1 of 5")).toBeDefined();
     expect(screen.queryByText("Meet your Head of AI.")).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(
-      await screen.findByRole("dialog", { name: "Experts can own a task" }),
+      await screen.findByRole("dialog", {
+        name: "Experts take tasks off your plate",
+      }),
     ).toBeDefined();
   });
 
   it("does not come back once it is skipped", async () => {
     setIntroPath("B");
     renderInApp(<Home />);
-    await screen.findByRole("dialog", { name: "Work happens in chats" });
+    await screen.findByRole("dialog", { name: "Every task gets its own chat" });
 
     await userEvent.click(screen.getByRole("button", { name: "Skip tour" }));
 
@@ -195,7 +199,9 @@ describe("first run, as the user sees it", () => {
     );
 
     expect(
-      await screen.findByRole("dialog", { name: "Work happens in chats" }),
+      await screen.findByRole("dialog", {
+        name: "Every task gets its own chat",
+      }),
     ).toBeDefined();
   });
 });

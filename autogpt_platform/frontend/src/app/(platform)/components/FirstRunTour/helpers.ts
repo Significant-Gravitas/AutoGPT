@@ -98,21 +98,43 @@ export function isPartlyOffScreen(
   );
 }
 
+// The collapsed rail is too narrow for the full padding on both sides.
+const RAIL_PADDING = 4;
+
+function isInRail(element: HTMLElement) {
+  return element.closest('[data-collapsible="icon"]') !== null;
+}
+
+// In the rail a sidebar item spans the rail's full width while its icon
+// button sits to the left, so ringing the item leaves a gap on the right.
+function findRailButton(element: HTMLElement) {
+  const buttons = element.querySelectorAll<HTMLElement>(
+    '[data-sidebar="menu-button"]',
+  );
+  for (const button of Array.from(buttons)) {
+    const rect = button.getBoundingClientRect();
+    if (rect.width >= 1 && rect.height >= 1) return button;
+  }
+  return null;
+}
+
 export function getSpotlightBox(
   element: HTMLElement,
   target: TourTarget | null,
 ): Box {
   const cap = (target && CAPPED_TARGETS[target]) ?? Number.POSITIVE_INFINITY;
-  const rect = element.getBoundingClientRect();
-  const top = Math.max(rect.top - SPOTLIGHT_PADDING, SPOTLIGHT_PADDING);
-  const left = Math.max(rect.left - SPOTLIGHT_PADDING, SPOTLIGHT_PADDING);
-  const right = Math.min(
-    rect.right + SPOTLIGHT_PADDING,
-    window.innerWidth - SPOTLIGHT_PADDING,
-  );
+  const inRail = isInRail(element);
+  const padding = inRail ? RAIL_PADDING : SPOTLIGHT_PADDING;
+  const rect = (
+    (inRail && findRailButton(element)) ||
+    element
+  ).getBoundingClientRect();
+  const top = Math.max(rect.top - padding, padding);
+  const left = Math.max(rect.left - padding, padding);
+  const right = Math.min(rect.right + padding, window.innerWidth - padding);
   const bottom = Math.min(
-    rect.bottom + SPOTLIGHT_PADDING,
-    window.innerHeight - SPOTLIGHT_PADDING,
+    rect.bottom + padding,
+    window.innerHeight - padding,
     top + cap,
   );
   return {
