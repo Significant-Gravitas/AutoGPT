@@ -26,7 +26,7 @@ interface FunnelEventProperties {
   };
   [ExpertsFunnelEvent.EXPERT_THREAD_CREATED]: {
     expert_id: string;
-    source?: ExpertThreadSource;
+    thread_source?: ExpertThreadSource;
   };
   [ExpertsFunnelEvent.BRIEFING_OUTCOME_CLICKED]: { status: string };
   [ExpertsFunnelEvent.HOME_ATTENTION_ACTIONED]: {
@@ -44,10 +44,11 @@ interface FunnelEventProperties {
     rank: number;
   };
   [ExpertsFunnelEvent.HOME_SUGGESTION_DISMISSED]: {
-    position: number | null;
+    position: number;
     surface: "intro" | "home";
     remaining: number;
-    scope: "one" | "all";
+    // "all" was Hide all, which is gone; the key stays for old insights.
+    scope: "one";
   };
   [ExpertsFunnelEvent.HOME_SUGGESTIONS_COLLAPSED]: { open: number };
   [ExpertsFunnelEvent.HOME_SUGGESTIONS_EXPANDED]: { open: number };

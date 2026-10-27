@@ -297,7 +297,7 @@ describe("usePlan plan_viewed", () => {
     expect(planViewedCalls()).toHaveLength(1);
     const [, properties] = planViewedCalls()[0];
     expect(properties).toEqual({
-      source: "llm",
+      plan_source: "llm",
       skipped_dump: false,
       tasks: 3,
       experts: 2,
@@ -328,7 +328,7 @@ describe("usePlan plan_viewed", () => {
     expect(planViewedCalls()).toHaveLength(1);
     const [, properties] = planViewedCalls()[0];
     expect(properties).toEqual({
-      source: "fallback",
+      plan_source: "fallback",
       skipped_dump: true,
       tasks: 2,
       experts: 1,

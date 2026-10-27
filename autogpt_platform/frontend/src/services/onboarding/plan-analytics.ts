@@ -7,7 +7,8 @@ import posthog from "posthog-js";
 
 interface PlanEventProperties {
   [PlanEvent.PLAN_VIEWED]: {
-    source: "llm" | "fallback";
+    // Not `source`: that base property names the emitter (`web`).
+    plan_source: "llm" | "fallback";
     skipped_dump: boolean;
     tasks: number;
     experts: number;

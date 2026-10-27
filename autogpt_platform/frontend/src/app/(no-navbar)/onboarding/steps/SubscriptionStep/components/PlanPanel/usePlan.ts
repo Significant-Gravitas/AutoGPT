@@ -79,7 +79,7 @@ export function usePlan() {
     reported.current = true;
     rememberShownPlan(userID, plan);
     trackPlan("plan_viewed", {
-      source: plan.source,
+      plan_source: plan.source,
       skipped_dump: plan.skipped_dump,
       tasks: getStepTasks(plan).length,
       experts: plan.team?.length ?? 0,

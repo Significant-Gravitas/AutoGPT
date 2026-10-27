@@ -40,7 +40,7 @@ describe("trackExpertThreadCreated", () => {
     expect(capture.mock.calls).toStrictEqual([
       [
         "expert_thread_created",
-        { expert_id: "expert-maria", source: "suggested_task" },
+        { expert_id: "expert-maria", thread_source: "suggested_task" },
       ],
     ]);
   });
