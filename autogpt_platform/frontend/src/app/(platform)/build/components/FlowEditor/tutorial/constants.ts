@@ -1,29 +1,16 @@
 // Block IDs for tutorial blocks
 export const BLOCK_IDS = {
   CALCULATOR: "b1ab9b19-67a6-406d-abf5-2dba76d00c79",
-  AGENT_INPUT: "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
-  AGENT_OUTPUT: "363ae599-353e-4804-937e-b2ee3cef3da4",
 } as const;
 
 export const TUTORIAL_SELECTORS = {
-  // Custom nodes - These are all before saving
-  INPUT_NODE: '[data-id="custom-node-2"]',
-  OUTPUT_NODE: '[data-id="custom-node-3 "]',
-  CALCULATOR_NODE: '[data-id="custom-node-1"]',
-
-  // Paricular field selector
-  NAME_FIELD_OUTPUT_NODE: '[data-id="field-3-root_name"]',
-
   // Output Handlers
-  SECOND_CALCULATOR_RESULT_OUTPUT_HANDLER:
-    '[data-tutorial-id="output-handler-2-result"]',
   FIRST_CALCULATOR_RESULT_OUTPUT_HANDLER:
     '[data-tutorial-id="output-handler-1-result"]',
 
   // Input Handler
   SECOND_CALCULATOR_NUMBER_A_INPUT_HANDLER:
     '[data-tutorial-id="input-handler-2-a"]',
-  OUTPUT_VALUE_INPUT_HANDLEER: '[data-tutorial-id="label-3-root_value"]',
 
   // Block Menu
   BLOCKS_TRIGGER: '[data-id="blocks-control-popover-trigger"]',
@@ -100,9 +87,6 @@ export const TUTORIAL_SELECTORS = {
   FIRST_CALCULATOR_NODE_OUTPUT: '[data-tutorial-id="node-output"]',
   // These are the Id's of the nodes before saving
   CALCULATOR_NODE_FORM_CONTAINER: '[data-id^="form-creator-container-1-node"]', // <-- Add this line
-  AGENT_INPUT_NODE_FORM_CONTAINER: '[data-id^="form-creator-container-2-node"]', // <-- Add this line
-  AGENT_OUTPUT_NODE_FORM_CONTAINER:
-    '[data-id^="form-creator-container-3-node"]', // <-- Add this line
 
   // Execution badges
   BADGE_QUEUED: '[data-id^="badge-"][data-id$="-QUEUED"]',

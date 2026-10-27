@@ -1,6 +1,9 @@
 import { memo, type ReactNode } from "react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  Message,
+  MessageContent,
+} from "@/components/organisms/Message/Message";
 import type { TurnStats } from "../../../../helpers/convertChatSessionToUiMessages";
 import type { SentFrom } from "../../../../sentFrom";
 import { TurnStatsBar } from "../../../JobStatsBar/TurnStatsBar";
@@ -57,6 +60,9 @@ interface Props {
   onRetry?: () => void;
 }
 
+// memo-boundary: a transcript row. The transcript re-renders on every
+// streamed flush, and a settled row's props stay the same, so only the
+// streaming row renders again.
 export const MessageRow = memo(function MessageRow({
   message,
   isLastAssistant,

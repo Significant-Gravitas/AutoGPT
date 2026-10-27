@@ -15,6 +15,8 @@ from backend.copilot.model import (
     update_session_autopilot_mode,
     upsert_chat_session,
 )
+from backend.copilot.pending_messages import PendingMessage
+from backend.copilot.trial_cost_context import TrialCostContext
 from backend.data.db_accessors import review_db
 
 
@@ -127,18 +129,17 @@ async def test_a_held_read_comes_back_from_its_row_byte_identical(
         tool_name="read_file",
         tool_call_id="call-1",
         args=args,
+        cost_context=TrialCostContext(user_id=test_user_id, trial_id=None),
     )
     await reads._hold(call, test_user_id, session, "src", "passage", output, True)
     await PendingHumanReview.prisma().update(
         where={"nodeExecId": call.review_id}, data={"status": ReviewStatus.APPROVED}
     )
 
-    stored = await review_db().get_reviews_by_node_exec_ids(
-        [call.review_id], test_user_id
-    )
-    assert await held._outcome(
-        test_user_id, session, call, None, stored[call.review_id]
-    ) == (
-        "approved",
-        output,
-    )
+    delivered: list[PendingMessage] = []
+    async for _status in held.resolve_answered(test_user_id, session, delivered.append):
+        pass
+
+    [late] = delivered
+    assert late.metadata["held_call"]["outcome"] == "approved"
+    assert late.content.split(">\n", 1)[1] == f"{output}\n</held_call_result>"

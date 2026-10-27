@@ -1,3 +1,11 @@
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-blue-100 #DBEAFE, bg-gray-50 #F9FAFB, bg-green-100 #B7E2C7,
+// bg-red-100 #FDECEC, text-blue-800 #1E40AF, text-gray-500 #6B7280,
+// text-gray-600 #4B5563, text-green-800 #0C5A29, text-red-600 #D93636,
+// text-red-800 #832525.
+// Same value as a role with another meaning, so not swapped:
+// text-red-600 = error-hover (a hover fill).
+
 import {
   Table,
   TableBody,
@@ -5,9 +13,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/__legacy__/ui/table";
+} from "@/components/molecules/Table/components/TablePrimitives";
 
-import { PaginationControls } from "../../../../../components/__legacy__/ui/pagination-controls";
+import { PaginationControls } from "@/components/molecules/PaginationControls/PaginationControls";
 import { SearchAndFilterAdminSpending } from "./SearchAndFilterAdminSpending";
 import { getUsersTransactionHistory } from "@/app/(platform)/admin/spending/actions";
 import { AdminAddMoneyButton } from "./AddMoneyButton";
@@ -36,9 +44,9 @@ export async function AdminUserGrantHistory({
     const isPositive = type === CreditTransactionType.GRANT;
     const isNeutral = type === CreditTransactionType.TOP_UP;
     const color = isPositive
-      ? "text-green-600"
+      ? "text-success"
       : isNeutral
-        ? "text-blue-600"
+        ? "text-info-foreground"
         : "text-red-600";
     return <span className={color}>${Math.abs(amount / 100)}</span>;
   };
@@ -83,7 +91,7 @@ export async function AdminUserGrantHistory({
     <div className="space-y-4">
       <SearchAndFilterAdminSpending initialSearch={initialSearch} />
 
-      <div className="rounded-md border bg-white">
+      <div className="rounded-md border bg-surface">
         <Table>
           <TableHeader className="bg-gray-50">
             <TableRow>
@@ -129,7 +137,7 @@ export async function AdminUserGrantHistory({
                   <TableCell className="text-gray-600">
                     {transaction.admin_email}
                   </TableCell>
-                  <TableCell className="font-medium text-green-600">
+                  <TableCell className="font-medium text-success">
                     $
                     {((transaction.running_balance ?? 0) +
                       -transaction.amount) /
@@ -141,10 +149,10 @@ export async function AdminUserGrantHistory({
                       transaction.transaction_type,
                     )}
                   </TableCell>
-                  <TableCell className="font-medium text-green-600">
+                  <TableCell className="font-medium text-success">
                     ${(transaction.running_balance ?? 0) / 100}
                   </TableCell>
-                  {/* <TableCell className="font-medium text-green-600">
+                  {/* <TableCell className="font-medium text-success">
                     ${transaction.current_balance / 100}
                   </TableCell> */}
                   <TableCell className="text-right">

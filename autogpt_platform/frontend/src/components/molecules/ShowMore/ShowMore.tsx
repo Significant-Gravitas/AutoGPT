@@ -35,7 +35,7 @@ export function ShowMore({
 
   if (!shouldTruncate) {
     return (
-      <Text variant={variant} className={cn(className)}>
+      <Text variant={variant} data-slot="show-more" className={cn(className)}>
         {children}
       </Text>
     );
@@ -44,6 +44,7 @@ export function ShowMore({
   return (
     <Text
       variant={variant}
+      data-slot="show-more"
       className={cn(
         isExpanded
           ? "flex-end flex flex-wrap items-center"
@@ -55,21 +56,30 @@ export function ShowMore({
       {!isExpanded && "..."}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
+        data-slot="show-more-toggle"
         className={cn(
-          "ml-1 inline-flex items-center gap-1 font-medium text-black",
+          "ml-1 inline-flex items-center gap-1 font-medium text-foreground-base",
           toggleClassName,
         )}
         type="button"
       >
         {isExpanded ? (
           <>
-            <Icon icon={ArrowUp01Icon} size={iconSize} />
-            <span>less</span>
+            <Icon
+              data-slot="show-more-toggle-icon"
+              icon={ArrowUp01Icon}
+              size={iconSize}
+            />
+            <span data-slot="show-more-toggle-label">less</span>
           </>
         ) : (
           <>
-            <Icon icon={ArrowDown01Icon} size={iconSize} />
-            <span>more</span>
+            <Icon
+              data-slot="show-more-toggle-icon"
+              icon={ArrowDown01Icon}
+              size={iconSize}
+            />
+            <span data-slot="show-more-toggle-label">more</span>
           </>
         )}
       </button>

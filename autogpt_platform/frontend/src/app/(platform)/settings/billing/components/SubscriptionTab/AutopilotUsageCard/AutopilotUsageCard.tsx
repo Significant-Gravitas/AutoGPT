@@ -30,7 +30,7 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
     <motion.section
       {...getSectionMotionProps(index, Boolean(reduceMotion))}
       aria-label="Usage"
-      className="flex h-full min-h-80 flex-col rounded-2xl border border-zinc-200 bg-white p-6"
+      className="flex h-full min-h-80 flex-col rounded-2xl border border-border-base bg-surface p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Text variant="large-medium" as="h2">
@@ -59,12 +59,12 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
         <>
           {state.featured && <UsageBar window={state.featured} primary />}
           {state.secondary && (
-            <div className="mt-6 border-t border-zinc-100 pt-5">
+            <div className="mt-6 border-t border-separator pt-5">
               <UsageBar window={state.secondary} />
             </div>
           )}
           {state.lifetime && (
-            <div className="mt-6 border-t border-zinc-100 pt-5">
+            <div className="mt-6 border-t border-separator pt-5">
               <Text variant="small-medium" className="mb-1">
                 One allowance for your whole trial
               </Text>
@@ -112,7 +112,8 @@ function UsageBar({
             <Text
               variant="h2"
               as="span"
-              className="font-sans text-[44px] font-semibold leading-[50px] tracking-[-0.055em]"
+              // TODO(tokens): no exact text token (leading-[50px], tracking-[-0.055em])
+              className="font-sans text-display font-semibold leading-[50px] tracking-[-0.055em]"
             >
               {label}
             </Text>
@@ -136,10 +137,11 @@ function UsageBar({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percent}
-        className="h-2 overflow-hidden rounded-full bg-zinc-100"
+        className="h-2 overflow-hidden rounded-full bg-surface-hover"
       >
         <div
-          className={`h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none ${percent >= 100 ? "bg-orange-500" : "bg-purple-500"}`}
+          // TODO(tokens): no exact role (bg-orange-500 #FE8700)
+          className={`h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none ${percent >= 100 ? "bg-orange-500" : "bg-brand"}`}
           style={{ width: `${percent}%` }}
         />
       </div>
@@ -147,7 +149,7 @@ function UsageBar({
         <Icon
           icon={Clock01Icon}
           size={14}
-          className="mt-0.5 shrink-0 text-zinc-500"
+          className="mt-0.5 shrink-0 text-foreground-tertiary"
         />
         <Text variant="small" tone="secondary" className="text-xs leading-5">
           {window.prefix} {window.value}

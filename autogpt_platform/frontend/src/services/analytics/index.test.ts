@@ -82,6 +82,24 @@ describe("sendDatafastEvent", () => {
     expect(datafast).toHaveBeenCalledTimes(1);
   });
 
+  it.each([false, true])(
+    "discards queued events after consent withdrawal (script loaded: %s)",
+    (loaded) => {
+      analytics.sendDatafastEvent("tour_start", {});
+      vi.mocked(hasConsentFor).mockReturnValue(false);
+      const datafast = vi.fn();
+      if (loaded) window.datafast = datafast;
+
+      flushDatafastQueue();
+      expect(datafast).not.toHaveBeenCalled();
+
+      vi.mocked(hasConsentFor).mockReturnValue(true);
+      window.datafast = datafast;
+      flushDatafastQueue();
+      expect(datafast).not.toHaveBeenCalled();
+    },
+  );
+
   it("flushes the backlog before sending when the script loads without onLoad", () => {
     analytics.sendDatafastEvent("tour_start", {});
 
@@ -108,7 +126,7 @@ describe("sendDatafastEvent", () => {
   it("does not queue pre-consent events", () => {
     vi.mocked(hasConsentFor).mockReturnValue(false);
 
-    analytics.sendDatafastEvent("run_agent", { id: "graph-1" });
+    analytics.sendDatafastEvent("tour_cta_click", { label: "signup" });
 
     const datafast = vi.fn();
     window.datafast = datafast;
@@ -125,7 +143,7 @@ describe("sendDatafastEvent", () => {
     const datafast = vi.fn();
     window.datafast = datafast;
 
-    analytics.sendDatafastEvent("run_agent", { id: "graph-1" });
+    analytics.sendDatafastEvent("tour_cta_click", { label: "signup" });
 
     expect(datafast).not.toHaveBeenCalled();
   });

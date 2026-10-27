@@ -79,6 +79,7 @@ export function TierToggle({
       aria-label="Model tier"
       onKeyDown={handleKeyDown}
       className={cn(
+        // TODO(tokens): no exact role for divide-neutral-200
         "divide-y divide-neutral-200",
         advancedUpgrade && "divide-y-0",
       )}
@@ -102,21 +103,21 @@ export function TierToggle({
             onClick={() => onSelect(segment.tier)}
             className={cn(
               "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-              "focus-visible:bg-neutral-50 focus-visible:outline-none",
+              "focus-visible:bg-background focus-visible:outline-none",
             )}
           >
             <Icon
               icon={tierIcon(segment.tier)}
               size={18}
               aria-hidden
-              className="flex-none text-zinc-500"
+              className="flex-none text-foreground-tertiary"
             />
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-sm font-medium text-zinc-900">
+              <span className="truncate text-sm font-medium text-foreground-strong">
                 {segment.name ?? segment.label}
               </span>
               {segment.model && (
-                <span className="text-sm leading-snug text-zinc-500">
+                <span className="text-sm leading-snug text-foreground-tertiary">
                   <Swap className="max-w-full truncate">{segment.model}</Swap>
                 </span>
               )}
@@ -161,21 +162,21 @@ function LockedSegment({ segment }: { segment: Segment }) {
           icon={LockIcon}
           size={14}
           aria-hidden
-          className="mt-[3px] flex-none text-zinc-400"
+          className="mt-[3px] flex-none text-foreground-subtle"
         />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-medium text-zinc-500">
+          <span className="truncate text-sm font-medium text-foreground-tertiary">
             {segment.name ?? segment.label}
           </span>
           {segment.model && (
-            <span className="text-sm leading-snug text-zinc-400">
+            <span className="text-sm leading-snug text-foreground-subtle">
               <Swap className="max-w-full truncate">{segment.model}</Swap>
             </span>
           )}
           {/* A row has room for the lock but the name has none for why. Saying
               only "locked" would leave the user to guess at a barrier they can
               actually clear. */}
-          <span className="text-[11px] leading-snug text-zinc-400">
+          <span className="text-caption-sm leading-snug text-foreground-subtle">
             {segment.lock?.reason}
           </span>
         </span>
@@ -185,7 +186,7 @@ function LockedSegment({ segment }: { segment: Segment }) {
           href={segment.lock.href}
           // Indented past the lock glyph so it lines up under the reason it
           // answers, the way it reads when it follows that sentence inline.
-          className="ml-6 mt-1 w-fit text-[11px] font-medium text-zinc-900 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+          className="ml-6 mt-1 w-fit text-caption-sm font-medium leading-inherit text-foreground-strong underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
         >
           See plans
         </Link>

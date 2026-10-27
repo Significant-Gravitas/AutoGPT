@@ -20,7 +20,7 @@
 {% call ui.para() %}{{ standout }}{% endcall %}
 {% endif %}
 {% for item in attn[:3] %}
-<tr><td class="gutter" style="padding:{{ '22px' if loop.first else '12px' }} 48px 0;">{{ ui.attention_card(item, primary=loop.first) }}</td></tr>
+<tr><td style="padding:{{ '22px' if loop.first else '12px' }} 0 0;">{{ ui.attention_card(item, primary=loop.first) }}</td></tr>
 {% endfor %}
 {% if attn | length > 3 %}
 {% call ui.para(size=14, lh=21) %}+ {{ attn | length - 3 }} more {{ 'thing needs' if attn | length == 4 else 'things need' }} you. <a href="{{ urls.attention }}" style="color:#6144DF; font-weight:600; text-decoration:underline;">Review everything waiting</a>{% endcall %}
@@ -30,13 +30,13 @@
 {% for h in highlights[:3] %}{% set _ = rows.append((h.agent, h.gist, h.link_label, h.url)) %}{% endfor %}
 {{ ui.also_panel('Worth a look', rows) }}
 {% endif %}
-{{ ui.kvpanel([('Runs', '{:,}'.format(totals.runs), true), ('Active workflows', totals.agents_active, true), ('Workflows on standby', totals.agents_idle | default(0), true), ('Failed runs', failed, true), ('Credits used', '{:,.2f}'.format(totals.credits_used) ~ (' ($' ~ '{:,.2f}'.format(totals.usd_estimate) ~ ')' if totals.usd_estimate is not none else ''), true), ('Credit balance', '{:,.2f}'.format(totals.credits_balance), true)]) }}
+{{ ui.kvpanel([('Runs', '{:,}'.format(totals.runs), true), ('Active workflows', totals.agents_active, true), ('Workflows on standby', totals.agents_idle | default(0), true), ('Failed runs', failed, true), ('Credits used', '${:,.2f}'.format(totals.credits_used), true), ('Credit balance', '${:,.2f}'.format(totals.credits_balance), true)]) }}
 {% if not quiet %}
 {% call ui.note_card('The ledger') %}
 {% for row in ledger %}
 <div style="{{ 'padding-top:12px; margin-top:12px; border-top:1px solid #E7E4F4;' if not loop.first }}">
 <strong style="color:#171925;">{{ row.agent }}</strong><br>
-<span style="font-family:{{ ui.MONO }}; font-size:13px;">{{ '{:,}'.format(row.runs) }} {{ 'run' if row.runs == 1 else 'runs' }} · {{ '%.2f' | format(row.credits) }} credits</span><br>
+<span style="font-family:{{ ui.MONO }}; font-size:13px;">{{ '{:,}'.format(row.runs) }} {{ 'run' if row.runs == 1 else 'runs' }} · ${{ '%.2f' | format(row.credits) }} in credits</span><br>
 <span style="font-size:14px; color:{{ '#B45309' if row.issues_label else '#575072' }};">{{ row.issues_label or 'No issues' }}</span>
 </div>
 {% endfor %}

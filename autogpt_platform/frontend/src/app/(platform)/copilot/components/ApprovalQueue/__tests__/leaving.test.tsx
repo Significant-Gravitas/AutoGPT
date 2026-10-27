@@ -83,6 +83,29 @@ test("a new held call brings the box back without the earlier receipt", async ()
   expect(screen.queryByText("· Approved")).toBeNull();
 });
 
+test("an open review dialog keeps its answers past the linger, and the box leaves once it closes", async () => {
+  waiting = [folder("a", "Q3 reports"), folder("b", "Invoices")];
+  const user = renderQueue();
+
+  await user.click(await screen.findByRole("button", { name: "Review all" }));
+  const dialog = await screen.findByRole("dialog");
+  await user.click(within(dialog).getByRole("button", { name: "Approve" }));
+  await within(dialog).findByRole("heading", {
+    name: "Create library folder Invoices",
+  });
+  await user.click(within(dialog).getByRole("button", { name: "Approve" }));
+  await within(dialog).findByText("All 2 reviewed");
+  await advance(3000);
+
+  expect(within(dialog).getByText("All 2 reviewed")).toBeDefined();
+  expect(box()).not.toBeNull();
+
+  await user.click(within(dialog).getByRole("button", { name: "Done" }));
+  await advance(1500);
+
+  expect(box()).toBeNull();
+});
+
 function renderQueue() {
   render(
     <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>

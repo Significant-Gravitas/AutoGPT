@@ -43,26 +43,28 @@ defaults:
 jobs:
   tooltip-browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 11
     steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "24.18.0"
+          node-version: "24.22.1"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        # No --with-deps: the runner image already has Chromium's libraries, and the
+        # apt fetch it adds can outlast the job's timeout when Ubuntu's mirror is slow.
+        run: pnpm exec playwright install chromium
       - name: Test tooltip browser interactions
         run: pnpm test:tooltip
       - name: Upload browser failure artifacts
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tooltip-browser-failures
           path: autogpt_platform/frontend/test-results/
@@ -72,7 +74,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
 
@@ -86,21 +88,21 @@ jobs:
 
       - name: Upload coverage validator test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: frontend-coverage-validator-tests
           path: autogpt_platform/frontend/coverage-validator-tests.xml
           if-no-files-found: error
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "24.18.0"
+          node-version: "24.22.1"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -117,19 +119,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "24.18.0"
+          node-version: "24.22.1"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -155,19 +157,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "24.18.0"
+          node-version: "24.22.1"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -175,7 +177,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Chromatic
-        uses: chromaui/action@latest
+        uses: chromaui/action@882b4728513a3720bfcd27bd9ad1260c603c6090 # v18.13.2
         with:
           projectToken: chpt_9e7c1a76478c9c8
           onlyChanged: true
@@ -193,20 +195,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
           submodules: recursive
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "24.18.0"
+          node-version: "24.22.1"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -244,7 +246,7 @@ jobs:
 
       - name: Upload machine-readable test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: frontend-integration-shard-${{ matrix.shard }}-of-4
           path: |
@@ -254,7 +256,7 @@ jobs:
 
       - name: Upload coverage reports to Codecov
         if: ${{ !cancelled() && steps.validate-frontend-coverage.outcome == 'success' }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-frontend

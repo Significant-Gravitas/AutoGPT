@@ -1,3 +1,8 @@
+// TODO(tokens): chart and canvas colours, which have no tokens yet: #6366F1,
+// #EF4444.
+// The axis fontSize={12} props are Recharts' own API (a number, not a
+// class); 12px is the text-caption size, so they move with the chart tokens.
+
 import {
   Area,
   AreaChart,

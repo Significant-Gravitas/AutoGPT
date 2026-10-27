@@ -94,33 +94,33 @@ export const folderCardStyles: Record<
   { bg: string; border: string; buttonBase: string; buttonHover: string }
 > = {
   blue: {
-    bg: "bg-blue-50",
+    bg: "bg-info-surface",
     border: "border-blue-200",
-    buttonBase: "border-zinc-600 text-black",
+    buttonBase: "border-zinc-600 text-foreground-base",
     buttonHover: "hover:bg-blue-200",
   },
   purple: {
     bg: "bg-purple-50",
     border: "border-purple-200",
-    buttonBase: "border-zinc-600 text-black ",
+    buttonBase: "border-zinc-600 text-foreground-base ",
     buttonHover: "hover:bg-purple-200",
   },
   emerald: {
     bg: "bg-emerald-50",
     border: "border-emerald-200",
-    buttonBase: "border-zinc-600 text-black",
+    buttonBase: "border-zinc-600 text-foreground-base",
     buttonHover: "hover:bg-emerald-200",
   },
   orange: {
     bg: "bg-orange-50",
     border: "border-orange-200",
-    buttonBase: "border-zinc-600 text-black",
+    buttonBase: "border-zinc-600 text-foreground-base",
     buttonHover: "hover:bg-orange-200",
   },
   pink: {
     bg: "bg-pink-50",
     border: "border-pink-200",
-    buttonBase: "border-zinc-600 text-black",
+    buttonBase: "border-zinc-600 text-foreground-base",
     buttonHover: "hover:bg-pink-200",
   },
 };
@@ -237,16 +237,22 @@ function Page({ color = "blue" }: PageProps) {
   const colors = colorMap[color];
   return (
     <div
-      className={`h-full w-full rounded-xl border bg-white p-4 ${colors.borderLight}`}
+      className={`h-full w-full rounded-xl border bg-surface p-4 ${colors.borderLight}`}
     >
       <div className="flex flex-col gap-2">
-        <Text variant="h5" className="text-black">
+        <Text variant="h5" className="text-foreground-base">
           agent.json
         </Text>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex gap-2">
-            <div className="h-1.5 flex-1 rounded-full bg-neutral-100" />
-            <div className="h-1.5 flex-1 rounded-full bg-neutral-100" />
+            <div
+              // TODO(tokens): no exact role for bg-neutral-100 (#F5F5F5)
+              className="h-1.5 flex-1 rounded-full bg-neutral-100"
+            />
+            <div
+              // TODO(tokens): no exact role for bg-neutral-100 (#F5F5F5)
+              className="h-1.5 flex-1 rounded-full bg-neutral-100"
+            />
           </div>
         ))}
       </div>

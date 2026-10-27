@@ -1,5 +1,6 @@
 """Tests for the admin memory inspector routes."""
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import quote
 
@@ -7,11 +8,27 @@ import fastapi
 import fastapi.testclient
 import pytest
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from prisma.enums import (
+    DreamPassPhase,
+    DreamPassRoute,
+    DreamPassStatus,
+    DreamPassTrigger,
+)
 from redis.exceptions import ResponseError
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
+from backend.copilot.dream.cancel import DreamPassCancel
+from backend.copilot.dream.schemas import DreamPassUsage, IngestionDrainStatus
 from backend.copilot.graphiti.client import derive_memory_group_id
+from backend.copilot.graphiti.recall import live_fact_predicate
+from backend.data.dream_pass_models import (
+    DreamPassApplied,
+    DreamPassOperations,
+    DreamPassRecord,
+    DreamPhaseOutputs,
+)
 
+from .memory_admin_routes import ADMIN_CANCEL_REASON
 from .memory_admin_routes import router as memory_admin_router
 
 app = fastapi.FastAPI()
@@ -582,6 +599,30 @@ class TestListFacts:
         resp = client.get("/admin/memory/abc/facts?status=garbage")
         assert resp.status_code == 422
 
+    def test_active_filter_uses_the_recall_live_test(self) -> None:
+        """The "active" filter lists what recall would return, tentatives
+        aside: an expired edge still stamped active, or a legacy edge with no
+        status, is judged the way recall judges it."""
+        driver = _driver_returning([])
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            resp = client.get("/admin/memory/abc/facts?status=active")
+        assert resp.status_code == 200
+        query = driver.execute_query.call_args.args[0]
+        assert live_fact_predicate("e", include_tentative=False) in query
+        assert "status" not in driver.execute_query.call_args.kwargs
+
+    def test_a_forgotten_fact_lists_the_text_its_forget_kept(self) -> None:
+        """A forget leaves a placeholder where graphiti reads the sentence
+        and keeps the text in ``fact_redacted`` / ``name_redacted`` for this
+        audit list."""
+        driver = _driver_returning([])
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            resp = client.get("/admin/memory/abc/facts")
+        assert resp.status_code == 200
+        query = driver.execute_query.call_args.args[0]
+        assert "coalesce(e.name_redacted, e.name) AS name" in query
+        assert "coalesce(e.fact_redacted, e.fact) AS fact" in query
+
 
 class TestListCommunities:
     def test_returns_community_summaries(self) -> None:
@@ -633,6 +674,39 @@ class TestGraph:
             with pytest.raises(ResponseError, match="MATHC"):
                 bare_client.get("/admin/memory/abc/graph")
         driver.close.assert_awaited_once()
+
+    def test_shows_audit_text_and_a_tombstones_stamp(self) -> None:
+        """A forgotten edge shows the text its forget kept; an episode a hard
+        forget emptied shows only when it was emptied."""
+        stamp = "2026-09-26T12:00:00+00:00"
+        driver = _driver_returning(
+            [{"uuid": "alice", "name": "Alice", "summary": "", "all_labels": []}],
+            [
+                {
+                    "uuid": "ep1",
+                    "name": "conversation_s1",
+                    "summary": None,
+                    "hard_deleted_at": stamp,
+                    "all_labels": ["Episodic"],
+                }
+            ],
+            [],
+        )
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            resp = client.get(
+                "/admin/memory/abc/graph?include_episodes=true"
+                "&include_communities=false"
+            )
+        assert resp.status_code == 200
+        nodes = {node["uuid"]: node for node in resp.json()["nodes"]}
+        assert nodes["ep1"]["hard_deleted_at"] == stamp
+        assert nodes["alice"]["hard_deleted_at"] is None
+        node_query = driver.execute_query.await_args_list[1].args[0]
+        assert "toString(n.hard_deleted_at) AS hard_deleted_at" in node_query
+        assert "content" not in node_query, "no episode text in the graph view"
+        edge_query = driver.execute_query.await_args_list[2].args[0]
+        assert "coalesce(e.name_redacted, e.name) AS name" in edge_query
+        assert "coalesce(e.fact_redacted, e.fact) AS fact" in edge_query
 
 
 class TestRebuildCommunitiesPolling:
@@ -798,6 +872,331 @@ def _fake_status_row(kind: str, user_id: str, job_id: str = "job-1"):
         started_at=now,
         updated_at=now,
     )
+
+
+def _dream_pass_row(user_id: str) -> DreamPassRecord:
+    started = datetime(2026, 9, 26, 3, 0, tzinfo=timezone.utc)
+    return DreamPassRecord(
+        id="p1",
+        user_id=user_id,
+        expert_id=None,
+        scope_key=user_id,
+        route=DreamPassRoute.ANTHROPIC_BATCH,
+        trigger=DreamPassTrigger.EVAL,
+        phase=DreamPassPhase.DONE,
+        status=DreamPassStatus.COMPLETE,
+        skip_reason=None,
+        cancel_generation=0,
+        provider_batch_id="msgbatch_sanitize",
+        lease_token="tok",
+        lease_expires_at=started + timedelta(hours=24),
+        input_bundle=None,
+        phase_outputs=DreamPhaseOutputs(),
+        operations=DreamPassOperations(
+            applied=DreamPassApplied(
+                consolidated_count=2,
+                dream_session_id="s1",
+                ingestion_drain_status=IngestionDrainStatus.skipped,
+            )
+        ),
+        usage=DreamPassUsage(total_cost_usd=0.011, discount_applied=0.5),
+        window_start=None,
+        window_end=None,
+        error=None,
+        created_at=started,
+        started_at=started,
+        submitted_at=started,
+        applied_at=started + timedelta(minutes=7),
+        completed_at=started + timedelta(minutes=7),
+        updated_at=started + timedelta(minutes=7),
+    )
+
+
+class TestDreamPassRecord:
+    """``GET /{user_id}/dream/{pass_id}/record`` reads the pass's durable row,
+    and the ``DreamPassResult`` the eval driver scores, usage included."""
+
+    def test_returns_the_row_and_the_result_read_off_it(self) -> None:
+        read = AsyncMock(return_value=_dream_pass_row("abc"))
+        with patch(f"{_MOCK_MODULE}.read_dream_pass", new=read):
+            resp = client.get("/admin/memory/abc/dream/p1/record")
+
+        assert resp.status_code == 200
+        read.assert_awaited_once_with("p1", user_id="abc")
+        body = resp.json()
+        assert body["record"]["id"] == "p1"
+        assert "lease_token" not in body["record"]
+        assert body["record"]["status"] == "COMPLETE"
+        assert body["record"]["trigger"] == "EVAL"
+        result = body["result"]
+        assert result["execution_path"] == "anthropic_batch"
+        assert result["usage"]["total_cost_usd"] == 0.011
+        assert result["consolidated_count"] == 2
+        assert result["elapsed_seconds"] == 420.0
+        assert result["skipped"] is False
+
+    def test_me_reads_the_callers_own_pass(self, mock_jwt_admin) -> None:
+        read = AsyncMock(return_value=_dream_pass_row(mock_jwt_admin["user_id"]))
+        with patch(f"{_MOCK_MODULE}.read_dream_pass", new=read):
+            resp = client.get("/admin/memory/me/dream/p1/record")
+
+        assert resp.status_code == 200
+        read.assert_awaited_once_with("p1", user_id=mock_jwt_admin["user_id"])
+
+    def test_a_missing_or_another_users_pass_is_404(self) -> None:
+        # The read is owner-scoped: another user's pass comes back as None,
+        # exactly like a pass that does not exist.
+        with patch(f"{_MOCK_MODULE}.read_dream_pass", new=AsyncMock(return_value=None)):
+            resp = client.get("/admin/memory/abc/dream/p1/record")
+
+        assert resp.status_code == 404
+
+    def test_non_admin_gets_403_before_the_read(self, mock_jwt_user) -> None:
+        app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+        read = AsyncMock()
+        with patch(f"{_MOCK_MODULE}.read_dream_pass", new=read):
+            resp = client.get("/admin/memory/abc/dream/p1/record")
+
+        assert resp.status_code == 403
+        read.assert_not_awaited()
+
+
+class TestTriggerDreamPass:
+    """``POST /{user_id}/dream`` hands ``force`` to the scheduler, for the
+    pass's guard to expire a fresh open pass instead of skipping behind it."""
+
+    def _post(self, url: str):
+        scheduler = MagicMock()
+        scheduler.schedule_immediate_dream_pass = AsyncMock(
+            return_value={"scheduled": True, "job_id": "x", "kind": "dream_pass"}
+        )
+        with (
+            patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler),
+            patch(
+                f"{_MOCK_MODULE}.write_initial_status",
+                new=_make_fake_initial_status("dream_pass"),
+            ),
+        ):
+            resp = client.post(url)
+        return resp, scheduler.schedule_immediate_dream_pass
+
+    def test_force_reaches_the_scheduler(self) -> None:
+        resp, schedule = self._post("/admin/memory/abc/dream?force=true")
+
+        assert resp.status_code == 202
+        schedule.assert_awaited_once_with(
+            user_id="abc", job_id=resp.json()["job_id"], force=True
+        )
+
+    def test_force_is_off_unless_asked_for(self) -> None:
+        resp, schedule = self._post("/admin/memory/abc/dream")
+
+        assert resp.status_code == 202
+        assert schedule.call_args.kwargs["force"] is False
+
+    def test_a_force_that_is_not_a_boolean_is_422(self) -> None:
+        resp, schedule = self._post("/admin/memory/abc/dream?force=maybe")
+
+        assert resp.status_code == 422
+        schedule.assert_not_awaited()
+
+
+def _cancelled_row(user_id: str) -> DreamPassRecord:
+    return _dream_pass_row(user_id).model_copy(
+        update={
+            "status": DreamPassStatus.CANCELLED,
+            "phase": DreamPassPhase.RECOMBINE,
+            "cancel_generation": 1,
+            "error": "testing",
+            "operations": DreamPassOperations(),
+            "usage": None,
+        }
+    )
+
+
+class TestCancelDreamPass:
+    """``POST /{user_id}/dream/{pass_id}/cancel`` closes an open pass's record
+    CANCELLED and returns it; the pass stops at its next check."""
+
+    def test_cancels_an_open_pass_and_returns_its_record(self) -> None:
+        cancel = AsyncMock(
+            return_value=DreamPassCancel(cancelled=True, record=_cancelled_row("abc"))
+        )
+        with patch(f"{_MOCK_MODULE}.cancel_dream_pass", new=cancel):
+            resp = client.post(
+                "/admin/memory/abc/dream/p1/cancel", json={"reason": "testing"}
+            )
+
+        assert resp.status_code == 200
+        cancel.assert_awaited_once_with("p1", user_id="abc", reason="testing")
+        body = resp.json()
+        assert (body["record"]["status"], body["record"]["cancel_generation"]) == (
+            "CANCELLED",
+            1,
+        )
+        assert "lease_token" not in body["record"]
+        assert body["result"]["error"] == "testing"
+        assert body["result"]["skipped"] is False
+
+    def test_without_a_reason_the_admin_default_is_recorded(self) -> None:
+        cancel = AsyncMock(
+            return_value=DreamPassCancel(cancelled=True, record=_cancelled_row("abc"))
+        )
+        with patch(f"{_MOCK_MODULE}.cancel_dream_pass", new=cancel):
+            resp = client.post("/admin/memory/abc/dream/p1/cancel")
+
+        assert resp.status_code == 200
+        cancel.assert_awaited_once_with("p1", user_id="abc", reason=ADMIN_CANCEL_REASON)
+
+    def test_a_reason_is_kept_without_its_surrounding_whitespace(self) -> None:
+        cancel = AsyncMock(
+            return_value=DreamPassCancel(cancelled=True, record=_cancelled_row("abc"))
+        )
+        with patch(f"{_MOCK_MODULE}.cancel_dream_pass", new=cancel):
+            resp = client.post(
+                "/admin/memory/abc/dream/p1/cancel", json={"reason": "  testing\n"}
+            )
+
+        assert resp.status_code == 200
+        cancel.assert_awaited_once_with("p1", user_id="abc", reason="testing")
+
+    def test_me_cancels_the_callers_own_pass(self, mock_jwt_admin) -> None:
+        caller = mock_jwt_admin["user_id"]
+        cancel = AsyncMock(
+            return_value=DreamPassCancel(cancelled=True, record=_cancelled_row(caller))
+        )
+        with patch(f"{_MOCK_MODULE}.cancel_dream_pass", new=cancel):
+            resp = client.post("/admin/memory/me/dream/p1/cancel")
+
+        assert resp.status_code == 200
+        assert cancel.call_args.kwargs["user_id"] == caller
+
+    def test_a_missing_or_another_users_pass_is_404(self) -> None:
+        # The cancel is owner-scoped: another user's pass reads back as None,
+        # exactly like a pass that does not exist.
+        cancel = AsyncMock(return_value=DreamPassCancel(cancelled=False, record=None))
+        with patch(f"{_MOCK_MODULE}.cancel_dream_pass", new=cancel):
+            resp = client.post("/admin/memory/abc/dream/p1/cancel")
+
+        assert resp.status_code == 404
+
+    def test_a_pass_that_already_ended_is_409(self) -> None:
+        cancel = AsyncMock(
+            return_value=DreamPassCancel(cancelled=False, record=_dream_pass_row("abc"))
+        )
+        with patch(f"{_MOCK_MODULE}.cancel_dream_pass", new=cancel):
+            resp = client.post("/admin/memory/abc/dream/p1/cancel")
+
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == "dream pass already complete"
+
+    @pytest.mark.parametrize(
+        "reason",
+        ["", " ", "\t\n", "x" * 501],
+        ids=["empty", "space", "whitespace", "overlong"],
+    )
+    def test_a_blank_or_overlong_reason_is_422_before_the_cancel(
+        self, reason: str
+    ) -> None:
+        cancel = AsyncMock()
+        with patch(f"{_MOCK_MODULE}.cancel_dream_pass", new=cancel):
+            resp = client.post(
+                "/admin/memory/abc/dream/p1/cancel", json={"reason": reason}
+            )
+
+        assert resp.status_code == 422
+        cancel.assert_not_awaited()
+
+    def test_non_admin_gets_403_before_the_cancel(self, mock_jwt_user) -> None:
+        app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+        cancel = AsyncMock()
+        with patch(f"{_MOCK_MODULE}.cancel_dream_pass", new=cancel):
+            resp = client.post("/admin/memory/abc/dream/p1/cancel")
+
+        assert resp.status_code == 403
+        cancel.assert_not_awaited()
+
+    def test_a_store_that_does_not_answer_is_500(self) -> None:
+        cancel = AsyncMock(side_effect=TimeoutError())
+        quiet_client = fastapi.testclient.TestClient(app, raise_server_exceptions=False)
+        with patch(f"{_MOCK_MODULE}.cancel_dream_pass", new=cancel):
+            resp = quiet_client.post("/admin/memory/abc/dream/p1/cancel")
+
+        assert resp.status_code == 500
+
+
+class TestDreamPassList:
+    """``GET /{user_id}/dream/passes`` lists a user's durable pass records,
+    every scope, newest first, the open ones only when asked."""
+
+    def test_lists_the_users_passes_newest_first(self) -> None:
+        newer = _dream_pass_row("abc").model_copy(update={"id": "p2"})
+        read = AsyncMock(return_value=[newer, _dream_pass_row("abc")])
+        with patch(f"{_MOCK_MODULE}.read_user_passes", new=read):
+            resp = client.get("/admin/memory/abc/dream/passes")
+
+        assert resp.status_code == 200
+        read.assert_awaited_once_with("abc", open_only=False, limit=20)
+        passes = resp.json()["passes"]
+        assert [p["id"] for p in passes] == ["p2", "p1"]
+        assert passes[0]["status"] == "COMPLETE"
+
+    def test_list_omits_live_lease_tokens(self) -> None:
+        row = _dream_pass_row("abc")
+        with patch(
+            f"{_MOCK_MODULE}.read_user_passes", new=AsyncMock(return_value=[row])
+        ):
+            resp = client.get("/admin/memory/abc/dream/passes")
+        assert resp.status_code == 200
+        assert "lease_token" not in resp.json()["passes"][0]
+
+    def test_the_open_ones_only_and_a_limit_reach_the_read(self) -> None:
+        read = AsyncMock(return_value=[])
+        with patch(f"{_MOCK_MODULE}.read_user_passes", new=read):
+            resp = client.get("/admin/memory/abc/dream/passes?status=open&limit=5")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"passes": []}
+        read.assert_awaited_once_with("abc", open_only=True, limit=5)
+
+    def test_me_lists_the_callers_own_passes(self, mock_jwt_admin) -> None:
+        read = AsyncMock(return_value=[])
+        with patch(f"{_MOCK_MODULE}.read_user_passes", new=read):
+            resp = client.get("/admin/memory/me/dream/passes")
+
+        assert resp.status_code == 200
+        assert read.call_args.args == (mock_jwt_admin["user_id"],)
+
+    def test_passes_is_never_read_as_a_job_id(self) -> None:
+        job_status = AsyncMock()
+        with (
+            patch(f"{_MOCK_MODULE}.read_user_passes", new=AsyncMock(return_value=[])),
+            patch(f"{_MOCK_MODULE}.read_status", new=job_status),
+        ):
+            resp = client.get("/admin/memory/abc/dream/passes")
+
+        assert resp.status_code == 200
+        job_status.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        "query", ["status=done", "limit=0", "limit=101", "limit=many"]
+    )
+    def test_a_bad_status_or_limit_is_422_before_the_read(self, query) -> None:
+        read = AsyncMock()
+        with patch(f"{_MOCK_MODULE}.read_user_passes", new=read):
+            resp = client.get(f"/admin/memory/abc/dream/passes?{query}")
+
+        assert resp.status_code == 422
+        read.assert_not_awaited()
+
+    def test_non_admin_gets_403_before_the_read(self, mock_jwt_user) -> None:
+        app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+        read = AsyncMock()
+        with patch(f"{_MOCK_MODULE}.read_user_passes", new=read):
+            resp = client.get("/admin/memory/abc/dream/passes")
+
+        assert resp.status_code == 403
+        read.assert_not_awaited()
 
 
 class TestAdminGating:

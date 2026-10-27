@@ -181,7 +181,7 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
         options=options,
         # A free-text question has nothing to multi-select, so the flag is
         # dropped rather than sent on for the card to render a lone checkbox.
-        allow_multiple=bool(options) and _parse_allow_multiple(item),
+        allow_multiple=bool(options) and parse_allow_multiple(item),
     )
 
 
@@ -209,7 +209,7 @@ def _parse_options(raw: Any) -> list[str]:
     return list(unique)
 
 
-def _parse_allow_multiple(item: dict[str, Any]) -> bool:
+def parse_allow_multiple(item: dict[str, Any]) -> bool:
     """Read the multi-select flag, tolerating the string a model may send.
 
     Anything else is False: a question defaults to one answer, and guessing

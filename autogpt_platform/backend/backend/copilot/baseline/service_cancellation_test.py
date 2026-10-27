@@ -1,8 +1,9 @@
 """Saved display names survive cancellation and stay out of provider requests."""
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import AsyncGenerator, Iterator
 from contextlib import suppress
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -156,16 +157,16 @@ def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
     for name, value in {
         "drain_pending_safe": [],
         "drain_pending_messages": [],
-        "resolve_answered": [],
         "resolve_model_route": ResolvedModel(
             model="anthropic/claude-sonnet-4-6", source="env"
         ),
         "_build_system_prompt": ("System prompt", None),
-        "is_enabled_for_user": False,
-        "is_feature_enabled": False,
+        "_fetch_graphiti_context": "",
+        "enqueue_conversation_turn": None,
         "persist_and_record_usage": None,
     }.items():
         monkeypatch.setattr(service, name, AsyncMock(return_value=value))
+    monkeypatch.setattr(service, "resolve_answered", _no_answered_cards)
     monkeypatch.setattr(service, "_get_main_client", MagicMock())
     monkeypatch.setattr(service, "upsert_chat_session", AsyncMock(side_effect=save))
     try:
@@ -280,3 +281,8 @@ def _tool_call_stream() -> MagicMock:
     stream.__aiter__.return_value = [chunk]
     stream.close = AsyncMock()
     return stream
+
+
+async def _no_answered_cards(*_: Any, **__: Any) -> AsyncGenerator[Any, None]:
+    return
+    yield

@@ -18,8 +18,8 @@ from .registry_backfill import BackfillFailure, BackfillReport, backfill_schedul
 
 REGISTERED = {"community_rebuild": {"id": "c"}, "dream_nightly_batch": {"id": "n"}}
 ALREADY = {"community_rebuild": None, "dream_nightly_batch": None}
-FLAGS_OFF = {
-    "community_rebuild": {"skipped": True, "reason": "graphiti_communities_disabled"},
+STOPPED = {
+    "community_rebuild": {"skipped": True, "reason": "scope_paused"},
     "dream_nightly_batch": {"skipped": True, "reason": "dream_pass_disabled"},
 }
 FAILED = {
@@ -188,7 +188,7 @@ async def test_force_re_registers_every_scope(backfill):
 
 @pytest.mark.asyncio
 async def test_outcomes_are_counted_per_scope(backfill):
-    backfill.ensure.side_effect = [FLAGS_OFF, FAILED]
+    backfill.ensure.side_effect = [STOPPED, FAILED]
     backfill.pause.return_value = False
 
     report = await backfill_schedules()
@@ -282,9 +282,9 @@ def test_classify_puts_failure_before_any_success():
     assert registry_backfill._classify(REGISTERED) == "registered"
     assert registry_backfill._classify(FAILED) == "failed"
     assert registry_backfill._classify(ALREADY) == "already_scheduled"
-    assert registry_backfill._classify(FLAGS_OFF) == "skipped"
+    assert registry_backfill._classify(STOPPED) == "skipped"
     partly = {
         "community_rebuild": None,
-        "dream_nightly_batch": FLAGS_OFF["dream_nightly_batch"],
+        "dream_nightly_batch": STOPPED["dream_nightly_batch"],
     }
     assert registry_backfill._classify(partly) == "already_scheduled"

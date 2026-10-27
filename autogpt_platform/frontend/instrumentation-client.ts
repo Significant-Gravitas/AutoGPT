@@ -14,11 +14,13 @@ import {
   stripUserPII,
 } from "@/lib/sentry-filters";
 import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
-import { setupSessionReplay } from "@/lib/session-replay";
+import { redactEventURLs, redactSpanURLs } from "@/lib/sentry-url-redaction";
+import { createPostHogSentryProcessor } from "@/services/analytics/sentry-posthog";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
 const dsn = environment.getSentryDSN();
+const mirrorSentryEvent = createPostHogSentryProcessor(dsn);
 
 Sentry.init({
   dsn,
@@ -31,9 +33,6 @@ Sentry.init({
   tunnel: getSentryTunnelURL(dsn),
   transportOptions: { fetchOptions: { credentials: "omit" } },
 
-  // Suppress cross-origin stylesheet errors from Sentry Replay (rrweb)
-  // serializing DOM snapshots with cross-origin stylesheets
-  // (e.g., from browser extensions or CDN-loaded CSS)
   ignoreErrors: CLIENT_IGNORE_ERRORS,
 
   // Errors are reported without consent (legitimate interest), so they carry
@@ -46,20 +45,25 @@ Sentry.init({
   // A failed API request the request logger reports, titled by its route,
   // would otherwise arrive again from the HttpClient integration (BUILDER-95D).
   // Some browsers inject a script that logs every cross-origin iframe it may
-  // not read (BUILDER-943).
+  // not read (BUILDER-943). URLs are masked last: the request logger's match
+  // needs the URL as it was requested.
   beforeSend(event) {
     stripSpanPII(stripUserPII(event));
     if (isFromBot(navigator.userAgent)) return null;
     if (isLoggedRequestFailure(event)) return null;
     if (isInjectedIframeProbe(event)) return null;
-    return isNextRSCNavigationFallback(event) ? null : event;
+    if (isNextRSCNavigationFallback(event)) return null;
+    // Mirror last: after our filters (an integration would run before
+    // beforeSend) and on the stripped, URL-masked event, so PostHog never
+    // gets an email, IP address or credential Sentry doesn't keep either.
+    return mirrorSentryEvent(redactEventURLs(event));
   },
   beforeSendTransaction(event) {
     return isFromBot(navigator.userAgent)
       ? null
-      : stripSpanPII(stripUserPII(event));
+      : stripSpanPII(stripUserPII(redactEventURLs(event)));
   },
-  beforeSendSpan: stripSpanDataPII,
+  beforeSendSpan: (span) => redactSpanURLs(stripSpanDataPII(span)),
   beforeSendLog: stripLogUserPII,
 
   // Add optional integrations for additional features
@@ -69,8 +73,6 @@ Sentry.init({
     Sentry.browserProfilingIntegration(),
     Sentry.httpClientIntegration(),
     Sentry.featureFlagsIntegration(),
-    // GDPR: session replay only once the visitor consents to monitoring
-    ...setupSessionReplay(),
     // Deprecation reports are browser platform notices about the web platform
     // itself (e.g. Chrome's "Attribution Reporting is deprecated"), not bugs in
     // our code, and they bury real issues. Crash and intervention reports still
@@ -93,15 +95,6 @@ Sentry.init({
     /^https:\/\/.*\.agpt\.co\/api/,
   ],
 
-  // Define how likely Replay events are sampled.
-  // This sets the sample rate to be 10%. You may want this to be 100% while
-  // in development and sample at a lower rate in production
-  // Inert until setupSessionReplay installs the replay integration.
-  replaysSessionSampleRate: 0.1,
-
-  // Define how likely Replay events are sampled when an error occurs.
-  replaysOnErrorSampleRate: 1.0,
-
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
 
@@ -114,4 +107,8 @@ Sentry.init({
   enableLogs: true,
 });
 
-export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+export function onRouterTransitionStart(
+  ...args: Parameters<typeof Sentry.captureRouterTransitionStart>
+) {
+  Sentry.captureRouterTransitionStart(...args);
+}

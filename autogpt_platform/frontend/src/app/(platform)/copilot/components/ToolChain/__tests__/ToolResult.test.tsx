@@ -175,22 +175,40 @@ describe("ToolResult", () => {
   });
 
   describe("pending clarifying questions", () => {
-    it("renders the interactive answer form for the pending row", () => {
+    const pending = {
+      dockId: "dock-1",
+      questions: [{ question: "Which region?", keyword: "region" }],
+      callIds: ["tool"],
+    };
+
+    it("renders the interactive answer form for the lifted pending row", () => {
       render(
-        <PendingQuestionsContext.Provider
-          value={{
-            dockId: "dock-1",
-            questions: [{ question: "Which region?", keyword: "region" }],
-            callIds: ["tool"],
-          }}
-        >
+        <PendingQuestionsContext.Provider value={pending}>
+          <ToolResult
+            row={{
+              ...row({ questions: [{ question: "Which region?" }] }),
+              lifted: true,
+            }}
+          />
+        </PendingQuestionsContext.Provider>,
+      );
+
+      expect(screen.getByText("questions-form:dock-1")).toBeDefined();
+    });
+
+    // A running row animating out of the chain as its output lands is still
+    // mounted beside its lifted copy; a second form there would register the
+    // same card twice (SECRT-3135).
+    it("leaves the form to the lifted copy of the pending row", () => {
+      render(
+        <PendingQuestionsContext.Provider value={pending}>
           <ToolResult
             row={row({ questions: [{ question: "Which region?" }] })}
           />
         </PendingQuestionsContext.Provider>,
       );
 
-      expect(screen.getByText("questions-form:dock-1")).toBeDefined();
+      expect(screen.queryByText("questions-form:dock-1")).toBeNull();
     });
 
     it("keeps a read-only card for ask_question rows answered from input", () => {
@@ -969,10 +987,11 @@ describe("ToolResult", () => {
       expect(screen.getByText("Please connect")).toBeDefined();
     });
 
-    it("falls back to key/value output for empty web search results", () => {
+    it("says an empty web search found nothing", () => {
       render(<ToolResult row={row({ results: [] }, "web_search")} />);
 
-      expect(screen.getByText("Results")).toBeDefined();
+      expect(screen.getByText("Nothing found.")).toBeDefined();
+      expect(document.body.textContent).not.toContain("[]");
     });
 
     it("falls back to key/value pairs for multi-field outputs", () => {

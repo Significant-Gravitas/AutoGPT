@@ -1,5 +1,6 @@
-import { Button } from "@/components/__legacy__/ui/button";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
@@ -37,15 +38,17 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
 
   return (
     <Button
+      variant="legacy-default"
       className={cn(
-        "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 p-[0.625rem] pr-[0.875rem] text-start shadow-none",
-        "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
+        "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-surface-muted p-[0.625rem] pr-[0.875rem] text-start shadow-none",
+        // TODO(tokens): no fitting role for active:bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this is the pressed state (QUALITY 41); no fitting role for active:ring-zinc-300 #C5C5C9; #C5C5C9 is border-strong (a border colour) and foreground-disabled (a text colour), and this is a ring (QUALITY 41(b))
+        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
         className,
       )}
       {...rest}
     >
       {showImage && image_url && (
-        <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-[0.375rem] bg-white">
+        <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-[0.375rem] bg-surface">
           <Image
             src={image_url}
             unoptimized={isLocalStoreMediaUrl(image_url)}
@@ -59,57 +62,69 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
       )}
       <div className="flex flex-1 flex-col items-start gap-0.5">
         {title && (
-          <span
-            className={cn(
-              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="body-medium"
+            as="span"
+            tone="emphasis"
+            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
           >
             {highlightText(title, highlightedText)}
-          </span>
+          </Text>
         )}
         <div className="flex items-center space-x-1.5">
           {edited_time && (
-            <span
+            <Text
+              variant="small-loose"
+              as="span"
+              tone="muted"
               className={cn(
-                "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
+                "line-clamp-1 group-disabled:text-foreground-subtle",
               )}
             >
               Edited {formatTimeAgo(edited_time.toISOString())}
-            </span>
+            </Text>
           )}
 
-          <span className="font-sans text-zinc-400">•</span>
+          <Text variant="body-medium-tight" as="span" tone="subtle">
+            •
+          </Text>
 
-          <span
-            className={cn(
-              "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-            )}
+          <Text
+            variant="small-loose"
+            as="span"
+            tone="muted"
+            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
           >
             Version {version}
-          </span>
+          </Text>
 
-          <span
-            className={cn(
-              "rounded-[0.75rem] bg-zinc-200 px-[0.5rem] font-sans text-xs leading-[1.25rem] text-zinc-500",
-            )}
+          <Text
+            variant="small-medium-loose"
+            as="span"
+            tone="muted"
+            // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
+            className={cn("rounded-[0.75rem] bg-zinc-200 px-[0.5rem]")}
           >
             Your Workflow
-          </span>
+          </Text>
         </div>
       </div>
       <div
         className={cn(
+          // TODO(tokens): no fitting role for bg-zinc-700 #505057; #505057 is foreground-body (a text colour); no fitting role for group-disabled:bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
           "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
         )}
       >
         {isLoading ? (
           <Icon
             icon={Loading03Icon}
+            // TODO(tokens): no fitting role for text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a surface fill)
             className="h-5 w-5 animate-spin text-zinc-50"
           />
         ) : (
           <Icon
             icon={PlusSignIcon}
+            // TODO(tokens): no fitting role for text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a surface fill)
             className="h-5 w-5 text-zinc-50"
             strokeWidth={2}
           />
@@ -125,19 +140,35 @@ const UGCAgentBlockSkeleton: React.FC<{ className?: string }> = ({
   return (
     <Skeleton
       className={cn(
+        // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41)
         "flex h-[4.375rem] w-full min-w-[7.5rem] animate-pulse items-center justify-start gap-3 rounded-[0.75rem] bg-zinc-100 p-[0.625rem] pr-[0.875rem]",
         className,
       )}
     >
-      <Skeleton className="h-[3.125rem] w-[5.625rem] rounded-[0.375rem] bg-zinc-200" />
+      <Skeleton
+        // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
+        className="h-[3.125rem] w-[5.625rem] rounded-[0.375rem] bg-zinc-200"
+      />
       <div className="flex flex-1 flex-col items-start gap-0.5">
-        <Skeleton className="h-[1.375rem] w-24 rounded bg-zinc-200" />
+        <Skeleton
+          // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
+          className="h-[1.375rem] w-24 rounded bg-zinc-200"
+        />
         <div className="flex items-center gap-1">
-          <Skeleton className="h-5 w-16 rounded bg-zinc-200" />
-          <Skeleton className="h-5 w-16 rounded bg-zinc-200" />
+          <Skeleton
+            // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
+            className="h-5 w-16 rounded bg-zinc-200"
+          />
+          <Skeleton
+            // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
+            className="h-5 w-16 rounded bg-zinc-200"
+          />
         </div>
       </div>
-      <Skeleton className="h-7 w-7 rounded-[0.5rem] bg-zinc-200" />
+      <Skeleton
+        // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
+        className="h-7 w-7 rounded-[0.5rem] bg-zinc-200"
+      />
     </Skeleton>
   );
 };

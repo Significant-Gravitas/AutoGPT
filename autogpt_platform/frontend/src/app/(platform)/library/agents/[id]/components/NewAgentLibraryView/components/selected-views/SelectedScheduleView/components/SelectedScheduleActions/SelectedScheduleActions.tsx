@@ -57,7 +57,7 @@ export function SelectedScheduleActions({
           {isRunning ? (
             <LoadingSpinner size="small" />
           ) : (
-            <Icon icon={PlayIcon} size={18} className="text-zinc-700" />
+            <Icon icon={PlayIcon} size={18} className="text-foreground-body" />
           )}
         </Button>
         {openInBuilderHref && (
@@ -69,7 +69,7 @@ export function SelectedScheduleActions({
             target="_blank"
             aria-label="View scheduled task details"
           >
-            <Icon icon={EyeIcon} size={18} className="text-zinc-700" />
+            <Icon icon={EyeIcon} size={18} className="text-foreground-body" />
           </Button>
         )}
         {schedule && (
