@@ -1,10 +1,6 @@
 import { trialOffer } from "@/tests/integrations/trial-fixtures";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import {
-  formatDay,
-  formatReadyLine,
-  getTrialMilestones,
-} from "../components/TrialWelcome/helpers";
+import { formatAllowance, formatDay, getTrialMilestones } from "../helpers";
 
 const NOW = new Date("2026-10-23T12:00:00Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -65,11 +61,52 @@ describe("getTrialMilestones", () => {
   });
 });
 
-describe("formatReadyLine", () => {
-  test("names up to three Experts beside Otto and counts the rest", () => {
-    expect(formatReadyLine([])).toBe("Otto is ready to start");
-    expect(formatReadyLine(["Maria", "Mina", "Max", "Kai", "Lena"])).toBe(
-      "Otto, Maria, Mina, Max, and 2 more are ready to start",
+describe("the trial's first two rows", () => {
+  test("names the usage allowance included with the trial", () => {
+    const [today] = getTrialMilestones(
+      { ...trialOffer, onboarding_credit_amount: 2000 },
+      NOW,
+    );
+
+    expect(today.detail).toBe(
+      "Full access from right now, with $20 of usage included.",
+    );
+  });
+
+  test("falls back to a plain allowance line when there is none", () => {
+    for (const amount of [0, -5]) {
+      const [today] = getTrialMilestones(
+        { ...trialOffer, onboarding_credit_amount: amount },
+        NOW,
+      );
+      expect(today.detail).toBe(
+        "Full access from right now, within a trial usage allowance.",
+      );
+    }
+  });
+
+  test("formats the allowance in the offer's own currency", () => {
+    expect(
+      formatAllowance({
+        ...trialOffer,
+        currency: "eur",
+        onboarding_credit_amount: 550,
+      }),
+    ).toBe("€5.50");
+    expect(
+      formatAllowance({
+        ...trialOffer,
+        currency: "jpy",
+        onboarding_credit_amount: 3000,
+      }),
+    ).toBe("¥3,000");
+  });
+
+  test("says what the reminder email actually carries", () => {
+    const reminder = getTrialMilestones(trialOffer, NOW)[1];
+
+    expect(reminder.detail).toBe(
+      "3 days before your trial ends, with your end date and how to cancel.",
     );
   });
 });

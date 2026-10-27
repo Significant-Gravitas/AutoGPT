@@ -4,6 +4,8 @@ import { cleanWizardText, stepKey, type WizardStepKey } from "./progress";
 
 export const MAX_PAIN_POINT_SELECTIONS = 3;
 export type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+// The self-hosted layout is the longest: the plan step and the connect step.
+// The hosted layouts are six steps.
 export const MAX_STEP: Step = 7;
 
 // Every step the wizard can show, numbered for one deployment. Optional
@@ -14,7 +16,12 @@ export interface StepLayout {
   autopilot?: number;
   role: number;
   painPoints: number;
+  /** Retired with the plan step. Never laid out; saved progress from before
+   *  may still name it, and resuming skips over it. */
   hire?: number;
+  /** The plan + trial step, or the plan alone without a paywall. The key
+   *  stays `subscription`: Stripe's return URLs and the step's analytics
+   *  name it. */
   subscription?: number;
   connect?: number;
   preparing: number;
@@ -22,9 +29,12 @@ export interface StepLayout {
 
 export function buildStepLayout({
   hasPaywall = false,
+  hasPlan = false,
   hasConnect = false,
 }: {
   hasPaywall?: boolean;
+  /** The plan alone, for a deployment with no paywall configured. */
+  hasPlan?: boolean;
   hasConnect?: boolean;
 }): StepLayout {
   const order: (keyof StepLayout)[] = [
@@ -32,8 +42,7 @@ export function buildStepLayout({
     "autopilot",
     "role",
     "painPoints",
-    "hire",
-    ...(hasPaywall ? (["subscription"] as const) : []),
+    ...(hasPaywall || hasPlan ? (["subscription"] as const) : []),
     ...(!hasPaywall && hasConnect ? (["connect"] as const) : []),
     "preparing",
   ];
@@ -45,8 +54,11 @@ export function buildStepLayout({
 }
 
 export const PAYWALL_LAST_STEPS = buildStepLayout({ hasPaywall: true });
-export const NO_PAYWALL_STEPS = buildStepLayout({});
-export const SELF_HOST_STEPS = buildStepLayout({ hasConnect: true });
+export const NO_PAYWALL_STEPS = buildStepLayout({ hasPlan: true });
+export const SELF_HOST_STEPS = buildStepLayout({
+  hasPlan: true,
+  hasConnect: true,
+});
 
 interface OnboardingWizardState {
   currentStep: Step;
@@ -65,8 +77,8 @@ interface OnboardingWizardState {
   selectedBilling: "monthly" | "yearly";
   hasUserSelectedBilling: boolean;
   selectedCountryCode: string;
-  /** Templates hired from the recommendation step, so a Back/forward trip
-   * through the wizard keeps showing them as hired. */
+  /** Written by the retired hire step; kept so saved progress keeps its
+   * shape. The plan's team is hired on the preparing screen instead. */
   hiredTemplateIds: string[];
   /** True while the current step is mid-flight (e.g. the brain dump is
    * being processed) — navigation away must be blocked. Transient, never
@@ -82,7 +94,6 @@ interface OnboardingWizardState {
   setSelectedBilling(billing: "monthly" | "yearly"): void;
   applyPricingExperimentBilling(billing: "monthly" | "yearly"): void;
   setSelectedCountryCode(code: string): void;
-  markHired(templateId: string): void;
   nextStep(): void;
   prevStep(): void;
   goToStep(step: Step): void;
@@ -146,13 +157,6 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
     },
     setSelectedCountryCode(code) {
       set({ selectedCountryCode: code });
-    },
-    markHired(templateId) {
-      set((state) =>
-        state.hiredTemplateIds.includes(templateId)
-          ? state
-          : { hiredTemplateIds: [...state.hiredTemplateIds, templateId] },
-      );
     },
     nextStep() {
       set((state) => ({

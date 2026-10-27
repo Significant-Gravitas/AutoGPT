@@ -40,6 +40,7 @@ export function useOnboardingPage() {
     userID: user?.id ?? null,
     ready: isReady,
     steps,
+    hasPaywall: isPaymentEnabled,
   });
   const currentStep =
     isPaymentEnabled && !environment.isLocal()

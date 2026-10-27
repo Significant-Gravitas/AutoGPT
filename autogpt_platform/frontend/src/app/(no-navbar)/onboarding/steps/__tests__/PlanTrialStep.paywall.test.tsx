@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
@@ -14,19 +15,21 @@ import {
   installGtagShim,
   removeGtagShim,
 } from "@/tests/integrations/gtag-shim";
-import { useOnboardingWizardStore } from "../../store";
+import {
+  PAYWALL_LAST_STEPS,
+  type Step,
+  useOnboardingWizardStore,
+} from "../../store";
 import {
   getReportedPricingVariant,
   getSubscriptionPricingExperimentConfig,
   getSubscriptionPricingExperimentPlans,
 } from "../SubscriptionStep/helpers";
-import { SubscriptionStep } from "../SubscriptionStep/SubscriptionStep";
+import { PlanTrialStep } from "../SubscriptionStep/PlanTrialStep";
 import { getGetExperimentsGetExperimentAssignmentMockHandler } from "@/app/api/__generated__/endpoints/experiments/experiments.msw";
 import { getGetTrialsGetTrialStatusMockHandler200 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
-import {
-  getGetBrainDumpRecommendedExpertsMockHandler200,
-  getGetBrainDumpRecommendedExpertsResponseMock200,
-} from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import { getGetBrainDumpPlanMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import type { PlanResponse } from "@/app/api/__generated__/models/planResponse";
 import { Experiment } from "@/app/api/__generated__/models/experiment";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
@@ -41,15 +44,47 @@ const posthogJS = vi.hoisted(() => ({
 }));
 vi.mock("posthog-js", () => ({ default: posthogJS }));
 
-vi.mock("@/components/atoms/FadeIn/FadeIn", () => ({
-  FadeIn: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
+// Stripe's cancel URL brings the user back to this step with
+// `subscription=cancelled`; every other test lands on a plain URL.
+const mockSearchParams = vi.hoisted(() => ({
+  current: new URLSearchParams(),
 }));
+vi.mock("next/navigation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/navigation")>();
+  return {
+    ...actual,
+    useSearchParams: () => mockSearchParams.current,
+    useRouter: () => ({
+      push: vi.fn(),
+      replace: vi.fn(),
+      prefetch: vi.fn(),
+      back: vi.fn(),
+      forward: vi.fn(),
+      refresh: vi.fn(),
+    }),
+    usePathname: () => "/onboarding",
+    useParams: () => ({}),
+  };
+});
 
-vi.mock("@/components/atoms/AutoGPTLogo/AutoGPTLogo", () => ({
-  AutoGPTLogo: () => <span>AutoGPTLogo</span>,
-}));
+const PLAN_STEP = PAYWALL_LAST_STEPS.subscription as Step;
+const PREPARING_STEP = PAYWALL_LAST_STEPS.preparing;
+
+const readyPlan: PlanResponse = {
+  ready: true,
+  source: "fallback",
+  skipped_dump: false,
+  heard: null,
+  team: [{ template_id: "maria", name: "Maria", role: "Assistant" }],
+  tasks: [
+    {
+      id: "task-1",
+      title: "Draft this week's update",
+      prompt: "Draft this week's update",
+      expert_template_id: "maria",
+    },
+  ],
+};
 
 afterEach(() => {
   // Not at the end of each test body: an assertion that throws above would
@@ -58,6 +93,7 @@ afterEach(() => {
   restoreLocation();
   removeGtagShim();
   vi.unstubAllEnvs();
+  mockSearchParams.current = new URLSearchParams();
   useAuthStore.setState({ user: null, hasLoadedUser: false });
 });
 
@@ -65,11 +101,13 @@ beforeEach(() => {
   posthogJS.capture.mockClear();
   sessionStorage.clear();
   useOnboardingWizardStore.getState().reset();
-  // The paywall is the last interactive step (step 3), before Preparing.
-  useOnboardingWizardStore.getState().goToStep(3);
+  useOnboardingWizardStore.getState().setSteps(PAYWALL_LAST_STEPS);
+  // The plan step is the last interactive step, before Preparing.
+  useOnboardingWizardStore.getState().goToStep(PLAN_STEP);
   // Default tests to cloud mode so they exercise the Stripe Checkout path.
   // The local-bypass test below opts back into LOCAL.
   vi.spyOn(environment, "isLocal").mockReturnValue(false);
+  server.use(getGetBrainDumpPlanMockHandler200(readyPlan));
 });
 
 const originalLocation = window.location;
@@ -162,82 +200,94 @@ describe("subscription pricing experiment helpers", () => {
   });
 });
 
-describe("SubscriptionStep", () => {
-  test("offers one Pro checkout, with no Max or Team plan and no billing toggle", () => {
-    render(<SubscriptionStep />);
+describe("PlanTrialStep with a paywall and no trial", () => {
+  test("offers one Pro checkout beside the plan, with no Max or Team plan and no billing toggle", async () => {
+    render(<PlanTrialStep hasPaywall />);
     expect(
-      screen.getByRole("heading", { name: "Put your setup to work" }),
+      screen.getByRole("region", { name: "Start with Pro" }),
+    ).toBeDefined();
+    expect(screen.getByText("Pro plan")).toBeDefined();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Start with Pro" }),
     ).toBeDefined();
     expect(checkoutButton()).toBeDefined();
+    expect(screen.getByText("Secure checkout by Stripe")).toBeDefined();
+    expect(
+      screen.getByRole("heading", {
+        level: 2,
+        name: "Here's what your team does first",
+      }),
+    ).toBeDefined();
+    // The plan's team joins when the user subscribes, not when a trial starts.
+    expect(
+      await screen.findByText(
+        "Maria joins your team when you subscribe. Nothing runs until you pick a task.",
+      ),
+    ).toBeDefined();
     expect(screen.queryByText(/\bMax\b/)).toBeNull();
     expect(screen.queryByText(/\bTeam\b/)).toBeNull();
     expect(screen.queryByRole("button", { name: /billing/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Start my free trial" }),
+    ).toBeNull();
   });
 
   test("defaults to monthly billing and shows the monthly Pro price plus tax", () => {
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     expect(useOnboardingWizardStore.getState().selectedBilling).toBe("monthly");
-    expect(screen.getByText("You pay $50")).toBeDefined();
-    expect(screen.getByText(/Plus any applicable tax/)).toBeDefined();
-    expect(screen.getByText("$50 a month until you cancel.")).toBeDefined();
+    expect(
+      screen.getByText(
+        "$50 a month, plus any applicable tax. No contract, and you can cancel any time in Settings.",
+      ),
+    ).toBeDefined();
+    const timeline = within(
+      screen.getByRole("list", { name: "How your plan works" }),
+    );
+    expect(
+      timeline.getByText(
+        "You pay $50, plus any applicable tax. Full access starts straight away.",
+      ),
+    ).toBeDefined();
+    expect(
+      timeline.getByText("$50 a month until you cancel in Settings."),
+    ).toBeDefined();
   });
 
   test("an assigned monthly Pro arm starts on monthly billing", async () => {
     assignArm("monthly-pro");
 
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
 
     await waitFor(() => {
       expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
         "monthly",
       );
     });
-    expect(await screen.findByText("You pay $50")).toBeDefined();
+    expect(
+      await screen.findByText(/^You pay \$50, plus any applicable tax\./),
+    ).toBeDefined();
   });
 
   test("an assigned arm's billing default does not override a user-selected cycle", async () => {
     assignArm("monthly-pro");
     useOnboardingWizardStore.getState().setSelectedBilling("yearly");
 
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
 
     await waitFor(() => {
       expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
         "yearly",
       );
     });
-    expect(await screen.findByText("You pay $510")).toBeDefined();
-    expect(screen.getByText("$510 a year until you cancel.")).toBeDefined();
-  });
-
-  test("names the hired Experts in the ready line", async () => {
-    useOnboardingWizardStore.setState({ hiredTemplateIds: ["maria", "mina"] });
-    server.use(
-      getGetBrainDumpRecommendedExpertsMockHandler200(
-        getGetBrainDumpRecommendedExpertsResponseMock200({
-          team: {
-            diagnosis: "Busy founder",
-            experts: [
-              recommendedExpert("maria", "Maria"),
-              recommendedExpert("mina", "Mina"),
-              recommendedExpert("not-hired", "Nadia"),
-            ],
-            source: "llm",
-          },
-        }),
-      ),
-    );
-
-    render(<SubscriptionStep />);
-
     expect(
-      // The list follows the browser's locale, so the serial comma varies.
-      await screen.findByText(/^Otto, Maria,? and Mina are ready to start$/),
+      await screen.findByText(/^You pay \$510, plus any applicable tax\./),
     ).toBeDefined();
-    expect(screen.queryByText(/Nadia/)).toBeNull();
+    expect(
+      screen.getByText("$510 a year until you cancel in Settings."),
+    ).toBeDefined();
   });
 
-  test("selecting Pro persists selectedPlan and returns to Preparing on success, paywall on cancel", async () => {
+  test("selecting Pro persists selectedPlan and returns to Preparing on success, the plan step on cancel", async () => {
     let capturedTierBody: {
       tier?: string;
       success_url?: string;
@@ -258,7 +308,7 @@ describe("SubscriptionStep", () => {
       }),
     );
 
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     fireEvent.click(checkoutButton());
 
     await waitFor(() => {
@@ -294,7 +344,7 @@ describe("SubscriptionStep", () => {
       ),
     );
 
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     fireEvent.click(checkoutButton());
 
     await waitFor(() => {
@@ -326,7 +376,7 @@ describe("SubscriptionStep", () => {
       }),
     );
 
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     const pro = checkoutButton();
     fireEvent.click(pro);
     await waitFor(() =>
@@ -360,7 +410,7 @@ describe("SubscriptionStep", () => {
         }),
       );
       useOnboardingWizardStore.setState({ userID: "previous-user" });
-      render(<SubscriptionStep />);
+      render(<PlanTrialStep hasPaywall />);
       fireEvent.click(checkoutButton());
       await waitFor(() => expect(received).toHaveBeenCalledOnce());
       act(() => {
@@ -390,11 +440,13 @@ describe("SubscriptionStep", () => {
       ),
     );
 
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     fireEvent.click(checkoutButton());
 
     await waitFor(() => {
-      expect(useOnboardingWizardStore.getState().currentStep).toBe(4);
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(
+        PREPARING_STEP,
+      );
     });
     expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
   });
@@ -417,8 +469,12 @@ describe("SubscriptionStep", () => {
       }),
     );
 
-    render(<SubscriptionStep />);
-    expect(await screen.findByText("You pay $510")).toBeDefined();
+    render(<PlanTrialStep hasPaywall />);
+    expect(
+      await screen.findByText(
+        "$510 a year, plus any applicable tax. No contract, and you can cancel any time in Settings.",
+      ),
+    ).toBeDefined();
     fireEvent.click(checkoutButton());
 
     await waitFor(() => {
@@ -443,7 +499,7 @@ describe("SubscriptionStep", () => {
       }),
     );
 
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Continue to checkout" }),
     );
@@ -454,7 +510,7 @@ describe("SubscriptionStep", () => {
     expect(capturedTierBody!.billing_cycle).toBe("monthly");
   });
 
-  test("reports the paywall view and the picked plan with its pricing arm to PostHog", async () => {
+  test("reports the paywall view once and the picked plan with its pricing arm to PostHog", async () => {
     assignArm("yearly-max");
     let capturedTierBody: { surface?: string } | null = null;
     server.use(
@@ -464,7 +520,7 @@ describe("SubscriptionStep", () => {
       }),
     );
 
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     await waitFor(() => {
       expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
         "yearly",
@@ -479,15 +535,20 @@ describe("SubscriptionStep", () => {
     });
     // The backend reads `surface` for its checkout_started event.
     expect(capturedTierBody!.surface).toBe("onboarding");
-    expect(posthogJS.capture).toHaveBeenCalledWith("paywall_viewed", {
-      surface: "onboarding",
-    });
-    expect(posthogJS.capture).toHaveBeenCalledWith("plan_selected", {
-      subscription_tier: "PRO",
-      billing_cycle: "yearly",
-      surface: "onboarding",
-      pricing_variant: "yearly-max",
-    });
+    expect(eventsNamed("paywall_viewed")).toEqual([
+      ["paywall_viewed", { surface: "onboarding" }],
+    ]);
+    expect(eventsNamed("plan_selected")).toEqual([
+      [
+        "plan_selected",
+        {
+          subscription_tier: "PRO",
+          billing_cycle: "yearly",
+          surface: "onboarding",
+          pricing_variant: "yearly-max",
+        },
+      ],
+    ]);
   });
 
   // A user outside the rollout sees the control layout but is not in the control arm.
@@ -499,7 +560,7 @@ describe("SubscriptionStep", () => {
       ),
     );
 
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Continue to checkout" }),
     );
@@ -511,6 +572,42 @@ describe("SubscriptionStep", () => {
         surface: "onboarding",
       });
     });
+  });
+
+  test("reports the paywall view once per tab, even when the step mounts again", async () => {
+    const first = render(<PlanTrialStep hasPaywall />);
+    await waitFor(() =>
+      expect(eventsNamed("paywall_viewed")).toEqual([
+        ["paywall_viewed", { surface: "onboarding" }],
+      ]),
+    );
+    first.unmount();
+
+    render(<PlanTrialStep hasPaywall />);
+    expect(await screen.findByText("Draft this week's update")).toBeDefined();
+    expect(eventsNamed("paywall_viewed")).toHaveLength(1);
+    // A plain visit is not a return from Stripe.
+    expect(eventsNamed("checkout_abandoned")).toEqual([]);
+  });
+
+  test("reports checkout_abandoned when Stripe sends the user back without paying", async () => {
+    mockSearchParams.current = new URLSearchParams({
+      step: "subscription",
+      subscription: "cancelled",
+    });
+
+    render(<PlanTrialStep hasPaywall />);
+
+    await waitFor(() =>
+      expect(eventsNamed("checkout_abandoned")).toEqual([
+        [
+          "checkout_abandoned",
+          { checkout_kind: "subscription", surface: "onboarding" },
+        ],
+      ]),
+    );
+    expect(eventsNamed("paywall_viewed")).toHaveLength(1);
+    expect(checkoutButton().hasAttribute("disabled")).toBe(false);
   });
 
   test("local dev: continuing skips Stripe and advances to the next step", async () => {
@@ -529,7 +626,7 @@ describe("SubscriptionStep", () => {
       }),
     );
 
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     fireEvent.click(checkoutButton());
 
     await waitFor(() => {
@@ -537,10 +634,12 @@ describe("SubscriptionStep", () => {
     });
     // Local short-circuit: no Stripe Checkout, no profile POST (the Preparing
     // step handles submission via useOnboardingPage). Advances from the
-    // paywall (step 3) to Preparing (step 4).
+    // plan step to Preparing.
     expect(stripeCalled).toBe(false);
     expect(profileCalledSync).toBe(false);
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(4);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(
+      PREPARING_STEP,
+    );
   });
 
   test("keeps the checkout button locked while the request is in flight", async () => {
@@ -560,7 +659,7 @@ describe("SubscriptionStep", () => {
       }),
     );
 
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     const button = checkoutButton();
     fireEvent.click(button);
 
@@ -573,7 +672,9 @@ describe("SubscriptionStep", () => {
 
     resolveTier(null);
     await waitFor(() => {
-      expect(useOnboardingWizardStore.getState().currentStep).toBe(4);
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(
+        PREPARING_STEP,
+      );
     });
     expect(posts).toBe(1);
   });
@@ -583,15 +684,8 @@ function checkoutButton() {
   return screen.getByRole("button", { name: "Continue to checkout" });
 }
 
-function recommendedExpert(templateID: string, name: string) {
-  return {
-    template_id: templateID,
-    name,
-    role: "Assistant",
-    avatar_url: null,
-    reason: "Fits your goals",
-    workflow_names: [],
-  };
+function eventsNamed(name: string) {
+  return posthogJS.capture.mock.calls.filter(([event]) => event === name);
 }
 
 // Signs in a user with no trial, whom the backend assigned *variant* (null: not enrolled).

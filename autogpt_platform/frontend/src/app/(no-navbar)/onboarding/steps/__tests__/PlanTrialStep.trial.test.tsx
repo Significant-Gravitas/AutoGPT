@@ -1,8 +1,10 @@
+import { getGetBrainDumpPlanMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import {
   getGetTrialsGetTrialStatusMockHandler200,
   getPostTrialsCancelTrialMockHandler200,
   getPostTrialsStartTrialCheckoutMockHandler200,
 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
+import type { PlanResponse } from "@/app/api/__generated__/models/planResponse";
 import { server } from "@/mocks/mock-server";
 import { environment } from "@/services/environment";
 import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
@@ -21,14 +23,41 @@ import {
 } from "@/tests/integrations/trial-fixtures";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { useOnboardingWizardStore } from "../../store";
-import { SubscriptionStep } from "../SubscriptionStep/SubscriptionStep";
+import {
+  PAYWALL_LAST_STEPS,
+  type Step,
+  useOnboardingWizardStore,
+} from "../../store";
+import { PlanTrialStep } from "../SubscriptionStep/PlanTrialStep";
 import { translateText } from "@/tests/integrations/translation";
 
-const posthog = vi.hoisted(() => ({ capture: vi.fn() }));
+// One capture for both clients: the trial offer reports through
+// @posthog/react, the paywall and the plan through posthog-js.
+const posthog = vi.hoisted(() => ({
+  __loaded: true,
+  is_capturing: () => true,
+  capture: vi.fn(),
+}));
 vi.mock("@posthog/react", () => ({
   usePostHog: () => posthog,
 }));
+vi.mock("posthog-js", () => ({ default: posthog }));
+
+const readyPlan: PlanResponse = {
+  ready: true,
+  source: "fallback",
+  skipped_dump: false,
+  heard: null,
+  team: [{ template_id: "maria", name: "Maria", role: "Assistant" }],
+  tasks: [
+    {
+      id: "task-1",
+      title: "Draft this week's update",
+      prompt: "Draft this week's update",
+      expert_template_id: "maria",
+    },
+  ],
+};
 
 const originalLocation = window.location;
 let checkoutLocation = {
@@ -40,9 +69,14 @@ let checkoutLocation = {
 beforeEach(() => {
   setTrialUser();
   posthog.capture.mockClear();
+  sessionStorage.clear();
   useOnboardingWizardStore.getState().reset();
-  useOnboardingWizardStore.getState().goToStep(3);
+  useOnboardingWizardStore.getState().setSteps(PAYWALL_LAST_STEPS);
+  useOnboardingWizardStore
+    .getState()
+    .goToStep(PAYWALL_LAST_STEPS.subscription as Step);
   vi.spyOn(environment, "isLocal").mockReturnValue(false);
+  server.use(getGetBrainDumpPlanMockHandler200(readyPlan));
   checkoutLocation = {
     origin: "http://localhost",
     href: "http://localhost/",
@@ -75,6 +109,10 @@ function mockStatus(response = eligible()) {
   server.use(getGetTrialsGetTrialStatusMockHandler200(response));
 }
 
+function eventsNamed(name: string) {
+  return posthog.capture.mock.calls.filter(([event]) => event === name);
+}
+
 test.each(["paid", "trial"])(
   "keeps a translated %s checkout usable while the request is pending",
   async (mode) => {
@@ -105,7 +143,7 @@ test.each(["paid", "trial"])(
         },
       ),
     );
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     const label =
       mode === "paid" ? "Continue to checkout" : "Start my free trial";
     const button = await screen.findByRole("button", { name: label });
@@ -168,7 +206,7 @@ test.each(["paid", "trial"])(
         },
       ),
     );
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     const label =
       mode === "paid" ? "Continue to checkout" : "Start my free trial";
     const button = await screen.findByRole("button", { name: label });
@@ -210,7 +248,7 @@ test.each(["PRO", "MAX"] as const)(
         return { url: "https://checkout.stripe.com/trial" };
       }),
     );
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     const start = await screen.findByRole("button", {
       name: "Start my free trial",
     });
@@ -237,6 +275,28 @@ test.each(["PRO", "MAX"] as const)(
   },
 );
 
+test("reports the trial offer as viewed, and the step as one paywall view", async () => {
+  mockStatus();
+  render(<PlanTrialStep hasPaywall />);
+  await screen.findByRole("button", { name: "Start my free trial" });
+  await waitFor(() =>
+    expect(eventsNamed("trial_offer_viewed")).toEqual([
+      [
+        "trial_offer_viewed",
+        {
+          trial_offer_version: trialOffer.version,
+          subscription_tier: "PRO",
+          trial_duration_days: 7,
+          surface: "onboarding",
+        },
+      ],
+    ]),
+  );
+  expect(eventsNamed("paywall_viewed")).toEqual([
+    ["paywall_viewed", { surface: "onboarding" }],
+  ]);
+});
+
 test("re-arms trial abandonment tracking when a new trial checkout starts", async () => {
   // Left by an earlier abandonment in this tab: without clearing it, backing
   // out of this checkout too would go unreported.
@@ -247,7 +307,7 @@ test("re-arms trial abandonment tracking when a new trial checkout starts", asyn
       url: "https://checkout.stripe.com/trial",
     }),
   );
-  render(<SubscriptionStep />);
+  render(<PlanTrialStep hasPaywall />);
   fireEvent.click(
     await screen.findByRole("button", { name: "Start my free trial" }),
   );
@@ -269,12 +329,14 @@ test("uses the server's duration, currency, renewal cycle, and terms", async () 
       billing_cycle: "yearly",
     }),
   );
-  render(<SubscriptionStep />);
+  render(<PlanTrialStep hasPaywall />);
   expect(
     await screen.findByRole("heading", {
+      level: 1,
       name: "Your first 14 days are on us",
     }),
   ).toBeDefined();
+  expect(screen.getByText("14-day free trial")).toBeDefined();
   const timeline = within(
     screen.getByRole("list", { name: "How your trial works" }),
   );
@@ -282,15 +344,18 @@ test("uses the server's duration, currency, renewal cycle, and terms", async () 
   expect(
     timeline.getByText(/^Then ¥1,234 a year, plus any applicable tax\./),
   ).toBeDefined();
-  expect(screen.getByText(/Stripe will ask for a card/)).toBeDefined();
+  expect(
+    screen.getByText("Stripe will ask for a card. Nothing is charged today."),
+  ).toBeDefined();
 });
 
-test("shows the trial timeline: today, the reminder, then the first payment", async () => {
+test("shows the trial timeline beside the plan: today, the reminder, then the first payment", async () => {
   mockStatus();
-  render(<SubscriptionStep />);
+  render(<PlanTrialStep hasPaywall />);
   expect(
-    await screen.findByRole("heading", { name: "Your first 7 days are on us" }),
+    await screen.findByRole("region", { name: "Your first 7 days are on us" }),
   ).toBeDefined();
+  expect(screen.getByText("7-day free trial")).toBeDefined();
   const steps = within(
     screen.getByRole("list", { name: "How your trial works" }),
   ).getAllByRole("listitem");
@@ -301,6 +366,44 @@ test("shows the trial timeline: today, the reminder, then the first payment", as
   ]);
   expect(steps[0].textContent).toContain("Today");
   expect(steps[2].textContent).toContain("plus any applicable tax");
+  // The plan's team joins when the trial starts, not on a subscription.
+  expect(
+    await screen.findByText(
+      "Maria joins your team when your trial starts. Nothing runs until you pick a task.",
+    ),
+  ).toBeDefined();
+});
+
+test("the trial starts while Otto is still writing the plan", async () => {
+  mockStatus();
+  const planRequested = vi.fn();
+  server.use(
+    getGetBrainDumpPlanMockHandler200(() => {
+      planRequested();
+      return { ...readyPlan, ready: false, team: [], tasks: [] };
+    }),
+    getPostTrialsStartTrialCheckoutMockHandler200({
+      url: "https://checkout.stripe.com/trial",
+    }),
+  );
+  render(<PlanTrialStep hasPaywall />);
+  const start = await screen.findByRole("button", {
+    name: "Start my free trial",
+  });
+  await waitFor(() => expect(planRequested).toHaveBeenCalled());
+  expect(screen.getByText("Otto is writing your plan")).toBeDefined();
+  expect(start.hasAttribute("disabled")).toBe(false);
+
+  fireEvent.click(start);
+
+  await waitFor(() =>
+    expect(checkoutLocation.assign).toHaveBeenCalledWith(
+      "https://checkout.stripe.com/trial",
+    ),
+  );
+  // Still pending: the trial never waited for the plan.
+  expect(screen.getByText("Otto is writing your plan")).toBeDefined();
+  expect(eventsNamed("plan_viewed")).toEqual([]);
 });
 
 test("refreshes a rejected offer and submits its new token on retry", async () => {
@@ -327,7 +430,7 @@ test("refreshes a rejected offer and submits its new token on retry", async () =
       );
     }),
   );
-  render(<SubscriptionStep />);
+  render(<PlanTrialStep hasPaywall />);
   fireEvent.click(
     await screen.findByRole("button", { name: "Start my free trial" }),
   );
@@ -352,7 +455,7 @@ test("preserves active-trial status and confirmed cancellation", async () => {
     trialResponse({ active: false, status: "canceled" }),
   );
   server.use(getPostTrialsCancelTrialMockHandler200(cancel));
-  render(<SubscriptionStep />);
+  render(<PlanTrialStep hasPaywall />);
   fireEvent.click(await screen.findByRole("button", { name: "Cancel trial" }));
   expect(
     screen.queryByRole("button", { name: "Start my free trial" }),
@@ -371,7 +474,7 @@ test("preserves active-trial status and confirmed cancellation", async () => {
 
 test("does not surface an eligible offer after its trial has converted", async () => {
   mockStatus({ ...eligible(), converted: true });
-  render(<SubscriptionStep />);
+  render(<PlanTrialStep hasPaywall />);
   await waitFor(() =>
     expect(posthog.capture).toHaveBeenCalledWith(
       "trial_offer_viewed",
@@ -386,21 +489,24 @@ test("does not surface an eligible offer after its trial has converted", async (
 });
 
 test.each(["BASIC", "BUSINESS"] as const)(
-  "preserves the existing fallback for an eligible %s offer",
+  "shows an eligible %s offer as the trial notice beside the Pro checkout",
   async (tier) => {
     mockStatus(eligible({ ...trialOffer, tier }));
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     const fallback = within(
       await screen.findByRole("region", { name: "AutoGPT trial" }),
     );
     expect(
       fallback.getByRole("button", { name: "Start 7-day trial" }),
     ).toBeDefined();
-    // Only Pro and Max trials get the trial welcome; this one sits beside the
-    // paid checkout.
+    // Only Pro and Max trials get the trial panel; this one sits in the paid
+    // panel, above its checkout.
     expect(
       screen.queryByRole("button", { name: "Start my free trial" }),
     ).toBeNull();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Start with Pro" }),
+    ).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Continue to checkout" }),
     ).toBeDefined();
@@ -424,18 +530,23 @@ test("saves the personalized onboarding draft before starting trial checkout", a
       return { url: "https://checkout.stripe.com/trial" };
     }),
   );
-  render(<SubscriptionStep />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Start my free trial" }),
-  );
+  render(<PlanTrialStep hasPaywall />);
+  const start = await screen.findByRole("button", {
+    name: "Start my free trial",
+  });
+  fireEvent.click(start);
   expect(flush).toHaveBeenCalledOnce();
   expect(checkout).not.toHaveBeenCalled();
+  // Busy while the save runs, so a second click can't start another one.
+  await waitFor(() => expect(start.hasAttribute("disabled")).toBe(true));
   releaseSave?.();
   await waitFor(() =>
     expect(checkoutLocation.assign).toHaveBeenCalledWith(
       "https://checkout.stripe.com/trial",
     ),
   );
+  expect(checkout).toHaveBeenCalledOnce();
+  expect(flush).toHaveBeenCalledOnce();
 });
 
 test("keeps the trial checkout available for retry if saving the draft fails", async () => {
@@ -443,15 +554,13 @@ test("keeps the trial checkout available for retry if saving the draft fails", a
   useOnboardingWizardStore.setState({
     flushProgress: vi.fn().mockRejectedValue(new Error("offline")),
   });
-  render(<SubscriptionStep />);
+  render(<PlanTrialStep hasPaywall />);
   fireEvent.click(
     await screen.findByRole("button", { name: "Start my free trial" }),
   );
-  expect(
-    (await screen.findByRole("alert")).textContent?.includes(
-      "couldn't save your progress",
-    ),
-  ).toBe(true);
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "We couldn't save your progress. Please try again before continuing to checkout.",
+  );
   expect(checkoutLocation.assign).not.toHaveBeenCalled();
   expect(
     screen
@@ -464,7 +573,7 @@ test("also flushes the draft from the standalone fallback trial card", async () 
   mockStatus(eligible({ ...trialOffer, tier: "BASIC" }));
   const flush = vi.fn().mockRejectedValue(new Error("offline"));
   useOnboardingWizardStore.setState({ flushProgress: flush });
-  render(<SubscriptionStep />);
+  render(<PlanTrialStep hasPaywall />);
   const card = within(
     await screen.findByRole("region", { name: "AutoGPT trial" }),
   );
@@ -490,7 +599,7 @@ test.each(["failed", "left with Back"])(
         url: "https://checkout.stripe.com/trial",
       }),
     );
-    render(<SubscriptionStep />);
+    render(<PlanTrialStep hasPaywall />);
     const fallback = within(
       await screen.findByRole("region", { name: "AutoGPT trial" }),
     );

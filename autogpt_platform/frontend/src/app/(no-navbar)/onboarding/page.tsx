@@ -9,11 +9,10 @@ import { ProgressError } from "./components/ProgressError";
 import { StepIndicator } from "./components/StepIndicator";
 import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
 import { ConnectStep } from "./steps/ConnectStep/ConnectStep";
-import { HireStep } from "./steps/HireStep/HireStep";
 import { IntroStep } from "./steps/IntroStep/IntroStep";
 import { PreparingStep } from "./steps/PreparingStep";
 import { RoleStep } from "./steps/RoleStep";
-import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
+import { PlanTrialStep } from "./steps/SubscriptionStep/PlanTrialStep";
 import { useOnboardingWizardStore } from "./store";
 import { useOnboardingPage } from "./useOnboardingPage";
 
@@ -133,12 +132,11 @@ export default function OnboardingPage() {
         {currentStep === steps.autopilot && <IntroStep slide="autopilot" />}
         {currentStep === steps.role && <RoleStep />}
         {currentStep === steps.painPoints && <BrainDumpStep />}
-        {currentStep === steps.hire && <HireStep />}
         {isSelfHostConnectEnabled && currentStep === steps.connect && (
           <ConnectStep />
         )}
-        {isPaymentEnabled && currentStep === steps.subscription && (
-          <SubscriptionStep />
+        {currentStep === steps.subscription && (
+          <PlanTrialStep hasPaywall={isPaymentEnabled} />
         )}
         {currentStep === preparingStep && (
           <PreparingStep onComplete={handlePreparingComplete} />

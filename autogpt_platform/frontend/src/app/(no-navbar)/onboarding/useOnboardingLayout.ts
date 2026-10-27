@@ -39,6 +39,9 @@ export function useOnboardingLayout({
   const isSelfHostConnectEnabled = !isPaymentEnabled && environment.isLocal();
   const steps = buildStepLayout({
     hasPaywall: isPaymentEnabled,
+    // With no paywall configured the plan stands alone. A plan that is
+    // already paid for was seen on the way to Stripe, so it is not repeated.
+    hasPlan: !snapshot.current?.payment,
     hasConnect: isSelfHostConnectEnabled,
   });
   return {

@@ -29,21 +29,19 @@ describe("onboardingStepKey", () => {
     ).toBe("preparing");
   });
 
-  it("names the hire step when the layout has it", () => {
-    const steps = buildStepLayout({
-      hasPaywall: true,
-    });
-    expect(onboardingStepKey(steps, 5)).toBe("hire");
-    expect(onboardingStepKey(steps, 6)).toBeNull();
-    expect(onboardingStepKey(steps, 7)).toBe("preparing");
-  });
-
-  // The paywall reports itself as `paywall_viewed`; reporting it again here would
-  // double-count the top of the funnel.
-  it("returns null for the subscription step", () => {
-    expect(
-      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.subscription!),
-    ).toBeNull();
+  // The plan step keeps the paywall's key with or without a paywall, so one
+  // funnel reads every cohort; the hire step is gone from every layout.
+  it("names the plan step subscription in every layout", () => {
+    for (const steps of [
+      PAYWALL_LAST_STEPS,
+      NO_PAYWALL_STEPS,
+      buildStepLayout({ hasPlan: true, hasConnect: true }),
+    ]) {
+      expect(onboardingStepKey(steps, steps.subscription!)).toBe(
+        "subscription",
+      );
+    }
+    expect(onboardingStepKey(PAYWALL_LAST_STEPS, 6)).toBe("preparing");
   });
 });
 
@@ -56,11 +54,11 @@ describe("trackOnboardingStep", () => {
   it("reports each step to PostHog once, as onboarding_step_viewed", () => {
     trackOnboardingStep("role");
     trackOnboardingStep("role");
-    trackOnboardingStep("hire");
+    trackOnboardingStep("subscription");
 
     expect(posthog.capture.mock.calls).toEqual([
       ["onboarding_step_viewed", { step: "role" }],
-      ["onboarding_step_viewed", { step: "hire" }],
+      ["onboarding_step_viewed", { step: "subscription" }],
     ]);
   });
 

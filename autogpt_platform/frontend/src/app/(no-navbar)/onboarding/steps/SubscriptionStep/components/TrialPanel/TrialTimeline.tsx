@@ -1,27 +1,23 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import {
+  AUTOPILOT_HEX,
+  expertPastel,
+} from "@/components/molecules/ExpertAvatar/colors";
 import { cn } from "@/lib/utils";
-import type { IconSvgElement } from "@hugeicons/react";
 import { motion, useReducedMotion } from "framer-motion";
-import { OTTO_TINT } from "./ottoTint";
-
-export interface Milestone {
-  key: string;
-  icon: IconSvgElement;
-  when: string;
-  date?: Date;
-  title: string;
-  detail: string;
-}
+import { type Milestone, toLocalISODate } from "./helpers";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
+// Otto's lavender at the design system's 24% tint, behind the first row.
+const OTTO_TINT = expertPastel(AUTOPILOT_HEX);
 
 interface Props {
   label: string;
   milestones: Milestone[];
 }
 
-export function Timeline({ label, milestones }: Props) {
+export function TrialTimeline({ label, milestones }: Props) {
   const reduceMotion = useReducedMotion();
   return (
     <ol aria-label={label} className="flex flex-col">
@@ -33,12 +29,8 @@ export function Timeline({ label, milestones }: Props) {
             key={milestone.key}
             initial={reduceMotion ? false : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{
-              delay: 0.15 + index * 0.12,
-              duration: 0.45,
-              ease: EASE,
-            }}
-            className="relative grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-4"
+            transition={{ delay: 0.1 + index * 0.1, duration: 0.4, ease: EASE }}
+            className="relative grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-3.5"
           >
             {isLast ? null : (
               <span
@@ -58,7 +50,12 @@ export function Timeline({ label, milestones }: Props) {
             >
               <Icon icon={milestone.icon} size={16} />
             </span>
-            <div className={cn("flex flex-col", !isLast && "pb-5")}>
+            <div
+              className={cn(
+                "flex flex-col",
+                !isLast && "pb-4 [@media(max-height:780px)]:pb-3",
+              )}
+            >
               <Text variant="small-medium" as="span" tone="secondary">
                 {milestone.date ? (
                   <time dateTime={toLocalISODate(milestone.date)}>
@@ -71,7 +68,11 @@ export function Timeline({ label, milestones }: Props) {
               <Text variant="large-medium" as="span" tone="primary">
                 {milestone.title}
               </Text>
-              <Text variant="body" tone="secondary" className="mt-0.5">
+              <Text
+                variant="body"
+                tone="secondary"
+                className="mt-0.5 text-pretty"
+              >
                 {milestone.detail}
               </Text>
             </div>
@@ -80,11 +81,4 @@ export function Timeline({ label, milestones }: Props) {
       })}
     </ol>
   );
-}
-
-// The visible date is local, so the machine-readable one must be too.
-function toLocalISODate(date: Date) {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
 }
