@@ -17,10 +17,7 @@ import { environment } from "@/services/environment";
 import { useSearchParams } from "next/navigation";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { LoginMarketingPanel } from "./components/LoginMarketingPanel";
-import {
-  ACCOUNT_BANNED_NOTICE_COPY,
-  EMAIL_VERIFICATION_NOTICE_COPY,
-} from "./helpers";
+import { ACCOUNT_NOTICE_COPY, EMAIL_VERIFICATION_NOTICE_COPY } from "./helpers";
 import { useLoginPage } from "./useLoginPage";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +36,7 @@ export default function LoginPage() {
     nextUrl: safeNextUrl,
     verificationEmail,
     verificationNotice,
-    showBannedNotice,
+    accountNotice,
     isLoading,
     isGoogleLoading,
     isCloudEnv,
@@ -76,9 +73,11 @@ export default function LoginPage() {
         </Text>
       </div>
 
-      {showBannedNotice ? (
+      {accountNotice ? (
         <Alert variant="error" className="mb-6">
-          <AlertDescription>{ACCOUNT_BANNED_NOTICE_COPY}</AlertDescription>
+          <AlertDescription>
+            {ACCOUNT_NOTICE_COPY[accountNotice]}
+          </AlertDescription>
         </Alert>
       ) : null}
 

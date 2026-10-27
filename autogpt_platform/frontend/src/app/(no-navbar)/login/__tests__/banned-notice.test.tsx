@@ -19,7 +19,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ user: null, isUserLoading: false, isLoggedIn: false }),
 }));
 
-describe("LoginPage after a banned account is signed out", () => {
+describe("LoginPage after a refused account is signed out", () => {
   test("says why", () => {
     mockSearchParams = new URLSearchParams({ account: "banned" });
 
@@ -30,5 +30,18 @@ describe("LoginPage after a banned account is signed out", () => {
         "This account has been banned. If you think this is a mistake, please contact support.",
       ),
     ).toBeDefined();
+  });
+
+  test("says the account is closed when it was signed out after deleting", () => {
+    mockSearchParams = new URLSearchParams({ account: "closed" });
+
+    render(<LoginPage />);
+
+    expect(
+      screen.getByText(
+        "This account is closed. If you think this is a mistake, contact contact@agpt.co.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(/has been banned/)).toBeNull();
   });
 });

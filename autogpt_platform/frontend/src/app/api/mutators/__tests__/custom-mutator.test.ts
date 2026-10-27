@@ -37,6 +37,7 @@ vi.mock("@sentry/nextjs", () => ({
 }));
 
 import { customMutator } from "../custom-mutator";
+import { markAccountDeletedHere } from "@/lib/auth/account-banned";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
@@ -466,12 +467,45 @@ describe("customMutator — banned account", () => {
     expect(replace).toHaveBeenCalledWith("/logout?reason=banned");
   });
 
+  it("signs the user out on the closed-account 401 from a tab left open after deleting", async () => {
+    respondWith(401, { detail: "This account is closed." });
+
+    await expect(customMutator("/api/foo", { method: "GET" })).rejects.toThrow(
+      "This account is closed.",
+    );
+    expect(replace).toHaveBeenCalledWith("/logout?reason=closed");
+  });
+
+  it("leaves the tab that deleted the account to its own sign-out", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    markAccountDeletedHere();
+    respondWith(401, { detail: "This account is closed." });
+
+    await expect(
+      customMutator("/api/foo", { method: "GET" }),
+    ).rejects.toBeDefined();
+    expect(replace).not.toHaveBeenCalled();
+
+    now.mockReturnValue(1_010_000);
+    await expect(
+      customMutator("/api/foo", { method: "GET" }),
+    ).rejects.toBeDefined();
+    expect(replace).toHaveBeenCalledWith("/logout?reason=closed");
+    now.mockRestore();
+  });
+
   it.each([
     ["another 403", 403, { detail: "Admin access required" }],
     [
       "the banned code on another status",
       401,
       { detail: { code: "account_banned" } },
+    ],
+    ["another 401", 401, { detail: "Authorization header is missing" }],
+    [
+      "the closed detail on another status",
+      403,
+      { detail: "This account is closed." },
     ],
   ])("leaves the user signed in on %s", async (_, status, body) => {
     respondWith(status, body);

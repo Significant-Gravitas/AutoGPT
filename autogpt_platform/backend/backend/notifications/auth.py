@@ -93,6 +93,8 @@ def _deletion_reason(source: AccountDeletionSource) -> str:
     match source:
         case AccountDeletionSource.SETTINGS | AccountDeletionSource.PAYWALL:
             return "You deleted your account in AutoGPT."
+        case AccountDeletionSource.EMAIL:
+            return "You asked us by email to delete your account."
         case _:
             assert_never(source)
 

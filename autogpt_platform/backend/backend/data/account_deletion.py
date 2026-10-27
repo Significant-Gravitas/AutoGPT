@@ -13,8 +13,8 @@ from prisma.models import AccountDeletionRequest
 
 from backend.data.db import transaction
 
-# Better Auth's banReason for a closed account. Its sign-in then fails with the
-# bannedUserMessage the frontend configures for the admin plugin.
+# Better Auth's banReason for a closed account. Its sign-in then fails as
+# closed (the frontend's closed-account plugin); any other ban as banned.
 ACCOUNT_DELETED_BAN_REASON = "account_deleted"
 
 
@@ -30,6 +30,11 @@ async def close_account(user_id: str, source: AccountDeletionSource) -> bool:
     """Record the deletion request, ban the sign-in, end every session and
     take the user's Marketplace listings down.
 
+    A ban for another reason (an abuse ban an operator chose to close with
+    ``erase-account --close --allow-banned``; the Settings route refuses such
+    an account) keeps its reason and expiry, so it is not mistaken for a
+    deletion.
+
     All of it happens in one transaction. Listings are soft-deleted, pending
     ones too so they can't be approved later, and the erasure removes them
     with the User. Returns ``False``, having changed nothing, when the account
@@ -42,7 +47,14 @@ async def close_account(user_id: str, source: AccountDeletionSource) -> bool:
                 data={"userId": user_id, "source": source}
             )
             await tx.authuser.update_many(
-                where={"id": user_id},
+                where={
+                    "id": user_id,
+                    "OR": [
+                        {"banned": None},
+                        {"banned": False},
+                        {"banReason": ACCOUNT_DELETED_BAN_REASON},
+                    ],
+                },
                 data={
                     "banned": True,
                     "banReason": ACCOUNT_DELETED_BAN_REASON,

@@ -2298,6 +2298,24 @@ def sync_posthog_lifecycles():
     run_async(_start())
 
 
+def erase_closed_accounts():
+    """Erase the accounts closed from Settings, the paywall or by email
+    (SECRT-2854).
+
+    Only starts the sweep; it runs inside the database manager, which has the
+    Prisma connection and the settings the erasure needs.
+    """
+    # Also stops a job persisted while the sweep was on.
+    if not config.account_erasure_sweep_enabled:
+        return
+
+    async def _start():
+        db = get_database_manager_async_client()
+        return await db.start_account_erasure_sweep()
+
+    run_async(_start())
+
+
 def execution_accuracy_alerts():
     """Check execution accuracy and send alerts if drops are detected."""
     return report_execution_accuracy_alerts()
@@ -3052,6 +3070,19 @@ class Scheduler(AppService):
                     replace_existing=True,
                     max_instances=1,
                     seconds=config.auth_identity_orphan_check_interval_secs,
+                    jobstore=Jobstores.EXECUTION.value,
+                )
+
+            # Account erasure: works through the closed accounts not erased
+            # yet. Off by default (account_erasure_sweep_enabled).
+            if config.account_erasure_sweep_enabled:
+                self.scheduler.add_job(
+                    erase_closed_accounts,
+                    id="erase_closed_accounts",
+                    trigger="interval",
+                    replace_existing=True,
+                    max_instances=1,
+                    seconds=config.account_erasure_sweep_interval_secs,
                     jobstore=Jobstores.EXECUTION.value,
                 )
 

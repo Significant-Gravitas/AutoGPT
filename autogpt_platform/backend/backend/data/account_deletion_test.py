@@ -136,6 +136,29 @@ async def test_close_account_records_the_request_bans_and_signs_out(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_close_account_keeps_a_ban_for_another_reason(
+    accounts: tuple[str, str],
+):
+    """An operator may close an account banned for abuse (`erase-account
+    --close --allow-banned`): the ban keeps its reason and expiry."""
+    user_id, _ = accounts
+    expires = _tomorrow().replace(microsecond=0)
+    await AuthUser.prisma().update(
+        where={"id": user_id},
+        data={"banned": True, "banReason": "spam", "banExpires": expires},
+    )
+
+    assert await close_account(user_id, AccountDeletionSource.EMAIL) is True
+
+    assert await is_account_closed(user_id) is True
+    auth_user = await AuthUser.prisma().find_unique_or_raise(where={"id": user_id})
+    assert auth_user.banned is True
+    assert auth_user.banReason == "spam"
+    assert auth_user.banExpires == expires
+    assert await _session_count(user_id) == 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_second_close_returns_false_and_changes_nothing(
     accounts: tuple[str, str],
 ):

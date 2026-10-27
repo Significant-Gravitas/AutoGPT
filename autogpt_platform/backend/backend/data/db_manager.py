@@ -80,6 +80,7 @@ from backend.data import skill_publication as skill_publication_data
 from backend.data import skill_reviews as skill_reviews_data
 from backend.data import skill_use as skill_use_data
 from backend.data import skill_versions as skill_versions_data
+from backend.data.account_erasure.sweep import start_account_erasure_sweep
 from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
     count_alerts_sent_since,
@@ -594,6 +595,7 @@ class DatabaseManager(AppService):
     # row via db_accessors.credit_db() instead of crashing on direct Prisma.
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
     start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
+    start_account_erasure_sweep = _(start_account_erasure_sweep)
     request_posthog_lifecycle_sync = _(request_posthog_lifecycle_sync)
 
     # ============ Platform Linking ============ #
@@ -1162,6 +1164,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
     reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
     start_posthog_lifecycle_sweep = d.start_posthog_lifecycle_sweep
+    start_account_erasure_sweep = d.start_account_erasure_sweep
     request_posthog_lifecycle_sync = d.request_posthog_lifecycle_sync
 
     # ============ Platform Linking ============ #

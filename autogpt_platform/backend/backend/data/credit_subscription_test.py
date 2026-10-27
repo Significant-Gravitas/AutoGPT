@@ -4622,6 +4622,79 @@ async def test_admin_get_user_history_include_inactive_omits_filter():
 
 
 @pytest.mark.asyncio
+async def test_admin_get_user_history_shows_a_deleted_accounts_rows():
+    """The ledger outlives the account (no foreign key to User), so a row
+    whose account is gone lists without an email instead of failing the
+    whole page."""
+    from datetime import datetime, timezone
+
+    from prisma.enums import CreditTransactionType
+
+    from backend.data.credit import admin_get_user_history
+
+    row = MagicMock(
+        transactionKey="tx-1",
+        createdAt=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        type=CreditTransactionType.USAGE,
+        amount=-5,
+        runningBalance=10,
+        userId="deleted-user-id",
+        metadata={},
+    )
+    prisma_mock = MagicMock(
+        find_many=AsyncMock(return_value=[row]),
+        count=AsyncMock(return_value=1),
+    )
+    with (
+        patch("backend.data.credit.CreditTransaction.prisma", return_value=prisma_mock),
+        patch("backend.data.credit.user_emails", AsyncMock(return_value={})),
+        patch(
+            "backend.data.credit.get_user_credit_model",
+            AsyncMock(
+                return_value=MagicMock(
+                    _get_credits=AsyncMock(
+                        return_value=(10, datetime.now(timezone.utc))
+                    )
+                )
+            ),
+        ),
+    ):
+        result = await admin_get_user_history()
+
+    assert result.history[0].user_id == "deleted-user-id"
+    assert result.history[0].user_email is None
+    assert "include" not in prisma_mock.find_many.await_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_admin_get_user_history_searches_emails_through_the_lookup():
+    """A search matches the user ID, email or name, as before; emails and
+    names are matched in SQL since the ledger has no relation to User."""
+    from backend.data.credit import admin_get_user_history
+
+    prisma_mock = MagicMock(
+        find_many=AsyncMock(return_value=[]),
+        count=AsyncMock(return_value=0),
+    )
+    search = AsyncMock(return_value=([("tx-1", "u1")], 1))
+    with (
+        patch("backend.data.credit.CreditTransaction.prisma", return_value=prisma_mock),
+        patch("backend.data.credit.search_history_keys", search),
+        patch("backend.data.credit.user_emails", AsyncMock(return_value={})),
+    ):
+        result = await admin_get_user_history(search="sam@", page=2, page_size=10)
+
+    kwargs = search.await_args.kwargs
+    assert search.await_args.args == ("sam@",)
+    assert (kwargs["skip"], kwargs["take"]) == (10, 10)
+    assert kwargs["include_inactive"] is False
+    where = prisma_mock.find_many.await_args.kwargs["where"]
+    assert where == {"OR": [{"transactionKey": "tx-1", "userId": "u1"}]}
+    assert result.pagination.total_items == 1
+    prisma_mock.count.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_modify_stripe_subscription_same_tier_yearly_to_monthly_schedules_downgrade():
     """Same-tier yearly→monthly is a cycle downgrade: defer to period end via
     Subscription Schedule, NOT immediate always_invoice modify.

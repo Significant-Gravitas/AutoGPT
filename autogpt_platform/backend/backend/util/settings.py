@@ -361,6 +361,22 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
     )
 
+    # Account erasure (SECRT-2854): erases accounts closed from Settings
+    account_erasure_sweep_enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the job that erases closed accounts (every AccountDeletionRequest "
+            "not completed yet). Off by default. It runs in the database manager, "
+            "which then needs the bucket, FalkorDB, PostHog personal key and "
+            "MailerLite settings (docs/engineering/account-deletion.md)."
+        ),
+    )
+    account_erasure_sweep_interval_secs: int = Field(
+        default=60 * 60,
+        ge=5 * 60,
+        description="Interval in seconds between account erasure sweeps.",
+    )
+
     # Auth identity <-> platform User invariant monitoring
     auth_identity_orphan_sweep_enabled: bool = Field(
         default=False,
@@ -1574,6 +1590,20 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         "Feature Flags), for local flag evaluation; without it flag reads fall back "
         "to a remote /flags call. A personal API key also works, but PostHog is "
         "deprecating that use.",
+    )
+    # Account deletion removes the PostHog person through the private API,
+    # which the project key above cannot call.
+    posthog_personal_api_key: str = Field(
+        default="",
+        description="PostHog personal API key with the person:write scope, used "
+        "only to delete a deleted account's person. Blank skips that step.",
+    )
+    posthog_project_id: str = Field(
+        default="", description="PostHog project ID the persons live in"
+    )
+    posthog_app_host: str = Field(
+        default="https://eu.posthog.com",
+        description="PostHog private API host (not the i. ingestion host)",
     )
 
     # Add more secret fields as needed

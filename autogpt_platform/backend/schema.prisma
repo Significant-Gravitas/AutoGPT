@@ -211,7 +211,6 @@ model User {
   AgentGraphExecutions AgentGraphExecution[]
   AnalyticsDetails     AnalyticsDetails[]
   AnalyticsMetrics     AnalyticsMetrics[]
-  CreditTransactions   CreditTransaction[]
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
   ChatMessageFeedback  ChatMessageFeedback[]
@@ -414,6 +413,8 @@ model SubscriptionTrialClaim {
 enum AccountDeletionSource {
   SETTINGS
   PAYWALL
+  // A request made by email to privacy@, closed by `erase-account --close`.
+  EMAIL
 }
 
 // A user's request to delete their account. Its presence closes the account
@@ -2542,8 +2543,10 @@ model CreditTransaction {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
 
+  // No foreign key: the ledger is a billing record and outlives the account
+  // (kept six years). Account deletion strips the personal content from its
+  // metadata instead (backend/data/account_erasure/database.py).
   userId String
-  User   User?  @relation(fields: [userId], references: [id], onDelete: NoAction)
 
   amount Int
   type   CreditTransactionType
