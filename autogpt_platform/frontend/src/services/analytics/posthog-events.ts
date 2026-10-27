@@ -46,6 +46,11 @@ export const ExpertsFunnelEvent = {
   // or under the Home composer (`surface: home`).
   HOME_SUGGESTION_CLICKED: "home_suggestion_clicked",
   HOME_SUGGESTION_DISMISSED: "home_suggestion_dismissed",
+  // Hide / Show on the suggested tasks under the Home composer: the list
+  // folded away or brought back, with how many rows were still open. Nothing
+  // is written to the tasks.
+  HOME_SUGGESTIONS_COLLAPSED: "home_suggestions_collapsed",
+  HOME_SUGGESTIONS_EXPANDED: "home_suggestions_expanded",
 } as const;
 
 export const HireFlowEvent = {

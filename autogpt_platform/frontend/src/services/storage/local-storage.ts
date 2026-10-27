@@ -30,6 +30,7 @@ export enum Key {
   TOP_UP_MODAL_LAST_SHOWN = "top-up-modal-last-shown",
   LOW_CREDIT_BANNER_DISMISSED = "low-credit-banner-dismissed",
   BUILDER_MOBILE_WARNING_SUPPRESSED = "builder-mobile-warning-suppressed",
+  HOME_SUGGESTED_TASKS_COLLAPSED = "home.suggestedTasks.collapsed",
 }
 
 export const storage = createSafeStorage<Key>("local");

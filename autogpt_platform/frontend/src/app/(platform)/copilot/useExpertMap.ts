@@ -132,5 +132,8 @@ export function useExpertMap() {
     hasExpertsSettled:
       !expertsQuery.isFetching &&
       (expertsQuery.isSuccess || expertsQuery.isError),
+    // The roster has answered once (a background refetch keeps it true):
+    // until then nobody can be told apart from "not on the team".
+    hasExpertsLoaded: expertsQuery.isSuccess || expertsQuery.isError,
   };
 }

@@ -10,7 +10,14 @@ const AUTOPILOT_RECIPIENT: RecipientOption = {
 };
 
 export function useRecipientPicker() {
-  const { activeExperts, activeExpertIds, hasExpertsSettled } = useExpertMap();
+  const {
+    expertsById,
+    activeExperts,
+    activeExpertIds,
+    hasExpertsSettled,
+    hasExpertsLoaded,
+    hasExpertsErrored,
+  } = useExpertMap();
   const [expertIdParam, setExpertIdParam] = useQueryState(
     "expertId",
     parseAsString,
@@ -44,6 +51,12 @@ export function useRecipientPicker() {
 
   return {
     options,
+    /** The experts the user can address; who can take a suggested task. */
+    experts: activeExperts,
+    /** Fired experts too: who a started task's chat is with. */
+    expertsById,
+    isRosterLoaded: hasExpertsLoaded,
+    hasRosterFailed: hasExpertsErrored,
     recipient:
       options.find((option) => option.id === expertIdParam) ??
       AUTOPILOT_RECIPIENT,

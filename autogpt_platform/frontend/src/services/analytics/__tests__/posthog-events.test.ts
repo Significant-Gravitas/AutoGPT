@@ -45,6 +45,8 @@ const LIVE_EVENT_NAMES = [
   "home_attention_actioned",
   "home_suggestion_clicked",
   "home_suggestion_dismissed",
+  "home_suggestions_collapsed",
+  "home_suggestions_expanded",
   "home_team_member_clicked",
   "home_viewed",
   "intro_followup_sent",
