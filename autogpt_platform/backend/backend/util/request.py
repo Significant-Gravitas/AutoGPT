@@ -21,6 +21,7 @@ from tenacity import (
 )
 
 from backend.util.json import loads
+from backend.util.settings import Config
 
 
 class HTTPClientError(Exception):
@@ -40,7 +41,21 @@ class HTTPServerError(Exception):
 
 
 # Default User-Agent for all requests
+class ResponseTooLargeError(ValueError):
+    """The response body is over the caller's size limit."""
+
+    def __init__(self, limit: int):
+        super().__init__(f"Response body is larger than {limit} bytes")
+        self.limit = limit
+
+
 DEFAULT_USER_AGENT = "AutoGPT-Platform/1.0 (https://github.com/Significant-Gravitas/AutoGPT; info@agpt.co) aiohttp"
+
+# A response is read in chunks and dropped once it passes the limit, so a
+# large or endless body can't fill the process's memory before anyone checks
+# its size. Downloads share the file-size setting.
+DEFAULT_MAX_RESPONSE_BYTES = Config().max_file_size_mb * 1024 * 1024
+RESPONSE_READ_CHUNK_SIZE = 64 * 1024
 
 # Retry status codes for which we will automatically retry the request
 THROTTLE_RETRY_STATUS_CODES: set[int] = {429, 500, 502, 503, 504, 408}
@@ -475,7 +490,9 @@ class Requests:
         extra_headers: dict[str, str] | None = None,
         retry_max_wait: float = 300.0,
         retry_max_attempts: int | None = None,
+        max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
     ):
+        self.max_response_bytes = max_response_bytes
         self.trusted_origins = []
         for url in trusted_origins or []:
             hostname = parse_url(url).netloc  # {host}[:{port}]
@@ -650,7 +667,9 @@ class Requests:
                     try:
                         response.raise_for_status()
                     except ClientResponseError as e:
-                        body = await _read_body(response, max_body_bytes)
+                        body = await _read_body(
+                            response, self.max_response_bytes, max_body_bytes
+                        )
                         raise http_status_error(
                             response.status, response.reason, body
                         ) from e
@@ -665,7 +684,9 @@ class Requests:
                         return Response(
                             response=response,
                             url=original_url,
-                            body=await _read_body(response, max_body_bytes),
+                            body=await _read_body(
+                                response, self.max_response_bytes, max_body_bytes
+                            ),
                         )
 
                     # The base URL is the pinned_url we just used
@@ -715,7 +736,9 @@ class Requests:
                 return Response(
                     response=response,
                     url=original_url,
-                    body=await _read_body(response, max_body_bytes),
+                    body=await _read_body(
+                        response, self.max_response_bytes, max_body_bytes
+                    ),
                 )
 
     async def get(self, url: str, *args, **kwargs) -> Response:
@@ -740,21 +763,42 @@ class Requests:
         return await self.request("PATCH", url, *args, **kwargs)
 
 
-_READ_CHUNK_BYTES = 64 * 1024
+async def _read_body(
+    response: ClientResponse, limit: int, cut_at: int | None = None
+) -> bytes:
+    """Buffer the body, refusing it as soon as it's known to be over ``limit``.
 
-
-async def _read_body(response: ClientResponse, limit: int | None) -> bytes:
-    """The response body, or its first ``limit + 1`` bytes when capped.
-
-    Read in chunks of the decompressed stream and stopped at the cap, so
-    neither a long body nor a short compressed one that expands is held
-    whole. Leaving the response context unread closes its connection.
+    With ``cut_at`` below the limit, the body is instead cut to that many
+    bytes plus one, so the caller can tell it was cut, and never refused.
+    Both read the decompressed stream in chunks and stop at their bound, so
+    neither a long body nor a short compressed one that expands is held whole.
     """
-    if limit is None:
-        return await response.read()
+    if cut_at is not None and cut_at < limit:
+        return await _read_up_to(response, cut_at + 1)
+
+    declared = response.content_length
+    if declared is not None and declared > limit and _carries_a_body(response):
+        response.close()
+        raise ResponseTooLargeError(limit)
+    body = await _read_up_to(response, limit + 1)
+    if len(body) > limit:
+        response.close()
+        raise ResponseTooLargeError(limit)
+    return body
+
+
+def _carries_a_body(response: ClientResponse) -> bool:
+    """A HEAD response, and a 1xx, 204, 205 or 304 one, declares the
+    resource's Content-Length but transfers no body."""
+    if response.method.upper() == "HEAD":
+        return False
+    return response.status >= 200 and response.status not in (204, 205, 304)
+
+
+async def _read_up_to(response: ClientResponse, size: int) -> bytes:
     body = bytearray()
-    async for chunk in response.content.iter_chunked(_READ_CHUNK_BYTES):
-        body.extend(chunk[: limit + 1 - len(body)])
-        if len(body) > limit:
+    async for chunk in response.content.iter_chunked(RESPONSE_READ_CHUNK_SIZE):
+        body.extend(chunk[: size - len(body)])
+        if len(body) >= size:
             break
     return bytes(body)

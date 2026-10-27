@@ -5,7 +5,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import { ArrowDataTransferVerticalIcon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -38,7 +39,7 @@ export function ToggleChip({
   const blurred = prefersReducedMotion ? "blur(0px)" : "blur(3px)";
 
   return (
-    <Tooltip>
+    <Tooltip inheritDelay>
       <TooltipTrigger asChild>
         <button
           data-slot="toggle-chip"
@@ -90,7 +91,11 @@ export function ToggleChip({
           </AnimatePresence>
         </button>
       </TooltipTrigger>
-      <TooltipContent data-slot="toggle-chip-tooltip">{tooltip}</TooltipContent>
+      <TooltipPortal>
+        <TooltipContent data-slot="toggle-chip-tooltip">
+          {tooltip}
+        </TooltipContent>
+      </TooltipPortal>
     </Tooltip>
   );
 }

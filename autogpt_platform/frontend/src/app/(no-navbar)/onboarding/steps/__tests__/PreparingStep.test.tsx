@@ -1,7 +1,7 @@
 import { getGetBrainDumpStatusMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import { server } from "@/mocks/mock-server";
 import { setIntroPath } from "@/services/onboarding/brain-dump-handoff";
-import { cleanup, render, screen } from "@/tests/integrations/test-utils";
+import { act, cleanup, render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PreparingStep } from "../PreparingStep";
 
@@ -32,9 +32,30 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 describe("PreparingStep checklist copy", () => {
+  it("finishes the checklist and advances once preparation ends", async () => {
+    vi.useFakeTimers();
+    setIntroPath("B");
+    const onComplete = vi.fn();
+    render(<PreparingStep onComplete={onComplete} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_000);
+    });
+
+    expect(onComplete).toHaveBeenCalledOnce();
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    for (const item of GENERIC_CHECKLIST) {
+      expect(screen.getByText(item)).toBeDefined();
+    }
+  });
+
   it("shows the brain-dump checklist on the dump path (intro path A)", async () => {
     setIntroPath("A");
 

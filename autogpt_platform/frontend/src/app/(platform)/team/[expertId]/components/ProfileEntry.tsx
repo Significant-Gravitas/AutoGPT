@@ -14,7 +14,7 @@ export function ProfileEntry({ label, value }: Props) {
         {label}
       </Text>
       <Text
-        variant="body"
+        variant="body-md"
         as="dd"
         tone="secondary"
         className="mt-1 whitespace-pre-line"
