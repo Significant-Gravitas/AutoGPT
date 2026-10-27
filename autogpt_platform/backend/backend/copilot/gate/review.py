@@ -107,6 +107,26 @@ APPROVAL_TTL = timedelta(hours=1)
 _SPEND = "spend"
 
 
+# Arguments that only label a call for the user (bash_exec's `purpose`, the
+# step's plain-language name in the chat). They change nothing the call does,
+# so they are not part of its identity: a retry that rewords the label is the
+# call the user approved, and the supervisor judges what runs, not the model's
+# description of it.
+DISPLAY_ONLY_ARGS: dict[str, frozenset[str]] = {"bash_exec": frozenset({"purpose"})}
+
+
+# A judged read is held under its own node id, ``read-<tool>``.
+READ_NODE_PREFIX = "read-"
+
+
+def call_args(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """``args`` without the ones that only label the call, for an action or
+    for a read held under its prefixed name."""
+    base_tool = tool_name.removeprefix(READ_NODE_PREFIX)
+    labels = DISPLAY_ONLY_ARGS.get(base_tool, frozenset())
+    return {key: value for key, value in args.items() if key not in labels}
+
+
 def node_id_for(tool_name: str) -> str:
     return f"{GATE_NODE_PREFIX}{tool_name}"
 
@@ -122,7 +142,7 @@ def review_id_for(
     otherwise share one row, and across users the second caller would upsert
     onto the first's row and then be unable to read it back, wedging the gate.
     """
-    canonical = json.dumps(args, sort_keys=True, default=str)
+    canonical = json.dumps(call_args(tool_name, args), sort_keys=True, default=str)
     digest = hashlib.sha256(
         "\x00".join((session_id, user_id, tool_name, canonical)).encode()
     ).hexdigest()[:16]

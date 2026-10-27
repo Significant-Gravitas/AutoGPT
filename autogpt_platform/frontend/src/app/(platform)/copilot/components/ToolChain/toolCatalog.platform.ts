@@ -1,8 +1,11 @@
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import {
+  fileSubject,
+  phraseField,
   quoted,
   quotedName,
   strField,
+  type ToolDisplayContext,
   type ToolInput,
   type ToolMeta,
 } from "./toolCatalog.shared";
@@ -41,11 +44,13 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     running: "Taking a screenshot",
     done: "Took a screenshot",
   },
+  // The command itself is technical detail: the row shows the purpose the
+  // model gave, and calls saved without one get a generic label.
   bash_exec: {
     category: "bash",
-    running: "Running command",
-    done: "Ran command",
-    subject: (input) => quoted(input, "command", 60),
+    running: "Running a command",
+    done: "Ran a command",
+    phrase: (input) => phraseField(input, "purpose"),
   },
   start_desktop: {
     category: "browser",
@@ -62,15 +67,13 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "file-read",
     running: "Reading",
     done: "Read",
-    subject: (input) =>
-      quoted(input, "path", 60) ?? quoted(input, "filename", 60),
+    subject: fileSubject,
   },
   write_workspace_file: {
     category: "file-write",
     running: "Writing",
     done: "Wrote",
-    subject: (input) =>
-      quoted(input, "path", 60) ?? quoted(input, "filename", 60),
+    subject: fileSubject,
   },
   read_tool_result: {
     category: "file-read",
@@ -81,8 +84,7 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "file-delete",
     running: "Deleting",
     done: "Deleted",
-    subject: (input) =>
-      quoted(input, "path", 60) ?? quoted(input, "filename", 60),
+    subject: fileSubject,
   },
   list_schedules: {
     category: "schedule",
@@ -179,21 +181,19 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Searched capabilities for",
     subject: (input) => quoted(input, "query"),
   },
+  // A capability id ("block:…", "tool:…") is technical detail: the row names
+  // the block once its name is known, and the kind of step until then.
   describe_capability: {
     category: "block",
-    running: "Reading capability",
-    done: "Read capability",
-    subject: (input) => quotedName(strField(input, "id")),
+    running: "Looking up",
+    done: "Looked up",
+    subject: (_input, context) => capabilitySubject(context),
   },
   run_capability: {
     category: "block",
     running: "Running",
     done: "Ran",
-    subject: (input, context) =>
-      quotedName(
-        getBlockDisplayName(context.displayName, context.output) ??
-          strField(input, "id"),
-      ),
+    subject: (_input, context) => capabilitySubject(context),
   },
   resume_capability: {
     category: "block",
@@ -300,3 +300,10 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     },
   },
 };
+
+function capabilitySubject(context: ToolDisplayContext): string {
+  return (
+    quotedName(getBlockDisplayName(context.displayName, context.output)) ??
+    "a capability"
+  );
+}

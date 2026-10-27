@@ -1,6 +1,7 @@
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, within } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
 import type { ChainRow } from "../helpers";
 import { ToolResult } from "../ToolResult";
@@ -788,7 +789,34 @@ describe("ToolResult", () => {
   });
 
   describe("terminal, todos and file routing", () => {
-    it("renders bash executions as a terminal", () => {
+    it("keeps technical details closed for an approved call, showing only the command approved", () => {
+      const csv = "date,channel\n2026-11-10,Instagram\n2026-11-13,Shopify";
+      render(
+        <ToolResult
+          row={{
+            ...row({ stdout: csv, exit_code: 0 }, "bash_exec", {
+              command: "cat calendar.csv",
+            }),
+            held: {
+              state: "approved",
+              reviewId: "copilot-node-gate-bash_exec:a1",
+            },
+          }}
+        />,
+      );
+
+      expect(
+        screen
+          .getByRole("button", { name: "Show technical details" })
+          .getAttribute("aria-expanded"),
+      ).toBe("false");
+      expect(screen.getByText("You approved this command")).toBeDefined();
+      expect(screen.getByText("cat calendar.csv")).toBeDefined();
+      expect(screen.queryByText(/2026-11-10,Instagram/)).toBeNull();
+    });
+
+    it("keeps a bash step's command and output behind technical details", async () => {
+      const user = userEvent.setup();
       render(
         <ToolResult
           row={row({ stdout: "file.txt", exit_code: 2 }, "bash_exec", {
@@ -797,9 +825,401 @@ describe("ToolResult", () => {
         />,
       );
 
+      expect(screen.queryByText("ls")).toBeNull();
+      expect(screen.queryByText("file.txt")).toBeNull();
+      const toggle = screen.getByRole("button", {
+        name: "Show technical details",
+      });
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+      await user.click(toggle);
+
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
       expect(screen.getByText("ls")).toBeDefined();
       expect(screen.getByText("file.txt")).toBeDefined();
       expect(screen.getByText("exit 2")).toBeDefined();
+    });
+
+    it("says plainly that a bash step failed", () => {
+      render(
+        <ToolResult
+          row={row({ stdout: "", stderr: "boom", exit_code: 1 }, "bash_exec", {
+            command: "false",
+          })}
+        />,
+      );
+
+      expect(screen.getByText("This step didn't work")).toBeDefined();
+      expect(screen.queryByText("boom")).toBeNull();
+    });
+
+    it("shows both stdout and stderr, including a timeout note, under technical details", async () => {
+      const user = userEvent.setup();
+      render(
+        <ToolResult
+          row={row(
+            {
+              stdout: "partial rows",
+              stderr: "Timed out after 10s\nboom",
+              exit_code: -1,
+              timed_out: true,
+            },
+            "bash_exec",
+            { command: "slow-export" },
+          )}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole("button", { name: "Show technical details" }),
+      );
+      expect(screen.getByText("partial rows")).toBeDefined();
+      expect(screen.getByText(/Timed out after 10s/)).toBeDefined();
+    });
+
+    it.each([
+      ["curl -fs https://shop.example/api/orders", 22, ""],
+      ["./check_stock.sh", 2, "ERROR: stock file missing"],
+      ["grep -c TBD brief.md missing.md", 2, ""],
+      ["grep -q ready status.txt && ./publish.sh", 1, ""],
+      ["grep -q x orders.csv || ./fallback.sh", 1, ""],
+      ["./build.sh || grep -q x out.log", 1, ""],
+      ["cd drafts 2>/dev/null && test -f brief.md", 1, ""],
+      ["set -o pipefail; ./build.sh | grep -q x out.log", 1, ""],
+    ])(
+      "calls a non-zero exit a failure even with nothing on stderr (%s)",
+      (command, exitCode, stdout) => {
+        render(
+          <ToolResult
+            row={row({ stdout, stderr: "", exit_code: exitCode }, "bash_exec", {
+              command,
+            })}
+          />,
+        );
+        expect(screen.getByText("This step didn't work")).toBeDefined();
+      },
+    );
+
+    it.each([
+      "grep -q TBD brief.md",
+      "test -f brief.md",
+      "[ -d drafts ]",
+      "cat a.txt | grep -q x",
+      "diff old.csv new.csv",
+      "grep -q TBD brief.md && echo found",
+      "test -f brief.md && wc -l brief.md",
+    ])(
+      "does not call an expected 'no' (exit 1 from %s) a failure",
+      (command) => {
+        render(
+          <ToolResult
+            row={row({ stdout: "", stderr: "", exit_code: 1 }, "bash_exec", {
+              command,
+            })}
+          />,
+        );
+        expect(screen.queryByText("This step didn't work")).toBeNull();
+      },
+    );
+
+    it("does not call a quiet non-zero exit a failure (grep -q, test -f)", async () => {
+      const user = userEvent.setup();
+      render(
+        <ToolResult
+          row={row({ stdout: "", stderr: "", exit_code: 1 }, "bash_exec", {
+            command: "grep -q TBD brief.md",
+          })}
+        />,
+      );
+
+      expect(screen.queryByText("This step didn't work")).toBeNull();
+      await user.click(
+        screen.getByRole("button", { name: "Show technical details" }),
+      );
+      expect(screen.getByText("exit 1")).toBeDefined();
+    });
+
+    it("says plainly that a bash step that timed out failed", () => {
+      render(
+        <ToolResult
+          row={row(
+            { stdout: "", stderr: "", exit_code: -1, timed_out: true },
+            "bash_exec",
+            { command: "sleep 999" },
+          )}
+        />,
+      );
+
+      expect(screen.getByText("This step didn't work")).toBeDefined();
+    });
+
+    it("says plainly that a bash step the tool refused failed, with its message under details", async () => {
+      const user = userEvent.setup();
+      render(
+        <ToolResult
+          row={row(
+            {
+              type: "error",
+              message: "No command provided.",
+              error: "empty_command",
+            },
+            "bash_exec",
+            { command: "" },
+          )}
+        />,
+      );
+
+      expect(screen.getByText("This step didn't work")).toBeDefined();
+      expect(screen.queryByText("No command provided.")).toBeNull();
+      await user.click(
+        screen.getByRole("button", { name: "Show technical details" }),
+      );
+      expect(screen.getByText("No command provided.")).toBeDefined();
+    });
+
+    it("shows a result stored as a JSON string once, without its plumbing fields", async () => {
+      const user = userEvent.setup();
+      const stored = JSON.stringify({
+        type: "bash_exec",
+        message: "Command executed with status code 0",
+        session_id: "sess-123",
+        stdout: "launch notes ready",
+        stderr: "",
+        exit_code: 0,
+      });
+      const { container } = render(
+        <ToolResult
+          row={row(stored, "bash_exec", { command: "cat notes.txt" })}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole("button", { name: "Show technical details" }),
+      );
+      expect(screen.getAllByText("launch notes ready")).toHaveLength(1);
+      expect(container.textContent).not.toContain("sess-123");
+      expect(container.textContent).not.toContain("Command executed");
+    });
+
+    it("keeps an oversized bash result's preview under technical details", async () => {
+      const user = userEvent.setup();
+      const envelope = [
+        '<tool-output-truncated total_chars=90000 workspace_path="tool-outputs/x.json">',
+        '{"type":"bash_exec","stdout":"date,channel',
+        "Full output (90000 chars) saved to the workspace.",
+        "</tool-output-truncated>",
+      ].join("\n");
+      render(
+        <ToolResult
+          row={row(envelope, "bash_exec", { command: "cat big.csv" })}
+        />,
+      );
+
+      expect(screen.queryByText(/date,channel/)).toBeNull();
+      await user.click(
+        screen.getByRole("button", { name: "Show technical details" }),
+      );
+      expect(screen.getByText("cat big.csv")).toBeDefined();
+      expect(screen.getByText(/date,channel/)).toBeDefined();
+      expect(screen.getByText(/Preview of 90,000 characters/)).toBeDefined();
+    });
+
+    it.each([
+      [3, true],
+      [0, false],
+    ])(
+      "reads an oversized bash result's exit %i from what was kept",
+      (exitCode, failed) => {
+        const tail = `"stderr": "", "exit_code": ${exitCode}, "timed_out": false}`;
+        const envelope = [
+          '<tool-output-truncated total_chars=120000 workspace_path="tool-outputs/x.json">',
+          `{"type": "bash_exec", "message": "Command executed", "stdout": "ERROR: export… (omitted 110000 chars)…rows done", ${tail}`,
+          "Full output (120,000 chars) saved to workspace.",
+          "</tool-output-truncated>",
+        ].join("\n");
+        render(
+          <ToolResult
+            row={row(envelope, "bash_exec", { command: "./export.sh" })}
+          />,
+        );
+
+        expect(screen.queryByText("This step didn't work") !== null).toBe(
+          failed,
+        );
+      },
+    );
+
+    it("previews CSV printed by a bash step as a table, with the file to download", async () => {
+      const user = userEvent.setup();
+      const csv = [
+        "date,channel,post",
+        "2026-11-10,Instagram,Teaser",
+        "2026-11-13,Instagram,Ingredient spotlight",
+        "2026-11-17,Shopify,Waitlist page",
+        "2026-11-25,Shopify,Launch day",
+      ].join("\n");
+      const created: Blob[] = [];
+      const createObjectURL = vi.fn((blob: Blob) => {
+        created.push(blob);
+        return "blob:preview";
+      });
+      const realCreate = URL.createObjectURL;
+      const realRevoke = URL.revokeObjectURL;
+      URL.createObjectURL = createObjectURL;
+      const revokeObjectURL = vi.fn();
+      URL.revokeObjectURL = revokeObjectURL;
+      const timers = vi.spyOn(window, "setTimeout");
+      // A real browser downloads the blob; the test DOM would navigate to it.
+      const clicked = vi
+        .spyOn(HTMLAnchorElement.prototype, "click")
+        .mockImplementation(() => {});
+      onTestFinished(() => {
+        URL.createObjectURL = realCreate;
+        URL.revokeObjectURL = realRevoke;
+        clicked.mockRestore();
+        timers.mockRestore();
+      });
+      render(
+        <ToolResult
+          row={row({ stdout: csv, exit_code: 0 }, "bash_exec", {
+            command: "cat calendar.csv",
+          })}
+        />,
+      );
+
+      const table = screen.getByRole("table", { name: "Table preview" });
+      expect(
+        within(table).getByRole("columnheader", { name: "channel" }),
+      ).toBeDefined();
+      expect(
+        within(table).getByRole("cell", { name: "Ingredient spotlight" }),
+      ).toBeDefined();
+      expect(
+        within(table).queryByRole("cell", { name: "Launch day" }),
+      ).toBeNull();
+      expect(screen.getByText("4 rows · date, channel, post")).toBeDefined();
+      expect(screen.getByText("+1 more row")).toBeDefined();
+      expect(screen.queryByText(/2026-11-13,Instagram/)).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: "Download CSV" }));
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      expect(await created[0].text()).toBe(csv);
+      // Revoked only after the download has had time to start.
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+      const revoke = timers.mock.calls.find(([, delay]) => (delay ?? 0) > 0);
+      expect(revoke).toBeDefined();
+      (revoke?.[0] as () => void)();
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:preview");
+      expect(clicked).toHaveBeenCalledTimes(1);
+      expect((clicked.mock.contexts[0] as HTMLAnchorElement).download).toBe(
+        "table.csv",
+      );
+    });
+
+    it("never previews a path, command or id held in a table's cells", () => {
+      const csv = [
+        "date,source,step,ref,status",
+        "2026-11-10,~/workspace/dewleaf/brief.md,sed -i s/TBD/25/ brief.md,2616d1f1-16bb-43c0-9f0e-6a7c2a9d0b11,done",
+        "2026-11-13,~/workspace/dewleaf/plan.md,cat plan,7a1b2c3d-16bb-43c0-9f0e-6a7c2a9d0b11,draft",
+        "2026-11-17,~/workspace/dewleaf/calendar.csv,git status,9f8e7d6c-16bb-43c0-9f0e-6a7c2a9d0b11,draft",
+      ].join("\n");
+      const { container } = render(
+        <ToolResult
+          row={row({ stdout: csv, exit_code: 0 }, "bash_exec", {
+            command: "cat log.csv",
+          })}
+        />,
+      );
+
+      const table = screen.getByRole("table", { name: "Table preview" });
+      const headers = within(table)
+        .getAllByRole("columnheader")
+        .map((th) => th.textContent);
+      expect(headers).toEqual(["date", "status"]);
+      expect(
+        within(table).getAllByRole("cell", { name: "draft" }),
+      ).toHaveLength(2);
+      for (const leak of [
+        "~/workspace",
+        "sed -i",
+        "git status",
+        "cat plan",
+        "2616d1f1",
+      ])
+        expect(container.textContent).not.toContain(leak);
+    });
+
+    it("keeps only the download when every column of a table is technical", () => {
+      const csv = [
+        "path,command",
+        "~/workspace/a/brief.md,sed -i s/a/b/ brief.md",
+        "~/workspace/a/plan.md,cat plan",
+        "~/workspace/a/notes.md,git status",
+      ].join("\n");
+      const { container } = render(
+        <ToolResult
+          row={row({ stdout: csv, exit_code: 0 }, "bash_exec", {
+            command: "cat paths.csv",
+          })}
+        />,
+      );
+
+      expect(screen.queryByRole("table")).toBeNull();
+      expect(screen.getByText("3 rows · path, command")).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "Download CSV" }),
+      ).toBeDefined();
+      expect(container.textContent).not.toContain("~/workspace");
+      expect(container.textContent).not.toContain("sed -i");
+    });
+
+    it("never previews a JSON field whose value is a path, command or id", () => {
+      const json = JSON.stringify({
+        launch: "2026-11-25",
+        brief: "~/workspace/dewleaf/brief.md",
+        next_step: "cd ~/workspace && cat brief.md",
+        run: "2616d1f1-16bb-43c0-9f0e-6a7c2a9d0b11",
+        check: "git status",
+        price: 899,
+      });
+      const { container } = render(
+        <ToolResult
+          row={row({ stdout: json, exit_code: 0 }, "bash_exec", {
+            command: "cat brief.json",
+          })}
+        />,
+      );
+
+      expect(screen.getByText("2026-11-25")).toBeDefined();
+      expect(screen.getByText("899")).toBeDefined();
+      for (const leak of [
+        "~/workspace",
+        "cat brief.md",
+        "2616d1f1",
+        "git status",
+      ])
+        expect(container.textContent).not.toContain(leak);
+    });
+
+    it("previews JSON printed by a bash step field by field, never as raw JSON", () => {
+      render(
+        <ToolResult
+          row={row(
+            { stdout: '{"launch": "2026-11-25", "price": 899}', exit_code: 0 },
+            "bash_exec",
+            { command: "cat brief.json" },
+          )}
+        />,
+      );
+
+      expect(screen.getByText("Data")).toBeDefined();
+      expect(screen.getByText("2 fields · launch, price")).toBeDefined();
+      expect(screen.getByText("2026-11-25")).toBeDefined();
+      expect(screen.getByText("899")).toBeDefined();
+      expect(screen.queryByText(/"launch"/)).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Download JSON" }),
+      ).toBeDefined();
     });
 
     it("renders TodoWrite rows as a todo list", () => {
@@ -835,9 +1255,26 @@ describe("ToolResult", () => {
         />,
       );
 
-      expect(screen.getByText("notes.txt")).toBeDefined();
+      expect(screen.getByText("Notes")).toBeDefined();
       expect(screen.getByText("2.0 KB")).toBeDefined();
       expect(screen.getByText("hello world")).toBeDefined();
+    });
+
+    it("keeps a file's path behind technical details", async () => {
+      const user = userEvent.setup();
+      const path = "~/workspace/dewleaf/launch_brief.md";
+      render(
+        <ToolResult
+          row={row({ size_bytes: 512 }, "write_workspace_file", { path })}
+        />,
+      );
+
+      expect(screen.getByText("Launch Brief")).toBeDefined();
+      expect(screen.queryByText(path)).toBeNull();
+      await user.click(
+        screen.getByRole("button", { name: "Show technical details" }),
+      );
+      expect(screen.getByText(path)).toBeDefined();
     });
   });
 
@@ -1123,6 +1560,28 @@ describe("ToolResult run_capability", () => {
 
     expect(screen.queryByTitle(/Interactive desktop/)).toBeNull();
     expect(screen.getByText(/only visible to the owner/i)).toBeDefined();
+  });
+
+  it("keeps the capability id behind technical details", async () => {
+    const user = userEvent.setup();
+    render(
+      <ToolResult
+        row={row(
+          {
+            type: "capability_details",
+            block: { name: "SendWebRequestBlock", description: "Calls a URL" },
+          },
+          "describe_capability",
+          { id: "block:6f1c2d3e" },
+        )}
+      />,
+    );
+
+    expect(screen.queryByText(/block:6f1c2d3e/)).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: "Show technical details" }),
+    );
+    expect(screen.getByText("block:6f1c2d3e")).toBeDefined();
   });
 
   it("still renders a plain capability result as before", () => {

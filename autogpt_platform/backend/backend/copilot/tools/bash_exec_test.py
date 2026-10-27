@@ -283,6 +283,52 @@ class TestBashExecE2BTokenInjection:
         assert isinstance(result, BashExecResponse)
 
 
+class TestBashExecPurpose:
+    """The step's plain-language label: the chat shows it instead of the
+    command, so a business owner never reads shell (SECRT-3158)."""
+
+    def test_purpose_is_offered_and_optional(self):
+        params = _make_tool().parameters
+        purpose = params["properties"]["purpose"]
+        assert purpose["type"] == "string"
+        assert "label" in purpose["description"]
+        assert "purpose" not in params["required"]
+        assert params["required"] == ["command"]
+
+    def test_the_description_asks_for_it(self):
+        assert "`purpose`" in _make_tool().description
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_purpose_is_never_run_as_part_of_the_command(self):
+        sandbox = _make_sandbox(stdout="ok")
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_current_sandbox",
+                return_value=sandbox,
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value={}),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            result = await _make_tool()._execute(
+                user_id=_USER,
+                session=make_session(user_id=_USER),
+                command="echo ok",
+                purpose="Updating your launch brief",
+                timeout=10,
+            )
+        assert isinstance(result, BashExecResponse)
+        assert result.stdout == "ok"
+        run_command = sandbox.commands.run.call_args.args[0]
+        assert "echo ok" in run_command
+        assert "launch brief" not in run_command
+
+
 class TestBashExecSdkToolResultRedirect:
     """A command that references an SDK tool-result path (e.g. the model
     tries to ``cat /root/.claude/projects/.../tool-results/foo.json``)

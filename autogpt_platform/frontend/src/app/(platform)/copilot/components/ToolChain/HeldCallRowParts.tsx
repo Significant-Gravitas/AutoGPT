@@ -79,11 +79,18 @@ const READ_DETAIL: Partial<Record<HeldState, string>> = {
 interface HeldCallDetailProps {
   held: HeldRowInfo;
   showArgs?: boolean;
+  /** A shell call's approval record: the command the user approved. */
+  approvedCommand?: string | null;
 }
 
-export function HeldCallDetail({ held, showArgs = true }: HeldCallDetailProps) {
+export function HeldCallDetail({
+  held,
+  showArgs = true,
+  approvedCommand,
+}: HeldCallDetailProps) {
   const card = showArgs ? held.card : undefined;
-  if (held.state === "approved" && !card) return null;
+  const command = held.state === "approved" ? approvedCommand : null;
+  if (held.state === "approved" && !card && !command) return null;
   const reviewId = held.reviewId;
   function goToApproval() {
     if (!reviewId) return;
@@ -95,6 +102,14 @@ export function HeldCallDetail({ held, showArgs = true }: HeldCallDetailProps) {
     <div className="flex flex-col items-start gap-1 rounded-lg border border-border-base px-3 py-2 text-sm text-foreground-secondary">
       {held.state !== "approved" && (
         <p>{(held.read && READ_DETAIL[held.state]) || DETAIL[held.state]}</p>
+      )}
+      {command && (
+        <div className="flex w-full flex-col gap-1">
+          <p>You approved this command</p>
+          <p className="whitespace-pre-wrap break-words font-mono text-xs text-foreground-base">
+            {command}
+          </p>
+        </div>
       )}
       {card && (
         <div className="w-full py-1">

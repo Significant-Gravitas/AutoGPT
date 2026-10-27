@@ -1442,3 +1442,19 @@ async def test_a_scheduled_turns_skipped_step_reaches_the_model_unjudged(
 
     judge.assert_not_awaited()
     assert json.loads(result.output)["error"] == error and rows.rows == {}
+
+
+def test_a_held_shell_read_is_the_same_read_whatever_its_label():
+    """`purpose` only labels the step (SECRT-3158); a retry that rewords it
+    must find the read the user already approved."""
+    bare = read_review_id("s1", "u1", "bash_exec", {"command": "cat notes.md"})
+    labelled = {"command": "cat notes.md", "purpose": "Reading your notes"}
+    reworded = {"command": "cat notes.md", "purpose": "Checking the notes"}
+    assert read_review_id("s1", "u1", "bash_exec", labelled) == bare
+    assert read_review_id("s1", "u1", "bash_exec", reworded) == bare
+    action = review_store.review_id_for("s1", "u1", "bash_exec", labelled)
+    assert action != bare
+    # The held row is checked by rehashing its stored arguments under the
+    # prefixed name (held._from_row); that must agree with the id it was given.
+    rehashed = review_store.review_id_for("s1", "u1", "read-bash_exec", reworded)
+    assert rehashed == bare

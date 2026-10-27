@@ -283,7 +283,13 @@ from ._test_data import make_session
 # brings the MCP tools' external schemas and the preset tools back:
 #     merged tree                                 77,510 (89 tools)
 #     + headroom                       +300       77,810
-_CHAR_BUDGET = 77_810
+# Then bash_exec's optional `purpose` (SECRT-3158): the plain-language label
+# the chat shows instead of the raw command, and the sentence in its
+# description asking for it. No tool was added (89 either side). Measured on
+# that branch merged with dev b7b75494f:
+#     merged tree + bash_exec purpose  +168       77,678 (89 tools)
+#     + headroom                       +300       77,978
+_CHAR_BUDGET = 77_978
 
 
 @pytest.fixture(scope="module")

@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChainRow } from "../helpers";
 import {
-  FileCard,
   KeyValueList,
   OutputList,
   SearchResults,
@@ -154,43 +153,6 @@ describe("TodoList", () => {
 
     expect(screen.getByText("Note")).toBeDefined();
     expect(screen.getByText("no todos")).toBeDefined();
-  });
-});
-
-describe("FileCard", () => {
-  afterEach(cleanup);
-
-  it("shows the path, size and preview from the row", () => {
-    render(
-      <FileCard
-        row={row(
-          {
-            size_bytes: 2048,
-            mime_type: "image/png",
-            preview: "binary preview",
-          },
-          { file_path: "chart.png" },
-        )}
-      />,
-    );
-
-    expect(screen.getByText("chart.png")).toBeDefined();
-    expect(screen.getByText("2.0 KB")).toBeDefined();
-    expect(screen.getByText("binary preview")).toBeDefined();
-  });
-
-  it("reads the path from the output when the input lacks one", () => {
-    render(<FileCard row={row({ path: "out.txt", size: 12 })} />);
-
-    expect(screen.getByText("out.txt")).toBeDefined();
-    expect(screen.getByText("12 B")).toBeDefined();
-  });
-
-  it("falls back to key/value output without any path", () => {
-    render(<FileCard row={row({ status: "deleted" })} />);
-
-    expect(screen.getByText("Status")).toBeDefined();
-    expect(screen.getByText("deleted")).toBeDefined();
   });
 });
 

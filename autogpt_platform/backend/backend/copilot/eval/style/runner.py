@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import logging
 import statistics
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,6 +59,12 @@ from .models import (
     ScoredResponse,
     Separation,
     StyleEvalResult,
+)
+from .plain_language import (
+    TOOL_NAMES,
+    leaking_experts,
+    possible_technical_terms,
+    technical_terms,
 )
 from .scorer import judge_response, response_score
 
@@ -161,7 +168,17 @@ async def run(options: RunOptions) -> StyleEvalResult | None:
     )
     options.out.write_text(result.model_dump_json(indent=2), encoding="utf-8")
     print_summary(result, options.out)
-    if options.write_baseline:
+    leaking = leaking_experts(result.experts)
+    if leaking:
+        print(
+            "plain-language gate FAILED: replies showed technical terms for "
+            f"{', '.join(leaking)} (see technical_terms in {options.out})"
+        )
+    if options.write_baseline and leaking:
+        # A baseline that leaked would make leaking the norm later runs are
+        # read against.
+        print("baseline: NOT rewritten; this run failed the plain-language gate")
+    elif options.write_baseline:
         save_baseline(new_baseline(result, rows, parts))
         print(f"baseline: rewritten from this run ({len(result.experts)} experts)")
     return result
@@ -271,6 +288,8 @@ async def generate(
             )
         )
         row.response, row.truncated = turn.text, turn.truncated
+        row.technical_terms = technical_terms(turn.text, TOOL_NAMES)
+        row.possible_terms = possible_technical_terms(turn.text)
         row.generation, row.tool_calls = turn.usage, turn.tool_calls
         row.rounds, row.hit_round_cap = turn.rounds, turn.hit_round_cap
         if turn.hit_round_cap:
@@ -474,6 +493,8 @@ def summarize_expert(name: str, rows: list[ScoredResponse]) -> ExpertSummary:
         errors=sum(1 for r in own if r.error is not None),
         tool_calls=sum(len(r.tool_calls) for r in own),
         round_cap_hits=sum(1 for r in own if r.hit_round_cap),
+        technical_replies=sum(1 for r in own if r.technical_terms),
+        possible_technical_replies=sum(1 for r in own if r.possible_terms),
     )
 
 
@@ -561,7 +582,9 @@ def print_summary(result: StyleEvalResult, out: Path) -> None:
             f"{s.expert:<8} mean {s.scores.mean:6.2f}  sd {s.scores.sd:5.2f}  "
             f"min {s.scores.min:6.2f}  n {s.scores.n:3d}  below60 {s.below_60}  "
             f"errors {s.errors}  tool calls {s.tool_calls}  "
-            f"cap hits {s.round_cap_hits}  [{kinds}]"
+            f"cap hits {s.round_cap_hits}  technical {s.technical_replies}  "
+            f"possible {s.possible_technical_replies}  "
+            f"[{kinds}]"
         )
     if result.separation:
         sep = result.separation
@@ -676,7 +699,9 @@ def main() -> None:
         )
     except ValidationError as invalid:
         parser.error(str(invalid))
-    asyncio.run(run(options))
+    result = asyncio.run(run(options))
+    if result is not None and leaking_experts(result.experts):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { HeldCallDetail } from "./HeldCallRowParts";
 import { heldShowsOwnCall } from "./heldRow";
-import { useContext } from "react";
+import { type ReactNode, useContext } from "react";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
 import { SetupRequirementsCard } from "../SetupRequirementsCard/SetupRequirementsCard";
@@ -18,6 +18,7 @@ import {
 } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
 import { capabilityTargetRow } from "./capabilityRow";
+import { CommandResult } from "./CommandResult";
 import { ConsultVerdictCard } from "./ConsultCard";
 import { ExecutionCard } from "./ExecutionCard";
 import { FileDiff } from "./FileDiff";
@@ -65,13 +66,13 @@ import {
 } from "./resultHelpers";
 import { SubSessionPendingCard } from "./SubSessionLive";
 import {
-  FileCard,
   KeyValueList,
   OutputList,
   SearchResults,
-  Terminal,
   TodoList,
 } from "./ToolResultViews";
+import { FileCard } from "./FileCard";
+import { TechnicalDetails, TechnicalValue } from "./TechnicalDetails";
 
 const BOOLEAN_LABELS: Record<string, string> = {
   ok: "Done",
@@ -204,6 +205,30 @@ function capabilityAsBlockItem(
           : String(item.kind ?? ""),
     ],
   };
+}
+
+function capabilityCard(output: Record<string, unknown>) {
+  const block = asObject(output.block);
+  if (block) return <BlockListCard blocks={[block]} />;
+  if (str(output, "block_name", "block_id"))
+    return <BlockOutputCard output={output} />;
+  if ("result" in output) return <KeyValueList value={output.result} />;
+  return null;
+}
+
+/** The capability id ("block:…") is technical detail: under the card, closed. */
+function withCapabilityID(card: ReactNode, input: unknown) {
+  const call = asObject(input);
+  const id = call ? str(call, "id") : null;
+  if (!card || !id) return card;
+  return (
+    <div className="flex flex-col items-start gap-1.5">
+      {card}
+      <TechnicalDetails>
+        <TechnicalValue>{id}</TechnicalValue>
+      </TechnicalDetails>
+    </div>
+  );
 }
 
 function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
@@ -432,12 +457,7 @@ function toolCard(
       // payload, same card.
       const desktop = desktopCard(output, readOnly);
       if (desktop) return desktop;
-      const block = asObject(output.block);
-      if (block) return <BlockListCard blocks={[block]} />;
-      if (str(output, "block_name", "block_id"))
-        return <BlockOutputCard output={output} />;
-      if ("result" in output) return <KeyValueList value={output.result} />;
-      return null;
+      return withCapabilityID(capabilityCard(output), row.input);
     }
     case "connect_integration":
       return null;
@@ -533,7 +553,7 @@ function toolCard(
       return null;
     }
     case "bash_exec":
-      return <Terminal row={row} />;
+      return <CommandResult row={row} />;
     case "start_desktop":
       return output ? desktopCard(output, readOnly) : null;
     case "TodoWrite":
@@ -590,7 +610,13 @@ export function ToolResult({ row, readOnly = false }: Props) {
     const ran = row.output !== undefined && row.output !== "";
     return (
       <div className="flex flex-col gap-2">
-        <HeldCallDetail held={row.held} showArgs={!ownCall} />
+        <HeldCallDetail
+          held={row.held}
+          showArgs={!ownCall}
+          approvedCommand={
+            ownCall ? str(asObject(row.input) ?? {}, "command") : null
+          }
+        />
         {approved && (ran || ownCall) && (
           <ToolOutput row={row} readOnly={readOnly} />
         )}

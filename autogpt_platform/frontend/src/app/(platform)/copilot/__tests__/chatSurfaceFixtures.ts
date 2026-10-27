@@ -374,9 +374,12 @@ export const CARD_FIXTURES: Record<string, CardFixture> = Object.fromEntries([
     },
     "Paris is the capital",
   ),
-  card("bash_exec", { stdout: "file.txt", exit_code: 0 }, "file.txt", {
-    command: "ls",
-  }),
+  card(
+    "bash_exec",
+    { stdout: "name,size\nnotes,12\nplan,30", exit_code: 0 },
+    "2 rows · name, size",
+    { purpose: "Listing your files", command: "ls" },
+  ),
   card("start_desktop", DESKTOP, "Desktop"),
   card("TodoWrite", { ok: true }, "Task A", {
     todos: [
@@ -387,20 +390,20 @@ export const CARD_FIXTURES: Record<string, CardFixture> = Object.fromEntries([
   card(
     "read_workspace_file",
     { size_bytes: 2048, mime_type: "text/plain", preview: "hello world" },
-    "notes.txt",
+    "Notes",
     { path: "notes.txt" },
   ),
   card(
     "write_workspace_file",
     { size_bytes: 7, mime_type: "text/plain" },
-    "out.txt",
+    "Out",
     { path: "out.txt", content: "written" },
   ),
-  card("delete_workspace_file", { success: true }, "old.txt", {
+  card("delete_workspace_file", { success: true }, "Old", {
     path: "old.txt",
   }),
-  card("Read", "print(1)", "reader.py", { file_path: "/tmp/reader.py" }),
-  card("Write", "ok", "writer.py", {
+  card("Read", "print(1)", "Reader", { file_path: "/tmp/reader.py" }),
+  card("Write", "ok", "Writer", {
     file_path: "/tmp/writer.py",
     content: "x = 1",
   }),

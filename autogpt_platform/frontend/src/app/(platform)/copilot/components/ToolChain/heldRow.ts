@@ -89,7 +89,8 @@ export function applyHeldOutcome(
   };
 }
 
-// The shell's card prints the command itself, run or not, so it needs no card copy.
+// A shell call's approval record is the command itself, run or not, so it
+// needs no card copy.
 export function heldShowsOwnCall(row: ChainRow) {
   return (
     row.held?.state === "approved" &&

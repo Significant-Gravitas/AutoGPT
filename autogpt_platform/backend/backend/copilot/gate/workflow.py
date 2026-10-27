@@ -86,7 +86,9 @@ async def judge_step(
         args = {"workflow": step.name, "step": subject.name, "input": inputs}
         return await supervise(
             tool_name=STEP_TOOL,
-            args=_judged_args(args, None, subject.name if outward_judged else None),
+            args=_judged_args(
+                STEP_TOOL, args, None, subject.name if outward_judged else None
+            ),
             user_messages=request_that_started(
                 session, ctx.root_execution_id or step.graph_exec_id
             ),

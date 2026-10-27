@@ -268,7 +268,7 @@ async def check_action(
         )
         return await supervise(
             tool_name=tool_name,
-            args=_judged_args(args, files, runs),
+            args=_judged_args(tool_name, args, files, runs),
             user_messages=_typed_messages(session),
             outward_judged=outward_judged,
         )
@@ -433,12 +433,16 @@ def _dollars(microdollars: int) -> str:
 
 
 def _judged_args(
-    args: dict[str, Any], files: dict[str, str | None] | None, runs: str | None
+    tool_name: str,
+    args: dict[str, Any],
+    files: dict[str, str | None] | None,
+    runs: str | None,
 ) -> dict[str, Any]:
-    # Dropped first, so a model cannot hand the supervisor a harmless copy.
+    # Dropped first, so a model cannot hand the supervisor a harmless copy,
+    # nor a label of its own choosing for the call.
     judged = {
         key: value
-        for key, value in args.items()
+        for key, value in review_store.call_args(tool_name, args).items()
         if key not in (RUN_FILES_KEY, RUNS_KEY)
     }
     if files:

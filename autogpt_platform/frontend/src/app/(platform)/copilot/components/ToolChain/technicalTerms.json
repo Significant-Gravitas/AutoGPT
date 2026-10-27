@@ -1,0 +1,454 @@
+{
+  "_about": [
+    "What a business owner should never read: one rule set for the chat (plainText.ts) and the expert style eval (backend copilot/eval/style/plain_language.py), so the two cannot drift.",
+    "{NAME} is a word list matched in any case; {NAME:noabbr} the same, except an all-caps word of three letters or fewer, which reads as an abbreviation ('CD sales'); {NAME:exact} as written. {FRAGMENT} is pasted in first.",
+    "'certain' rules fail the eval and hide a chat label. 'possible' rules hide a chat label but the eval only reports them: they also match prose ('a big bash', 'Running cat brief').",
+    "A rule's term is its first capture group that matched, else the whole match. No lookbehind: older Safari cannot compile it.",
+    "Every example must hold for both implementations; both test suites run them."
+  ],
+  "words": {
+    "WORDLIKE": [
+      "cat",
+      "head",
+      "tail",
+      "less",
+      "sort",
+      "cut",
+      "tr",
+      "find",
+      "touch",
+      "ln",
+      "zip",
+      "node",
+      "make",
+      "echo",
+      "export"
+    ],
+    "CODE_ONLY": [
+      "wc",
+      "uniq",
+      "xargs",
+      "rm",
+      "cp",
+      "mv",
+      "tar",
+      "unzip",
+      "gzip",
+      "wget",
+      "curl",
+      "ssh",
+      "scp",
+      "rsync",
+      "python",
+      "python3",
+      "pip",
+      "pip3",
+      "npm",
+      "pnpm",
+      "yarn",
+      "git",
+      "docker",
+      "chmod",
+      "chown",
+      "mkdir",
+      "sudo",
+      "sed",
+      "awk",
+      "grep",
+      "bash",
+      "sh",
+      "ls",
+      "cd",
+      "printf",
+      "jq"
+    ],
+    "FUNCTION_WORDS": [
+      "on",
+      "of",
+      "for",
+      "to",
+      "the",
+      "a",
+      "an",
+      "and",
+      "or",
+      "in",
+      "at",
+      "by",
+      "from",
+      "with",
+      "into",
+      "about",
+      "over",
+      "through",
+      "this",
+      "that",
+      "these",
+      "those",
+      "my",
+      "your",
+      "our",
+      "their",
+      "its",
+      "all",
+      "any",
+      "some"
+    ],
+    "RUN_VERBS": [
+      "run",
+      "runs",
+      "running",
+      "ran",
+      "execute",
+      "executes",
+      "executed",
+      "executing",
+      "call",
+      "calls",
+      "called",
+      "calling"
+    ],
+    "GIT": ["git"],
+    "GIT_SUBCOMMANDS": [
+      "status",
+      "log",
+      "diff",
+      "add",
+      "commit",
+      "push",
+      "pull",
+      "clone",
+      "checkout",
+      "branch",
+      "show",
+      "stash",
+      "reset",
+      "merge",
+      "rebase",
+      "init"
+    ],
+    "PACKAGE_MANAGERS": ["npm", "pnpm", "yarn", "pip", "pip3"],
+    "PACKAGE_SUBCOMMANDS": ["install", "run", "ci", "add"],
+    "FILE_EXTENSIONS": [
+      "md",
+      "csv",
+      "tsv",
+      "json",
+      "jsonl",
+      "py",
+      "sh",
+      "txt",
+      "yaml",
+      "yml",
+      "toml",
+      "html",
+      "log",
+      "sql",
+      "xml",
+      "ipynb",
+      "xls",
+      "xlsx",
+      "doc",
+      "docx",
+      "ppt",
+      "pptx",
+      "pdf",
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "svg",
+      "webp",
+      "zip"
+    ],
+    "SCRIPT_EXTENSIONS": ["js", "ts", "jsx", "tsx"],
+    "SCRIPT_PRODUCTS": [
+      "next",
+      "node",
+      "vue",
+      "nuxt",
+      "react",
+      "express",
+      "three",
+      "chart",
+      "d3",
+      "alpine",
+      "ember",
+      "angular",
+      "svelte",
+      "solid",
+      "backbone",
+      "deno",
+      "nest",
+      "p5"
+    ],
+    "SYSTEM_ROOTS": [
+      "tmp",
+      "etc",
+      "home",
+      "usr",
+      "var",
+      "opt",
+      "root",
+      "bin",
+      "dev",
+      "mnt",
+      "srv",
+      "workspace"
+    ],
+    "BARE_COMMANDS": [
+      "sed",
+      "awk",
+      "grep",
+      "mkdir",
+      "chmod",
+      "sudo",
+      "npm",
+      "pnpm"
+    ],
+    "BARE_WORDS": ["bash", "curl", "pip", "pip3", "ls", "cd"],
+    "SDK_TOOL_NAMES": [
+      "Glob",
+      "Grep",
+      "TodoWrite",
+      "WebFetch",
+      "WebSearch",
+      "MultiEdit",
+      "NotebookEdit"
+    ],
+    "SDK_WORD_TOOLS": ["read", "write", "edit", "bash", "task"],
+    "TOOL": ["tool"],
+    "CAPABILITY_KINDS": ["tool", "block"],
+    "PROSE_PAIRS": [
+      "and/or",
+      "he/she",
+      "his/her",
+      "him/her",
+      "she/he",
+      "they/them",
+      "yes/no",
+      "pros/cons",
+      "input/output",
+      "inputs/outputs",
+      "read/write",
+      "on/off",
+      "true/false",
+      "before/after",
+      "either/or",
+      "in/out",
+      "up/down",
+      "start/end",
+      "open/close",
+      "buy/sell",
+      "online/offline"
+    ]
+  },
+  "fragments": {
+    "ARG": "[\\w~/-]+(?:\\.[\\w~/-]+)*",
+    "SEGMENT": "\\.?[\\w-]+(?:\\.[\\w-]+)*",
+    "POSITION": "(?:^|[.!?]\\s+|\\b(?:{RUN_VERBS})\\s+)"
+  },
+  "certain": [
+    {
+      "rule": "capability id",
+      "pattern": "\\b(?:{CAPABILITY_KINDS}):[\\w-]+"
+    },
+    {
+      "rule": "SDK tool name",
+      "pattern": "\\b(?:{SDK_TOOL_NAMES:exact})\\b"
+    },
+    {
+      "rule": "SDK tool named by an English word, shown as a tool",
+      "pattern": "`({SDK_WORD_TOOLS})`|\\b({SDK_WORD_TOOLS})(?=\\s+(?:{TOOL})\\b)"
+    },
+    {
+      "rule": "path",
+      "pattern": "(?:^|[\\s`'\"(])((?:~|\\.{1,2})?/{SEGMENT}(?:/{SEGMENT})+|(?:~|\\.{1,2})/{SEGMENT}|/(?:{SYSTEM_ROOTS})\\b)"
+    },
+    {
+      "rule": "file name",
+      "pattern": "\\b[\\w-]+\\.(?:{FILE_EXTENSIONS})\\b"
+    },
+    {
+      "rule": "script file name, not a product such as Next.js",
+      "pattern": "\\b(?!(?:{SCRIPT_PRODUCTS})\\.(?:{SCRIPT_EXTENSIONS})\\b)[\\w-]+\\.(?:{SCRIPT_EXTENSIONS})\\b"
+    },
+    {
+      "rule": "command with a flag or a path",
+      "pattern": "\\b(?:{WORDLIKE}|{CODE_ONLY})\\s+(?:-{1,2}[A-Za-z][\\w-]*|[~./]\\S*)"
+    },
+    {
+      "rule": "git subcommand",
+      "pattern": "\\b(?:{GIT})\\s+(?:{GIT_SUBCOMMANDS})\\b"
+    },
+    {
+      "rule": "package manager subcommand",
+      "pattern": "\\b(?:{PACKAGE_MANAGERS})\\s+(?:{PACKAGE_SUBCOMMANDS})\\b"
+    },
+    {
+      "rule": "command in command position",
+      "pattern": "{POSITION}(?:[`'\"]((?:{WORDLIKE}|{CODE_ONLY})\\s+{ARG})|((?:{CODE_ONLY:noabbr})\\s+{ARG}))"
+    },
+    {
+      "rule": "shell operator",
+      "pattern": "&&|\\|\\||\\$\\("
+    },
+    {
+      "rule": "pipe into a command",
+      "pattern": "\\|\\s*(?:{CODE_ONLY:noabbr})\\b"
+    },
+    {
+      "rule": "command that is never a word",
+      "pattern": "\\b(?:{BARE_COMMANDS:noabbr})\\b"
+    },
+    {
+      "rule": "identifier",
+      "pattern": "\\b[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+\\b"
+    },
+    {
+      "rule": "uuid",
+      "pattern": "\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b"
+    }
+  ],
+  "possible": [
+    {
+      "rule": "everyday-word command before an argument, in command position",
+      "pattern": "{POSITION}((?:{WORDLIKE:noabbr})\\s+(?!(?:{FUNCTION_WORDS})\\b){ARG})"
+    },
+    {
+      "rule": "command that is also a word",
+      "pattern": "\\b(?:{BARE_WORDS:noabbr})\\b"
+    },
+    {
+      "rule": "inline code",
+      "pattern": "`[^`\\n]*`?"
+    },
+    {
+      "rule": "token with two slashes, not a URL",
+      "pattern": "(?:^|\\s)((?![A-Za-z][\\w+.-]*:)[^\\s/]+/[^\\s/]*/\\S*)"
+    },
+    {
+      "rule": "two lowercase words joined by a slash, not a prose pair",
+      "pattern": "(?:^|[^\\w./])(?!(?:{PROSE_PAIRS:exact})\\b)([a-z][\\w-]*/[a-z][\\w-]*)\\b"
+    },
+    {
+      "rule": "a slash opening a word",
+      "pattern": "(?:^|\\s)([~.]?/\\w[\\w.-]*)"
+    }
+  ],
+  "examples": [
+    {
+      "text": "Updating your launch brief",
+      "certain": [],
+      "possible": []
+    },
+    {
+      "text": "Running Bash script",
+      "certain": ["Bash script"],
+      "possible": ["Bash"]
+    },
+    {
+      "text": "Ran Git Status",
+      "certain": ["Git Status"],
+      "possible": []
+    },
+    {
+      "text": "Running Sed -i on the brief",
+      "certain": ["Sed -i"],
+      "possible": []
+    },
+    {
+      "text": "Calling Bash_exec",
+      "certain": ["Bash_exec"],
+      "possible": []
+    },
+    {
+      "text": "Running NPM Install",
+      "certain": ["NPM Install"],
+      "possible": []
+    },
+    {
+      "text": "Saving Index.JS and Brief.MD",
+      "certain": ["Brief.MD", "Index.JS"],
+      "possible": []
+    },
+    {
+      "text": "Opened /TMP and ~/Workspace/Drafts",
+      "certain": ["/TMP", "~/Workspace/Drafts"],
+      "possible": ["~/Workspace/Drafts", "/TMP"]
+    },
+    {
+      "text": "I used Glob, then the Read tool and `Edit`.",
+      "certain": ["Glob", "Read", "Edit"],
+      "possible": ["`Edit`"]
+    },
+    {
+      "text": "Read the brief, then Edit the post. Task list below.",
+      "certain": [],
+      "possible": []
+    },
+    {
+      "text": "Running cat brief now.",
+      "certain": [],
+      "possible": ["cat brief"]
+    },
+    {
+      "text": "I ran `Cat brief` to check.",
+      "certain": ["Cat brief"],
+      "possible": ["`Cat brief`"]
+    },
+    {
+      "text": "Running the CD sales promo; ran the RM spend report.",
+      "certain": [],
+      "possible": []
+    },
+    {
+      "text": "Running the Cat Food promo and sort on items.",
+      "certain": [],
+      "possible": []
+    },
+    {
+      "text": "It's a big bash on Friday.",
+      "certain": [],
+      "possible": ["bash"]
+    },
+    {
+      "text": "Your store runs on Next.js and Next.JS, not app.ts.",
+      "certain": ["app.ts"],
+      "possible": []
+    },
+    {
+      "text": "Open 24/7, and/or by appointment; sizes S/M/L at Rs 899 / 30ml.",
+      "certain": [],
+      "possible": ["S/M/L"]
+    },
+    {
+      "text": "Posting on Instagram/Shopify, see https://shop.example.com/products/serum",
+      "certain": [],
+      "possible": []
+    },
+    {
+      "text": "Checking reports/brief",
+      "certain": [],
+      "possible": ["reports/brief"]
+    },
+    {
+      "text": "Saved as 2616d1f1-16bb-43c0-9f0e-6a7c2a9d0b11 via tool:list_schedules.",
+      "certain": [
+        "tool:list_schedules",
+        "2616d1f1-16bb-43c0-9f0e-6a7c2a9d0b11"
+      ],
+      "possible": []
+    },
+    {
+      "text": "cat log | grep -q x && ./publish.sh",
+      "certain": ["./publish.sh", "grep -q", "&&"],
+      "possible": ["cat log", "./publish.sh"]
+    },
+    {
+      "text": "Here is the PDF report, e.g. for Instagram. Shop at dewleaf.in, 9 a.m.",
+      "certain": [],
+      "possible": []
+    }
+  ]
+}

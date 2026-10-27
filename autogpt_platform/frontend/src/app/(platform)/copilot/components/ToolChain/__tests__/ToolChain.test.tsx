@@ -185,25 +185,22 @@ describe("ToolChain", () => {
       />,
     );
 
-    expect(screen.getAllByText('Running command "ls"…').length).toBeGreaterThan(
-      0,
-    );
+    expect(screen.getAllByText("Running a command…").length).toBeGreaterThan(0);
     expect(screen.queryByText("Thought")).toBeNull();
     expect(screen.queryByText("Done")).toBeNull();
 
-    const header = screen.getByRole("button", {
-      name: /running command "ls"/i,
-    });
+    const header = getChainHeader(/running a command/i);
     expect(header.getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("streams live reasoning inline without needing a click", () => {
+  it("keeps live reasoning collapsed while it streams, until it is opened", async () => {
+    const user = userEvent.setup();
     render(
       <ToolChain
         parts={[
           {
             type: "reasoning",
-            text: "Weighing the trade-offs",
+            text: "I'll call run_capability on the hire_expert tool",
             state: "streaming",
           } as MessagePart,
         ]}
@@ -211,8 +208,44 @@ describe("ToolChain", () => {
       />,
     );
 
-    expect(screen.getAllByText("Thinking…").length).toBeGreaterThan(0);
-    expect(screen.getByText("Weighing the trade-offs")).toBeDefined();
+    const reasoningRow = getRowToggle(/thinking/i);
+    expect(reasoningRow.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      screen
+        .getByText("I'll call run_capability on the hire_expert tool")
+        .closest("[aria-hidden]")
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
+
+    await user.click(reasoningRow);
+
+    expect(reasoningRow.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      screen
+        .getByText("I'll call run_capability on the hire_expert tool")
+        .closest("[aria-hidden]")
+        ?.getAttribute("aria-hidden"),
+    ).toBe("false");
+  });
+
+  it("labels a running bash step with its purpose and keeps the command out of view", () => {
+    const command = "cd ~/workspace/dewleaf && sed -i 's/TBD/25 Nov/' brief.md";
+    const { container } = render(
+      <ToolChain
+        parts={[
+          toolPart("bash_exec", "input-available", {
+            input: { purpose: "Updating your launch brief", command },
+          }),
+        ]}
+        isStreaming
+      />,
+    );
+
+    expect(getChainHeader(/updating your launch brief/i)).toBeDefined();
+    expect(
+      screen.getAllByText("Updating your launch brief…").length,
+    ).toBeGreaterThan(0);
+    expect(container.textContent).not.toContain("sed -i");
   });
 
   it("renders the canonical agent name in both the live heading and its row", () => {

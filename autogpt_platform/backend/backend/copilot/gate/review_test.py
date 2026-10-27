@@ -25,6 +25,22 @@ def test_the_same_call_is_the_same_approval():
     assert a == b
 
 
+def test_a_reworded_shell_purpose_is_the_same_approval():
+    """`purpose` only labels the step for the user (SECRT-3158): a retry that
+    rewords it, or a call saved before it existed, is the call approved."""
+    bare = review_id_for("s1", "u1", "bash_exec", {"command": "ls"})
+    for purpose in ("Listing your files", "Checking what's in the folder"):
+        args = {"command": "ls", "purpose": purpose}
+        assert review_id_for("s1", "u1", "bash_exec", args) == bare
+    assert review_id_for("s1", "u1", "bash_exec", {"command": "ls -a"}) != bare
+
+
+def test_a_purpose_argument_elsewhere_is_still_part_of_the_call():
+    a = review_id_for("s1", "u1", "run_agent", {"purpose": "a"})
+    b = review_id_for("s1", "u1", "run_agent", {"purpose": "b"})
+    assert a != b
+
+
 def test_argument_order_does_not_change_identity():
     a = review_id_for("s1", "u1", "run_agent", {"x": 1, "y": 2})
     b = review_id_for("s1", "u1", "run_agent", {"y": 2, "x": 1})
