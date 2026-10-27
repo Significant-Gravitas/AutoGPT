@@ -72,6 +72,15 @@ function serveBases(
   );
 }
 
+async function openPicker() {
+  const trigger = await screen.findByRole("combobox", {
+    name: "Choose an Airtable base",
+  });
+  fireEvent.click(trigger);
+  await screen.findByRole("listbox");
+  return trigger;
+}
+
 afterEach(() => {
   mockOnSend.mockReset();
 });
@@ -85,24 +94,106 @@ describe("Airtable base picker in the setup card", () => {
     ]);
     render(<SetupRequirementsCard output={pickerCard()} />);
 
-    const shop = await screen.findByRole("radio", { name: "Shop orders" });
-    const readOnly = screen.getByRole("radio", { name: /Wholesale prices/ });
-    expect(readOnly.hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText("View only")).toBeDefined();
+    const trigger = await screen.findByRole("combobox", {
+      name: "Choose an Airtable base",
+    });
+    expect(trigger.textContent).toBe("Choose a base");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(
       screen.getByText(/A base is Airtable's word for a set of tables/),
     ).toBeDefined();
     expect(screen.queryByText(/workspace/i)).toBeNull();
-
     const proceed = screen.getByRole("button", { name: "Proceed" });
     expect(proceed.hasAttribute("disabled")).toBe(true);
-    fireEvent.click(shop);
-    expect(shop.getAttribute("aria-checked")).toBe("true");
+
+    await openPicker();
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    const readOnly = screen.getByRole("option", { name: /Wholesale prices/ });
+    expect(readOnly.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("View only")).toBeDefined();
+    expect(
+      screen.queryByRole("textbox", { name: "Search your bases" }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("option", { name: "Shop orders" }));
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    expect(trigger.textContent).toBe("Shop orders");
     await waitFor(() => expect(proceed.hasAttribute("disabled")).toBe(false));
     fireEvent.click(proceed);
 
     await waitFor(() => expect(mockOnSend).toHaveBeenCalledTimes(1));
     expect(mockOnSend.mock.calls[0][0]).toContain('"base_id": "app2"');
+  });
+
+  it("the picked base is marked when the list opens again", async () => {
+    serveBases([
+      { id: "app2", name: "Shop orders", access: "create" },
+      { id: "app3", name: "Craft fair", access: "create" },
+    ]);
+    render(<SetupRequirementsCard output={pickerCard()} />);
+
+    await openPicker();
+    fireEvent.click(screen.getByRole("option", { name: "Craft fair" }));
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+
+    await openPicker();
+    expect(
+      screen
+        .getByRole("option", { name: "Craft fair" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("option", { name: "Shop orders" })
+        .getAttribute("aria-selected"),
+    ).toBe("false");
+  });
+
+  it("a long list can be searched, and the search clears when it closes", async () => {
+    const names = [
+      "Craft fair 2025",
+      "Customer emails",
+      "Etsy shop orders",
+      "Holiday market",
+      "Instagram calendar",
+      "Printify products",
+      "Supplier contacts",
+      "Family budget",
+    ];
+    serveBases(
+      names.map((name, index) => ({
+        id: `app${index}`,
+        name,
+        access: "create" as const,
+      })),
+    );
+    render(<SetupRequirementsCard output={pickerCard()} />);
+
+    const trigger = await openPicker();
+    const search = screen.getByRole("textbox", { name: "Search your bases" });
+    fireEvent.change(search, { target: { value: "ETSY" } });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Etsy shop orders",
+    ]);
+
+    fireEvent.change(search, { target: { value: "nothing like it" } });
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
+    expect(screen.getByText(/No base matches “nothing like it”/)).toBeDefined();
+
+    fireEvent.change(search, { target: { value: "etsy" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    expect(trigger.textContent).toBe("Etsy shop orders");
+
+    await openPicker();
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Search your bases",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("");
+    expect(screen.getAllByRole("option")).toHaveLength(names.length);
   });
 
   it.each([
@@ -151,13 +242,12 @@ describe("Airtable base picker in the setup card", () => {
       />,
     );
 
-    const wholesale = await screen.findByRole("radio", {
-      name: "Wholesale prices",
-    });
+    const trigger = await openPicker();
+    const wholesale = screen.getByRole("option", { name: "Wholesale prices" });
     expect(wholesale.hasAttribute("disabled")).toBe(false);
     expect(screen.queryByText("View only")).toBeNull();
     fireEvent.click(wholesale);
-    expect(wholesale.getAttribute("aria-checked")).toBe("true");
+    await waitFor(() => expect(trigger.textContent).toBe("Wholesale prices"));
   });
 
   it("a step that adds tables can't use a base the user may only edit", async () => {
@@ -167,12 +257,15 @@ describe("Airtable base picker in the setup card", () => {
     ]);
     render(<SetupRequirementsCard output={pickerCard()} />);
 
-    const tracker = await screen.findByRole("radio", { name: /Team tracker/ });
+    const trigger = await openPicker();
+    const tracker = screen.getByRole("option", { name: /Team tracker/ });
     expect(tracker.hasAttribute("disabled")).toBe(true);
     expect(screen.getByText("Needs creator access")).toBeDefined();
+    fireEvent.click(tracker);
+    expect(trigger.textContent).toBe("Choose a base");
   });
 
-  it("arrow keys move the pick past a view-only base", async () => {
+  it("arrow keys move past a view-only base", async () => {
     serveBases([
       { id: "app2", name: "Shop orders", access: "create" },
       { id: "app1", name: "Wholesale prices", access: "read" },
@@ -180,14 +273,14 @@ describe("Airtable base picker in the setup card", () => {
     ]);
     render(<SetupRequirementsCard output={pickerCard()} />);
 
-    const shop = await screen.findByRole("radio", { name: "Shop orders" });
+    await openPicker();
+    const shop = screen.getByRole("option", { name: "Shop orders" });
     fireEvent.keyDown(shop, { key: "ArrowDown" });
-
-    expect(
-      screen
-        .getByRole("radio", { name: "Craft fair" })
-        .getAttribute("aria-checked"),
-    ).toBe("true");
+    expect(document.activeElement).toBe(
+      screen.getByRole("option", { name: "Craft fair" }),
+    );
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(shop);
   });
 
   it("with no bases yet, points to Airtable and lists again on refresh", async () => {

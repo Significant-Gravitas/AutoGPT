@@ -1,9 +1,8 @@
 "use client";
 
-import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { FieldProps } from "@rjsf/utils";
-import { BaseList } from "./components/BaseList";
+import { BaseDropdown } from "./components/BaseDropdown";
 import {
   BasesError,
   LoadingBases,
@@ -16,7 +15,6 @@ import {
   pickerAccess,
   pickerCredentialsID,
   pickerHint,
-  SEARCH_THRESHOLD,
 } from "./helpers";
 import { useAirtableBasePickerField } from "./useAirtableBasePickerField";
 
@@ -59,11 +57,17 @@ function BasePicker({
         />
       );
     return (
-      <BaseList
-        bases={picker.shown}
+      <BaseDropdown
+        id={fieldPathId.$id}
+        bases={picker.bases}
+        shown={picker.shown}
         value={value}
         labelID={labelID}
         needed={needed}
+        open={picker.open}
+        onOpenChange={picker.setOpen}
+        search={picker.search}
+        onSearchChange={picker.setSearch}
         onChange={(id) => onChange(id, fieldPathId.path)}
       />
     );
@@ -79,24 +83,7 @@ function BasePicker({
           {pickerHint(needed)}
         </Text>
       </div>
-      {ready && picker.bases.length >= SEARCH_THRESHOLD && (
-        <Input
-          id={`${fieldPathId.$id}-search`}
-          label="Search your bases"
-          hideLabel
-          size="small"
-          placeholder="Search your bases"
-          wrapperClassName="mb-0"
-          value={picker.search}
-          onChange={(event) => picker.setSearch(event.target.value)}
-        />
-      )}
       {body()}
-      {ready && picker.shown.length === 0 && (
-        <Text variant="small" className="text-zinc-500">
-          No base matches “{picker.search.trim()}”.
-        </Text>
-      )}
       {noneUsable && (
         <Text variant="small" className="text-zinc-600">
           {noUsableBaseText(needed)}
