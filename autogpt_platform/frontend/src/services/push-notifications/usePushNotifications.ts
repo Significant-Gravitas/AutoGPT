@@ -33,10 +33,14 @@ export function usePushNotifications() {
 
     let cancelled = false;
 
+    // Each teardown queues behind the one before, so a setup waiting on the
+    // latest has waited for all of them.
     function startTeardown() {
-      pendingTeardownRef.current = teardownPushSubscription().catch((error) =>
-        console.error("Push notification teardown failed:", error),
-      );
+      pendingTeardownRef.current = pendingTeardownRef.current
+        .then(teardownPushSubscription)
+        .catch((error) =>
+          console.error("Push notification teardown failed:", error),
+        );
     }
 
     if (user && isEnabled) {

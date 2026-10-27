@@ -129,6 +129,9 @@ describe("setupPushSubscription", () => {
   });
 
   it("drops the subscription and does not report it when cancelled while subscribing", async () => {
+    mockRegistration.pushManager.getSubscription = vi
+      .fn()
+      .mockResolvedValue(null);
     let cancelled = false;
     mockSubscribeToPush.mockImplementation(async () => {
       cancelled = true;
@@ -137,6 +140,18 @@ describe("setupPushSubscription", () => {
     const result = await setupPushSubscription(() => cancelled);
     expect(result).toBe(false);
     expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription);
+    expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
+  });
+
+  it("keeps a subscription that was already there when cancelled while subscribing", async () => {
+    let cancelled = false;
+    mockSubscribeToPush.mockImplementation(async () => {
+      cancelled = true;
+      return { endpoint: mockSubscription.endpoint };
+    });
+    const result = await setupPushSubscription(() => cancelled);
+    expect(result).toBe(false);
+    expect(mockUnsubscribeFromPush).not.toHaveBeenCalled();
     expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
   });
 

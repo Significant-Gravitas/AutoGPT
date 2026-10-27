@@ -16,6 +16,12 @@ import { useEffect } from "react";
  */
 export function useSyncNotificationsEnabled() {
   useEffect(() => {
+    function syncFromStorage() {
+      useCopilotUIStore.setState({
+        isNotificationsEnabled: getPersistedNotificationsEnabled(),
+      });
+    }
+
     function handleStorage(event: StorageEvent) {
       if (
         event.key !== null &&
@@ -23,11 +29,12 @@ export function useSyncNotificationsEnabled() {
       ) {
         return;
       }
-      useCopilotUIStore.setState({
-        isNotificationsEnabled: getPersistedNotificationsEnabled(),
-      });
+      syncFromStorage();
     }
 
+    // The store read the setting when it loaded; another tab may have
+    // changed it before this listener existed.
+    syncFromStorage();
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
   }, []);

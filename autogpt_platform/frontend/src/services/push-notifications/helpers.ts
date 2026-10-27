@@ -36,14 +36,19 @@ export async function setupPushSubscription(
 
   const subscription = await withPushSubscriptionLock(async () => {
     if (isCancelled()) return null;
-    const created = await subscribeToPush(registration, vapidKey);
+    const existing = await registration.pushManager
+      .getSubscription()
+      .catch(() => null);
+    const result = await subscribeToPush(registration, vapidKey);
+    if (!result || !isCancelled()) return result;
     // A teardown that gave up waiting for the lock may already have run and
-    // found nothing, so a subscription made after the cancel is ours to drop.
-    if (created && isCancelled()) {
-      await unsubscribeFromPush(created);
-      return null;
+    // found nothing, so a subscription this call made after the cancel is
+    // ours to drop. One that was already there is shared with the other
+    // tabs, and a cancel can also mean this tab just unmounted.
+    if (result.endpoint !== existing?.endpoint) {
+      await unsubscribeFromPush(result);
     }
-    return created;
+    return null;
   });
   if (!subscription || isCancelled()) return false;
 

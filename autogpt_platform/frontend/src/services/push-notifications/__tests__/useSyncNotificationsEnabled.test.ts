@@ -17,6 +17,11 @@ function setPermission(permission: NotificationPermission) {
   });
 }
 
+function switchOnInThisTab() {
+  storage.set(Key.COPILOT_NOTIFICATIONS_ENABLED, "true");
+  useCopilotUIStore.setState({ isNotificationsEnabled: true });
+}
+
 function storeValueFromAnotherTab(value: string | null) {
   if (value === null) storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
   else storage.set(Key.COPILOT_NOTIFICATIONS_ENABLED, value);
@@ -53,8 +58,17 @@ describe("useSyncNotificationsEnabled", () => {
     }
   });
 
-  it("turns notifications off when another tab switches them off", () => {
+  it("picks up a change another tab made before it started listening", () => {
     useCopilotUIStore.setState({ isNotificationsEnabled: true });
+    storage.set(Key.COPILOT_NOTIFICATIONS_ENABLED, "false");
+
+    renderHook(() => useSyncNotificationsEnabled());
+
+    expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(false);
+  });
+
+  it("turns notifications off when another tab switches them off", () => {
+    switchOnInThisTab();
     renderHook(() => useSyncNotificationsEnabled());
 
     storeValueFromAnotherTab("false");
@@ -71,7 +85,7 @@ describe("useSyncNotificationsEnabled", () => {
   });
 
   it("turns notifications off when another tab clears the setting on logout", () => {
-    useCopilotUIStore.setState({ isNotificationsEnabled: true });
+    switchOnInThisTab();
     renderHook(() => useSyncNotificationsEnabled());
 
     storeValueFromAnotherTab(null);
@@ -89,7 +103,7 @@ describe("useSyncNotificationsEnabled", () => {
   });
 
   it("ignores changes to other settings", () => {
-    useCopilotUIStore.setState({ isNotificationsEnabled: true });
+    switchOnInThisTab();
     renderHook(() => useSyncNotificationsEnabled());
 
     act(() => {
@@ -105,7 +119,7 @@ describe("useSyncNotificationsEnabled", () => {
   });
 
   it("stops listening once unmounted", () => {
-    useCopilotUIStore.setState({ isNotificationsEnabled: true });
+    switchOnInThisTab();
     const { unmount } = renderHook(() => useSyncNotificationsEnabled());
     unmount();
 
