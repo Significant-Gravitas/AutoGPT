@@ -41,7 +41,11 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
-from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
+from backend.copilot.llm_attribution import (
+    current_turn_origin,
+    is_turn_impersonated,
+    turn_trace_id,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import (
     SubscriptionTier,
@@ -251,6 +255,7 @@ class TestExecuteAsyncScheduledTurnContext:
             seen["pins"] = dict(turn_credential_pins())
             seen["impersonated"] = is_turn_impersonated()
             seen["trace_id"] = turn_trace_id()
+            seen["turn_origin"] = current_turn_origin()
             seen["span_id"] = current_span_id()
             return MagicMock()
 
@@ -299,6 +304,7 @@ class TestExecuteAsyncScheduledTurnContext:
             "pins": {"exa": pin},
             "impersonated": False,
             "trace_id": "turn-1",
+            "turn_origin": "scheduled",
             "span_id": "turn-1",
         }
 
@@ -311,6 +317,7 @@ class TestExecuteAsyncScheduledTurnContext:
             "pins": {},
             "impersonated": False,
             "trace_id": "turn-1",
+            "turn_origin": "chat",
             "span_id": "turn-1",
         }
 

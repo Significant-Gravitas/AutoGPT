@@ -15,11 +15,17 @@ OpenRouter Broadcast sends every generation to PostHog LLM analytics as an
   the trace of the turn that spawned it (``ai_spans.trace_id_for``);
   ``ai_spans`` sends the trace's tool spans and root from the backend.
 - ``trace.generation_name`` becomes ``$ai_span_name``; every other ``trace``
-  key arrives as ``metadata_<key>`` (``metadata_environment``,
-  ``metadata_impersonated``, ``metadata_turn_origin``: what started the turn,
-  as on its ``$ai_trace`` (``turn_tracing.turn_origin``), and
-  ``metadata_revision``: the deployed build's git sha from
-  ``config.sentry_release``, left out when that is blank).
+  key arrives as ``metadata_<key>``:
+
+  - ``metadata_environment``: the app environment;
+  - ``metadata_impersonated``: whether an admin started the turn as the
+    user;
+  - ``metadata_turn_origin``: what started the turn (``chat``,
+    ``scheduled``, ``spawned`` or ``system``), as on its ``$ai_trace``
+    (``turn_tracing.turn_origin``), left out for a call made outside a turn;
+  - ``metadata_revision``: the deployed build's git sha from
+    ``config.sentry_release``, left out when that is blank.
+
   Broadcast sends these events itself, not through our PostHog client, so
   they never get a property the client adds to every event it captures.
 
@@ -75,7 +81,7 @@ def openrouter_attribution(
     trace_id = turn_trace_id()
     if trace_id:
         body["trace"]["trace_id"] = trace_id[:_MAX_ID_CHARS]
-    origin = _turn_origin.get()
+    origin = current_turn_origin()
     if origin:
         body["trace"]["turn_origin"] = origin
     if user_id:
@@ -111,6 +117,10 @@ def set_turn_origin(origin: str | None) -> None:
     """Make *origin* the turn origin every model call the running turn makes
     reports."""
     _turn_origin.set(origin or None)
+
+
+def current_turn_origin() -> str | None:
+    return _turn_origin.get()
 
 
 def is_impersonated_request(request: Request) -> bool:
