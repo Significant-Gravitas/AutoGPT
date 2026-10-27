@@ -110,6 +110,7 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
 
     try:
         signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
+    # Covers PyJWKClientError and the lookup's DecodeError on a non-object payload.
     except jwt.PyJWTError as e:
         raise ValueError(f"Invalid token: {str(e)}") from e
 
