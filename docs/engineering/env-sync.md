@@ -20,8 +20,8 @@ This is a dry run: it reports each key as `matches`, `different`,
 missing at the target. Replacing a `different` value also requires `--replace`.
 Sources with conflicting values are rejected: choose one explicitly. Empty or
 missing source keys never clear the target. Use repeated `--key KEY_NAME` to
-select another explicit allowlist. Use `--windows-host HOST` for additional
-Windows SSH aliases (`desktop` is one by default).
+select another explicit allowlist. Name the SSH hosts that run Windows with
+repeated `--windows-host HOST`; without it, `desktop` is the only one.
 
 Applying checks the target again under a lock just before writing, so a value
 another run added since the report still needs `--replace`. It then copies the
@@ -32,7 +32,8 @@ prints the copy's path. The script never deletes these copies, and each holds
 every setting the target had, so remove old ones you no longer need. Finally it
 replaces the target atomically, keeping unrelated settings.
 
-Tracked files, symlinks and template env files are rejected. Only local
+Tracked files, symlinks and template env files are rejected, by the dry run
+too. Only local
 targets are writable; remote environments stay unchanged. Choose a canonical
 source before enabling any scheduled sync.
 

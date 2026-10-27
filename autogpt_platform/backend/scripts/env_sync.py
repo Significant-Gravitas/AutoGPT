@@ -22,19 +22,15 @@ POWERSHELL_SINGLE_QUOTES = "'\u2018\u2019\u201a\u201b"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", action="append", required=True)
-    parser.add_argument("--target", type=Path, required=True)
-    parser.add_argument("--key", action="append", dest="keys")
-    parser.add_argument("--windows-host", action="append", default=["desktop"])
-    parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--replace", action="store_true")
+    parser = build_parser()
     args = parser.parse_args()
     keys = args.keys or MICROSOFT_KEYS
+    windows_hosts = args.windows_hosts or ["desktop"]
     if any(not re.fullmatch(r"[A-Z_][A-Z0-9_]*", key) for key in keys):
         parser.error("Keys must be explicit environment variable names.")
     try:
-        sources = [read_source(source, args.windows_host) for source in args.source]
+        check_target(args.target)
+        sources = [read_source(source, windows_hosts) for source in args.source]
         values = select_values(sources, keys)
         target = dotenv_values(args.target, interpolate=False)
         for key in keys:
@@ -48,6 +44,42 @@ def main() -> None:
         # External process output can contain env values; never print it.
         message = str(error) if type(error) is ValueError else type(error).__name__
         parser.exit(2, f"Env synchronization stopped: {message}\n")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--source",
+        action="append",
+        required=True,
+        help="an env file to read, as local:/path or ssh-host:/path; repeatable",
+    )
+    parser.add_argument(
+        "--target", type=Path, required=True, help="the local env file to update"
+    )
+    parser.add_argument(
+        "--key",
+        action="append",
+        dest="keys",
+        metavar="KEY",
+        help="a key to sync; repeatable (default: the three Microsoft settings)",
+    )
+    parser.add_argument(
+        "--windows-host",
+        action="append",
+        dest="windows_hosts",
+        metavar="HOST",
+        help="an SSH host to read through PowerShell; repeatable (default: desktop)",
+    )
+    parser.add_argument(
+        "--apply", action="store_true", help="write the keys missing at the target"
+    )
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="with --apply, also replace values that differ",
+    )
+    return parser
 
 
 def read_source(source: str, windows_hosts: list[str]) -> dict[str, str | None]:
@@ -117,18 +149,8 @@ def apply_updates(target: Path, values: dict[str, str], replace: bool = False) -
     target as read under its lock, so a value another run wrote after this
     run's report still needs ``replace``.
     """
-    if target.is_symlink() or target.name.endswith(
-        (".default", ".example", ".template")
-    ):
-        raise ValueError("Target must be a private, regular env file.")
+    check_target(target)
     target.parent.mkdir(parents=True, exist_ok=True)
-    tracked = subprocess.run(
-        ["git", "-C", str(target.parent), "ls-files", "--error-unmatch", target.name],
-        capture_output=True,
-        check=False,
-    )
-    if tracked.returncode == 0:
-        raise ValueError("Refusing to write credentials to a tracked file.")
     lock = target.with_name(target.name + ".sync-lock")
     try:
         lock_fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -142,6 +164,21 @@ def apply_updates(target: Path, values: dict[str, str], replace: bool = False) -
     finally:
         os.close(lock_fd)
         lock.unlink()
+
+
+def check_target(target: Path) -> None:
+    """Refuse a target that must not hold credentials, before reading anything."""
+    if target.is_symlink() or target.name.endswith(
+        (".default", ".example", ".template")
+    ):
+        raise ValueError("Target must be a private, regular env file.")
+    tracked = subprocess.run(
+        ["git", "-C", str(target.parent), "ls-files", "--error-unmatch", target.name],
+        capture_output=True,
+        check=False,
+    )
+    if tracked.returncode == 0:
+        raise ValueError("Refusing to write credentials to a tracked file.")
 
 
 def _write_updates(target: Path, values: dict[str, str], replace: bool) -> int:
