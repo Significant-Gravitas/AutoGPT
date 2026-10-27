@@ -26,4 +26,19 @@ describe("Microsoft callback recovery", () => {
     expect(html).toContain("Approved for your organization");
     expect(html).not.toContain("oauth_popup_result");
   });
+
+  it("says why an organization-wide approval didn't go through", async () => {
+    // Microsoft marks a refused approval admin_consent=True as well.
+    const response = await GET(
+      new Request(
+        "https://app.example/auth/integrations/oauth_callback?admin_consent=True&tenant=company&error=access_denied&error_description=AADSTS65004%3A%20private-upstream-text",
+      ),
+    );
+    const html = await response.text();
+    expect(html).not.toContain("Approved for your organization");
+    expect(html).toContain("AADSTS65004");
+    expect(html).toContain("Microsoft access was declined");
+    expect(html).not.toContain("private-upstream-text");
+    expect(html).not.toContain("oauth_popup_result");
+  });
 });

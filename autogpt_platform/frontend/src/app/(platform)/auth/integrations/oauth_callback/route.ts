@@ -23,26 +23,33 @@ const HTML_HEADERS = {
 };
 
 // Microsoft's organization-wide approval returns here with no code to
-// exchange: it opened in its own tab, so all that's left is to say it worked.
-const ORGANIZATION_APPROVED_PAGE = `<!DOCTYPE html>
+// exchange: it opened in its own tab, so all that's left is to say how it
+// went. A refusal is marked admin_consent=True too, so the error decides.
+// The page only ever shows our own messages and an AADSTS number.
+function organizationApprovalPage(error: string | null, description: string) {
+  const text = error
+    ? `${microsoftCallbackMessage(error, description)} You can close this tab.`
+    : 'Approved for your organization. You can close this tab and choose "Check again" in AutoGPT.';
+  return `<!DOCTYPE html>
 <html>
   <body style="font-family: system-ui, sans-serif; padding: 2rem;">
-    <p>Approved for your organization. You can close this tab and choose
-    "Check again" in AutoGPT.</p>
+    <p>${text}</p>
   </body>
 </html>`;
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  const providerError = searchParams.get("error");
+  const providerDescription = searchParams.get("error_description") ?? "";
   if (searchParams.get("admin_consent") === "True") {
-    return new NextResponse(ORGANIZATION_APPROVED_PAGE, {
-      headers: HTML_HEADERS,
-    });
+    return new NextResponse(
+      organizationApprovalPage(providerError, providerDescription),
+      { headers: HTML_HEADERS },
+    );
   }
   const code = searchParams.get("code");
   const state = searchParams.get("state");
-  const providerError = searchParams.get("error");
-  const providerDescription = searchParams.get("error_description") ?? "";
 
   const message: OAuthPopupResultMessage =
     code && state
