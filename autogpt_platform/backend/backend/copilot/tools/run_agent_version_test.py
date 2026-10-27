@@ -100,6 +100,9 @@ def _mock_execution_database(mocker: MockerFixture, graph: GraphModel):
         side_effect=lambda **kwargs: versions[kwargs["version"] or 2]
     )
     database.validate_graph_execution_permissions = validate_graph_execution_permissions
+    database.resolve_member_tenancy = AsyncMock(
+        side_effect=lambda _user_id, org_id, team_id: (org_id, team_id)
+    )
     database.create_graph_execution = AsyncMock(side_effect=ExecutionReachedPersistence)
     mocker.patch("backend.executor.utils.prisma", MagicMock(is_connected=lambda: False))
     mocker.patch(
@@ -109,6 +112,7 @@ def _mock_execution_database(mocker: MockerFixture, graph: GraphModel):
     mocker.patch(
         "backend.executor.utils.is_user_paywalled", AsyncMock(return_value=False)
     )
+    mocker.patch("backend.executor.utils.is_user_banned", AsyncMock(return_value=False))
     mocker.patch(
         "backend.executor.utils._construct_starting_node_execution_input",
         AsyncMock(return_value=([], set())),
