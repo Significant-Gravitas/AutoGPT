@@ -112,7 +112,8 @@ def rows(mocker: MockerFixture) -> RowStore:
 
 @pytest.fixture(autouse=True)
 def wizard(mocker: MockerFixture) -> dict[str, AsyncMock]:
-    """No role picked and nobody hired, unless a test says otherwise.
+    """No role picked, nobody hired and no chat started, unless a test says
+    otherwise.
 
     The reads are stubbed under the wrappers, so a read and its degrade
     both run: a read shows a list through ``service.wizard_answers`` and
@@ -123,6 +124,7 @@ def wizard(mocker: MockerFixture) -> dict[str, AsyncMock]:
         "read_wizard_answers": AsyncMock(return_value=(None, [])),
         "list_templates": AsyncMock(return_value=[]),
         "list_experts": AsyncMock(return_value=[]),
+        "chat_experts": AsyncMock(return_value={}),
     }
     mocker.patch.object(
         service, "read_wizard_answers", new=mocks["read_wizard_answers"]
@@ -130,6 +132,9 @@ def wizard(mocker: MockerFixture) -> dict[str, AsyncMock]:
     mocker.patch.object(service, "list_templates", new=mocks["list_templates"])
     mocker.patch.object(suggested_tasks, "list_templates", new=mocks["list_templates"])
     mocker.patch.object(experts_db, "list_experts", new=mocks["list_experts"])
+    mocker.patch.object(
+        suggested_tasks, "get_chat_session_expert_ids", new=mocks["chat_experts"]
+    )
     return mocks
 
 
@@ -340,6 +345,7 @@ def test_a_change_answers_with_owners_but_never_stores_the_expert_id(
 ):
     rows.put(OWNED)
     wizard["list_experts"].return_value = [_hired("tpl-max", "expert-max")]
+    wizard["chat_experts"].return_value = {"session-1": "expert-max"}
 
     body = update(["0"], "sent", session_id="session-1").json()
 
@@ -359,6 +365,47 @@ def test_an_unreadable_roster_leaves_every_task_with_otto(
 
     assert response.status_code == 200
     assert [t["expert_id"] for t in response.json()["tasks"]] == [None] * 3
+
+
+def _started(session_id: str) -> list[dict[str, Any]]:
+    return [{**OWNED[0], "state": "sent", "session_id": session_id}, *OWNED[1:]]
+
+
+def test_a_started_task_stays_with_the_expert_its_chat_is_with_once_fired(
+    rows: RowStore, wizard: dict[str, AsyncMock], test_user_id: str
+):
+    rows.put(_started("session-max"))
+    wizard["chat_experts"].return_value = {"session-max": "expert-max"}
+
+    tasks = client.get(URL).json()["tasks"]
+
+    assert [t["expert_id"] for t in tasks] == ["expert-max", None, None]
+    wizard["chat_experts"].assert_awaited_once_with(test_user_id, ["session-max"])
+
+
+def test_a_task_otto_started_stays_with_otto_once_its_expert_is_hired(
+    rows: RowStore, wizard: dict[str, AsyncMock]
+):
+    rows.put(_started("session-otto"))
+    wizard["list_experts"].return_value = [_hired("tpl-max", "expert-max")]
+    wizard["chat_experts"].return_value = {"session-otto": None}
+
+    tasks = client.get(URL).json()["tasks"]
+
+    assert tasks[0]["expert_id"] is None
+
+
+def test_a_started_task_whose_chat_cannot_be_read_falls_back_to_its_owners_hire(
+    rows: RowStore, wizard: dict[str, AsyncMock]
+):
+    rows.put(_started("session-max"))
+    wizard["list_experts"].return_value = [_hired("tpl-max", "expert-max")]
+    wizard["chat_experts"].side_effect = RuntimeError("database down")
+
+    response = client.get(URL)
+
+    assert response.status_code == 200
+    assert response.json()["tasks"][0]["expert_id"] == "expert-max"
 
 
 MARKETING_TITLES = [t.title for t in role_tasks.ROLE_FALLBACK_TASKS["Marketing"]]

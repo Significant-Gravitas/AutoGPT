@@ -6,7 +6,8 @@ under it are worked through, so each keeps its own state on the row's
 
 A task may have an owner (``expert_template_id``); every list this module
 hands out says which of the user's hired experts that is (``expert_id``),
-read fresh each time, so a fired expert's tasks go back to Otto.
+read fresh each time, so a fired expert's open tasks go back to Otto. A
+started task names the expert its chat is with, fired since or not.
 """
 
 import logging
@@ -26,6 +27,7 @@ from backend.api.features.onboarding_dump.models import (
     SuggestedTaskState,
     SuggestedTasksUpdate,
 )
+from backend.copilot.db import get_chat_session_expert_ids
 from backend.util.exceptions import ConflictError, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -110,16 +112,32 @@ async def store_if_empty(
 async def with_expert_ids(
     user_id: str, tasks: list[SuggestedTask]
 ) -> list[SuggestedTask]:
-    """``tasks`` with each owner's hired expert, or none for Otto's.
+    """``tasks`` with the expert each one is with, or none for Otto.
 
-    A task whose expert is not hired, or is archived, reads as Otto's to
-    the client.
+    An open task goes to its owner's hire; one whose expert is not hired,
+    or is archived, reads as Otto's. A started task is with whoever its
+    chat is with, so firing that expert, or hiring the owner after Otto
+    took it, does not relabel a chat that went to someone else.
     """
-    if not any(task.expert_template_id for task in tasks):
+    chats = await _chat_experts(user_id, tasks)
+    owned = [task for task in tasks if task.session_id not in chats]
+    if not chats and not any(task.expert_template_id for task in owned):
         return tasks
-    hired = await roster_by_template(user_id)
+    hired = (
+        await roster_by_template(user_id)
+        if any(task.expert_template_id for task in owned)
+        else {}
+    )
     return [
-        task.model_copy(update={"expert_id": _hired_id(hired, task.expert_template_id)})
+        task.model_copy(
+            update={
+                "expert_id": (
+                    chats[task.session_id]
+                    if task.session_id in chats
+                    else _hired_id(hired, task.expert_template_id)
+                )
+            }
+        )
         for task in tasks
     ]
 
@@ -140,6 +158,24 @@ async def roster_by_template(user_id: str) -> dict[str, Expert]:
         for expert in experts
         if expert.source_template_id
     }
+
+
+async def _chat_experts(
+    user_id: str, tasks: list[SuggestedTask]
+) -> dict[str, str | None]:
+    """The expert each started task's chat is with (None for Otto's).
+
+    A chat that cannot be read is left out, so its task falls back to its
+    owner's hire rather than failing the list.
+    """
+    session_ids = [task.session_id for task in tasks if task.session_id]
+    if not session_ids:
+        return {}
+    try:
+        return await get_chat_session_expert_ids(user_id, session_ids)
+    except Exception as e:
+        logger.warning(f"Suggested tasks: started chats read failed: {e}")
+        return {}
 
 
 def as_tasks(prompts: list[SuggestedPrompt]) -> list[SuggestedTask]:
