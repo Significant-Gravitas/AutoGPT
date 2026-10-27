@@ -134,6 +134,9 @@ interface Props {
   expertId?: string | null;
   /** Names that expert in the picker's filter row. */
   expertName?: string | null;
+  /** Who the message goes to, named in the secret warning: the expert, or
+   *  Otto when unset. */
+  assistantName?: string | null;
   /** Attachments stay open during a reply, and a message with attachments
    *  goes to `onSend`, which must hold it until the reply ends. */
   canAttachWhileStreaming?: boolean;
@@ -173,6 +176,7 @@ export const ChatInput = memo(function ChatInput({
   variant = "default",
   expertId = null,
   expertName = null,
+  assistantName = null,
   canAttachWhileStreaming = false,
   atReset,
 }: Props) {
@@ -499,6 +503,7 @@ export const ChatInput = memo(function ChatInput({
         )}
         <SecretPasteNotice
           visible={containsLikelySecret(value)}
+          assistantName={assistantName ?? "Otto"}
           className={stacked ? undefined : "mt-1.5"}
         />
         <FileChips

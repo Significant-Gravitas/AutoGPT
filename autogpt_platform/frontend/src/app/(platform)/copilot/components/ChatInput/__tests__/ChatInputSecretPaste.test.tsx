@@ -54,6 +54,18 @@ describe("ChatInput secret warning", () => {
     expect(region.contains(warning)).toBe(true);
   });
 
+  it("names the expert the chat is with instead of Otto", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput onSend={vi.fn()} assistantName="Maria" />);
+
+    await user.click(composer());
+    await user.paste(GITHUB_TOKEN);
+
+    const warning = await screen.findByText(WARNING);
+    expect(warning.textContent).toContain("To let Maria use a key");
+    expect(warning.textContent).not.toContain("Otto");
+  });
+
   it("drops the warning once the token is removed", async () => {
     const user = userEvent.setup();
     render(<ChatInput onSend={vi.fn()} />);

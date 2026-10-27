@@ -197,6 +197,7 @@ export function EmptySession({
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
                   expertId={expertId}
                   expertName={expertName}
+                  assistantName={selectedExpert?.name ?? expertName ?? null}
                   recipientPicker={
                     intro.isVisible ? recipientPicker : undefined
                   }
