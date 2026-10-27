@@ -21,6 +21,11 @@ one `microsoft` connection per Microsoft account:
   needs organization setup (Work IQ), or work accounts only.
 - An admin can choose **Approve for my whole organization**, after which
   everyone in that tenant gets every service in one click.
+- Work IQ is always its own **Allow**, never part of "Allow everything
+  listed" or the organization approval: until Microsoft has set Work IQ up for
+  the organization, asking for it fails everything asked with it
+  (`AADSTS650052`), and nothing shows that before someone asks. An admin
+  approving it there can consent for everyone.
 
 Copilot chats run on a work connection that has Copilot's permissions; there
 is no separate Copilot sign-in. Copilot connections made before this keep
