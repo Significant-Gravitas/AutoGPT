@@ -125,7 +125,7 @@
     "remark-gfm": "4.0.1",
     "remark-math": "6.0.0",
     "shepherd.js": "15.3.0",
-    "shiki": "^3.21.0",
+    "shiki": "^4.5.0",
     "sonner": "2.0.8",
     "streamdown": "2.1.0",
     "tailwind-merge": "3.7.0",
