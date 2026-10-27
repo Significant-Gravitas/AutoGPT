@@ -7685,6 +7685,30 @@
         }
       }
     },
+    "/api/experts/first-jobs": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert First Jobs",
+        "description": "Each hired expert's first job and how far it has got, oldest hire first.",
+        "operationId": "list_expert_first_jobs",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpertFirstJobsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/experts/identities": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -13155,6 +13179,28 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump/suggested-tasks/kickoff": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Kickoff Brain Dump Suggested Tasks",
+        "description": "Have Otto start the first open suggested tasks for the user.\n\nThe pipeline already does this once the greeting is stored; the copilot\nhome calls it too, in case that run missed. Repeating it never starts a\ntask twice.",
+        "operationId": "kickoff_brain_dump_suggested_tasks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/KickoffResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/completed": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
@@ -13256,7 +13302,6 @@
                 "CONGRATS",
                 "ONBOARDING_COMPLETE",
                 "BUILDER_OPEN",
-                "CAPABILITY_CARDS",
                 "AGENTS_TAB_INTRO",
                 "MARKETPLACE_TAB_INTRO",
                 "BUILD_TAB_INTRO",
@@ -25608,6 +25653,66 @@
         "title": "ExpertDetachPreview",
         "description": "What archiving the expert would pause — drives the confirm dialog."
       },
+      "ExpertFirstJob": {
+        "properties": {
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "title": { "type": "string", "title": "Title" },
+          "description": { "type": "string", "title": "Description" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "installing",
+              "needs_setup",
+              "needs_you",
+              "working",
+              "ready",
+              "open"
+            ],
+            "title": "Status"
+          },
+          "detail": { "type": "string", "title": "Detail" },
+          "providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Providers"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expert_id",
+          "name",
+          "role",
+          "avatar_url",
+          "title",
+          "description",
+          "status",
+          "detail"
+        ],
+        "title": "ExpertFirstJob",
+        "description": "A hired expert's first assignment, as the copilot home shows it: the\ntemplate's first day-one row and how far the expert has got with it."
+      },
+      "ExpertFirstJobsResponse": {
+        "properties": {
+          "items": {
+            "items": { "$ref": "#/components/schemas/ExpertFirstJob" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["items"],
+        "title": "ExpertFirstJobsResponse"
+      },
       "ExpertIdentity": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -28563,6 +28668,25 @@
         "required": ["job_id", "user_id", "kind", "state", "started_at"],
         "title": "JobTriggerResponse",
         "description": "202 response from a fire-and-forget admin trigger.\n\nFrontend captures ``job_id`` and polls ``GET .../{job_id}`` for\nprogress. ``state`` is always ``\"queued\"`` at this point — the\nscheduler picks the job up within sub-second and flips it to\n``running``."
+      },
+      "KickoffResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["started", "pending", "refused", "nothing"],
+            "title": "Status"
+          },
+          "started_task_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Started Task Ids",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "KickoffResponse",
+        "description": "What came of asking Otto to start the user's first suggested tasks.\n\n``started`` lists every row Otto has started, on this call or an\nearlier one. ``pending`` means the greeting has not stored its prompts\nyet, so asking again later can still start them; ``refused`` means the\nuser may not start a turn now (no plan, usage spent); ``nothing`` means\nthere is nothing to start, or starting failed."
       },
       "LearningActionResult": {
         "properties": {
@@ -36009,6 +36133,18 @@
               { "type": "null" }
             ],
             "title": "Updated At"
+          },
+          "kickoff": {
+            "type": "boolean",
+            "title": "Kickoff",
+            "default": false
+          },
+          "kickoff_status": {
+            "anyOf": [
+              { "type": "string", "enum": ["working", "ready"] },
+              { "type": "null" }
+            ],
+            "title": "Kickoff Status"
           }
         },
         "type": "object",
