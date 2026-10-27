@@ -14,6 +14,9 @@ interface Props {
   announcement?: string;
   align?: "left" | "center";
   compact?: boolean;
+  // A click on the question pauses or resumes every idea that changes on its
+  // own; there is no visible control for it, on purpose.
+  onTogglePause?: () => void;
   className?: string;
 }
 
@@ -23,6 +26,7 @@ export function OttoMightAsk({
   announcement = "",
   align = "center",
   compact = false,
+  onTogglePause,
   className,
 }: Props) {
   const isLeft = align === "left";
@@ -57,7 +61,8 @@ export function OttoMightAsk({
         <Text
           variant={compact ? "body" : "large"}
           tone={compact ? "secondary" : undefined}
-          className="text-pretty"
+          className={cn("text-pretty", onTogglePause && "cursor-pointer")}
+          onClick={onTogglePause}
         >
           {question}
         </Text>

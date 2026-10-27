@@ -19,14 +19,14 @@ const ROLE_IDS = [
 ];
 
 describe("brain dump prompt sets", () => {
-  it.each(ROLE_IDS)("has eight questions and two examples for %s", (role) => {
+  it.each(ROLE_IDS)("has eight questions and five examples for %s", (role) => {
     const set = promptSetForRole(role);
 
     expect(set).toBe(
       BRAIN_DUMP_PROMPT_SETS[role as keyof typeof BRAIN_DUMP_PROMPT_SETS],
     );
     expect(set.questions).toHaveLength(8);
-    expect(set.examples).toHaveLength(2);
+    expect(set.examples).toHaveLength(5);
     for (const question of set.questions) {
       expect(question.label).not.toBe("");
       expect(question.text).toMatch(/\?$/);

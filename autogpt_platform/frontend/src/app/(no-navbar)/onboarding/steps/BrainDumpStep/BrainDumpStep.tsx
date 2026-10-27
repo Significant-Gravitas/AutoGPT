@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { AmbientPrompts } from "./components/AmbientPrompts";
 import { FailureState } from "./components/FailureState";
+import { IdeasPauseToggle } from "./components/IdeasPauseToggle";
 import { InsufficientState } from "./components/InsufficientState";
 import { MicButton, OrbScreen } from "./components/MicButton";
 import { ModeSwitchLink } from "./components/ModeSwitchLink";
@@ -58,7 +59,17 @@ export function BrainDumpStep() {
 
       {/* Wide enough that the starter ideas clear the typing composer. */}
       <div className="relative flex w-full max-w-screen-2xl flex-col items-center justify-center self-stretch">
-        <AmbientPrompts role={dump.role} screen={dump.screen} />
+        <IdeasPauseToggle
+          screen={dump.screen}
+          isPaused={dump.prompt.isPaused}
+          onToggle={dump.prompt.togglePause}
+        />
+        <AmbientPrompts
+          role={dump.role}
+          screen={dump.screen}
+          isPaused={dump.prompt.isPaused}
+          onTogglePause={dump.prompt.togglePause}
+        />
         <RevealGroup
           className={cn(
             "relative z-10 flex w-full flex-col items-center gap-6 px-4",
@@ -73,6 +84,7 @@ export function BrainDumpStep() {
             insufficientMode={dump.insufficientMode}
             elapsedSeconds={dump.elapsedSeconds}
             question={dump.prompt.question.text}
+            onTogglePause={dump.prompt.togglePause}
           />
 
           {orbScreen && (
@@ -94,6 +106,7 @@ export function BrainDumpStep() {
                     question={dump.prompt.question.text}
                     announcement={dump.prompt.announcement}
                     onAnotherQuestion={showAnotherQuestion}
+                    onTogglePause={dump.prompt.togglePause}
                     isMicBlocked={dump.isMicBlocked}
                     isMicUnavailable={dump.isMicUnavailable}
                     micPermission={dump.micPermission}
@@ -105,6 +118,7 @@ export function BrainDumpStep() {
                       question={dump.prompt.question.text}
                       onAnother={showAnotherQuestion}
                       announcement={dump.prompt.announcement}
+                      onTogglePause={dump.prompt.togglePause}
                     />
                     <RecordingControls
                       onStop={dump.handleStop}

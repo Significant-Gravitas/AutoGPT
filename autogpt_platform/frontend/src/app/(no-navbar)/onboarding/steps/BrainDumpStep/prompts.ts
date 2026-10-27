@@ -29,6 +29,9 @@ export const BRAIN_DUMP_PROMPT_SETS = {
     [
       "So, um, I run a little bakery, and honestly the ordering side is killing me.",
       "Three of us, we sell to gyms, and I am the whole sales team and the whole marketing team.",
+      "Okay, so, we are a small agency, and every new client means the same proposal, the same onboarding emails, all of it by hand.",
+      "I sell online, um, mostly on Shopify, and I never get round to the newsletter or the follow-up emails.",
+      "Honestly I am the bottleneck. Everything goes through my inbox and I am drowning a bit.",
     ],
   ),
   Operations: promptSet(
@@ -45,6 +48,9 @@ export const BRAIN_DUMP_PROMPT_SETS = {
     [
       "Okay so I run ops for a small clinic, and half my day is confirming appointments and chasing suppliers.",
       "We do events. Every week it is the same checklist, the same emails, and the same spreadsheet.",
+      "Right, so every Monday I pull numbers from three tools into one spreadsheet, and it takes the whole morning.",
+      "I manage a warehouse team and, um, half my job is answering where is my order emails.",
+      "We onboard a new client every week and it is the same twenty steps, done by hand, every time.",
     ],
   ),
   "Sales/BD": promptSet(
@@ -61,6 +67,9 @@ export const BRAIN_DUMP_PROMPT_SETS = {
     [
       "Okay where do I start. I am a recruiter, and I spend half my day just chasing people for replies.",
       "I sell to dental practices and I never have a clean list to call.",
+      "So I do partnerships, and finding the right person to email at each company takes me forever.",
+      "Um, after every call I mean to write the follow-up and update the CRM, and I just do not.",
+      "I am a solo consultant, so I am the sales team, and the pipeline lives in my head and a sticky note.",
     ],
   ),
   Marketing: promptSet(
@@ -77,6 +86,9 @@ export const BRAIN_DUMP_PROMPT_SETS = {
     [
       "I do marketing for a two-person skincare brand and the Instagram backlog haunts me.",
       "We make a scheduling tool for tutors and I am the whole marketing team.",
+      "So we publish one blog post a month and we should be doing four, and I never have time to research them.",
+      "Um, I run the newsletter, the socials and the ads, and the reporting at the end of the month kills me.",
+      "We are launching in spring and, honestly, I do not even have a content calendar yet.",
     ],
   ),
   "Product/PM": promptSet(
@@ -93,6 +105,9 @@ export const BRAIN_DUMP_PROMPT_SETS = {
     [
       "I am a PM at a small SaaS and I spend my mornings turning support tickets into a feedback doc.",
       "We have one product, four customer types, and I am the only person reading the reviews.",
+      "Okay so every sprint I write the same kind of update for three different audiences.",
+      "Um, I want to know what competitors ship each week, but I only find out when a customer tells me.",
+      "We are pre-launch, and I keep a list of user interview notes that nobody, including me, has read twice.",
     ],
   ),
   Engineering: promptSet(
@@ -109,6 +124,9 @@ export const BRAIN_DUMP_PROMPT_SETS = {
     [
       "I lead a team of five and I lose Fridays to status updates and release notes.",
       "Solo developer, two products, and nobody doing the marketing or the support inbox.",
+      "So I spend half of Monday answering the same questions from support about how a feature works.",
+      "Um, I keep meaning to write the docs, and the changelog, and the onboarding guide, and none of it happens.",
+      "We are an agency of three devs and the client updates and invoices eat our Fridays.",
     ],
   ),
   "HR/People": promptSet(
@@ -125,6 +143,9 @@ export const BRAIN_DUMP_PROMPT_SETS = {
     [
       "I run people ops for a 40-person startup and scheduling interviews eats my afternoons.",
       "Two of us in HR, and the job posts, the screening and the onboarding docs all fall to me.",
+      "So, um, every new hire needs the same twelve emails and three docs, and I write them from scratch.",
+      "I screen something like a hundred applications a week and most of it is reading the same CVs.",
+      "Honestly the reminders are the worst part: reviews, check-ins, training, I chase all of it.",
     ],
   ),
   Other: promptSet(
@@ -141,6 +162,9 @@ export const BRAIN_DUMP_PROMPT_SETS = {
     [
       "Right, so the idea is a dog-walking app, but for people who work shifts. Hear me out.",
       "I teach piano, I have thirty students, and the admin is the part I hate.",
+      "Um, I am a wedding photographer, and the emails, the contracts and the reminders take longer than the shoots.",
+      "So I run a small charity, we are all volunteers, and nobody has time for the grant applications.",
+      "Okay where do I start. I am a landlord with six flats and the tenant messages never stop.",
     ],
   ),
 } satisfies Record<string, BrainDumpPromptSet>;

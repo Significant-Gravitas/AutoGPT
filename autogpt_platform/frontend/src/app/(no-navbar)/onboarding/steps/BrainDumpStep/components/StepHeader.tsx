@@ -22,6 +22,7 @@ interface Props {
   insufficientMode: "voice" | "typed";
   elapsedSeconds: number;
   question: string;
+  onTogglePause: () => void;
 }
 
 export function StepHeader({
@@ -30,6 +31,7 @@ export function StepHeader({
   insufficientMode,
   elapsedSeconds,
   question,
+  onTogglePause,
 }: Props) {
   const isRecording = screen === "recording";
 
@@ -61,7 +63,12 @@ export function StepHeader({
           {/* On wide screens the ambient cards carry these questions, and
               they are hidden from assistive tech, so this one stays in the
               accessibility tree. */}
-          <OttoMightAsk question={question} compact className="xl:sr-only" />
+          <OttoMightAsk
+            question={question}
+            compact
+            onTogglePause={onTogglePause}
+            className="xl:sr-only"
+          />
         </RevealItem>
       )}
       {screen === "typing" && (
