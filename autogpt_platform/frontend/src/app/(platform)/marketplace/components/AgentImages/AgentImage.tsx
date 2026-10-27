@@ -2,11 +2,12 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { ImageNotFound01Icon } from "@hugeicons/core-free-icons";
+import { ImageNotFound01Icon, YoutubeIcon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { AgentImageItem } from "../AgentImageItem/AgentImageItem";
-import { getYouTubeVideoId, isValidVideoUrl } from "../AgentImageItem/helpers";
+import { useConsent } from "@/services/consent/useConsent";
+import { getThumbnail } from "./helpers";
 import { useAgentImage } from "./useAgentImage";
 
 interface AgentImagesProps {
@@ -15,6 +16,9 @@ interface AgentImagesProps {
 
 export function AgentImages({ images }: AgentImagesProps) {
   const { playingVideoIndex, handlePlay, handlePause } = useAgentImage();
+  // YouTube thumbnails come from YouTube, so they wait for the same consent
+  // as the player.
+  const { advertising } = useConsent();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loadedThumbs, setLoadedThumbs] = useState<Set<number>>(new Set());
   // Keyed by URL: the component stays mounted when a listing's images change.
@@ -31,7 +35,7 @@ export function AgentImages({ images }: AgentImagesProps) {
   if (images.length === 0) return null;
 
   return (
-    <div className="w-full px-2 dark:bg-transparent lg:w-3/5 lg:flex-1">
+    <div className="w-full px-2 lg:w-3/5 lg:flex-1">
       {/* Main preview */}
       <AgentImageItem
         image={images[selectedIndex]}
@@ -45,12 +49,9 @@ export function AgentImages({ images }: AgentImagesProps) {
       {images.length > 1 && (
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1 sm:mt-4 sm:gap-3">
           {images.map((image, index) => {
-            const isVideo = isValidVideoUrl(image);
-            const youtubeId = isVideo ? getYouTubeVideoId(image) : null;
-            const thumbnailUrl = youtubeId
-              ? `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`
-              : image;
-            const thumbnailFailed = failedThumbs.has(thumbnailUrl);
+            const thumbnail = getThumbnail(image, advertising);
+            const thumbnailFailed =
+              thumbnail.kind === "image" && failedThumbs.has(thumbnail.src);
 
             return (
               <button
@@ -60,48 +61,50 @@ export function AgentImages({ images }: AgentImagesProps) {
                 className={cn(
                   "relative h-16 w-24 shrink-0 overflow-hidden rounded-lg border transition-all sm:h-20 sm:w-32",
                   selectedIndex === index
-                    ? "border-violet-500"
-                    : "border-zinc-100 opacity-70 hover:opacity-100",
+                    ? // TODO(tokens): no exact role: border-violet-500 #8B5CF6
+                      "border-violet-500"
+                    : "border-separator opacity-70 hover:opacity-100",
                 )}
               >
-                {(!isVideo || youtubeId) &&
+                {thumbnail.kind === "image" &&
                   !loadedThumbs.has(index) &&
                   !thumbnailFailed && (
                     <Skeleton className="absolute inset-0 rounded-lg" />
                   )}
                 {thumbnailFailed ? (
-                  <div className="flex h-full w-full items-center justify-center bg-zinc-100">
+                  <div className="flex h-full w-full items-center justify-center bg-surface-hover">
                     <Icon
                       icon={ImageNotFound01Icon}
-                      className="h-5 w-5 text-zinc-400"
+                      className="h-5 w-5 text-foreground-subtle"
                     />
                   </div>
-                ) : youtubeId ? (
+                ) : thumbnail.kind === "image" ? (
                   <img
-                    src={thumbnailUrl}
+                    src={thumbnail.src}
                     alt={`Thumbnail ${index + 1}`}
                     loading="lazy"
                     className="absolute inset-0 h-full w-full object-cover"
                     onLoad={() =>
                       setLoadedThumbs((prev) => new Set(prev).add(index))
                     }
-                    onError={() => markThumbFailed(thumbnailUrl)}
+                    onError={() => markThumbFailed(thumbnail.src)}
                   />
-                ) : isVideo ? (
-                  <div className="flex h-full w-full items-center justify-center bg-neutral-200 text-xs text-neutral-500">
-                    Video
+                ) : thumbnail.kind === "youtube" ? (
+                  <div className="flex h-full w-full items-center justify-center bg-surface-hover">
+                    <Icon
+                      icon={YoutubeIcon}
+                      aria-hidden
+                      className="h-6 w-6 text-foreground-subtle"
+                    />
+                    <span className="sr-only">{thumbnail.label}</span>
                   </div>
                 ) : (
-                  <img
-                    src={thumbnailUrl}
-                    alt={`Thumbnail ${index + 1}`}
-                    loading="lazy"
-                    className="absolute inset-0 h-full w-full object-cover"
-                    onLoad={() =>
-                      setLoadedThumbs((prev) => new Set(prev).add(index))
-                    }
-                    onError={() => markThumbFailed(thumbnailUrl)}
-                  />
+                  <div
+                    // TODO(tokens): no exact role: bg-neutral-200 #E5E5E5, text-neutral-500 #737373
+                    className="flex h-full w-full items-center justify-center bg-neutral-200 text-xs text-neutral-500"
+                  >
+                    Video
+                  </div>
                 )}
               </button>
             );

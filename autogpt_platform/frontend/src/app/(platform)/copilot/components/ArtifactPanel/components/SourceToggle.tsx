@@ -9,15 +9,15 @@ interface Props {
 
 export function SourceToggle({ isSourceView, onToggle }: Props) {
   return (
-    <div className="flex items-center rounded-md border border-zinc-200 bg-zinc-50 p-0.5 text-xs font-medium">
+    <div className="flex items-center rounded-md border border-border-base bg-surface-muted p-0.5 text-xs font-medium">
       <button
         type="button"
         aria-pressed={!isSourceView}
         className={cn(
           "rounded px-2 py-1 transition-colors",
           !isSourceView
-            ? "bg-white text-zinc-900 shadow-sm"
-            : "text-zinc-500 hover:text-zinc-700",
+            ? "bg-surface text-foreground-strong shadow-sm"
+            : "text-foreground-tertiary hover:text-foreground-body",
         )}
         onClick={() => onToggle(false)}
       >
@@ -29,8 +29,8 @@ export function SourceToggle({ isSourceView, onToggle }: Props) {
         className={cn(
           "rounded px-2 py-1 transition-colors",
           isSourceView
-            ? "bg-white text-zinc-900 shadow-sm"
-            : "text-zinc-500 hover:text-zinc-700",
+            ? "bg-surface text-foreground-strong shadow-sm"
+            : "text-foreground-tertiary hover:text-foreground-body",
         )}
         onClick={() => onToggle(true)}
       >

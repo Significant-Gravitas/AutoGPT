@@ -14,8 +14,11 @@ export interface Alternative {
  *
  * The PRD's priority order starts with the platform, because it is the one
  * connection a user is guaranteed to be able to fall back to. Anything else
- * that is selectable will do after that; the one thing excluded is the
- * connection that just refused the turn, which would fail again immediately.
+ * that is selectable will do after that; excluded are the connection that
+ * just refused the turn, which would fail again immediately, and Microsoft
+ * 365 Copilot, which answers plain messages with none of AutoPilot's tools or
+ * the task so far, so it can't carry a task on. Out of AutoPilot budget, a
+ * chat continues on ChatGPT only.
  */
 export function alternativeConnection(
   offers: AIConnectionOffer[] | undefined,
@@ -27,6 +30,9 @@ export function alternativeConnection(
     (offer) =>
       offer.selectable &&
       !isTheOneThatFailed(offer, failure) &&
+      offer.auth_provider !== "microsoft_365_copilot" &&
+      (failure.authProvider !== "platform" ||
+        offer.auth_provider === "codex") &&
       (offer.auth_method === "deployment" || offer.credential_id !== null),
   );
   if (usable.length === 0) return null;
@@ -36,9 +42,7 @@ export function alternativeConnection(
 
   return {
     display_name: platform.display_name,
-    auth_provider: platform.offer_id.split(
-      ":",
-    )[0] as ChangeSessionConnectionRequestLlmAuthProvider,
+    auth_provider: platform.auth_provider,
     credential_id: platform.credential_id ?? null,
   };
 }
@@ -47,8 +51,7 @@ function isTheOneThatFailed(
   offer: AIConnectionOffer,
   failure: ProviderFailure,
 ): boolean {
-  const provider = offer.offer_id.split(":")[0];
-  if (provider !== failure.authProvider) return false;
+  if (offer.auth_provider !== failure.authProvider) return false;
   // A provider with no credential is a single connection, so the provider
   // matching is enough. With one, only the account that failed is excluded --
   // a second ChatGPT account has its own quota.

@@ -117,22 +117,22 @@ function CSVTable({
   }
 
   if (headers.length === 0) {
-    return <p className="p-4 text-sm text-zinc-500">Empty CSV</p>;
+    return <p className="p-4 text-sm text-foreground-tertiary">Empty CSV</p>;
   }
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b border-zinc-200 bg-zinc-50">
+          <tr className="border-b border-border-base bg-surface-muted">
             {headers.map((header, i) => (
               <th
                 key={i}
-                className="px-3 py-2 text-left font-medium text-zinc-700"
+                className="px-3 py-2 text-left font-medium text-foreground-body"
               >
                 <button
                   type="button"
-                  className="flex w-full cursor-pointer select-none items-center gap-1 hover:bg-zinc-100"
+                  className="flex w-full cursor-pointer select-none items-center gap-1 hover:bg-surface-hover"
                   onClick={() => handleSort(i)}
                 >
                   {header}
@@ -150,14 +150,17 @@ function CSVTable({
           {sortedRows.map((row, rowIdx) => (
             <tr
               key={rowIdx}
-              className="border-b border-zinc-100 even:bg-zinc-50/50"
+              className="border-b border-separator even:bg-surface-muted/50"
               style={{
                 contentVisibility: "auto",
                 containIntrinsicSize: "0 36px",
               }}
             >
               {row.map((cell, cellIdx) => (
-                <td key={cellIdx} className="px-3 py-1.5 text-zinc-600">
+                <td
+                  key={cellIdx}
+                  className="px-3 py-1.5 text-foreground-secondary"
+                >
                   {cell}
                 </td>
               ))}

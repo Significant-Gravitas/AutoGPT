@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from backend.api.features.experts.models import Expert
+from backend.blocks import get_blocks
 from backend.blocks.llm import LLM_PROVIDER_NAMES
 from backend.copilot.briefing.models import BriefingRunItem
 from backend.copilot.briefing.outcome import as_utc
@@ -183,6 +184,15 @@ def _is_model_call(event: ActivityEvent) -> bool:
     return event.category == "INTEGRATION" and event.provider in LLM_PROVIDER_NAMES
 
 
+def _integration_title(event: ActivityEvent) -> str:
+    """Rows written before the block's display name was recorded carry its
+    class name; the block registry still knows what to call it."""
+    block_class = get_blocks().get(event.object_id) if event.object_id else None
+    if block_class is None or block_class.__name__ != event.title:
+        return event.title
+    return block_class().display_name
+
+
 def _compose_item(
     event: ActivityEvent, session_titles: dict[str, str | None]
 ) -> HomeRecentWorkItem:
@@ -192,7 +202,11 @@ def _compose_item(
         id=event.id,
         category=_ITEM_CATEGORIES[event.category],
         event_type=event.event_type,
-        title=event.title,
+        title=(
+            _integration_title(event)
+            if event.category == "INTEGRATION"
+            else event.title
+        ),
         occurred_at=event.created_at,
         provider=event.provider,
         file_id=event.object_id if event.category == "FILE" else None,

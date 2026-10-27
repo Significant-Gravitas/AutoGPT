@@ -15,7 +15,7 @@ const ROW_CLASS = "relative flex items-center gap-3 py-2 pl-[3.75rem] pr-4";
 export function ActiveRow({ item }: Props) {
   const content = (
     <>
-      <span className="absolute left-4 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white">
+      <span className="absolute left-4 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-surface">
         {item.expert ? (
           <ExpertAvatar
             name={item.expert.name}
@@ -37,7 +37,10 @@ export function ActiveRow({ item }: Props) {
           className="truncate leading-5"
         >
           <span>{item.title}</span>
-          <span className="font-normal text-zinc-500"> workflow</span>
+          <span className="font-normal text-foreground-tertiary">
+            {" "}
+            workflow
+          </span>
         </Text>
         <Text variant="small" tone="muted" className="truncate">
           {item.status === "queued"
@@ -54,7 +57,7 @@ export function ActiveRow({ item }: Props) {
       href={item.link}
       className={cn(
         ROW_CLASS,
-        "outline-none transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50",
+        "outline-none transition-colors hover:bg-surface-muted focus-visible:bg-surface-muted",
       )}
     >
       {content}

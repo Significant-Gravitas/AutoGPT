@@ -120,7 +120,7 @@ See [Component structure](#-component-structure) and [Styling](#-styling) sectio
 
 If a feature will ship across multiple PRs, guard it with a flag so we can merge iteratively.
 
-- Use [LaunchDarkly](https://www.launchdarkly.com) based flags (see Feature Flags below)
+- See Feature Flags below
 - Avoid long-lived feature branches
 
 ### 3) Open PR and get reviews ✅
@@ -184,7 +184,7 @@ While server components and actions are cool and cutting-edge, they introduce a 
 - Use the design system under `src/components` for primitives and building blocks
 - Do not use anything under `src/components/_legacy__`; migrate away from it when touching old code
 - Reference the design system catalog on Chromatic: [`https://dev--670f94474adee5e32c896b98.chromatic.com/`](https://dev--670f94474adee5e32c896b98.chromatic.com/)
-- Use the [`tailwind-scrollbar`](https://www.npmjs.com/package/tailwind-scrollbar) plugin utilities for scrollbar styling
+- Use the `scrollbar-*` utilities for scrollbar styling: [`tailwind-scrollbar`](https://www.npmjs.com/package/tailwind-scrollbar) 3's classes, kept in `tailwind.scrollbar.ts`
 
 ---
 
@@ -497,7 +497,7 @@ You don't need to wrap components in error boundaries manually unless you need c
 
 ## 🚩 Feature Flags
 
-- Flags are powered by [LaunchDarkly](https://docs.launchdarkly.com/)
+- By default the browser reads its flags from the backend (`GET /api/feature-flags`), which answers from PostHog; see `docs/engineering/feature-flags.md`
 - Use the helper APIs under `src/services/feature-flags`
 
 Check a flag in a client component:
@@ -505,8 +505,8 @@ Check a flag in a client component:
 ```tsx
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
-export function SkillsPanel() {
-  const enabled = useGetFlag(Flag.SKILLS_HUB);
+export function VoiceControls() {
+  const enabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
   if (!enabled) return null;
   return <div>Feature is enabled!</div>;
 }
@@ -528,9 +528,13 @@ Local dev and Playwright:
 
 Adding new flags:
 
-1. Add the flag to the `Flag` enum and `FlagValues` type
-2. Provide a mock value in the mock map
-3. Configure the flag in LaunchDarkly
+1. Add the flag to `FrontendFlag` in `backend/backend/util/feature_flag/frontend.py`; the frontend's `Flag` is generated from it (`pnpm generate:api`)
+2. Give it a default in `defaultFlags` (`use-get-flag.ts`); `tsc` fails until you do
+3. Configure the flag in the vendor that answers it, by `NEXT_PUBLIC_FEATURE_FLAG_BACKEND`:
+   - `launchdarkly`: LaunchDarkly
+   - `posthog`: PostHog
+   - `dual`: both; create it in LaunchDarkly, then copy it over with `backend/scripts/sync_feature_flags_to_posthog.py`
+   - `server` (default): whichever the backend's `FEATURE_FLAG_BACKEND` names (`posthog` by default), by the same rule
 
 ---
 
@@ -618,7 +622,8 @@ Control flow:
 
 - Use Tailwind utilities; prefer semantic, composable class names
 - Use shadcn/ui components as building blocks when available
-- Use the `tailwind-scrollbar` utilities for scrollbar styling
+- Use the `scrollbar-*` utilities (`tailwind.scrollbar.ts`) for scrollbar styling
+- Tailwind CSS 4 runs with Tailwind 3's theme and output (`tailwind.v3-preset.ts`, `src/app/tailwind-v3-preflight.css`, `postcss.tailwind3-compat.cjs`), so every class keeps its Tailwind 3 value. Look values up in the [Tailwind 3 docs](https://v3.tailwindcss.com/docs): `shadow-sm` is still the small shadow, a bare `ring` is 3px and `outline-none` draws a transparent outline. Names that exist only in Tailwind 4, such as `shadow-xs`, `rounded-xs` or `blur-xs`, generate nothing
 - Keep responsive and dark-mode behavior consistent with the design system
 
 Additional requirements:
@@ -804,7 +809,7 @@ import LibraryPage from "../page";
 test("renders agent list", async () => {
   server.use(getGetV2ListLibraryAgentsMockHandler200());
   render(<LibraryPage />);
-  expect(await screen.findByText("My Agents")).toBeDefined();
+  expect(await screen.findByText("All Workflows")).toBeDefined();
 });
 ```
 

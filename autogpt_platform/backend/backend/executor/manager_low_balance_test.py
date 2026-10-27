@@ -49,7 +49,8 @@ async def test_handle_low_balance_threshold_crossing(server: SpinTestServer):
         assert raised["cause"] == AlertCause.LOW_BALANCE
         assert raised["user_id"] == user_id
         assert raised["cause_key"] == "low_balance"
-        assert raised["data"]["balance_display"] == "4.00 credits"
+        assert raised["data"]["balance_display"] == "$4.00"
+        assert raised["data"]["daily_rate_display"] == "$1.00"
 
         # Verify Discord alert was sent
         mock_client.discord_system_alert.assert_called_once()

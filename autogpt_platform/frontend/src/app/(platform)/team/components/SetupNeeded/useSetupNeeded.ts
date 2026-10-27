@@ -13,21 +13,16 @@ import { invalidateExpertGrantQueries } from "@/services/experts/invalidate-expe
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-interface Args {
-  enabled: boolean;
-}
-
-export function useSetupNeeded({ enabled }: Args) {
+export function useSetupNeeded() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [connecting, setConnecting] = useState<ExpertSetupItem | null>(null);
 
   const itemsQuery = useListExpertSetupItems({
-    query: { enabled, select: (res) => okData(res) ?? [] },
+    query: { select: (res) => okData(res) ?? [] },
   });
   const providersQuery = useGetV1ListProviders({
     query: {
-      enabled,
       select: (res) => (res.status === 200 ? res.data : []),
     },
   });

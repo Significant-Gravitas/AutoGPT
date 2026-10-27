@@ -31,7 +31,6 @@ test("landing happy path: a user finishing onboarding lands on /home", async ({
   const copilotRequests = recordCopilotNavigations(page);
   await completeOnboardingWizard(page, {
     role: "Engineering",
-    painPoints: ["Research", "Reports & data"],
   });
 
   await expectHomeLanding(page, copilotRequests);

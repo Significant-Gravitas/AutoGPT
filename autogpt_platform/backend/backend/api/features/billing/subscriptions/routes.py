@@ -37,7 +37,6 @@ from backend.data.credit import (
     get_proration_credit_cents,
     get_subscription_price_id,
     get_user_billing_cycle,
-    handle_subscription_payment_failure,
     handle_subscription_payment_success,
     modify_stripe_subscription_for_tier,
     release_pending_subscription_schedule,
@@ -47,9 +46,16 @@ from backend.data.credit import (
     sync_tier_from_checkout_session,
 )
 from backend.data.notifications import PassWorkEvent, PassWorkKind
+from backend.data.pro_activation import get_usage_activation_state
 from backend.data.redis_client import get_redis_async
+from backend.data.stripe_authentication import requires_authentication
 from backend.data.stripe_client import stripe_call
+from backend.data.subscription_activation_events import recover_claimed_billing_event
 from backend.data.subscription_checkout import AnotherPlanLive
+from backend.data.subscription_payment_failure import (
+    PaymentFailureOutcome,
+    handle_subscription_payment_failure,
+)
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_billing import (
     TRIAL_BILLING_EVENTS,
@@ -62,30 +68,30 @@ from backend.data.subscription_trial_conversion import (
     get_cancel_pending_trial,
     is_trial_plan,
 )
+from backend.data.subscription_upgrade import (
+    preview_subscription_upgrade,
+    validate_subscription_upgrade_preview,
+)
+from backend.data.subscription_upgrade_models import (
+    SubscriptionUpgradePreview,
+    SubscriptionUpgradePreviewRequest,
+    UpgradePreviewUnavailable,
+)
+from backend.data.subscription_wallet_payment import (
+    reconcile_wallet_payment_on_paid_invoice,
+)
 from backend.data.user import get_user_by_id
 from backend.notifications import lifecycle
 from backend.notifications.queue import queue_pass_work
 from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
+from backend.util.clients import get_scheduler_client
 from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
-
-# The card is fine but the bank wants 3DS. Stripe documents
-# ``authentication_required`` (also a ``card_declined`` decline code) and
-# ``invoice_payment_intent_requires_action`` for an invoice payment that needs
-# action; ``subscription_payment_intent_requires_action`` is kept because it has
-# been reported for Subscription.modify under ``error_if_incomplete``.
-_SCA_CARD_ERROR_CODES = frozenset(
-    {
-        "authentication_required",
-        "invoice_payment_intent_requires_action",
-        "subscription_payment_intent_requires_action",
-    }
-)
 
 # No router-level auth: /credits/stripe_webhook is authenticated by Stripe's
 # signature, not by a user, so each route keeps its own dependency.
@@ -97,6 +103,8 @@ class SubscriptionTierRequest(BaseModel):
     success_url: str = ""
     cancel_url: str = ""
     billing_cycle: Literal["monthly", "yearly"] = "monthly"
+    proration_date: int | None = Field(default=None, gt=0)
+    preview_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     surface: Optional[Literal["onboarding", "paywall_gate", "billing"]] = Field(
         default=None,
         description="Where the plan was picked; analytics only.",
@@ -150,6 +158,13 @@ class SubscriptionStatusResponse(BaseModel):
             " upgrade charges, if any). None when no active sub."
         ),
     )
+    paused_workflow_schedules: int = Field(
+        default=0,
+        description=(
+            "Active workflow schedules that won't run until the user has a plan."
+            " Counted only for NO_TIER; 0 for every other tier."
+        ),
+    )
     pending_tier: Optional[Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]] = None
     pending_tier_effective_at: Optional[datetime] = None
     pending_billing_cycle: Optional[Literal["monthly", "yearly"]] = Field(
@@ -167,8 +182,10 @@ class SubscriptionStatusResponse(BaseModel):
         default="",
         description=(
             "Populated only when POST /credits/subscription starts a Stripe Checkout"
-            " Session (BASIC → paid upgrade). Empty string in all other branches —"
-            " the client redirects to this URL when non-empty."
+            " Session (BASIC → paid upgrade), or when a trial ending early needs"
+            " the customer's bank to confirm its payment, on Stripe's invoice page."
+            " Empty string in all other branches — the client sends the customer"
+            " to this URL when non-empty."
         ),
     )
 
@@ -248,8 +265,12 @@ async def _get_stripe_price_amount(price_id: str) -> int | None:
 async def get_subscription_status(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> SubscriptionStatusResponse:
-    user = await get_user_by_id(user_id)
-    tier = user.subscription_tier or SubscriptionTier.NO_TIER
+    activation = await get_usage_activation_state(user_id)
+    if not activation.ready:
+        raise HTTPException(
+            503, "Subscription activation is processing", headers={"Retry-After": "3"}
+        )
+    tier = activation.tier
 
     # Tiers that *can* have a Stripe price configured (and therefore appear
     # in the tier picker if the LD flag exposes a price-id). NO_TIER is not
@@ -314,9 +335,14 @@ async def get_subscription_status(
         current_monthly_cost = tier_costs_yearly.get(tier.value, 0)
     else:
         current_monthly_cost = tier_costs.get(tier.value, 0)
-    proration_credit, current_period_end = await asyncio.gather(
+    (
+        proration_credit,
+        current_period_end,
+        paused_workflow_schedules,
+    ) = await asyncio.gather(
         get_proration_credit_cents(user_id, current_monthly_cost),
         get_active_subscription_period_end(user_id),
+        _count_paused_workflow_schedules(user_id, tier),
     )
 
     try:
@@ -343,6 +369,7 @@ async def get_subscription_status(
         proration_credit_cents=proration_credit,
         has_active_stripe_subscription=current_period_end is not None,
         current_period_end=current_period_end,
+        paused_workflow_schedules=paused_workflow_schedules,
     )
     if pending is not None:
         pending_tier_enum, pending_effective_at, pending_cycle = pending
@@ -357,6 +384,51 @@ async def get_subscription_status(
             response.pending_tier_effective_at = pending_effective_at
             response.pending_billing_cycle = pending_cycle
     return response
+
+
+async def _count_paused_workflow_schedules(user_id: str, tier: SubscriptionTier) -> int:
+    # Only workflow schedules wait for a plan: add_graph_execution skips them with
+    # UserPaywalledError, while a scheduled chat explains itself in its own chat.
+    if tier != SubscriptionTier.NO_TIER:
+        return 0
+    try:
+        schedules = await asyncio.wait_for(
+            get_scheduler_client().get_execution_schedules(user_id=user_id),
+            timeout=settings.config.schedule_read_timeout_seconds,
+        )
+    except Exception:
+        logger.warning(f"Could not count paused workflow schedules for user {user_id}")
+        return 0
+    return sum(schedule.kind == "graph" for schedule in schedules)
+
+
+@router.post(
+    path="/credits/subscription/preview",
+    summary="Review the prorated charge for a paid Pro-to-Max upgrade",
+    operation_id="previewSubscriptionUpgrade",
+    dependencies=[
+        Security(requires_user),
+        Depends(enforce_subscription_status_rate_limit),
+    ],
+)
+async def preview_tier_upgrade(
+    request: SubscriptionUpgradePreviewRequest,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> SubscriptionUpgradePreview:
+    enabled, _ = await evaluate_feature_flag(
+        Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
+    )
+    if not enabled:
+        raise HTTPException(422, "Subscription upgrades are unavailable.")
+    try:
+        return await preview_subscription_upgrade(user_id, request)
+    except UpgradePreviewUnavailable as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except (stripe.StripeError, ValueError) as exc:
+        logger.exception("Could not preview subscription upgrade for user %s", user_id)
+        raise HTTPException(
+            502, "Unable to review the charge. Please try again."
+        ) from exc
 
 
 @router.post(
@@ -509,21 +581,45 @@ async def update_subscription_tier(
 
     # Modify in place if there's a sub; else fall through to Checkout below.
     try:
-        modified = await _change_plan_in_place(
-            user_id, tier, request.billing_cycle, pending_trial
-        )
+        if pending_trial is not None:
+            return await _convert_trial(
+                user_id,
+                pending_trial,
+                tier,
+                None if converts_trial else target_price_id,
+            )
+        if request.preview_id is not None or request.proration_date is not None:
+            if (
+                request.preview_id is None
+                or request.proration_date is None
+                or tier != SubscriptionTier.MAX
+            ):
+                raise HTTPException(422, "A complete Max upgrade review is required.")
+            quote = await validate_subscription_upgrade_preview(
+                user_id,
+                SubscriptionUpgradePreviewRequest(
+                    tier="MAX", billing_cycle=request.billing_cycle
+                ),
+                request.preview_id,
+                request.proration_date,
+            )
+            modified = await modify_stripe_subscription_for_tier(
+                user_id,
+                tier,
+                request.billing_cycle,
+                proration_date=request.proration_date,
+                upgrade_preview=quote,
+            )
+        else:
+            modified = await modify_stripe_subscription_for_tier(
+                user_id, tier, request.billing_cycle
+            )
         if modified:
-            status = await get_subscription_status(user_id)
-            if converts_trial and status.tier != tier.value:
-                # Stripe charged the card but the reconcile did not see a
-                # conversion; the person needs the paid plan they bought.
-                logger.error(
-                    f"Trial conversion for user {user_id} left tier"
-                    f" {status.tier}, not {tier.value}"
-                )
-            return status
+            return await get_subscription_status(user_id)
     except TrialConversionRefused as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except UpgradePreviewUnavailable as exc:
+        raise HTTPException(409, str(exc)) from exc
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except stripe.CardError as e:
@@ -531,7 +627,7 @@ async def update_subscription_tier(
         # modify was rolled back, so 402 lets the UI prompt for a new card or
         # surface SCA. SCA codes mean the card is fine but the bank wants 3DS —
         # different message so the user doesn't try a new card.
-        if _requires_authentication(e):
+        if requires_authentication(e):
             logger.warning(
                 "SCA required on subscription upgrade for user %s: %s", user_id, e
             )
@@ -700,44 +796,30 @@ async def update_subscription_tier(
     return status
 
 
-async def _change_plan_in_place(
+async def _convert_trial(
     user_id: str,
+    trial: TrialState,
     tier: SubscriptionTier,
-    billing_cycle: Literal["monthly", "yearly"],
-    pending_trial: TrialState | None,
-) -> bool:
-    """Change the plan without Checkout; False means Checkout is needed.
+    price_id: str | None,
+) -> SubscriptionStatusResponse:
+    """Start the chosen plan on the cancel-pending trial's own subscription.
 
-    A cancel-pending trial choosing the plan it accepted converts in place.
-    Any other plan is a new subscription through Checkout, and the
-    stale-subscription cleanup ends the trial once that plan is active.
+    Stripe limits a customer to one subscription, so Checkout would refuse a
+    plan beside the trial. A bank that wants to confirm the payment gets
+    Stripe's invoice page as ``url``; nothing changes until it is paid.
     """
-    if pending_trial is None:
-        return await modify_stripe_subscription_for_tier(user_id, tier, billing_cycle)
-    if not is_trial_plan(pending_trial, tier, billing_cycle):
-        return False
-    try:
-        converted = await convert_cancel_pending_trial(pending_trial)
-    except stripe.CardError as e:
-        if not _requires_authentication(e):
-            raise
-        # Only an on-session Checkout can complete 3DS. The failed charge left
-        # the trial untouched, and the stale-subscription cleanup ends it once
-        # the Checkout plan is active.
-        logger.warning(
-            f"SCA required on trial conversion for user {user_id}; using Checkout: {e}"
+    payment_page = await convert_cancel_pending_trial(trial, tier, price_id)
+    status = await get_subscription_status(user_id)
+    if payment_page:
+        status.url = payment_page
+    elif status.tier != tier.value:
+        # Stripe charged the card but the reconcile did not see a
+        # conversion; the person needs the paid plan they bought.
+        logger.error(
+            f"Trial conversion for user {user_id} left tier {status.tier},"
+            f" not {tier.value}"
         )
-        return False
-    if not converted:
-        logger.info(f"Trial conversion for user {user_id} needs a card; using Checkout")
-    return converted
-
-
-def _requires_authentication(error: stripe.CardError) -> bool:
-    decline_code = error.error.decline_code if error.error else None
-    return (
-        error.code in _SCA_CARD_ERROR_CODES or decline_code == "authentication_required"
-    )
+    return status
 
 
 def _stripe_event_dedup_key(event_id: str) -> str:
@@ -878,22 +960,23 @@ async def stripe_webhook(request: Request):
         await sync_trials_for_billing_event(event_type, event.get("data"))
         return Response(status_code=200)
 
-    # Event-level dedup: short-circuit identical re-deliveries before any
-    # handler runs. Stripe retries the same event.id on non-2xx responses, and
-    # not every downstream handler is independently idempotent.
-    if not await _claim_stripe_event(event_id):
-        logger.info(
-            "stripe_webhook: event %s (%s) already processed; skipping",
-            event_id,
-            event_type,
-        )
-        return Response(status_code=200)
-
     event_data = event.get("data") or {}
     data_object = event_data.get("object") if isinstance(event_data, dict) else None
     if not isinstance(data_object, dict):
         logger.warning(
             "stripe_webhook: %s missing or non-dict data.object; ignoring",
+            event_type,
+        )
+        return Response(status_code=200)
+
+    # Event-level dedup: short-circuit identical re-deliveries before any
+    # handler runs. Stripe retries the same event.id on non-2xx responses, and
+    # not every downstream handler is independently idempotent.
+    if not await _claim_stripe_event(event_id):
+        await recover_claimed_billing_event(event_type, data_object)
+        logger.info(
+            "stripe_webhook: event %s (%s) already processed; skipping",
+            event_id,
             event_type,
         )
         return Response(status_code=200)
@@ -953,7 +1036,8 @@ async def stripe_webhook(request: Request):
         ):
             await sync_subscription_schedule_from_stripe(data_object)
 
-        if event_type == "invoice.payment_succeeded":
+        if event_type in ("invoice.payment_succeeded", "invoice.paid"):
+            await reconcile_wallet_payment_on_paid_invoice(data_object)
             await handle_subscription_payment_success(data_object)
             await on_trial_invoice(data_object, paid=True)
 
@@ -962,9 +1046,12 @@ async def stripe_webhook(request: Request):
             await notify_trial(data_object, "ending")
 
         if event_type == "invoice.payment_failed":
-            await handle_subscription_payment_failure(data_object)
-            if not await on_trial_invoice(data_object, paid=False):
-                await lifecycle.on_payment_failed(data_object)
+            outcome = await handle_subscription_payment_failure(data_object)
+            if outcome == PaymentFailureOutcome.NEEDS_ACTION:
+                if not await on_trial_invoice(data_object, paid=False):
+                    await lifecycle.on_payment_failed(
+                        data_object, attempted_at=event.get("created")
+                    )
 
         # New Stripe API (≥2025-04-01) split the per-payment events off the
         # Invoice resource. data.object is an InvoicePayment, not an Invoice,
@@ -979,12 +1066,16 @@ async def stripe_webhook(request: Request):
                 invoice = await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
                 invoice_payload = cast(dict, invoice)
                 if event_type == "invoice_payment.paid":
+                    await reconcile_wallet_payment_on_paid_invoice(invoice_payload)
                     await handle_subscription_payment_success(invoice_payload)
                     await on_trial_invoice(invoice_payload, paid=True)
                 else:
-                    await handle_subscription_payment_failure(invoice_payload)
-                    if not await on_trial_invoice(invoice_payload, paid=False):
-                        await lifecycle.on_payment_failed(invoice_payload)
+                    outcome = await handle_subscription_payment_failure(invoice_payload)
+                    if outcome == PaymentFailureOutcome.NEEDS_ACTION:
+                        if not await on_trial_invoice(invoice_payload, paid=False):
+                            await lifecycle.on_payment_failed(
+                                invoice_payload, attempted_at=event.get("created")
+                            )
 
         # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
         # (Dispute/Refund). The Stripe webhook payload's `data.object` is a

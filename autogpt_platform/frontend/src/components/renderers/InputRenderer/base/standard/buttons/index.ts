@@ -1,8 +1,2 @@
 export { default as AddButton } from "./AddButton";
-export {
-  default as IconButton,
-  CopyButton,
-  RemoveButton,
-  MoveUpButton,
-  MoveDownButton,
-} from "./IconButton";
+export { default as IconButton, CopyButton, RemoveButton } from "./IconButton";

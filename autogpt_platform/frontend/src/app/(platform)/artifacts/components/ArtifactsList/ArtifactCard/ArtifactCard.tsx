@@ -58,7 +58,7 @@ export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
       initial={reduceMotion ? false : "hidden"}
       animate="show"
       style={{ willChange: "transform, opacity, filter" }}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border-base bg-surface transition-colors hover:border-border-strong"
       data-testid="artifacts-list-item"
       draggable
       onDragStartCapture={handleDragStart}
@@ -77,17 +77,24 @@ export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
       <div className="pointer-events-none relative z-10">
         <CardPreview file={file} />
         <div className="flex items-center gap-3 p-3">
-          <Icon icon={typeIcon} size={20} className="shrink-0 text-zinc-500" />
+          <Icon
+            icon={typeIcon}
+            size={20}
+            className="shrink-0 text-foreground-tertiary"
+          />
           <div className="flex min-w-0 flex-1 flex-col">
             <Text
               variant="body-medium"
-              className="truncate text-zinc-900"
+              className="truncate text-foreground-strong"
               title={file.name}
             >
               {file.name}
             </Text>
             <div className="flex min-w-0 items-center gap-2">
-              <Text variant="small" className="truncate text-zinc-500">
+              <Text
+                variant="small"
+                className="truncate text-foreground-tertiary"
+              >
                 {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
                 {formatFileSize(file.size_bytes)} ·{" "}
                 {formatRelativeDate(file.created_at)}

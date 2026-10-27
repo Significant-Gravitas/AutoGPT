@@ -1,5 +1,6 @@
-import { Button } from "@/components/__legacy__/ui/button";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { beautifyString, cn } from "@/lib/utils";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
@@ -21,9 +22,11 @@ export const IntegrationChip: IntegrationChipComponent = ({
 }) => {
   return (
     <Button
+      variant="legacy-default"
       className={cn(
-        "flex h-[3.25rem] w-full min-w-[7.5rem] justify-start gap-2 whitespace-normal rounded-[0.5rem] bg-zinc-50 p-2 pr-3 shadow-none",
-        "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300",
+        "flex h-[3.25rem] w-full min-w-[7.5rem] justify-start gap-2 whitespace-normal rounded-[0.5rem] bg-surface-muted p-2 pr-3 shadow-none",
+        // TODO(tokens): no fitting role for active:bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this is the pressed state (QUALITY 41); no fitting role for active:ring-zinc-300 #C5C5C9; #C5C5C9 is border-strong (a border colour) and foreground-disabled (a text colour), and this is a ring (QUALITY 41(b))
+        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300",
         className,
       )}
       {...rest}
@@ -40,9 +43,9 @@ export const IntegrationChip: IntegrationChipComponent = ({
         )}
       </div>
       {name && (
-        <span className="truncate font-sans text-sm font-normal leading-[1.375rem] text-zinc-800">
+        <Text variant="body" as="span" tone="emphasis" className="truncate">
           {beautifyString(name)}
-        </span>
+        </Text>
       )}
     </Button>
   );
@@ -50,9 +53,18 @@ export const IntegrationChip: IntegrationChipComponent = ({
 
 const IntegrationChipSkeleton: React.FC = () => {
   return (
-    <Skeleton className="flex h-[3.25rem] w-full min-w-[7.5rem] gap-2 rounded-[0.5rem] bg-zinc-100 p-2 pr-3">
-      <Skeleton className="h-9 w-12 rounded-[0.5rem] bg-zinc-200" />
-      <Skeleton className="h-5 w-24 self-center rounded-sm bg-zinc-200" />
+    <Skeleton
+      // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41)
+      className="flex h-[3.25rem] w-full min-w-[7.5rem] gap-2 rounded-[0.5rem] bg-zinc-100 p-2 pr-3"
+    >
+      <Skeleton
+        // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
+        className="h-9 w-12 rounded-[0.5rem] bg-zinc-200"
+      />
+      <Skeleton
+        // TODO(tokens): no fitting role for bg-zinc-200 #DADADC; #DADADC is surface-active, an active-state fill, and border-base (a border colour), and this fill is static (QUALITY 41)
+        className="h-5 w-24 self-center rounded-sm bg-zinc-200"
+      />
     </Skeleton>
   );
 };

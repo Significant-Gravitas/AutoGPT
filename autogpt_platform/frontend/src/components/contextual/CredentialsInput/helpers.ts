@@ -202,7 +202,7 @@ export function getRemovedCredentialMessage(
   providerName: string,
 ): string {
   if (!selectedCredential?.id) {
-    return `${removedCredentialTitle} was removed. Choose a connection to keep this agent running.`;
+    return `${removedCredentialTitle} was removed. Choose a connection to keep this workflow running.`;
   }
 
   const replacement = getCredentialDisplayName(

@@ -20,7 +20,11 @@ export const FieldError = ({
   return (
     <div id={id} aria-live="polite" aria-atomic="true">
       {fieldError && (
-        <Text variant="small" className="mt-1 pl-4 !text-red-600">
+        <Text
+          // TODO(tokens): no exact role for !text-red-600 #D93636; #D93636 is error-hover, a hover fill
+          variant="small"
+          className="mt-1 pl-4 !text-red-600"
+        >
           {fieldError}
         </Text>
       )}

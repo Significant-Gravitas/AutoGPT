@@ -33,7 +33,6 @@ interface Props {
   onMarketQueryChange: (query: string) => void;
   marketplaceSkills: MarketplaceSkill[];
   isMarketplaceLoading: boolean;
-  hasMarketplace: boolean;
   isSaving: boolean;
   onAdd: (name: string) => void;
   onAddMarketplace: (skill: MarketplaceSkill) => void;
@@ -50,7 +49,6 @@ export function AddSkillDialog({
   onMarketQueryChange,
   marketplaceSkills,
   isMarketplaceLoading,
-  hasMarketplace,
   isSaving,
   onAdd,
   onAddMarketplace,
@@ -83,27 +81,24 @@ export function AddSkillDialog({
         <div className="flex flex-col gap-3">
           <Text variant="body" tone="muted">
             Skills are reusable instructions this expert follows for a specific
-            job. Pick one from your library
-            {hasMarketplace ? " or install one from the marketplace" : ""}.
+            job. Pick one from your library or install one from the marketplace.
           </Text>
-          {hasMarketplace ? (
-            <TabsLine
-              variant="compact"
-              value={source}
-              onValueChange={(next) => onSourceChange(next as Source)}
-            >
-              <TabsLineList>
-                <TabsLineTrigger value="library" icon={BookOpen01Icon}>
-                  Library
-                </TabsLineTrigger>
-                <TabsLineTrigger value="marketplace" icon={Store01Icon}>
-                  Marketplace
-                </TabsLineTrigger>
-              </TabsLineList>
-            </TabsLine>
-          ) : null}
+          <TabsLine
+            variant="compact"
+            value={source}
+            onValueChange={(next) => onSourceChange(next as Source)}
+          >
+            <TabsLineList>
+              <TabsLineTrigger value="library" icon={BookOpen01Icon}>
+                Library
+              </TabsLineTrigger>
+              <TabsLineTrigger value="marketplace" icon={Store01Icon}>
+                Marketplace
+              </TabsLineTrigger>
+            </TabsLineList>
+          </TabsLine>
 
-          {!hasMarketplace || source === "library" ? (
+          {source === "library" ? (
             <>
               <SearchInput
                 size="small"
@@ -213,8 +208,12 @@ function SkillOption({
   onAdd,
 }: OptionProps) {
   return (
-    <li className="flex items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2.5">
-      <Icon icon={icon} size={18} className="shrink-0 text-zinc-500" />
+    <li className="flex items-center gap-3 rounded-lg border border-border-base px-3 py-2.5">
+      <Icon
+        icon={icon}
+        size={18}
+        className="shrink-0 text-foreground-tertiary"
+      />
       <span className="min-w-0 flex-1">
         <Text
           variant="body-medium"
