@@ -47,25 +47,18 @@ async def resolve_auth_info(
     Returns the auth info if valid credentials are provided, or None if no
     credentials are present. Raises HTTPException on *invalid* credentials.
     """
-    if api_key is not None:
-        api_key_info = await validate_api_key(api_key)
+    key = _plaintext_api_key(api_key, bearer)
+    if key is not None:
+        api_key_info = await validate_api_key(key)
         if api_key_info:
             await _refuse_banned_owner(api_key_info)
             return api_key_info
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
-        )
+        if api_key is not None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+            )
 
     if bearer is not None:
-        # MCP clients can only send credentials as a Bearer token, so an API key
-        # arrives here too; without this the request resolves to anonymous and
-        # gets the per-IP rate limit. Order matches v2's MCP TokenVerifier.
-        if not is_access_token(bearer.credentials) and (
-            api_key_info := await validate_api_key(bearer.credentials)
-        ):
-            await _refuse_banned_owner(api_key_info)
-            return api_key_info
-
         try:
             token_info, _ = await validate_access_token(bearer.credentials)
         except (InvalidClientError, InvalidTokenError) as e:
@@ -131,9 +124,7 @@ async def require_auth(
 
     v2 uses its own pre-verification limiter and request-scoped auth resolver.
     """
-    key = api_key
-    if key is None and bearer is not None and not is_access_token(bearer.credentials):
-        key = bearer.credentials
+    key = _plaintext_api_key(api_key, bearer)
     budget = (
         await enforce_api_key_validate_rate_limit(request, key)
         if key is not None
@@ -147,6 +138,16 @@ async def require_auth(
         )
     await refund_api_key_validate_rate_limit(budget)
     return auth
+
+
+def _plaintext_api_key(
+    api_key: str | None, bearer: HTTPAuthorizationCredentials | None
+) -> str | None:
+    if api_key is not None:
+        return api_key
+    if bearer is not None and not is_access_token(bearer.credentials):
+        return bearer.credentials
+    return None
 
 
 async def _refuse_banned_owner(auth: APIAuthorizationInfo) -> None:

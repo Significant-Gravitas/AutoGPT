@@ -80,9 +80,11 @@ The deprecated `/external-api/v1` API limits failed and in-flight API-key
 validations to 60 per client IP and key prefix, and 120 per IP, in a 60-second
 window. This applies to both `X-API-Key` and API keys sent as Bearer tokens.
 Successful authentication refunds its reservation; concurrent requests still
-occupy reservations until validation completes. Shared-NAT clients share the IP
-ceiling. Excess attempts receive `429` with `Retry-After` before expensive key
-verification. v2 has its own [pre-verification limits](api-conventions.md#rate-limits).
+occupy reservations until validation completes. A burst of valid requests can
+therefore receive `429` while earlier requests are still being verified.
+Shared-NAT clients share the IP ceiling. Excess attempts receive `429` with
+`Retry-After` before expensive key verification. v2 has its own
+[pre-verification limits](api-conventions.md#rate-limits).
 
 Active candidates are filtered by stored prefix and suffix, including legacy
 keys. All matching candidates remain eligible for verification; this does not
