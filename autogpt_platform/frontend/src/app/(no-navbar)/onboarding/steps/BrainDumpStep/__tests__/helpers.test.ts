@@ -45,10 +45,20 @@ describe("encouragementAt", () => {
 describe("recordingFeedbackAt", () => {
   it("shows duration guidance only after recording has settled in", () => {
     expect(recordingFeedbackAt(3.9)).toBeNull();
-    expect(recordingFeedbackAt(4)).toBe("Most people talk for 2 to 3 minutes.");
-    expect(recordingFeedbackAt(9.9)).toBe(
-      "Most people talk for 2 to 3 minutes.",
+    expect(recordingFeedbackAt(4)).toBe(
+      "Even a minute helps. Keep going if you have more.",
     );
+    expect(recordingFeedbackAt(9.9)).toBe(
+      "Even a minute helps. Keep going if you have more.",
+    );
+  });
+
+  it("keeps em dashes out of every line it shows", () => {
+    const lines = Array.from({ length: 400 }, (_, second) =>
+      recordingFeedbackAt(second),
+    );
+
+    expect(lines.filter((line) => line?.includes("—"))).toEqual([]);
   });
 
   it("shows the first encouragement at twenty seconds", () => {
