@@ -1324,6 +1324,72 @@ describe("onboarding brain dump — Otto might ask", () => {
     });
   });
 
+  // The answer to WCAG 2.2.2: every idea that changes on its own can be
+  // paused, from the keyboard or by clicking the question.
+  function fakeRotationTimers() {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+  }
+
+  async function waitFor20Seconds() {
+    await act(async () => {
+      vi.advanceTimersByTime(20_000);
+    });
+  }
+
+  it("pauses the changing ideas from the keyboard", async () => {
+    fakeRotationTimers();
+    landOnPainPointsStep();
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    await screen.findByText(ENGINEERING.questions[4].text);
+
+    const toggle = screen.getByRole("button", {
+      name: "Pause changing ideas",
+    });
+    toggle.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+
+    await waitFor20Seconds();
+    expect(screen.getByText(ENGINEERING.questions[4].text)).toBeDefined();
+
+    await userEvent.keyboard("{Enter}");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    await waitFor20Seconds();
+    expect(
+      await screen.findByText(ENGINEERING.questions[5].text),
+    ).toBeDefined();
+  });
+
+  it("pauses the changing ideas when the question is clicked", async () => {
+    fakeRotationTimers();
+    landOnPainPointsStep();
+    render(<OnboardingPage />);
+    await screen.findByText(DUMP_HEADLINE);
+    // Below 1280px the live question at rest is the only pointer route.
+    const question = screen
+      .getAllByText(ENGINEERING.questions[4].text)
+      .find((el) => !el.closest('[data-testid="ambient-prompts"]'));
+
+    await userEvent.click(question!);
+    await waitFor20Seconds();
+
+    expect(
+      screen
+        .getAllByText(ENGINEERING.questions[4].text)
+        .some((el) => !el.closest('[data-testid="ambient-prompts"]')),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Pause changing ideas" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
   it("reports the prompt set and the prompts seen with a typed dump", async () => {
     finalizeReturns({ status: "completed" });
     landOnPainPointsStep();
@@ -1526,6 +1592,20 @@ describe("onboarding brain dump — a refused microphone", () => {
     expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.getByRole("alert").textContent).toBe(BLOCKED);
     expect(screen.getByText(TYPING_HEADLINE)).toBeDefined();
+  });
+
+  it("keeps the notice up while the retry waits for an answer", async () => {
+    stubMicrophonePermission("denied");
+    getUserMedia.mockRejectedValueOnce(REFUSED);
+    getUserMedia.mockReturnValueOnce(new Promise(() => {}));
+    await pressTalkAndGetRefused();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "try the microphone again" }),
+    );
+
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("alert").textContent).toBe(BLOCKED);
   });
 
   it("says so when the retry finds the microphone busy", async () => {

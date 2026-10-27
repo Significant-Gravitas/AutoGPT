@@ -26,13 +26,13 @@ const COPY = {
     reason: "The microphone prompt was closed, so write here instead.",
     howTo: "To talk,",
   },
-  // The site is allowed but the operating system refused the browser, as
-  // Chrome on a Mac without microphone access in System Settings does.
   unavailable: {
     reason: "We couldn't open your microphone, so write here instead.",
     howTo:
       "To talk, check that it's connected and no other app is using it, then",
   },
+  // The site is allowed but the operating system refused the browser, as
+  // Chrome on a Mac without microphone access in System Settings does.
   system: {
     reason: "Your computer blocked the microphone, so write here instead.",
     howTo:

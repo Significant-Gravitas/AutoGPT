@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  BRAIN_DUMP_PROMPT_SETS,
-  promptSetForRole,
-  promptSetNameForRole,
-} from "../prompts";
+import { BRAIN_DUMP_PROMPT_SETS, promptSetNameForRole } from "../prompts";
 
 // The ids RoleStep stores as `role`. A set keyed by anything else would never
 // be picked, and the user would silently get the Other set.
@@ -20,7 +16,7 @@ const ROLE_IDS = [
 
 describe("brain dump prompt sets", () => {
   it.each(ROLE_IDS)("has eight questions and five examples for %s", (role) => {
-    const set = promptSetForRole(role);
+    const set = BRAIN_DUMP_PROMPT_SETS[promptSetNameForRole(role)];
 
     expect(set).toBe(
       BRAIN_DUMP_PROMPT_SETS[role as keyof typeof BRAIN_DUMP_PROMPT_SETS],
@@ -42,13 +38,17 @@ describe("brain dump prompt sets", () => {
   it.each(["", "Dentist", "Other", "founder/ceo", "toString"])(
     "falls back to the Other set for %j",
     (role) => {
-      expect(promptSetForRole(role)).toBe(BRAIN_DUMP_PROMPT_SETS.Other);
+      expect(BRAIN_DUMP_PROMPT_SETS[promptSetNameForRole(role)]).toBe(
+        BRAIN_DUMP_PROMPT_SETS.Other,
+      );
       expect(promptSetNameForRole(role)).toBe("Other");
     },
   );
 
   it("splits a label from its question at the first colon only", () => {
-    expect(promptSetForRole("Engineering").questions[1]).toEqual({
+    expect(
+      BRAIN_DUMP_PROMPT_SETS[promptSetNameForRole("Engineering")].questions[1],
+    ).toEqual({
       label: "Around the code",
       text: "Which non-coding chores take your time: updates, docs, tickets, release notes?",
     });

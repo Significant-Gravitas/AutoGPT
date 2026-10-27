@@ -179,10 +179,6 @@ export function promptSetNameForRole(role: string): PromptSetName {
   return PROMPT_SET_NAMES.find((name) => name === role) ?? "Other";
 }
 
-export function promptSetForRole(role: string) {
-  return BRAIN_DUMP_PROMPT_SETS[promptSetNameForRole(role)];
-}
-
 function promptSet(questions: string[], examples: string[]) {
   return { questions: questions.map(toQuestion), examples };
 }

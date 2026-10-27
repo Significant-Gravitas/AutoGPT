@@ -80,10 +80,13 @@ export function AmbientPrompts({
   onTogglePause,
 }: Props) {
   const isShown = useIsWideLayout() && !HIDDEN_ON.includes(screen);
+  // Held still while the dump is being sent: there is no pause toggle on
+  // that screen, and nothing left to inspire.
+  const isStill = isPaused || screen === "processing";
   const ambient = useAmbientPrompts({
     role,
     slots: SLOTS,
-    isRotating: isShown && !isPaused,
+    isRotating: isShown && !isStill,
   });
   if (HIDDEN_ON.includes(screen)) return null;
   const isTyping = screen === "typing";
@@ -107,7 +110,7 @@ export function AmbientPrompts({
             content={ambient.cards[index]}
             isHidden={isHidden}
             drift={
-              isShown && !isPaused && !ambient.reduceMotion
+              isShown && !isStill && !ambient.reduceMotion
                 ? { durationSecs: card.driftSecs, delaySecs: card.delaySecs }
                 : null
             }

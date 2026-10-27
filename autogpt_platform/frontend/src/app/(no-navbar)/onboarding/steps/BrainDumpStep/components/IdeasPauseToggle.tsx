@@ -24,7 +24,7 @@ export function IdeasPauseToggle({ screen, isPaused, onToggle }: Props) {
       onClick={onToggle}
       className="sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:left-1/2 focus-visible:top-0 focus-visible:z-20 focus-visible:-translate-x-1/2"
     >
-      {isPaused ? "Resume changing ideas" : "Pause changing ideas"}
+      Pause changing ideas
     </Button>
   );
 }

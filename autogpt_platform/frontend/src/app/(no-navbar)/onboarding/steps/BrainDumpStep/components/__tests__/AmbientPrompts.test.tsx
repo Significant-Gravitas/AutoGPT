@@ -178,6 +178,17 @@ describe("AmbientPrompts", () => {
     expect(layer().getAttribute("data-paused")).toBe("true");
   });
 
+  it("holds still while the dump is being sent", async () => {
+    renderLayer("Operations", "processing");
+    const before = shownQuestions();
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+
+    expect(shownQuestions()).toEqual(before);
+  });
+
   it("runs no timer where the layer does not fit", () => {
     device.isWide = false;
     renderLayer("Operations", "rest");
