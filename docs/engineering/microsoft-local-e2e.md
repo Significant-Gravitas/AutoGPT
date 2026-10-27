@@ -52,20 +52,27 @@ On the environment's app (dev: `autogpt-dev`, prod: `AutoGPT`):
    sign-in. Rotate by adding a new secret, deploying it, then removing the
    old one.
 
-Dev is configured (2026-10-26); prod still needs steps 1 and 2.
+Then set `MICROSOFT_BROWSER_SIGN_IN=true`. A secret alone doesn't turn browser
+sign-in on, because the bot's app has one long before it has the redirect.
+Until the flag is on, Microsoft connects with sign-in codes through the same
+app.
+
+Dev's app is configured (2026-10-26) but still needs the flag; prod needs
+steps 1 and 2 and then the flag.
 
 ## Environment variables
 
 | Where | Setting | Notes |
 |---|---|---|
 | backend | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT_ID` | Shared with the Teams bot. Without a secret, connections use sign-in codes. |
+| backend | `MICROSOFT_BROWSER_SIGN_IN=true` | Browser sign-in instead of sign-in codes, once the app has the redirect above. |
 
 ## Installs without an app secret
 
 `.env.default` ships no Microsoft settings. The backend then uses AutoGPT's
 public client (`ce01a4d6-…`) with sign-in codes, so a fresh local install can
 still connect Microsoft and use Copilot. Browser sign-in needs an app with a
-secret and the redirect above.
+secret, the redirect above and `MICROSOFT_BROWSER_SIGN_IN=true`.
 
 ## Testing locally
 
