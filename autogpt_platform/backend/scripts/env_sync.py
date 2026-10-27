@@ -18,6 +18,7 @@ MICROSOFT_KEYS = [
     "MICROSOFT_CLIENT_SECRET",
     "MICROSOFT_TENANT_ID",
 ]
+POWERSHELL_SINGLE_QUOTES = "'\u2018\u2019\u201a\u201b"
 
 
 def main() -> None:
@@ -73,7 +74,10 @@ def read_source(source: str, windows_hosts: list[str]) -> dict[str, str | None]:
 
 
 def windows_read_command(path: str) -> str:
-    literal = "'" + path.replace("'", "''") + "'"
+    # PowerShell ends a single-quoted string at a curly quote too; doubling any
+    # of them escapes it, as its own EscapeSingleQuotedStringContent does.
+    escaped = "".join(c * 2 if c in POWERSHELL_SINGLE_QUOTES else c for c in path)
+    literal = "'" + escaped + "'"
     script = (
         "$ProgressPreference='SilentlyContinue';$ErrorActionPreference='Stop';"
         "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);"

@@ -1,3 +1,4 @@
+import base64
 import os
 import shlex
 import subprocess
@@ -234,6 +235,14 @@ def test_non_ascii_values_survive_a_non_utf8_locale(tmp_path):
         check=True,
     )
     assert result.stdout.strip() == ascii([{"MICROSOFT_TENANT_ID": "café"}] * 2)
+
+
+@pytest.mark.parametrize("quote", ["'", "\u2018", "\u2019", "\u201a", "\u201b"])
+def test_windows_paths_stay_one_powershell_string(quote):
+    command = sync.windows_read_command(f"C:\\Users\\O{quote}Brien\\.env")
+    script = base64.b64decode(command.split()[-1]).decode("utf-16le")
+    literal = f"'C:\\Users\\O{quote * 2}Brien\\.env'"
+    assert f"ReadAllText({literal})" in script
 
 
 def test_conflicting_sources_do_not_expose_values():
