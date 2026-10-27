@@ -79,7 +79,8 @@ describe("ArtifactContent", () => {
       vi.fn().mockResolvedValue({
         ok: true,
         text: () => Promise.resolve("file content here"),
-        blob: () => Promise.resolve(new Blob(["content"])),
+        blob: () =>
+          Promise.resolve(new Blob(["%PDF-1.7"], { type: "application/pdf" })),
       }),
     );
   });
@@ -426,6 +427,72 @@ describe("ArtifactContent", () => {
   });
 
   // ── Fetch error ───────────────────────────────────────────────────
+
+  it.each([
+    {
+      caseName: "HTML response",
+      blob: new Blob(
+        ["<script>window.parent.document.body.remove()</script>"],
+        {
+          type: "text/html",
+        },
+      ),
+    },
+    {
+      caseName: "invalid PDF signature",
+      blob: new Blob(
+        ["<script>window.parent.document.body.remove()</script>"],
+        {
+          type: "application/pdf",
+        },
+      ),
+    },
+  ])(
+    "rejects $caseName before creating a PDF preview URL",
+    async ({ blob }) => {
+      const createObjectURL = vi
+        .fn()
+        .mockReturnValue("blob:http://localhost/html");
+      vi.stubGlobal(
+        "URL",
+        Object.assign(URL, {
+          createObjectURL,
+          revokeObjectURL: vi.fn(),
+        }),
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          blob: () => Promise.resolve(blob),
+        }),
+      );
+
+      const artifact = makeArtifact({
+        id: "html-selected-as-pdf",
+        title: "report.pdf",
+        mimeType: "text/html",
+      });
+      const classification = classifyArtifact(
+        artifact.mimeType,
+        artifact.title,
+      );
+      expect(classification.type).toBe("pdf");
+
+      const { container } = render(
+        <ArtifactContent
+          artifact={artifact}
+          isSourceView={false}
+          classification={classification}
+        />,
+      );
+
+      await screen.findByText("Failed to load content");
+      expect(screen.getByText(/not a valid PDF/)).toBeTruthy();
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(container.querySelector("iframe")).toBeNull();
+    },
+  );
 
   it("shows error state with retry button on fetch failure", async () => {
     vi.stubGlobal(
