@@ -63,7 +63,9 @@ export function useMicrosoftConnection({ scopes }: Args) {
     void oauth.connectWith({ scopes: requested, credentialID: credential.id });
   }
 
+  // The services' statuses are the answer now; the last error no longer is.
   function recheck() {
+    setRecovery(null);
     void access.refetch();
   }
 
