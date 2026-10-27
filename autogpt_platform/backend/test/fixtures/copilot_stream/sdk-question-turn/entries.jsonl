@@ -1,0 +1,22 @@
+{"id": "1-0", "data": {"type": "data-status", "message": "Message received…"}}
+{"id": "2-0", "data": {"type": "data-status", "message": "Setting up your environment…"}}
+{"id": "3-0", "data": {"type": "start", "messageId": "00000000-0000-4000-8000-000000000001", "sessionId": "drift-session"}}
+{"id": "4-0", "data": {"type": "start-step"}}
+{"id": "5-0", "data": {"type": "tool-input-start", "toolCallId": "find-1", "toolName": "find_capability"}}
+{"id": "6-0", "data": {"type": "tool-input-available", "toolCallId": "find-1", "toolName": "find_capability", "input": {"query": "google drive new file trigger"}}}
+{"id": "7-0", "data": {"type": "tool-output-available", "toolCallId": "find-1", "output": "{}", "toolName": "find_capability", "success": true}}
+{"id": "8-0", "data": {"type": "finish-step"}}
+{"id": "9-0", "data": {"type": "data-status", "message": "Analyzing result…"}}
+{"id": "10-0", "data": {"type": "start-step"}}
+{"id": "11-0", "data": {"type": "tool-input-start", "toolCallId": "ask-1", "toolName": "ask_question"}}
+{"id": "12-0", "data": {"type": "tool-input-available", "toolCallId": "ask-1", "toolName": "ask_question", "input": {"questions": [{"question": "How should I spot new designs in your Drive folder?", "keyword": "Drive trigger", "example": null, "options": ["Check the folder every 15 min", "I pick the file each run"], "allow_multiple": false}, {"question": "How should I make the mockups?", "keyword": "Mockups", "example": null, "options": ["AI-generated mockups", "Printify draft products"], "allow_multiple": false}]}}}
+{"id": "13-0", "data": {"type": "tool-output-available", "toolCallId": "ask-1", "output": "{\"type\":\"agent_builder_clarification_needed\",\"message\":\"How should I spot new designs in your Drive folder?; How should I make the mockups?\",\"session_id\":\"drift-session\",\"questions\":[{\"question\":\"How should I spot new designs in your Drive folder?\",\"keyword\":\"Drive trigger\",\"example\":null,\"options\":[\"Check the folder every 15 min\",\"I pick the file each run\"],\"allow_multiple\":false},{\"question\":\"How should I make the mockups?\",\"keyword\":\"Mockups\",\"example\":null,\"options\":[\"AI-generated mockups\",\"Printify draft products\"],\"allow_multiple\":false}]}", "toolName": "ask_question", "success": true}}
+{"id": "14-0", "data": {"type": "finish-step"}}
+{"id": "15-0", "data": {"type": "data-status", "message": "Analyzing result…"}}
+{"id": "16-0", "data": {"type": "start-step"}}
+{"id": "17-0", "data": {"type": "text-start", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "18-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000002", "delta": "Two quick choices for you above."}}
+{"id": "19-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "20-0", "data": {"type": "finish-step"}}
+{"id": "21-0", "data": {"type": "data-checkpoint", "rows": 5, "sequence": 1, "digest": "6a8fc8d661e4287530f15743c609b53f8969394f044df62de737898d5697f588"}}
+{"id": "22-0", "data": {"type": "finish"}}
