@@ -24,6 +24,7 @@ import {
   stripSpanDataPII,
   stripSpanPII,
   stripUserPII,
+  tagDeploySkew,
 } from "../sentry-filters";
 
 // Drives a real Sentry client with the same console capture as
@@ -160,6 +161,39 @@ describe("Sentry filter for crawler noise", () => {
     "Mozilla/5.0 (Linux; Android 10; Cubot P40) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
   ])("treats %j as a person", (userAgent) => {
     expect(isFromBot(userAgent)).toBe(false);
+  });
+});
+
+describe("Sentry deploy skew tag", () => {
+  it("tags a failed chunk load and still sends it", () => {
+    const event = tagDeploySkew<Sentry.Event>({
+      exception: {
+        values: [
+          { type: "ChunkLoadError", value: "Loading chunk 34006 failed." },
+        ],
+      },
+      tags: { context: "application" },
+    });
+
+    expect(event.tags).toEqual({ context: "application", deploy_skew: true });
+  });
+
+  it("tags a failed CSS chunk load", () => {
+    const event = tagDeploySkew<Sentry.Event>({
+      exception: {
+        values: [{ type: "Error", value: "Loading CSS chunk 123 failed." }],
+      },
+    });
+
+    expect(event.tags).toEqual({ deploy_skew: true });
+  });
+
+  it("leaves other errors untagged", () => {
+    const event = tagDeploySkew<Sentry.Event>({
+      exception: { values: [{ type: "TypeError", value: "Failed to fetch" }] },
+    });
+
+    expect(event).not.toHaveProperty("tags");
   });
 });
 

@@ -3,6 +3,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import { isLoggedRequestFailure } from "@/app/api/mutators/request-failure-log";
+import { reloadOnUnhandledChunkLoadError } from "@/lib/chunk-load-reload";
 import {
   CLIENT_IGNORE_ERRORS,
   isFromBot,
@@ -12,6 +13,7 @@ import {
   stripSpanDataPII,
   stripSpanPII,
   stripUserPII,
+  tagDeploySkew,
 } from "@/lib/sentry-filters";
 import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
 import { redactEventURLs, redactSpanURLs } from "@/lib/sentry-url-redaction";
@@ -56,7 +58,7 @@ Sentry.init({
     // Mirror last: after our filters (an integration would run before
     // beforeSend) and on the stripped, URL-masked event, so PostHog never
     // gets an email, IP address or credential Sentry doesn't keep either.
-    return mirrorSentryEvent(redactEventURLs(event));
+    return mirrorSentryEvent(redactEventURLs(tagDeploySkew(event)));
   },
   beforeSendTransaction(event) {
     return isFromBot(navigator.userAgent)
@@ -106,6 +108,8 @@ Sentry.init({
   profilesSampleRate: 0.1,
   enableLogs: true,
 });
+
+reloadOnUnhandledChunkLoadError();
 
 export function onRouterTransitionStart(
   ...args: Parameters<typeof Sentry.captureRouterTransitionStart>

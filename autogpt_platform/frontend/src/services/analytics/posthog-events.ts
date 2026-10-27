@@ -25,6 +25,12 @@ export const FeatureFlagEvent = {
 
 // Marketing email refusals made in the app. `surface` says where; the
 // refusal itself is stored on the user (`marketingOptOutAt`).
+// Ops signal, not a user action: a tab on an older build could not load code
+// on demand after a deploy, and reloaded to pick up the current build.
+export const DeploySkewEvent = {
+  CHUNK_RELOAD_TRIGGERED: "chunk_reload_triggered",
+} as const;
+
 export const MarketingConsentEvent = {
   // `surface: "signup"`: "opt out" in the legal line under the signup buttons
   // was clicked (not Undo). Nothing else rides along: there is no user yet,
@@ -208,6 +214,7 @@ export const MonetizationEvent = {
 export const PostHogEvent = {
   ...PageEvent,
   ...FeatureFlagEvent,
+  ...DeploySkewEvent,
   ...MarketingConsentEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
