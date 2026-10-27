@@ -165,13 +165,16 @@ def _admin_consent_url(
     ]
     if not pending:
         return None
-    # Work IQ can only be approved once Microsoft has set it up for the
-    # organization; asking for it earlier fails the whole approval.
+    # Asking for Work IQ before Microsoft has set it up for the organization
+    # fails the whole approval (AADSTS650052), and a missing setup can look
+    # like a missing permission until someone consents. So Work IQ joins only
+    # when Microsoft says an admin must approve it, which it can only say once
+    # Work IQ is set up.
     services: list[MicrosoftService] = [
         service
         for service in MICROSOFT_SERVICE_SCOPES
         if service != "work_iq"
-        or any(c.service == "work_iq" and c.status != "setup_required" for c in pending)
+        or any(c.service == "work_iq" and c.status == "admin_required" for c in pending)
     ]
     scopes = dict.fromkeys(
         scope if scope.startswith("api://") else GRAPH_PREFIX + scope

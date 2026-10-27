@@ -161,3 +161,35 @@ async def test_admins_can_approve_every_work_service_at_once(mocker) -> None:
     # Work IQ still needs Microsoft's own setup, which would fail the approval.
     assert "workiq" not in url
     assert personal.admin_consent_url is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error, asks_for_work_iq",
+    [
+        # "Needs your permission" is also what a tenant without Work IQ's
+        # service reports: asking for it there fails the whole approval
+        # (AADSTS650052), as it did live on 10-27.
+        (65001, False),
+        (90094, True),
+    ],
+)
+async def test_organization_approval_asks_for_work_iq_only_when_an_admin_must(
+    mocker, error, asks_for_work_iq
+) -> None:
+    _work_iq(mocker, error=error)
+    mocker.patch(
+        "backend.integrations.microsoft_access.browser_sign_in_available",
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.integrations.microsoft_access.microsoft_app"
+    ).return_value.client_id = "deployment-app"
+    config = mocker.patch("backend.integrations.microsoft_access.Settings")
+    config.return_value.config.frontend_base_url = "https://app.example"
+
+    result = await check_microsoft_access(_connection("company", BASE))
+
+    url = result.admin_consent_url or ""
+    assert "Chat.ReadWrite" in url
+    assert ("workiq" in url) is asks_for_work_iq
