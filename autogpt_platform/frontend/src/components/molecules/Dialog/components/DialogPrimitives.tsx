@@ -55,12 +55,9 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 function hasDialogDescription(node: React.ReactNode): boolean {
   return React.Children.toArray(node).some((child) => {
     if (!React.isValidElement(child)) return false;
-    const type = child.type as { displayName?: string } | string;
-    if (type === DialogPrimitive.Description) return true;
     if (
-      typeof type === "object" &&
-      type !== null &&
-      type.displayName === DialogPrimitive.Description.displayName
+      child.type === DialogPrimitive.Description ||
+      child.type === DialogDescription
     ) {
       return true;
     }

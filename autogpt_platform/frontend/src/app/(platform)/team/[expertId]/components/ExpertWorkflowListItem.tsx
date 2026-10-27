@@ -67,7 +67,7 @@ export function ExpertWorkflowListItem({
 
       <div className="pointer-events-none min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" tone="primary" className="truncate">
+          <Text variant="body-md-medium" tone="primary" className="truncate">
             {name}
           </Text>
           <Text
@@ -82,24 +82,26 @@ export function ExpertWorkflowListItem({
           </Text>
         </div>
         {workflow.description ? (
-          <Text variant="body" tone="muted" className="mt-0.5 truncate">
+          <Text variant="body-md" tone="muted" className="mt-0.5 truncate">
             {workflow.description}
           </Text>
         ) : null}
         {meta.length > 0 || credentialProviders.length > 0 ? (
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm leading-5 text-foreground-secondary">
+          <div className="mt-1 flex flex-wrap items-center gap-2">
             {meta.length > 0 ? (
               <Text
-                variant="body"
+                variant="body-md"
                 tone="secondary"
-                className="flex items-center gap-1.5 leading-5"
+                className="flex items-center gap-1.5"
               >
                 <Icon icon={Activity01Icon} size={14} className="shrink-0" />
                 {meta.join(" · ")}
               </Text>
             ) : null}
             {meta.length > 0 && credentialProviders.length > 0 ? (
-              <span className="text-foreground-disabled">•</span>
+              <Text variant="body-md" as="span" tone="disabled">
+                •
+              </Text>
             ) : null}
             <WorkflowCredentialStack providers={credentialProviders} />
           </div>

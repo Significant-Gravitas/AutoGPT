@@ -12,6 +12,8 @@ interface Props {
   children?: ReactNode;
   /** A quieter line under the actions, e.g. a link elsewhere. */
   footer?: ReactNode;
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
 }
 
 const TILE_POSITIONS = [
@@ -28,6 +30,7 @@ export function PanelEmptyState({
   description,
   children,
   footer,
+  textSize = "body",
 }: Props) {
   return (
     <div className="group flex flex-col items-center px-6 pb-8 pt-10 text-center">
@@ -48,7 +51,7 @@ export function PanelEmptyState({
         {title}
       </Text>
       <Text
-        variant="body"
+        variant={textSize}
         className="mt-1.5 max-w-[17rem] !text-foreground-tertiary"
       >
         {description}

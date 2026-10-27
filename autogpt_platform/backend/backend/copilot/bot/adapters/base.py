@@ -9,7 +9,7 @@ Telegram, Teams, WhatsApp).
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Awaitable, Callable, Literal, Optional
 
@@ -18,6 +18,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
+from backend.copilot.bot.options import TurnOptions
 from backend.platform_linking.models import CardTurn
 
 # Callback signature: (ctx, adapter) -> awaitable None
@@ -205,6 +206,12 @@ class MessageContext:
     skipped_attachments: tuple[tuple[str, str], ...] = ()
     # Set by a click that answered a card: carry the turn it woke, say nothing.
     follow: Optional[CardTurn] = None
+    # Expert / model tier for this turn, from a slash command's fields or the
+    # message's leading ``expert=`` / ``mode=`` tokens.
+    options: TurnOptions = field(default_factory=TurnOptions)
+
+    def with_changes(self, **changes) -> "MessageContext":
+        return replace(self, **changes)
 
     @property
     def is_dm(self) -> bool:

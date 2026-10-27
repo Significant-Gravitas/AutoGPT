@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/molecules/Table/components/TablePrimitives";
-import { Badge } from "@/components/__legacy__/ui/badge";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,7 +60,7 @@ export function APIKeysSection() {
                   <TableCell>
                     <Badge
                       variant={
-                        key.status === "ACTIVE" ? "default" : "destructive"
+                        key.status === "ACTIVE" ? "solid" : "destructive"
                       }
                       className={
                         key.status === "ACTIVE"
