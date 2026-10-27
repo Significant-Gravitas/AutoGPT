@@ -1,7 +1,6 @@
-import { CHUNK_LOAD_MESSAGE } from "@/lib/sentry-filters";
+import { isChunkLoadFailure } from "@/lib/sentry-filters";
 import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
 import { DeploySkewEvent } from "@/services/analytics/posthog-events";
-import { environment } from "@/services/environment";
 
 const CHUNK_RELOAD_GUARD_KEY = "chunk_reload_at";
 const CHUNK_RELOAD_COOLDOWN_MS = 60_000;
@@ -13,9 +12,8 @@ const CHUNK_RELOAD_COOLDOWN_MS = 60_000;
  * the same way until the page is reloaded.
  */
 export function isChunkLoadError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
   return (
-    error.name === "ChunkLoadError" || CHUNK_LOAD_MESSAGE.test(error.message)
+    error instanceof Error && isChunkLoadFailure(error.name, error.message)
   );
 }
 
@@ -28,11 +26,10 @@ export function isChunkLoadError(error: unknown): boolean {
 export function reloadForChunkLoadError(
   error: unknown,
   surface: "unhandled_rejection" | "error_boundary",
-  reload: () => void = () => window.location.reload(),
 ): boolean {
-  if (environment.isServerSide() || !isChunkLoadError(error)) return false;
+  if (!isChunkLoadError(error)) return false;
 
-  const lastReloadAt = Number(readReloadGuard() ?? 0);
+  const lastReloadAt = Number(readReloadGuard());
   if (Date.now() - lastReloadAt < CHUNK_RELOAD_COOLDOWN_MS) return false;
   if (!writeReloadGuard(Date.now())) return false;
 
@@ -40,7 +37,7 @@ export function reloadForChunkLoadError(
     surface,
     path: window.location.pathname,
   });
-  reload();
+  window.location.reload();
   return true;
 }
 

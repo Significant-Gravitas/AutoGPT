@@ -46,8 +46,12 @@ export function isInjectedIframeProbe(event: Event) {
 
 // webpack ("Loading chunk 34006 failed.", "Loading CSS chunk 123 failed.")
 // and Turbopack ("Failed to load chunk /_next/static/…").
-export const CHUNK_LOAD_MESSAGE =
+const CHUNK_LOAD_MESSAGE =
   /Loading (CSS )?chunk \S+ failed|Failed to load chunk/;
+
+export function isChunkLoadFailure(name = "", message = "") {
+  return name === "ChunkLoadError" || CHUNK_LOAD_MESSAGE.test(message);
+}
 
 /**
  * Marks a failed on-demand code load as deploy skew: a tab on an older build
@@ -56,11 +60,9 @@ export const CHUNK_LOAD_MESSAGE =
  */
 export function tagDeploySkew<T extends Event>(event: T): T {
   const exception = event.exception?.values?.[0];
-  if (!exception) return event;
-  const isChunkLoad =
-    exception.type === "ChunkLoadError" ||
-    CHUNK_LOAD_MESSAGE.test(exception.value ?? "");
-  if (isChunkLoad) event.tags = { ...event.tags, deploy_skew: true };
+  if (isChunkLoadFailure(exception?.type, exception?.value)) {
+    event.tags = { ...event.tags, deploy_skew: true };
+  }
   return event;
 }
 

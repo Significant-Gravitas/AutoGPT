@@ -19,9 +19,17 @@ function chunkLoadError() {
   return error;
 }
 
+const reload = vi.fn();
+
 beforeEach(() => {
   window.sessionStorage.clear();
   capturePostHogEvent.mockClear();
+  reload.mockClear();
+  vi.spyOn(window, "location", "get").mockReturnValue({
+    ...window.location,
+    pathname: "/home",
+    reload,
+  });
 });
 
 afterEach(() => {
@@ -51,33 +59,30 @@ describe("isChunkLoadError", () => {
 
 describe("reloadForChunkLoadError", () => {
   it("reloads once and records the reload", () => {
-    const reload = vi.fn();
-
-    expect(
-      reloadForChunkLoadError(chunkLoadError(), "error_boundary", reload),
-    ).toBe(true);
+    expect(reloadForChunkLoadError(chunkLoadError(), "error_boundary")).toBe(
+      true,
+    );
     expect(reload).toHaveBeenCalledTimes(1);
     expect(capturePostHogEvent).toHaveBeenCalledWith("chunk_reload_triggered", {
       surface: "error_boundary",
-      path: window.location.pathname,
+      path: "/home",
     });
   });
 
   it("does not reload again inside the cooldown, so it cannot loop", () => {
     vi.useFakeTimers();
-    const reload = vi.fn();
 
-    reloadForChunkLoadError(chunkLoadError(), "error_boundary", reload);
+    reloadForChunkLoadError(chunkLoadError(), "error_boundary");
     vi.advanceTimersByTime(30_000);
-    expect(
-      reloadForChunkLoadError(chunkLoadError(), "error_boundary", reload),
-    ).toBe(false);
+    expect(reloadForChunkLoadError(chunkLoadError(), "error_boundary")).toBe(
+      false,
+    );
     expect(reload).toHaveBeenCalledTimes(1);
 
     vi.advanceTimersByTime(31_000);
-    expect(
-      reloadForChunkLoadError(chunkLoadError(), "error_boundary", reload),
-    ).toBe(true);
+    expect(reloadForChunkLoadError(chunkLoadError(), "error_boundary")).toBe(
+      true,
+    );
     expect(reload).toHaveBeenCalledTimes(2);
   });
 
@@ -88,21 +93,18 @@ describe("reloadForChunkLoadError", () => {
         throw new DOMException("blocked", "SecurityError");
       },
     } as unknown as Storage);
-    const reload = vi.fn();
 
-    expect(
-      reloadForChunkLoadError(chunkLoadError(), "error_boundary", reload),
-    ).toBe(false);
+    expect(reloadForChunkLoadError(chunkLoadError(), "error_boundary")).toBe(
+      false,
+    );
     expect(reload).not.toHaveBeenCalled();
     expect(capturePostHogEvent).not.toHaveBeenCalled();
   });
 
   it("leaves other errors to the error screen", () => {
-    const reload = vi.fn();
-
-    expect(
-      reloadForChunkLoadError(new Error("boom"), "error_boundary", reload),
-    ).toBe(false);
+    expect(reloadForChunkLoadError(new Error("boom"), "error_boundary")).toBe(
+      false,
+    );
     expect(reload).not.toHaveBeenCalled();
   });
 });
@@ -110,13 +112,6 @@ describe("reloadForChunkLoadError", () => {
 describe("reloadOnUnhandledChunkLoadError", () => {
   it("records a reload for a chunk a click handler failed to import", () => {
     const stopListening = reloadOnUnhandledChunkLoadError();
-    const reload = vi.fn();
-    vi.spyOn(window, "location", "get").mockReturnValue({
-      ...window.location,
-      pathname: "/home",
-      reload,
-    });
-
     const event = new Event("unhandledrejection") as PromiseRejectionEvent;
     Object.defineProperty(event, "reason", { value: chunkLoadError() });
     window.dispatchEvent(event);
