@@ -16,7 +16,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519, rsa
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-from jwt.algorithms import ECAlgorithm
+from jwt.algorithms import ECAlgorithm, RSAAlgorithm
 from pytest_mock import MockerFixture
 
 from autogpt_libs.auth import config, jwt_utils
@@ -396,6 +396,7 @@ def test_parse_jwt_token_unknown_kid_rejected():
         jwt_utils.parse_jwt_token(token)
 
 
+@pytest.mark.parametrize("declares_alg", [True, False], ids=["jwk-alg", "no-jwk-alg"])
 @pytest.mark.parametrize(
     "algorithm, private_key",
     [
@@ -405,10 +406,16 @@ def test_parse_jwt_token_unknown_kid_rejected():
     ids=["RS256", "EdDSA"],
 )
 def test_parse_jwt_token_algorithm_other_than_its_keys_rejected(
-    algorithm: str, private_key: rsa.RSAPrivateKey | ed25519.Ed25519PrivateKey
+    mocker: MockerFixture,
+    algorithm: str,
+    private_key: rsa.RSAPrivateKey | ed25519.Ed25519PrivateKey,
+    declares_alg: bool,
 ):
-    """A token claiming an accepted algorithm its key doesn't use is an auth
-    error, not a 500 from loading the ES256 key under that algorithm."""
+    """A token claiming an accepted algorithm its EC key can't serve is an auth
+    error, not a 500 from loading the key under that algorithm."""
+    if not declares_alg:
+        assert _signing_key is not None
+        _serve_jwk(mocker, ECAlgorithm.to_jwk(_signing_key.public_key(), as_dict=True))
     token = jwt.encode(
         TEST_USER_PAYLOAD,
         private_key,
@@ -432,19 +439,64 @@ def test_parse_jwt_token_payload_not_an_object_rejected():
         jwt_utils.parse_jwt_token(token)
 
 
+@pytest.mark.parametrize("declared_alg", ["ES256", None], ids=["jwk-alg", "no-jwk-alg"])
 def test_parse_jwt_token_key_unusable_under_its_algorithm_rejected(
-    mocker: MockerFixture,
+    mocker: MockerFixture, declared_alg: str | None
 ):
-    """A published key that can't verify under its own algorithm (a P-384 key
-    labelled ES256) fails as an auth error, not a 500."""
+    """An ES256 token checked against a P-384 key, whether or not the JWK labels
+    it ES256, fails on the curve as an auth error, not a 500."""
     p384_key = ec.generate_private_key(ec.SECP384R1())
     jwk = ECAlgorithm.to_jwk(p384_key.public_key(), as_dict=True)
-    jwk.update({"kid": _SIGNING_KID, "alg": "ES256", "use": "sig"})
-    mocker.patch.object(jwt.PyJWKClient, "fetch_data", return_value={"keys": [jwk]})
+    if declared_alg:
+        jwk["alg"] = declared_alg
+    _serve_jwk(mocker, jwk)
 
     with pytest.raises(ValueError, match="Invalid token") as exc_info:
         jwt_utils.parse_jwt_token(create_token(TEST_USER_PAYLOAD))
     assert isinstance(exc_info.value.__cause__, jwt.InvalidKeyError)
+
+
+@pytest.mark.parametrize("algorithm", ["RS512", "PS256"])
+def test_parse_jwt_token_rsa_jwk_without_alg_verifies_listed_rsa_algorithms(
+    mocker: MockerFixture, algorithm: str
+):
+    """A JWK's `alg` is optional: an RSA key without one verifies every listed
+    RSA algorithm, not only the RS256 PyJWT infers for it."""
+    rsa_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    _serve_jwk(
+        mocker,
+        RSAAlgorithm.to_jwk(rsa_key.public_key(), as_dict=True),
+        algorithms="ES256,RS512,PS256",
+    )
+    token = jwt.encode(
+        TEST_USER_PAYLOAD, rsa_key, algorithm=algorithm, headers={"kid": _SIGNING_KID}
+    )
+
+    assert jwt_utils.parse_jwt_token(token)["sub"] == "test-user-id"
+
+
+def test_parse_jwt_token_jwk_alg_pins_its_algorithm(mocker: MockerFixture):
+    """A JWK that declares `alg` verifies that algorithm only, though its key
+    type could serve others."""
+    rsa_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = RSAAlgorithm.to_jwk(rsa_key.public_key(), as_dict=True) | {"alg": "RS256"}
+    _serve_jwk(mocker, jwk, algorithms="ES256,RS256,RS512")
+    token = jwt.encode(
+        TEST_USER_PAYLOAD, rsa_key, algorithm="RS512", headers={"kid": _SIGNING_KID}
+    )
+
+    with pytest.raises(ValueError, match="signing algorithm does not match its key"):
+        jwt_utils.parse_jwt_token(token)
+
+
+def _serve_jwk(mocker: MockerFixture, jwk: dict, algorithms: str | None = None):
+    """Serve `jwk` as the JWK set's only key, under the signing kid, optionally
+    with its own `JWT_JWKS_ALGORITHMS`."""
+    if algorithms is not None:
+        mocker.patch.dict(os.environ, {"JWT_JWKS_ALGORITHMS": algorithms})
+        mocker.patch.object(config, "_settings", Settings())
+    jwk_set = {"keys": [{**jwk, "kid": _SIGNING_KID}]}
+    mocker.patch.object(jwt.PyJWKClient, "fetch_data", return_value=jwk_set)
 
 
 def test_jwks_client_rekeys_when_url_changes(mocker: MockerFixture):
