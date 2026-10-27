@@ -83,6 +83,48 @@ async def test_upgrade_with_fewer_permissions_cannot_switch_identity(mocker):
 
 
 @pytest.mark.asyncio
+async def test_a_renamed_account_signs_in_to_its_own_connection(mocker):
+    # Microsoft's preferred_username can change; the tenant and object id
+    # are what name the account.
+    old = credential("work", "company", username="pat@company.example")
+    new = credential("work", "company", username="pat.lee@company.example")
+    mocker.patch.object(
+        routes.creds_manager.store,
+        "get_creds_by_provider",
+        AsyncMock(return_value=[old]),
+    )
+    mocker.patch.object(
+        routes.creds_manager.store, "get_creds_by_id", AsyncMock(return_value=old)
+    )
+    create = mocker.patch.object(routes.creds_manager, "create", AsyncMock())
+    update = mocker.patch.object(routes.creds_manager, "update", AsyncMock())
+
+    result = await routes._merge_or_create_credential(
+        "owner", ProviderName.MICROSOFT, new, None
+    )
+
+    assert result.id == old.id
+    assert result.username == "pat.lee@company.example"
+    create.assert_not_awaited()
+    update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_renamed_account_can_still_add_permissions(mocker):
+    old = credential("work", "company", username="pat@company.example")
+    new = credential("work", "company", username="pat.lee@company.example")
+    mocker.patch.object(
+        routes.creds_manager.store, "get_creds_by_id", AsyncMock(return_value=old)
+    )
+    update = mocker.patch.object(routes.creds_manager, "update", AsyncMock())
+
+    result = await routes._upgrade_existing_credential("owner", old.id, new)
+
+    assert result.id == old.id
+    update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_verification_scopes_credential_lookup_to_signed_in_user(mocker):
     lookup = mocker.patch.object(
         routes.creds_manager, "get", AsyncMock(return_value=None)

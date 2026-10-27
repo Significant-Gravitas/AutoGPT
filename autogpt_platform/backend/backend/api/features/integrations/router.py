@@ -1758,10 +1758,11 @@ async def _merge_or_create_credential(
             return credentials
         return await _upgrade_existing_credential(user_id, credential_id, credentials)
 
-    # Implicit merge: check for existing credential with same provider+username.
-    # Skip managed/system credentials and require a non-None username on both
-    # sides so we never accidentally merge unrelated credentials.
-    if credentials.username is None:
+    # Implicit merge: check for an existing credential for the same account
+    # (see `_same_account`). Skip managed/system credentials, and require a
+    # non-None username on both sides where the username is what matches, so
+    # we never accidentally merge unrelated credentials.
+    if credentials.username is None and credentials.provider not in MICROSOFT_PROVIDERS:
         await creds_manager.create(user_id, credentials)
         return credentials
 
@@ -1773,12 +1774,7 @@ async def _merge_or_create_credential(
             if isinstance(c, OAuth2Credentials)
             and not c.is_managed
             and not is_system_credential(c.id)
-            and c.username is not None
-            and c.username == credentials.username
-            and (
-                credentials.provider not in MICROSOFT_PROVIDERS
-                or same_microsoft_account(c, credentials)
-            )
+            and _same_account(c, credentials)
         ),
         None,
     )
@@ -1834,7 +1830,8 @@ async def _upgrade_existing_credential(
     _refuse_another_microsoft_account(existing, new_credentials)
 
     if (
-        existing.username
+        new_credentials.provider not in MICROSOFT_PROVIDERS
+        and existing.username
         and new_credentials.username
         and existing.username != new_credentials.username
     ):
@@ -1871,6 +1868,15 @@ async def _upgrade_existing_credential(
         merged.username = existing.username
     await creds_manager.update(user_id, merged)
     return merged
+
+
+def _same_account(existing: OAuth2Credentials, new: OAuth2Credentials) -> bool:
+    """Microsoft names an account by tenant and object id: its username can
+    change, and a personal and a work account can share one. Other providers
+    are matched by username."""
+    if new.provider in MICROSOFT_PROVIDERS:
+        return same_microsoft_account(existing, new)
+    return existing.username is not None and existing.username == new.username
 
 
 def _refuse_another_microsoft_account(
