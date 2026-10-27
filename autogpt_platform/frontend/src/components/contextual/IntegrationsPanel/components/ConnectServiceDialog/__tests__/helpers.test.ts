@@ -4,6 +4,8 @@ import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMe
 
 import {
   filterConnectableProviders,
+  popularProviders,
+  sortByPopularity,
   toConnectableProviders,
   type ConnectableProvider,
 } from "../helpers";
@@ -218,5 +220,114 @@ describe("filterConnectableProviders", () => {
 
     expect(filterConnectableProviders(openai, "chatgpt")).toEqual(openai);
     expect(filterConnectableProviders(openai, "codex")).toEqual(openai);
+  });
+});
+
+function makeProvider(
+  serviceId: string,
+  overrides: Partial<ConnectableProvider> = {},
+): ConnectableProvider {
+  return {
+    id: serviceId,
+    serviceId,
+    name: serviceId.charAt(0).toUpperCase() + serviceId.slice(1),
+    supportedAuthTypes: ["oauth2"],
+    ...overrides,
+  };
+}
+
+describe("sortByPopularity", () => {
+  test("puts popular services first in rank order, the rest A to Z", () => {
+    const sorted = sortByPopularity([
+      makeProvider("aave"),
+      makeProvider("notion"),
+      makeProvider("1inch"),
+      makeProvider("zerobounce"),
+      makeProvider("google", { name: "Google" }),
+      makeProvider("github", { name: "GitHub" }),
+    ]);
+    expect(sorted.map((p) => p.serviceId)).toEqual([
+      "google",
+      "github",
+      "notion",
+      "1inch",
+      "aave",
+      "zerobounce",
+    ]);
+  });
+
+  test("ranks by service, so a vendor's MCP sign-in counts as the vendor", () => {
+    const sorted = sortByPopularity([
+      makeProvider("aave"),
+      makeProvider("atlassian", { id: "mcp_atlassian", name: "Atlassian" }),
+    ]);
+    expect(sorted.map((p) => p.id)).toEqual(["mcp_atlassian", "aave"]);
+  });
+
+  test("does not reorder the list it is given", () => {
+    const providers = [makeProvider("aave"), makeProvider("google")];
+    sortByPopularity(providers);
+    expect(providers.map((p) => p.serviceId)).toEqual(["aave", "google"]);
+  });
+});
+
+describe("popularProviders", () => {
+  test("returns only ranked services, most popular first", () => {
+    const popular = popularProviders([
+      makeProvider("1inch"),
+      makeProvider("notion"),
+      makeProvider("google"),
+    ]);
+    expect(popular.map((p) => p.serviceId)).toEqual(["google", "notion"]);
+  });
+
+  test("leaves out services that cannot be connected in one step", () => {
+    const popular = popularProviders([
+      makeProvider("google"),
+      makeProvider("slack", { supportedAuthTypes: [] }),
+      makeProvider("stripe", {
+        supportedAuthTypes: [],
+        mcpServer: {
+          documentation_url: "https://docs.stripe.com/mcp",
+          setup_instructions: "Paste a restricted key.",
+          connection_mode: "custom",
+          auth_methods: ["bearer"],
+        },
+      }),
+      makeProvider("atlassian", {
+        supportedAuthTypes: [],
+        mcpServer: {
+          documentation_url:
+            "https://www.atlassian.com/platform/remote-mcp-server",
+          setup_instructions: "Sign in to Atlassian.",
+          connection_mode: "hosted",
+          auth_methods: ["oauth"],
+        },
+      }),
+    ]);
+    expect(popular.map((p) => p.serviceId)).toEqual(["google", "atlassian"]);
+  });
+
+  test("shows at most eight", () => {
+    const popular = popularProviders(
+      [
+        "google",
+        "github",
+        "slack",
+        "notion",
+        "linear",
+        "discord",
+        "twitter",
+        "hubspot",
+        "airtable",
+        "atlassian",
+        "todoist",
+        "reddit",
+        "telegram",
+        "stripe",
+      ].map((id) => makeProvider(id)),
+    );
+    expect(popular).toHaveLength(8);
+    expect(popular.at(-1)?.serviceId).toBe("hubspot");
   });
 });

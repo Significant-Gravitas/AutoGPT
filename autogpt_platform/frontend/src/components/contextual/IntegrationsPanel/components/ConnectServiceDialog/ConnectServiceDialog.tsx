@@ -61,6 +61,7 @@ export function ConnectServiceDialog({
     query,
     setQuery,
     providers,
+    popular,
     isLoading,
     isError,
     error,
@@ -126,6 +127,7 @@ export function ConnectServiceDialog({
                         query={query}
                         setQuery={setQuery}
                         providers={providers}
+                        popular={popular}
                         onSelect={handleSelect}
                         description={description}
                       />
