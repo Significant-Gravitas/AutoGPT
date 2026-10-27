@@ -229,6 +229,7 @@ OAuth access tokens act in your personal organization. There is no way yet to ch
 | `403 forbidden` | `Missing required permission(s): ...` | Keys can't be edited: create a key with the named permissions and delete the old one. |
 | `403 forbidden` | `These credentials belong to an organization you are not an active member of` | You left the organization the key was created in. Create a new key. |
 | `404 not_found` | `... not found` | The resource doesn't exist, or belongs to an organization or team this key can't see. |
+| `429` (v1) | `Too many API key authentication attempts. Try again shortly.` | Wait the number of seconds in `Retry-After` before retrying. See [v1 API-key validation limits](#api-key-validation-limits-on-v1). |
 
 ## OAuth access tokens
 
