@@ -228,7 +228,7 @@ function _resubscribeOptions(oldSubscription) {
   // Firefox occasionally fires pushsubscriptionchange with no oldSubscription;
   // without applicationServerKey the new sub can't be VAPID-authenticated and
   // every push from the backend will fail. Pull the public key from the API.
-  return fetch("/api/proxy/api/push/vapid-key", { credentials: "include" })
+  return fetch("/api/proxy/api/internal/push/vapid-key", { credentials: "include" })
     .then(function (r) {
       return r.ok ? r.json() : null;
     })
@@ -257,7 +257,7 @@ self.addEventListener("pushsubscriptionchange", function (event) {
         // is what pywebpush on the backend expects. Building the keys via
         // btoa(...) would produce standard base64 (with +/=) and break decoding.
         var json = newSub.toJSON();
-        return fetch("/api/proxy/api/push/subscribe", {
+        return fetch("/api/proxy/api/internal/push/subscribe", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
