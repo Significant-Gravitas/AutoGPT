@@ -9,6 +9,7 @@ import {
   type EventName,
 } from "@/services/analytics/posthog-events";
 import type { HireRequestSurface } from "@/app/api/__generated__/models/hireRequestSurface";
+import type { ExpertFirstJobStatus } from "@/app/api/__generated__/models/expertFirstJobStatus";
 import type { SuggestedTaskKickoffStatus } from "@/app/api/__generated__/models/suggestedTaskKickoffStatus";
 import * as Sentry from "@sentry/nextjs";
 import posthog from "posthog-js";
@@ -45,6 +46,10 @@ interface FunnelEventProperties {
   [ExpertsFunnelEvent.ONBOARDING_DRAFT_OPENED]: {
     task_id: string;
     kickoff_status: SuggestedTaskKickoffStatus | null;
+  };
+  [ExpertsFunnelEvent.TEAM_FIRST_JOB_OPENED]: {
+    expert_id: string;
+    status: ExpertFirstJobStatus;
   };
 }
 

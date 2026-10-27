@@ -20,6 +20,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import { SuggestedTaskCards } from "../SuggestedTasks/SuggestedTaskCards";
 import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
+import { TeamAtWork } from "../TeamAtWork/TeamAtWork";
 
 interface Props {
   name: string | null;
@@ -36,16 +37,18 @@ const HEADING_START = 0.2;
 const GREETING_START = 0.5;
 const GREETING_DURATION = 0.45;
 const ROW_START_BUFFER = 0.3;
-const FOOTER_BUFFER = 0.35;
+const BLOCK_BUFFER = 0.35;
 
 // One reveal schedule shared with EmptySession so the composer can enter
 // after everything here has finished. The greeting lands in one piece, the
-// prompt list follows as one block, then the footer, then the composer.
+// prompt list follows as one block, then the team, then the footer, then
+// the composer.
 export function introRevealTimings() {
   const promptsStart = GREETING_START + GREETING_DURATION + ROW_START_BUFFER;
-  const footerStart = promptsStart + FOOTER_BUFFER;
+  const teamStart = promptsStart + BLOCK_BUFFER;
+  const footerStart = teamStart + BLOCK_BUFFER;
   const composerStart = footerStart + 0.4;
-  return { promptsStart, footerStart, composerStart };
+  return { promptsStart, teamStart, footerStart, composerStart };
 }
 
 // The first thing a user sees after onboarding. Replaces the regular
@@ -78,7 +81,7 @@ export function OnboardingIntroCard({
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   }
-  const { promptsStart, footerStart } = introRevealTimings();
+  const { promptsStart, teamStart, footerStart } = introRevealTimings();
 
   function reveal(delay: number) {
     if (prefersReducedMotion) {
@@ -180,6 +183,10 @@ export function OnboardingIntroCard({
           />
         </motion.div>
       )}
+
+      <motion.div {...reveal(teamStart)}>
+        <TeamAtWork />
+      </motion.div>
 
       <motion.div {...reveal(footerStart)}>
         <Text variant="body" tone="muted" className="mt-5">

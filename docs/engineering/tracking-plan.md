@@ -349,6 +349,7 @@ merges the website pageviews into the new user:
 | `intro_followup_sent` | browser | live | `chars` | First message after the intro card. |
 | `onboarding_draft_started` | backend | live | `task_id`, `chat_session_id` | Otto starts a suggested first task on the user's behalf during onboarding (kickoff). |
 | `onboarding_draft_opened` | browser | live | `task_id`, `kickoff_status` (`working`, `ready`) | A draft Otto started during onboarding is opened from the greeting or Home. |
+| `team_first_job_opened` | browser | live | `expert_id`, `status` | A hired expert's first-job card on the greeting is opened. |
 | `later_dump_completed` | browser | live | — | A brain dump sent later from the composer. |
 | `expert_recommended` | browser | live | `template_id`, `position`, `team_source` | A recommended expert card is shown. |
 | `expert_recommendation_clicked` | browser | live | `template_id`, `position` | A recommended expert card is clicked. |

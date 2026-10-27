@@ -1,4 +1,6 @@
+import { getListExpertFirstJobsMockHandler200 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
+import { server } from "@/mocks/mock-server";
 import {
   act,
   cleanup,
@@ -172,6 +174,55 @@ describe("OnboardingIntroCard — drafts Otto started", () => {
   });
 });
 
+describe("OnboardingIntroCard — your team", () => {
+  it("shows the team block under the greeting", async () => {
+    server.use(
+      getListExpertFirstJobsMockHandler200({
+        items: [
+          {
+            expert_id: "expert-ava",
+            name: "Ava",
+            role: "Inbox manager",
+            avatar_url: null,
+            title: "Sort this week's inbox",
+            description: "Label every unread email and flag what needs you.",
+            status: "open",
+            detail: "Not started yet",
+            providers: [],
+            session_id: null,
+          },
+        ],
+      }),
+    );
+    render(
+      <OnboardingIntroCard
+        name="Alex"
+        greeting={GREETING}
+        suggestions={makeSuggestions(PROMPTS)}
+      />,
+    );
+
+    const heading = await screen.findByRole("heading", { name: "Your team" });
+    const card = screen.getByRole("link", {
+      name: "Ava: Sort this week's inbox, Start",
+    });
+    expect(card.getAttribute("href")).toBe(
+      "/copilot?expertId=expert-ava&kickoff=1",
+    );
+    const lastPrompt = screen.getByRole("button", {
+      name: "Watch competitor pricing",
+    });
+    const footer = screen.getByText(FOOTER);
+    expect(
+      lastPrompt.compareDocumentPosition(heading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      card.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+});
+
 describe("OnboardingIntroCard — picking a prompt", () => {
   it("hands the clicked row's task over to be sent", async () => {
     const onSelectPrompt = vi.fn();
@@ -299,11 +350,13 @@ describe("OnboardingIntroCard — transcript copy", () => {
 });
 
 describe("introRevealTimings", () => {
-  it("orders greeting, prompts, footer and composer with fixed offsets", () => {
-    const { promptsStart, footerStart, composerStart } = introRevealTimings();
+  it("orders greeting, prompts, team, footer and composer with fixed offsets", () => {
+    const { promptsStart, teamStart, footerStart, composerStart } =
+      introRevealTimings();
 
     expect(promptsStart).toBeCloseTo(0.5 + 0.45 + 0.3, 5);
-    expect(footerStart - promptsStart).toBeCloseTo(0.35, 5);
+    expect(teamStart - promptsStart).toBeCloseTo(0.35, 5);
+    expect(footerStart - teamStart).toBeCloseTo(0.35, 5);
     expect(composerStart - footerStart).toBeCloseTo(0.4, 5);
   });
 });

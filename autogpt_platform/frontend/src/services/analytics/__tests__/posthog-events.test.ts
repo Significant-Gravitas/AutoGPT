@@ -54,6 +54,7 @@ const LIVE_EVENT_NAMES = [
   "tab_intro_cta_clicked",
   "tab_intro_dismissed",
   "tab_intro_shown",
+  "team_first_job_opened",
   "tour_cta_clicked",
   "tour_scenario_completed",
   "tour_scenario_started",

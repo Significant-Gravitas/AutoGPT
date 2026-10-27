@@ -48,6 +48,8 @@ export const ExpertsFunnelEvent = {
   HOME_SUGGESTION_DISMISSED: "home_suggestion_dismissed",
   // A draft Otto started during onboarding, opened from its card.
   ONBOARDING_DRAFT_OPENED: "onboarding_draft_opened",
+  // A hired expert's first-job card on the greeting, opened.
+  TEAM_FIRST_JOB_OPENED: "team_first_job_opened",
 } as const;
 
 export const HireFlowEvent = {

@@ -27,6 +27,7 @@ import { getGetExperimentsGetExperimentAssignmentMockHandler } from "@/app/api/_
 import {
   getExpertsMock,
   getGetExpertOnboardingMockHandler200,
+  getListExpertFirstJobsMockHandler200,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getFilesMock } from "@/app/api/__generated__/endpoints/files/files.msw";
 import { getGraphsMock } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
@@ -97,6 +98,9 @@ export const mockHandlers = [
   // No setup questions waiting unless a test sets some up; a random chat id
   // would pull every empty expert chat into that chat.
   getGetExpertOnboardingMockHandler200(null),
+  // Nobody hired unless a test sets it up; random experts would add a team
+  // block under every greeting.
+  getListExpertFirstJobsMockHandler200({ items: [] }),
   ...getExpertsMock(),
   ...getFilesMock(),
   ...getGraphsMock(),
