@@ -97,13 +97,22 @@ test("an agent run's queue is read from its execution", async () => {
   expect(screen.queryByText("Not the run's review")).toBeNull();
 });
 
-test("every run waiting on one expert's spend approval is approved with one click", async () => {
-  const runs = ["exec-1", "exec-2", "exec-3", "exec-4"];
-  const waiting = new Set(runs);
-  const posted: string[][] = [];
+const RUNS = ["exec-1", "exec-2", "exec-3", "exec-4"];
+
+// Four runs each paused on one expert's spend approval, served like the backend.
+function serveSpendRuns({
+  failRun,
+  holdRefetch,
+}: { failRun?: string; holdRefetch?: Promise<void> } = {}) {
+  const waiting = new Set(RUNS);
+  const calls = { posted: [] as string[][], heldRefetches: 0 };
   server.use(
-    http.get("*/api/review/execution/:id", ({ params }) => {
+    http.get("*/api/review/execution/:id", async ({ params }) => {
       const id = String(params.id);
+      if (holdRefetch && calls.posted.length > 0 && id === RUNS[0]) {
+        calls.heldRefetches++;
+        await holdRefetch;
+      }
       return HttpResponse.json(
         waiting.has(id)
           ? [
@@ -126,7 +135,7 @@ test("every run waiting on one expert's spend approval is approved with one clic
     http.post("*/api/review/action", async ({ request }) => {
       const body = (await request.json()) as ReviewRequest;
       const ids = body.reviews.map((r) => r.node_exec_id);
-      posted.push(ids);
+      calls.posted.push(ids);
       const ofRuns = new Set(ids.map((id) => id.split(":").at(-1) ?? ""));
       if (ofRuns.size > 1) {
         return HttpResponse.json(
@@ -137,6 +146,9 @@ test("every run waiting on one expert's spend approval is approved with one clic
           { status: 400 },
         );
       }
+      if (failRun && ofRuns.has(failRun)) {
+        return HttpResponse.json({ detail: "unavailable" }, { status: 503 });
+      }
       for (const run of ofRuns) waiting.delete(run);
       return HttpResponse.json({
         approved_count: ids.length,
@@ -145,12 +157,20 @@ test("every run waiting on one expert's spend approval is approved with one clic
       });
     }),
   );
+  return calls;
+}
 
+function renderRuns() {
   render(
     <CopilotPendingReviews
-      runs={runs.map((graphExecId) => ({ graphExecId }))}
+      runs={RUNS.map((graphExecId) => ({ graphExecId }))}
     />,
   );
+}
+
+test("every run waiting on one expert's spend approval is approved with one click", async () => {
+  const calls = serveSpendRuns();
+  renderRuns();
 
   expect(await screen.findByText("4 reviews")).toBeDefined();
   expect(screen.queryByText(/Auto-approve future executions/)).toBeNull();
@@ -162,8 +182,48 @@ test("every run waiting on one expert's spend approval is approved with one clic
   await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1), {
     timeout: 5000,
   });
-  expect(posted.map((ids) => ids.length)).toEqual([1, 1, 1, 1]);
-  for (const id of runs) {
+  expect(calls.posted.map((ids) => ids.length)).toEqual([1, 1, 1, 1]);
+  for (const id of RUNS) {
     expect(onSend.mock.calls[0][0]).toContain(`execution_id="${id}"`);
   }
+});
+
+test("a group can't be decided again while its later runs are still unsent", async () => {
+  let release = () => {};
+  const holdRefetch = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const calls = serveSpendRuns({ holdRefetch });
+  renderRuns();
+  await screen.findByText("4 reviews");
+
+  await userEvent.click(
+    screen.getByRole("button", { name: "Approve 4 reviews" }),
+  );
+  // The first run is decided and its list is being read again; the rest wait.
+  await waitFor(() => expect(calls.heldRefetches).toBeGreaterThan(0));
+  expect(calls.posted).toHaveLength(1);
+  const reject = screen.getByRole("button", { name: "Reject 4 reviews" });
+  expect((reject as HTMLButtonElement).disabled).toBe(true);
+
+  release();
+  await waitFor(() => expect(calls.posted).toHaveLength(4), {
+    timeout: 5000,
+  });
+});
+
+test("a run whose request fails doesn't keep the other runs from being sent", async () => {
+  const calls = serveSpendRuns({ failRun: "exec-1" });
+  renderRuns();
+  await screen.findByText("4 reviews");
+
+  await userEvent.click(
+    screen.getByRole("button", { name: "Approve 4 reviews" }),
+  );
+
+  await waitFor(() => expect(calls.posted).toHaveLength(4), {
+    timeout: 5000,
+  });
+  expect(await screen.findByText("1 review")).toBeDefined();
+  expect(onSend).not.toHaveBeenCalled();
 });
