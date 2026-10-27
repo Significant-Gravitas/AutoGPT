@@ -20,6 +20,7 @@ from security_public_sync import (
     current_snapshot,
     matches,
     public_release_notes,
+    unlinked_advisories,
 )
 
 
@@ -116,9 +117,18 @@ def update_releases(expected_digest, *, apply=False, preview=False):
         raise PublicDataError(PublicErrorCode.LATEST_CHANGED)
     result = {"changed_releases": updated}
     if preview:
+        unlinked = unlinked_advisories(snapshot)
         result["preview"] = (
             "## Proposed public security sections\n\n"
             f"Releases to update: {updated}\n\n"
+            "Published advisories that no release lists: "
+            + (
+                ", ".join(unlinked)
+                + ". Add a link to the release that fixed each one to its description."
+                if unlinked
+                else "none."
+            )
+            + "\n\n"
             "Each section below replaces the managed security section or is appended "
             "if none exists. Other release text is preserved. "
             "Existing release text and raw advisory content are not included "

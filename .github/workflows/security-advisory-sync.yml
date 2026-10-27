@@ -56,9 +56,9 @@ jobs:
     if: vars.PUBLIC_SECURITY_CREDITS_ENABLED == 'true' && (github.event_name == 'schedule' || !inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: write
-      pull-requests: write
+    # The PR is opened with a batch-bot App token, not GITHUB_TOKEN: a PR opened with
+    # GITHUB_TOKEN gets its CI parked until a maintainer approves the runs.
+    permissions: {}
     steps:
       - name: Check out public code and content without credentials
         env:
@@ -77,13 +77,25 @@ jobs:
           git -C content fetch --no-tags --depth=1 origin refs/heads/dev
           git -C content checkout -b dev FETCH_HEAD
       - name: Re-fetch public data and generate only approved files
+        id: credits
         env:
           EXPECTED_DIGEST: ${{ needs.public-data.outputs.digest }}
-        run: python trusted/.github/workflows/scripts/security_public_sync.py credits --root content --expected-digest "$EXPECTED_DIGEST"
+        run: |
+          result=$(python trusted/.github/workflows/scripts/security_public_sync.py credits --root content --expected-digest "$EXPECTED_DIGEST")
+          echo "$result"
+          echo "unlinked=$(jq -r 'if (.unlinked | length) == 0 then "none" else (.unlinked | join(", ")) end' <<<"$result")" >> "$GITHUB_OUTPUT"
+      # Minted after the files are generated, and handed only to the PR step.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ vars.BATCH_BOT_APP_ID }}
+          private-key: ${{ secrets.BATCH_BOT_PRIVATE_KEY }}
+          permission-contents: write # push the credits branch
+          permission-pull-requests: write # open or update the credits PR
       - name: Update the public credits PR
         uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6.1.0
         with:
-          token: ${{ github.token }}
+          token: ${{ steps.app-token.outputs.token }}
           path: content
           base: dev
           branch: automation/public-security-credits
@@ -101,6 +113,7 @@ jobs:
 
             - Update the four-field public snapshot and generated acknowledgments.
             - No report text, pending credits, or private advisory inventory is used.
+            - Published advisories that no release lists: ${{ steps.credits.outputs.unlinked }}
 
             ### Agents and large language models used
 
@@ -110,7 +123,7 @@ jobs:
 
             - [x] Changes and test plan described
             - [x] Strict schema and publication/consent validation passed
-            - [ ] Maintainer reviewed the diff and approved any pending CI runs
+            - [ ] Maintainer reviewed the diff
 
   release-notes:
     needs: public-data

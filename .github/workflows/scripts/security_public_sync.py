@@ -218,6 +218,16 @@ def public_release_notes(snapshot, tag, existing):
     return managed_section(existing, START, END, "\n".join(lines), append=True)
 
 
+def unlinked_advisories(snapshot):
+    """Published advisories no release lists, usually because the description lacks
+    a link to the release that fixed them."""
+    return [
+        a["ghsa_id"]
+        for a in validate_snapshot(snapshot)["advisories"]
+        if not a["release_tags"]
+    ]
+
+
 def prepare_credits(root, expected_digest):
     for path in (root, root / ".github", root / SNAPSHOT_PATH, root / "SECURITY.md"):
         if path.is_symlink():
@@ -231,7 +241,7 @@ def prepare_credits(root, expected_digest):
     difference = changes(previous, snapshot)
     security.write_text(updated, encoding="utf-8")
     (root / SNAPSHOT_PATH).write_text(snapshot_text(snapshot), encoding="utf-8")
-    return difference
+    return dict(difference, unlinked=unlinked_advisories(snapshot))
 
 
 def main():
