@@ -70,26 +70,27 @@ async def update_suggested_tasks(
     return response.model_copy(update={"tasks": tasks})
 
 
-async def mark_kicked_off(
-    user_id: str, task_id: str, session_id: str
-) -> SuggestedTasksResponse:
+async def mark_kicked_off(user_id: str, task_id: str, session_id: str) -> bool:
     """Record that Otto started ``task_id`` in ``session_id`` for the user.
 
-    A row already kicked off keeps the chat it has, so a repeated kickoff
-    cannot point it at a second one.
+    Only an open row is converted: one the user sent or hid since kickoff
+    read it stays as they left it, and False says so. A row already kicked
+    off keeps the chat it has, so a repeated kickoff cannot point it at a
+    second one.
     """
-    return await _rewrite(
+    response = await _rewrite(
         user_id,
         {task_id},
         lambda tasks: [
             (
                 _kick_off(task, session_id)
-                if task.id == task_id and not task.kickoff
+                if task.id == task_id and task.state == "open"
                 else task
             )
             for task in tasks
         ],
     )
+    return any(task.id == task_id and task.kickoff for task in response.tasks)
 
 
 async def _rewrite(

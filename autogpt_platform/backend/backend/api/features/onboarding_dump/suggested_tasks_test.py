@@ -265,22 +265,19 @@ def test_an_empty_id_list_is_refused(rows: RowStore):
 async def test_mark_kicked_off_sets_sent_session_and_flag(rows: RowStore):
     rows.put(STORED)
 
-    response = await suggested_tasks.mark_kicked_off(
-        "test-user-id", "1", "draft-session-1"
-    )
+    assert await suggested_tasks.mark_kicked_off("test-user-id", "1", "draft-session-1")
 
-    task = response.tasks[1]
-    assert (task.state, task.session_id, task.kickoff) == (
+    assert rows.row is not None
+    stored = rows.row.suggestedPrompts
+    assert isinstance(stored, list)
+    task = stored[1]
+    assert (task["state"], task["session_id"], task["kickoff"]) == (
         "sent",
         "draft-session-1",
         True,
     )
-    assert task.updated_at is not None
-    assert [t.kickoff for t in response.tasks] == [False, True, False]
-    assert rows.row is not None
-    stored = rows.row.suggestedPrompts
-    assert isinstance(stored, list)
-    assert stored[1]["kickoff"] is True
+    assert task["updated_at"] is not None
+    assert [item.get("kickoff") for item in stored] == [False, True, False]
     assert all("kickoff_status" not in item for item in stored)
 
 
@@ -289,12 +286,34 @@ async def test_mark_kicked_off_is_idempotent(rows: RowStore):
     rows.put(STORED)
     await suggested_tasks.mark_kicked_off("test-user-id", "1", "draft-session-1")
 
-    response = await suggested_tasks.mark_kicked_off(
-        "test-user-id", "1", "another-session"
+    assert await suggested_tasks.mark_kicked_off("test-user-id", "1", "another-session")
+
+    assert rows.row is not None
+    stored = rows.row.suggestedPrompts
+    assert isinstance(stored, list)
+    assert stored[1]["session_id"] == "draft-session-1"
+    assert rows.writes == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "user_row", [{"state": "sent", "session_id": "typed"}, {"state": "dismissed"}]
+)
+async def test_mark_kicked_off_leaves_a_row_that_is_no_longer_open(
+    rows: RowStore, user_row: dict[str, Any]
+):
+    rows.put([STORED[0], {**STORED[1], **user_row}])
+
+    assert not await suggested_tasks.mark_kicked_off(
+        "test-user-id", "1", "draft-session-1"
     )
 
-    assert response.tasks[1].session_id == "draft-session-1"
-    assert rows.writes == 1
+    assert rows.row is not None
+    stored = rows.row.suggestedPrompts
+    assert isinstance(stored, list)
+    assert {key: stored[1].get(key) for key in user_row} == user_row
+    assert not stored[1].get("kickoff")
+    assert rows.writes == 0
 
 
 def test_get_suggested_tasks_reports_kickoff_status_from_chat_status(

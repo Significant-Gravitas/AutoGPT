@@ -59,7 +59,8 @@ class RowStore:
                 "greetingSeen": False,
                 "errorCode": None,
                 "suggestedPrompts": prompts,
-                "updatedAt": datetime(2026, 10, 1, tzinfo=UTC),
+                # Kickoff only runs for a take finished in the last day.
+                "updatedAt": datetime.now(UTC) - timedelta(minutes=5),
                 **fields,
             }
         )
@@ -414,3 +415,102 @@ async def test_racing_kickoffs_both_report_started_and_start_each_task_once(
     assert first.started_task_ids == second.started_task_ids == ["0", "1"]
     assert turns["schedule_turn"].await_count == 2
     assert kickoff_errors(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_kickoff_surfaces_a_create_error_when_the_chat_is_still_absent(
+    rows: RowStore,
+    turns: dict[str, MagicMock],
+    caplog: pytest.LogCaptureFixture,
+):
+    # Not a lost race: nobody else created the chat, so the error is real.
+    rows.put(STORED)
+    turns["create_chat_session"].side_effect = DatabaseError("connection reset")
+
+    response = await kickoff.kickoff_suggested_tasks(USER_ID)
+
+    assert response.status == "nothing"
+    assert response.started_task_ids == []
+    turns["schedule_turn"].assert_not_awaited()
+    assert all(not t.get("kickoff") for t in rows.stored())
+    assert kickoff_errors(caplog)
+    assert "connection reset" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_kickoff_deletes_the_chat_when_the_turn_cannot_be_queued(
+    rows: RowStore,
+    turns: dict[str, MagicMock],
+    caplog: pytest.LogCaptureFixture,
+):
+    rows.put(STORED)
+    turns["schedule_turn"].side_effect = RuntimeError("queue down")
+
+    response = await kickoff.kickoff_suggested_tasks(USER_ID)
+
+    assert response.status == "nothing"
+    # Left behind, the next call would find the chat and mark an empty draft.
+    turns["delete_chat_session"].assert_awaited_once_with(
+        draft_session_id("0"), USER_ID
+    )
+    assert all(not t.get("kickoff") for t in rows.stored())
+    turns["track"].assert_not_called()
+    assert "queue down" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "user_row", [{"state": "sent", "session_id": "typed"}, {"state": "dismissed"}]
+)
+async def test_kickoff_leaves_a_row_the_user_changed_while_it_started(
+    rows: RowStore, turns: dict[str, MagicMock], user_row: dict[str, Any]
+):
+    rows.put(STORED)
+
+    async def user_acts_first(**kwargs: Any) -> None:
+        if kwargs["session_id"] == draft_session_id("0"):
+            # The user sends or hides the row from another tab meanwhile.
+            assert rows.row is not None
+            first, *rest = rows.stored()
+            rows.row.suggestedPrompts = [{**first, **user_row}, *rest]
+            rows.row.updatedAt += timedelta(milliseconds=1)
+
+    turns["schedule_turn"].side_effect = user_acts_first
+
+    response = await kickoff.kickoff_suggested_tasks(USER_ID)
+
+    assert response.started_task_ids == ["1"]
+    stored = rows.stored()
+    assert {key: stored[0].get(key) for key in user_row} == user_row
+    assert not stored[0].get("kickoff")
+    turns["delete_chat_session"].assert_awaited_once_with(
+        draft_session_id("0"), USER_ID
+    )
+    assert [call.kwargs["task_id"] for call in turns["track"].call_args_list] == ["1"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "age, started",
+    [
+        (kickoff.KICKOFF_MAX_DUMP_AGE - timedelta(minutes=1), ["0", "1"]),
+        (kickoff.KICKOFF_MAX_DUMP_AGE + timedelta(minutes=1), []),
+    ],
+)
+async def test_kickoff_only_runs_for_a_take_finished_in_the_last_day(
+    rows: RowStore,
+    turns: dict[str, MagicMock],
+    age: timedelta,
+    started: list[str],
+):
+    # Someone who onboarded weeks before drafts shipped gets none now.
+    rows.put(STORED, updatedAt=datetime.now(UTC) - age)
+
+    response = await kickoff.kickoff_suggested_tasks(USER_ID)
+
+    assert response.started_task_ids == started
+    assert response.status == ("started" if started else "nothing")
+    assert turns["create_chat_session"].await_count == len(started)
+    if not started:
+        turns["resolve_default_chat_route"].assert_not_awaited()
+        assert all(not t.get("kickoff") for t in rows.stored())

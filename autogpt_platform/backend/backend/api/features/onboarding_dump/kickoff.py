@@ -13,6 +13,8 @@ both create it.
 
 import logging
 import uuid
+from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
@@ -40,6 +42,14 @@ logger = logging.getLogger(__name__)
 
 MAX_KICKOFF_TASKS = 2
 
+# Drafts are for someone who just finished onboarding. A take older than
+# this (someone who onboarded before drafts shipped, say) gets none.
+KICKOFF_MAX_DUMP_AGE = timedelta(hours=24)
+
+# What came of starting one row: its chat runs, the user moved the row on
+# first, or the user is at the turn cap and nothing more can start.
+_DraftOutcome = Literal["started", "skipped", "capped"]
+
 
 class _DraftTarget(BaseModel):
     """Who a draft runs for, and on which connection and tenant."""
@@ -57,8 +67,9 @@ async def kickoff_suggested_tasks(user_id: str) -> KickoffResponse:
 
     ``pending`` means the greeting has not stored its prompts yet, so the
     caller should ask again; ``nothing`` covers a user with no take, a
-    skipped or failed one, and any failure here, which is logged rather
-    than raised because nobody is waiting on this.
+    skipped or failed one, one finished more than ``KICKOFF_MAX_DUMP_AGE``
+    ago, and any failure here, which is logged rather than raised because
+    nobody is waiting on this.
     """
     try:
         return await _kick_off(user_id)
@@ -79,25 +90,18 @@ async def _kick_off(user_id: str) -> KickoffResponse:
     if kicked_off:
         return KickoffResponse(status="started", started_task_ids=kicked_off)
     open_tasks = [task for task in tasks if task.state == "open"][:MAX_KICKOFF_TASKS]
-    if not open_tasks:
+    if not open_tasks or _too_old(dump):
         return KickoffResponse(status="nothing")
-    llm_auth_provider, llm_credential_id = await resolve_default_chat_route(user_id)
-    if await turn_refusal(user_id, llm_auth_provider) is not None:
+    target = await _draft_target(user_id, dump.recordingId)
+    if target is None:
         return KickoffResponse(status="refused")
-    organization_id, team_id = await resolve_default_tenancy(user_id)
-    target = _DraftTarget(
-        user_id=user_id,
-        recording_id=dump.recordingId,
-        llm_auth_provider=llm_auth_provider,
-        llm_credential_id=llm_credential_id,
-        organization_id=organization_id,
-        team_id=team_id,
-    )
     started: list[str] = []
     for task in open_tasks:
-        if not await _start_draft(target, task):
+        outcome = await _start_draft(target, task)
+        if outcome == "capped":
             break
-        started.append(task.id)
+        if outcome == "started":
+            started.append(task.id)
     return KickoffResponse(
         status="started" if started else "nothing", started_task_ids=started
     )
@@ -110,40 +114,79 @@ def _no_tasks_coming(dump: OnboardingBrainDump) -> bool:
     )
 
 
-async def _start_draft(target: _DraftTarget, task: SuggestedTask) -> bool:
-    """Open the task's chat and start Otto's turn; False at the turn cap."""
+def _too_old(dump: OnboardingBrainDump) -> bool:
+    # The row has no completion time of its own; its last write is the
+    # nearest. Later writes (the team, a row sent or hidden) only move it
+    # on, so the cutoff errs towards starting.
+    return datetime.now(UTC) - dump.updatedAt > KICKOFF_MAX_DUMP_AGE
+
+
+async def _draft_target(user_id: str, recording_id: str) -> _DraftTarget | None:
+    """Where the user's drafts run; None when they may not start a turn."""
+    llm_auth_provider, llm_credential_id = await resolve_default_chat_route(user_id)
+    if await turn_refusal(user_id, llm_auth_provider) is not None:
+        return None
+    organization_id, team_id = await resolve_default_tenancy(user_id)
+    return _DraftTarget(
+        user_id=user_id,
+        recording_id=recording_id,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
+
+
+async def _start_draft(target: _DraftTarget, task: SuggestedTask) -> _DraftOutcome:
+    """Open the task's chat, start Otto's turn in it and mark the row."""
     session_id = draft_session_id(target.user_id, target.recording_id, task.id)
     if not await _open_draft_chat(target, session_id):
         # Its chat exists: another call started it, or an earlier one did
         # and never got to mark the row. Its turn is not started twice.
-        await suggested_tasks.mark_kicked_off(target.user_id, task.id, session_id)
-        return True
-    try:
-        await schedule_turn(
-            session_id=session_id,
-            user_id=target.user_id,
-            turn_id=str(uuid.uuid4()),
-            message=task.prompt,
-            # The user picked the task but did not send it: not their turn.
-            message_metadata={"kind": ONBOARDING_DRAFT_KICKOFF_KIND},
-            # Nobody is in the browser to answer this turn's questions.
-            unattended=True,
-            organization_id=target.organization_id,
-            team_id=target.team_id,
-            llm_auth_provider=target.llm_auth_provider,
-            llm_credential_id=target.llm_credential_id,
+        marked = await suggested_tasks.mark_kicked_off(
+            target.user_id, task.id, session_id
         )
+        return "started" if marked else "skipped"
+    try:
+        await _schedule_draft_turn(target, session_id, task.prompt)
     except ConcurrentTurnLimitError:
         logger.info(f"Onboarding kickoff hit the turn cap for user {target.user_id}")
         # An empty chat would sit in the sidebar, and its id must be free
         # for the next try.
         await delete_chat_session(session_id, target.user_id)
-        return False
-    await suggested_tasks.mark_kicked_off(target.user_id, task.id, session_id)
+        return "capped"
+    except Exception:
+        # Left behind, a later call would find the chat and mark a draft no
+        # turn ever ran in.
+        await delete_chat_session(session_id, target.user_id)
+        raise
+    if not await suggested_tasks.mark_kicked_off(target.user_id, task.id, session_id):
+        # The user sent or hid the row while its chat was being opened.
+        await delete_chat_session(session_id, target.user_id)
+        return "skipped"
     product_analytics.track_onboarding_draft_started(
         user_id=target.user_id, task_id=task.id, session_id=session_id
     )
-    return True
+    return "started"
+
+
+async def _schedule_draft_turn(
+    target: _DraftTarget, session_id: str, prompt: str
+) -> None:
+    await schedule_turn(
+        session_id=session_id,
+        user_id=target.user_id,
+        turn_id=str(uuid.uuid4()),
+        message=prompt,
+        # The user picked the task but did not send it: not their turn.
+        message_metadata={"kind": ONBOARDING_DRAFT_KICKOFF_KIND},
+        # Nobody is in the browser to answer this turn's questions.
+        unattended=True,
+        organization_id=target.organization_id,
+        team_id=target.team_id,
+        llm_auth_provider=target.llm_auth_provider,
+        llm_credential_id=target.llm_credential_id,
+    )
 
 
 async def _open_draft_chat(target: _DraftTarget, session_id: str) -> bool:
