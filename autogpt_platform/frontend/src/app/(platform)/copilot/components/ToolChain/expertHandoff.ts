@@ -56,6 +56,28 @@ export function frozenStatusOf(outcome: HandoffOutcome): string | null {
   return null;
 }
 
+export type HandoffState =
+  | "failed"
+  | "unconfirmed"
+  | "waiting"
+  | "working"
+  | "stopped";
+
+/** What the card says now: the thread's live status once the poll has read
+ *  it, and the outcome frozen at hire time only while it can't (not read
+ *  yet, or "unknown" after the poll died). */
+export function handoffStateOf(
+  outcome: HandoffOutcome,
+  live: string | null,
+): HandoffState {
+  if (outcome.status === "failed") return "failed";
+  if (outcome.status === "unconfirmed") return "unconfirmed";
+  if (live === "completed") return "stopped";
+  if (live === "queued") return "waiting";
+  if (live === "running") return "working";
+  return outcome.status === "queued" ? "waiting" : "working";
+}
+
 /** Subject of the decision line for "hire and hand off". It reads as one
  *  phrase after the verb, so the gate's regex and the decision note both
  *  keep working: "hire James to take on the Printify order pipeline". */

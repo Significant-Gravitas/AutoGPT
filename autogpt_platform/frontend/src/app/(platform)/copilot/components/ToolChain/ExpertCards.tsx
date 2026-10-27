@@ -25,13 +25,12 @@ import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopi
 import { SOUL_CHANGE_TOOLS } from "./helpers";
 import { asObject, str } from "./resultHelpers";
 import {
-  type HandoffTask,
   handoffOutcomeOf,
   handoffSubject,
   handoffTaskOf,
 } from "./expertHandoff";
-import { HandoffActions, HandoffTaskBlock } from "./ExpertHandoffParts";
-import { HandoffStatusRow } from "./HandoffStatusRow";
+import { HandoffProposal, HandoffReceipt } from "./ExpertHandoffParts";
+import { HandoffStatus } from "./HandoffStatus";
 
 interface Props {
   output: Record<string, unknown>;
@@ -62,6 +61,9 @@ interface Props {
   /** For a card that offered the hand-off: whether the stored approval was
    *  "hire and hand off", so paging back shows what will be sent. */
   handedOff?: boolean;
+  /** Sends a chat message (a hand-off that didn't start offers Try again);
+   *  absent on a read-only transcript. */
+  onSend?: (message: string) => void;
 }
 
 export type StepDirection = "forward" | "back";
@@ -117,7 +119,7 @@ interface Proposal {
   name: string;
   confirmationId: string;
   /** The "hire and hand off" choice, when the hire is for a task. */
-  handoff: { confirmationId: string; subject: string } | null;
+  handoff: { confirmationId: string; subject: string; title: string } | null;
 }
 
 /** A hire/raise/Soul preview the user can still say yes or no to. */
@@ -149,6 +151,7 @@ function proposalOf(part: ToolUIPart): Proposal | null {
         ? {
             confirmationId: handoffConfirmationId,
             subject: handoffSubject(name, task),
+            title: task.title,
           }
         : null,
   };
@@ -247,6 +250,7 @@ export function ExpertChangeCard({
   stepDirection,
   waiting = false,
   handedOff = false,
+  onSend,
 }: Props) {
   const [showCharter, setShowCharter] = useState(false);
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
@@ -277,6 +281,67 @@ export function ExpertChangeCard({
   const header = headerFor(kindOf(output), applied);
   const task = applied ? null : handoffTaskOf(output);
   const outcome = applied ? handoffOutcomeOf(output) : null;
+  const stepClassName = cn(
+    stepDirection &&
+      "duration-300 animate-in fade-in fill-mode-both motion-reduce:animate-none",
+    stepDirection === "forward" && "slide-in-from-right-4",
+    stepDirection === "back" && "slide-in-from-left-4",
+  );
+
+  if (outcome) {
+    return (
+      <HandoffStatus
+        outcome={outcome}
+        name={name}
+        avatarUrl={str(expert, "avatar_url")}
+        color={str(expert, "color")}
+        onSend={onSend}
+      />
+    );
+  }
+
+  if (task) {
+    return (
+      <div className={SHELL}>
+        <HandoffProposal
+          name={name}
+          role={role}
+          avatarUrl={str(expert, "avatar_url")}
+          color={str(expert, "color")}
+          about={summary}
+          task={task}
+          actions={
+            !decision && onDecide && onHandOff
+              ? {
+                  onHandOff,
+                  onHireOnly: () => onDecide("approved"),
+                  onDecline: () => onDecide("declined"),
+                  disabled: waiting,
+                }
+              : null
+          }
+          onShowProfile={panelAvailable ? handleShowMore : undefined}
+          stepClassName={stepClassName}
+          stepKey={artifactId ?? name}
+        />
+        {(!!pager || !!decision || !!action) && (
+          <DecisionFooter
+            pager={pager}
+            decision={decision}
+            onUndo={onUndo}
+            action={action}
+            chosen={
+              decision === "approved"
+                ? handedOff
+                  ? "Hire and hand off chosen"
+                  : "Hire only chosen"
+                : undefined
+            }
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={SHELL}>
@@ -350,9 +415,7 @@ export function ExpertChangeCard({
             )}
           </div>
         )}
-        {task && <HandoffTaskBlock task={task} />}
       </div>
-      {outcome && <HandoffStatusRow outcome={outcome} expertName={name} />}
       {showFooter && (
         <DecisionFooter
           pager={pager}
@@ -361,18 +424,6 @@ export function ExpertChangeCard({
           onUndo={onUndo}
           action={action}
           waiting={waiting}
-          chosen={
-            task && decision === "approved"
-              ? handedOff
-                ? "Hire and hand off chosen"
-                : "Hire only chosen"
-              : undefined
-          }
-          handoff={
-            task && onDecide && onHandOff
-              ? { name, task, onHandOff, onDecide }
-              : undefined
-          }
         />
       )}
     </div>
@@ -447,12 +498,6 @@ type FooterProps = Pick<
 > & {
   /** What a stored approval will send, for cards offering two approvals. */
   chosen?: string;
-  handoff?: {
-    name: string;
-    task: HandoffTask;
-    onHandOff: () => void;
-    onDecide: (decision: Decision) => void;
-  };
 };
 
 function DecisionFooter({
@@ -461,25 +506,9 @@ function DecisionFooter({
   onDecide,
   onUndo,
   action,
-  handoff,
   waiting = false,
   chosen,
 }: FooterProps) {
-  if (handoff && !decision) {
-    return (
-      <div className={cn(FOOTER, "flex-wrap")}>
-        <div className="min-w-0">{pager}</div>
-        <HandoffActions
-          name={handoff.name}
-          task={handoff.task}
-          onHandOff={handoff.onHandOff}
-          onHireOnly={() => handoff.onDecide("approved")}
-          onDecline={() => handoff.onDecide("declined")}
-          disabled={waiting}
-        />
-      </div>
-    );
-  }
   return (
     <div className={FOOTER}>
       <div className="min-w-0">{pager}</div>
@@ -588,6 +617,7 @@ interface PartProps {
   stepDirection?: StepDirection;
   waiting?: boolean;
   handedOff?: boolean;
+  onSend?: (message: string) => void;
 }
 
 /** The expert is still being written while the row has no output — hold
@@ -606,6 +636,7 @@ export function ExpertChangePart({
   stepDirection,
   waiting,
   handedOff,
+  onSend,
 }: PartProps) {
   if (part.state === "output-error") return <GenericTool part={part} />;
   const output = asObject(part.output);
@@ -624,6 +655,7 @@ export function ExpertChangePart({
         stepDirection={stepDirection}
         waiting={waiting}
         handedOff={handedOff}
+        onSend={onSend}
       />
     );
   }
@@ -695,21 +727,10 @@ export function ExpertChangeGroup({
     setStep(next);
   }
 
-  function send(
-    answered: Record<string, Decision>,
-    handedOff: Record<string, boolean>,
-  ) {
+  function sendMessage(message: string) {
     if (!actions) return;
-    const message = proposals
-      .map((proposal) =>
-        answerLine(proposal, {
-          decision: answered[proposal.toolCallId],
-          handOff: !!handedOff[proposal.toolCallId],
-        }),
-      )
-      .join("\n");
-    // The card stays marked sent because the message is already in the
-    // thread for Retry — the failure only needs saying.
+    // The message is already in the thread for Retry — the failure only
+    // needs saying.
     void Promise.resolve(actions.onSend(message)).catch((error: unknown) =>
       toastSendFailure({
         title: "Couldn't send message",
@@ -718,6 +739,22 @@ export function ExpertChangeGroup({
         paywallRecovery:
           "it is still in the thread, use Retry once you have a plan",
       }),
+    );
+  }
+
+  function send(
+    answered: Record<string, Decision>,
+    handedOff: Record<string, boolean>,
+  ) {
+    sendMessage(
+      proposals
+        .map((proposal) =>
+          answerLine(proposal, {
+            decision: answered[proposal.toolCallId],
+            handOff: !!handedOff[proposal.toolCallId],
+          }),
+        )
+        .join("\n"),
     );
     setSent(true);
   }
@@ -810,6 +847,23 @@ export function ExpertChangeGroup({
     </Button>
   ) : null;
 
+  // A lone hand-off card, once answered, is only the record of the choice:
+  // the expert's own card below says where the work went.
+  const lone = proposals.length === 1 && visible.length === 1;
+  if (sent && lone && proposals[0].handoff) {
+    return (
+      <div className="my-2">
+        <HandoffReceipt>
+          {receiptFor(
+            proposals[0],
+            decisions[proposals[0].toolCallId],
+            !!handOffs[proposals[0].toolCallId],
+          )}
+        </HandoffReceipt>
+      </div>
+    );
+  }
+
   // The shell (Details, pager, decision buttons) is the same from one
   // expert to the next, so it stays mounted; only the identity block
   // inside the card slides — see ExpertChangeCard.
@@ -835,7 +889,20 @@ export function ExpertChangeGroup({
         stepDirection={direction}
         waiting={isCurrentlyStreaming}
         handedOff={!!handOffs[part.toolCallId]}
+        onSend={sendable ? sendMessage : undefined}
       />
     </div>
   );
+}
+
+function receiptFor(
+  proposal: Proposal,
+  decision: Decision | undefined,
+  handedOff: boolean,
+): string {
+  if (decision !== "approved") return `You declined hiring ${proposal.name}.`;
+  if (handedOff && proposal.handoff) {
+    return `You hired ${proposal.name} and handed off ${proposal.handoff.title}.`;
+  }
+  return `You hired ${proposal.name}.`;
 }

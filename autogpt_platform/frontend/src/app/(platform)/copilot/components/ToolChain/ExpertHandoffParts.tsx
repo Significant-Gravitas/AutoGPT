@@ -1,118 +1,182 @@
 "use client";
 
-import { Task01Icon } from "@hugeicons/core-free-icons";
-import { useId, useState } from "react";
+import { ArrowDown01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { type ReactNode, useId, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { cn } from "@/lib/utils";
 import type { HandoffTask } from "./expertHandoff";
 
-// A brief longer than this is clamped to two lines with a Show all toggle.
-const LONG_BRIEF = 160;
-
-interface TaskProps {
+interface ProposalProps {
+  name: string;
+  role: string | null;
+  avatarUrl: string | null;
+  color: string | null;
+  /** One line about the expert, written for the user. */
+  about: string | null;
   task: HandoffTask;
+  /** Absent once answered, or on a read-only transcript. */
+  actions: {
+    onHandOff: () => void;
+    onHireOnly: () => void;
+    onDecline: () => void;
+    disabled: boolean;
+  } | null;
+  /** Opens the full charter in the side panel, where there is one. */
+  onShowProfile?: () => void;
+  /** Classes that slide the identity in when a pager moves. */
+  stepClassName?: string;
+  stepKey: string;
 }
 
-/** The task the user already described, shown on the hire card so they
- *  can see exactly what the expert will be handed. */
-export function HandoffTaskBlock({ task }: TaskProps) {
-  const [expanded, setExpanded] = useState(false);
-  const labelId = useId();
-  const briefId = useId();
-  const long = task.brief.length > LONG_BRIEF;
+/** A hire proposed for a task the user already described, asked as one
+ *  question. The brief and the expert's charter stay behind one disclosure:
+ *  the user wrote the task a moment ago and only needs who, what and the
+ *  choice to answer. */
+export function HandoffProposal({
+  name,
+  role,
+  avatarUrl,
+  color,
+  about,
+  task,
+  actions,
+  onShowProfile,
+  stepClassName,
+  stepKey,
+}: ProposalProps) {
   return (
-    <section
-      aria-labelledby={labelId}
-      className="ms-[42px] mt-3 rounded-2xl bg-surface-muted px-3 py-2.5"
-    >
-      <p
-        id={labelId}
-        className="flex items-center gap-1.5 text-xs font-medium text-foreground-tertiary"
-      >
-        <Icon icon={Task01Icon} size={14} aria-hidden />
-        First task
-      </p>
-      <p className="mt-1 text-sm font-medium text-foreground-emphasis [overflow-wrap:anywhere]">
-        {task.title}
-      </p>
-      <p
-        id={briefId}
-        className={
-          long && !expanded
-            ? "mt-0.5 line-clamp-2 text-sm text-foreground-tertiary [overflow-wrap:anywhere]"
-            : "mt-0.5 whitespace-pre-line text-sm text-foreground-tertiary [overflow-wrap:anywhere]"
-        }
-      >
-        {task.brief}
-      </p>
-      {long && (
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-controls={briefId}
-          onClick={() => setExpanded(!expanded)}
-          className="mt-1 rounded text-xs font-medium text-foreground-secondary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
-        >
-          {expanded ? "Show less" : "Show all"}
-        </button>
-      )}
-    </section>
+    <div className="flex gap-3 p-4">
+      <ExpertAvatar
+        key={`${stepKey}-avatar`}
+        name={name}
+        avatarUrl={avatarUrl}
+        color={color}
+        size={40}
+      />
+      <div className="min-w-0 flex-1">
+        <div key={stepKey} className={stepClassName}>
+          <p className="text-body font-medium leading-snug text-foreground-emphasis [overflow-wrap:anywhere]">
+            Hire {name} to take on {task.title}?
+          </p>
+          <p className="mt-0.5 text-sm text-foreground-tertiary [overflow-wrap:anywhere]">
+            {role
+              ? `${role} · works on it in their own chat`
+              : "Works on it in their own chat"}
+          </p>
+        </div>
+        {actions && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              size="small"
+              disabled={actions.disabled}
+              onClick={actions.onHandOff}
+              className="h-8 !min-w-0 px-3.5"
+            >
+              Hire and start
+            </Button>
+            <Button
+              variant="secondary"
+              size="small"
+              disabled={actions.disabled}
+              onClick={actions.onHireOnly}
+              className="h-8 !min-w-0 px-3"
+            >
+              Hire only
+            </Button>
+            <Button
+              variant="ghost"
+              size="small"
+              disabled={actions.disabled}
+              onClick={actions.onDecline}
+              className="h-8 !min-w-0 px-3"
+            >
+              Decline
+            </Button>
+          </div>
+        )}
+        <HandoffDetails
+          name={name}
+          about={about}
+          task={task}
+          onShowProfile={onShowProfile}
+        />
+      </div>
+    </div>
   );
 }
 
-interface ActionsProps {
+interface DetailsProps {
   name: string;
+  about: string | null;
   task: HandoffTask;
-  onHandOff: () => void;
-  onHireOnly: () => void;
-  onDecline: () => void;
-  disabled?: boolean;
+  onShowProfile?: () => void;
 }
 
-/** Hire and hand off is the answer the card expects, so it is the one
- *  filled button and names both the expert and the task. When the card is
- *  too narrow for one row it wraps onto its own row above the two quieter
- *  choices, keeping the reading and tab order Decline, Hire only, hire and
- *  hand off. */
-export function HandoffActions({
-  name,
-  task,
-  onHandOff,
-  onHireOnly,
-  onDecline,
-  disabled = false,
-}: ActionsProps) {
+function HandoffDetails({ name, about, task, onShowProfile }: DetailsProps) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
   return (
-    <div className="ms-auto flex max-w-full flex-wrap-reverse items-center justify-end gap-2">
-      <div className="flex items-center gap-1.5">
-        <Button
-          variant="ghost"
-          size="small"
-          disabled={disabled}
-          onClick={onDecline}
-          className="h-8 !min-w-0 px-3"
-        >
-          Decline
-        </Button>
-        <Button
-          variant="secondary"
-          size="small"
-          disabled={disabled}
-          onClick={onHireOnly}
-          className="h-8 !min-w-0 px-3"
-        >
-          Hire only
-        </Button>
-      </div>
-      <Button
-        variant="primary"
-        size="small"
-        disabled={disabled}
-        onClick={onHandOff}
-        className="h-auto min-h-8 !min-w-0 max-w-full whitespace-normal !rounded-2xl px-3.5 py-1.5 text-center [overflow-wrap:anywhere]"
+    <div className="mt-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen(!open)}
+        className="inline-flex items-center gap-1 rounded text-xs font-medium text-foreground-secondary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
       >
-        Hire {name} and hand off {task.title}
-      </Button>
+        What {name} will get
+        <Icon
+          icon={ArrowDown01Icon}
+          size={12}
+          aria-hidden
+          className={cn(
+            "transition-transform motion-reduce:transition-none",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      <div
+        id={panelId}
+        hidden={!open}
+        className={cn("mt-2 flex-col gap-2", open ? "flex" : "hidden")}
+      >
+        <p className="whitespace-pre-line rounded-2xl bg-surface-muted px-3 py-2.5 text-sm text-foreground-tertiary [overflow-wrap:anywhere]">
+          {task.brief}
+        </p>
+        {about && (
+          <p className="text-xs text-foreground-subtle [overflow-wrap:anywhere]">
+            About {name}: {about}
+          </p>
+        )}
+        {onShowProfile && (
+          <button
+            type="button"
+            onClick={onShowProfile}
+            className="self-start rounded text-xs font-medium text-foreground-secondary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
+          >
+            See {name}&apos;s full profile
+          </button>
+        )}
+      </div>
     </div>
+  );
+}
+
+interface ReceiptProps {
+  children: ReactNode;
+}
+
+/** What an answered hand-off card shrinks to: the record of the choice. */
+export function HandoffReceipt({ children }: ReceiptProps) {
+  return (
+    <p className="flex items-center gap-2 text-sm text-foreground-tertiary">
+      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-muted">
+        <Icon icon={Tick02Icon} size={12} aria-hidden />
+      </span>
+      <span className="min-w-0 [overflow-wrap:anywhere]">{children}</span>
+    </p>
   );
 }
