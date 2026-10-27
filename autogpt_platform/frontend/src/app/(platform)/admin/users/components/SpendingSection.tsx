@@ -22,13 +22,13 @@ export function SpendingSection({ userId }: Props) {
             <Link
               variant="secondary"
               href={link.href}
-              className="flex items-center justify-between rounded-lg px-2 py-1.5 no-underline hover:bg-zinc-50"
+              className="flex items-center justify-between rounded-lg px-2 py-1.5 no-underline hover:bg-surface-muted"
             >
               {link.label}
               <Icon
                 icon={ArrowUpRight01Icon}
                 size={16}
-                className="text-zinc-500"
+                className="text-foreground-tertiary"
                 aria-hidden
               />
             </Link>

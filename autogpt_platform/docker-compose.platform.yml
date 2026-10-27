@@ -32,8 +32,9 @@ x-backend-env:
   JWT_JWKS_URL: http://frontend:3000/api/auth/jwks
   # Database connection string for Docker network
   # This cannot be constructed like in .env because we cannot interpolate values set here (DB_HOST)
-  DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-  DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+  # The password is POSTGRES_PASSWORD from autogpt_platform/.env, as for `db`.
+  DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?run make init-env in autogpt_platform/ to generate it}@db:5432/postgres?connect_timeout=60&schema=platform
+  DIRECT_URL: postgresql://postgres:${POSTGRES_PASSWORD:?run make init-env in autogpt_platform/ to generate it}@db:5432/postgres?connect_timeout=60&schema=platform
   FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
 
 # Common env_file configuration for backend services
@@ -47,12 +48,40 @@ x-codex-tmpfs: &codex-tmpfs
   - /run/autogpt-codex:rw,nosuid,nodev,noexec,mode=0700,size=128m
 
 # Shared base for the three Redis Cluster shards + one-shot init sidecar.
-# The anchor absorbs image + network so each service body collapses to its
-# hostname + command + (for the seed) volume + healthcheck.
+# The anchor absorbs image + network + server command so each service body
+# collapses to its hostname + port + (for the seed) healthcheck.
+#
+# REDIS_PASSWORD comes from the backend env files, where the backend reads it
+# too. Each shard takes it on stdin as config, so it never shows up in the
+# process list. A backend/.env from before shards had a password has none, and
+# the cluster then runs without one, as it used to; `make init-env` adds it.
 x-redis-node: &redis-node
   image: redis:7
+  # A stopping shard writes its data out first; give it time to finish.
+  stop_grace_period: 60s
   networks:
     - app-network
+  <<: *backend-env-files
+  command:
+    - sh
+    - -c
+    - |
+      port="$${REDIS_NODE_PORT:?}"
+      auth=""
+      if [ -n "$${REDIS_PASSWORD:-}" ]; then
+        # A line break would start a config directive of its own.
+        if [ "$$(printf '%s' "$$REDIS_PASSWORD" | tr -d '\r\n')" != "$$REDIS_PASSWORD" ]; then
+          echo "REDIS_PASSWORD must be a single line" >&2
+          exit 1
+        fi
+        # Escaped for a quoted config value, which a backslash or quote would end.
+        password=$$(printf '%s' "$$REDIS_PASSWORD" | sed 's/[\\"]/\\&/g')
+        auth="requirepass \"$$password\"
+      masterauth \"$$password\""
+      fi
+      exec docker-entrypoint.sh redis-server - --port "$$port" --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname "$$(hostname)" --cluster-announce-port "$$port" --cluster-announce-bus-port "$$((port + 10000))" --cluster-preferred-endpoint-type hostname <<EOF
+      $$auth
+      EOF
 
 services:
   migrate:
@@ -102,18 +131,20 @@ services:
   # ``--cluster-announce-hostname`` so both in-compose clients (Docker DNS)
   # and host-native clients (handled by the backend's ``address_remap``)
   # receive a consistent address on CLUSTER SLOTS. Ports 17000/17001/17002
-  # sit well clear of FalkorDB on host 6380.
+  # sit well clear of FalkorDB on host 6380. They are published on 127.0.0.1
+  # only, for `make run-backend` and tools on this machine.
   redis-0:
     <<: *redis-node
     hostname: redis-0
-    command: redis-server --port 17000 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-0 --cluster-announce-port 17000 --cluster-announce-bus-port 27000 --cluster-preferred-endpoint-type hostname
+    environment:
+      REDIS_NODE_PORT: "17000"
     ports:
-      - "17000:17000"
+      - "127.0.0.1:17000:17000"
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "redis-cli -p 17000 ping && redis-cli -p 17000 cluster info | grep -q 'cluster_state:ok'",
+          "if [ -n \"$${REDIS_PASSWORD:-}\" ]; then export REDISCLI_AUTH=\"$$REDIS_PASSWORD\"; fi; redis-cli -p 17000 ping && redis-cli -p 17000 cluster info | grep -q 'cluster_state:ok'",
         ]
       interval: 10s
       timeout: 5s
@@ -121,34 +152,71 @@ services:
   redis-1:
     <<: *redis-node
     hostname: redis-1
-    command: redis-server --port 17001 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-1 --cluster-announce-port 17001 --cluster-announce-bus-port 27001 --cluster-preferred-endpoint-type hostname
+    environment:
+      REDIS_NODE_PORT: "17001"
     ports:
-      - "17001:17001"
+      - "127.0.0.1:17001:17001"
   redis-2:
     <<: *redis-node
     hostname: redis-2
-    command: redis-server --port 17002 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-2 --cluster-announce-port 17002 --cluster-announce-bus-port 27002 --cluster-preferred-endpoint-type hostname
+    environment:
+      REDIS_NODE_PORT: "17002"
     ports:
-      - "17002:17002"
-  # The ``|| cluster create`` short-circuit makes this idempotent within the
-  # lifetime of a single compose project: a re-``up`` without ``down`` leaves
-  # the already-formed cluster untouched. A ``down`` + ``up`` wipes every
-  # shard (no volumes) and re-creates from scratch.
+      - "127.0.0.1:17002:17002"
+  # Idempotent within the lifetime of a single compose project: a re-``up``
+  # without ``down`` leaves the already-formed cluster untouched. A ``down`` +
+  # ``up`` wipes every shard (no volumes) and re-creates from scratch. Shards
+  # that Compose recreates instead (a changed setting, a new image) keep their
+  # data and the cluster's ``nodes.conf`` in their anonymous ``/data`` volumes
+  # but come back on new addresses, where the others can't find them: each is
+  # introduced to the rest at their current address. A cluster that still
+  # can't form is started over only if its shards hold no keys, because the
+  # backend keeps work in progress in Redis, not just cache.
   redis-init:
     <<: *redis-node
     depends_on: [redis-0, redis-1, redis-2]
     restart: "no"
     # A started shard can take a second to accept connections, and this runs once: wait for every PONG.
-    command: >-
-      sh -c "for node in redis-0:17000 redis-1:17001 redis-2:17002; do
-      i=0; until redis-cli -h $${node%:*} -p $${node#*:} ping 2>/dev/null | grep -q PONG || [ $$i -ge 60 ]; do i=$$((i + 1)); sleep 0.5; done; done;
-      redis-cli -h redis-0 -p 17000 cluster info 2>/dev/null | grep -q cluster_state:ok ||
-      redis-cli --cluster create redis-0:17000 redis-1:17001 redis-2:17002 --cluster-replicas 0 --cluster-yes"
+    command:
+      - sh
+      - -c
+      - |
+        if [ -n "$${REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$$REDIS_PASSWORD"; fi
+        nodes="redis-0:17000 redis-1:17001 redis-2:17002"
+        cli() { node="$$1"; shift; redis-cli -h "$${node%:*}" -p "$${node#*:}" "$$@"; }
+        for node in $$nodes; do
+          i=0; until cli "$$node" ping 2>/dev/null | grep -q PONG || [ $$i -ge 60 ]; do i=$$((i + 1)); sleep 0.5; done
+        done
+        formed() { for node in $$nodes; do cli "$$node" cluster info 2>/dev/null | grep -q cluster_state:ok || return 1; done; }
+        if ! cli redis-0:17000 cluster info 2>/dev/null | grep -q '^cluster_slots_assigned:0'; then
+          for node in $$nodes; do
+            for peer in $$nodes; do
+              [ "$$peer" = "$$node" ] && continue
+              ip=$$(getent hosts "$${peer%:*}" | awk '{ print $$1; exit }')
+              cli "$$node" cluster meet "$$ip" "$${peer#*:}" "$$(($${peer#*:} + 10000))" >/dev/null 2>&1
+            done
+          done
+          i=0; until formed || [ $$i -ge 40 ]; do i=$$((i + 1)); sleep 0.5; done
+          formed && exit 0
+        fi
+        for node in $$nodes; do
+          keys=$$(cli "$$node" dbsize 2>/dev/null)
+          if [ "$$keys" != 0 ]; then
+            echo "redis-init: the cluster did not form and $${node%:*} may hold data (DBSIZE answered '$$keys'), so nothing is reset. To start Redis empty instead, run docker compose rm -sf redis-0 redis-1 redis-2 and then docker compose up -d." >&2
+            exit 1
+          fi
+        done
+        for node in $$nodes; do
+          cli "$$node" cluster reset hard >/dev/null 2>&1
+        done
+        redis-cli --cluster create redis-0:17000 redis-1:17001 redis-2:17002 --cluster-replicas 0 --cluster-yes
   falkordb:
-    image: falkordb/falkordb:latest
+    # The version infra deploys; bump every FalkorDB pin together (OPEN-3746, #16224).
+    image: falkordb/falkordb:v4.12.5
+    # Published on 127.0.0.1 only, for the backend outside Docker and tools on this machine.
     ports:
-      - "6380:6379" # FalkorDB Redis protocol (6380 to avoid clash with Redis on 6379)
-      - "3001:3000" # FalkorDB web UI
+      - "127.0.0.1:6380:6379" # FalkorDB Redis protocol (6380 to avoid clash with Redis on 6379)
+      - "127.0.0.1:3001:3000" # FalkorDB web UI
     <<: *backend-env-files
     # `:?` exits the container if the var is unset/empty, surfacing a
     # missing-config error instead of silent `--requirepass ""` auth.
@@ -156,7 +224,7 @@ services:
       - /bin/sh
       - -c
       - >-
-        export REDIS_ARGS="--requirepass $${GRAPHITI_FALKORDB_PASSWORD:?GRAPHITI_FALKORDB_PASSWORD must be set}"
+        export REDIS_ARGS="--requirepass $${GRAPHITI_FALKORDB_PASSWORD:?GRAPHITI_FALKORDB_PASSWORD must be set: run make init-env in autogpt_platform/ to generate it}"
         && exec /var/lib/falkordb/bin/run.sh "$$@"
       - --
     volumes:
@@ -185,8 +253,9 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
+    # Published on 127.0.0.1 only, for the backend outside Docker.
     ports:
-      - "5672:5672"
+      - "127.0.0.1:5672:5672"
 
   # One-shot: publishes the public skills catalog (marketplace skills and the
   # expert roster) once the schema is migrated, the same way a deploy does
@@ -543,7 +612,7 @@ services:
       NEXT_PUBLIC_FRONTEND_BASE_URL: ${NEXT_PUBLIC_FRONTEND_BASE_URL:-http://localhost:3000}
       # Better Auth (embedded in this Next.js server) — talks to Postgres
       # directly; tables live in the platform schema (Prisma migrations).
-      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?run make init-env in autogpt_platform/ to generate it}@db:5432/postgres
       AUTH_DB_SCHEMA: platform
       # Node closes an idle keep-alive socket after 5 s (+1 s buffer); a client reusing one right then
       # gets "socket hang up". Keep idle sockets longer than clients and proxies leave them unused.

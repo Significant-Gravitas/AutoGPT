@@ -8,10 +8,10 @@ import asyncio
 import concurrent.futures
 import logging
 import os
-import subprocess
 import threading
 import time
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Callable, cast
 
@@ -35,10 +35,15 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
-from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
+from backend.copilot.llm_attribution import (
+    set_turn_impersonated,
+    set_turn_origin,
+    set_turn_trace_id,
+)
 from backend.copilot.model import maybe_append_user_message
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import (
+    StreamBaseResponse,
     StreamError,
     StreamStart,
     StreamStatus,
@@ -46,12 +51,17 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
-from backend.copilot.sdk.launch_env import inherited_env
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
+from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
 from backend.copilot.turn_pause import TurnPause
-from backend.copilot.turn_tracing import TurnTrace, turn_transaction
+from backend.copilot.turn_tracing import (
+    MODEL_OUTPUT_CHUNKS,
+    TurnTrace,
+    turn_origin,
+    turn_transaction,
+)
 from backend.data.model import OAuth2Credentials
 from backend.data.user import is_user_banned
 from backend.executor.cluster_lock import ClusterLock
@@ -249,14 +259,17 @@ async def _normalize_private_expert_session_tenancy(
     return await upsert_chat_session(session, persist_tenancy=True)
 
 
-async def _wait_for_expert_setup(session: "ChatSession") -> None:
+async def _wait_for_expert_setup(session: "ChatSession") -> bool:
     """Hold a fresh hire's turn until its skills and workflows are installed,
-    or give up after ``EXPERT_SETUP_WAIT_SECONDS`` and run without them."""
+    or give up after ``EXPERT_SETUP_WAIT_SECONDS`` and run without them.
+
+    Returns whether the turn waited."""
     if session.expert_id is None:
-        return
+        return False
     from backend.data.db_accessors import experts_db
 
     deadline = time.monotonic() + EXPERT_SETUP_WAIT_SECONDS
+    waited = False
     while (
         await experts_db().expert_setup_status(session.user_id, session.expert_id)
         == "installing"
@@ -266,8 +279,31 @@ async def _wait_for_expert_setup(session: "ChatSession") -> None:
                 f"Expert #{session.expert_id} still setting up after "
                 f"{EXPERT_SETUP_WAIT_SECONDS}s; running the turn without waiting"
             )
-            return
+            return True
         await asyncio.sleep(EXPERT_SETUP_POLL_SECONDS)
+        waited = True
+    return waited
+
+
+async def _closing_at_model_output(
+    stream: AsyncGenerator[StreamBaseResponse, None], trial_reads: SharedTrialReads
+) -> AsyncGenerator[StreamBaseResponse, None]:
+    """Pass the engine's stream through, closing ``trial_reads`` at its first
+    model output.
+
+    The close happens here, inside the engine's stream, because the heartbeat
+    drains that stream ahead of the turn loop: closed from the loop, the
+    engine could already be running a tool that reads the trial.
+    """
+    try:
+        async for chunk in stream:
+            if isinstance(chunk, MODEL_OUTPUT_CHUNKS):
+                trial_reads.close()
+            yield chunk
+    finally:
+        # ``async for`` doesn't close the engine's stream on cancel or
+        # GeneratorExit; its cleanup (the SDK stream lock) must still run.
+        await stream.aclose()
 
 
 async def _refuse_turn(
@@ -379,59 +415,11 @@ class CoPilotProcessor:
         # already version-matched to the SDK package.
         os.environ.setdefault("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", "1")
 
-        # Pre-warm the bundled CLI binary so the OS page-caches the ~185 MB
-        # executable.  First spawn pays ~1.2 s; subsequent spawns ~0.65 s.
-        # Read cli_path directly from env here so _prewarm_cli does not have
-        # to construct a ChatConfig() (which can raise and abort the worker).
-        # Priority: CHAT_CLAUDE_AGENT_CLI_PATH (prefixed) first, then
-        # CLAUDE_AGENT_CLI_PATH (unprefixed) — matches config.py's validator
-        # order so both paths resolve to the same binary.
-        cli_path = os.getenv("CHAT_CLAUDE_AGENT_CLI_PATH") or os.getenv(
-            "CLAUDE_AGENT_CLI_PATH"
-        )
-        self._prewarm_cli(cli_path=cli_path or None)
+        # The CLI binary is warmed once per process at executor start
+        # (``cli_warmup``), not here: this runs when a thread takes its
+        # first turn, so work here delays that turn.
 
         logger.info(f"Worker {self.tid} started")
-
-    def _prewarm_cli(self, cli_path: str | None = None) -> None:
-        """Run the Claude Code CLI binary once to warm OS page caches.
-
-        Accepts an explicit ``cli_path`` so the caller can pass the value
-        already resolved at startup rather than constructing a full
-        ``ChatConfig()`` here (which reads env vars, runs validators, and
-        can raise — aborting the worker prewarm silently).  Falls back to
-        the ``CLAUDE_AGENT_CLI_PATH`` / ``CHAT_CLAUDE_AGENT_CLI_PATH`` env
-        vars (same precedence as ``ChatConfig``), and then to the SDK's
-        bundled binary when neither is set.
-        """
-        try:
-            if not cli_path:
-                from claude_agent_sdk._internal.transport.subprocess_cli import (
-                    SubprocessCLITransport,
-                )
-
-                # _find_bundled_cli is an instance method that never touches
-                # self (pure __file__-based lookup) — safe to call unbound.
-                finder = cast(
-                    Callable[[object], str | None],
-                    SubprocessCLITransport._find_bundled_cli,
-                )
-                cli_path = finder(None)
-            if cli_path:
-                result = subprocess.run(
-                    [cli_path, "-v"],
-                    capture_output=True,
-                    timeout=10,
-                    env=inherited_env(),
-                )
-                if result.returncode == 0:
-                    logger.info(f"CLI pre-warm done: {cli_path}")
-                else:
-                    logger.warning(
-                        f"CLI pre-warm failed (rc={result.returncode}): {cli_path}"
-                    )
-        except Exception as e:
-            logger.debug(f"CLI pre-warm skipped: {e}")
 
     def cleanup(self):
         """Clean up event-loop-bound resources before the loop is destroyed.
@@ -658,6 +646,10 @@ class CoPilotProcessor:
             session = await get_chat_session(entry.session_id, entry.user_id)
             if session is None:
                 raise RuntimeError("copilot_session_not_found")
+            # Known once the session is: a workflow's AutoPilot block opens an
+            # automation chat, and a turn there was not typed by anyone.
+            origin = turn_origin(entry, session.metadata.origin)
+            turn.set_origin(origin)
             if (
                 session.metadata.llm_auth_provider != entry.llm_auth_provider
                 or session.metadata.llm_credential_id != entry.llm_credential_id
@@ -665,6 +657,10 @@ class CoPilotProcessor:
                 raise RuntimeError("codex_session_route_mismatch")
 
             session = await _normalize_private_expert_session_tenancy(session)
+            # The allowance, budget and tier checks that set up the turn share
+            # one read of the trial and one of the usage state; closed at the
+            # model's first output, so tools running after it read afresh.
+            trial_reads = cost_context_stack.enter_context(trial_reads_shared())
             if entry.llm_auth_provider == "platform":
                 # Every platform-billed turn passes the allowance here, from
                 # whichever path queued it (see backend.copilot.budget_gate).
@@ -707,7 +703,10 @@ class CoPilotProcessor:
                     await cost_context_stack.enter_async_context(
                         credit_billing(credit_turn)
                     )
-            await _wait_for_expert_setup(session)
+            if await _wait_for_expert_setup(session):
+                # Up to a minute: long enough for the user to convert or end
+                # their trial, so the rest of the setup reads both again.
+                trial_reads.forget()
 
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access
@@ -861,6 +860,7 @@ class CoPilotProcessor:
             set_turn_impersonated(entry.impersonated)
             # A subtask's calls join the trace of the reply it works for.
             set_turn_trace_id(trace_id_for(entry))
+            set_turn_origin(origin)
             set_turn_span(entry.turn_id)
             set_turn_credential_pins(entry.credential_pins)
             turn.engine_started(engine)
@@ -891,7 +891,9 @@ class CoPilotProcessor:
             # FE shows escalating ``StreamStatus`` messages during long
             # silent gaps (deep thinking, slow tool execution, inter-tool
             # gaps) instead of looping the generic "Thinking…" phrases.
-            heartbeat_stream = wrap_stream_with_heartbeat(raw_stream)
+            heartbeat_stream = wrap_stream_with_heartbeat(
+                _closing_at_model_output(raw_stream, trial_reads)
+            )
             published_stream = stream_registry.stream_and_publish(
                 session_id=entry.session_id,
                 turn_id=entry.turn_id,

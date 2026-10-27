@@ -126,7 +126,7 @@ function Header({
   return (
     // pr-12 leaves room for the Dialog's absolute close button.
     <div className="flex w-full flex-col gap-2 pr-12">
-      <span className="min-w-0 truncate text-base font-medium text-zinc-900">
+      <span className="min-w-0 truncate text-base font-medium text-foreground-strong">
         {name}
       </span>
       <div className="flex items-center gap-2">

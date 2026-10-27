@@ -54,6 +54,7 @@ from backend.notifications.lifecycle_plan import (
     tier_and_cycle_from_subscription,
 )
 from backend.notifications.queue import queue_audience_change, queue_notification_async
+from backend.notifications.recipient import first_name
 from backend.notifications.subscriber_fields import audience_event
 from backend.notifications.trial import notify_trial, on_trial_subscription_updated
 from backend.util.clients import get_database_manager_async_client
@@ -394,9 +395,7 @@ async def _release_welcome(user: BillingEmailRecipient) -> None:
 
 
 def _greeting_name(user: BillingEmailRecipient) -> str:
-    if user.name and user.name.strip():
-        return user.name.strip().split()[0]
-    return "there"
+    return first_name(user.name, user.email) or "there"
 
 
 def _now() -> datetime:

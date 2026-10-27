@@ -37,9 +37,9 @@ export function SkillFileViewer({ source, path, onClose }: Props) {
               <Skeleton className="h-4 w-2/3" />
             </div>
           ) : unavailable ? (
-            <p className="text-sm text-zinc-500">{unavailable}</p>
+            <p className="text-sm text-foreground-tertiary">{unavailable}</p>
           ) : (
-            <pre className="max-h-[60vh] overflow-auto rounded-md bg-zinc-50 p-3 font-mono text-[13px] leading-5 text-zinc-700">
+            <pre className="max-h-[60vh] overflow-auto rounded-md bg-surface-muted p-3 font-mono text-body-sm leading-5 text-foreground-body">
               {content}
             </pre>
           )}

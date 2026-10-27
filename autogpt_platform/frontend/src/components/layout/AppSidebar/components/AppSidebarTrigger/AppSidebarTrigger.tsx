@@ -1,8 +1,8 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Button } from "@/components/ui/button";
-import { useSidebar } from "@/components/ui/sidebar";
+import { Button } from "@/components/atoms/Button/Button";
+import { useSidebar } from "@/components/molecules/Sidebar/Sidebar";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { createContext, useContext, type ReactNode } from "react";
 
@@ -40,8 +40,8 @@ export function AppSidebarTrigger({ className }: Props) {
 
   return (
     <Button
-      variant="ghost"
-      size="icon"
+      variant="compact-ghost"
+      size="compact-icon"
       data-sidebar="trigger"
       className={className}
       onClick={toggleSidebar}

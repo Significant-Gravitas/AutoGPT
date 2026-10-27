@@ -1,5 +1,14 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { RecordingPart } from "../recordingStore";
 
 // A snapshot per render, exactly like the real hook: mutating
@@ -66,6 +75,13 @@ const INTRO_PATH_KEY = "autogpt:onboarding-intro-path";
 
 function completed() {
   return { status: 200, data: { status: "completed" } };
+}
+
+function failedWith(errorCode: string) {
+  return Promise.resolve({
+    status: 200,
+    data: { status: "failed", error_code: errorCode },
+  });
 }
 
 function part(index: number, recordingId = "rec-1"): RecordingPart {
@@ -584,6 +600,81 @@ describe("useBrainDumpStep — insufficient content", () => {
     expect(result.current.screen).toBe("failed");
   });
 
+  it.each([
+    {
+      mode: "voice",
+      outcome: () => failedWith("storage_failed"),
+      reason: "We couldn't store your recording on our side.",
+    },
+    {
+      mode: "typed",
+      outcome: () => failedWith("superseded"),
+      reason:
+        "Something newer you sent, maybe from another tab, replaced this.",
+    },
+    {
+      mode: "voice",
+      outcome: () => Promise.reject(new ApiError("Too many", 429, {})),
+      reason: "You've tried a few times already. Wait a bit first.",
+    },
+    {
+      mode: "typed",
+      outcome: () => Promise.reject(new TypeError("Failed to fetch")),
+      reason: "We couldn't reach the server. Check your connection.",
+    },
+    {
+      mode: "voice",
+      outcome: () => failedWith("virus_detected"),
+      reason: null,
+    },
+  ])(
+    "says why a $mode take failed: $reason",
+    async ({ mode, outcome, reason }) => {
+      recorderState.recordingId = "rec-1";
+      finalizeBrainDump.mockImplementationOnce(outcome);
+      const { result } = await renderStep();
+
+      await act(async () => {
+        if (mode === "voice") {
+          await result.current.handleDone();
+          return;
+        }
+        result.current.setTypedText("I run a bakery.");
+      });
+      if (mode === "typed") {
+        await act(async () => {
+          await result.current.handleSubmitTyped();
+        });
+      }
+
+      expect(result.current.screen).toBe("failed");
+      expect(result.current.failureReason).toBe(reason);
+    },
+  );
+
+  it.each([
+    {
+      isOffline: true,
+      reason: "We couldn't reach the server. Check your connection.",
+    },
+    { isOffline: false, reason: "Part of your recording didn't reach us." },
+  ])(
+    "says an upload failed without blaming the connection unless offline ($isOffline)",
+    async ({ isOffline, reason }) => {
+      recorderState.recordingId = "rec-1";
+      recorderState.isOffline = isOffline;
+      recorderState.flushUploads.mockResolvedValue(false);
+      const { result } = await renderStep();
+
+      await act(async () => {
+        await result.current.handleDone();
+      });
+
+      expect(result.current.failureReason).toBe(reason);
+      expect(finalizeBrainDump).not.toHaveBeenCalled();
+    },
+  );
+
   it("recovers into a fresh take when the user records again", async () => {
     recorderState.recordingId = "rec-1";
     finalizeBrainDump.mockResolvedValueOnce(insufficient());
@@ -771,6 +862,33 @@ describe("useBrainDumpStep — retry", () => {
     });
   });
 
+  it("retries the recording, not earlier typed text, when sending it failed", async () => {
+    finalizeBrainDump.mockRejectedValueOnce(new Error("offline"));
+    const { result } = await renderStep();
+    act(() => {
+      result.current.setTypedText("notes");
+    });
+    await act(async () => {
+      await result.current.handleSubmitTyped();
+    });
+    recorderState.recordingId = "rec-1";
+    recorderState.stop.mockRejectedValueOnce(new Error("stop failed"));
+    await act(async () => {
+      await result.current.handleDone();
+    });
+    finalizeBrainDump.mockClear();
+
+    await act(async () => {
+      await result.current.handleRetry();
+    });
+
+    expect(recorderState.resendAllParts).toHaveBeenCalledWith("rec-1");
+    expect(finalizeBody()).toMatchObject({
+      recording_id: "rec-1",
+      input_mode: "voice",
+    });
+  });
+
   it("does not replay parts when there is no recording to retry", async () => {
     recorderState.recordingId = null;
     const { result } = await renderStep();
@@ -914,30 +1032,36 @@ describe("useBrainDumpStep — skip", () => {
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
   });
 
-  // Recording for minutes and then skipping used to leave the blobs and
-  // an unfinalized meta row behind, so the next visit offered back a take
-  // the user had explicitly abandoned — and the server's part buffer sat
-  // there until its TTL.
-  it("throws away a recorded take it is skipping past", async () => {
+  // Back from Hire offers the take again, so the recording stays in the
+  // browser. Only the server's part buffer goes, and the skip is recorded
+  // under its own id: under the take's, a later send of it reads as done.
+  it("keeps a recorded take it is skipping past", async () => {
     recorderState.recordingId = "rec-1";
-    getMetaById.mockResolvedValue({
+    const stored = {
       recordingId: "rec-1",
       mimeType: "audio/webm",
       startedAt: 5,
       durationSecs: 120,
       finalized: false,
-    });
+      userID: "u1",
+    };
+    getMetaById.mockResolvedValue(stored);
     const { result } = await renderStep();
 
     await act(async () => {
       await result.current.handleSkip();
     });
 
-    expect(saveMeta).toHaveBeenCalledWith(
-      expect.objectContaining({ recordingId: "rec-1", finalized: true }),
-    );
-    expect(clearRecording).toHaveBeenCalledWith("rec-1");
+    // Marked so onboarding's completion clears it, and nothing else does.
+    expect(saveMeta).toHaveBeenCalledWith({ ...stored, skipped: true });
+    expect(clearRecording).not.toHaveBeenCalled();
+    expect(finalizeBody().recording_id).not.toBe("rec-1");
     expect(discardBrainDump).toHaveBeenCalledWith({ recording_id: "rec-1" });
+    // The discard closes a half-uploaded take, which would hold the row
+    // against the skip if the skip landed first.
+    expect(discardBrainDump.mock.invocationCallOrder[0]).toBeLessThan(
+      finalizeBrainDump.mock.invocationCallOrder[0],
+    );
     expect(recorderState.resetQueue).toHaveBeenCalled();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
   });
@@ -1005,12 +1129,75 @@ describe("useBrainDumpStep — skip", () => {
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
   });
 
-  // Back from Hire remounts the step while the skipped take may still be
-  // unfinalized on disk; offering it there would hand back what was refused.
-  it("does not offer back a skipped take whose cleanup is still running", async () => {
+  it("offers a skipped take back after Back, ready to download", async () => {
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:dump");
+    const revokeObjectURL = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => undefined);
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+    onTestFinished(() => {
+      [createObjectURL, revokeObjectURL, click].forEach((spy) =>
+        spy.mockRestore(),
+      );
+    });
     recorderState.recordingId = "rec-skipped";
-    const lookup = deferred<null>();
-    getMetaById.mockReturnValueOnce(lookup.promise);
+    const first = await renderStep();
+    await act(async () => {
+      await first.result.current.handleSkip();
+    });
+    first.unmount();
+
+    recorderState.recordingId = null;
+    recorderState.mimeType = "audio/webm";
+    recorderState.findRecoverable.mockResolvedValue({
+      recordingId: "rec-skipped",
+      mimeType: "audio/mp4",
+      durationSecs: 30,
+    });
+    getParts.mockResolvedValue([part(0, "rec-skipped")]);
+    const back = await renderStep();
+    await waitFor(() => expect(back.result.current.screen).toBe("recovery"));
+
+    await act(async () => {
+      await back.result.current.handleDownloadRecording();
+    });
+
+    expect(getParts).toHaveBeenLastCalledWith("rec-skipped");
+    expect(click).toHaveBeenCalledTimes(1);
+    expect((createObjectURL.mock.calls[0][0] as Blob).type).toBe("audio/mp4");
+  });
+
+  // The take on offer can be one another tab is still recording.
+  it("leaves the take on offer alone when skipping from the recovery screen", async () => {
+    recorderState.findRecoverable.mockResolvedValue({
+      recordingId: "rec-other-tab",
+      mimeType: "audio/webm",
+      durationSecs: 30,
+    });
+    getParts.mockResolvedValue([part(0, "rec-other-tab")]);
+    const { result } = await renderStep();
+    await waitFor(() => expect(result.current.screen).toBe("recovery"));
+
+    await act(async () => {
+      await result.current.handleSkip();
+    });
+
+    expect(discardBrainDump).not.toHaveBeenCalled();
+    expect(saveMeta).not.toHaveBeenCalled();
+    expect(finalizeBody()).toMatchObject({ input_mode: "skipped" });
+  });
+
+  // Back from Hire is a click away while the skip's discard is still on the
+  // wire. Landing after the recovered take is resent, it would drop the
+  // take's buffer and close it.
+  it("holds a recovered take until the skip before it has been recorded", async () => {
+    const discard = deferred<{ status: number }>();
+    discardBrainDump.mockReturnValueOnce(discard.promise);
+    recorderState.recordingId = "rec-skipped";
     const first = await renderStep();
     await act(async () => {
       void first.result.current.handleSkip();
@@ -1026,14 +1213,27 @@ describe("useBrainDumpStep — skip", () => {
     });
     getParts.mockResolvedValue([part(0, "rec-skipped")]);
     const back = await renderStep();
-
-    expect(back.result.current.screen).toBe("rest");
-    expect(back.result.current.recoverable).toBeNull();
-
+    await waitFor(() => expect(back.result.current.screen).toBe("recovery"));
     await act(async () => {
-      lookup.resolve(null);
+      void back.result.current.handleResumeRecovered();
       await Promise.resolve();
     });
+    expect(recorderState.adoptRecovered).not.toHaveBeenCalled();
+
+    await act(async () => {
+      discard.resolve({ status: 200 });
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(recorderState.adoptRecovered).toHaveBeenCalledWith(
+        "rec-skipped",
+        "audio/webm",
+      ),
+    );
+    expect(discardBrainDump.mock.invocationCallOrder[0]).toBeLessThan(
+      recorderState.adoptRecovered.mock.invocationCallOrder[0],
+    );
   });
 
   // Being unable to say "no thanks" because the network is down would be

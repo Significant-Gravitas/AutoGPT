@@ -37,7 +37,7 @@ export function SkillsBrowsePage() {
     <main className="mx-auto w-full max-w-[1360px] px-6 pb-16 pt-8 md:px-10 lg:px-14">
       <Link
         href="/marketplace#skills"
-        className="mb-6 inline-flex w-fit items-center gap-1.5 text-[13px] text-zinc-500 transition-colors hover:text-zinc-900"
+        className="mb-6 inline-flex w-fit items-center gap-1.5 text-body-sm leading-inherit text-foreground-tertiary transition-colors hover:text-foreground-strong"
       >
         <Icon icon={ArrowLeft02Icon} size={14} aria-hidden />
         Back to marketplace
@@ -45,11 +45,11 @@ export function SkillsBrowsePage() {
 
       <div className="mb-7 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="flex items-center gap-2.5 text-3xl font-semibold tracking-[-0.02em] text-zinc-900">
+          <h1 className="flex items-center gap-2.5 text-3xl font-semibold tracking-heading text-foreground-strong">
             <Icon icon={BookOpen01Icon} size={30} aria-hidden />
             Skills
           </h1>
-          <p className="mt-2 text-base text-zinc-500">
+          <p className="mt-2 text-base text-foreground-tertiary">
             Playbooks your experts follow. Teach them your way of working.
           </p>
         </div>
@@ -99,7 +99,7 @@ export function SkillsBrowsePage() {
         />
       ) : (
         <>
-          <p className="mb-4 text-sm text-zinc-500">
+          <p className="mb-4 text-sm text-foreground-tertiary">
             {total.toLocaleString()} {total === 1 ? "skill" : "skills"}
           </p>
           <InfiniteList
@@ -133,18 +133,18 @@ function EmptyResult({
 }) {
   return (
     <div
-      className="flex flex-col items-center justify-center gap-3 rounded-large border border-dashed border-zinc-200 px-6 py-16 text-center"
+      className="flex flex-col items-center justify-center gap-3 rounded-large border border-dashed border-border-base px-6 py-16 text-center"
       data-testid="skills-browse-empty"
     >
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-50">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-surface">
         <Icon
           icon={BookOpen01Icon}
           size={24}
-          className="text-violet-700"
+          className="text-accent-strong"
           aria-hidden
         />
       </div>
-      <Text variant="h4" className="text-zinc-900">
+      <Text variant="h4" className="text-foreground-strong">
         {category
           ? `No ${categoryLabel ?? category} skills yet`
           : "Nothing published yet"}

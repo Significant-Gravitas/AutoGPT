@@ -32,7 +32,7 @@ export function SignInsSection({ userId }: Props) {
           onRetry={() => void refetch()}
         />
       ) : report.ips.length === 0 ? (
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-foreground-tertiary">
           No sign-ins on record. The log keeps {report.retention_days} days and
           started recently; accounts from before it show nothing until they sign
           in again.
@@ -40,11 +40,11 @@ export function SignInsSection({ userId }: Props) {
       ) : (
         <div className="flex flex-col gap-2">
           {report.ips.some((ip) => ip.has_sign_up) ? null : (
-            <Text variant="small" className="text-zinc-500">
+            <Text variant="small" className="text-foreground-tertiary">
               Sign-up address unknown: the account predates the log.
             </Text>
           )}
-          <ul className="divide-y divide-zinc-200">
+          <ul className="divide-y divide-border-base">
             {report.ips.map((ip) => (
               <IPRow key={ip.ip_address} ip={ip} ownIP={ownIP} />
             ))}

@@ -44,7 +44,12 @@ from backend.api.features.onboarding_dump.rate_limit import (
     enforce_personalization_budget,
 )
 from backend.copilot.db import user_has_any_session
-from backend.data.onboarding import format_brain_dump_for_extraction
+from backend.data.onboarding import (
+    format_brain_dump_for_extraction,
+    get_user_onboarding,
+)
+from backend.data.onboarding_role import OTHER
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -215,10 +220,10 @@ async def finalize_voice_dump(
     # its text for debugging — the gate only decides whether the
     # personalized pipeline below may run on it. The recording is not kept
     # for a rejected take either: the user re-records from the browser.
-    quality_error = await quality.check_transcript_quality(result.text)
-    if quality_error is not None:
+    rejection = await quality.check_transcript_quality(result.text)
+    if rejection is not None:
         return await _quality_rejection(
-            user_id, recording_id, quality_error, BrainDumpInputMode.voice
+            user_id, recording_id, rejection, result.text, BrainDumpInputMode.voice
         )
     # Finalize only does the audio work. Extraction and the Sonnet
     # greeting are LLM calls that can outlive the frontend proxy's 30s
@@ -295,10 +300,10 @@ async def finalize_typed_dump(
     # produce "asdf asdf asdf" just as easily as a silent mic produces a
     # hallucinated transcript. Only the claim winner reaches this point,
     # so concurrent retries never run duplicate quality checks.
-    quality_error = await quality.check_transcript_quality(text)
-    if quality_error is not None:
+    rejection = await quality.check_transcript_quality(text)
+    if rejection is not None:
         return await _quality_rejection(
-            user_id, recording_id, quality_error, BrainDumpInputMode.typed
+            user_id, recording_id, rejection, text, BrainDumpInputMode.typed
         )
 
     background_tasks.add_task(
@@ -347,23 +352,26 @@ async def _admit_processing(user_id: str, recording_id: str) -> None:
 async def _quality_rejection(
     user_id: str,
     recording_id: str,
-    error_code: str,
+    rejection: quality.QualityRejection,
+    transcript: str,
     input_mode: BrainDumpInputMode,
 ) -> FinalizeResponse:
     """Mark the row failed with the gate's verdict and build the response.
 
     Shared by the voice and typed paths so the reject contract (log, mark
-    failed, surface the error code) cannot drift between them.
+    failed, surface the error code and reason) cannot drift between them.
     """
     logger.info(
-        f"Brain dump ({input_mode}) rejected by quality gate "
-        f"for user {user_id} ({error_code})"
+        f"Brain dump ({input_mode}) rejected by quality gate for user "
+        f"{user_id} ({rejection.error_code}, {rejection.reason})"
     )
-    await db.mark_failed(user_id, recording_id, error_code)
+    await db.mark_failed(user_id, recording_id, rejection.error_code, rejection.reason)
     return FinalizeResponse(
         status=BrainDumpStatus.failed,
         input_mode=input_mode,
-        error_code=error_code,
+        error_code=rejection.error_code,
+        error_reason=rejection.reason,
+        transcript_words=quality.count_words(transcript),
     )
 
 
@@ -532,9 +540,15 @@ async def _store_team(
 async def _safe_understanding(user_id: str) -> tuple[str | None, list[str]]:
     """``(user_role, pain_points)`` from the signup wizard's answers.
 
+    The wizard's saved progress holds them from the role step on. The
+    understanding gets its copy only at the wizard's last step, after the
+    hire step, so it answers only for an account with no saved answers.
     A read that fails costs the recommendation its wizard context, not
     the recommendation.
     """
+    saved = await _saved_wizard_answers(user_id)
+    if saved is not None:
+        return saved
     try:
         understanding = await get_business_understanding(user_id)
     except Exception as e:
@@ -543,6 +557,22 @@ async def _safe_understanding(user_id: str) -> tuple[str | None, list[str]]:
     if understanding is None:
         return None, []
     return understanding.user_role, understanding.pain_points
+
+
+async def _saved_wizard_answers(user_id: str) -> tuple[str, list[str]] | None:
+    try:
+        stored = (await get_user_onboarding(user_id)).wizardProgress
+        progress = OnboardingWizardProgress.model_validate(stored) if stored else None
+    except Exception as e:
+        logger.warning(f"Brain dump team: wizard progress read failed: {e}")
+        return None
+    if progress is None:
+        return None
+    # The profile the wizard submits sends Other's typed text as the role.
+    role = progress.otherRole.strip() if progress.role == OTHER else progress.role
+    if not role:
+        return None
+    return role, list(progress.painPoints)
 
 
 async def _safe_templates() -> list[Expert]:

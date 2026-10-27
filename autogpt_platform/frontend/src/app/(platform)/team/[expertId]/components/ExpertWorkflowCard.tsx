@@ -56,7 +56,7 @@ export function ExpertWorkflowCard({
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex w-full flex-col overflow-hidden rounded-2xl bg-white transition-colors smooth-shadow-ring-sm hover:bg-zinc-50"
+      className="group relative flex w-full flex-col overflow-hidden rounded-2xl bg-surface transition-colors smooth-shadow-ring-sm hover:bg-surface-muted"
     >
       {libraryHref ? (
         <NextLink
@@ -66,7 +66,7 @@ export function ExpertWorkflowCard({
         />
       ) : null}
 
-      <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-zinc-100">
+      <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-surface-hover">
         {isRenderableImageUrl(libraryAgent?.image_url) && !hasImageError ? (
           <Image
             src={libraryAgent.image_url}
@@ -115,20 +115,16 @@ export function ExpertWorkflowCard({
           </Text>
         ) : null}
         {workflow.description ? (
-          <Text
-            variant="body"
-            tone="muted"
-            className="mt-1.5 line-clamp-2 leading-5"
-          >
+          <Text variant="body-md" tone="muted" className="mt-1.5 line-clamp-2">
             {workflow.description}
           </Text>
         ) : null}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {runCount !== undefined ? (
             <Text
-              variant="body"
+              variant="body-md"
               tone="muted"
-              className="flex items-center gap-1.5 leading-5"
+              className="flex items-center gap-1.5"
             >
               <Icon icon={Activity01Icon} size={14} className="shrink-0" />
               {runCount} {runCount === 1 ? "run" : "runs"}
@@ -138,7 +134,7 @@ export function ExpertWorkflowCard({
             variant="small-medium"
             as="span"
             className={cn(
-              "rounded-md px-2 py-0.5 ring-1 ring-inset ring-zinc-200/80",
+              "rounded-md px-2 py-0.5 ring-1 ring-inset ring-border-base/80",
               status.className,
             )}
           >

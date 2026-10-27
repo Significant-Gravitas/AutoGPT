@@ -1,5 +1,6 @@
 "use client";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormProvider } from "react-hook-form";
+import { FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
@@ -70,7 +71,7 @@ export default function LoginPage() {
   return (
     <AuthSplitLayout marketing={<LoginMarketingPanel />}>
       <div className="mb-8">
-        <Text variant="h3" as="h1" className="!text-zinc-900">
+        <Text variant="h3" as="h1" className="!text-foreground-strong">
           Log in to your account to continue
         </Text>
       </div>
@@ -89,7 +90,7 @@ export default function LoginPage() {
         </Alert>
       ) : null}
 
-      <Form {...form}>
+      <FormProvider {...form}>
         <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
           <FormField
             control={form.control}
@@ -156,10 +157,10 @@ export default function LoginPage() {
           isError={!!feedback}
           behaveAs={environment.getBehaveAs()}
         />
-      </Form>
+      </FormProvider>
 
       <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
-        <Text variant="body-medium" className="!text-zinc-500">
+        <Text variant="body-medium" className="!text-foreground-tertiary">
           Don&apos;t have an account?
         </Text>
         <Link href={signupHref} variant="secondary">

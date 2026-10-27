@@ -32,7 +32,7 @@ export function OrganisationsSection({ userId }: Props) {
         </div>
       ) : !organisations ? (
         <div className="flex items-center justify-between gap-4">
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" className="text-foreground-tertiary">
             Couldn&apos;t load organisations.
           </Text>
           <Button
@@ -44,11 +44,11 @@ export function OrganisationsSection({ userId }: Props) {
           </Button>
         </div>
       ) : organisations.length === 0 ? (
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-foreground-tertiary">
           No organisations.
         </Text>
       ) : (
-        <ul className="divide-y divide-zinc-200">
+        <ul className="divide-y divide-border-base">
           {organisations.map((organisation) => (
             <li
               key={organisation.id}
@@ -61,7 +61,7 @@ export function OrganisationsSection({ userId }: Props) {
                 <Text
                   variant="small"
                   as="span"
-                  className="font-mono text-zinc-500"
+                  className="font-mono text-foreground-tertiary"
                   translate="no"
                 >
                   {organisation.slug}
@@ -75,7 +75,7 @@ export function OrganisationsSection({ userId }: Props) {
               <Text
                 variant="small"
                 as="span"
-                className="shrink-0 text-zinc-500"
+                className="shrink-0 text-foreground-tertiary"
               >
                 {formatMonth(new Date(organisation.created_at))}
               </Text>

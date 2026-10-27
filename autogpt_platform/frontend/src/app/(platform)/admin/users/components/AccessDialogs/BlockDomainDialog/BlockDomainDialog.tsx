@@ -5,7 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { pluralize } from "../../../helpers";
 import { AccountChecklist } from "../AccountChecklist";
 import { ReasonFields } from "../ReasonFields";
@@ -55,7 +55,7 @@ export function BlockDomainDialog({
       ) : null}
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="body" className="text-zinc-600">
+          <Text variant="body" className="text-foreground-secondary">
             No one can sign up with an @{dialog.domain} address until the block
             ends. Accounts that already exist aren&apos;t affected unless you
             ban them below.
@@ -75,7 +75,7 @@ export function BlockDomainDialog({
                     dialog.setAlsoBan(checked === true)
                   }
                 />
-                <Text variant="body" as="span" className="text-zinc-700">
+                <Text variant="body" as="span" className="text-foreground-body">
                   Also ban the{" "}
                   {pluralize(dialog.banCount || existing, "existing account")}{" "}
                   on this domain

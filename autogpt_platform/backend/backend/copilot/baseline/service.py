@@ -165,6 +165,7 @@ from backend.copilot.tools.e2b_sandbox import (
 )
 from backend.copilot.tools.seen_capabilities import build_seen_capabilities_notice
 from backend.copilot.tools.session_context import build_session_context
+from backend.copilot.tools.skill_matching import build_matched_skills_notice
 from backend.copilot.tools.skills import (
     build_skills_context,
     build_skills_update_notice,
@@ -1846,6 +1847,7 @@ async def _enqueue_graphiti_turn(
         message,
         assistant_msg=assistant_msg,
         expert_id=session.expert_id,
+        bridge_origin=session.metadata.source_platform is not None,
     )
 
 
@@ -2071,10 +2073,8 @@ async def stream_chat_completion_baseline(
 
     # NOTE: drained pending messages are folded into the current user
     # message's content (see the turn-start drain above), so the single
-    # ``transcript_builder.append_user`` call below (covered by the
-    # ``if message and is_user_message`` branch that appends
-    # ``user_message_for_transcript or message``) already records the
-    # combined text in the transcript. Do NOT also append drained items
+    # ``transcript_builder.append_user`` call below records the combined
+    # text in the transcript. Do NOT also append drained items
     # individually here — on the ``transcript_download is None`` path
     # that would produce N separate pending entries plus the combined
     # entry, duplicating the pending content in the JSONL uploaded for
@@ -2092,7 +2092,12 @@ async def stream_chat_completion_baseline(
             first_message = user_messages[0].content or message or ""
             if first_message:
                 task = asyncio.create_task(
-                    _update_title_async(session_id, first_message, user_id)
+                    _update_title_async(
+                        session_id,
+                        first_message,
+                        user_id,
+                        bridge_origin=session.metadata.source_platform is not None,
+                    )
                 )
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
@@ -2197,8 +2202,13 @@ async def stream_chat_completion_baseline(
     # Inject user context into the first user message on first turn.
     # Done before attachment/URL injection so the context prefix lands at
     # the very start of the message content.
-    user_message_for_transcript = message
+    turn_text = message or ""
+    if not turn_text and session.messages and session.messages[-1].role == "user":
+        turn_text = session.messages[-1].content or ""
+    user_message_for_transcript = turn_text
+    transcript_context_prefix = ""
     if should_inject_user_context:
+        user_message_for_transcript = strip_user_context_tags(turn_text)
         # Mirror the SDK path's "model knows about budget" behaviour by
         # injecting a per-turn ``<budget_context>`` block — the baseline
         # path has no equivalent of the SDK CLI's native
@@ -2234,7 +2244,7 @@ async def stream_chat_completion_baseline(
             )
         prefixed = await inject_user_context(
             understanding,
-            message or "",
+            user_message_for_transcript,
             session_id,
             session.messages,
             budget_ctx=budget_ctx,
@@ -2250,7 +2260,9 @@ async def stream_chat_completion_baseline(
                 if msg["role"] == "user":
                     msg["content"] = prefixed
                     break
-            user_message_for_transcript = prefixed
+            transcript_context_prefix = prefixed.removesuffix(
+                user_message_for_transcript
+            )
         else:
             logger.warning("[Baseline] No user message found for context injection")
     # Now that ``inject_user_context`` has wrapped + persisted the
@@ -2261,7 +2273,7 @@ async def stream_chat_completion_baseline(
     #  1. ``openai_messages`` (what the model sees this round) — append
     #     each pending as a separate user entry, matching the mid-turn
     #     drain pattern below.
-    #  2. ``message`` (used for transcript/title fallbacks) — combine.
+    #  2. ``message`` and ``user_message_for_transcript`` — combine.
     #  3. ``session.messages`` + DB — one raw row per pending via
     #     ``persist_pending_as_user_rows(transcript_builder=None)``.
     #
@@ -2283,13 +2295,33 @@ async def stream_chat_completion_baseline(
         )
         if persisted_ok:
             opening_entries.append(drained_rows_entry(drained_at_start_pending))
+            user_message_for_transcript = combine_pending_with_current(
+                drained_at_start_pending,
+                user_message_for_transcript,
+                request_arrival_at=request_arrival_at,
+            )
             message = combine_pending_with_current(
                 drained_at_start_pending,
                 message,
                 request_arrival_at=request_arrival_at,
             )
+            turn_text = combine_pending_with_current(
+                drained_at_start_pending,
+                turn_text,
+                request_arrival_at=request_arrival_at,
+            )
             for pm in drained_at_start_pending:
                 openai_messages.append(format_pending_as_user_message(pm))
+
+    if is_user_message:
+        for msg in reversed(openai_messages):
+            if msg["role"] == "user":
+                matched_skills_notice = await build_matched_skills_notice(
+                    user_id, session, turn_text, permissions=permissions
+                )
+                if matched_skills_notice:
+                    _add_message_text(msg, matched_skills_notice, prepend=False)
+                break
 
     # Live budget, every turn — the first-turn ``<budget_context>`` above is
     # stale from turn two onward and says nothing about the tree. After the
@@ -2383,8 +2415,11 @@ async def stream_chat_completion_baseline(
     # attempt stored this message), so skipping it would leave the
     # transcript without the user turn, creating a malformed
     # assistant-after-assistant structure when the LLM reply is added.
-    if message and is_user_message:
-        transcript_builder.append_user(content=user_message_for_transcript or message)
+    # Keep trusted context ahead of user text, including older pending messages.
+    if user_message_for_transcript and is_user_message:
+        transcript_builder.append_user(
+            content=transcript_context_prefix + user_message_for_transcript
+        )
 
     working_dir: str | None = None
     if file_ids and user_id:
@@ -2798,6 +2833,18 @@ async def stream_chat_completion_baseline(
                         content_of=_formatted,
                         on_rollback=_trim_openai_on_rollback,
                     ):
+                        matched_skills_notice = await build_matched_skills_notice(
+                            user_id,
+                            current_session,
+                            "\n\n".join(pm.content for pm in pending),
+                            permissions=permissions,
+                        )
+                        if matched_skills_notice:
+                            _add_message_text(
+                                openai_messages[-1],
+                                matched_skills_notice,
+                                prepend=False,
+                            )
                         _emit(state, drained_rows_entry(pending, _formatted))
                     checkpoint = turn_checkpoint(current_session.messages, turn_start)
                     if checkpoint is not None:

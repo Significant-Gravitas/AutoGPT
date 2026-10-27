@@ -10,7 +10,10 @@ import {
 } from "../../tools/clarifying-questions";
 import { QuestionMultiAnswerField } from "../ChainActionCard/QuestionMultiAnswerField";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
-import { ChainActionsContext } from "../ToolChain/chainActions";
+import {
+  ChainActionsContext,
+  type ChainActionEntry,
+} from "../ToolChain/chainActions";
 import {
   buildAnswersMessage,
   buildQuestionsEntry,
@@ -34,6 +37,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
   const [renderedDockId, setRenderedDockId] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, { focus: () => void } | null>>({});
   const formId = useId();
+  const owner = useId();
 
   const dismissed = dockId === dismissedId;
   const allAnswered = questions.every((q) => isAnswered(answers[q.keyword]));
@@ -42,18 +46,21 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
   // Proceed step — register readiness + message instead.
   useEffect(() => {
     if (!chainActions || dismissed) return;
-    chainActions.register(
+    function register(entry: ChainActionEntry) {
+      chainActions?.register(owner, entry);
+    }
+    register(
       buildQuestionsEntry({
         dockId,
         questions,
         answers,
-        register: chainActions.register,
+        register,
         setAnswers,
         dismiss: () => setDismissedId(dockId),
       }),
     );
-    return () => chainActions.unregister(dockId);
-  }, [chainActions, dismissed, dockId, answers, questions]);
+    return () => chainActions.unregister(owner);
+  }, [chainActions, dismissed, dockId, answers, questions, owner]);
 
   if (renderedDockId !== dockId) {
     setRenderedDockId(dockId);
@@ -78,15 +85,18 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
   }
 
   return (
-    <div className="animate-fade-up rounded-2xl bg-white p-3 shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)] ring-1 ring-zinc-200/70 motion-reduce:animate-none">
+    <div
+      // TODO(tokens): no exact role for shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]
+      className="animate-fade-up rounded-2xl bg-surface p-3 shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)] ring-1 ring-border-base/70 motion-reduce:animate-none"
+    >
       <div className="flex items-center justify-between px-0.5 pb-2">
-        <span className="text-xs font-medium text-zinc-500">
+        <span className="text-xs font-medium text-foreground-tertiary">
           {questions.length === 1 ? "Quick question" : "Quick questions"}
         </span>
         <button
           type="button"
           onClick={() => setDismissedId(dockId)}
-          className="rounded-full px-2 py-0.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
+          className="rounded-full px-2 py-0.5 text-xs text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
         >
           Skip
         </button>
@@ -97,7 +107,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
             <div key={q.keyword} className="flex flex-col gap-1">
               <span
                 id={`${formId}-${q.keyword}`}
-                className="text-[13px] text-zinc-700"
+                className="text-body-sm leading-inherit text-foreground-body"
               >
                 {q.question}
               </span>
@@ -117,7 +127,9 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
             </div>
           ) : (
             <label key={q.keyword} className="flex flex-col gap-1">
-              <span className="text-[13px] text-zinc-700">{q.question}</span>
+              <span className="text-body-sm leading-inherit text-foreground-body">
+                {q.question}
+              </span>
               <input
                 ref={(element) => {
                   inputRefs.current[q.keyword] = element;
@@ -137,7 +149,8 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
                 placeholder={
                   q.example ? `e.g. ${q.example}` : "Type your answer"
                 }
-                className="rounded-xl bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-800 ring-1 ring-zinc-200/70 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-400"
+                // TODO(tokens): no fitting role for focus:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
+                className="rounded-xl bg-surface-muted px-2.5 py-1.5 text-body-sm leading-inherit text-foreground-emphasis ring-1 ring-border-base/70 transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-zinc-400"
               />
             </label>
           ),
@@ -149,7 +162,8 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
             type="button"
             onClick={handleSubmit}
             aria-disabled={!allAnswered}
-            className="rounded-full bg-zinc-900 px-3.5 py-1.5 text-xs font-medium text-white transition-opacity aria-disabled:opacity-40 hover:bg-zinc-700"
+            // TODO(tokens): no fitting role for hover:bg-zinc-700 #505057; #505057 is foreground-body (a text colour)
+            className="rounded-full bg-action-hover px-3.5 py-1.5 text-xs font-medium text-action-foreground transition-opacity hover:bg-zinc-700 aria-disabled:opacity-40"
           >
             Answer
           </button>

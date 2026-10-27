@@ -32,14 +32,15 @@ export function SectionSidebar({ items, className }: Props) {
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] as const }}
       className={cn(
-        "hidden h-full shrink-0 overflow-y-auto border-r border-[#DADADC] bg-[#F9F9FA] px-[10px] pt-[13px] md:block",
+        "hidden h-full shrink-0 overflow-y-auto border-r border-border-base bg-surface-muted px-[10px] pt-[13px] md:block",
         className,
       )}
     >
       <Link
         href="/copilot"
         aria-label="Back to home"
-        className="mb-[16px] flex w-fit items-center gap-2 rounded-[8px] px-4 py-1 text-[#505057] transition-colors hover:text-[#1F1F20]"
+        // TODO(tokens): no exact role for hover:text-[#1F1F20] (#1F1F20)
+        className="mb-[16px] flex w-fit items-center gap-2 rounded-[8px] px-4 py-1 text-foreground-body transition-colors hover:text-[#1F1F20]"
       >
         <Icon icon={ArrowLeft02Icon} size={16} />
         <Text variant="body" as="span" className="font-medium">

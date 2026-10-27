@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.api.features.experts.models import Expert
+from backend.copilot.config import ChatConfig
 from backend.copilot.context import (
     MAX_CONSULTS_PER_TURN,
     reset_consult_budget,
@@ -25,6 +26,7 @@ from backend.copilot.inference.context import (
     RouteDecision,
 )
 from backend.copilot.model import ChatSession, ChatSessionMetadata
+from backend.copilot.tools import consult_audit
 from backend.copilot.tools.consult_audit import (
     MAX_POLICY_CHARS,
     MAX_WORK_CHARS,
@@ -33,6 +35,7 @@ from backend.copilot.tools.consult_audit import (
 )
 from backend.copilot.tools.consult_teammate import ConsultTeammateTool
 from backend.copilot.tools.models import ConsultVerdictResponse, ErrorResponse
+from backend.util.llm.providers import small_call_reasoning
 
 _TOOL = ConsultTeammateTool()
 _COMPLETE = "backend.copilot.tools.consult_teammate.structured_complete"
@@ -464,3 +467,12 @@ def _usage():
 
 def _completion(verdict):
     return StructuredCompletion(value=verdict, usage=_usage())
+
+
+def test_the_verdict_runs_without_reasoning_on_the_aux_model():
+    # Haiku 5.5's thinking hit the 400-token cap on 7 verdicts in 9 and cut
+    # the JSON off.
+    model = ChatConfig.model_fields["title_model"].default
+    assert small_call_reasoning(model, consult_audit.MAX_OUTPUT_TOKENS) == {
+        "reasoning": {"enabled": False}
+    }

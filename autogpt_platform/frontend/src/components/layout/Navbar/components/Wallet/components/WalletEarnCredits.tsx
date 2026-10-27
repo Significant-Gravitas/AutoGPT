@@ -3,10 +3,10 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
-  Collapsible,
+  CollapsibleRoot,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@/components/molecules/Collapsible/Collapsible";
 import { cn } from "@/lib/utils";
 import {
   ArrowDown01Icon,
@@ -31,8 +31,11 @@ export function WalletEarnCredits({ groups, completedSteps }: Props) {
   );
 
   return (
-    <Collapsible asChild open={open} onOpenChange={setOpen}>
-      <section aria-labelledby={headingID} className="border-t border-zinc-100">
+    <CollapsibleRoot asChild open={open} onOpenChange={setOpen}>
+      <section
+        aria-labelledby={headingID}
+        className="border-t border-separator"
+      >
         <EarnCreditsHeader
           headingID={headingID}
           open={open}
@@ -47,7 +50,7 @@ export function WalletEarnCredits({ groups, completedSteps }: Props) {
           ))}
         </CollapsibleContent>
       </section>
-    </Collapsible>
+    </CollapsibleRoot>
   );
 }
 
@@ -65,7 +68,8 @@ function EarnCreditsHeader({
       <CollapsibleTrigger asChild>
         <button
           type="button"
-          className="flex w-full flex-col gap-1 px-5 py-3 text-left outline-none transition-colors hover:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-400"
+          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour), not a focus ring
+          className="flex w-full flex-col gap-1 px-5 py-3 text-left outline-none transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-400"
         >
           <span className="flex w-full items-baseline justify-between gap-3">
             <Text as="span" variant="large-medium" tone="primary">
@@ -91,7 +95,7 @@ function EarnCreditsHeader({
               size={16}
               aria-hidden
               className={cn(
-                "shrink-0 text-zinc-500 transition-transform motion-reduce:transition-none",
+                "shrink-0 text-foreground-tertiary transition-transform motion-reduce:transition-none",
                 open && "rotate-180",
               )}
             />
@@ -111,7 +115,7 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
-        className="flex w-full items-start justify-between gap-3 rounded-large px-3 py-1.5 text-left transition-colors hover:bg-zinc-50"
+        className="flex w-full items-start justify-between gap-3 rounded-large px-3 py-1.5 text-left transition-colors hover:bg-surface-muted"
       >
         <span className="flex min-w-0 items-start gap-2.5">
           <StatusIcon done={group.done} />
@@ -120,14 +124,14 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
             icon={ArrowDown01Icon}
             size={14}
             className={cn(
-              "mt-1 shrink-0 text-zinc-400 transition-transform duration-200",
+              "mt-1 shrink-0 text-foreground-subtle transition-transform duration-200",
               open && "rotate-180",
             )}
           />
         </span>
-        <span className="shrink-0 font-sans text-sm text-zinc-500">
+        <Text variant="body-tight" as="span" tone="muted" className="shrink-0">
           {group.done ? "Done" : `$${group.amount.toFixed(2)}`}
-        </span>
+        </Text>
       </button>
 
       {open && group.rows.map((row) => <EarnTaskRow key={row.key} row={row} />)}
@@ -142,9 +146,9 @@ function EarnTaskRow({ row }: { row: EarnRow }) {
         <StatusIcon done={row.done} />
         <Text variant="body">{row.label}</Text>
       </div>
-      <span className="shrink-0 font-sans text-sm text-zinc-500">
+      <Text variant="body-tight" as="span" tone="muted" className="shrink-0">
         {row.done ? "Done" : `$${row.amount.toFixed(2)}`}
-      </span>
+      </Text>
     </div>
   );
 }
@@ -156,6 +160,7 @@ function StatusIcon({ done }: { done: boolean }) {
         <Icon
           icon={CheckmarkBadge01Icon}
           size={18}
+          // TODO(tokens): no exact role for text-[#00a656] (#00A656)
           className="text-[#00a656]"
           aria-label="completed"
         />
@@ -163,7 +168,7 @@ function StatusIcon({ done }: { done: boolean }) {
         <Icon
           icon={CircleIcon}
           size={16}
-          className="text-zinc-400"
+          className="text-foreground-subtle"
           aria-label="pending"
         />
       )}

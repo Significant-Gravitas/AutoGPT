@@ -44,9 +44,9 @@ const STEPS: Step[] = [
 ];
 
 const NODE_CLASS: Record<StepState, string> = {
-  done: "bg-emerald-500 text-white",
-  current: "bg-amber-50 text-amber-700 ring-2 ring-amber-300",
-  upcoming: "bg-zinc-100 text-zinc-400",
+  done: "bg-emerald-500 text-action-foreground",
+  current: "bg-warning-surface text-warning-foreground ring-2 ring-amber-300",
+  upcoming: "bg-surface-hover text-foreground-subtle",
 };
 
 interface Props {
@@ -82,7 +82,10 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                   <span
                     className={cn(
                       "mt-1 min-h-[18px] w-px flex-1",
-                      step.state === "done" ? "bg-emerald-300" : "bg-zinc-200",
+                      // TODO(tokens): no exact role for bg-emerald-300 #6ee7b7
+                      step.state === "done"
+                        ? "bg-emerald-300"
+                        : "bg-surface-active",
                     )}
                   />
                 ) : null}
@@ -93,7 +96,7 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                   as="span"
                   className={
                     step.state === "upcoming"
-                      ? "text-zinc-400"
+                      ? "text-foreground-subtle"
                       : "text-textBlack"
                   }
                 >
@@ -103,14 +106,17 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                   variant="small"
                   className={
                     step.state === "upcoming"
-                      ? "text-zinc-400"
-                      : "text-zinc-500"
+                      ? "text-foreground-subtle"
+                      : "text-foreground-tertiary"
                   }
                 >
                   {step.description}
                 </Text>
                 {step.note ? (
-                  <Text variant="small" className="mt-1 text-amber-700">
+                  <Text
+                    variant="small"
+                    className="mt-1 text-warning-foreground"
+                  >
                     {step.note}
                   </Text>
                 ) : null}

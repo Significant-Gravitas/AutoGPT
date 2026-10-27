@@ -3447,6 +3447,49 @@
             "description": "Service token is missing the required scope"
           },
           "422": {
+            "description": "Invalid request, or detail `email_undeliverable`: the mail provider won't deliver to this address"
+          },
+          "503": {
+            "description": "Service-token verification is not configured"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/auth/email/suppression": {
+      "post": {
+        "tags": ["auth-email"],
+        "summary": "Check whether the mailer has suppressed an address",
+        "description": "Asked by sign-up and the resend button before they email an address, so\none Postmark won't deliver to is refused up front. Not suppressed when the\nmailer can't tell.",
+        "operationId": "checkAuthEmailSuppression",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthEmailSuppressionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthEmailSuppressionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Service token is missing the required scope"
+          },
+          "422": {
             "description": "Validation Error",
             "content": {
               "application/json": {
@@ -3846,13 +3889,24 @@
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -4006,13 +4060,24 @@
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -4089,13 +4154,24 @@
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -7425,28 +7501,34 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
-      },
-      "post": {
+      }
+    },
+    "/api/experiments/assignments/{experiment}": {
+      "get": {
         "tags": ["experiments"],
-        "summary": "Record experiment assignment",
-        "operationId": "postExperimentsRecord experiment assignment",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RecordAssignmentRequest"
-              }
-            }
-          },
-          "required": true
-        },
+        "summary": "Get experiment assignment",
+        "description": "The user's arm, bucketed on first read and fixed from then on; None if not enrolled.",
+        "operationId": "getExperimentsGet experiment assignment",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "experiment",
+            "in": "path",
+            "required": true,
+            "schema": { "$ref": "#/components/schemas/Experiment" }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExperimentAssignment"
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ExperimentAssignment" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Getexperimentsget Experiment Assignment"
                 }
               }
             }
@@ -7462,8 +7544,7 @@
               }
             }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/experts": {
@@ -8347,7 +8428,7 @@
               "application/json": {
                 "schema": {
                   "anyOf": [
-                    { "$ref": "#/components/schemas/ExpertOnboardingResponse" },
+                    { "$ref": "#/components/schemas/PendingExpertOnboarding" },
                     { "type": "null" }
                   ],
                   "title": "Response Get Expert Onboarding"
@@ -11871,7 +11952,7 @@
       "delete": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "Erase My Memory",
-        "description": "Permanently erase the caller's entire account memory.",
+        "description": "Permanently erase the caller's entire account memory, the business\nunderstanding included.",
         "operationId": "erase_my_memory",
         "responses": {
           "200": {
@@ -12209,11 +12290,55 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/memory/understanding": {
+      "delete": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Forget My Business Understanding",
+        "description": "Delete what Otto keeps about the caller's work.",
+        "operationId": "forget_my_business_understanding",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgetUnderstandingResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "get": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Get My Business Understanding",
+        "description": "What Otto keeps about the caller's work; every new chat starts with it.",
+        "operationId": "get_my_business_understanding",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryUnderstanding" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/oauth/app/{client_id}": {
       "get": {
         "tags": ["oauth"],
         "summary": "Get Oauth App Info",
-        "description": "Get public information about an OAuth application.\n\nThis endpoint is used by the consent screen and the integration setup\nwizard to display application details to the user before they authorize\naccess. The setup wizard sends the `redirect_uri` it was given and sends\nthe user back there only once this endpoint accepts it, so it never\nredirects to an address the application did not register (RFC 6749\n4.1.2.1).\n\nReturns:\n- name: Application name\n- description: Application description (if provided)\n- scopes: List of scopes the application is allowed to request",
+        "description": "Get public information about an OAuth application.\n\nThis endpoint is used by the consent screen and the integration setup\nwizard to display application details to the user before they authorize\naccess. Both pages send the `redirect_uri` they were given and send the\nuser back there only once this endpoint accepts it, so neither redirects\nto an address the application did not register (RFC 6749 4.1.2.1).\n\nReturns:\n- name: Application name\n- description: Application description (if provided)\n- scopes: List of scopes the application is allowed to request",
         "operationId": "getOauthGetOauthAppInfo",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -12444,7 +12569,7 @@
       "post": {
         "tags": ["oauth"],
         "summary": "Authorize",
-        "description": "OAuth 2.0 Authorization Endpoint\n\nUser must be logged in (authenticated with Supabase JWT).\nThis endpoint creates an authorization code and returns a redirect URL.\n\nPKCE (Proof Key for Code Exchange) is REQUIRED for all authorization requests.\n\nThe frontend consent screen should call this endpoint after the user approves,\nthen redirect the user to the returned `redirect_url`.\n\nRequest Body:\n- client_id: The OAuth application's client ID\n- redirect_uri: Where to redirect after authorization (must match registered URI)\n- scopes: List of permissions (e.g., \"EXECUTE_GRAPH READ_GRAPH\")\n- state: Anti-CSRF token provided by client (will be returned in redirect)\n- response_type: Must be \"code\" (for authorization code flow)\n- code_challenge: PKCE code challenge (required)\n- code_challenge_method: \"S256\" (recommended) or \"plain\"\n\nReturns:\n- redirect_url: The URL to redirect the user to (includes authorization code)\n\nError cases return a redirect_url with error parameters, or raise HTTPException\nfor critical errors (like invalid redirect_uri).",
+        "description": "OAuth 2.0 Authorization Endpoint\n\nUser must be logged in (authenticated with Supabase JWT).\nThis endpoint creates an authorization code and returns a redirect URL.\n\nPKCE (Proof Key for Code Exchange) is REQUIRED for all authorization requests.\n\nThe frontend consent screen should call this endpoint after the user approves,\nthen redirect the user to the returned `redirect_url`.\n\nRequest Body:\n- client_id: The OAuth application's client ID\n- redirect_uri: Where to redirect after authorization (must match registered URI)\n- scopes: List of permissions (e.g., \"EXECUTE_GRAPH READ_GRAPH\")\n- state: Anti-CSRF token provided by client (will be returned in redirect)\n- response_type: Must be \"code\" (for authorization code flow)\n- code_challenge: PKCE code challenge (required)\n- code_challenge_method: \"S256\" (recommended) or \"plain\"\n\nReturns:\n- redirect_url: The URL to redirect the user to (includes authorization code)\n\nError cases return a redirect_url with error parameters once the client and\nits redirect_uri check out; before that (unknown or inactive client, an\nunregistered redirect_uri) they raise HTTPException, so the platform never\nredirects to a URI no registered client vouches for (RFC 6749 4.1.2.1).",
         "operationId": "postOauthAuthorize",
         "requestBody": {
           "content": {
@@ -12674,7 +12799,7 @@
       "delete": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Discard Brain Dump",
-        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nThe row and any stored audio are left alone — only the disposable\npart buffer is cleared.\n\n``recording_id`` says *which* take to drop. Without it the row's\ncurrent take is assumed, which is wrong as soon as a second tab has\nmoved the row on: the caller would clear a buffer that is still being\nfilled. Callers know their own id, so they send it.",
+        "description": "Drop a half-uploaded take's server buffer when the user re-records.\n\nStored audio is left alone. A named take still uploading is also marked\nfailed, so it no longer holds the row against the user's next take, and\na part of it that arrives later is refused.\n\n``recording_id`` says *which* take to drop. Without it the row's\ncurrent take is assumed, which is wrong as soon as a second tab has\nmoved the row on: the caller would clear a buffer that is still being\nfilled. Callers know their own id, so they send it.",
         "operationId": "discard_brain_dump",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -12802,7 +12927,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Upload Brain Dump Part",
-        "description": "Accept one MediaRecorder timeslice blob.\n\nParts arrive while the user is still talking, so this stays cheap:\nsize checks, buffer, done. Validation that needs the whole stream\n(virus scan, transcription) happens on finalize.",
+        "description": "Accept one MediaRecorder timeslice blob.\n\nParts arrive while the user is still talking, so this stays cheap:\nsize checks, buffer, done. Validation that needs the whole stream\n(virus scan, transcription) happens on finalize.\n\nA part of a take the client discarded is refused, unless ``resent`` says\nthe client is deliberately sending that take again from its local copy.",
         "operationId": "upload_brain_dump_part",
         "requestBody": {
           "content": {
@@ -13558,49 +13683,6 @@
                   "items": { "$ref": "#/components/schemas/OrgMemberResponse" },
                   "title": "Response Getv2List Organization Members"
                 }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": ["v2", "orgs", "orgs"],
-        "summary": "Add member to organization",
-        "operationId": "postV2Add member to organization",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "org_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Org Id" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/AddMemberRequest" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/OrgMemberResponse" }
               }
             }
           },
@@ -17549,7 +17631,7 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/Profile" }
+              "schema": { "$ref": "#/components/schemas/ProfileUpdateRequest" }
             }
           },
           "required": true
@@ -18592,7 +18674,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to that hired expert's own\nconversations. It conflicts with ``session_id`` — both name which\nconversations to show — but composes with the folder filters, which select\nacross the whole workspace. An expert the caller does not own (or no\nlonger has) yields an empty list.\n\n``include_user_files`` widens an ``expert_id`` listing with the user's own\nfiles, which an expert may read but which are nobody's conversation. It is\nopt-in so that a view already filtered to one expert keeps showing that\nexpert's files and nothing else; the composer's picker sends it when its\n\"only this expert\" filter is switched off.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to that hired expert's own\nconversations. It conflicts with ``session_id`` — both name which\nconversations to show — but composes with the folder filters, which select\nacross the whole workspace. An expert the caller does not own (or no\nlonger has) yields an empty list.\n\n``include_user_files`` widens an ``expert_id`` listing with the user's own\nfiles, which an expert may read but which are nobody's conversation. It is\nopt-in so that a view already filtered to one expert keeps showing that\nexpert's files and nothing else; the composer's picker sends it when its\n\"only this expert\" filter is switched off.\n\nThe listing is of the user's files: skill packages and Otto's working\nfiles (``isInternal``, decided when each file is written) are left out in\nthe query, so paging stays correct. ``include_internal`` lists them too,\nfor a view that shows them apart.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -18704,6 +18786,18 @@
               "title": "Include User Files"
             },
             "description": "With expert_id, also return the user's own files — everything outside /sessions/, /experts/ and /skills/ — which the expert may read but which are not its own. Requires expert_id."
+          },
+          {
+            "name": "include_internal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Also return the files the Files page leaves out: the skill packages hired experts read (under /skills/ and /experts/{id}/skills/) and Otto's own working files. Each such file is listed with is_internal set.",
+              "default": false,
+              "title": "Include Internal"
+            },
+            "description": "Also return the files the Files page leaves out: the skill packages hired experts read (under /skills/ and /experts/{id}/skills/) and Otto's own working files. Each such file is listed with is_internal set."
           }
         ],
         "responses": {
@@ -19399,12 +19493,25 @@
           "WRITE_GRAPH",
           "EXECUTE_BLOCK",
           "READ_BLOCK",
-          "READ_STORE",
           "WRITE_LIBRARY",
           "USE_TOOLS",
           "MANAGE_INTEGRATIONS",
           "READ_INTEGRATIONS",
-          "DELETE_INTEGRATIONS"
+          "DELETE_INTEGRATIONS",
+          "READ_SCHEDULE",
+          "WRITE_SCHEDULE",
+          "READ_STORE",
+          "WRITE_STORE",
+          "READ_LIBRARY",
+          "RUN_AGENT",
+          "READ_RUN",
+          "WRITE_RUN",
+          "SHARE_RUN",
+          "READ_RUN_REVIEW",
+          "WRITE_RUN_REVIEW",
+          "READ_CREDITS",
+          "READ_FILES",
+          "WRITE_FILES"
         ],
         "title": "APIKeyPermission"
       },
@@ -19841,24 +19948,6 @@
         "required": ["turn_id", "last_message_id"],
         "title": "ActiveStreamInfo",
         "description": "Information about an active stream for reconnection."
-      },
-      "AddMemberRequest": {
-        "properties": {
-          "user_id": { "type": "string", "title": "User Id" },
-          "is_admin": {
-            "type": "boolean",
-            "title": "Is Admin",
-            "default": false
-          },
-          "is_billing_manager": {
-            "type": "boolean",
-            "title": "Is Billing Manager",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": ["user_id"],
-        "title": "AddMemberRequest"
       },
       "AddTeamMemberRequest": {
         "properties": {
@@ -20348,6 +20437,22 @@
         "type": "object",
         "required": ["type", "to", "url"],
         "title": "AuthEmailRequest"
+      },
+      "AuthEmailSuppressionRequest": {
+        "properties": {
+          "to": { "type": "string", "format": "email", "title": "To" }
+        },
+        "type": "object",
+        "required": ["to"],
+        "title": "AuthEmailSuppressionRequest"
+      },
+      "AuthEmailSuppressionResponse": {
+        "properties": {
+          "suppressed": { "type": "boolean", "title": "Suppressed" }
+        },
+        "type": "object",
+        "required": ["suppressed"],
+        "title": "AuthEmailSuppressionResponse"
       },
       "AuthIPEventKind": {
         "type": "string",
@@ -21137,7 +21242,8 @@
             "type": "integer",
             "minimum": 0.0,
             "title": "Part Index"
-          }
+          },
+          "resent": { "type": "boolean", "title": "Resent", "default": false }
         },
         "type": "object",
         "required": ["file", "recording_id", "part_index"],
@@ -21504,6 +21610,10 @@
           "webhook_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Webhook Id"
+          },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
           }
         },
         "type": "object",
@@ -22671,6 +22781,10 @@
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -23286,7 +23400,6 @@
       },
       "CreditTransactionItem": {
         "properties": {
-          "id": { "type": "string", "title": "Id", "default": "" },
           "transaction_key": {
             "type": "string",
             "title": "Transaction Key",
@@ -23315,11 +23428,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Usage Execution Id"
           },
-          "usage_chat_session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Usage Chat Session Id",
-            "description": "The AutoPilot chat the usage came from"
-          },
           "usage_node_count": {
             "type": "integer",
             "title": "Usage Node Count",
@@ -23332,6 +23440,12 @@
             "default": "9999-12-31T23:59:59.999999Z"
           },
           "user_id": { "type": "string", "title": "User Id" },
+          "id": { "type": "string", "title": "Id", "default": "" },
+          "usage_chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Chat Session Id",
+            "description": "The AutoPilot chat the usage came from"
+          },
           "activity_type": {
             "type": "string",
             "enum": ["agent_run", "copilot_tools", "block_usage", "other"],
@@ -23448,7 +23562,9 @@
       "CreditTransactionsExportResponse": {
         "properties": {
           "transactions": {
-            "items": { "$ref": "#/components/schemas/UserTransaction" },
+            "items": {
+              "$ref": "#/components/schemas/UserCreditTransactionAdminView"
+            },
             "type": "array",
             "title": "Transactions"
           },
@@ -25005,6 +25121,19 @@
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
       },
+      "Experiment": {
+        "type": "string",
+        "enum": [
+          "subscription-pricing-page-initial-state",
+          "trial-checkout-no-charge-copy"
+        ],
+        "title": "Experiment",
+        "description": "Experiments, each a multivariate PostHog flag read by the frontend or backend.",
+        "x-enum-varnames": [
+          "SUBSCRIPTION_PRICING",
+          "TRIAL_CHECKOUT_NO_CHARGE_COPY"
+        ]
+      },
       "ExperimentAssignment": {
         "properties": {
           "experiment_key": { "type": "string", "title": "Experiment Key" },
@@ -26251,6 +26380,14 @@
           "error_code": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Code"
+          },
+          "error_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Reason"
+          },
+          "transcript_words": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Transcript Words"
           }
         },
         "type": "object",
@@ -26362,6 +26499,14 @@
         "required": ["uuid", "forgotten"],
         "title": "ForgetFactResponse",
         "description": "A forgotten fact. ``derived_forgotten`` counts the facts the dream had\nderived from it, retracted with it (``graphiti/recall_cascade.py``).\n``resumed`` is True when the fact had already been erased by an earlier\nhard forget, and this one went on retracting and erasing what the dream\nderived from it (``graphiti/recall_forget.py``)."
+      },
+      "ForgetUnderstandingResponse": {
+        "properties": {
+          "forgotten": { "type": "boolean", "title": "Forgotten" }
+        },
+        "type": "object",
+        "required": ["forgotten"],
+        "title": "ForgetUnderstandingResponse"
       },
       "FrontendFlag": {
         "type": "string",
@@ -28680,6 +28825,14 @@
             "description": "ISO 8601 timestamp of the next scheduled run, if any"
           },
           "settings": { "$ref": "#/components/schemas/GraphSettings" },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
           "marketplace_listing": {
             "anyOf": [
               { "$ref": "#/components/schemas/MarketplaceListing" },
@@ -29001,6 +29154,14 @@
             "type": "integer",
             "title": "Subfolder Count",
             "default": 0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -29044,6 +29205,14 @@
             "type": "integer",
             "title": "Subfolder Count",
             "default": 0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "children": {
             "items": { "$ref": "#/components/schemas/LibraryFolderTree" },
@@ -29781,6 +29950,96 @@
         "required": ["message", "memory_name"],
         "title": "MemoryStoreResponse",
         "description": "Response when a memory is stored."
+      },
+      "MemoryUnderstanding": {
+        "properties": {
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          },
+          "user_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Name"
+          },
+          "job_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Job Title"
+          },
+          "business_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Business Name"
+          },
+          "industry": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Industry"
+          },
+          "business_size": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Business Size"
+          },
+          "user_role": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Role"
+          },
+          "key_workflows": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Key Workflows",
+            "default": []
+          },
+          "daily_activities": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Daily Activities",
+            "default": []
+          },
+          "pain_points": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Pain Points",
+            "default": []
+          },
+          "bottlenecks": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Bottlenecks",
+            "default": []
+          },
+          "manual_tasks": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Manual Tasks",
+            "default": []
+          },
+          "automation_goals": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Automation Goals",
+            "default": []
+          },
+          "current_software": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Current Software",
+            "default": []
+          },
+          "existing_automation": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Existing Automation",
+            "default": []
+          },
+          "additional_notes": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Additional Notes"
+          }
+        },
+        "type": "object",
+        "title": "MemoryUnderstanding",
+        "description": "What Otto keeps about the caller's work (``data/understanding.py``), from\nonboarding and chat; ``updated_at`` is None when nothing is kept."
       },
       "Message": {
         "properties": {
@@ -30859,6 +31118,14 @@
         "title": "PeekPendingMessagesResponse",
         "description": "Response for the pending-message peek (GET) endpoint.\n\nReturns a read-only view of the pending buffer — messages are NOT\nconsumed.  The frontend uses this to restore the queued-message\nindicator after a page refresh and to decide when to clear it once\na turn has ended."
       },
+      "PendingExpertOnboarding": {
+        "properties": {
+          "session_id": { "type": "string", "title": "Session Id" }
+        },
+        "type": "object",
+        "required": ["session_id"],
+        "title": "PendingExpertOnboarding"
+      },
       "PendingHumanReviewModel": {
         "properties": {
           "node_exec_id": {
@@ -31544,7 +31811,10 @@
             "title": "Recordtype",
             "default": "SubscriptionChange"
           },
-          "MessageID": { "type": "string", "title": "Messageid" },
+          "MessageID": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Messageid"
+          },
           "ServerID": { "type": "integer", "title": "Serverid" },
           "MessageStream": { "type": "string", "title": "Messagestream" },
           "ChangedAt": { "type": "string", "title": "Changedat" },
@@ -31552,10 +31822,13 @@
           "Origin": { "type": "string", "title": "Origin" },
           "SuppressSending": { "type": "boolean", "title": "Suppresssending" },
           "SuppressionReason": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Suppressionreason"
           },
-          "Tag": { "type": "string", "title": "Tag" },
+          "Tag": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tag"
+          },
           "Metadata": {
             "additionalProperties": { "type": "string" },
             "type": "object",
@@ -31675,26 +31948,6 @@
         "title": "PresetUpdatedResponse",
         "description": "Response confirming a preset was updated."
       },
-      "Profile": {
-        "properties": {
-          "username": { "type": "string", "title": "Username" },
-          "name": { "type": "string", "title": "Name" },
-          "description": { "type": "string", "title": "Description" },
-          "avatar_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Avatar Url"
-          },
-          "links": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Links"
-          }
-        },
-        "type": "object",
-        "required": ["username", "name", "description", "avatar_url", "links"],
-        "title": "Profile",
-        "description": "Marketplace user profile (only attributes that the user can update)"
-      },
       "ProfileDetails": {
         "properties": {
           "username": { "type": "string", "title": "Username" },
@@ -31722,6 +31975,36 @@
         ],
         "title": "ProfileDetails",
         "description": "Marketplace user profile (including read-only fields)"
+      },
+      "ProfileUpdateRequest": {
+        "properties": {
+          "username": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Username"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "links": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Links"
+          }
+        },
+        "type": "object",
+        "title": "ProfileUpdateRequest",
+        "description": "Marketplace user profile (only attributes that the user can update)"
       },
       "ProposedFinding": {
         "properties": {
@@ -32577,31 +32860,6 @@
         "required": ["ready"],
         "title": "RecommendedProvidersResponse",
         "description": "Recommendations for the \"Connect your tools\" panel.\n\n``ready`` is false while the background job is still running — the\nclient keeps polling. Once true, ``providers`` is the final answer,\nempty included (\"nothing worth recommending\" is a real result)."
-      },
-      "RecordAssignmentRequest": {
-        "properties": {
-          "experiment_key": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Experiment Key"
-          },
-          "variant": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Variant"
-          },
-          "source": {
-            "type": "string",
-            "enum": ["posthog", "launchdarkly", "backend"],
-            "title": "Source",
-            "default": "posthog"
-          }
-        },
-        "type": "object",
-        "required": ["experiment_key", "variant"],
-        "title": "RecordAssignmentRequest"
       },
       "RecordUserConsentRequest": {
         "properties": {
@@ -34621,7 +34879,12 @@
           "used_bytes": { "type": "integer", "title": "Used Bytes" },
           "limit_bytes": { "type": "integer", "title": "Limit Bytes" },
           "used_percent": { "type": "number", "title": "Used Percent" },
-          "file_count": { "type": "integer", "title": "File Count" }
+          "file_count": { "type": "integer", "title": "File Count" },
+          "internal_bytes": {
+            "type": "integer",
+            "title": "Internal Bytes",
+            "default": 0
+          }
         },
         "type": "object",
         "required": ["used_bytes", "limit_bytes", "used_percent", "file_count"],
@@ -35403,6 +35666,12 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Current Period End",
             "description": "Unix timestamp of the active subscription's current_period_end. Used to show the date Stripe will issue the next invoice (with prorated upgrade charges, if any). None when no active sub."
+          },
+          "paused_workflow_schedules": {
+            "type": "integer",
+            "title": "Paused Workflow Schedules",
+            "description": "Active workflow schedules that won't run until the user has a plan. Counted only for NO_TIER; 0 for every other tier.",
+            "default": 0
           },
           "pending_tier": {
             "anyOf": [
@@ -38073,6 +38342,79 @@
         ],
         "title": "UserCostSummary"
       },
+      "UserCreditTransactionAdminView": {
+        "properties": {
+          "transaction_key": {
+            "type": "string",
+            "title": "Transaction Key",
+            "default": ""
+          },
+          "transaction_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Transaction Time",
+            "default": "0001-01-01T00:00:00Z"
+          },
+          "transaction_type": {
+            "$ref": "#/components/schemas/CreditTransactionType",
+            "default": "USAGE"
+          },
+          "amount": { "type": "integer", "title": "Amount", "default": 0 },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "usage_graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Graph Id"
+          },
+          "usage_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Execution Id"
+          },
+          "usage_node_count": {
+            "type": "integer",
+            "title": "Usage Node Count",
+            "default": 0
+          },
+          "usage_start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Usage Start Time",
+            "default": "9999-12-31T23:59:59.999999Z"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "running_balance": {
+            "type": "integer",
+            "title": "Running Balance",
+            "default": 0
+          },
+          "current_balance": {
+            "type": "integer",
+            "title": "Current Balance",
+            "default": 0
+          },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason"
+          },
+          "admin_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Admin Email"
+          },
+          "extra_data": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Extra Data"
+          }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "UserCreditTransactionAdminView"
+      },
       "UserDailyCost": {
         "properties": {
           "date": { "type": "string", "format": "date", "title": "Date" },
@@ -38182,7 +38524,9 @@
       "UserHistoryResponse": {
         "properties": {
           "history": {
-            "items": { "$ref": "#/components/schemas/UserTransaction" },
+            "items": {
+              "$ref": "#/components/schemas/UserCreditTransactionAdminView"
+            },
             "type": "array",
             "title": "History"
           },
@@ -38510,79 +38854,6 @@
         ],
         "title": "UserTopRun"
       },
-      "UserTransaction": {
-        "properties": {
-          "transaction_key": {
-            "type": "string",
-            "title": "Transaction Key",
-            "default": ""
-          },
-          "transaction_time": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Transaction Time",
-            "default": "0001-01-01T00:00:00Z"
-          },
-          "transaction_type": {
-            "$ref": "#/components/schemas/CreditTransactionType",
-            "default": "USAGE"
-          },
-          "amount": { "type": "integer", "title": "Amount", "default": 0 },
-          "running_balance": {
-            "type": "integer",
-            "title": "Running Balance",
-            "default": 0
-          },
-          "current_balance": {
-            "type": "integer",
-            "title": "Current Balance",
-            "default": 0
-          },
-          "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
-          },
-          "usage_graph_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Usage Graph Id"
-          },
-          "usage_execution_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Usage Execution Id"
-          },
-          "usage_node_count": {
-            "type": "integer",
-            "title": "Usage Node Count",
-            "default": 0
-          },
-          "usage_start_time": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Usage Start Time",
-            "default": "9999-12-31T23:59:59.999999Z"
-          },
-          "user_id": { "type": "string", "title": "User Id" },
-          "user_email": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "User Email"
-          },
-          "reason": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Reason"
-          },
-          "admin_email": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Admin Email"
-          },
-          "extra_data": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Extra Data"
-          }
-        },
-        "type": "object",
-        "required": ["user_id"],
-        "title": "UserTransaction"
-      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -38705,6 +38976,11 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Metadata"
+          },
+          "is_internal": {
+            "type": "boolean",
+            "title": "Is Internal",
+            "default": false
           }
         },
         "type": "object",
@@ -38747,6 +39023,11 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "is_internal": {
+            "type": "boolean",
+            "title": "Is Internal",
+            "default": false
           }
         },
         "type": "object",

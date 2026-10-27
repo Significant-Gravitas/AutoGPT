@@ -27,8 +27,11 @@ export function PausedChatListItem({ paused }: Props) {
 
   const detail = (
     <>
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-amber-50">
-        <Icon icon={PauseIcon} size={18} className="text-amber-700" />
+      <div
+        // TODO(tokens): no exact role for border-slate-50 #F7F8F9
+        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-warning-surface"
+      >
+        <Icon icon={PauseIcon} size={18} className="text-warning-foreground" />
       </div>
       <div className="flex min-w-0 flex-col gap-1">
         <Text
@@ -37,7 +40,7 @@ export function PausedChatListItem({ paused }: Props) {
         >
           {paused.title}
         </Text>
-        <Text variant="small" className="!text-amber-700">
+        <Text variant="small" className="!text-warning-foreground">
           {paused.summary}
         </Text>
       </div>
@@ -46,7 +49,7 @@ export function PausedChatListItem({ paused }: Props) {
 
   return (
     <div
-      className="flex w-full flex-col gap-3 rounded-large border border-amber-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+      className="flex w-full flex-col gap-3 rounded-large border border-warning-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between"
       data-testid="paused-chat-row"
       data-schedule-key={paused.schedule_key}
     >

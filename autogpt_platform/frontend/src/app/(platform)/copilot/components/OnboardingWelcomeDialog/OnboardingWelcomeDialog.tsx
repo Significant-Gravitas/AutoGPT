@@ -1,5 +1,6 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { usePostV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { Button } from "@/components/atoms/Button/Button";
 import { GlassPixelBackdrop } from "@/components/atoms/GlassPixelBackdrop/GlassPixelBackdrop";
@@ -105,15 +106,15 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
   // whatever was behind the overlay. While the provider picker is open
   // Escape belongs to it — stepping back out of a half-typed API key must
   // not end onboarding for good.
+  const skip = useStableCallback(() => finish("skipped"));
   useEffect(() => {
     if (!isOpen) return;
     dialogRef.current?.focus();
     function handleKeyDown(event: KeyboardEvent) {
-      if (isKey(event, "Escape") && !isConnectOpen) finish("skipped");
+      if (isKey(event, "Escape") && !isConnectOpen) skip();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, cardIndex, isConnectOpen, deck]);
 
   function handleNext() {
@@ -136,7 +137,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-white/30 px-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/30 px-4 backdrop-blur-sm"
           data-testid="onboarding-welcome-overlay"
           role="dialog"
           aria-modal="true"
@@ -151,7 +152,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
               maxWidth: isConnectOpen ? "30rem" : "20rem",
             }}
             transition={{ duration: 0.45, ease: [0, 0, 0.2, 1] }}
-            className="w-full max-w-[20rem] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg outline-none"
+            className="w-full max-w-[20rem] overflow-hidden rounded-xl border border-border-base bg-surface shadow-lg outline-none"
             ref={dialogRef}
             tabIndex={-1}
           >
@@ -189,14 +190,18 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                       transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
                     >
                       {/* Stage: the card's icon floats here. */}
-                      <div className="relative h-36 bg-gradient-to-br from-violet-100 via-violet-200 to-violet-300">
+                      <div
+                        // TODO(tokens): no exact role for from-violet-100, via-violet-200, to-violet-300
+                        className="relative h-36 bg-gradient-to-br from-violet-100 via-violet-200 to-violet-300"
+                      >
                         <GlassPixelBackdrop />
                         {cardIndex > 0 && (
                           <button
                             type="button"
                             aria-label="Previous card"
                             onClick={() => setCardIndex(cardIndex - 1)}
-                            className="absolute left-3 top-3 z-10 flex size-5 items-center justify-center rounded-full text-violet-800/70 transition-colors hover:bg-white/50"
+                            // TODO(tokens): no exact role for text-violet-800/70
+                            className="absolute left-3 top-3 z-10 flex size-5 items-center justify-center rounded-full text-violet-800/70 transition-colors hover:bg-surface/50"
                           >
                             <Icon icon={ArrowLeft01Icon} size={13} />
                           </button>
@@ -213,10 +218,11 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                           >
                             {card.icon && (
                               <div className="flex h-full items-center justify-center">
-                                <div className="flex size-14 items-center justify-center rounded-2xl bg-white shadow-md">
+                                <div className="flex size-14 items-center justify-center rounded-2xl bg-surface shadow-md">
                                   <Icon
                                     icon={card.icon}
                                     size={28}
+                                    // TODO(tokens): no exact role for text-violet-600
                                     className="text-violet-600"
                                   />
                                 </div>
@@ -252,8 +258,9 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                                 key={index}
                                 className={
                                   index === cardIndex
-                                    ? "h-1.5 w-4 rounded-full bg-zinc-900 transition-all"
-                                    : "size-1.5 rounded-full bg-zinc-300 transition-all"
+                                    ? "h-1.5 w-4 rounded-full bg-action-hover transition-all"
+                                    : // TODO(tokens): no fitting role for bg-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour) and border-strong (a line colour)
+                                      "size-1.5 rounded-full bg-zinc-300 transition-all"
                                 }
                               />
                             ))}

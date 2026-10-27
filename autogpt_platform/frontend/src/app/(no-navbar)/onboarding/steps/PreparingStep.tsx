@@ -31,9 +31,9 @@ export function PreparingStep({ onComplete }: Props) {
         </Text>
       </div>
 
-      <div className="h-0.5 w-full overflow-hidden bg-zinc-100">
+      <div className="h-0.5 w-full overflow-hidden bg-surface-hover">
         <div
-          className="h-full bg-zinc-900 transition-all duration-100 ease-linear"
+          className="h-full bg-action-hover transition-all duration-100 ease-linear"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -46,7 +46,9 @@ export function PreparingStep({ onComplete }: Props) {
               size={16}
               className={cn(
                 "shrink-0 transition-colors",
-                i < completedItems ? "text-zinc-900" : "text-zinc-300",
+                i < completedItems
+                  ? "text-foreground-strong"
+                  : "text-foreground-disabled",
               )}
             />
             <Text

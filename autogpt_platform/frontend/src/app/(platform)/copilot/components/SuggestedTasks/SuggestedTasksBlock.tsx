@@ -28,7 +28,7 @@ export function SuggestedTasksBlock({ suggestions, disabled }: Props) {
           size="xs"
           onClick={suggestions.hideAll}
           disabled={suggestions.sendingId !== null}
-          className="text-zinc-400 opacity-0 transition-opacity duration-150 group-focus-within/block:opacity-100 group-hover/block:opacity-100 hover:text-zinc-700 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+          className="text-foreground-subtle opacity-0 transition-opacity duration-150 hover:text-foreground-body focus-visible:opacity-100 group-focus-within/block:opacity-100 group-hover/block:opacity-100 [@media(hover:none)]:opacity-100"
         >
           Hide all
         </Button>

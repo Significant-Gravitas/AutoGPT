@@ -14,17 +14,17 @@ interface Props {
 export function ReceiptLine({ receipt }: Props) {
   const [icon, tone] =
     receipt.text === "Approved" || receipt.text === "Released"
-      ? [Tick02Icon, "text-green-600"]
+      ? [Tick02Icon, "text-success"]
       : receipt.text === "Rejected" || receipt.text === "Kept out"
-        ? [Cancel01Icon, "text-zinc-400"]
-        : [InformationCircleIcon, "text-zinc-400"];
+        ? [Cancel01Icon, "text-foreground-subtle"]
+        : [InformationCircleIcon, "text-foreground-subtle"];
   return (
-    <li className="flex items-center gap-2 px-4 py-2 text-sm text-zinc-600">
+    <li className="flex items-center gap-2 px-4 py-2 text-sm text-foreground-secondary">
       <Icon icon={icon} size={14} className={tone} aria-hidden />
       <span className="min-w-0 truncate">
         <HeadlineText item={receipt.item} />
       </span>
-      <span className="shrink-0 text-zinc-400">· {receipt.text}</span>
+      <span className="shrink-0 text-foreground-subtle">· {receipt.text}</span>
     </li>
   );
 }

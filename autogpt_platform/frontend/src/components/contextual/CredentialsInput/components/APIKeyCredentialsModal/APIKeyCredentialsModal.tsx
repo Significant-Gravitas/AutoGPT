@@ -1,10 +1,8 @@
-import {
-  Form,
-  FormDescription,
-  FormField,
-} from "@/components/__legacy__/ui/form";
+import { FormProvider } from "react-hook-form";
+import { FormDescription, FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
   BlockIOCredentialsSubSchema,
@@ -57,10 +55,12 @@ export function APIKeyCredentialsModal({
     >
       <Dialog.Content>
         {schemaDescription && (
-          <p className="mb-4 text-sm text-zinc-600">{schemaDescription}</p>
+          <Text variant="body-tight" as="p" tone="secondary" className="mb-4">
+            {schemaDescription}
+          </Text>
         )}
 
-        <Form {...form}>
+        <FormProvider {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
             className="space-y-2 px-2"
@@ -90,11 +90,21 @@ export function APIKeyCredentialsModal({
                     placeholder="Enter API Key..."
                     hint={
                       schema.credentials_scopes ? (
-                        <FormDescription>
+                        <FormDescription
+                          // TODO(tokens): SECRT-3152 rare size: text-[0.8rem].
+                          // dark:text-neutral-400: the legacy FormDescription's, moved verbatim (DS6, SECRT-3116)
+                          className="text-[0.8rem] leading-inherit dark:text-neutral-400"
+                        >
                           Required scope(s) for this block:{" "}
                           {schema.credentials_scopes?.map((s, i, a) => (
                             <span key={i}>
-                              <code className="text-xs font-bold">{s}</code>
+                              <Text
+                                variant="small-mono-bold-tight"
+                                as="code"
+                                tone="inherit"
+                              >
+                                {s}
+                              </Text>
                               {i < a.length - 1 && ", "}
                             </span>
                           ))}
@@ -148,7 +158,7 @@ export function APIKeyCredentialsModal({
               Add API Key
             </Button>
           </form>
-        </Form>
+        </FormProvider>
       </Dialog.Content>
     </Dialog>
   );
