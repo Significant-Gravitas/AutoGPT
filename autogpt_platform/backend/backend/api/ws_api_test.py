@@ -241,7 +241,7 @@ async def test_websocket_router_answers_a_subscribe_that_failed(
         ).model_dump_json(),
         WebSocketDisconnect(),
     ]
-    mock_manager.subscribe_graph_exec.side_effect = RuntimeError("engine gone")
+    mock_manager.subscribe_graph_exec.side_effect = ConnectionError("internal detail")
 
     await websocket_router(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
@@ -250,7 +250,7 @@ async def test_websocket_router_answers_a_subscribe_that_failed(
     reply = WSMessage.model_validate_json(mock_websocket.send_text.call_args[0][0])
     assert reply.method == WSMethod.ERROR
     assert reply.success is False
-    assert "engine gone" not in (reply.error or "")
+    assert "internal detail" not in (reply.error or "")
 
 
 @pytest.mark.asyncio
@@ -597,56 +597,11 @@ def test_get_connection_manager_singleton() -> None:
     assert isinstance(a, ConnectionManager)
 
 
-# ---------- Lifespan: Prisma connect/disconnect ----------
-
-
-@pytest.mark.asyncio
-async def test_lifespan_connects_and_disconnects_prisma(mocker) -> None:
-    """Lifespan must both connect() and disconnect() db — the subscribe path
-    resolves graph_id via Prisma so a missing connect() is the regression bug."""
-    from fastapi import FastAPI
-
-    from backend.api.ws_api import lifespan
-
-    mock_db = mocker.patch("backend.api.ws_api.db")
-    mock_db.connect = AsyncMock()
-    mock_db.disconnect = AsyncMock()
-
-    dummy_app = FastAPI()
-    async with lifespan(dummy_app):
-        mock_db.connect.assert_awaited_once()
-        mock_db.disconnect.assert_not_called()
-    mock_db.disconnect.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_lifespan_still_disconnects_on_exception(mocker) -> None:
-    """If the app raises inside the yield, Prisma must still disconnect."""
-    from fastapi import FastAPI
-
-    from backend.api.ws_api import lifespan
-
-    mock_db = mocker.patch("backend.api.ws_api.db")
-    mock_db.connect = AsyncMock()
-    mock_db.disconnect = AsyncMock()
-
-    dummy_app = FastAPI()
-
-    class _Boom(Exception):
-        pass
-
-    with pytest.raises(_Boom):
-        async with lifespan(dummy_app):
-            raise _Boom()
-
-    mock_db.disconnect.assert_awaited_once()
-
-
 # ---------- Health endpoint ----------
 
 
 def test_health_endpoint_returns_ok() -> None:
-    # TestClient triggers lifespan — stub it out so Prisma isn't hit.
+    # TestClient triggers lifespan — stub it out so Redis isn't hit.
     from contextlib import asynccontextmanager
 
     from fastapi.testclient import TestClient

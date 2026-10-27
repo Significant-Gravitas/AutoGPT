@@ -1,11 +1,9 @@
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
 import pytest
 
 from backend.data import db as db_module
-from backend.data.db import DISCONNECT_TIMEOUT, disconnect, retry_on_dead_engine
+from backend.data.db import DISCONNECT_TIMEOUT, disconnect
 
 
 # The root conftest spins a full test server for every test via an autouse
@@ -42,29 +40,3 @@ async def test_disconnect_is_a_noop_when_not_connected(monkeypatch):
     await disconnect()
 
     prisma.disconnect.assert_not_awaited()
-
-
-async def test_callers_failing_on_one_dead_engine_restart_it_once(monkeypatch):
-    """A second restart would kill the engine the first caller is retrying on."""
-    monkeypatch.setattr(db_module, "disconnect", AsyncMock())
-    connect = AsyncMock()
-    monkeypatch.setattr(db_module, "connect", connect)
-    calls = {"a": 0, "b": 0}
-    both_failed = asyncio.Event()
-
-    async def query(name: str) -> str:
-        calls[name] += 1
-        if calls[name] == 1:
-            if all(calls.values()):
-                both_failed.set()
-            await both_failed.wait()
-            raise httpx.ConnectError("All connection attempts failed")
-        return name
-
-    results = await asyncio.gather(
-        retry_on_dead_engine(lambda: query("a")),
-        retry_on_dead_engine(lambda: query("b")),
-    )
-
-    assert results == ["a", "b"]
-    connect.assert_awaited_once()

@@ -1,14 +1,11 @@
-import asyncio
 import logging
 import os
-from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import TypeVar, overload
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
-import httpx
 from dotenv import load_dotenv
 from prisma import Prisma
 from pydantic import BaseModel, Field, field_validator
@@ -57,7 +54,6 @@ prisma = Prisma(
 
 logger = logging.getLogger(__name__)
 RawQueryModelT = TypeVar("RawQueryModelT", bound=BaseModel)
-T = TypeVar("T")
 
 
 def is_connected():
@@ -101,34 +97,6 @@ async def disconnect():
 
     if prisma.is_connected():
         raise ConnectionError("Failed to disconnect from Prisma.")
-
-
-async def retry_on_dead_engine(call: Callable[[], Awaitable[T]]) -> T:
-    """Run *call*, and once more after reconnecting if Prisma's query engine
-    process has died: the client keeps reporting itself connected and every
-    query fails with ``httpx.ConnectError`` until something reconnects it."""
-    restarts_seen = _engine_restarts
-    try:
-        return await call()
-    except httpx.ConnectError:
-        logger.warning("Prisma query engine is unreachable; reconnecting")
-        await _restart_engine(restarts_seen)
-        return await call()
-
-
-_engine_restart_lock = asyncio.Lock()
-_engine_restarts = 0
-
-
-async def _restart_engine(restarts_seen: int) -> None:
-    global _engine_restarts
-    async with _engine_restart_lock:
-        # Callers that failed on the same dead engine restart it only once.
-        if _engine_restarts != restarts_seen:
-            return
-        await disconnect()
-        await connect()
-        _engine_restarts += 1
 
 
 # Transaction timeout constant:
