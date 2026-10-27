@@ -198,7 +198,7 @@ describe("Airtable base picker in the setup card", () => {
 
   it.each([
     ["create", /you'll see what it adds before anything changes/],
-    ["edit", /Otto adds records to the one you pick/],
+    ["edit", /Otto changes records in the one you pick/],
     ["read", /Otto only reads from the one you pick/],
   ] as const)(
     "the hint says what a %s step does to the base, and no more",
@@ -248,6 +248,27 @@ describe("Airtable base picker in the setup card", () => {
     expect(screen.queryByText("View only")).toBeNull();
     fireEvent.click(wholesale);
     await waitFor(() => expect(trigger.textContent).toBe("Wholesale prices"));
+  });
+
+  it("before a record change, view-only bases say records can't change", async () => {
+    serveBases([{ id: "app1", name: "Wholesale prices", access: "read" }]);
+    render(
+      <SetupRequirementsCard
+        output={pickerCard({
+          ...PICKER,
+          resource_picker: {
+            provider: "airtable",
+            access: "edit",
+            credentials_id: "cred-1",
+          },
+        })}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/so Otto can't change records in them/),
+    ).toBeDefined();
+    expect(screen.queryByText(/add/)).toBeNull();
   });
 
   it("a step that adds tables can't use a base the user may only edit", async () => {

@@ -41,7 +41,8 @@ export function lockedReason(access: BaseAccess, needed: BaseAccess): string {
 }
 
 // What the step will do to the base, and only that: a table change is shown
-// on a card first, a record write is not, and a read changes nothing.
+// on a card first, a record change (adding, updating or deleting) is not, and
+// a read changes nothing.
 export function pickerHint(needed: BaseAccess): string {
   const base =
     "A base is Airtable's word for a set of tables, like a spreadsheet file with several sheets.";
@@ -49,7 +50,7 @@ export function pickerHint(needed: BaseAccess): string {
     return `${base} Otto only reads from the one you pick; nothing in it changes.`;
   }
   if (needed === "edit") {
-    return `${base} Otto adds records to the one you pick.`;
+    return `${base} Otto changes records in the one you pick.`;
   }
   return `${base} Otto adds what it needs to the one you pick, and you'll see what it adds before anything changes.`;
 }
@@ -58,7 +59,7 @@ export function pickerHint(needed: BaseAccess): string {
 export function noUsableBaseText(needed: BaseAccess): string {
   return needed === "create"
     ? "This step needs creator access to a base, which Airtable gives to the people who set it up. Ask the owner to make you a creator, or start a new one."
-    : "You can only view these bases, so Otto can't add to them. Ask the owner to make you an editor, or start a new one.";
+    : "You can only view these bases, so Otto can't change records in them. Ask the owner to make you an editor, or start a new one.";
 }
 
 export function isAirtableBasePickerSchema(schema: unknown): boolean {

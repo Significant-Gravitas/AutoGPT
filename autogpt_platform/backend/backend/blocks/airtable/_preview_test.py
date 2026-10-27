@@ -114,20 +114,65 @@ def test_a_new_field_is_shown_with_its_kind():
     ]
 
 
-def test_a_rename_is_shown_under_its_new_name():
-    table = AirtableUpdateTableBlock().change_preview(
-        {"base_id": "appX", "table_id": "tblX", "table_name": "Paid orders"}
-    )
-    field = AirtableUpdateFieldBlock().change_preview(
-        {"base_id": "appX", "table_id": "tblX", "field_id": "fldX", "name": "Due"}
-    )
+@pytest.mark.parametrize(
+    "block, inputs, ask, obj, covers",
+    [
+        (
+            AirtableUpdateTableBlock,
+            {"base_id": "appX", "table_id": "tblLeads", "table_name": "Clients"},
+            "Rename Airtable table tblLeads to:",
+            "Clients",
+            ["table_id", "table_name"],
+        ),
+        (
+            AirtableUpdateTableBlock,
+            {"base_id": "appX", "table_id": "tblLeads", "table_description": "Hot"},
+            "Change Airtable table tblLeads",
+            None,
+            ["table_id"],
+        ),
+        (
+            AirtableUpdateFieldBlock,
+            {
+                "base_id": "appX",
+                "table_id": "tblLeads",
+                "field_id": "fldDue",
+                "name": "Due",
+            },
+            "Rename field fldDue in Airtable table tblLeads to:",
+            "Due",
+            ["table_id", "field_id", "name"],
+        ),
+        (
+            AirtableUpdateFieldBlock,
+            {
+                "base_id": "appX",
+                "table_id": "tblLeads",
+                "field_id": "fldDue",
+                "description": "When it's owed",
+            },
+            "Change field fldDue in Airtable table tblLeads",
+            None,
+            ["table_id", "field_id"],
+        ),
+    ],
+    ids=[
+        "table rename",
+        "table without a new name",
+        "field rename",
+        "field without a new name",
+    ],
+)
+def test_a_change_says_what_it_changes_and_to_what(block, inputs, ask, obj, covers):
+    """The card names the table or field that changes, which the headline
+    hides from the arguments, and says "rename ... to" only when there is a new
+    name, never ending on a colon with nothing after it."""
+    preview = block().change_preview(inputs)
 
-    assert table is not None and field is not None
-    assert (table.ask, table.object) == (
-        "Change a table in your Airtable:",
-        "Paid orders",
-    )
-    assert (field.ask, field.object) == ("Change a field in your Airtable:", "Due")
+    assert preview is not None
+    assert (preview.ask, preview.object) == (ask, obj)
+    assert not (obj is None and preview.ask.endswith(":"))
+    assert preview.covers == covers
 
 
 def test_a_type_the_preview_does_not_know_still_reads_as_words():

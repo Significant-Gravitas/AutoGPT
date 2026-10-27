@@ -32,7 +32,10 @@ function TablePreview({ table }: { table: PreviewTable }) {
               size={16}
               className="shrink-0 text-foreground-tertiary"
             />
-            <span className="min-w-0 font-medium text-foreground-strong [overflow-wrap:anywhere]">
+            <span
+              translate="no"
+              className="min-w-0 font-medium text-foreground-strong [overflow-wrap:anywhere]"
+            >
               {table.name}
             </span>
             <span className="ms-auto shrink-0 text-foreground-tertiary">
@@ -54,7 +57,10 @@ function TablePreview({ table }: { table: PreviewTable }) {
               className="flex min-w-0 items-baseline justify-between gap-3 px-3 py-1.5 text-sm"
             >
               <span className="flex min-w-0 flex-col">
-                <span className="text-foreground-strong [overflow-wrap:anywhere]">
+                <span
+                  translate="no"
+                  className="text-foreground-strong [overflow-wrap:anywhere]"
+                >
                   {field.name}
                 </span>
                 {field.detail && (

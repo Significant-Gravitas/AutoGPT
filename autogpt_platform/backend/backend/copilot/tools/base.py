@@ -9,7 +9,7 @@ from openai.types.chat import ChatCompletionToolParam
 from prisma.enums import APIKeyPermission
 
 from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
-from backend.copilot.context import get_current_envelope
+from backend.copilot.context import args_already_bound, get_current_envelope
 from backend.copilot.google_data_redaction import (
     GOOGLE_DATA_METADATA_KEY,
     is_google_call,
@@ -635,16 +635,21 @@ class BaseTool:
         google_call = is_google_call(kwargs)
         # What the call will run, resolved once: the gate reviews, the card
         # shows and the approval binds these values, and the tool runs them.
+        # An approved held call replays the arguments it was resolved to.
+        replayed = self.has_gate_subject and args_already_bound()
         bound = (
             await self.bind_args(user_id, session, kwargs)
-            if self.has_gate_subject
+            if self.has_gate_subject and not replayed
             else kwargs
         )
+        args_bound = replayed or bound is not kwargs
         with tracing_google_data(google_call):
-            gated, decision = await self._gate(user_id, session, tool_call_id, bound)
+            gated, decision = await self._gate(
+                user_id, session, tool_call_id, bound, args_bound
+            )
         if gated is not None:
             return gated
-        run_kwargs = {**bound, ARGS_BOUND: True} if bound is not kwargs else kwargs
+        run_kwargs = {**bound, ARGS_BOUND: True} if args_bound else kwargs
         if decision is not None and self.has_gate_subject:
             if decision.approved:
                 run_kwargs = {**run_kwargs, GATE_APPROVED: True}
@@ -723,6 +728,7 @@ class BaseTool:
         session: ChatSession,
         tool_call_id: str,
         kwargs: dict[str, Any],
+        args_bound: bool = False,
     ) -> tuple[StreamToolOutputAvailable | None, "Decision | None"]:
         """A refusal to return instead of running (or None to proceed), and
         the gate's decision on a call that proceeds.
@@ -744,6 +750,7 @@ class BaseTool:
                 tool_call_id,
                 subject_of=subject_of if self.has_gate_subject else None,
                 context_of=lambda: self.gate_context(kwargs),
+                args_bound=args_bound,
             )
         except Exception:
             logger.warning(f"Action gate failed for {self.name}", exc_info=True)

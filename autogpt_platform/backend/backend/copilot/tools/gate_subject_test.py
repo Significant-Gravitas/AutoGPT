@@ -34,7 +34,7 @@ from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.search import GetWikipediaSummaryBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.copilot import usage_activation_fixtures
-from backend.copilot.gate import RUN_FILES_KEY, RUNS_KEY, chat_rules
+from backend.copilot.gate import RUN_FILES_KEY, RUNS_KEY, chat_rules, held
 from backend.copilot.gate.chat_rules import RuleHit
 from backend.copilot.gate.chat_rules_test import _Redis
 from backend.copilot.gate.classifier import Judgement
@@ -1363,7 +1363,10 @@ def files():
     contents = {"fields.json": json.dumps(_FIELDS)}
 
     async def read(uri, user_id, session):
-        return contents[uri.rsplit("/", 1)[-1]].encode()
+        name = uri.rsplit("/", 1)[-1]
+        if name not in contents:
+            raise ValueError(f"File not found: {name}")
+        return contents[name].encode()
 
     with patch(_READ, AsyncMock(side_effect=read)):
         yield contents
@@ -1438,3 +1441,30 @@ async def test_the_base_is_picked_before_anything_asks(gate, ran, unpicked):
     picked = await _run_capability(_session(), _BLOCK, {**payload, "base_id": "appX"})
     assert _is_held(picked)
     gate.open_review.assert_awaited_once()
+
+
+async def test_an_approved_call_replays_the_content_it_was_approved_for(
+    gate, ran, files
+):
+    """A held call is stored resolved. Replaying it on approval must not
+    resolve it again: a name read from a file that itself mentions a file
+    reference is text, and expanding it would fail or ask a second time."""
+    files["name.txt"] = "Orders (see @@agptfile:/home/user/old_notes.txt )"
+    payload = {**_FROM_FILE, "table_name": "@@agptfile:/home/user/name.txt"}
+    remember = AsyncMock(return_value=True)
+    with patch(f"{_GATE}.held.remember", remember):
+        held_result = await _run_capability(_session(), _BLOCK, payload)
+    assert _is_held(held_result)
+    call = remember.await_args.args[1]
+    assert call.args["input"]["table_name"] == files["name.txt"]
+
+    with patch(
+        "backend.copilot.gate.review_store.find_review",
+        _approve_only(call.review_id),
+    ):
+        await held._run("user-1", _session(), call, RunCapabilityTool())
+
+    ran.assert_awaited_once()
+    assert ran.await_args.args[3]["table_name"] == files["name.txt"]
+    assert ran.await_args.args[7] is True  # run as resolved, not expanded again
+    assert gate.open_review.await_count == 1

@@ -156,12 +156,13 @@ class AirtableUpdateTableBlock(Block):
         )
 
     def change_preview(self, input_data: dict[str, Any]) -> ChangePreview:
-        return preview(
-            "Change a table in your Airtable:",
-            input_data.get("table_name"),
-            [],
-            ["table_name"],
-        )
+        # The headline hides the ids from the card's list, so it names the
+        # table itself; "to:" only when there is a new name to follow it.
+        table = f"Airtable table {input_data.get('table_id') or ''}".strip()
+        name = input_data.get("table_name")
+        if name:
+            return preview(f"Rename {table} to:", name, [], ["table_id", "table_name"])
+        return preview(f"Change {table}", None, [], ["table_id"])
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
@@ -293,12 +294,23 @@ class AirtableUpdateFieldBlock(Block):
         )
 
     def change_preview(self, input_data: dict[str, Any]) -> ChangePreview:
-        return preview(
-            "Change a field in your Airtable:",
-            input_data.get("name"),
-            [],
-            ["name"],
+        # As for a table: name the field and its table, "to:" only with a name.
+        field = " ".join(
+            part
+            for part in (
+                "field",
+                str(input_data.get("field_id") or ""),
+                "in Airtable table",
+                str(input_data.get("table_id") or ""),
+            )
+            if part
         )
+        name = input_data.get("name")
+        if name:
+            return preview(
+                f"Rename {field} to:", name, [], ["table_id", "field_id", "name"]
+            )
+        return preview(f"Change {field}", None, [], ["table_id", "field_id"])
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs

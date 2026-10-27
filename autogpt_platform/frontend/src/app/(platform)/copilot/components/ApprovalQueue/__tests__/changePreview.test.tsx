@@ -46,6 +46,16 @@ test("a new Airtable table is shown by name and fields before it is made", async
   ]);
   expect(screen.queryByText("View as JSON")).toBeNull();
   expect(screen.queryByText("Table fields")).toBeNull();
+  // Names go to Airtable as written, so a browser translation must not touch them.
+  for (const name of ["Printify orders", "Order number", "Ordered on"]) {
+    const shown = within(
+      screen.getByRole("region", { name: "Waiting for you" }),
+    )
+      .getAllByText(name)
+      .filter((el) => el.closest("ul, header"));
+    expect(shown.length).toBeGreaterThan(0);
+    for (const el of shown) expect(el.getAttribute("translate")).toBe("no");
+  }
 });
 
 test("a card with nothing to preview still says which step it runs", async () => {

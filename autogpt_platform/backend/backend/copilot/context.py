@@ -7,6 +7,8 @@ without creating circular dependencies.
 
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
@@ -135,6 +137,28 @@ _current_envelope: "ContextVar[TurnEnvelope | None]" = ContextVar(
 _current_hidden_tools: ContextVar[frozenset[str]] = ContextVar(
     "_current_hidden_tools", default=frozenset()
 )
+# Set while an approved held call replays with the arguments it was stored with;
+# see ``replaying_bound_args``. Never from the model's arguments.
+_replaying_bound_args: ContextVar[bool] = ContextVar(
+    "_replaying_bound_args", default=False
+)
+
+
+@contextmanager
+def replaying_bound_args(bound: bool) -> Iterator[None]:
+    """Replay a held call whose arguments were already resolved when it was
+    held, so the tool runs them as approved instead of resolving them again."""
+    token = _replaying_bound_args.set(bound)
+    try:
+        yield
+    finally:
+        _replaying_bound_args.reset(token)
+
+
+def args_already_bound() -> bool:
+    return _replaying_bound_args.get()
+
+
 # Whether anyone is watching the running turn; see ``set_turn_unattended``.
 _current_turn_unattended: ContextVar[bool] = ContextVar(
     "_current_turn_unattended", default=False
