@@ -85,9 +85,10 @@ at logout; a Vercel preview reports `environment: preview`, while the dev
 deployment, which is Vercel's `staging` custom environment rather than a
 preview, reports `environment: dev`.
 
-`source` is reserved for the emitter. The three events that used it for
+`source` is reserved for the emitter. The events that used it for
 something else now use `hire_started.surface`,
-`expert_recommended.team_source` and `workflow_installed_on_expert.workflow_source`.
+`expert_recommended.team_source`, `workflow_installed_on_expert.workflow_source`
+and, for the four `first_run_tour_*` events, `opened_from`.
 
 ### Identity
 
@@ -345,10 +346,13 @@ merges the website pageviews into the new user:
 | `brain_dump_mic_failed` | browser | live | `error_name` | The microphone fails to open, for any reason, a refused permission included. |
 | `brain_dump_typed_fallback` | browser | live | `reason` | The user types instead of speaking. |
 | `transcription_failed` | browser | live | `error_code`, `finalize_latency_ms` | Finalize returns a failure. |
-| `welcome_dialog_closed` | browser | live | — | The first-landing welcome dialog closes. |
-| `capability_card_viewed` | browser | live | `card_index`, `deck` | A capability card is shown. |
-| `capability_cards_completed` | browser | live | `card_index`, `deck` | The deck is finished. |
-| `capability_cards_skipped` | browser | live | `card_index`, `deck` | The deck is skipped. |
+| `welcome_dialog_closed` | browser | live | — | The first-landing intro ends (since SECRT-3149, the first-run walkthrough, finished or skipped). |
+| `first_run_tour_shown` | browser | live | `opened_from` (`auto` after onboarding, `menu` from "Show me around") | The guided first run over the real sidebar opens. |
+| `first_run_tour_step_viewed` | browser | live | `opened_from`, `step_id`, `step_index`, `target` (what it pointed at once that settled, about half a second: the sidebar item, also inside a phone's opened sidebar sheet; `menu` only where the item is not on screen; or null while the first tasks load) | A walkthrough step is shown, once per step per walkthrough (going Back and Next again does not repeat it). |
+| `first_run_tour_completed` | browser | live | `opened_from`, `step_id`, `step_index`, `via` (`start_here`, `connect_tools`) | The last step's "Start here", or its "connect your tools first". |
+| `first_run_tour_skipped` | browser | live | `opened_from`, `step_id`, `step_index`, `via` (null) | Skip tour, Close or Escape, at `step_id`. |
+| `contextual_tip_shown` | browser | live | `tip` (`second-chat`, `first-cost`, `first-expert`) | A one-time tip appears the first time its surface matters. |
+| `contextual_tip_dismissed` | browser | live | `tip` | The tip is put away ("Got it" or Escape); it never shows again. |
 | `intro_path` | browser | live | `path` | The intro path (A/B) is chosen. |
 | `intro_followup_sent` | browser | live | `chars` | First message after the intro card. |
 | `later_dump_completed` | browser | live | — | A brain dump sent later from the composer. |
@@ -523,9 +527,9 @@ they can hold Gmail or Drive content (Google Limited Use).
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `$ai_generation` | OpenRouter Broadcast | live | set by OpenRouter from the request (`backend/copilot/llm_attribution.py`): `distinct_id` = the request's `user` (the platform user id), `$ai_session_id` = its `session_id` (the chat session id), `$ai_span_name` = `trace.generation_name` (`copilot-title`, `copilot-sdk`, `copilot-baseline`), `$ai_trace_id` = `trace.trace_id` (the reply's trace: the id of the executor turn that made the call, or for a subtask the trace of the turn that spawned it, so all calls behind one reply share it; absent for a call made outside a turn), `metadata_environment` (`local`, `dev`, `prod`), `metadata_impersonated`; `metadata_revision` (the deployed build's git sha, `config.sentry_release`) when it is set; model, tokens, cost and latency from OpenRouter | An AutoPilot LLM call goes through OpenRouter: a session title, an SDK turn (main agent, sub-agents and the CLI's compaction, via `CLAUDE_CODE_EXTRA_BODY`) or a baseline turn. |
+| `$ai_generation` | OpenRouter Broadcast | live | set by OpenRouter from the request (`backend/copilot/llm_attribution.py`): `distinct_id` = the request's `user` (the platform user id), `$ai_session_id` = its `session_id` (the chat session id), `$ai_span_name` = `trace.generation_name` (`copilot-title`, `copilot-sdk`, `copilot-baseline`), `$ai_trace_id` = `trace.trace_id` (the reply's trace: the id of the executor turn that made the call, or for a subtask the trace of the turn that spawned it, so all calls behind one reply share it; absent for a call made outside a turn), `metadata_environment` (`local`, `dev`, `prod`), `metadata_impersonated`, `metadata_turn_origin` (what started the turn that made the call: `chat`, `scheduled`, `spawned`, `automation` (a workflow's AutoPilot block) or `system`; a reply's own calls match its `$ai_trace` `turn_origin`, a subtask's calls carry the subtask's, as on its `$ai_span`; absent for a call made outside a turn); `metadata_revision` (the deployed build's git sha, `config.sentry_release`) when it is set; model, tokens, cost and latency from OpenRouter | An AutoPilot LLM call goes through OpenRouter: a session title, an SDK turn (main agent, sub-agents and the CLI's compaction, via `CLAUDE_CODE_EXTRA_BODY`) or a baseline turn. |
 | `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating, shared with its Langfuse score), `impersonated`; `$ai_trace_id` when the reply row records its trace (`ChatMessage.traceId`, replies written since SECRT-2979); `$ai_feedback_text` when a thumbs-down has a comment | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
-| `$ai_trace` | backend | live | `$ai_trace_id` (the turn id), `$ai_span_name` = `copilot-turn`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `$ai_error` (the error code, when failed), `turn_id`, `outcome` (`completed`, `cancelled`, `failed`), `engine` (`sdk`, `baseline`, ...), `turn_origin` (`chat`, `scheduled`, `system`; `spawned` on a subtask's span), `tool_call_count`, `impersonated` | A reply's turn ends, if it reached its engine (`copilot/turn_tracing.py`, `copilot/ai_spans.py`). A redelivered turn sends it again under the same event uuid (dedup key = the turn id), so PostHog keeps one; likewise a subtask's span. |
+| `$ai_trace` | backend | live | `$ai_trace_id` (the turn id), `$ai_span_name` = `copilot-turn`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `$ai_error` (the error code, when failed), `turn_id`, `outcome` (`completed`, `cancelled`, `failed`), `engine` (`sdk`, `baseline`, ...), `turn_origin` (`chat`, `scheduled`, `automation` for a turn a workflow's AutoPilot block started, `system`; `spawned` on a subtask's span), `tool_call_count`, `impersonated` | A reply's turn ends, if it reached its engine (`copilot/turn_tracing.py`, `copilot/ai_spans.py`). A redelivered turn sends it again under the same event uuid (dedup key = the turn id), so PostHog keeps one; likewise a subtask's span. |
 | `$ai_span` | backend | live | `$ai_trace_id`, `$ai_span_id`, `$ai_parent_id`, `$ai_span_name`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `impersonated`. A **tool call**: `$ai_span_name` = the tool's name, `tool_call_id`, `cancelled` (platform tools) or `builtin` (the SDK CLI's own tools, sub-agents' calls included; the high-volume lookups `TodoWrite`, `Read`, `Glob`, `Grep`, `LS` and `NotebookRead` get no span, and no built-in gets one with `CHAT_POSTHOG_BUILTIN_TOOL_SPANS=false`), `$ai_is_error` true when it raised, a gate refused it or it answered with an error, but not when it stopped for an approval card or a sign-in, `$ai_error` = the exception's type name when a platform tool raised (never its message); its parent is the turn (the trace root, or the subtask's span) or the tool that called it. A built-in tool's span is parented to the turn, not to the `Task` span of the sub-agent that called it. A **subtask**: `$ai_span_name` = `copilot-subtask`, `$ai_span_id` = its turn id, parent = the spawning tool's span, which its envelope keeps, so a child that waited in the turn queue or a subtask woken by an approval stays in the trace and under the span its spawner gave it (the trace root for one queued or held before this was recorded), `depth`, plus the `$ai_trace` turn properties, with `turn_origin` = `spawned` (or `scheduled` when the subtask's own turn runs unattended) | A platform tool call ends (`BaseTool.execute`, both engines), an SDK built-in tool call ends (Pre/PostToolUse hooks), or a spawned turn ends. |
 
 What joins them:
@@ -715,6 +719,7 @@ history PostHog already holds.
 | `experiment_exposed` | browser | Nothing: `useLaunchDarklyExperiment` had no caller and was deleted. PostHog-bucketed experiments use `$feature_flag_called`. |
 | `copilot_trigger_setup` | backend | Nothing: never sent (no caller). |
 | `intro_card_dismissed`, `raise_door_clicked`, `intro_start_with_autopilot` | browser | Nothing: declared, never sent. |
+| `capability_card_viewed`, `capability_cards_completed`, `capability_cards_skipped` | browser | `first_run_tour_step_viewed`, `first_run_tour_completed` and `first_run_tour_skipped` (SECRT-3149): the four concept cards were replaced by the walkthrough over the real UI. |
 
 ## Renamed
 

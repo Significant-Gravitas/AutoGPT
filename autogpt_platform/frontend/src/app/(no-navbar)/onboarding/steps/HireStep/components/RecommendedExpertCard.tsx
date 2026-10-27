@@ -118,7 +118,7 @@ export function RecommendedExpertCard({
         <Button
           variant="primary"
           size="xs"
-          className="mt-auto self-start rounded-full"
+          className="mt-auto self-start"
           disabled={disabled}
           loading={isHiringThis}
           onClick={onHire}

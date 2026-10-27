@@ -13,7 +13,7 @@ import {
   TableHead,
   TableBody,
 } from "@/components/molecules/Table/components/TablePrimitives";
-import { Badge } from "@/components/__legacy__/ui/badge";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { ChevronDown, ChevronRight, Eye } from "lucide-react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
@@ -29,13 +29,29 @@ import { DownloadAgentAdminButton } from "./DownloadAgentButton";
 const getStatusBadge = (status: SubmissionStatus) => {
   switch (status) {
     case SubmissionStatus.PENDING:
-      return <Badge className="bg-warning">Pending</Badge>;
+      return (
+        <Badge variant="solid" className="bg-warning">
+          Pending
+        </Badge>
+      );
     case SubmissionStatus.APPROVED:
-      return <Badge className="bg-green-500">Approved</Badge>;
+      return (
+        <Badge variant="solid" className="bg-green-500">
+          Approved
+        </Badge>
+      );
     case SubmissionStatus.REJECTED:
-      return <Badge className="bg-error">Rejected</Badge>;
+      return (
+        <Badge variant="solid" className="bg-error">
+          Rejected
+        </Badge>
+      );
     default:
-      return <Badge className="bg-gray-500">Draft</Badge>;
+      return (
+        <Badge variant="solid" className="bg-gray-500">
+          Draft
+        </Badge>
+      );
   }
 };
 
@@ -148,7 +164,9 @@ export function ExpandableRow({
                           v{version.listing_version || "?"}
                           {version.listing_version_id ===
                             listing.active_listing_version_id && (
-                            <Badge className="ml-2 bg-info">Active</Badge>
+                            <Badge variant="solid" className="ml-2 bg-info">
+                              Active
+                            </Badge>
                           )}
                         </TableCell>
                         <TableCell>{getStatusBadge(version.status)}</TableCell>

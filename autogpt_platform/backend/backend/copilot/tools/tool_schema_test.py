@@ -292,15 +292,32 @@ from ._test_data import make_session
 # longer fits under it:
 #     merged tree                                 77,679 (89 tools)
 #     + headroom                       +300       77,979
+# Bumped 77_601 -> 77_720 for hire_expert's `handoff_title` and `handoff_task`
+# (SECRT-3138): a hire proposed for a task already in the chat carries it, so
+# the card's Approve hires and hands it off in one click. The rule itself
+# lives in the team-building prompt, so the schema only names the fields and
+# the rest of hire_expert's description was cut to pay for them; no tool was
+# added. Measured on this branch, which is dev f0ae7dfd4 plus this PR:
+#     dev f0ae7dfd4                               77,501 (89 tools)
+#     + handoff_title / handoff_task   +218       77,719 (89 tools)
+# Plus one.
 # Re-measured on the v2 External API root merged with dev 8df80022bc, which
 # brings the MCP tools' external schemas and the preset tools back:
 #     merged tree                                 77,510 (89 tools)
 #     + headroom                       +300       77,810
+# Both met merging dev into #16101 (SECRT-3138); re-measured on that merged
+# tree, which is under dev's ceiling, so the higher value stands:
+#     merged tree                                 77,728 (89 tools)
 # Re-measured on #11220 merged with dev b7b75494f4, where the two meet:
 #     merged tree                                 77,688 (89 tools)
 #     + headroom                       +300       77,988
+# Re-measured on #11220 merged with dev 7ca3671f6a, where dev's growth left
+# 84 of the 300 headroom:
+#     dev 7ca3671f6a                              77,726 (89 tools)
+#     + #11220's two arguments        +178        77,904 (89 tools)
+#     + headroom                      +300        78,204
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 77_988
+_CHAR_BUDGET = 78_204
 
 
 @pytest.fixture(scope="module")
@@ -513,8 +530,14 @@ def test_total_schema_char_budget() -> None:
 #     + headroom                      +300        70,151
 # Re-measured on #11220 merged with dev 6ab436bf0e, where the two meet:
 #     merged tree                                 69,962
-# The higher value still covers it. On conflict keep the higher value.
-_SESSION_WIRE_BUDGET = 70_151
+# The higher value still covers it.
+# Re-measured on #11220 merged with dev 7ca3671f6a, where dev's growth no
+# longer fits under it:
+#     dev 7ca3671f6a                              70,062
+#     + #11220's two arguments        +164        70,226
+#     + headroom                      +300        70,526
+# On conflict keep the higher value: this line must cover every in-flight PR.
+_SESSION_WIRE_BUDGET = 70_526
 
 
 def test_largest_declared_session_wire_budget() -> None:

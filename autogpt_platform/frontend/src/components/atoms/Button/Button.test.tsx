@@ -20,48 +20,6 @@ afterEach(() => {
   cleanup();
 });
 
-describe("Button in session replay", () => {
-  it.each([
-    ["primary", {}],
-    ["secondary", { variant: "secondary" }],
-    ["ghost", { variant: "ghost" }],
-    ["link", { variant: "link" }],
-    ["loading", { loading: true }],
-  ] as const)("is masked by default (%s)", (_, props) => {
-    renderButton({ ...props, children: "Account name" });
-    const el = screen.getByRole("button");
-    expect(el.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
-  });
-
-  it("is masked by default as a NextLink", () => {
-    renderButton({ as: "NextLink", href: "/save", children: "Go" });
-    const el = screen.getByRole("link", { name: "Go" });
-    expect(el.className).not.toContain("sentry-unmask");
-  });
-
-  it("opts into unmasking only when asked", () => {
-    renderButton({ unmask: true, className: "my-class", children: "Save" });
-    const el = screen.getByRole("button", { name: "Save" });
-    expect(el.className).toContain("sentry-unmask");
-    expect(el.className).toContain("my-class");
-  });
-
-  it("opts into unmasking in the loading state and as a NextLink", () => {
-    renderButton({ loading: true, unmask: true, children: "Saving" });
-    expect(screen.getByRole("button").className).toContain("sentry-unmask");
-    cleanup();
-    renderButton({
-      as: "NextLink",
-      href: "/save",
-      unmask: true,
-      children: "Go",
-    });
-    expect(screen.getByRole("link", { name: "Go" }).className).toContain(
-      "sentry-unmask",
-    );
-  });
-});
-
 describe("Button compact sizes", () => {
   it("renders xs as a 28px rounded-rectangle chip", () => {
     renderButton({ variant: "secondary", size: "xs", children: "Chat" });
@@ -214,5 +172,51 @@ describe("Button slots", () => {
     const el = screen.getByRole("button", { name: "Edit" });
     expect(el.getAttribute("data-slot")).toBe("button");
     expect(el.querySelector("[data-slot=button-icon]")).not.toBeNull();
+  });
+});
+
+describe("Button textSize", () => {
+  it("keeps the size's text-body by default", () => {
+    renderButton({ size: "small", children: "Save" });
+    const el = screen.getByRole("button", { name: "Save" });
+    expect(el.className).toContain("text-body");
+    expect(el.className).not.toContain("text-body-md");
+  });
+
+  it.each([
+    ["small", "button"],
+    ["large", "button"],
+    ["small", "loading"],
+    ["large", "loading"],
+    ["small", "NextLink"],
+    ["large", "NextLink"],
+  ] as const)(
+    "replaces the %s size's text-body and leading with text-body-md (%s)",
+    (size, kind) => {
+      renderButton({
+        size,
+        textSize: "body-md",
+        children: "Save",
+        ...(kind === "loading" ? { loading: true } : {}),
+        ...(kind === "NextLink" ? { as: "NextLink", href: "/x" } : {}),
+      } as Partial<ButtonProps>);
+      const el =
+        kind === "NextLink"
+          ? screen.getByRole("link", { name: "Save" })
+          : screen.getByRole("button", { name: "Save" });
+      const classes = el.className.split(" ");
+      expect(classes).toContain("text-body-md");
+      for (const stale of ["text-body", "leading-5", "leading-snug"])
+        expect(classes).not.toContain(stale);
+    },
+  );
+
+  it("replaces text-body with text-body-md on the link variant", () => {
+    renderButton({ variant: "link", textSize: "body-md", children: "Save" });
+    const classes = screen
+      .getByRole("button", { name: "Save" })
+      .className.split(" ");
+    expect(classes).toContain("text-body-md");
+    expect(classes).not.toContain("text-body");
   });
 });
