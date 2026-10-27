@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.gate import chat_rules
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.headline import Headline
@@ -21,6 +22,7 @@ from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadat
 from backend.copilot.tools.models import MCPToolOutputResponse
 from backend.copilot.tools.run_capability import RunCapabilityTool
 
+usage_snapshot = usage_activation_fixtures.usage_snapshot
 _GATE = "backend.copilot.gate"
 _CAP = "backend.copilot.tools.run_capability"
 _GITHUB = "mcp:api.githubcopilot.com"
@@ -55,6 +57,9 @@ class _Redis:
 
     async def get(self, key: str) -> str | None:
         return self.data.get(key)
+
+    async def mget_nonatomic(self, keys: list[str]) -> list[str | None]:
+        return [self.data.get(key) for key in keys]
 
 
 @pytest.fixture

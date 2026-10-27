@@ -5,7 +5,7 @@ Airtable OAuth handler implementation.
 import time
 from enum import Enum
 from logging import getLogger
-from typing import Optional
+from typing import ClassVar, Optional
 
 from backend.sdk import (
     BaseOAuthHandler,
@@ -64,6 +64,7 @@ class AirtableOAuthHandler(BaseOAuthHandler):
     """
 
     PROVIDER_NAME = ProviderName("airtable")
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = True
     DEFAULT_SCOPES = [
         v.value
         for v in [

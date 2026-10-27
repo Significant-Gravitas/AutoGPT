@@ -12,9 +12,16 @@ export function TimezoneNotice() {
 
   if (userTimezone === "not-set") {
     return (
-      <div className="mt-1 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
-        <Icon icon={InformationCircleIcon} className="h-4 w-4 text-amber-600" />
-        <p className="text-sm text-amber-800">
+      <div className="mt-1 flex items-center gap-2 rounded-md border border-warning-border bg-warning-surface p-3">
+        <Icon
+          // TODO(tokens): no exact role for text-amber-600 (#D97706)
+          icon={InformationCircleIcon}
+          className="h-4 w-4 text-amber-600"
+        />
+        <p
+          // TODO(tokens): no exact role for text-amber-800 (#92400E)
+          className="text-sm text-amber-800"
+        >
           No timezone set. Schedule will run in UTC.
           <a href="/settings/account" className="ml-1 underline">
             Set your timezone

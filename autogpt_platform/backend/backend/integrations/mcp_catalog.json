@@ -654,6 +654,22 @@
     }
   },
   {
+    "name": "mcp_hubspot",
+    "display_name": "HubSpot",
+    "description": "Search and manage CRM records, activities, and marketing content.",
+    "mcp_server": {
+      "server_url": "https://mcp.hubspot.com",
+      "documentation_url": "https://developers.hubspot.com/docs/apps/developer-platform/build-apps/integrate-with-the-remote-hubspot-mcp-server",
+      "setup_instructions": "Sign in to HubSpot and choose the account to connect. Available tools and data depend on your HubSpot permissions and subscription.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "hubspot",
+      "provider": "hubspot"
+    }
+  },
+  {
     "name": "mcp_infobip",
     "display_name": "Infobip",
     "description": "Connect to product-specific messaging, customer-profile, or account tools.",

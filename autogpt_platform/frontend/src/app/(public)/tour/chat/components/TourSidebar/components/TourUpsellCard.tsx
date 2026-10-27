@@ -46,7 +46,7 @@ export function TourUpsellCard({ surface }: Props) {
           Your AI team starts here
         </Text>
         <Text variant="body" tone="secondary">
-          Build agents and put AI experts to work on your everyday tasks.
+          Build workflows and put AI experts to work on your everyday tasks.
         </Text>
       </div>
       <div className="flex flex-col gap-1">

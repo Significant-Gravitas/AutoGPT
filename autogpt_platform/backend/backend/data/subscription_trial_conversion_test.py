@@ -491,18 +491,9 @@ async def test_ended_plans_do_not_block_the_conversion(pending_trial, live, boun
     boundaries.sync.assert_awaited_once_with(dict(boundaries.converted))
 
 
-@pytest.fixture
-def subscription_lookup():
-    """The short-lived active-subscription lookup the status route reads."""
-    lookup = credit._get_active_subscription_cached
-    lookup.cache_delete("cus_1")
-    yield lookup
-    lookup.cache_delete("cus_1")
-
-
 @pytest.mark.asyncio
 async def test_conversion_refreshes_the_cached_subscription_lookup(
-    pending_trial, live, boundaries, subscription_lookup
+    pending_trial, live, boundaries
 ):
     """The status returned right after shows the paid period, not the trial's."""
     trialing = stripe.Subscription.construct_from(live, "test-key")
@@ -511,9 +502,35 @@ async def test_conversion_refreshes_the_cached_subscription_lookup(
         "_get_active_subscription",
         AsyncMock(side_effect=[trialing, boundaries.converted]),
     ):
-        assert await subscription_lookup("cus_1") is trialing
+        before = await credit._get_active_subscription_cached("cus_1")
+        assert before is not None and before.status == "trialing"
         await conversion.convert_cancel_pending_trial(pending_trial, PRO)
-        assert await subscription_lookup("cus_1") is boundaries.converted
+        after = await credit._get_active_subscription_cached("cus_1")
+        assert after is not None and after.status == "active"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sync_fails", [False, True])
+async def test_the_paid_plan_is_saved_before_the_lookup_is_dropped(
+    pending_trial, boundaries, sync_fails
+):
+    """The charge has gone through: saving the plan comes first, and dropping
+    the cached lookup follows even when the save fails."""
+
+    async def failing_sync(*args, **kwargs):
+        boundaries.calls.append("sync")
+        raise RuntimeError("database down")
+
+    if sync_fails:
+        boundaries.sync.side_effect = failing_sync
+
+    async def invalidate(customer_id: str) -> None:
+        boundaries.calls.append(f"invalidate:{customer_id}")
+
+    with patch.object(conversion, "invalidate_billing_lookups", invalidate):
+        assert await conversion.convert_cancel_pending_trial(pending_trial, PRO) is None
+
+    assert boundaries.calls[-4:] == ["modify", "sync", "invalidate:cus_1", "unlock"]
 
 
 @pytest.mark.asyncio

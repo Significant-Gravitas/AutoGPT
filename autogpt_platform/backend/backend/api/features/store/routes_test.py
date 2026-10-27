@@ -1,5 +1,6 @@
 import datetime
 import json
+import uuid
 
 import fastapi
 import fastapi.testclient
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.store.db import StoreAgentsSortOptions
+from backend.data.graph import GraphModelWithoutNodes
 
 from . import model as store_model
 from . import routes as store_routes
@@ -95,6 +97,7 @@ def test_get_agents_defaults(
         category=None,
         page=1,
         page_size=20,
+        public_search=True,
     )
 
 
@@ -141,6 +144,7 @@ def test_get_agents_featured(
         category=None,
         page=1,
         page_size=20,
+        public_search=True,
     )
 
 
@@ -187,6 +191,7 @@ def test_get_agents_by_creator(
         category=None,
         page=1,
         page_size=20,
+        public_search=True,
     )
 
 
@@ -233,6 +238,7 @@ def test_get_agents_sorted(
         category=None,
         page=1,
         page_size=20,
+        public_search=True,
     )
 
 
@@ -279,6 +285,7 @@ def test_get_agents_search(
         category=None,
         page=1,
         page_size=20,
+        public_search=True,
     )
 
 
@@ -324,6 +331,7 @@ def test_get_agents_category(
         category="test-category",
         page=1,
         page_size=20,
+        public_search=True,
     )
 
 
@@ -372,6 +380,7 @@ def test_get_agents_pagination(
         category=None,
         page=2,
         page_size=5,
+        public_search=True,
     )
 
 
@@ -391,6 +400,124 @@ def test_get_agents_malformed_request(mocker: pytest_mock.MockFixture):
     # Verify no DB calls were made
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_agents")
     mock_db_call.assert_not_called()
+
+
+@pytest.fixture
+def one_search_a_minute(monkeypatch):
+    from backend.api.features.search import rate_limit
+
+    class _Frozen(datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.datetime(2026, 1, 1, 12, 0, 30, tzinfo=datetime.UTC)
+
+    monkeypatch.setattr(
+        rate_limit.settings.config, "public_search_requests_per_minute", 1
+    )
+    monkeypatch.setattr(rate_limit, "datetime", _Frozen)
+    # A cold Redis connection can outlast the deadline, and the limit then fails open.
+    monkeypatch.setattr(rate_limit, "PUBLIC_SEARCH_REDIS_TIMEOUT_SECONDS", 10)
+
+
+@pytest.mark.parametrize(
+    "path", ["/search?query=sheets", "/agents?search_query=sheets"]
+)
+def test_a_caller_without_the_frontends_token_is_held_to_the_search_limit(
+    mocker: pytest_mock.MockFixture, one_search_a_minute, path: str
+) -> None:
+    _mock_search_backends(mocker)
+    caller = _a_new_caller()
+
+    first = caller.get(path, headers=_claimed_address("192.0.2.1"))
+    blocked = caller.get(path, headers=_claimed_address("192.0.2.2"))
+
+    assert first.status_code == 200
+    assert blocked.status_code == 429
+    assert blocked.headers["Retry-After"] == "30"
+
+
+@pytest.mark.parametrize(
+    "path", ["/search?query=sheets", "/agents?search_query=sheets"]
+)
+def test_signed_in_searches_count_per_account_and_signed_out_ones_per_address(
+    mocker: pytest_mock.MockFixture, one_search_a_minute, monkeypatch, path: str
+) -> None:
+    from backend.api.features.search import rate_limit
+
+    _mock_search_backends(mocker)
+    monkeypatch.setattr(
+        rate_limit.settings.config, "public_search_user_requests_per_minute", 2
+    )
+    app.dependency_overrides[get_optional_user_id] = _user_from_test_header
+    office = _a_new_caller()
+    alice, bob = _signed_in(), _signed_in()
+
+    alice_statuses = [office.get(path, headers=alice).status_code for _ in range(3)]
+    bob_statuses = [office.get(path, headers=bob).status_code for _ in range(2)]
+    signed_out_statuses = [office.get(path).status_code for _ in range(2)]
+
+    assert alice_statuses == [200, 200, 429]
+    assert bob_statuses == [200, 200]
+    assert signed_out_statuses == [200, 429]
+
+
+def test_listing_agents_without_a_search_is_not_limited(
+    mocker: pytest_mock.MockFixture, one_search_a_minute
+) -> None:
+    _mock_search_backends(mocker)
+    caller = _a_new_caller()
+
+    statuses = [caller.get("/agents").status_code for _ in range(3)]
+
+    assert statuses == [200, 200, 200]
+
+
+def test_store_search_counts_against_the_public_embedding_budget(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    engine = _mock_search_backends(mocker)
+
+    response = _a_new_caller().get("/search?query=sheets")
+
+    assert response.status_code == 200
+    assert engine.await_args.kwargs["public_search"] is True
+
+
+def _a_new_caller() -> fastapi.testclient.TestClient:
+    """A client with a socket address of its own, so no test shares its window."""
+    return fastapi.testclient.TestClient(app, client=(f"caller-{uuid.uuid4().hex}", 1))
+
+
+def _signed_in() -> dict[str, str]:
+    return {"X-Test-User": f"user-{uuid.uuid4().hex}"}
+
+
+def _user_from_test_header(
+    x_test_user: str | None = fastapi.Header(default=None),
+) -> str | None:
+    return x_test_user
+
+
+def _claimed_address(ip: str) -> dict[str, str]:
+    return {"CF-Connecting-IP": ip, "X-Forwarded-For": ip, "X-Real-IP": ip}
+
+
+def _mock_search_backends(mocker: pytest_mock.MockFixture):
+    mocker.patch(
+        "backend.api.features.store.db.get_store_agents",
+        return_value=store_model.StoreAgentsResponse(
+            agents=[],
+            pagination=store_model.Pagination(
+                current_page=1, total_items=0, total_pages=0, page_size=20
+            ),
+        ),
+    )
+    return mocker.patch.object(
+        store_routes.search_engine,
+        "unified_hybrid_search",
+        new_callable=mocker.AsyncMock,
+        return_value=([], 0),
+    )
 
 
 def test_get_agent_details(
@@ -508,6 +635,8 @@ def test_get_creators_pagination(
 
 
 def test_get_creators_malformed_request(mocker: pytest_mock.MockFixture):
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_creators")
+
     # Test with invalid page number
     response = client.get("/creators?page=-1")
     assert response.status_code == 422
@@ -515,13 +644,13 @@ def test_get_creators_malformed_request(mocker: pytest_mock.MockFixture):
     # Test with invalid page size
     response = client.get("/creators?page_size=0")
     assert response.status_code == 422
+    response = client.get("/creators?page_size=101")
+    assert response.status_code == 422
 
     # Test with non-numeric values
     response = client.get("/creators?page=abc&page_size=def")
     assert response.status_code == 422
 
-    # Verify no DB calls were made
-    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_creators")
     mock_db_call.assert_not_called()
 
 
@@ -858,6 +987,39 @@ def test_get_submissions_malformed_request(mocker: pytest_mock.MockFixture):
 class _DownloadedGraph(BaseModel):
     id: str
     version: int
+
+
+def test_listing_graph_outline_names_no_publisher_account(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Any signed-in user can read a listing's outline, so it carries no ids
+    of the account or organization that published the workflow."""
+    mocker.patch(
+        "backend.api.features.store.db.get_available_graph",
+        mocker.AsyncMock(
+            return_value=GraphModelWithoutNodes(
+                id="graph-1",
+                version=1,
+                name="Listed",
+                description="",
+                user_id="publisher",
+                organization_id="publisher-org",
+                team_id="publisher-team",
+                created_at=FIXED_NOW,
+            )
+        ),
+    )
+
+    response = client.get("/listings/versions/slv-1/graph")
+
+    assert response.status_code == 200
+    outline = response.json()
+    assert outline["id"] == "graph-1"
+    assert (outline["user_id"], outline["organization_id"], outline["team_id"]) == (
+        "",
+        None,
+        None,
+    )
 
 
 def test_download_agent_file_sends_listing_downloaded(

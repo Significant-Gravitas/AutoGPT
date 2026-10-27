@@ -1,6 +1,6 @@
 # Changelog
 
-What's new in AutoPilot and the AutoGPT Platform. We ship updates regularly and document everything here.
+What's new in Otto, your Experts and the AutoGPT Platform. We ship updates regularly and document everything here.
 
 Release windows reflect how changes were grouped for publication and may overlap when work spans consecutive releases.
 
@@ -8,6 +8,12 @@ Release windows reflect how changes were grouped for publication and may overlap
 
 | Date | Highlights |
 | ---- | ---------- |
+| [October 8 – October 14](october-8-october-14-2026.md) | Redesigned wallet, trial cancel keeps access, verified email at signup, Chats in the collapsed sidebar, shorter replies |
+| [September 24 – September 30](september-24-september-30-2026.md) | A bigger roster, Clay & Rock avatars, nested folders, multi-select answers, free trial on the paywall |
+| [September 19](september-19-2026.md) | Meet your Experts: hire or raise an Expert, Expert pages, routines, Skills marketplace, Otto's desktop |
+| [August 21 – September 4](august-21-september-4-2026.md) | Chat shows its work, clickable answers, redesigned emails, memory settings |
+| [July 29 – August 13](july-29-august-13-2026.md) | Paste screenshots into chat, voice onboarding, Claude Sonnet 5, single-container self-hosting |
+| [July 15 – July 22](july-15-july-22-2026.md) | New sidebar, composer plus menu, Telegram, workflow-building mode |
 | [June 18 – July 9](june-18-july-9-2026.md) | File folders, shareable chats, Discord bot |
 | [May 7 – June 10](may-7-june-10-2026.md) | AutoPilot upgrades, redesigned login, live subscriptions, rebuilt settings |
 | [April 10 – May 1](april-10-may-1-2026.md) | Artifacts panel, agent briefings, AI chat in builder |

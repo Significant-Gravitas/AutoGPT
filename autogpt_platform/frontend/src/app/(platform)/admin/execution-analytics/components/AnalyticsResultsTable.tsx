@@ -1,5 +1,12 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-50 #F9FAFB, border-gray-200 #E5E7EB, divide-gray-200 #E5E7EB,
+// text-gray-500 #6B7280, text-gray-600 #4B5563, text-gray-700 #374151,
+// text-orange-600 #E77B00, text-red-600 #D93636, text-yellow-600 #DFAF00.
+// Same value as a role with another meaning, so not swapped:
+// text-red-600 = error-hover (a hover fill).
+
 import React, { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -118,7 +125,7 @@ export function AnalyticsResultsTable({ results }: Props) {
     const percentage = Math.round(score * 100);
     let colorClass = "";
 
-    if (score >= 0.8) colorClass = "text-green-600";
+    if (score >= 0.8) colorClass = "text-success";
     else if (score >= 0.6) colorClass = "text-yellow-600";
     else if (score >= 0.4) colorClass = "text-orange-600";
     else colorClass = "text-red-600";
@@ -154,7 +161,7 @@ export function AnalyticsResultsTable({ results }: Props) {
             <Text variant="body" className="text-gray-600">
               Successful:
             </Text>
-            <Text variant="h4" className="font-semibold text-green-600">
+            <Text variant="h4" className="font-semibold text-success">
               {results.successful_analytics}
             </Text>
           </div>
@@ -333,7 +340,7 @@ export function AnalyticsResultsTable({ results }: Props) {
                               <div>
                                 <Text
                                   variant="body"
-                                  className="mb-1 font-medium text-red-700"
+                                  className="mb-1 font-medium text-error-foreground"
                                 >
                                   Error:
                                 </Text>

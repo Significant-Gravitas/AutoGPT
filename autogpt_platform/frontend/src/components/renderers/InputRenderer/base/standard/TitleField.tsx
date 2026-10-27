@@ -45,13 +45,13 @@ export default function TitleField(props: TitleFieldProps) {
         id={getFieldDomId(id, registry.formContext)}
         className={cn(
           "line-clamp-1",
-          smallText && "text-sm text-zinc-700",
-          isInputBroken && "text-red-500 line-through",
+          smallText && "text-sm text-foreground-body",
+          isInputBroken && "text-error line-through",
         )}
       >
         {title}
       </Text>
-      <Text variant="small" className={"mr-1 text-red-500"}>
+      <Text variant="small" className={"mr-1 text-error"}>
         {required ? "*" : null}
       </Text>
       {!isAnyOf && (

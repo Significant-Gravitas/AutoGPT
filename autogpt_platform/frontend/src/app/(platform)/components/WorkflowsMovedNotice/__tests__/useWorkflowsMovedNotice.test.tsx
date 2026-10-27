@@ -26,12 +26,6 @@ const context = vi.hoisted(() => ({
   } | null,
   pathname: "/copilot",
   search: "",
-  ready: true,
-  flagReadiness: {} as Record<string, boolean>,
-  flags: { "hire-experts": true, "autogpt-new-layout": true } as Record<
-    string,
-    boolean
-  >,
 }));
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ user: context.user }),
@@ -39,17 +33,6 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 vi.mock("next/navigation", () => ({
   usePathname: () => context.pathname,
   useSearchParams: () => new URLSearchParams(context.search),
-}));
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    HIRE_EXPERTS: "hire-experts",
-    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
-    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
-  },
-  useFlagStatus: (flag: string) => ({
-    enabled: context.flags[flag],
-    ready: context.flagReadiness[flag] ?? context.ready,
-  }),
 }));
 
 import { useWorkflowsMovedNotice } from "../useWorkflowsMovedNotice";
@@ -100,9 +83,7 @@ beforeEach(() => {
   context.user = { id: "user-1", created_at: "2026-09-01T00:00:00Z" };
   context.pathname = "/copilot";
   context.search = "";
-  context.ready = true;
-  context.flagReadiness = {};
-  context.flags = { "hire-experts": true, "autogpt-new-layout": true };
+
   mockOnboarding();
 });
 
@@ -153,10 +134,9 @@ describe("migration notice eligibility", () => {
   });
 
   it.each(["A", "B"] as const)(
-    "gives pending welcome path %s priority even when its flag resolves late",
+    "gives pending welcome path %s priority over migration",
     async (path) => {
       setIntroPath(path);
-      context.flagReadiness["onboarding-brain-dump"] = false;
       const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false } },
       });
@@ -182,11 +162,9 @@ describe("migration notice eligibility", () => {
         );
       });
       expect(result.current.migration.isOpen).toBe(false);
-      expect(result.current.welcome.isWelcomeOpen).toBe(false);
-      expect(peekIntroPath()).toBe(path);
+      expect(result.current.welcome.isWelcomeOpen).toBe(true);
+      expect(peekIntroPath()).toBeNull();
 
-      context.flags["onboarding-brain-dump"] = true;
-      context.flagReadiness["onboarding-brain-dump"] = true;
       rerender();
       await waitFor(() =>
         expect(result.current.welcome.isWelcomeOpen).toBe(true),
@@ -285,19 +263,6 @@ describe("migration notice eligibility", () => {
     const { result } = renderGate();
     expect(result.current.isOpen).toBe(false);
     await waitFor(() => expect(result.current.isOpen).toBe(true));
-  });
-
-  it.each(["hire-experts", "autogpt-new-layout"])(
-    "stays closed with %s disabled",
-    (flag) => {
-      context.flags[flag] = false;
-      expectDeferred();
-    },
-  );
-
-  it("waits for feature flag readiness", () => {
-    context.ready = false;
-    expectDeferred();
   });
 
   it("waits for auth", () => {

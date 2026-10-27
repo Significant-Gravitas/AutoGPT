@@ -12,7 +12,7 @@ from prisma.enums import SubscriptionTier
 from pydantic import BaseModel
 
 from backend.data.credit import (
-    invalidate_active_subscription_cache,
+    invalidate_billing_lookups,
     sync_subscription_from_stripe,
 )
 from backend.data.stripe_authentication import requires_authentication
@@ -189,18 +189,22 @@ async def _confirm_with_bank(
 
 
 async def _save_conversion(trial: TrialState, converted: stripe.Subscription) -> None:
-    invalidate_active_subscription_cache(trial.customer_id)
-    if converted.get("status") != "active":
-        await sync_subscription_from_stripe(dict(converted))
-        raise TrialConversionRefused(TRIAL_ENDED)
+    # The tier is saved first; dropping the billing page's cached lookup is
+    # bounded, never raises, and comes after so it can't delay the plan.
     try:
-        await sync_subscription_from_stripe(dict(converted))
-    except Exception:
-        # The card is charged and the plan is live in Stripe; its webhooks
-        # save it. Failing now would tell a paying customer it failed.
-        logger.exception(
-            f"Trial {trial.id} converted in Stripe but the follow-up sync failed"
-        )
+        if converted.get("status") != "active":
+            await sync_subscription_from_stripe(dict(converted))
+            raise TrialConversionRefused(TRIAL_ENDED)
+        try:
+            await sync_subscription_from_stripe(dict(converted))
+        except Exception:
+            # The card is charged and the plan is live in Stripe; its webhooks
+            # save it. Failing now would tell a paying customer it failed.
+            logger.exception(
+                f"Trial {trial.id} converted in Stripe but the follow-up sync failed"
+            )
+    finally:
+        await invalidate_billing_lookups(trial.customer_id)
 
 
 def _is_cancel_pending(trial: TrialState) -> bool:

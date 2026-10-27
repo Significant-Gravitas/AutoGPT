@@ -44,8 +44,11 @@ from backend.copilot.response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
 )
+from backend.copilot.turn_pause import TurnPause
 
+from .governor import TurnGovernor
 from .tool_adapter import MCP_TOOL_PREFIX, pop_pending_tool_output
 from .tool_display import strip_display_token
 
@@ -95,6 +98,10 @@ class SDKResponseAdapter:
         # so the empty-completion guard doesn't false-fire on a benign empty
         # trailing ResultMessage when the prior attempt already streamed content.
         self.prior_attempt_emitted_visible_content = False
+        # Set by the service on every adapter it builds. When the turn ends
+        # landed -- tools refused at a budget or step limit, or a CLI backstop
+        # firing -- the adapter closes it as a pause rather than an error.
+        self.governor: TurnGovernor | None = None
         # Maps tool_use_id → {"name": <tool name>, "input": <call args>}.
         # ``input`` is carried so the response adapter can pop the matching
         # stashed output via ``_output_key`` when several same-name tools run
@@ -489,8 +496,11 @@ class SDKResponseAdapter:
             #    a marker so the chat history just stops mid-task).
             if self._should_surface_empty_completion(sdk_message, had_orphan_tool_use):
                 self._finish_step(responses)
+                landed = self._landed(sdk_message.subtype, wrote_checkpoint=False)
                 responses.append(
-                    StreamError(
+                    StreamTurnPaused(pause=landed.as_part())
+                    if landed is not None
+                    else StreamError(
                         errorText="The model returned an empty response.",
                         code="empty_completion",
                     )
@@ -520,6 +530,11 @@ class SDKResponseAdapter:
             # prompt rule (``_USER_FOLLOW_UP_NOTE``'s closing clause)
             # asks the model to always end with text, but we can't rely
             # on it for extended_thinking / edge cases.
+            #
+            # Only text the model wrote counts as a landing turn's checkpoint:
+            # a closing line filled in here is not one, even promoted from
+            # its thinking, so it is read before the fallback below.
+            wrote_checkpoint = self._text_since_last_tool_result
             if (
                 self._any_tool_results_seen
                 and not self._text_since_last_tool_result
@@ -565,11 +580,18 @@ class SDKResponseAdapter:
                         delta=fallback_text,
                     )
                 )
+                self._text_since_last_tool_result = True
             self.end_open_blocks(responses)
             # Close the step before finishing.
             self._finish_step(responses)
 
-            if sdk_message.subtype == "success":
+            landed = self._landed(
+                sdk_message.subtype, wrote_checkpoint=wrote_checkpoint
+            )
+            if landed is not None:
+                responses.append(StreamTurnPaused(pause=landed.as_part()))
+                responses.append(StreamFinish())
+            elif sdk_message.subtype == "success":
                 responses.append(StreamFinish())
             elif sdk_message.subtype in (
                 "error",
@@ -621,6 +643,14 @@ class SDKResponseAdapter:
             logger.debug(f"Unhandled SDK message type: {type(sdk_message).__name__}")
 
         return responses
+
+    def _landed(
+        self, result_subtype: str, *, wrote_checkpoint: bool
+    ) -> TurnPause | None:
+        """The pause this turn ended in, or None when it didn't land."""
+        if self.governor is None:
+            return None
+        return self.governor.pause(result_subtype, wrote_checkpoint=wrote_checkpoint)
 
     def _should_surface_empty_completion(
         self,

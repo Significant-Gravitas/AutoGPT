@@ -13,6 +13,7 @@ import {
   setTrialUser,
   trialResponse,
 } from "@/tests/integrations/trial-fixtures";
+import { TrialStatusSync } from "@/services/trials/TrialStatusSync";
 import { WalletCopilotUsage } from "../components/WalletCopilotUsage";
 
 const future = new Date("2030-09-17T15:00:00Z");
@@ -145,7 +146,7 @@ describe("WalletCopilotUsage", () => {
     expect(screen.queryByText("100% used")).toBeNull();
   });
 
-  it("refreshes trial allowance while the wallet stays open", async () => {
+  it("reads allowance refreshed by the shared platform observer while the wallet stays open", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     setTrialUser();
     mockUsage(0, 0, "TRIAL");
@@ -155,7 +156,12 @@ describe("WalletCopilotUsage", () => {
         trialResponse({ allowance_used_percent: allowanceUsed }),
       ),
     );
-    render(<WalletCopilotUsage />);
+    render(
+      <>
+        <TrialStatusSync />
+        <WalletCopilotUsage />
+      </>,
+    );
     expect(await screen.findByText("12% used")).toBeDefined();
 
     allowanceUsed = 54;

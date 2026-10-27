@@ -8,6 +8,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { AgentActionsDropdown } from "../../../AgentActionsDropdown";
 import { SelectedActionsWrap } from "../../../SelectedActionsWrap";
+import { EditScheduleModal } from "../EditScheduleModal/EditScheduleModal";
 import { useSelectedScheduleActions } from "./useSelectedScheduleActions";
 import { Delete02Icon, EyeIcon, PlayIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -56,7 +57,7 @@ export function SelectedScheduleActions({
           {isRunning ? (
             <LoadingSpinner size="small" />
           ) : (
-            <Icon icon={PlayIcon} size={18} className="text-zinc-700" />
+            <Icon icon={PlayIcon} size={18} className="text-foreground-body" />
           )}
         </Button>
         {openInBuilderHref && (
@@ -68,8 +69,15 @@ export function SelectedScheduleActions({
             target="_blank"
             aria-label="View scheduled task details"
           >
-            <Icon icon={EyeIcon} size={18} className="text-zinc-700" />
+            <Icon icon={EyeIcon} size={18} className="text-foreground-body" />
           </Button>
+        )}
+        {schedule && (
+          <EditScheduleModal
+            graphId={agent.graph_id}
+            schedule={schedule}
+            iconOnly
+          />
         )}
         <Button
           variant="icon"

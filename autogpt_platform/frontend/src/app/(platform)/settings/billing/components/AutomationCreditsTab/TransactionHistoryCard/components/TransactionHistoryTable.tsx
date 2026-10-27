@@ -36,7 +36,7 @@ export function TransactionHistoryTable({
       });
   }
   return (
-    <div className="overflow-hidden rounded-large border border-zinc-200 bg-white shadow-subtle">
+    <div className="overflow-hidden rounded-large border border-border-base bg-surface shadow-subtle">
       <table
         className="w-full table-fixed border-collapse text-left"
         aria-label="Automation credit transactions"
@@ -47,10 +47,14 @@ export function TransactionHistoryTable({
           <col className="w-24" />
           <col className="w-12 sm:w-24" />
         </colgroup>
-        <thead className="border-b border-zinc-200 bg-zinc-50">
+        <thead className="border-b border-border-base bg-surface-muted">
           <tr>
             <th scope="col" className="py-3 pl-3 pr-2 sm:pl-5">
-              <Text variant="small-medium" as="span" className="text-zinc-600">
+              <Text
+                variant="small-medium"
+                as="span"
+                className="text-foreground-secondary"
+              >
                 Activity
               </Text>
             </th>
@@ -58,13 +62,17 @@ export function TransactionHistoryTable({
               <Text
                 variant="small-medium"
                 as="span"
-                className="sr-only text-zinc-600 sm:not-sr-only"
+                className="sr-only text-foreground-secondary sm:not-sr-only"
               >
                 Last activity
               </Text>
             </th>
             <th scope="col" className="px-2 py-3 text-right">
-              <Text variant="small-medium" as="span" className="text-zinc-600">
+              <Text
+                variant="small-medium"
+                as="span"
+                className="text-foreground-secondary"
+              >
                 Amount
               </Text>
             </th>
@@ -87,7 +95,7 @@ export function TransactionHistoryTable({
         </tbody>
       </table>
       <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-5">
-        <Text variant="small" className="text-zinc-600">
+        <Text variant="small" className="text-foreground-secondary">
           Latest charges and credits first
         </Text>
         {hasMore ? (
@@ -106,13 +114,17 @@ export function TransactionHistoryTable({
             variant="small"
             id={endID}
             tabIndex={-1}
-            className="text-zinc-600 focus:outline-none"
+            className="text-foreground-secondary focus:outline-none"
           >
             End of history
           </Text>
         )}
         {isLoadMoreError && (
-          <Text variant="small" role="alert" className="w-full text-zinc-600">
+          <Text
+            variant="small"
+            role="alert"
+            className="w-full text-foreground-secondary"
+          >
             We couldn’t load older transactions. Your loaded history is still
             available.
           </Text>

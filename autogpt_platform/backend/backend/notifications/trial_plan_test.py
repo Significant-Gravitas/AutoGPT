@@ -65,8 +65,8 @@ def test_a_conversion_onto_the_chosen_plan_is_announced_as_that_plan(converted):
     data = notices.trial_notice_data(converted, "converted", "Sam", _switched())
 
     assert data.plan.name == "Max"
-    assert data.plan.label == "Max — monthly"
-    assert data.plan.price_display == "$320.00 USD / month"
+    assert data.plan.label == "Max · monthly"
+    assert data.plan.price_display == "$320.00 / month"
 
 
 def test_a_yearly_choice_is_announced_as_yearly(converted):
@@ -75,18 +75,73 @@ def test_a_yearly_choice_is_announced_as_yearly(converted):
     assert (plan.tier, plan.cycle) == ("MAX", "yearly")
 
 
+@pytest.mark.parametrize("interval,noun", [("month", "month"), ("year", "year")])
+@pytest.mark.parametrize(
+    "currency,unit_amount,amount",
+    [
+        ("cad", None, "Not available"),
+        ("usd", None, "Not available"),
+        ("cad", 0, "0.00 CAD"),
+    ],
+)
+def test_conversion_formats_missing_and_zero_amounts(
+    converted, interval, noun, currency, unit_amount, amount
+):
+    current = _switched(interval)
+    current["items"]["data"][0]["price"].update(
+        currency=currency, unit_amount=unit_amount
+    )
+    data = notices.trial_notice_data(converted, "converted", "Sam", current)
+
+    assert data.plan.price_display == f"{amount} / {noun}"
+
+
 @pytest.mark.parametrize("kind", ["started", "canceled", "ended", "payment_failed"])
 def test_other_notices_keep_the_accepted_terms(converted, kind):
     data = notices.trial_notice_data(converted, kind, "Sam", _switched())
 
     assert data.plan.name == "Pro"
-    assert data.plan.price_display == "$50.00 USD / month"
+    assert data.plan.price_display == "$50.00 / month"
 
 
 def test_a_conversion_on_the_accepted_price_keeps_its_terms(converted, subscription):
     data = notices.trial_notice_data(converted, "converted", "Sam", subscription)
 
     assert data.plan.name == "Pro"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "label,price,expected",
+    [
+        ("Max · monthly", "$320.00 / month", "current"),
+        ("Max — monthly", "$320.00 / month", "current"),
+        ("Max · monthly", "$320.00 USD / month", "current"),
+        ("Max — monthly", "$320.00 USD / month", "current"),
+        ("Max — monthly", "$50.00 USD / month", "obsolete"),
+        ("Max — monthly", "$100.00 USD / month", "obsolete"),
+    ],
+)
+async def test_conversion_freshness_matches_only_the_current_plan(
+    converted, label, price, expected
+):
+    current = _switched()
+    data = notices.trial_notice_data(converted, "converted", "Sam", current)
+    data.notice_key = notices.trial_notice_key(converted, "converted")
+    data.plan = data.plan.model_copy(update={"label": label, "price_display": price})
+    original = data.model_copy(deep=True)
+    database = MagicMock(
+        get_subscription_trial=AsyncMock(return_value=converted),
+        sync_subscription_from_stripe=AsyncMock(),
+    )
+    with (
+        patch.object(notices, "credit_db", return_value=database),
+        patch.object(notices, "stripe_call", AsyncMock(return_value=current)),
+    ):
+        assert (
+            await notices.trial_notice_disposition(converted.user_id, data) == expected
+        )
+    assert data == original
 
 
 @pytest.mark.asyncio
@@ -106,7 +161,9 @@ async def test_the_conversion_event_reports_the_chosen_plan(converted):
             "user_db",
             return_value=MagicMock(
                 get_user_by_id=AsyncMock(
-                    return_value=SimpleNamespace(id="user-1", name="Sam")
+                    return_value=SimpleNamespace(
+                        id="user-1", name="Sam", email="sam.carter@example.com"
+                    )
                 )
             ),
         ),
@@ -126,3 +183,18 @@ async def test_the_conversion_event_reports_the_chosen_plan(converted):
     properties = track.call_args.args[2]
     assert properties["subscription_tier"] == "MAX"
     assert properties["billing_cycle"] == "monthly"
+
+
+def test_converted_plan_start_is_the_payment_date_not_the_trial_end(converted):
+    current = _switched()
+    data = notices.trial_notice_data(converted, "converted", "Sam", current)
+    assert data.started_label == converted.converted_at.astimezone(UTC).strftime(
+        "%d %b %Y at %H:%M UTC"
+    )
+    assert data.started_label != data.ends_label
+    legacy = data.model_copy(update={"started_label": None})
+    assert notices._notice_matches_current_terms(legacy, data, converted, current)
+    wrong_date = data.model_copy(update={"started_label": "01 Jan 2000"})
+    assert not notices._notice_matches_current_terms(
+        wrong_date, data, converted, current
+    )

@@ -14,7 +14,10 @@ import { CARD, HALF } from "./ResultCards";
 import {
   asItems,
   asObject,
+  displayValue,
   formatBytes,
+  isBlankOutput,
+  NOTHING_FOUND,
   humanizeKey,
   inline,
   parseTruncatedOutput,
@@ -44,7 +47,11 @@ function ResultFavicon({ domain }: { domain: string | null }) {
   const [failed, setFailed] = useState(false);
   if (!domain || failed) {
     return (
-      <Icon icon={GlobeIcon} size={14} className="shrink-0 text-zinc-400" />
+      <Icon
+        icon={GlobeIcon}
+        size={14}
+        className="shrink-0 text-foreground-subtle"
+      />
     );
   }
   return (
@@ -74,12 +81,12 @@ function ClampedAnswer({ answer }: { answer: string }) {
     <div className="relative">
       <p
         ref={textRef}
-        className="line-clamp-3 px-3 py-2 text-[13px] leading-5 text-zinc-600"
+        className="line-clamp-3 px-3 py-2 text-body-sm leading-5 text-foreground-secondary"
       >
         {answer}
       </p>
       {clamped && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-white to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-surface to-transparent" />
       )}
     </div>
   );
@@ -87,7 +94,7 @@ function ClampedAnswer({ answer }: { answer: string }) {
 
 export function SearchResults({ items, answer }: SearchResultsProps) {
   return (
-    <div className={CARD + " divide-y divide-zinc-100"}>
+    <div className={CARD + " divide-y divide-separator"}>
       {answer && <ClampedAnswer answer={answer} />}
       {items.map((item, i) => {
         const url = str(item, "url", "link");
@@ -100,7 +107,7 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
             className="flex items-center gap-2.5 px-3 py-2"
           >
             {citation !== null && (
-              <span className="shrink-0 text-xs tabular-nums text-zinc-600">
+              <span className="shrink-0 text-xs tabular-nums text-foreground-secondary">
                 [{citation}]
               </span>
             )}
@@ -110,17 +117,17 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
                 href={url}
                 target="_blank"
                 rel="noreferrer"
-                className="min-w-0 truncate text-[13px] text-zinc-700 hover:text-zinc-900 hover:underline"
+                className="min-w-0 truncate text-body-sm leading-inherit text-foreground-body hover:text-foreground-strong hover:underline"
               >
                 {title}
               </a>
             ) : (
-              <p className="min-w-0 truncate text-[13px] text-zinc-700">
+              <p className="min-w-0 truncate text-body-sm leading-inherit text-foreground-body">
                 {title}
               </p>
             )}
             {domain && (
-              <span className="ml-auto shrink-0 text-xs text-zinc-400">
+              <span className="ml-auto shrink-0 text-xs text-foreground-subtle">
                 {domain}
               </span>
             )}
@@ -138,20 +145,28 @@ export function Terminal({ row }: RowProps) {
   const stdout = output ? str(output, "stdout", "stderr") : null;
   const exitCode = output?.exit_code;
   return (
-    <div className="rounded-xl bg-zinc-900 p-3 font-mono text-[11px] leading-4">
+    <div className="rounded-xl bg-action-hover p-3 font-mono text-caption-sm leading-4">
       {command && (
-        <p className="whitespace-pre-wrap break-words text-zinc-400">
-          <span className="select-none text-zinc-500">$ </span>
+        <p className="whitespace-pre-wrap break-words text-foreground-subtle">
+          <span className="select-none text-foreground-tertiary">$ </span>
           {command}
         </p>
       )}
       {stdout && (
-        <pre className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 scrollbar-none">
+        <pre
+          // TODO(tokens): no fitting role for text-zinc-100 #EFEFF0; #EFEFF0 is surface-hover (a fill) and separator (a line colour)
+          className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 scrollbar-none"
+        >
           {stdout}
         </pre>
       )}
       {typeof exitCode === "number" && exitCode !== 0 && (
-        <p className="mt-1.5 text-red-400">exit {exitCode}</p>
+        <p
+          // TODO(tokens): no exact role for text-red-400
+          className="mt-1.5 text-red-400"
+        >
+          exit {exitCode}
+        </p>
       )}
     </div>
   );
@@ -169,12 +184,13 @@ export function TodoList({ row }: RowProps) {
         return (
           <div
             key={resultItemKey(todo, i)}
-            className="flex items-center gap-2 text-[13px]"
+            className="flex items-center gap-2 text-body-sm leading-inherit"
           >
             {done ? (
               <Icon
                 icon={CheckmarkCircle02Icon}
                 size={15}
+                // TODO(tokens): no exact role for text-green-500
                 className="shrink-0 text-green-500"
               />
             ) : (
@@ -182,17 +198,18 @@ export function TodoList({ row }: RowProps) {
                 icon={CircleIcon}
                 size={15}
                 className={
-                  "shrink-0 " + (active ? "text-purple-500" : "text-zinc-300")
+                  "shrink-0 " +
+                  (active ? "text-brand" : "text-foreground-disabled")
                 }
               />
             )}
             <span
               className={
                 done
-                  ? "text-zinc-400 line-through"
+                  ? "text-foreground-subtle line-through"
                   : active
-                    ? "font-medium text-zinc-800"
-                    : "text-zinc-600"
+                    ? "font-medium text-foreground-emphasis"
+                    : "text-foreground-secondary"
               }
             >
               {str(todo, "content", "activeForm") ?? inline(todo)}
@@ -218,20 +235,24 @@ export function FileCard({ row }: RowProps) {
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
       <div className="flex items-center gap-2.5">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-          <Icon icon={fileIcon} size={15} className="text-zinc-600" />
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
+          <Icon
+            icon={fileIcon}
+            size={15}
+            className="text-foreground-secondary"
+          />
         </div>
-        <p className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-700">
+        <p className="min-w-0 flex-1 truncate font-mono text-xs text-foreground-body">
           {path}
         </p>
         {typeof size === "number" && (
-          <span className="shrink-0 text-xs text-zinc-400">
+          <span className="shrink-0 text-xs text-foreground-subtle">
             {formatBytes(size)}
           </span>
         )}
       </div>
       {preview && (
-        <p className="mt-1.5 line-clamp-2 whitespace-pre-wrap pl-9 text-xs text-zinc-400">
+        <p className="mt-1.5 line-clamp-2 whitespace-pre-wrap pl-9 text-xs text-foreground-subtle">
           {preview}
         </p>
       )}
@@ -241,14 +262,14 @@ export function FileCard({ row }: RowProps) {
 
 export function OutputList({ items }: ItemsProps) {
   return (
-    <div className={`${CARD} ${HALF} divide-y divide-zinc-100`}>
+    <div className={`${CARD} ${HALF} divide-y divide-separator`}>
       {items.map((item, i) => (
         <div key={resultItemKey(item, i)} className="p-2.5">
-          <p className="text-[11px] uppercase tracking-wide text-zinc-400">
+          <p className="text-caption-sm uppercase leading-inherit tracking-wide text-foreground-subtle">
             {str(item, "name", "key", "label") ?? `Output ${i + 1}`}
           </p>
-          <p className="mt-0.5 whitespace-pre-wrap break-words text-[13px] text-zinc-800">
-            {inline(item.value ?? item)}
+          <p className="mt-0.5 whitespace-pre-wrap break-words text-body-sm leading-inherit text-foreground-emphasis">
+            {displayValue(item.value ?? item)}
           </p>
         </div>
       ))}
@@ -257,6 +278,7 @@ export function OutputList({ items }: ItemsProps) {
 }
 
 export function KeyValueList({ value }: ValueProps) {
+  if (isBlankOutput(value)) return <KeyValueList value={NOTHING_FOUND} />;
   const obj = asObject(value);
   if (!obj || Object.keys(obj).length === 0) {
     if (typeof value !== "string" || !value.trim()) return null;
@@ -264,15 +286,15 @@ export function KeyValueList({ value }: ValueProps) {
     return (
       <div className={`${CARD} w-full rounded-2xl p-3`}>
         <div className="relative">
-          <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-relaxed text-zinc-600 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+          <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-body-sm leading-relaxed text-foreground-secondary scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active">
             {truncated?.preview ?? value}
           </p>
           {truncated && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent" />
           )}
         </div>
         {truncated && (
-          <p className="mt-2 text-[11px] text-zinc-400">
+          <p className="mt-2 text-caption-sm leading-inherit text-foreground-subtle">
             Preview of {truncated.totalChars.toLocaleString()} characters — full
             output saved to the workspace
           </p>
@@ -280,16 +302,22 @@ export function KeyValueList({ value }: ValueProps) {
       </div>
     );
   }
+  const entries = Object.entries(obj).filter(
+    ([, entryValue]) => entryValue !== null && entryValue !== undefined,
+  );
+  if (entries.length === 0) return <KeyValueList value={NOTHING_FOUND} />;
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
-      {Object.entries(obj).map(([key, entryValue]) => (
+      {entries.map(([key, entryValue]) => (
         <div
           key={key}
           className="flex items-baseline gap-3 py-1 text-xs first:pt-0 last:pb-0"
         >
-          <span className="shrink-0 text-zinc-400">{humanizeKey(key)}</span>
-          <span className="ml-auto min-w-0 break-words text-right font-medium text-zinc-700">
-            {inline(entryValue)}
+          <span className="shrink-0 text-foreground-subtle">
+            {humanizeKey(key)}
+          </span>
+          <span className="ml-auto min-w-0 break-words text-right font-medium text-foreground-body">
+            {displayValue(entryValue)}
           </span>
         </div>
       ))}
