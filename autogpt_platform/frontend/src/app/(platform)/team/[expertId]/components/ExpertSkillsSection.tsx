@@ -65,12 +65,14 @@ export function ExpertSkillsSection({
           <Button
             variant="secondary"
             size="small"
+            textSize="body-md"
             leadingIcon={PlusSignIcon}
             onClick={openAdd}
           >
             Add skill
           </Button>
           <ToolbarSearch
+            textSize="body-md"
             id="expert-skills-search"
             label="Search skills"
             value={query}
@@ -133,6 +135,7 @@ export function ExpertSkillsSection({
           <Button
             variant="primary"
             size="small"
+            textSize="body-md"
             leadingIcon={PlusSignIcon}
             onClick={openAdd}
           >
@@ -140,7 +143,7 @@ export function ExpertSkillsSection({
           </Button>
         </SectionEmptyState>
       ) : visible.length === 0 ? (
-        <Text variant="body" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="pt-4">
           No skills match.
         </Text>
       ) : (

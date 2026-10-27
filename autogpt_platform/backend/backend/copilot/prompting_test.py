@@ -450,6 +450,12 @@ class TestConnectedAccountNotes:
         assert "none of the user's connected accounts" in none
 
 
+class TestMapsGuidance:
+    def test_notes_teach_the_map_fence_to_every_engine(self):
+        assert "### Maps" in prompting.SHARED_TOOL_NOTES
+        assert "```map" in prompting.SHARED_TOOL_NOTES
+
+
 class TestPlainLanguageRules:
     def test_no_internal_plumbing_and_one_retry(self):
         result = prompting.SHARED_TOOL_NOTES

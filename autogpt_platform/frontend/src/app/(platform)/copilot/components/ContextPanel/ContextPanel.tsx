@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/molecules/Sheet/Sheet";
@@ -35,6 +36,12 @@ const TAB_TITLES: Record<ContextPanelTab, string> = {
   files: "Files",
   artifacts: "Artifacts",
   integrations: "Integrations",
+};
+
+const TAB_DESCRIPTIONS: Record<ContextPanelTab, string> = {
+  files: "Files from this chat.",
+  artifacts: "Artifacts from this chat to preview.",
+  integrations: "The tools this chat's expert can use.",
 };
 
 export function ContextPanel({ sessionId, mobile }: Props) {
@@ -101,6 +108,9 @@ export function ContextPanel({ sessionId, mobile }: Props) {
                 {TAB_TITLES[activeTab]}
               </Text>
             </SheetTitle>
+            <SheetDescription className="sr-only">
+              {TAB_DESCRIPTIONS[activeTab]}
+            </SheetDescription>
           </SheetHeader>
           {content}
         </SheetContent>
