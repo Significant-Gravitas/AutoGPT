@@ -256,6 +256,16 @@ describe("step order", () => {
     ]);
   });
 
+  it("puts the access step after the paywall, where connecting needs a plan", () => {
+    const withPaywall = resolveStepOrder(["access", "role"], { paywall: true });
+
+    expect(withPaywall.indexOf("access")).toBe(
+      withPaywall.indexOf("subscription") + 1,
+    );
+    expect(withPaywall.slice(0, 2)).toEqual(["role", "team"]);
+    expect(resolveStepOrder(["access"])[0]).toBe("access");
+  });
+
   it("always finishes with preparing", () => {
     expect(resolveStepOrder(["preparing", "hire"]).at(-1)).toBe("preparing");
   });

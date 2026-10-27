@@ -73,13 +73,21 @@ export function isMicrosoftEmailVerified(profile: MicrosoftProfile): boolean {
   if (profile.tid === PERSONAL_TENANT_ID) {
     return isMicrosoftMailbox(profile.email);
   }
-  if (profile.idp && !profile.idp.includes(profile.tid ?? "")) return false;
+  if (isGuest(profile)) return false;
   const verified = profile.xms_edov;
   return (
     verified === true ||
     verified === "true" ||
     verified === 1 ||
     verified === "1"
+  );
+}
+
+function isGuest({ idp, tid }: MicrosoftProfile) {
+  if (!idp) return false;
+  return (
+    idp !== `https://sts.windows.net/${tid}/` &&
+    idp !== `https://login.microsoftonline.com/${tid}/v2.0`
   );
 }
 
@@ -131,8 +139,14 @@ const SIGN_IN_ERRORS: Record<string, string> = {
   access_denied: "Microsoft sign-in was cancelled.",
 };
 
-/** A sign-up the signup gate refused. Better Auth sends a refusal from our
- *  hooks back with its message as the code, spaces turned into underscores. */
+// Better Auth sends a sign-up that one of our hooks refused back with the
+// hook's message as the code, spaces turned into underscores: a sentence, so
+// it ends with a full stop. Its text is never shown, since anyone can put
+// anything in the URL.
+const REFUSED_SIGN_UP =
+  "This sign-up isn't allowed. Use another sign-in method, or contact support if you think this is a mistake.";
+
+/** A sign-up the signup gate refused (see REFUSED_SIGN_UP). */
 export function isWaitlistSignInError(code: string | null): boolean {
   if (!code) return false;
   return (
@@ -142,8 +156,7 @@ export function isWaitlistSignInError(code: string | null): boolean {
 
 export function getSocialSignInError(code: string | null): string | null {
   if (!code) return null;
-  return (
-    SIGN_IN_ERRORS[code] ??
-    "That sign-in didn't finish. Try again, or use another sign-in method."
-  );
+  if (SIGN_IN_ERRORS[code]) return SIGN_IN_ERRORS[code];
+  if (code.endsWith(".")) return REFUSED_SIGN_UP;
+  return "That sign-in didn't finish. Try again, or use another sign-in method.";
 }

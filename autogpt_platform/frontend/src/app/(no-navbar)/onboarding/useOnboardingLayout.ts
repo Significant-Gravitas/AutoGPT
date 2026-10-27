@@ -31,9 +31,9 @@ export function useOnboardingLayout({
   );
   const placement = useFrozenPerUser(
     userID,
-    stepOrder.ready && signIn.isReady && !isUserLoading,
+    flagsReady && stepOrder.ready && signIn.isReady && !isUserLoading,
     () => ({
-      order: resolveStepOrder(stepOrder.enabled),
+      order: resolveStepOrder(stepOrder.enabled, { paywall: payment.enabled }),
       hasAccess: signIn.provider !== null,
     }),
   );

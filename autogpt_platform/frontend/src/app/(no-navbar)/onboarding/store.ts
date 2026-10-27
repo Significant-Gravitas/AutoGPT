@@ -43,17 +43,28 @@ export const DEFAULT_STEP_ORDER: readonly WizardStepKey[] = [
  * The order an experiment asks for: the steps it names lead, in its order,
  * and the rest follow in the default order. It only moves steps, since
  * `buildStepLayout` decides which ones show. Preparing always comes last, and
- * anything that is not a step name is ignored.
+ * anything that is not a step name is ignored. With the paywall on, the
+ * access step always follows the subscription step: connecting a service
+ * needs a plan, which a new account only has once it has subscribed.
  */
-export function resolveStepOrder(requested: unknown): WizardStepKey[] {
+export function resolveStepOrder(
+  requested: unknown,
+  { paywall = false }: { paywall?: boolean } = {},
+): WizardStepKey[] {
   const leading: WizardStepKey[] = [];
   for (const key of Array.isArray(requested) ? requested : []) {
     if (isMovableStep(key) && !leading.includes(key)) leading.push(key);
   }
-  return [
+  const order = [
     ...leading,
     ...DEFAULT_STEP_ORDER.filter((key) => !leading.includes(key)),
   ];
+  if (!paywall || order.indexOf("access") > order.indexOf("subscription")) {
+    return order;
+  }
+  const rest = order.filter((key) => key !== "access");
+  const after = rest.indexOf("subscription") + 1;
+  return [...rest.slice(0, after), "access", ...rest.slice(after)];
 }
 
 function isMovableStep(key: unknown): key is WizardStepKey {

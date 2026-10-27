@@ -131,6 +131,7 @@ describe("onboarding layout", () => {
     expect(result.current.steps.subscription).toBeUndefined();
   });
   it("offers a Microsoft sign-up its connection before anything else", () => {
+    source.flags[Flag.ENABLE_PLATFORM_PAYMENT].value = false;
     source.signIn = { provider: "microsoft", isReady: true };
     const { result } = renderHook(useOnboardingLayout, { initialProps });
     expect(result.current.steps).toEqual({
@@ -140,11 +141,29 @@ describe("onboarding layout", () => {
       role: 4,
       painPoints: 5,
       hire: 6,
-      subscription: 7,
+      preparing: 7,
+    });
+  });
+  it("offers the connection after the paywall when connecting needs a plan", () => {
+    source.signIn = { provider: "microsoft", isReady: true };
+    source.flags[Flag.ONBOARDING_STEP_ORDER] = {
+      value: ["access"],
+      resolved: true,
+    };
+    const { result } = renderHook(useOnboardingLayout, { initialProps });
+    expect(result.current.steps).toEqual({
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      painPoints: 4,
+      hire: 5,
+      subscription: 6,
+      access: 7,
       preparing: 8,
     });
   });
   it("waits for the sign-in lookup before freezing the steps", () => {
+    source.flags[Flag.ENABLE_PLATFORM_PAYMENT].value = false;
     source.signIn = { provider: null, isReady: false };
     const { result, rerender } = renderHook(useOnboardingLayout, {
       initialProps,
@@ -156,6 +175,7 @@ describe("onboarding layout", () => {
     expect(result.current.steps.access).toBe(1);
   });
   it("lets an experiment move the access step", () => {
+    source.flags[Flag.ENABLE_PLATFORM_PAYMENT].value = false;
     source.signIn = { provider: "microsoft", isReady: true };
     source.flags[Flag.ONBOARDING_STEP_ORDER] = {
       value: ["team", "autopilot", "role", "access"],
@@ -169,8 +189,7 @@ describe("onboarding layout", () => {
       access: 4,
       painPoints: 5,
       hire: 6,
-      subscription: 7,
-      preparing: 8,
+      preparing: 7,
     });
   });
   it.each([

@@ -282,8 +282,9 @@ describe("Continue with Microsoft", () => {
 
   it("refuses a sign-in that hands over a Microsoft ID token directly", async () => {
     const { handler, db } = await createAuthHandler();
-    // A token Microsoft really signed for this app: only the switch that
-    // turns ID-token sign-in off can refuse it.
+    // A token signed with the key served as Microsoft's, for an address
+    // Microsoft vouches for: only the switch that turns ID-token sign-in off
+    // can refuse it.
     const keys = await generateKeyPair("RS256");
     const jwk = await exportJWK(keys.publicKey);
     server.use(
@@ -302,7 +303,7 @@ describe("Continue with Microsoft", () => {
     const token = await new SignJWT({
       tid: PERSONAL_TENANT,
       oid: "personal-id",
-      email: "pat@gmail.example",
+      email: "pat@outlook.com",
       name: "Pat",
     })
       .setProtectedHeader({ alg: "RS256", kid: "signing-key" })

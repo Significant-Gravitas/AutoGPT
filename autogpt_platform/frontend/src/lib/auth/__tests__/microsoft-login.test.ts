@@ -53,12 +53,15 @@ describe("Continue with Microsoft", () => {
     ).toMatchObject({ emailVerified: true, email: "me@company.example" });
   });
 
-  it("trusts a member whose idp names its own organization", () => {
+  it.each([
+    "https://sts.windows.net/company-tenant/",
+    "https://login.microsoftonline.com/company-tenant/v2.0",
+  ])("trusts a member whose idp is its own organization (%s)", (idp) => {
     expect(
       microsoftProfileToUser({
         sub: "s",
         tid: "company-tenant",
-        idp: "https://sts.windows.net/company-tenant/",
+        idp,
         email: "me@company.example",
         xms_edov: true,
       }).emailVerified,
@@ -96,6 +99,12 @@ describe("Continue with Microsoft", () => {
       "victim@company.example",
       { idp: "https://sts.windows.net/victim-tenant/", xms_edov: true },
     ],
+    [
+      "a guest from an identity provider whose address names the tenant",
+      "attacker-tenant",
+      "victim@company.example",
+      { idp: "https://idp.example/attacker-tenant/", xms_edov: true },
+    ],
   ])("doesn't vouch for %s", (_case, tid, email, claims) => {
     const user = microsoftProfileToUser({ sub: "s", tid, email, ...claims });
 
@@ -112,6 +121,13 @@ describe("Continue with Microsoft", () => {
       /didn't share an email address/,
     );
     expect(getSocialSignInError("something_new")).toMatch(/didn't finish/);
+    // A refusal from one of our sign-up checks: its own text is never shown,
+    // since anyone can put anything in the URL.
+    expect(
+      getSocialSignInError(
+        "Sign-up_isn't_available_from_this_network_or_email_address._If_you_think_this_is_a_mistake,_please_contact_support.",
+      ),
+    ).toMatch(/isn't allowed/);
   });
 
   it("recognizes a sign-up the waitlist refused", () => {
