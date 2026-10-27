@@ -14,6 +14,7 @@ import pytest_asyncio
 from fastapi import Request, Security
 from prisma.enums import APIKeyStatus
 from prisma.models import APIKey, User
+from prisma.types import APIKeyCreateInput, UserCreateInput
 
 from backend.api.external import auth_rate_limit as rate_limit
 from backend.api.external import middleware
@@ -25,7 +26,7 @@ from backend.data.redis_client import get_redis_async
 @pytest_asyncio.fixture
 async def stored_key(server):
     user = await User.prisma().create(
-        data={"id": str(uuid4()), "email": f"{uuid4()}@example.invalid"}
+        data=UserCreateInput(id=str(uuid4()), email=f"{uuid4()}@example.invalid")
     )
     info, plaintext = await api_key.create_api_key("Limiter test", user.id, [])
     try:
@@ -48,7 +49,7 @@ async def client(stored_key, monkeypatch, mocker):
     async def auth(
         auth: Annotated[APIAuthorizationInfo, Security(middleware.require_auth)]
     ):
-        return {"id": auth.id}
+        return {"user_id": auth.user_id}
 
     transport = httpx.ASGITransport(app, client=(random_client_ip(), 1234))
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -74,7 +75,7 @@ async def test_successful_requests_do_not_exhaust_budget(
     for _ in range(8):
         response = await client.get("/auth", headers=auth_headers(plaintext))
         assert response.status_code == 200
-        assert response.json() == {"id": info.id}
+        assert response.json() == {"user_id": info.user_id}
 
 
 async def test_all_keys_with_same_head_and_tail_authenticate(stored_key):
@@ -84,16 +85,16 @@ async def test_all_keys_with_same_head_and_tail_authenticate(stored_key):
         value = plaintext[:8] + secrets.token_urlsafe(24) + plaintext[-8:]
         hashed, salt = api_key.keysmith.hash_key(value)
         collision = await APIKey.prisma().create(
-            data={
-                "id": str(uuid4()),
-                "name": "Head and tail collision",
-                "head": value[:8],
-                "tail": value[-8:],
-                "hash": hashed,
-                "salt": salt,
-                "userId": info.user_id,
-                "permissions": [],
-            }
+            data=APIKeyCreateInput(
+                id=str(uuid4()),
+                name="Head and tail collision",
+                head=value[:8],
+                tail=value[-8:],
+                hash=hashed,
+                salt=salt,
+                userId=info.user_id,
+                permissions=[],
+            )
         )
         values.append((collision.id, value))
     for key_id, value in values:
@@ -257,7 +258,7 @@ async def test_head_rotation_cannot_escape_ip_budget_and_other_clients_work(
         {"type": "http", "headers": [], "client": (random_client_ip(), 1234)}
     )
     authenticated = await middleware.require_auth(request, stored_key[1], None)
-    assert authenticated.id == stored_key[0].id
+    assert authenticated.type == "api_key"
     assert authenticated.user_id == stored_key[0].user_id
 
 
