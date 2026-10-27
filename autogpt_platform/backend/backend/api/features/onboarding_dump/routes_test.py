@@ -1130,6 +1130,21 @@ def test_a_failed_hire_is_reported_and_the_rest_still_join(
     }
 
 
+def test_a_plan_with_nobody_on_its_team_hires_nobody(
+    dumps: DumpStore, plan_world: dict[str, AsyncMock]
+):
+    # A catalog with no template for the role: the plan is all Otto's.
+    plan_world["list_templates"].return_value = []
+    finalize(input_mode="skipped")
+    assert client.get(PLAN_URL).json()["team"] == []
+
+    response = client.post(PLAN_HIRE_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {"hired": [], "failed": []}
+    plan_world["hire_expert"].assert_not_awaited()
+
+
 def test_the_expert_limit_stops_the_hire_and_reports_the_rest(
     dumps: DumpStore, plan_world: dict[str, AsyncMock]
 ):

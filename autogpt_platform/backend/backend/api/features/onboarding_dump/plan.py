@@ -31,6 +31,12 @@ _api_key = Settings().secrets.typesafe_jev_api_key
 _MODEL = os.environ.get("BRAIN_DUMP_PLAN_JEV_MODEL") or None
 _TIMEOUT_SECONDS = 5
 
+if not _api_key:
+    logger.warning(
+        "Brain dump plan: TYPESAFE_API_KEY is empty; plans keep the greeting's "
+        "order with hinted owners"
+    )
+
 MAX_TRANSCRIPT_CHARS = 6_000
 # The cut also stops at this many UTF-8 bytes: 6,000 characters of Japanese
 # or Chinese (three bytes each) would not fit the request with the rest of

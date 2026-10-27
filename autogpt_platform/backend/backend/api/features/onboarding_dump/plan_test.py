@@ -2,6 +2,7 @@
 a None, and a state that always fits the request whole."""
 
 import asyncio
+import logging
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -273,10 +274,16 @@ async def test_a_failed_empty_or_cut_call_returns_none(
 
 
 @pytest.mark.parametrize("raised", [TimeoutError(), RuntimeError("connection reset")])
-async def test_a_timeout_or_a_raise_returns_none(jev: AsyncMock, raised: Exception):
+async def test_a_timeout_or_a_raise_returns_none(
+    jev: AsyncMock, raised: Exception, caplog: pytest.LogCaptureFixture
+):
     jev.side_effect = raised
 
-    assert await _judge() is None
+    with caplog.at_level(logging.WARNING, logger=plan.logger.name):
+        assert await _judge() is None
+
+    # One line per failed plan, so a Jev outage reads as one per dump.
+    assert len(caplog.records) == 1
 
 
 async def test_a_call_that_outlives_the_timeout_returns_none(

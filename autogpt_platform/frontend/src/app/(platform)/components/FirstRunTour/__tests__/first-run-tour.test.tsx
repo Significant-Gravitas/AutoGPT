@@ -789,6 +789,10 @@ describe("first-run walkthrough", () => {
     expect(document.activeElement?.getAttribute("aria-label")).toBe(
       "Start with Otto: Turn sales calls into CRM updates",
     );
+    // It lands on the row that carries the Start here pill.
+    expect(document.activeElement?.closest("li")?.textContent).toContain(
+      "Start here",
+    );
     unmount();
 
     // Every row busy: no task to start, so the composer.
