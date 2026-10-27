@@ -5,7 +5,7 @@ import { MicrosoftConnectionPanel } from "@/components/contextual/MicrosoftConne
 import { useMicrosoftBrowserSignIn } from "@/components/contextual/MicrosoftConnection/useMicrosoftBrowserSignIn";
 import type { AccessConnectProps } from "../accessProviders";
 
-export function MicrosoftAccess({ onDone }: AccessConnectProps) {
+export function MicrosoftAccess({ onDone, onSkip }: AccessConnectProps) {
   const { browserAvailable, isLoading } = useMicrosoftBrowserSignIn();
 
   // Until the server says which sign-in it supports, either button could be wrong.
@@ -21,6 +21,7 @@ export function MicrosoftAccess({ onDone }: AccessConnectProps) {
       browserAvailable={browserAvailable}
       doneLabel="Continue"
       onDone={() => onDone()}
+      onSkip={onSkip}
     />
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@/components/atoms/Button/Button";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { Text } from "@/components/atoms/Text/Text";
 import { useAccessStep } from "./useAccessStep";
@@ -27,11 +26,8 @@ export function AccessStep() {
           </Text>
         </div>
         <div className="w-full">
-          <Connect onDone={handleContinue} />
+          <Connect onDone={handleContinue} onSkip={handleContinue} />
         </div>
-        <Button variant="ghost" onClick={handleContinue}>
-          Not now
-        </Button>
       </div>
     </FadeIn>
   );

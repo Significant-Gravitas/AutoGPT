@@ -76,6 +76,45 @@ describe("AccessStep", () => {
     );
   });
 
+  it("only offers to continue once the account is connected", async () => {
+    signedUpWith("microsoft");
+    server.use(
+      http.get("*/api/integrations/:provider/credentials", ({ params }) =>
+        HttpResponse.json(
+          params.provider === "microsoft"
+            ? [
+                {
+                  id: "work-id",
+                  provider: "microsoft",
+                  type: "oauth2",
+                  title: "Pat Example (work account)",
+                  username: "pat@company.example",
+                  scopes: ["User.Read"],
+                },
+              ]
+            : [],
+        ),
+      ),
+      http.post("*/api/integrations/microsoft/check", () =>
+        HttpResponse.json({
+          verified: true,
+          account_type: "work",
+          message: "Connected.",
+          admin_consent_url: null,
+          capabilities: [],
+        }),
+      ),
+    );
+    render(<AccessStep />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Continue" }));
+
+    expect(screen.queryByRole("button", { name: "Not now" })).toBeNull();
+    await waitFor(() =>
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(2),
+    );
+  });
+
   it("offers nothing to an account that signed up with email", async () => {
     signedUpWith("credential");
     render(<AccessStep />);

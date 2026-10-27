@@ -3,6 +3,8 @@ import { MicrosoftAccess } from "./components/MicrosoftAccess";
 
 export interface AccessConnectProps {
   onDone: () => void;
+  /** Moves on without connecting; offered only until a connection exists. */
+  onSkip: () => void;
 }
 
 interface AccessProvider {
