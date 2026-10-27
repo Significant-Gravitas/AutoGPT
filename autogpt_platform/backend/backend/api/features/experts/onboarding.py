@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import autogpt_libs.auth as auth
 from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, ValidationError
@@ -17,6 +19,10 @@ class OnboardingMessage(BaseModel):
     content: str
 
 
+class ExpertOnboardingMessage(OnboardingMessage):
+    expert_id: str
+
+
 class PendingExpertOnboarding(BaseModel):
     session_id: str
 
@@ -29,11 +35,18 @@ async def get_expert_onboarding(
     expert = await experts_db.get_expert(user_id, expert_id)
     if expert is None or expert.is_archived:
         raise HTTPException(status_code=404, detail="Expert not found")
+    session_id = (await pending_onboardings(user_id, [expert_id])).get(expert_id)
+    return PendingExpertOnboarding(session_id=session_id) if session_id else None
+
+
+async def pending_onboardings(user_id: str, expert_ids: list[str]) -> dict[str, str]:
+    """Per expert, the chat whose onboarding card still waits on the user;
+    experts with nothing pending are left out."""
     # Every user message counts, since any reply settles the card in its own
     # chat; only cards, answers and skips need their text.
     messages = await query_raw_with_schema(
         """
-        SELECT m."sessionId" AS session_id, m.role,
+        SELECT s."expertId" AS expert_id, m."sessionId" AS session_id, m.role,
           CASE
             WHEN m.role = 'tool' OR m.content = $3
               OR m.content LIKE '**Here are my answers:**%'
@@ -42,7 +55,7 @@ async def get_expert_onboarding(
           END AS content
         FROM {schema_prefix}"ChatMessage" m
         JOIN {schema_prefix}"ChatSession" s ON s.id = m."sessionId"
-        WHERE s."userId" = $1 AND s."expertId" = $2
+        WHERE s."userId" = $1 AND s."expertId" = ANY($2::text[])
           AND (
             (m.role = 'tool' AND m.content LIKE '%"expert_onboarding"%')
             OR m.role = 'user'
@@ -50,12 +63,18 @@ async def get_expert_onboarding(
         ORDER BY m."createdAt", m.sequence
         """,
         user_id,
-        expert_id,
+        expert_ids,
         SKIP_MESSAGE,
-        model=OnboardingMessage,
+        model=ExpertOnboardingMessage,
     )
-    session_id = pending_onboarding(messages, expert_id)
-    return PendingExpertOnboarding(session_id=session_id) if session_id else None
+    by_expert: dict[str, list[OnboardingMessage]] = defaultdict(list)
+    for message in messages:
+        by_expert[message.expert_id].append(message)
+    pending = {
+        expert_id: pending_onboarding(expert_messages, expert_id)
+        for expert_id, expert_messages in by_expert.items()
+    }
+    return {expert_id: session for expert_id, session in pending.items() if session}
 
 
 def pending_onboarding(messages: list[OnboardingMessage], expert_id: str) -> str | None:

@@ -23,7 +23,6 @@ from backend.api.features.experts.models import (
     ExpertSetupItem,
     decode_day_one,
 )
-from backend.api.features.experts.onboarding import OnboardingMessage
 from backend.api.features.experts.setup import list_setup_items
 from backend.copilot.db import exclude_dream_sessions_sql
 from backend.copilot.model import CHAT_STATUS_QUEUED, CHAT_STATUS_RUNNING
@@ -37,10 +36,6 @@ class LatestExpertSession(BaseModel):
     expert_id: str
     session_id: str
     chat_status: str
-
-
-class ExpertOnboardingMessage(OnboardingMessage):
-    expert_id: str
 
 
 async def list_first_jobs(user_id: str) -> ExpertFirstJobsResponse:
@@ -60,7 +55,7 @@ async def list_first_jobs(user_id: str) -> ExpertFirstJobsResponse:
         _template_day_ones(template_ids),
         list_setup_items(user_id),
         _latest_sessions(user_id, expert_ids),
-        _pending_onboardings(user_id, expert_ids),
+        onboarding.pending_onboardings(user_id, expert_ids),
     )
     items_by_expert: dict[str, list[ExpertSetupItem]] = defaultdict(list)
     for item in setup_items:
@@ -169,39 +164,3 @@ async def _latest_sessions(
         model=LatestExpertSession,
     )
     return {row.expert_id: row for row in rows}
-
-
-async def _pending_onboardings(user_id: str, expert_ids: list[str]) -> dict[str, str]:
-    """Per expert, the chat whose intake card still waits on the user. The
-    same read as ``get_expert_onboarding``, for every expert at once."""
-    messages = await query_raw_with_schema(
-        """
-        SELECT s."expertId" AS expert_id, m."sessionId" AS session_id, m.role,
-          CASE
-            WHEN m.role = 'tool' OR m.content = $3
-              OR m.content LIKE '**Here are my answers:**%'
-            THEN m.content
-            ELSE ''
-          END AS content
-        FROM {schema_prefix}"ChatMessage" m
-        JOIN {schema_prefix}"ChatSession" s ON s.id = m."sessionId"
-        WHERE s."userId" = $1 AND s."expertId" = ANY($2::text[])
-          AND (
-            (m.role = 'tool' AND m.content LIKE '%"expert_onboarding"%')
-            OR m.role = 'user'
-          )
-        ORDER BY m."createdAt", m.sequence
-        """,
-        user_id,
-        expert_ids,
-        onboarding.SKIP_MESSAGE,
-        model=ExpertOnboardingMessage,
-    )
-    by_expert: dict[str, list[OnboardingMessage]] = defaultdict(list)
-    for message in messages:
-        by_expert[message.expert_id].append(message)
-    pending = {
-        expert_id: onboarding.pending_onboarding(expert_messages, expert_id)
-        for expert_id, expert_messages in by_expert.items()
-    }
-    return {expert_id: session for expert_id, session in pending.items() if session}

@@ -34,8 +34,11 @@ def test_route_returns_saved_questions_for_authenticated_owner(mocker):
     expert.assert_awaited_once_with("user-1", EXPERT_ID)
 
 
-def card(session_id: str = SESSION_ID, **overrides) -> onboarding.OnboardingMessage:
-    return onboarding.OnboardingMessage(
+def card(
+    session_id: str = SESSION_ID, **overrides
+) -> onboarding.ExpertOnboardingMessage:
+    return onboarding.ExpertOnboardingMessage(
+        expert_id=EXPERT_ID,
         session_id=session_id,
         role="tool",
         content=json.dumps(
@@ -54,9 +57,11 @@ def card(session_id: str = SESSION_ID, **overrides) -> onboarding.OnboardingMess
     )
 
 
-def reply(content: str, session_id: str = SESSION_ID) -> onboarding.OnboardingMessage:
-    return onboarding.OnboardingMessage(
-        session_id=session_id, role="user", content=content
+def reply(
+    content: str, session_id: str = SESSION_ID
+) -> onboarding.ExpertOnboardingMessage:
+    return onboarding.ExpertOnboardingMessage(
+        expert_id=EXPERT_ID, session_id=session_id, role="user", content=content
     )
 
 
@@ -137,9 +142,15 @@ async def test_history_query_scopes_user_and_expert(mocker):
     )
     result = await onboarding.get_expert_onboarding(EXPERT_ID, "user-1")
     assert result is not None
-    assert query.call_args.args[1:] == ("user-1", EXPERT_ID, onboarding.SKIP_MESSAGE)
-    assert query.call_args.kwargs["model"] is onboarding.OnboardingMessage
-    assert 's."userId" = $1 AND s."expertId" = $2' in query.call_args.args[0]
+    assert query.call_args.args[1:] == (
+        "user-1",
+        [EXPERT_ID],
+        onboarding.SKIP_MESSAGE,
+    )
+    assert query.call_args.kwargs["model"] is onboarding.ExpertOnboardingMessage
+    assert 's."userId" = $1 AND s."expertId" = ANY($2::text[])' in (
+        query.call_args.args[0]
+    )
     assert "OR m.role = 'user'" in query.call_args.args[0]
 
 
@@ -156,3 +167,22 @@ async def test_unavailable_experts_do_not_read_history(mocker, archived):
         await onboarding.get_expert_onboarding(EXPERT_ID, "user-1")
     assert error.value.status_code == 404
     query.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pending_onboardings_group_cards_by_expert(mocker):
+    other = "expert-other"
+    rows = [
+        card(),
+        onboarding.ExpertOnboardingMessage(
+            expert_id=other, session_id="session-other", role="user", content=""
+        ),
+    ]
+    query = mocker.patch.object(
+        onboarding, "query_raw_with_schema", new=AsyncMock(return_value=rows)
+    )
+
+    pending = await onboarding.pending_onboardings("user-1", [EXPERT_ID, other])
+
+    assert pending == {EXPERT_ID: SESSION_ID}
+    assert query.await_args.args[1:3] == ("user-1", [EXPERT_ID, other])

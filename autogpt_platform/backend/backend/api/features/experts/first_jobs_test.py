@@ -1,6 +1,5 @@
 """Tests for each hired expert's first job and the status shown beside it."""
 
-import json
 from unittest.mock import AsyncMock
 
 import pytest
@@ -199,7 +198,7 @@ async def test_first_jobs_skip_archived_and_templates(
         new=AsyncMock(return_value={"expert-1": _session()}),
     )
     onboarding = mocker.patch.object(
-        first_jobs, "_pending_onboardings", new=AsyncMock(return_value={})
+        first_jobs.onboarding, "pending_onboardings", new=AsyncMock(return_value={})
     )
 
     response = await list_first_jobs("user-1")
@@ -223,34 +222,3 @@ async def test_first_jobs_are_empty_without_hires(mocker: pytest_mock.MockerFixt
 
     assert response.items == []
     sessions.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_pending_onboardings_group_cards_by_expert(
-    mocker: pytest_mock.MockerFixture,
-):
-    card = json.dumps(
-        {
-            "type": "expert_onboarding",
-            "message": "Setup",
-            "expert_id": "expert-1",
-            "greeting": "I'm Maria.",
-            "steps": [{"keyword": "site", "question": "Which site?", "options": []}],
-        }
-    )
-    rows = [
-        first_jobs.ExpertOnboardingMessage(
-            expert_id="expert-1", session_id="session-card", role="tool", content=card
-        ),
-        first_jobs.ExpertOnboardingMessage(
-            expert_id="expert-2", session_id="session-2", role="user", content=""
-        ),
-    ]
-    query = mocker.patch.object(
-        first_jobs, "query_raw_with_schema", new=AsyncMock(return_value=rows)
-    )
-
-    pending = await first_jobs._pending_onboardings("user-1", ["expert-1", "expert-2"])
-
-    assert pending == {"expert-1": "session-card"}
-    assert query.await_args.args[1:3] == ("user-1", ["expert-1", "expert-2"])
