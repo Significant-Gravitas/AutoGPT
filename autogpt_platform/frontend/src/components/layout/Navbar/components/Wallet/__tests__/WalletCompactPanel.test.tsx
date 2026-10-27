@@ -11,6 +11,10 @@ import {
   TaskGroup,
 } from "../helpers";
 
+// Noon on Sep 17 in the runner's own time zone: the trial date is shown in the
+// viewer's time zone, so a fixed UTC instant lands on Sep 18 east of UTC+9.
+const SEP_17_LOCAL_NOON = new Date(2030, 8, 17, 12);
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -318,7 +322,7 @@ describe("getTrialPlanLine", () => {
   const trial = {
     active: true,
     cancel_at_period_end: false,
-    ends_at: new Date("2030-09-17T15:00:00Z"),
+    ends_at: SEP_17_LOCAL_NOON,
   };
 
   it("names the day the plan starts during an active trial", () => {
