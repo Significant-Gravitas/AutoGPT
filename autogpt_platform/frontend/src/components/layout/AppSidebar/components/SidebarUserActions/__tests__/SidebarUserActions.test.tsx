@@ -73,7 +73,8 @@ describe("SidebarUserActions", () => {
   });
 
   // A new account's sidebar starts collapsed to its icon rail. The wallet
-  // used to be hidden there, so on day one nobody could find it (SECRT-3133).
+  // used to be hidden there, so on day one nobody could find it (SECRT-3133),
+  // and the walkthrough and the cost tip point at it.
   it("keeps the wallet reachable when the sidebar is collapsed to its rail", async () => {
     sidebar.state = "collapsed";
     mockUseAuth.mockReturnValue({
@@ -85,5 +86,6 @@ describe("SidebarUserActions", () => {
 
     const wallet = await screen.findByTestId("wallet");
     expect(wallet.closest('[class*="collapsible=icon]:hidden"]')).toBeNull();
+    expect(wallet.closest('[data-tour-target="wallet"]')).not.toBeNull();
   });
 });
