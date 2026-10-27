@@ -354,6 +354,17 @@ def track_onboarding_completed(*, user_id: str) -> None:
     track(user_id, PostHogEvent.ONBOARDING_COMPLETED)
 
 
+def track_onboarding_draft_started(
+    *, user_id: str, task_id: str, session_id: str
+) -> None:
+    """Otto started a suggested first task on the user's behalf (kickoff)."""
+    track(
+        user_id,
+        PostHogEvent.ONBOARDING_DRAFT_STARTED,
+        {"task_id": task_id, "chat_session_id": session_id},
+    )
+
+
 def set_onboarding_role(
     *,
     user_id: str,

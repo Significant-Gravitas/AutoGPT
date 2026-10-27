@@ -15,11 +15,12 @@ from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
 from pytest_mock import MockerFixture
 
-from backend.api.features.onboarding_dump import quality, routes
+from backend.api.features.onboarding_dump import kickoff, quality, routes
 from backend.api.features.onboarding_dump.models import (
     MAX_DURATION_SECS,
     MAX_PART_BYTES,
     MAX_RECORDING_BYTES,
+    KickoffResponse,
     SuggestedPrompt,
 )
 from backend.api.features.store.exceptions import VirusDetectedError
@@ -39,6 +40,7 @@ INTRO_URL = "/onboarding/brain-dump/intro"
 INTRO_COMPLETE_URL = "/onboarding/brain-dump/intro/complete"
 RECOMMENDED_URL = "/onboarding/brain-dump/recommended-providers"
 RECOMMENDED_EXPERTS_URL = "/onboarding/brain-dump/recommended-experts"
+KICKOFF_URL = "/onboarding/brain-dump/suggested-tasks/kickoff"
 
 RECORDING_ID = "rec-1"
 TRANSCRIPT = "I run a small bakery and I want the weekly order emails handled."
@@ -766,3 +768,21 @@ def test_recommended_providers_returns_the_stored_picks(dumps: DumpStore):
             {"provider": "github", "reason": "You mentioned chasing issues."}
         ],
     }
+
+
+def test_kickoff_route_returns_the_service_answer(
+    mocker: MockerFixture, test_user_id: str
+):
+    service_call = mocker.patch.object(
+        kickoff,
+        "kickoff_suggested_tasks",
+        new=AsyncMock(
+            return_value=KickoffResponse(status="started", started_task_ids=["0", "1"])
+        ),
+    )
+
+    response = client.post(KICKOFF_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "started", "started_task_ids": ["0", "1"]}
+    service_call.assert_awaited_once_with(test_user_id)

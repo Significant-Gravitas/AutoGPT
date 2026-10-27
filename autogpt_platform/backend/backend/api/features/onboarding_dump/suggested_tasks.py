@@ -44,7 +44,7 @@ _WRITE_ATTEMPTS = 3
 
 async def get_suggested_tasks(user_id: str) -> SuggestedTasksResponse:
     dump = await db.get_dump(user_id)
-    stored = _stored_tasks(dump.suggestedPrompts if dump else None)
+    stored = stored_tasks(dump.suggestedPrompts if dump else None)
     if stored:
         tasks = await _with_kickoff_status(user_id, stored)
         return SuggestedTasksResponse(tasks=tasks, stored=True)
@@ -100,7 +100,7 @@ async def _rewrite(
     """Apply ``change`` to the stored list with a compare-and-set write."""
     for _ in range(_WRITE_ATTEMPTS):
         dump = await db.get_dump(user_id) or await db.ensure_dump(user_id)
-        stored = _stored_tasks(dump.suggestedPrompts)
+        stored = stored_tasks(dump.suggestedPrompts)
         tasks = stored or _generic_tasks()
         if task_ids - {task.id for task in tasks}:
             raise NotFoundError("Unknown suggestion")
@@ -181,7 +181,7 @@ def _apply(task: SuggestedTask, update: SuggestedTasksUpdate) -> SuggestedTask:
     )
 
 
-def _stored_tasks(raw: object) -> list[SuggestedTask]:
+def stored_tasks(raw: object) -> list[SuggestedTask]:
     """Rehydrate the stored list, dropping anything malformed.
 
     The ``id`` a row was first given is its list index, kept on every write

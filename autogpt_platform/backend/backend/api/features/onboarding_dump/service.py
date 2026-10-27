@@ -29,6 +29,7 @@ from backend.api.features.onboarding_dump import (
     storage,
     transcription,
 )
+from backend.api.features.onboarding_dump.kickoff import kickoff_suggested_tasks
 from backend.api.features.onboarding_dump.models import (
     AUDIO_FILE_EXTENSIONS,
     RECORDING_FILENAME_PREFIX,
@@ -413,14 +414,20 @@ async def _run_background_jobs(
         _run_expert_recommendations(user_id, recording_id, transcript, wizard_context),
         return_exceptions=True,
     )
-    if results[0] is True:
-        try:
-            await db.update_dump(
-                user_id, recording_id, status=BrainDumpStatus.completed
-            )
-        except Exception as e:
-            logger.error("Brain dump completion failed for user %s: %s", user_id, e)
-            await db.mark_failed(user_id, recording_id, "understanding_failed")
+    if results[0] is not True:
+        return
+    try:
+        await db.update_dump(user_id, recording_id, status=BrainDumpStatus.completed)
+    except Exception as e:
+        logger.error("Brain dump completion failed for user %s: %s", user_id, e)
+        await db.mark_failed(user_id, recording_id, "understanding_failed")
+        return
+    try:
+        # The greeting's prompts are stored now, so Otto can start on the
+        # first of them while the user finishes onboarding.
+        await kickoff_suggested_tasks(user_id)
+    except Exception as e:
+        logger.warning(f"Brain dump kickoff failed for user {user_id}: {e}")
 
 
 async def _run_completion(

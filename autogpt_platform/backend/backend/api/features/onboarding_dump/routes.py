@@ -10,7 +10,13 @@ from fastapi import APIRouter, Form, Security, UploadFile
 from fastapi.responses import RedirectResponse
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 
-from backend.api.features.onboarding_dump import db, service, storage, suggested_tasks
+from backend.api.features.onboarding_dump import (
+    db,
+    kickoff,
+    service,
+    storage,
+    suggested_tasks,
+)
 from backend.api.features.onboarding_dump.models import (
     ALLOWED_AUDIO_MIME_TYPES,
     MAX_PART_BYTES,
@@ -21,6 +27,7 @@ from backend.api.features.onboarding_dump.models import (
     FinalizeResponse,
     GreetingDoneResponse,
     IntroCardResponse,
+    KickoffResponse,
     RecommendedExpertsResponse,
     RecommendedProvidersResponse,
     SuggestedTasksResponse,
@@ -255,6 +262,21 @@ async def update_brain_dump_suggested_tasks(
     Takes several ids so "Hide all" and its Undo are one write each.
     """
     return await suggested_tasks.update_suggested_tasks(user_id, request)
+
+
+@router.post(
+    "/suggested-tasks/kickoff", operation_id="kickoff_brain_dump_suggested_tasks"
+)
+async def kickoff_brain_dump_suggested_tasks(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> KickoffResponse:
+    """Have Otto start the first open suggested tasks for the user.
+
+    The pipeline already does this once the greeting is stored; the copilot
+    home calls it too, in case that run missed. Repeating it never starts a
+    task twice.
+    """
+    return await kickoff.kickoff_suggested_tasks(user_id)
 
 
 @router.post("/intro/complete", operation_id="complete_brain_dump_greeting")

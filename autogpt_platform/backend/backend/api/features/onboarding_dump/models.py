@@ -159,6 +159,20 @@ class SuggestedTasksUpdate(BaseModel):
     session_id: str | None = Field(default=None, max_length=64)
 
 
+class KickoffResponse(BaseModel):
+    """What came of asking Otto to start the user's first suggested tasks.
+
+    ``started`` lists every row Otto has started, on this call or an
+    earlier one. ``pending`` means the greeting has not stored its prompts
+    yet, so asking again later can still start them; ``refused`` means the
+    user may not start a turn now (no plan, usage spent); ``nothing`` means
+    there is nothing to start, or starting failed.
+    """
+
+    status: Literal["started", "pending", "refused", "nothing"]
+    started_task_ids: list[str] = []
+
+
 class RecommendedExpert(BaseModel):
     """One roster template Otto suggests hiring first.
 

@@ -83,6 +83,7 @@ class PostHogEvent(StrEnum):
     # Key moments (SECRT-2723): backend/util/product_analytics.py
     SIGNUP_COMPLETED = "signup_completed"
     ONBOARDING_COMPLETED = "onboarding_completed"
+    ONBOARDING_DRAFT_STARTED = "onboarding_draft_started"
     CHECKOUT_STARTED = "checkout_started"
     SUBSCRIPTION_ENDED = "subscription_ended"
     LISTING_ADDED_TO_LIBRARY = "listing_added_to_library"

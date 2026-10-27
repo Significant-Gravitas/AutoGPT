@@ -22,3 +22,19 @@ def has_session(mocker: MockerFixture) -> AsyncMock:
         "backend.api.features.onboarding_dump.service.user_has_any_session", new=mock
     )
     return mock
+
+
+@pytest.fixture(autouse=True)
+def kickoff_tasks(mocker: MockerFixture) -> AsyncMock:
+    """Otto starts no tasks unless a test asks.
+
+    A completed take kicks off the user's first suggested tasks, which
+    would reach the turn queue, Redis and the database from every test
+    that runs the pipeline to the end.
+    """
+    mock = AsyncMock()
+    mocker.patch(
+        "backend.api.features.onboarding_dump.service.kickoff_suggested_tasks",
+        new=mock,
+    )
+    return mock

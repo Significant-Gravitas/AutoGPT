@@ -264,6 +264,49 @@ async def finalize_voice(duration_secs: float = 12.0, mime_type: str | None = No
 
 
 @pytest.mark.asyncio
+async def test_background_jobs_kick_off_tasks_after_completion(
+    dumps: DumpStore, kickoff_tasks: AsyncMock
+):
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    kickoff_tasks.assert_awaited_once_with(USER_ID)
+
+
+@pytest.mark.asyncio
+async def test_background_jobs_kick_off_nothing_when_completion_failed(
+    dumps: DumpStore, kickoff_tasks: AsyncMock, mocker: MockerFixture
+):
+    mocker.patch.object(
+        service, "_extract_and_complete", side_effect=RuntimeError("llm down")
+    )
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.failed
+    kickoff_tasks.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failing_kickoff_leaves_the_dump_completed(
+    dumps: DumpStore, kickoff_tasks: AsyncMock
+):
+    kickoff_tasks.side_effect = RuntimeError("queue down")
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.errorCode is None
+
+
+@pytest.mark.asyncio
 async def test_transcription_failure_keeps_the_audio_and_records_the_error(
     dumps: DumpStore, transcribe: AsyncMock, storage_mocks: dict[str, AsyncMock]
 ):

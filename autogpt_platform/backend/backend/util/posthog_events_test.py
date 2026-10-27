@@ -48,6 +48,7 @@ LIVE_EVENT_NAMES = {
     "$ai_span",
     "signup_completed",
     "onboarding_completed",
+    "onboarding_draft_started",
     "checkout_started",
     "subscription_ended",
     "listing_added_to_library",
