@@ -46,6 +46,17 @@ describe("getChatAllowance", () => {
   it("says nothing about limits until usage has loaded", () => {
     expect(getChatAllowance(paid, undefined)).toBe("unknown");
   });
+
+  // Sentry: isActiveTrial stays false until the trial query answers, so a
+  // trial account with no daily or weekly windows read as "unlimited".
+  it("never calls a trial account unlimited before its trial has loaded", () => {
+    expect(
+      getChatAllowance(
+        { tier: "TRIAL", isActiveTrial: false, isLifetimeTrial: false },
+        { daily: null, weekly: null },
+      ),
+    ).toBe("unknown");
+  });
 });
 
 describe("getUsageCreditsAnswers", () => {
@@ -110,7 +121,18 @@ describe("getUsageCreditsAnswers", () => {
     expect(answers.map((item) => item.question)).not.toContain(CARD);
     expect(text).not.toMatch(/Add credits|buy credits|auto-refill/);
     expect(answer({ ...paidCapped, paymentEnabled: false }, MORE)).toBe(
-      "For more chat usage, choose a bigger plan. For more automation credits, finish the setup steps in the wallet.",
+      "For more automation credits, finish the setup steps in the wallet.",
+    );
+  });
+
+  // Sentry: upgrades are refused with payments off, and an account without a
+  // plan has nothing to make bigger.
+  it("only suggests a bigger plan when one can be bought", () => {
+    expect(answer({ ...paidCapped, paymentEnabled: false }, MORE)).not.toMatch(
+      /plan/,
+    );
+    expect(answer({ ...paidCapped, allowance: "no-plan" as const }, MORE)).toBe(
+      "For chat usage, choose a plan. For more automation credits, select Add credits in the wallet.",
     );
   });
 

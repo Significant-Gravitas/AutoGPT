@@ -30,7 +30,10 @@ export function getChatAllowance(
   if (usage.daily && usage.weekly) return "daily-weekly";
   if (usage.daily) return "daily";
   if (usage.weekly) return "weekly";
-  return plan.isActiveTrial ? "lifetime-trial" : "unlimited";
+  if (plan.isActiveTrial) return "lifetime-trial";
+  // A trial account whose trial status hasn't loaded, or failed to, is not
+  // an uncapped plan: say nothing about its limits.
+  return plan.tier === "TRIAL" ? "unknown" : "unlimited";
 }
 
 interface Args {
@@ -74,9 +77,7 @@ export function getUsageCreditsAnswers({
     {
       question: "How do I get more?",
       answer: [
-        allowance === "unlimited"
-          ? null
-          : "For more chat usage, choose a bigger plan.",
+        describeMoreChat(allowance, paymentEnabled),
         paymentEnabled
           ? "For more automation credits, select Add credits in the wallet."
           : "For more automation credits, finish the setup steps in the wallet.",
@@ -105,4 +106,12 @@ function describeAllowance(allowance: ChatAllowance, isTrial: boolean) {
     case "unknown":
       return "It comes with your plan.";
   }
+}
+
+// Plans are bought and upgraded only with payments on, and an uncapped plan
+// has no more to get.
+function describeMoreChat(allowance: ChatAllowance, paymentEnabled: boolean) {
+  if (!paymentEnabled || allowance === "unlimited") return null;
+  if (allowance === "no-plan") return "For chat usage, choose a plan.";
+  return "For more chat usage, choose a bigger plan.";
 }
