@@ -24,6 +24,8 @@ interface Args {
    */
   onSuccess: (credentials?: CredentialsMetaResponse) => void;
   scopes?: string[];
+  /** Adds the scopes to this connection; another account is then refused. */
+  credentialID?: string;
   onError?: (error: unknown) => void;
 }
 
@@ -35,6 +37,7 @@ export function useDeviceAuthConnect({
   provider,
   onSuccess,
   scopes,
+  credentialID,
   onError,
 }: Args) {
   const queryClient = useQueryClient();
@@ -201,10 +204,10 @@ export function useDeviceAuthConnect({
     consecutiveFailuresRef.current = 0;
     setPhase("awaiting_user");
     try {
-      const response = await postV1InitiateDeviceCodeOauthFlow(
-        provider,
-        scopes?.length ? { scopes: scopes.join(",") } : undefined,
-      );
+      const response = await postV1InitiateDeviceCodeOauthFlow(provider, {
+        ...(scopes?.length ? { scopes: scopes.join(",") } : {}),
+        ...(credentialID ? { credential_id: credentialID } : {}),
+      });
 
       if (isUnmountedRef.current || runId !== runIdRef.current) return;
 

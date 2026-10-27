@@ -9,7 +9,10 @@ from backend.integrations.oauth.microsoft_recovery import (
     MicrosoftAuthError,
     microsoft_recovery,
 )
-from backend.integrations.oauth.microsoft_services import COPILOT_SCOPES
+from backend.integrations.oauth.microsoft_services import (
+    COPILOT_SCOPES,
+    MICROSOFT_SERVICE_SCOPES,
+)
 
 PERSONAL_TENANT = "9188040d-6c67-4c5b-b112-36a304b66dad"
 BASE = ["User.Read", "Mail.ReadWrite", "Mail.Send", "Calendars.ReadWrite"]
@@ -22,11 +25,12 @@ def _connection(tenant: str, scopes: list[str]) -> OAuth2Credentials:
         refresh_token=SecretStr("refresh"),
         scopes=scopes,
         metadata={
+            "microsoft_client_id": "deployment-app",
             "microsoft_identity": {
                 "tenant_id": tenant,
                 "account_id": "account",
                 "account_type": "personal" if tenant == PERSONAL_TENANT else "work",
-            }
+            },
         },
     )
 
@@ -55,6 +59,18 @@ def _work_iq(mocker, *, error: int | None = None, tools: list | None = None):
     mcp.list_tools = AsyncMock(return_value=tools or [])
     mcp.close = AsyncMock()
     return token
+
+
+def _approval_app(mocker) -> None:
+    mocker.patch(
+        "backend.integrations.microsoft_access.browser_sign_in_available",
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.integrations.microsoft_access.microsoft_app"
+    ).return_value.client_id = "deployment-app"
+    config = mocker.patch("backend.integrations.microsoft_access.Settings")
+    config.return_value.config.frontend_base_url = "https://app.example"
 
 
 def _statuses(result) -> dict[str, str]:
@@ -140,15 +156,7 @@ async def test_failed_probe_does_not_hide_other_services(mocker, graph) -> None:
 @pytest.mark.asyncio
 async def test_admins_can_approve_every_work_service_at_once(mocker) -> None:
     _work_iq(mocker, error=650052)
-    mocker.patch(
-        "backend.integrations.microsoft_access.browser_sign_in_available",
-        return_value=True,
-    )
-    mocker.patch(
-        "backend.integrations.microsoft_access.microsoft_app"
-    ).return_value.client_id = "deployment-app"
-    config = mocker.patch("backend.integrations.microsoft_access.Settings")
-    config.return_value.config.frontend_base_url = "https://app.example"
+    _approval_app(mocker)
 
     result = await check_microsoft_access(_connection("company", BASE))
     personal = await check_microsoft_access(_connection(PERSONAL_TENANT, BASE))
@@ -172,18 +180,44 @@ async def test_organization_approval_leaves_work_iq_to_its_own_approval(
     # approval (AADSTS650052, live on 10-27), and "needs your permission" or
     # "needs your admin" can't tell that tenant apart.
     _work_iq(mocker, error=error)
-    mocker.patch(
-        "backend.integrations.microsoft_access.browser_sign_in_available",
-        return_value=True,
-    )
-    mocker.patch(
-        "backend.integrations.microsoft_access.microsoft_app"
-    ).return_value.client_id = "deployment-app"
-    config = mocker.patch("backend.integrations.microsoft_access.Settings")
-    config.return_value.config.frontend_base_url = "https://app.example"
+    _approval_app(mocker)
 
     result = await check_microsoft_access(_connection("company", BASE))
 
     url = result.admin_consent_url or ""
     assert "Chat.ReadWrite" in url
     assert "workiq" not in url
+
+
+@pytest.mark.asyncio
+async def test_no_organization_approval_when_only_work_iq_is_pending(mocker) -> None:
+    _work_iq(mocker, error=65001)
+    _approval_app(mocker)
+    every_graph_scope = [
+        "User.Read",
+        *(
+            scope
+            for service, scopes in MICROSOFT_SERVICE_SCOPES.items()
+            if service != "work_iq"
+            for scope in scopes
+        ),
+    ]
+
+    result = await check_microsoft_access(_connection("company", every_graph_scope))
+
+    assert _statuses(result)["work_iq"] == "permission_needed"
+    assert result.admin_consent_url is None
+
+
+@pytest.mark.asyncio
+async def test_organization_approval_only_for_this_deployments_app(mocker) -> None:
+    _work_iq(mocker, error=650052)
+    _approval_app(mocker)
+    public = _connection("company", BASE)
+    public.metadata["microsoft_client_id"] = "public-sign-in-code-app"
+
+    result = await check_microsoft_access(public)
+
+    # Approving the deployment's app would grant nothing to a connection
+    # another app issued.
+    assert result.admin_consent_url is None

@@ -28,6 +28,7 @@ from backend.integrations.oauth.microsoft_services import (
 from backend.integrations.oauth.microsoft_tokens import (
     LOGIN_BASE,
     browser_sign_in_available,
+    issuing_client_id,
     microsoft_app,
     microsoft_resource_token,
 )
@@ -97,7 +98,7 @@ async def check_microsoft_access(credential: OAuth2Credentials) -> MicrosoftAcce
         account_type=account_type,
         capabilities=list(capabilities),
         admin_consent_url=(
-            _admin_consent_url(identity.tenant_id, capabilities)
+            _admin_consent_url(credential, identity.tenant_id, capabilities)
             if identity and account_type == "work"
             else None
         ),
@@ -155,19 +156,28 @@ async def _check_work_iq(credential: OAuth2Credentials) -> MicrosoftCapability:
 
 
 def _admin_consent_url(
-    tenant_id: str, capabilities: list[MicrosoftCapability]
+    credential: OAuth2Credentials,
+    tenant_id: str,
+    capabilities: list[MicrosoftCapability],
 ) -> str | None:
     frontend = Settings().config.frontend_base_url
     if not frontend or not browser_sign_in_available():
         return None
-    pending = [
-        c for c in capabilities if c.status in ("permission_needed", "admin_required")
-    ]
-    if not pending:
+    # Approving the deployment's app grants nothing to a connection that
+    # another app issued.
+    if issuing_client_id(credential) != microsoft_app().client_id:
         return None
     # Work IQ has its own approval. Asking for it before Microsoft has set it
     # up for the organization fails the whole approval (AADSTS650052), and a
     # missing setup looks like a missing permission until someone consents.
+    pending = [
+        c
+        for c in capabilities
+        if c.service != "work_iq"
+        and c.status in ("permission_needed", "admin_required")
+    ]
+    if not pending:
+        return None
     services: list[MicrosoftService] = [
         service for service in MICROSOFT_SERVICE_SCOPES if service != "work_iq"
     ]

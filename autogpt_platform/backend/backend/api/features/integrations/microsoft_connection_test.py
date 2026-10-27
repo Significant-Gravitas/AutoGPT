@@ -7,6 +7,10 @@ from backend.api.external.v1 import integrations as external
 from backend.api.features.integrations import router as routes
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth.microsoft import MicrosoftDeviceAuthHandler
+from backend.integrations.oauth.microsoft_recovery import (
+    MicrosoftAuthError,
+    microsoft_recovery,
+)
 from backend.integrations.oauth.microsoft_tokens import issuing_client_id
 from backend.integrations.providers import ProviderName
 
@@ -113,3 +117,42 @@ def test_external_api_points_microsoft_to_settings():
 
     assert refused.value.status_code == 400
     assert "Settings" in refused.value.detail
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        MicrosoftAuthError(microsoft_recovery(description="AADSTS70043: expired")),
+        ValueError("Reconnect Microsoft to renew access."),
+    ],
+)
+async def test_check_answers_a_connection_that_can_no_longer_refresh(mocker, error):
+    mocker.patch.object(routes.creds_manager, "get", AsyncMock(side_effect=error))
+
+    with pytest.raises(HTTPException) as refused:
+        await routes.verify_microsoft_connection("work-id", "user-1")
+
+    assert refused.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_work_iq_scopes_a_graph_token_cannot_carry_are_not_reported_missing(
+    mocker,
+):
+    failure = mocker.patch.object(routes, "report_credential_failure")
+    handler = mocker.Mock()
+    handler.handle_default_scopes = lambda scopes: scopes
+    granted = credential("work-id")
+    granted.scopes = ["Chat.ReadWrite"]
+    handler.exchange_code_for_tokens = AsyncMock(return_value=granted)
+    state = mocker.Mock(
+        scopes=["Chat.ReadWrite", "api://workiq.svc.cloud.microsoft/WorkIQAgent.Ask"],
+        code_verifier=None,
+    )
+
+    await routes._exchange_code_for_credentials(
+        handler, ProviderName.MICROSOFT, "code", state
+    )
+
+    failure.assert_not_called()
