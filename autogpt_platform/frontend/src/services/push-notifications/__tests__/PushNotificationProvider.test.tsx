@@ -38,9 +38,12 @@ const { notificationsEnabledMock } = vi.hoisted(() => ({
   notificationsEnabledMock: vi.fn(() => true),
 }));
 vi.mock("@/app/(platform)/copilot/store", () => ({
-  useCopilotUIStore: (
-    selector: (s: { isNotificationsEnabled: boolean }) => unknown,
-  ) => selector({ isNotificationsEnabled: notificationsEnabledMock() }),
+  useCopilotUIStore: Object.assign(
+    (selector: (s: { isNotificationsEnabled: boolean }) => unknown) =>
+      selector({ isNotificationsEnabled: notificationsEnabledMock() }),
+    { setState: vi.fn() },
+  ),
+  getPersistedNotificationsEnabled: () => notificationsEnabledMock(),
 }));
 
 const mockIsPushSupported = vi.fn(() => true);
@@ -351,6 +354,168 @@ describe("PushNotificationProvider", () => {
       });
       expect(mockRemoveSubscriptionFromServer).not.toHaveBeenCalled();
       expect(mockUnsubscribeFromPush).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("notifications switch", () => {
+    it("removes a leftover subscription instead of subscribing when the switch is off", async () => {
+      notificationsEnabledMock.mockReturnValue(false);
+
+      render(<PushNotificationProvider />);
+
+      await waitFor(() => {
+        expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription);
+      });
+      expect(mockRemoveSubscriptionFromServer).toHaveBeenCalledWith(
+        mockSubscription.endpoint,
+      );
+      expect(mockSubscribeToPush).not.toHaveBeenCalled();
+      expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
+    });
+
+    it("unsubscribes when the switch is turned off", async () => {
+      const { rerender } = render(<PushNotificationProvider />);
+      await waitFor(() => {
+        expect(mockSendSubscriptionToServer).toHaveBeenCalled();
+      });
+
+      notificationsEnabledMock.mockReturnValue(false);
+      rerender(<PushNotificationProvider />);
+
+      await waitFor(() => {
+        expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockSubscription);
+      });
+      expect(mockRemoveSubscriptionFromServer).toHaveBeenCalledWith(
+        mockSubscription.endpoint,
+      );
+    });
+
+    it("subscribes again when the switch is turned back on", async () => {
+      const { rerender } = render(<PushNotificationProvider />);
+      await waitFor(() => {
+        expect(mockSendSubscriptionToServer).toHaveBeenCalledTimes(1);
+      });
+
+      notificationsEnabledMock.mockReturnValue(false);
+      rerender(<PushNotificationProvider />);
+      await waitFor(() => {
+        expect(mockUnsubscribeFromPush).toHaveBeenCalled();
+      });
+
+      notificationsEnabledMock.mockReturnValue(true);
+      rerender(<PushNotificationProvider />);
+
+      await waitFor(() => {
+        expect(mockSendSubscriptionToServer).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    it("does not subscribe when the switch is turned off while setup is still running", async () => {
+      delete process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      let resolveVapidKey: (key: string) => void = () => undefined;
+      mockFetchVapidPublicKey.mockReturnValue(
+        new Promise<string>((resolve) => {
+          resolveVapidKey = resolve;
+        }),
+      );
+      mockRegistration.pushManager.getSubscription = vi
+        .fn()
+        .mockResolvedValue(null);
+
+      const { rerender } = render(<PushNotificationProvider />);
+      await waitFor(() => {
+        expect(mockFetchVapidPublicKey).toHaveBeenCalled();
+      });
+
+      notificationsEnabledMock.mockReturnValue(false);
+      rerender(<PushNotificationProvider />);
+      await waitFor(() => {
+        expect(mockRegistration.pushManager.getSubscription).toHaveBeenCalled();
+      });
+
+      resolveVapidKey("vapid-key-123");
+
+      await waitFor(() => {
+        expect(mockFetchVapidPublicKey).toHaveBeenCalledTimes(1);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockSubscribeToPush).not.toHaveBeenCalled();
+      expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
+    });
+
+    it("waits for a pending teardown before subscribing again", async () => {
+      const { rerender } = render(<PushNotificationProvider />);
+      await waitFor(() => {
+        expect(mockSendSubscriptionToServer).toHaveBeenCalledTimes(1);
+      });
+
+      let resolveRegistration: (value: typeof mockRegistration) => void = () =>
+        undefined;
+      vi.mocked(navigator.serviceWorker.getRegistration).mockReturnValue(
+        new Promise((resolve) => {
+          resolveRegistration = resolve;
+        }) as unknown as ReturnType<
+          typeof navigator.serviceWorker.getRegistration
+        >,
+      );
+      mockSubscribeToPush.mockClear();
+
+      notificationsEnabledMock.mockReturnValue(false);
+      rerender(<PushNotificationProvider />);
+      notificationsEnabledMock.mockReturnValue(true);
+      rerender(<PushNotificationProvider />);
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockSubscribeToPush).not.toHaveBeenCalled();
+
+      resolveRegistration(mockRegistration);
+
+      await waitFor(() => {
+        expect(mockSendSubscriptionToServer).toHaveBeenCalledTimes(2);
+      });
+      expect(mockUnsubscribeFromPush.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSubscribeToPush.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("waits for every pending teardown when the switch is flipped twice", async () => {
+      const { rerender } = render(<PushNotificationProvider />);
+      await waitFor(() => {
+        expect(mockSendSubscriptionToServer).toHaveBeenCalledTimes(1);
+      });
+
+      let resolveFirstRegistration: (
+        value: typeof mockRegistration,
+      ) => void = () => undefined;
+      vi.mocked(navigator.serviceWorker.getRegistration).mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirstRegistration = resolve;
+        }) as unknown as ReturnType<
+          typeof navigator.serviceWorker.getRegistration
+        >,
+      );
+      mockSubscribeToPush.mockClear();
+      mockUnsubscribeFromPush.mockClear();
+
+      for (const enabled of [false, true, false, true]) {
+        notificationsEnabledMock.mockReturnValue(enabled);
+        rerender(<PushNotificationProvider />);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockSubscribeToPush).not.toHaveBeenCalled();
+
+      resolveFirstRegistration(mockRegistration);
+
+      await waitFor(() => {
+        expect(mockSendSubscriptionToServer).toHaveBeenCalledTimes(2);
+      });
+      const lastUnsubscribe = Math.max(
+        ...mockUnsubscribeFromPush.mock.invocationCallOrder,
+      );
+      expect(lastUnsubscribe).toBeLessThan(
+        mockSubscribeToPush.mock.invocationCallOrder[0],
+      );
     });
   });
 

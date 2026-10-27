@@ -10,6 +10,7 @@ import {
   InputGroup,
   InputGroupAddon,
 } from "@/components/molecules/InputGroup/InputGroup";
+import { containsLikelySecret } from "@/lib/secret-detection";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
@@ -46,6 +47,7 @@ import { ConnectionPickerDialog } from "./components/ConnectionPicker/Connection
 import { NoAIConnectionNotice } from "./components/NoAIConnectionNotice/NoAIConnectionNotice";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
+import { SecretPasteNotice } from "./components/SecretPasteNotice";
 import { StopButton } from "./components/StopButton";
 import { TranscriptionErrorBar } from "./components/TranscriptionErrorBar";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
@@ -132,6 +134,9 @@ interface Props {
   expertId?: string | null;
   /** Names that expert in the picker's filter row. */
   expertName?: string | null;
+  /** Who the message goes to, named in the secret warning: the expert, or
+   *  Otto when unset. */
+  assistantName?: string | null;
   /** Attachments stay open during a reply, and a message with attachments
    *  goes to `onSend`, which must hold it until the reply ends. */
   canAttachWhileStreaming?: boolean;
@@ -171,6 +176,7 @@ export const ChatInput = memo(function ChatInput({
   variant = "default",
   expertId = null,
   expertName = null,
+  assistantName = null,
   canAttachWhileStreaming = false,
   atReset,
 }: Props) {
@@ -495,6 +501,11 @@ export const ChatInput = memo(function ChatInput({
         {atReset && hasAttachments && (
           <AtResetFilesNotice className={stacked ? undefined : "mt-1.5"} />
         )}
+        <SecretPasteNotice
+          visible={containsLikelySecret(value)}
+          assistantName={assistantName ?? "Otto"}
+          className={stacked ? undefined : "mt-1.5"}
+        />
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
