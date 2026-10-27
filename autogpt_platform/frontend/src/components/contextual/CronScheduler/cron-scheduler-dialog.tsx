@@ -180,31 +180,3 @@ export function CronExpressionDialog({
     />
   );
 }
-
-export function ScheduleTaskDialog({
-  open,
-  setOpen,
-  onSubmit,
-  defaultScheduleName,
-  defaultCronExpression,
-  title = "Schedule Task",
-}: {
-  open: boolean;
-  setOpen: (open: boolean) => void;
-  onSubmit: (cronExpression: string, scheduleName: string) => void;
-  defaultScheduleName?: string;
-  defaultCronExpression?: string;
-  title?: string;
-}) {
-  return (
-    <CronSchedulerDialog
-      open={open}
-      setOpen={setOpen}
-      mode="with-name"
-      onSubmit={onSubmit}
-      defaultScheduleName={defaultScheduleName}
-      defaultCronExpression={defaultCronExpression}
-      title={title}
-    />
-  );
-}
