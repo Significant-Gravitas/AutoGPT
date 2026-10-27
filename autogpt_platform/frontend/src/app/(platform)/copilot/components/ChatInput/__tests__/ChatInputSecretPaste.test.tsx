@@ -38,6 +38,22 @@ describe("ChatInput secret warning", () => {
     expect(composer().value).toBe(`use this token ${GITHUB_TOKEN}`);
   });
 
+  it("puts the warning into a status region that was already there, so it is announced", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput onSend={vi.fn()} />);
+
+    const region = screen.getByTestId("secret-paste-notice");
+    expect(region.getAttribute("role")).toBe("status");
+    expect(region.textContent).toBe("");
+
+    await user.click(composer());
+    await user.paste(GITHUB_TOKEN);
+
+    const warning = await screen.findByText(WARNING);
+    expect(screen.getByTestId("secret-paste-notice")).toBe(region);
+    expect(region.contains(warning)).toBe(true);
+  });
+
   it("drops the warning once the token is removed", async () => {
     const user = userEvent.setup();
     render(<ChatInput onSend={vi.fn()} />);

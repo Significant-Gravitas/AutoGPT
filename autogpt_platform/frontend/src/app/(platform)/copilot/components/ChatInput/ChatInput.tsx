@@ -497,9 +497,10 @@ export const ChatInput = memo(function ChatInput({
         {atReset && hasAttachments && (
           <AtResetFilesNotice className={stacked ? undefined : "mt-1.5"} />
         )}
-        {containsLikelySecret(value) && (
-          <SecretPasteNotice className={stacked ? undefined : "mt-1.5"} />
-        )}
+        <SecretPasteNotice
+          visible={containsLikelySecret(value)}
+          className={stacked ? undefined : "mt-1.5"}
+        />
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
