@@ -56,7 +56,9 @@ export function usePreparingStep({ onComplete, canHire = false }: Args) {
   onCompleteRef.current = onComplete;
   const teamHire = usePlanHire({ enabled: canHire });
   const isHireSettledRef = useRef(teamHire.isSettled);
-  isHireSettledRef.current = teamHire.isSettled;
+  useEffect(() => {
+    isHireSettledRef.current = teamHire.isSettled;
+  }, [teamHire.isSettled]);
 
   // Only a user who actually dumped gets the honest copy; a skip would
   // make "Reading your brain dump" a lie.
