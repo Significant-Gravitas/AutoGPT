@@ -18,6 +18,7 @@ from backend.blocks.basic import StoreValueBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus
@@ -897,6 +898,63 @@ def test_create_new_graph_names_the_missing_field_on_the_submitted_node(
         "node_errors": {"output": {"name": "This field is required"}},
     }
     create_graph_mock.assert_not_awaited()
+
+
+@pytest.mark.parametrize("sink_name,status", [("query", 200), ("not_an_argument", 400)])
+def test_create_new_graph_takes_a_link_named_after_an_mcp_tool_argument(
+    mocker: pytest_mock.MockFixture, sink_name: str, status: int
+) -> None:
+    """The builder names a link into an MCP tool's argument after the
+    argument, and saving it answered 400 "invalid, Allowed fields". A name
+    that is neither an argument nor a field of the block is still refused."""
+    mocker.patch(
+        "backend.api.features.graphs.routes.before_graph_activate",
+        new=AsyncMock(side_effect=lambda g, **_: g),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.library_db.create_library_agent",
+        new=AsyncMock(),
+    )
+    graph = {
+        "name": "Value to MCP tool",
+        "description": "",
+        "nodes": [
+            {
+                "id": "value",
+                "block_id": StoreValueBlock().id,
+                "input_default": {"input": "hi"},
+            },
+            {
+                "id": "tool",
+                "block_id": MCPToolBlock().id,
+                "input_default": {
+                    "server_url": "https://mcp.example.com/mcp",
+                    "selected_tool": "search",
+                    "tool_input_schema": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                },
+            },
+        ],
+        "links": [
+            {
+                "source_id": "value",
+                "sink_id": "tool",
+                "source_name": "output",
+                "sink_name": sink_name,
+            }
+        ],
+    }
+
+    response = client.post("/graphs", json={"graph": graph})
+
+    assert response.status_code == status, response.text
+    assert create_graph_mock.await_count == (status == 200)
 
 
 @pytest.mark.parametrize(
