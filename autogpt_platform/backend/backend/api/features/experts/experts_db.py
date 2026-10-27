@@ -474,6 +474,7 @@ async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Exper
             "visibility": ResourceVisibility.PRIVATE,
         },
         include=_ROSTER_WORKFLOW_INCLUDE,
+        order=[{"createdAt": "asc"}, {"id": "asc"}],
     )
     if not with_metrics:
         return [_to_model(row) for row in rows]

@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.api.features.experts import avatar_routes
 from backend.api.features.experts import credentials as expert_credentials
-from backend.api.features.experts import experts_db, onboarding, scheduling
+from backend.api.features.experts import experts_db, first_jobs, onboarding, scheduling
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import (
@@ -22,6 +22,7 @@ from backend.api.features.experts.models import (
     ExpertBudgetUpdate,
     ExpertCredentialRef,
     ExpertDetachPreview,
+    ExpertFirstJobsResponse,
     ExpertIdentity,
     ExpertModeUpdate,
     ExpertPod,
@@ -325,6 +326,14 @@ async def list_expert_setup_items(
 ) -> list[ExpertSetupItem]:
     """What still stands between each expert's scheduled workflows and a schedule."""
     return await expert_setup.list_setup_items(user_id)
+
+
+@router.get("/first-jobs", operation_id="list_expert_first_jobs")
+async def list_expert_first_jobs(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ExpertFirstJobsResponse:
+    """Each hired expert's first job and how far it has got, oldest hire first."""
+    return await first_jobs.list_first_jobs(user_id)
 
 
 @router.get(

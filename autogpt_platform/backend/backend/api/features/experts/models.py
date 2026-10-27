@@ -187,6 +187,36 @@ class ExpertSetupItem(BaseModel):
         return resolve_avatar_url(value)
 
 
+ExpertFirstJobStatus = Literal[
+    "installing", "needs_setup", "needs_you", "working", "ready", "open"
+]
+
+
+class ExpertFirstJob(BaseModel):
+    """A hired expert's first assignment, as the copilot home shows it: the
+    template's first day-one row and how far the expert has got with it."""
+
+    expert_id: str
+    name: str
+    role: str
+    avatar_url: str | None
+    title: str
+    description: str
+    status: ExpertFirstJobStatus
+    detail: str
+    providers: list[str] = Field(default_factory=list)
+    session_id: str | None = None
+
+    @field_validator("avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
+
+
+class ExpertFirstJobsResponse(BaseModel):
+    items: list[ExpertFirstJob]
+
+
 class ExpertCredentialRef(BaseModel):
     """One integration credential an expert is allowed to use.
 

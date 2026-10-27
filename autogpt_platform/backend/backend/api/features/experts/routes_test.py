@@ -28,6 +28,8 @@ from backend.api.features.experts.models import (
     ExpertActivity,
     ExpertActivityDay,
     ExpertDayOneItem,
+    ExpertFirstJob,
+    ExpertFirstJobsResponse,
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
@@ -2031,6 +2033,34 @@ def test_list_expert_setup_items_is_not_swallowed_by_the_expert_route(
     assert response.json()[0]["resolution"] == "connect"
     assert response.json()[0]["providers"] == ["notion"]
     mock_list.assert_awaited_once()
+
+
+def test_list_first_jobs_returns_items(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    job = ExpertFirstJob(
+        expert_id="expert-1",
+        name="Maria",
+        role="Marketing Specialist",
+        avatar_url=None,
+        title="Audit your site",
+        description="A first SEO pass",
+        status="needs_setup",
+        detail="Needs notion",
+        providers=["notion"],
+    )
+    mock_list = mocker.patch(
+        "backend.api.features.experts.routes.first_jobs.list_first_jobs",
+        new_callable=AsyncMock,
+        return_value=ExpertFirstJobsResponse(items=[job]),
+    )
+
+    response = client.get("/experts/first-jobs")
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [job.model_dump()]}
+    mock_list.assert_awaited_once_with(test_user_id)
 
 
 # --- Computer -----------------------------------------------------------------
