@@ -33,7 +33,7 @@
             "description": null,
             "meta": [
               {
-                "text": "4 agents",
+                "text": "4 workflows",
                 "cron": null,
                 "label": null,
                 "at": null
@@ -54,7 +54,7 @@
             "avatar_url": null,
             "avatar_color": null,
             "skills": [],
-            "summary": "4 agents · 1 subfolder · In Finance"
+            "summary": "4 workflows · 1 subfolder · In Finance"
           }
         ],
         "reference_totals": {
@@ -80,7 +80,8 @@
           "object": "Q3 reports",
           "object_key": "folder_id"
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "delete_folder",
       "editable": false,
@@ -115,7 +116,7 @@
         "fields": [
           {
             "key": "agent_ids",
-            "label": "Agents",
+            "label": "Workflows",
             "format": null
           },
           {
@@ -131,7 +132,7 @@
             "id": "lib-digest",
             "name": "Morning digest",
             "href": "/library/agents/lib-digest",
-            "kind": "Agent",
+            "kind": "Workflow",
             "description": "Summarises overnight email and news at 7am.",
             "meta": [
               {
@@ -178,7 +179,7 @@
             "id": "lib-triage",
             "name": "Inbox triage",
             "href": "/library/agents/lib-triage",
-            "kind": "Agent",
+            "kind": "Workflow",
             "description": "Labels and routes new support email.",
             "meta": [
               {
@@ -211,7 +212,7 @@
             "id": "lib-notes",
             "name": "Meeting notes",
             "href": "/library/agents/lib-notes",
-            "kind": "Agent",
+            "kind": "Workflow",
             "description": "Turns call recordings into action items.",
             "meta": [
               {
@@ -244,7 +245,7 @@
             "id": "lib-invoices",
             "name": "Invoice chaser",
             "href": "/library/agents/lib-invoices",
-            "kind": "Agent",
+            "kind": "Workflow",
             "description": "Nudges clients about overdue invoices.",
             "meta": [
               {
@@ -281,7 +282,7 @@
             "description": null,
             "meta": [
               {
-                "text": "4 agents",
+                "text": "4 workflows",
                 "cron": null,
                 "label": null,
                 "at": null
@@ -296,12 +297,12 @@
             "avatar_url": null,
             "avatar_color": null,
             "skills": [],
-            "summary": "4 agents · 1 subfolder"
+            "summary": "4 workflows · 1 subfolder"
           }
         ],
         "reference_totals": {
-          "agent_ids": 7,
-          "folder_id": 1
+          "folder_id": 1,
+          "agent_ids": 7
         },
         "tool_call_id": "call-move_agents_to_folder",
         "turn": 1,
@@ -309,7 +310,7 @@
         "subject": {
           "kind": "tool",
           "key": "move_agents_to_folder",
-          "name": "Move agents into library folder",
+          "name": "Move workflows into library folder",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -319,11 +320,12 @@
         "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
-          "ask": "Move agents into library folder",
+          "ask": "Move workflows into library folder",
           "object": "Archive",
           "object_key": "folder_id"
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "move_agents_to_folder",
       "editable": false,
@@ -376,7 +378,7 @@
                 "at": "2026-09-25T07:00:00+00:00"
               },
               {
-                "text": "Agent: Morning digest",
+                "text": "Workflow: Morning digest",
                 "cron": null,
                 "label": null,
                 "at": null
@@ -385,7 +387,7 @@
             "avatar_url": null,
             "avatar_color": null,
             "skills": [],
-            "summary": "Runs 0 7 * * * · Next run 2026-09-25 · Agent: Morning digest"
+            "summary": "Runs 0 7 * * * · Next run 2026-09-25 · Workflow: Morning digest"
           }
         ],
         "reference_totals": {
@@ -411,96 +413,10 @@
           "object": "Daily digest",
           "object_key": "schedule_id"
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "pause_schedule",
-      "editable": false,
-      "status": "WAITING"
-    }
-  },
-  {
-    "story": "Hire expert",
-    "review": {
-      "node_exec_id": "copilot-node-gate-hire_expert:3ffe656fbe28a59c",
-      "node_id": "copilot-node-gate-hire_expert",
-      "user_id": "user-1",
-      "session_id": "s1",
-      "graph_exec_id": null,
-      "graph_id": null,
-      "graph_version": null,
-      "payload": {
-        "tool": "hire_expert",
-        "arguments": {
-          "template_id": "tpl-ada",
-          "name": "Ada"
-        },
-        "clipped": [],
-        "fields": [
-          {
-            "key": "template_id",
-            "label": "Template",
-            "format": null
-          },
-          {
-            "key": "name",
-            "label": "Name",
-            "format": null
-          }
-        ],
-        "references": [
-          {
-            "key": "template_id",
-            "entity": "expert_template",
-            "id": "tpl-ada",
-            "name": "Ada",
-            "href": "/marketplace/experts/tpl-ada",
-            "kind": "Expert template",
-            "description": "Keeps the books balanced.",
-            "meta": [
-              {
-                "text": "Finance",
-                "cron": null,
-                "label": null,
-                "at": null
-              }
-            ],
-            "avatar_url": null,
-            "avatar_color": "#7c3aed",
-            "skills": [
-              "Month-end close",
-              "Receipt matching",
-              "Cash forecast",
-              "Payroll"
-            ],
-            "summary": "Finance"
-          }
-        ],
-        "reference_totals": {
-          "template_id": 1
-        },
-        "tool_call_id": "call-hire_expert",
-        "turn": 1,
-        "mode": "ask_first",
-        "subject": {
-          "kind": "tool",
-          "key": "hire_expert",
-          "name": "Hire",
-          "effect": "platform",
-          "irreversible": false,
-          "block_id": null
-        },
-        "reason": "Ask First is on for this chat, so this action needs your approval.",
-        "reason_kind": "mode",
-        "decided_by": null,
-        "chat_rules_allowed": ["allow", "judge"],
-        "headline": {
-          "ask": "Hire",
-          "object": "Ada",
-          "object_key": "name"
-        },
-        "spend": null
-      },
-      "instructions": "hire_expert",
       "editable": false,
       "status": "WAITING"
     }
@@ -586,7 +502,8 @@
           "object": "Q3 planning",
           "object_key": "session_id"
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "message_session",
       "editable": false,
@@ -673,8 +590,8 @@
           }
         ],
         "reference_totals": {
-          "credential_id": 1,
-          "expert_id": 1
+          "expert_id": 1,
+          "credential_id": 1
         },
         "tool_call_id": "call-grant_expert_credential",
         "turn": 1,
@@ -696,7 +613,8 @@
           "object": "GitHub (work)",
           "object_key": "credential_id"
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "grant_expert_credential",
       "editable": false,
@@ -722,7 +640,7 @@
         "fields": [
           {
             "key": "agent_id",
-            "label": "Agent",
+            "label": "Workflow",
             "format": null
           }
         ],
@@ -733,7 +651,7 @@
             "id": "g-digest",
             "name": "Morning digest",
             "href": "/library/agents/lib-digest",
-            "kind": "Agent",
+            "kind": "Workflow",
             "description": "Summarises overnight email and news at 7am.",
             "meta": [
               {
@@ -770,7 +688,7 @@
         "subject": {
           "kind": "tool",
           "key": "edit_agent",
-          "name": "Edit an agent",
+          "name": "Edit a workflow",
           "effect": "platform",
           "irreversible": false,
           "block_id": null
@@ -780,11 +698,12 @@
         "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
-          "ask": "Edit an agent",
+          "ask": "Edit a workflow",
           "object": "Morning digest",
           "object_key": "agent_id"
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "edit_agent",
       "editable": false,
@@ -825,7 +744,7 @@
             "description": "The digest, but Mondays only.",
             "meta": [
               {
-                "text": "Agent: Morning digest",
+                "text": "Workflow: Morning digest",
                 "cron": null,
                 "label": null,
                 "at": null
@@ -834,7 +753,7 @@
             "avatar_url": null,
             "avatar_color": null,
             "skills": [],
-            "summary": "Agent: Morning digest"
+            "summary": "Workflow: Morning digest"
           }
         ],
         "reference_totals": {
@@ -860,7 +779,8 @@
           "object": "Weekly digest",
           "object_key": "preset_id"
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "update_preset",
       "editable": false,
@@ -901,7 +821,7 @@
             "description": "Runs when an invoice lands.",
             "meta": [
               {
-                "text": "Agent: Morning digest",
+                "text": "Workflow: Morning digest",
                 "cron": null,
                 "label": null,
                 "at": null
@@ -910,7 +830,7 @@
             "avatar_url": null,
             "avatar_color": null,
             "skills": [],
-            "summary": "Agent: Morning digest"
+            "summary": "Workflow: Morning digest"
           }
         ],
         "reference_totals": {
@@ -936,7 +856,8 @@
           "object": "New invoice email",
           "object_key": "preset_id"
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "delete_preset",
       "editable": false,
@@ -1012,7 +933,8 @@
           "object": "Month-end close",
           "object_key": "routine_id"
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "schedule_routine",
       "editable": false,
@@ -1039,7 +961,7 @@
         "fields": [
           {
             "key": "store_listing_version_id",
-            "label": "Marketplace agent",
+            "label": "Marketplace workflow",
             "format": null
           },
           {
@@ -1055,7 +977,7 @@
             "id": "slv-receipts",
             "name": "Receipt matcher",
             "href": "/marketplace/agent/ledgerly/receipt-matcher",
-            "kind": "Marketplace agent",
+            "kind": "Marketplace workflow",
             "description": "Matches card spend to emailed receipts.",
             "meta": [
               {
@@ -1105,8 +1027,8 @@
           }
         ],
         "reference_totals": {
-          "store_listing_version_id": 1,
-          "expert_id": 1
+          "expert_id": 1,
+          "store_listing_version_id": 1
         },
         "tool_call_id": "call-install_expert_workflow",
         "turn": 1,
@@ -1128,7 +1050,8 @@
           "object": null,
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "install_expert_workflow",
       "editable": false,
@@ -1197,7 +1120,8 @@
           "object": "Receipt matcher",
           "object_key": "workflow_id"
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "remove_expert_workflow",
       "editable": false,
@@ -1252,7 +1176,12 @@
             ],
             "avatar_url": null,
             "avatar_color": "#7c3aed",
-            "skills": ["Release notes", "Changelog"],
+            "skills": [
+              "Release notes",
+              "Changelog",
+              "Incident review",
+              "Hotfixes"
+            ],
             "summary": "Release manager · Engineering"
           }
         ],
@@ -1279,7 +1208,8 @@
           "object": "Grace",
           "object_key": "confirmation_id"
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "confirm_expert_change",
       "editable": false,
@@ -1379,7 +1309,8 @@
           "object": "/reports/q3-report.pdf",
           "object_key": "path"
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "delete_workspace_file",
       "editable": false,
@@ -1448,7 +1379,8 @@
           "object": null,
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "delete_preset",
       "editable": false,
@@ -1542,7 +1474,8 @@
           "object": null,
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "schedule_followup",
       "editable": false,
@@ -1600,7 +1533,8 @@
           "object": null,
           "object_key": null
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "schedule_followup",
       "editable": false,
@@ -1675,7 +1609,7 @@
           "kind": "tool",
           "key": "delegate_to_expert",
           "name": "Hand a task to a teammate",
-          "effect": "platform",
+          "effect": "team",
           "irreversible": false,
           "block_id": null
         },
@@ -1688,7 +1622,8 @@
           "object": "Ada",
           "object_key": "expert_id"
         },
-        "spend": null
+        "spend": null,
+        "workflow": null
       },
       "instructions": "delegate_to_expert",
       "editable": false,

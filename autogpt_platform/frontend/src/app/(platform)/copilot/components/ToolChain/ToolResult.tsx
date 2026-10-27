@@ -21,6 +21,7 @@ import { capabilityTargetRow } from "./capabilityRow";
 import { ConsultVerdictCard } from "./ConsultCard";
 import { ExecutionCard } from "./ExecutionCard";
 import { FileDiff } from "./FileDiff";
+import { SkillLoadedCard } from "./SkillLoadedCard";
 import { isDiffText } from "./fileDiffHelpers";
 import type { ChainRow } from "./helpers";
 import {
@@ -55,7 +56,10 @@ import {
   asObject,
   dictToOutputItems,
   humanizeKey,
+  isBlankOutput,
+  isEmptyResult,
   isWebhookIngressUrl,
+  NOTHING_FOUND,
   str,
   stripBaseFields,
 } from "./resultHelpers";
@@ -97,7 +101,7 @@ function shapeCard(obj: Record<string, unknown>) {
   if (key === "status" && typeof value === "string")
     return (
       <div className={`${CARD} ${HALF} flex items-center gap-2 p-2.5`}>
-        <span className="text-xs text-zinc-400">Status</span>
+        <span className="text-xs text-foreground-subtle">Status</span>
         <span className="ml-auto">
           <StatusPill status={value} />
         </span>
@@ -247,6 +251,71 @@ function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   );
 }
 
+/** Every tool with a card of its own. toolCard's switch is typed against
+ *  this list, so a new case cannot land without joining it — and the
+ *  chat-surface parity test renders each entry on every chat, not just the
+ *  main one. */
+export const TOOL_CARD_TOOLS = [
+  "run_agent",
+  "schedule_agent",
+  "view_agent_output",
+  "create_agent",
+  "customize_agent",
+  "edit_agent",
+  "run_sub_session",
+  "get_sub_session_result",
+  "delegate_to_expert",
+  "handoff_to_expert",
+  "consult_teammate",
+  "find_agent",
+  "find_library_agent",
+  "find_block",
+  "find_capability",
+  "run_block",
+  "continue_run_block",
+  "describe_capability",
+  "run_capability",
+  "resume_capability",
+  "connect_integration",
+  "decompose_goal",
+  "validate_agent_graph",
+  "fix_agent_graph",
+  "ask_question",
+  "list_schedules",
+  "schedule_followup",
+  "list_folders",
+  "create_folder",
+  "update_folder",
+  "move_folder",
+  "list_workspace_files",
+  "search_docs",
+  "get_doc_page",
+  "setup_agent_webhook_trigger",
+  "search_feature_requests",
+  "create_feature_request",
+  "run_mcp_tool",
+  "store_skill",
+  "read_skill",
+  "delete_skill",
+  "list_skills",
+  "list_chat_platform_channels",
+  "web_search",
+  "bash_exec",
+  "start_desktop",
+  "TodoWrite",
+  "read_workspace_file",
+  "write_workspace_file",
+  "delete_workspace_file",
+  "Read",
+  "Write",
+] as const;
+
+type ToolCardTool = (typeof TOOL_CARD_TOOLS)[number];
+
+function cardTool(tool: string | undefined): ToolCardTool | undefined {
+  return TOOL_CARD_TOOLS.find((name) => name === tool);
+}
+
 function toolCard(
   row: ChainRow,
   output: Record<string, unknown> | null,
@@ -261,7 +330,7 @@ function toolCard(
     if (questions) return <QuestionsCard questions={questions} />;
   }
 
-  switch (row.tool) {
+  switch (cardTool(row.tool)) {
     case "run_agent":
     case "schedule_agent": {
       const name =
@@ -438,8 +507,12 @@ function toolCard(
       return output && "result" in output ? (
         <KeyValueList value={output.result} />
       ) : null;
-    case "store_skill":
     case "read_skill":
+      if (output && typeof output.version === "number") {
+        return <SkillLoadedCard output={output} />;
+      }
+      return output ? <SkillCard output={output} /> : null;
+    case "store_skill":
     case "delete_skill":
       return output ? <SkillCard output={output} /> : null;
     case "list_skills": {
@@ -484,10 +557,12 @@ export function ToolResult({ row, readOnly = false }: Props) {
   const output = asObject(row.output);
   const pendingQuestions = useContext(PendingQuestionsContext);
 
-  // The latest unanswered clarifying questions render as an interactive
-  // answer form right on their chain row (older ones keep the read-only
-  // card from toolCard).
-  if (pendingQuestions?.callIds.includes(row.key)) {
+  // The latest unanswered clarifying questions are one card, so one form
+  // hosts them: on the lifted copy of the first asking row, the one the chain
+  // keeps mounted for its action card. Any other copy (a running row animating
+  // out as its output lands, or a later ask_question in the same message)
+  // keeps the read-only card from toolCard.
+  if (row.lifted && pendingQuestions?.callIds[0] === row.key) {
     return (
       <QuestionsForm
         key={pendingQuestions.dockId}
@@ -534,6 +609,11 @@ function ToolOutput({ row, readOnly }: Required<Props>) {
     (target === row ? null : toolCard(row, output, readOnly));
   if (card) return card;
 
+  if (isBlankOutput(row.output)) return <KeyValueList value={NOTHING_FOUND} />;
+  // An empty list can be the point of a change (the last grant revoked), so
+  // what the tool said comes first.
+  if (output && isEmptyResult(output))
+    return <KeyValueList value={str(output, "message") ?? NOTHING_FOUND} />;
   if (!output) return <KeyValueList value={row.output} />;
 
   const data = stripBaseFields(output);

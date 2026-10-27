@@ -76,6 +76,12 @@ class ConductorCreateSessionBlock(Block):
             ge=1,
             le=300,
         )
+        include_messages: bool = SchemaField(
+            description="Also return the raw transcript rows of the turn in "
+            "messages. Off by default: a long turn is hundreds of kilobytes, "
+            "while reply, session_status and next_after cover the usual needs",
+            default=False,
+        )
 
     class Output(BlockSchemaOutput):
         session_id: str = SchemaField(description="ID of the new session")
@@ -93,15 +99,19 @@ class ConductorCreateSessionBlock(Block):
             description="idle, working or error once waiting finished"
         )
         reply: str = SchemaField(description="Text the agent produced in response")
+        message_count: int = SchemaField(
+            description="Number of transcript rows of the turn that were kept"
+        )
         messages: list[dict] = SchemaField(
-            description="Raw transcript messages after the prompt"
+            description="Raw transcript rows of the turn, oldest first; only "
+            "emitted when include_messages is on"
         )
         timed_out: bool = SchemaField(
             description="True when the wait ended before the agent went idle"
         )
         truncated: bool = SchemaField(
-            description="True when the turn produced more messages than are "
-            "kept; messages holds the newest ones and reply may be incomplete"
+            description="True when the turn produced more rows than are kept; "
+            "the newest ones were kept and reply may be incomplete"
         )
         error_message: str = SchemaField(description="Session error, if any")
 
@@ -126,6 +136,7 @@ class ConductorCreateSessionBlock(Block):
                     "workspace_id": "ws_1",
                     "message": "Run the tests",
                     "wait_for_reply": True,
+                    "include_messages": True,
                 },
             ],
             test_credentials=conductor.get_test_credentials(),
@@ -140,6 +151,7 @@ class ConductorCreateSessionBlock(Block):
                 ("next_after", "row_1"),
                 ("session_status", "idle"),
                 ("reply", "All tests pass now."),
+                ("message_count", 1),
                 ("messages", lambda m: len(m) == 1),
                 ("timed_out", False),
                 ("truncated", False),
@@ -242,9 +254,12 @@ class ConductorCreateSessionBlock(Block):
                 block_id=self.id,
             ) from e
         yield "next_after", str(waited.get("prompt_row_id") or message_id)
+        messages = list(waited.get("messages") or [])
         yield "session_status", waited["session_status"]
         yield "reply", waited["reply"]
-        yield "messages", waited["messages"]
+        yield "message_count", len(messages)
+        if input_data.include_messages:
+            yield "messages", messages
         yield "timed_out", waited["timed_out"]
         yield "truncated", bool(waited.get("truncated", False))
         yield "error_message", waited["error_message"]

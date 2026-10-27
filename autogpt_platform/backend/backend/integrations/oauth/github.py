@@ -1,5 +1,5 @@
 import time
-from typing import Optional
+from typing import ClassVar, Optional
 from urllib.parse import urlencode
 
 from backend.data.model import OAuth2Credentials
@@ -25,6 +25,8 @@ class GitHubOAuthHandler(BaseOAuthHandler):
     """  # noqa
 
     PROVIDER_NAME = ProviderName.GITHUB
+    # GitHub App refresh tokens are single-use; OAuth App tokens never refresh.
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = True
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id

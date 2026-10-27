@@ -1995,6 +1995,17 @@ def _seq_msg(role: str, content: str, sequence: int) -> ChatMessage:
     return ChatMessage(role=role, content=content, sequence=sequence)
 
 
+def _hidden_note(sequence: int) -> ChatMessage:
+    """A scheduled chat's note: in the history, never sent to the model, so
+    never compacted either. Big enough to trip compaction on its own."""
+    return ChatMessage(
+        role="assistant",
+        content="word " * 300_000,
+        sequence=sequence,
+        metadata={"hidden_from_model": True},
+    )
+
+
 def _big_history(n: int = 10) -> list[ChatMessage]:
     """Alternating user/assistant rows whose total comfortably exceeds the
     gpt-4o compression target (see TestWillCompact)."""
@@ -2206,6 +2217,31 @@ def _make_session(messages: list[ChatMessage]) -> ChatSession:
 
 _DIFFERENTIAL_CASES: list[dict] = [
     # name, use_resume, transcript_msg_count, messages, prior_messages
+    {
+        "name": "no-resume, only a hidden note is big",
+        "use_resume": False,
+        "transcript_msg_count": 0,
+        "messages": [
+            _seq_msg("user", "hi", 0),
+            _hidden_note(1),
+            _seq_msg("assistant", "hello", 2),
+        ],
+        "prior_messages": None,
+    },
+    {
+        "name": "resume, only a hidden note is big in the gap",
+        "use_resume": True,
+        "transcript_msg_count": 2,
+        "messages": [
+            _seq_msg("user", "hi", 0),
+            _seq_msg("assistant", "hello", 1),
+            _hidden_note(2),
+            _seq_msg("user", "again", 3),
+            _seq_msg("assistant", "done", 4),
+            _seq_msg("user", "and now", 5),
+        ],
+        "prior_messages": None,
+    },
     {
         "name": "no-resume, full db history",
         "use_resume": False,
@@ -2610,3 +2646,21 @@ class TestCompressionFailureIsReportedAsADrop:
         assert stats.dropped is True
         assert stats.messages_before == 3
         assert stats.tokens_after is None
+
+
+class TestStampPostHogTrace:
+    def test_the_turns_posthog_trace_is_stamped_before_the_end_of_turn_save(self):
+        """A rating of the reply names its PostHog trace from this stamp
+        (``ai_spans.stamp_turn_trace_id``). The turn handler is too large to
+        drive in a unit test, so pin at the source that the stamp runs before
+        the save that persists it."""
+        import inspect
+
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        src = inspect.getsource(stream_chat_completion_sdk)
+        stamped_at = src.index(
+            "stamp_turn_trace_id(session.messages, pre_turn_message_count)"
+        )
+        saved_at = src.index("await asyncio.shield(upsert_chat_session(session))")
+        assert stamped_at < saved_at

@@ -116,6 +116,13 @@ jobs:
           BUILD_CACHE_ARCH: ${{ matrix.suffix }}
         run: python3 .github/scripts/single_container_cache.py
 
+      # A new APT_REFRESH re-runs the images' package installs instead of
+      # reusing cached ones, so Debian security fixes ship within a day.
+      - name: Set the daily OS package refresh
+        id: apt-refresh
+        shell: bash
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
       - name: Test appliance runtime helpers
         shell: bash
         env:
@@ -141,13 +148,14 @@ jobs:
       - name: Build image without publishing
         id: build-image
         background: true
-        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
         with:
           source: .
           files: autogpt_platform/single-container/docker-bake.hcl
           targets: single-container
           set: |
             *.platform=${{ matrix.platform }}
+            *.args.APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
             single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
             single-container.output=type=docker
@@ -324,15 +332,21 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Set the daily OS package refresh
+        id: apt-refresh
+        shell: bash
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push platform digest
         id: build
-        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
         with:
           source: .
           files: autogpt_platform/single-container/docker-bake.hcl
           targets: single-container
           set: |
             *.platform=${{ matrix.platform }}
+            *.args.APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
             single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
             single-container.tags=${{ env.DEPLOY_IMAGE }}
@@ -340,19 +354,21 @@ jobs:
             single-container.attest=type=sbom
             single-container.output=type=image,name=${{ env.DEPLOY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
 
+      # Pass only the digest. The bake metadata copies the release notes into
+      # every target's provenance, and an environment variable over 128 KiB
+      # stops bash from starting ("Argument list too long").
       - name: Capture pushed digest
         id: digest
         shell: bash
         env:
-          BUILD_METADATA: ${{ steps.build.outputs.metadata }}
+          DIGEST: ${{ fromJSON(steps.build.outputs.metadata)['single-container']['containerimage.digest'] }}
         run: |
           set -euo pipefail
-          digest="$(jq -er '."single-container"."containerimage.digest"' <<<"$BUILD_METADATA")"
-          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "build did not return a valid sha256 digest" >&2
             exit 1
           fi
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Pull the exact pushed digest
         shell: bash
@@ -430,7 +446,7 @@ jobs:
           persist-credentials: false
 
       - name: Download verified digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: platform-single-container-publish-digest-*
           path: ${{ runner.temp }}/platform-single-container-publish-digests
@@ -463,5 +479,5 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
           repository: significantgravitas/autogpt
-          short-description: Run the AutoGPT Platform, including FalkorDB-backed memory, in one container.
+          short-description: Self-host your AI team. Hire experts, delegate work, and review results with AutoGPT.
           readme-filepath: ./autogpt_platform/single-container/README.md

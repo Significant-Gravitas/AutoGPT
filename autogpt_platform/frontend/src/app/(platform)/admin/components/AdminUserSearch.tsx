@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Input } from "@/components/__legacy__/ui/input";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Button } from "@/components/atoms/Button/Button";
 import { Search01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -51,7 +51,7 @@ export function AdminUserSearch({
 
   return (
     <div className="flex w-full items-center gap-2">
-      <Input
+      <BaseInput
         placeholder={placeholder}
         aria-label={placeholder}
         value={currentValue}

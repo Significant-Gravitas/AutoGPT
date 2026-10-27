@@ -56,9 +56,16 @@ export class ErrorBoundary extends Component<
         return this.props.fallback;
       }
 
+      // TODO(tokens): no role for gray-50 (#F9FAFB).
       return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
-          <div className="relative w-full max-w-xl">
+        <div
+          data-slot="error-boundary"
+          className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8"
+        >
+          <div
+            data-slot="error-boundary-content"
+            className="relative w-full max-w-xl"
+          >
             <ErrorCard
               responseError={{
                 message:
