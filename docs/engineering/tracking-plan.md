@@ -85,9 +85,10 @@ at logout; a Vercel preview reports `environment: preview`, while the dev
 deployment, which is Vercel's `staging` custom environment rather than a
 preview, reports `environment: dev`.
 
-`source` is reserved for the emitter. The three events that used it for
+`source` is reserved for the emitter. The events that used it for
 something else now use `hire_started.surface`,
-`expert_recommended.team_source` and `workflow_installed_on_expert.workflow_source`.
+`expert_recommended.team_source`, `workflow_installed_on_expert.workflow_source`
+and, for the four `first_run_tour_*` events, `opened_from`.
 
 ### Identity
 
@@ -347,10 +348,13 @@ merges the website pageviews into the new user:
 | `brain_dump_prompt_advanced` | browser | live | `via` (`auto`, `click`), `screen` (`rest`, `typing`, `recording`), `prompt_index`, `prompt_set` | The "Otto might ask" question moves on, by its timer (12 s at rest on narrow screens, 20 s typing, 15 s recording; not while the ideas are paused) or "Another question". Not sent for the first question. |
 | `brain_dump_permission_retried` | browser | live | `result` (`granted`, `denied`, `unavailable`), `via` (`retry_link`, `record_instead`, `permission_change`), `permission_state` (`prompt`, `granted`, `denied`, `unknown`) | After a refused microphone, the user asks for it again, or allows the site in its settings (`permission_change`). Sent before `brain_dump_started`. |
 | `transcription_failed` | browser | live | `error_code`, `finalize_latency_ms` | Finalize returns a failure. |
-| `welcome_dialog_closed` | browser | live | — | The first-landing welcome dialog closes. |
-| `capability_card_viewed` | browser | live | `card_index`, `deck` | A capability card is shown. |
-| `capability_cards_completed` | browser | live | `card_index`, `deck` | The deck is finished. |
-| `capability_cards_skipped` | browser | live | `card_index`, `deck` | The deck is skipped. |
+| `welcome_dialog_closed` | browser | live | — | The first-landing intro ends (since SECRT-3149, the first-run walkthrough, finished or skipped). |
+| `first_run_tour_shown` | browser | live | `opened_from` (`auto` after onboarding, `menu` from "Show me around") | The guided first run over the real sidebar opens. |
+| `first_run_tour_step_viewed` | browser | live | `opened_from`, `step_id`, `step_index`, `target` (what it pointed at once that settled, about half a second: the sidebar item, also inside a phone's opened sidebar sheet; `menu` only where the item is not on screen; or null while the first tasks load) | A walkthrough step is shown, once per step per walkthrough (going Back and Next again does not repeat it). |
+| `first_run_tour_completed` | browser | live | `opened_from`, `step_id`, `step_index`, `via` (`start_here`, `connect_tools`) | The last step's "Start here", or its "connect your tools first". |
+| `first_run_tour_skipped` | browser | live | `opened_from`, `step_id`, `step_index`, `via` (null) | Skip tour, Close or Escape, at `step_id`. |
+| `contextual_tip_shown` | browser | live | `tip` (`second-chat`, `first-cost`, `first-expert`) | A one-time tip appears the first time its surface matters. |
+| `contextual_tip_dismissed` | browser | live | `tip` | The tip is put away ("Got it" or Escape); it never shows again. |
 | `intro_path` | browser | live | `path` | The intro path (A/B) is chosen. |
 | `intro_followup_sent` | browser | live | `chars` | First message after the intro card. |
 | `later_dump_completed` | browser | live | — | A brain dump sent later from the composer. |
@@ -717,6 +721,7 @@ history PostHog already holds.
 | `experiment_exposed` | browser | Nothing: `useLaunchDarklyExperiment` had no caller and was deleted. PostHog-bucketed experiments use `$feature_flag_called`. |
 | `copilot_trigger_setup` | backend | Nothing: never sent (no caller). |
 | `intro_card_dismissed`, `raise_door_clicked`, `intro_start_with_autopilot` | browser | Nothing: declared, never sent. |
+| `capability_card_viewed`, `capability_cards_completed`, `capability_cards_skipped` | browser | `first_run_tour_step_viewed`, `first_run_tour_completed` and `first_run_tour_skipped` (SECRT-3149): the four concept cards were replaced by the walkthrough over the real UI. |
 
 ## Renamed
 
