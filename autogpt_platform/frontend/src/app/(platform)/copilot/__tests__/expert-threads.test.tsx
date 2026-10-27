@@ -139,7 +139,7 @@ vi.mock(
   }),
 );
 vi.mock("../components/ChatMessagesContainer/helpers", () => ({
-  extractReviewTarget: () => null,
+  extractReviewTargets: () => ({ chat: false, runs: [] }),
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
