@@ -136,9 +136,9 @@ def test_a_leftover_lock_is_named_in_the_error(tmp_path):
     assert target.read_text() == "OTHER='stay'\n"
 
 
-@pytest.mark.parametrize("name", [".env.default", ".env.example", ".env.template"])
-def test_template_targets_are_refused(tmp_path, name):
-    target = tmp_path / name
+@pytest.mark.parametrize("suffix", sync.TEMPLATE_SUFFIXES)
+def test_template_targets_are_refused(tmp_path, suffix):
+    target = tmp_path / f".env{suffix}"
     target.write_text("OTHER='stay'\n")
     with pytest.raises(ValueError, match="private, regular env file"):
         sync.apply_updates(target, {"MICROSOFT_CLIENT_SECRET": "new-value"})

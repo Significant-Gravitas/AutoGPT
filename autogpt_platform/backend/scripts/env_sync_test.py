@@ -131,6 +131,34 @@ def test_windows_hosts_default_to_desktop_until_named(
     assert seen == [hosts]
 
 
+def test_a_failing_read_stops_without_printing_its_output(
+    tmp_path, monkeypatch, capsys
+):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ssh = bin_dir / "ssh"
+    ssh.write_text(
+        "#!/bin/sh\necho \"MICROSOFT_CLIENT_SECRET='leaked-value'\"\n"
+        "echo leaked-value >&2\nexit 1\n"
+    )
+    ssh.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "env_sync",
+            *("--source", "laptop:/backend/.env", "--target", str(tmp_path / ".env")),
+        ],
+    )
+    with pytest.raises(SystemExit) as stopped:
+        sync.main()
+    assert stopped.value.code == 2
+    output = capsys.readouterr()
+    assert output.err == "Env synchronization stopped: CalledProcessError\n"
+    assert "leaked-value" not in output.out + output.err
+
+
 def test_non_ascii_values_survive_a_non_utf8_locale(tmp_path):
     source = tmp_path / "source.env"
     source.write_bytes("MICROSOFT_TENANT_ID='café'\n".encode())

@@ -19,6 +19,7 @@ MICROSOFT_KEYS = [
     "MICROSOFT_TENANT_ID",
 ]
 POWERSHELL_SINGLE_QUOTES = "'\u2018\u2019\u201a\u201b"
+TEMPLATE_SUFFIXES = (".default", ".example", ".template", ".sample", ".dist", ".tpl")
 
 
 def main() -> None:
@@ -168,9 +169,7 @@ def apply_updates(target: Path, values: dict[str, str], replace: bool = False) -
 
 def check_target(target: Path) -> None:
     """Refuse a target that must not hold credentials, before reading anything."""
-    if target.is_symlink() or target.name.endswith(
-        (".default", ".example", ".template")
-    ):
+    if target.is_symlink() or target.name.endswith(TEMPLATE_SUFFIXES):
         raise ValueError("Target must be a private, regular env file.")
     # Only a dry run meets a missing directory; --apply creates it first.
     if target.parent.is_dir() and _tracked(target):

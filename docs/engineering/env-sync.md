@@ -38,5 +38,7 @@ targets are writable; remote environments stay unchanged. Choose a canonical
 source before enabling any scheduled sync.
 
 A sync that is killed mid-write can leave `<target>.sync-lock`, and possibly an
-`.env-sync-*` file, beside the target. The repository's `.gitignore` covers
-both. Later runs stop and name the lock; delete it once no sync is running.
+`.env-sync-*` file, beside the target. This repository's `.gitignore` covers
+both; for a target in another repository, add the two patterns to its
+`.gitignore`. Later runs stop and name the lock; delete it once no sync is
+running.
