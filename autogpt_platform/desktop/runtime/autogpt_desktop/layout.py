@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import stat
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -172,10 +173,10 @@ class DataDir:
         return self.root / "frontend-home"
 
     def prepare(self) -> None:
-        # Private to the user: it holds the database, API keys and logs, and
-        # on Linux ~/.local/share is usually readable by everyone.
-        self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if not WINDOWS:
+        if WINDOWS:
+            _prepare_windows_root(self.root)
+        else:
+            self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
             self.root.chmod(0o700)
         for path in (
             self.config,
@@ -192,6 +193,30 @@ class DataDir:
             self.frontend_home,
         ):
             path.mkdir(parents=True, exist_ok=True)
+
+
+def _prepare_windows_root(path: Path) -> None:
+    """Create a new private root; check only the type of an existing root.
+
+    Existing permissions and ordinary parent inheritance are left unchanged.
+    This does not certify existing profiles or confine ancestor traversal.
+    """
+    try:
+        information = path.lstat()
+    except FileNotFoundError:
+        from . import winlinks
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if winlinks.create_private(path, winlinks.current_user_sid()):
+            return
+        information = path.lstat()
+    if stat.S_ISLNK(information.st_mode) or (
+        getattr(information, "st_file_attributes", 0)
+        & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    ):
+        raise OSError(f"Data directory {path} is a link or reparse point")
+    if not stat.S_ISDIR(information.st_mode):
+        raise NotADirectoryError(f"Data directory {path} is not a directory")
 
 
 def write_private(path: Path, content: str) -> None:

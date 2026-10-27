@@ -2,6 +2,7 @@
 
 The private tree contains synthetic credentials, native output and a database.
 This checks the pinned component and source initializer, not an installed app.
+The legacy ACL comparison is diagnostic only and never passes this gate.
 """
 
 from __future__ import annotations
@@ -54,6 +55,7 @@ SOURCES = {
     "postgres": "runtime/autogpt_desktop/postgres.py",
     "layout": "runtime/autogpt_desktop/layout.py",
     "process": "runtime/autogpt_desktop/process.py",
+    "winlinks": "runtime/autogpt_desktop/winlinks.py",
 }
 STAGES = {"host", "artifact", "versions", "initialize", "verify", "cleanup", "complete"}
 STATUSES = {"not_run", "unknown", "passed", "failed", "timeout", "error"}
@@ -837,6 +839,17 @@ def supervise(private: Path, env: dict, owned, *, deadline=None) -> dict:
     return report
 
 
+def prepare_legacy_work_dir(work: Path, artifact: Path) -> Path:
+    """Diagnostic-only Python 0700 fixture; never used by product acceptance."""
+    smoke.check_new_work_dir(work, artifact)
+    work.mkdir(mode=0o700)
+    private = work / "private"
+    private.mkdir(mode=0o700)
+    for name in ("logs", "home", "appdata", "localappdata", "temp", "data"):
+        (private / name).mkdir(mode=0o700)
+    return private
+
+
 def control_sibling(work: Path) -> Path:
     smoke.plain_path(work)
     require(work.is_dir() and bool(work.name))
@@ -1022,7 +1035,14 @@ def main(argv=None) -> int:
     group.add_argument("--work-dir", type=Path)
     group.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--deadline", type=float, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--legacy-acl-comparison",
+        action="store_true",
+        help="diagnostic only: compare legacy Python 0700 roots; always exits nonzero",
+    )
     args = parser.parse_args(argv)
+    if args.worker and args.legacy_acl_comparison:
+        parser.error("--legacy-acl-comparison requires --work-dir")
     if args.worker:
         try:
             return worker(args.worker, args.deadline)
@@ -1043,7 +1063,12 @@ def main(argv=None) -> int:
     try:
         require(args.deadline is None)
         smoke.require_clean_host()
-        private = smoke.prepare_work_dir(work, BUILD)
+        prepare = (
+            prepare_legacy_work_dir
+            if args.legacy_acl_comparison
+            else smoke.prepare_work_dir
+        )
+        private = prepare(work, BUILD)
         commit = os.environ.get("GITHUB_SHA", "")
         require(bool(re.fullmatch("[0-9a-f]{40}", commit)))
         summary["source_commit"] = commit
@@ -1058,7 +1083,12 @@ def main(argv=None) -> int:
         (private / "runtime").mkdir()
         extract_archive(archive, private / "runtime/postgres")
         summary["stage"] = "versions"
-        summary.update(run_pair(private, archive, env))
+        if args.legacy_acl_comparison:
+            summary.update(run_pair(private, archive, env))
+            summary["status"] = "failed"
+        else:
+            owned = smoke.OwnedProcesses(private / "runtime", private / "data")
+            summary.update(supervise(private, env, owned))
     except Exception:  # noqa: BLE001 - Record failure without private exception text.
         summary["status"] = "failed"
     if private is not None:

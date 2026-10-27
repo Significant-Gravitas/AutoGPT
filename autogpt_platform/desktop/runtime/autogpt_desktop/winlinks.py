@@ -262,6 +262,19 @@ def create_closed(path: Path, user_sid: str) -> bool:
     """Create the directory with access for its user, the system and
     administrators only, not inherited from its parent. False when something
     by that name is already there."""
+    return _create_directory(path, (user_sid, "SY", "BA"))
+
+
+def create_private(path: Path, user_sid: str) -> bool:
+    """Atomically create a private root with inheritable user and SYSTEM access.
+
+    False means the name already exists; it is neither inspected nor changed.
+    Parents must already exist. Ownership uses the token's default owner.
+    """
+    return _create_directory(path, (user_sid, "SY"))
+
+
+def _create_directory(path: Path, principals: tuple[str, ...]) -> bool:
     import ctypes
     from ctypes import wintypes
 
@@ -273,7 +286,7 @@ def create_closed(path: Path, user_sid: str) -> bool:
         ]
 
     full_access = "(A;OICI;FA;;;{})"
-    sddl = "D:P" + "".join(full_access.format(sid) for sid in (user_sid, "SY", "BA"))
+    sddl = "D:P" + "".join(full_access.format(sid) for sid in principals)
     descriptor = wintypes.LPVOID()
     sddl_revision_1 = 1
     if not _advapi32().ConvertStringSecurityDescriptorToSecurityDescriptorW(

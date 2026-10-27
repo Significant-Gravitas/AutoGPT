@@ -21,6 +21,19 @@ sys.path.insert(0, str(BUILD.parent / "runtime"))
 class ProbeTests(unittest.TestCase):
     def setUp(self):
         self.probe = importlib.import_module("postgres_windows_check")
+        from autogpt_desktop import winlinks
+
+        def create_private(path, user_sid):
+            path.mkdir()
+            return True
+
+        for name, value in (
+            ("current_user_sid", lambda: "S-1-5-21-123"),
+            ("create_private", create_private),
+        ):
+            replacement = patch.object(winlinks, name, value)
+            replacement.start()
+            self.addCleanup(replacement.stop)
         self.temp = tempfile.TemporaryDirectory(
             dir=os.environ.get("PG_PROBE_TEST_ROOT")
         )
@@ -55,6 +68,103 @@ class ProbeTests(unittest.TestCase):
             self.assertEqual(self.probe.main(["--work-dir", str(self.root)]), 1)
         self.assertEqual(sentinel.read_bytes(), b"preserve")
         self.assertEqual(list(self.root.iterdir()), [sentinel])
+
+    def run_cli_fixture(self, *, legacy=False, code=0):
+        work = self.root / "work"
+        private = work / "private"
+        private.mkdir(parents=True)
+        archive = private / "archive"
+        archive.write_bytes(b"fixture")
+        arguments = ["--work-dir", str(work)]
+        if legacy:
+            arguments.append("--legacy-acl-comparison")
+        with patch.object(self.probe.smoke, "require_clean_host"), patch.dict(
+            os.environ, GITHUB_SHA="a" * 40
+        ), patch.object(
+            self.probe.smoke, "prepare_work_dir", return_value=private
+        ) as corrected, patch.object(
+            self.probe, "prepare_legacy_work_dir", return_value=private
+        ) as old, patch.object(
+            self.probe.smoke, "private_environment", return_value={}
+        ), patch.object(
+            self.probe, "fetch_archive", return_value=archive
+        ), patch.object(
+            self.probe, "extract_archive"
+        ), patch.object(
+            self.probe.smoke, "OwnedProcesses"
+        ), patch.object(
+            self.probe, "supervise", return_value=self.pair_report(code)
+        ) as supervised, patch.object(
+            self.probe, "run_pair", return_value=self.pair_report(code)
+        ) as pair:
+            result = self.probe.main(arguments)
+        summary = json.loads((work / "result.json").read_text())
+        return result, summary, corrected, old, supervised, pair
+
+    def test_default_cli_accepts_only_corrected_baseline(self):
+        result, summary, corrected, old, supervised, pair = self.run_cli_fixture()
+        self.assertEqual(result, 0)
+        self.assertEqual(summary["initialization"]["status"], "passed")
+        corrected.assert_called_once()
+        old.assert_not_called()
+        supervised.assert_called_once()
+        pair.assert_not_called()
+        self.assertEqual(set(summary["source_sha256"]), set(self.probe.SOURCES))
+        self.assertEqual(
+            self.probe.SOURCES["winlinks"], "runtime/autogpt_desktop/winlinks.py"
+        )
+
+    def test_default_cli_failed_baseline_never_attempts_control(self):
+        result, summary, _corrected, old, supervised, pair = self.run_cli_fixture(
+            code=3221225781
+        )
+        self.assertEqual(result, 1)
+        self.assertEqual(summary["initialization"]["windows_status"], 3221225781)
+        supervised.assert_called_once()
+        pair.assert_not_called()
+        old.assert_not_called()
+
+    def test_legacy_cli_is_explicit_and_cannot_pass_product_gate(self):
+        result, summary, corrected, old, supervised, pair = self.run_cli_fixture(
+            legacy=True
+        )
+        self.assertEqual(result, 1)
+        self.assertEqual(summary["status"], "failed")
+        corrected.assert_not_called()
+        old.assert_called_once()
+        supervised.assert_not_called()
+        pair.assert_called_once()
+
+    def test_legacy_flag_cannot_be_passed_to_worker(self):
+        with patch.object(self.probe, "worker") as worker, self.assertRaises(
+            SystemExit
+        ) as raised:
+            self.probe.main(["--worker", str(self.root), "--legacy-acl-comparison"])
+        self.assertEqual(raised.exception.code, 2)
+        worker.assert_not_called()
+
+    def test_legacy_factory_keeps_original_modes_and_new_path_checks(self):
+        work = self.root / "legacy"
+        calls = []
+        mkdir = Path.mkdir
+
+        def make(path, mode=0o777, **kwargs):
+            calls.append((path, mode))
+            return mkdir(path, mode=mode, **kwargs)
+
+        with patch.object(Path, "mkdir", make), patch.object(
+            self.probe.smoke, "prepare_work_dir", side_effect=AssertionError
+        ):
+            private = self.probe.prepare_legacy_work_dir(work, self.root / "artifact")
+            self.assertEqual([mode for _, mode in calls], [0o700] * 8)
+            self.assertEqual(calls[0][0], work)
+            self.assertEqual(calls[-1][0], private / "data")
+            with self.assertRaises(self.probe.smoke.SmokeError):
+                self.probe.prepare_legacy_work_dir(work, self.root / "artifact")
+            self.assertEqual(len(calls), 8)
+            with self.assertRaisesRegex(self.probe.smoke.SmokeError, "overlaps"):
+                self.probe.prepare_legacy_work_dir(self.root / "inside", self.root)
+            self.assertEqual(len(calls), 8)
 
     def test_strict_versions_do_not_accept_added_text(self):
         for tool in ("postgres", "initdb"):

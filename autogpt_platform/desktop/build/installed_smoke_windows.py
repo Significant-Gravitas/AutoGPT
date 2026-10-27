@@ -383,7 +383,7 @@ def select_artifact(
     }
 
 
-def prepare_work_dir(work: Path, artifact: Path) -> Path:
+def check_new_work_dir(work: Path, artifact: Path) -> None:
     plain_path(work)
     require(not work.exists() and work.parent.is_dir(), "work_directory_must_be_new")
     for protected in (artifact, DESKTOP.parents[1]):
@@ -391,11 +391,35 @@ def prepare_work_dir(work: Path, artifact: Path) -> Path:
             not work.is_relative_to(protected) and not protected.is_relative_to(work),
             "work_directory_overlaps_input",
         )
-    work.mkdir(mode=0o700)
+
+
+def prepare_work_dir(work: Path, artifact: Path) -> Path:
+    check_new_work_dir(work, artifact)
+    if WINDOWS:
+        sys.path.insert(0, str(DESKTOP / "runtime"))
+        from autogpt_desktop import winlinks
+
+        user_sid = winlinks.current_user_sid()
     private = work / "private"
-    private.mkdir(mode=0o700)
-    for name in ("logs", "home", "appdata", "localappdata", "temp", "data"):
-        (private / name).mkdir(mode=0o700)
+    roots = (
+        work,
+        private,
+        *(
+            private / name
+            for name in ("logs", "home", "appdata", "localappdata", "temp", "data")
+        ),
+    )
+    for path in roots:
+        plain_path(path)
+        require(not path.exists(), "work_directory_must_be_new")
+        if WINDOWS:
+            require(
+                winlinks.create_private(path, user_sid) is True,
+                "work_directory_must_be_new",
+            )
+        else:
+            path.mkdir(mode=0o700)
+        plain_path(path)
     return private
 
 
@@ -1086,6 +1110,7 @@ def main(argv: list[str] | None = None) -> int:
                 "installed_smoke_windows.py",
                 "smoke_test.py",
                 "../runtime/tests/backend_contract.py",
+                "../runtime/autogpt_desktop/winlinks.py",
             )
         }
         env = private_environment(private, dict(os.environ))

@@ -21,6 +21,15 @@ COMMIT = "a" * 40
 @pytest.fixture
 def driver(monkeypatch):
     monkeypatch.syspath_prepend(str(BUILD))
+    monkeypatch.syspath_prepend(str(BUILD.parent / "runtime"))
+    from autogpt_desktop import winlinks
+
+    def create_private(path, user_sid):
+        path.mkdir()
+        return True
+
+    monkeypatch.setattr(winlinks, "current_user_sid", lambda: "S-1-5-21-123")
+    monkeypatch.setattr(winlinks, "create_private", create_private)
     return importlib.import_module("installed_smoke_windows")
 
 
@@ -140,6 +149,160 @@ def test_new_workspace_and_private_directories(driver, tmp_path):
         driver.prepare_work_dir(work, artifact)
     with pytest.raises(driver.SmokeError, match="overlaps_input"):
         driver.prepare_work_dir(artifact / "inside", artifact)
+
+
+def test_windows_all_eight_roots_use_atomic_private_creation(
+    driver, tmp_path, monkeypatch
+):
+    from autogpt_desktop import winlinks
+
+    monkeypatch.setattr(driver, "WINDOWS", True)
+    monkeypatch.setattr(driver, "windows_path", lambda value: None)
+    created = []
+
+    def create(path, user_sid):
+        created.append((path, user_sid))
+        path.mkdir()
+        return True
+
+    monkeypatch.setattr(winlinks, "create_private", create)
+    work = tmp_path / "new-work"
+    private = driver.prepare_work_dir(work, tmp_path / "artifact")
+    assert created == [
+        (path, "S-1-5-21-123")
+        for path in (
+            work,
+            private,
+            *(
+                private / name
+                for name in ("logs", "home", "appdata", "localappdata", "temp", "data")
+            ),
+        )
+    ]
+
+
+@pytest.mark.parametrize("raced_index", range(8))
+def test_raced_private_root_refused_before_installer(
+    driver, tmp_path, monkeypatch, raced_index
+):
+    from autogpt_desktop import winlinks
+
+    monkeypatch.setattr(driver, "WINDOWS", True)
+    monkeypatch.setattr(driver, "windows_path", lambda value: None)
+    monkeypatch.setattr(driver, "require_clean_host", lambda: None)
+    monkeypatch.setenv("GITHUB_SHA", COMMIT)
+    created = []
+
+    def create(path, user_sid):
+        path.mkdir()
+        created.append(path)
+        if len(created) == raced_index + 1:
+            (path / "sentinel").write_bytes(b"preserve")
+            return False
+        return True
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("installer or ACL repair reached after a raced root")
+
+    monkeypatch.setattr(winlinks, "create_private", create)
+    monkeypatch.setattr(Path, "chmod", forbidden)
+    monkeypatch.setattr(driver, "select_artifact", forbidden)
+    monkeypatch.setattr(driver, "run_stage", forbidden)
+    work = tmp_path / "new-work"
+    assert (
+        driver.main(
+            [
+                "--artifact-dir",
+                str(tmp_path / "artifact"),
+                "--work-dir",
+                str(work),
+                "--expected-commit",
+                COMMIT,
+            ]
+        )
+        == 1
+    )
+    assert len(created) == raced_index + 1
+    assert (created[-1] / "sentinel").read_bytes() == b"preserve"
+
+
+def test_posix_workspace_keeps_private_modes_without_native_calls(
+    driver, tmp_path, monkeypatch
+):
+    from autogpt_desktop import winlinks
+
+    monkeypatch.setattr(driver, "WINDOWS", False)
+    calls = []
+    mkdir = Path.mkdir
+
+    def make(path, mode=0o777, **kwargs):
+        calls.append(mode)
+        return mkdir(path, mode=mode, **kwargs)
+
+    def forbidden(*args):
+        pytest.fail("POSIX factory called Windows API")
+
+    monkeypatch.setattr(Path, "mkdir", make)
+    monkeypatch.setattr(winlinks, "current_user_sid", forbidden)
+    monkeypatch.setattr(winlinks, "create_private", forbidden)
+    driver.prepare_work_dir(tmp_path / "work", tmp_path / "artifact")
+    assert calls == [0o700] * 8
+
+
+@pytest.mark.parametrize("problem", ["existing", "overlap", "reparse", "no_parent"])
+def test_private_root_checks_precede_native_creation(
+    driver, tmp_path, monkeypatch, problem
+):
+    from autogpt_desktop import winlinks
+
+    monkeypatch.setattr(driver, "WINDOWS", True)
+    monkeypatch.setattr(driver, "windows_path", lambda value: None)
+    work = tmp_path / "work"
+    artifact = tmp_path / "artifact"
+    if problem == "existing":
+        work.mkdir()
+        (work / "sentinel").write_text("preserve")
+    elif problem == "overlap":
+        artifact = tmp_path
+    elif problem == "no_parent":
+        work = tmp_path / "missing/work"
+    else:
+        original = Path.lstat
+
+        def reparse(path):
+            if path == tmp_path:
+                return SimpleNamespace(st_mode=0o40700, st_file_attributes=0x400)
+            return original(path)
+
+        monkeypatch.setattr(Path, "lstat", reparse)
+
+    def forbidden(*args):
+        pytest.fail("native creation reached for unsafe work root")
+
+    monkeypatch.setattr(winlinks, "current_user_sid", forbidden)
+    monkeypatch.setattr(winlinks, "create_private", forbidden)
+    with pytest.raises(driver.SmokeError):
+        driver.prepare_work_dir(work, artifact)
+    if problem == "existing":
+        assert (work / "sentinel").read_text() == "preserve"
+        assert list(work.iterdir()) == [work / "sentinel"]
+    else:
+        assert not work.exists()
+
+
+def test_token_lookup_failure_creates_no_private_tree(driver, tmp_path, monkeypatch):
+    from autogpt_desktop import winlinks
+
+    monkeypatch.setattr(driver, "WINDOWS", True)
+    monkeypatch.setattr(driver, "windows_path", lambda value: None)
+
+    def unavailable():
+        raise OSError("token unavailable")
+
+    monkeypatch.setattr(winlinks, "current_user_sid", unavailable)
+    with pytest.raises(OSError, match="token unavailable"):
+        driver.prepare_work_dir(tmp_path / "work", tmp_path / "artifact")
+    assert not (tmp_path / "work").exists()
 
 
 def test_reparse_component_is_refused(driver, tmp_path, monkeypatch):
@@ -1647,6 +1810,15 @@ def test_main_failure_cleans_up_and_publishes_only_safe_summary(
     ) == (1 if expected_failure else 0)
     result = json.loads((work / "result.json").read_text("utf-8"))
     assert result.get("error") == expected_failure
+    assert result["source_sha256"] == {
+        name: driver.sha256(BUILD / name)
+        for name in (
+            "installed_smoke_windows.py",
+            "smoke_test.py",
+            "../runtime/tests/backend_contract.py",
+            "../runtime/autogpt_desktop/winlinks.py",
+        )
+    }
     assert result["ok"] is (expected_failure is None)
     if failure != "install_timeout":
         assert result["lifecycle"]["starts"] == (

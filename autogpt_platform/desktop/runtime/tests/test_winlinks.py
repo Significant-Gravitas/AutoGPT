@@ -10,10 +10,11 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
-
-from autogpt_desktop import install, rabbitmq, winlinks
+from autogpt_desktop import install, layout, rabbitmq, winlinks
 
 windows_only = pytest.mark.skipif(
     sys.platform != "win32", reason="junctions are a Windows thing"
@@ -180,7 +181,135 @@ def test_a_folder_with_no_access_list_or_an_entry_that_cannot_be_read_is_refused
     )
 
 
+@pytest.fixture
+def directory_api(monkeypatch):
+    import ctypes
+
+    kernel = Mock()
+    advapi = Mock()
+    descriptor_address = 1234
+
+    def convert(sddl, revision, descriptor, size):
+        descriptor._obj.value = descriptor_address
+        return True
+
+    advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW.side_effect = convert
+    kernel.CreateDirectoryW.return_value = True
+    monkeypatch.setattr(winlinks, "_kernel32", lambda: kernel)
+    monkeypatch.setattr(winlinks, "_advapi32", lambda: advapi)
+    error = OSError("mock Windows error")
+    monkeypatch.setattr(ctypes, "WinError", Mock(return_value=error), raising=False)
+    last_error = Mock(return_value=5)
+    monkeypatch.setattr(ctypes, "get_last_error", last_error, raising=False)
+    return SimpleNamespace(
+        kernel=kernel,
+        advapi=advapi,
+        descriptor_address=descriptor_address,
+        error=error,
+        last_error=last_error,
+    )
+
+
+@pytest.mark.parametrize("creator", ["create_private", "create_closed"])
+def test_directory_creation_supplies_the_exact_protected_acl(directory_api, creator):
+    import ctypes
+
+    api = directory_api
+    path = Path("new-directory")
+
+    def create(name, attributes):
+        assert name == str(path)
+        value = attributes._obj
+        assert value.nLength == ctypes.sizeof(value)
+        assert value.lpSecurityDescriptor == api.descriptor_address
+        assert not value.bInheritHandle
+        return True
+
+    api.kernel.CreateDirectoryW.side_effect = create
+    assert getattr(winlinks, creator)(path, USER) is True
+    conversion = api.advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW
+    expected = f"D:P(A;OICI;FA;;;{USER})(A;OICI;FA;;;SY)"
+    if creator == "create_closed":
+        expected += "(A;OICI;FA;;;BA)"
+    assert conversion.call_count == 1
+    assert conversion.call_args.args[0:2] == (expected, 1)
+    assert conversion.call_args.args[3] is None
+    api.kernel.LocalFree.assert_called_once()
+    assert api.kernel.LocalFree.call_args.args[0].value == api.descriptor_address
+
+
+@pytest.mark.parametrize("creator", ["create_private", "create_closed"])
+@pytest.mark.parametrize("error_code", [winlinks.ERROR_ALREADY_EXISTS, 5, 3])
+def test_directory_creation_errors_free_the_descriptor(
+    directory_api, creator, error_code
+):
+    api = directory_api
+    api.kernel.CreateDirectoryW.return_value = False
+    api.last_error.return_value = error_code
+    create = getattr(winlinks, creator)
+    if error_code == winlinks.ERROR_ALREADY_EXISTS:
+        assert create(Path("existing-name"), USER) is False
+    else:
+        with pytest.raises(OSError) as caught:
+            create(Path("new-directory"), USER)
+        assert caught.value is api.error
+    api.kernel.LocalFree.assert_called_once()
+    assert api.kernel.LocalFree.call_args.args[0].value == api.descriptor_address
+
+
+@pytest.mark.parametrize("creator", ["create_private", "create_closed"])
+def test_directory_descriptor_conversion_failure_never_creates(directory_api, creator):
+    api = directory_api
+    convert = api.advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW
+    convert.side_effect = None
+    convert.return_value = False
+    with pytest.raises(OSError) as caught:
+        getattr(winlinks, creator)(Path("new-directory"), USER)
+    assert caught.value is api.error
+    api.kernel.CreateDirectoryW.assert_not_called()
+    api.kernel.LocalFree.assert_not_called()
+
+
+@pytest.mark.parametrize("creator", ["create_private", "create_closed"])
+def test_directory_creation_exception_frees_the_descriptor(directory_api, creator):
+    api = directory_api
+    api.kernel.CreateDirectoryW.side_effect = api.error
+    with pytest.raises(OSError) as caught:
+        getattr(winlinks, creator)(Path("new-directory"), USER)
+    assert caught.value is api.error
+    api.kernel.LocalFree.assert_called_once()
+
+
 # --- for real, on Windows ----------------------------------------------------
+
+
+@windows_only
+def test_fresh_data_root_and_private_files_inherit_exact_user_system_access(tmp_path):
+    ordinary = tmp_path / "ordinary"
+    ordinary.mkdir()
+    owner = seen(ordinary).owner
+    user = winlinks.current_user_sid()
+    data = layout.DataDir(tmp_path / "profile")
+    data.prepare()
+    nested = data.config / "nested"
+    nested.mkdir()
+    ordinary_file = nested / "ordinary.txt"
+    ordinary_file.write_text("kept")
+    private_file = data.run / "private.txt"
+    layout.write_private(private_file, "first")
+    layout.write_private(private_file, "replacement")
+    paths = (data.root, data.config, data.run, nested, ordinary_file, private_file)
+    before = {path: seen(path) for path in paths}
+    for information in before.values():
+        assert information.owner == owner
+        assert information.access is not None
+        assert len(information.access) == 2
+        assert set(information.access) == {allowed(user), allowed(winlinks.SYSTEM)}
+    assert winlinks.create_private(data.root, user) is False
+    data.prepare()
+    assert {path: seen(path) for path in paths} == before
+    assert ordinary_file.read_text() == "kept"
+    assert private_file.read_text() == "replacement"
 
 
 @pytest.fixture

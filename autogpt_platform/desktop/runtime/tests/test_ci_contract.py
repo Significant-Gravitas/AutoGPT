@@ -122,6 +122,7 @@ def test_postgres_initialization_blocks_packaging_only_when_opted_in_on_windows(
     assert "shell: pwsh" in probe and "timeout-minutes: 5" in probe
     assert "python -B build/postgres_windows_check.py" in probe
     assert '--work-dir "$env:RUNNER_TEMP/desktop-postgres-native"' in probe
+    assert "--legacy-acl-comparison" not in probe
     assert "exit $LASTEXITCODE" in probe
     assert "continue-on-error" not in checks
     assert "needs: checks" in packaging
