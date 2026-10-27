@@ -31,6 +31,8 @@ What this module is NOT responsible for (caller wraps):
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import functools
 import json as json_module
 import logging
@@ -821,6 +823,8 @@ async def _call_ollama(
     if tools:
         raise ValueError("Ollama does not support tools.")
 
+    messages = _prepare_ollama_messages(messages)
+
     # SSRF guard — the host can be user-supplied (block-layer input
     # field), so it must match an operator-configured trust list.
     checked, is_trusted, _ = await validate_url_host(
@@ -857,6 +861,38 @@ async def _call_ollama(
         completion_tokens=response.eval_count or 0,
         raw_response=response,
     )
+
+
+def _prepare_ollama_messages(messages: list[dict]) -> list[dict]:
+    prepared: list[dict] = []
+    for message in messages:
+        images = message.get("images")
+        if images is None:
+            prepared.append(message)
+            continue
+        if not isinstance(images, list):
+            raise ValueError(
+                "Ollama images must be a list of base64-encoded image data"
+            )
+        prepared.append(
+            {**message, "images": [_decode_ollama_image(image) for image in images]}
+        )
+    return prepared
+
+
+def _decode_ollama_image(image: object) -> bytes:
+    if isinstance(image, bytes):
+        return image
+    if not isinstance(image, str):
+        raise ValueError(
+            "Ollama images must contain base64-encoded image data"
+        )
+    try:
+        return base64.b64decode(image, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError(
+            "Ollama images must contain base64-encoded image data"
+        ) from exc
 
 
 async def _send_ollama_chat(

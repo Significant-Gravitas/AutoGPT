@@ -1047,6 +1047,43 @@ class TestOllama:
         assert captured["stream"] is False
 
     @pytest.mark.asyncio
+    async def test_rejects_non_base64_images_before_constructing_client(self):
+        with _patched_ollama_dispatch({}) as (_, ctor), pytest.raises(
+            ValueError, match="base64-encoded image data"
+        ):
+            await call_provider(
+                provider="ollama",
+                model="llava",
+                api_key="",
+                messages=[
+                    {"role": "user", "content": "describe", "images": [__file__]}
+                ],
+                max_tokens=10,
+            )
+
+        ctor.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_decodes_base64_images_before_calling_sdk(self):
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llava",
+                api_key="",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "describe",
+                        "images": ["aW1hZ2UtYnl0ZXM="],
+                    }
+                ],
+                max_tokens=10,
+            )
+
+        assert captured["messages"][0]["images"] == [b"image-bytes"]
+
+    @pytest.mark.asyncio
     async def test_force_json_output_requests_json_format(self):
         """``structured_completion`` passes ``force_json_output=True`` for
         every dream phase and the dream docs promise forced JSON works on
