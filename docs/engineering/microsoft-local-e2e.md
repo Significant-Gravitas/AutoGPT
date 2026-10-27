@@ -68,7 +68,9 @@ change. The `onboarding-step-order` flag's payload is a JSON list of step
 names. The steps it names lead, in its order; every other step follows in the
 default order, and `preparing` is always last. It only moves steps: which ones
 show still depends on the account (the access step needs a provider sign-in,
-the paywall needs payments on). For example:
+the paywall needs payments on). With payments on, the access step always
+follows the subscription step, because connecting a service needs a plan and a
+new account has none until then. For example, without the paywall:
 
 - `[]` (or no flag): access, team, autopilot, role, painPoints, hire, ...
 - `["team", "autopilot", "role", "access"]`: the access step after the role.
