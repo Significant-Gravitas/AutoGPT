@@ -5,6 +5,8 @@ patched where ``kickoff`` imports it, so these assert what would be
 started without an executor, a queue or a database.
 """
 
+import asyncio
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -17,8 +19,9 @@ from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump import kickoff
 from backend.copilot.active_turns import ConcurrentTurnLimitError
-from backend.copilot.model import ONBOARDING_DRAFT_KIND
+from backend.copilot.model import ONBOARDING_DRAFT_KIND, ChatSessionInfo
 from backend.copilot.turn_queue import TurnRefusal
+from backend.util.exceptions import DatabaseError
 
 USER_ID = "user-1"
 RECORDING_ID = "rec-1"
@@ -107,6 +110,7 @@ def turns(mocker: MockerFixture) -> dict[str, MagicMock]:
         "create_chat_session": AsyncMock(),
         "schedule_turn": AsyncMock(),
         "delete_chat_session": AsyncMock(return_value=True),
+        "get_chat_session_metadata": AsyncMock(return_value=None),
     }
     for name, mock in mocks.items():
         mocker.patch.object(kickoff, name, new=mock)
@@ -284,3 +288,124 @@ async def test_kickoff_emits_onboarding_draft_started(
         {"user_id": USER_ID, "task_id": "0", "session_id": draft_session_id("0")},
         {"user_id": USER_ID, "task_id": "1", "session_id": draft_session_id("1")},
     ]
+
+
+def existing_chats(turns: dict[str, MagicMock], session_ids: set[str]) -> None:
+    """Make ``session_ids`` the user's chats that already exist."""
+
+    async def session_meta(session_id: str, user_id: str | None = None):
+        if session_id not in session_ids:
+            return None
+        return ChatSessionInfo.model_construct(session_id=session_id)
+
+    turns["get_chat_session_metadata"].side_effect = session_meta
+
+
+def kickoff_errors(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == kickoff.__name__ and record.levelno >= logging.ERROR
+    ]
+
+
+@pytest.mark.asyncio
+async def test_kickoff_marks_a_row_whose_chat_already_exists(
+    rows: RowStore,
+    turns: dict[str, MagicMock],
+    caplog: pytest.LogCaptureFixture,
+):
+    # An earlier call started task 0's chat and turn, then died before it
+    # could mark the row.
+    rows.put(STORED)
+    existing_chats(turns, {draft_session_id("0")})
+
+    response = await kickoff.kickoff_suggested_tasks(USER_ID)
+
+    assert response.status == "started"
+    assert response.started_task_ids == ["0", "1"]
+    assert [
+        call.kwargs["session_id"]
+        for call in turns["create_chat_session"].await_args_list
+    ] == [draft_session_id("1")]
+    assert [
+        call.kwargs["session_id"] for call in turns["schedule_turn"].await_args_list
+    ] == [draft_session_id("1")]
+    stored = rows.stored()
+    assert (stored[0]["kickoff"], stored[0]["session_id"]) == (
+        True,
+        draft_session_id("0"),
+    )
+    assert kickoff_errors(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_kickoff_that_loses_the_create_race_reports_started(
+    rows: RowStore,
+    turns: dict[str, MagicMock],
+    caplog: pytest.LogCaptureFixture,
+):
+    # The chats did not exist when checked, then another call created them.
+    rows.put(STORED)
+    created: set[str] = set()
+
+    async def session_meta(session_id: str, user_id: str | None = None):
+        if session_id not in created:
+            created.add(session_id)
+            return None
+        return ChatSessionInfo.model_construct(session_id=session_id)
+
+    turns["get_chat_session_metadata"].side_effect = session_meta
+    turns["create_chat_session"].side_effect = DatabaseError("duplicate id")
+
+    response = await kickoff.kickoff_suggested_tasks(USER_ID)
+
+    assert response.status == "started"
+    assert response.started_task_ids == ["0", "1"]
+    turns["schedule_turn"].assert_not_awaited()
+    assert all(task["kickoff"] for task in rows.stored()[:2])
+    assert kickoff_errors(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_racing_kickoffs_both_report_started_and_start_each_task_once(
+    rows: RowStore,
+    turns: dict[str, MagicMock],
+    mocker: MockerFixture,
+    caplog: pytest.LogCaptureFixture,
+):
+    """The background trigger and the copilot home's call read the row
+    before either marks it; the second still answers ``started``."""
+    rows.put(STORED)
+    created: set[str] = set()
+    existing_chats(turns, created)
+
+    async def create(user_id: str, **kwargs: Any) -> None:
+        if kwargs["session_id"] in created:
+            raise DatabaseError("duplicate id")
+        created.add(kwargs["session_id"])
+
+    turns["create_chat_session"].side_effect = create
+    both_read = asyncio.Barrier(2)
+    first_reads = 2
+    read_row = rows.get_dump
+
+    async def get_dump(user_id: str):
+        nonlocal first_reads
+        row = await read_row(user_id)
+        if first_reads:
+            first_reads -= 1
+            await asyncio.wait_for(both_read.wait(), timeout=5)
+        return row
+
+    mocker.patch("backend.api.features.onboarding_dump.db.get_dump", new=get_dump)
+
+    first, second = await asyncio.gather(
+        kickoff.kickoff_suggested_tasks(USER_ID),
+        kickoff.kickoff_suggested_tasks(USER_ID),
+    )
+
+    assert (first.status, second.status) == ("started", "started")
+    assert first.started_task_ids == second.started_task_ids == ["0", "1"]
+    assert turns["schedule_turn"].await_count == 2
+    assert kickoff_errors(caplog) == []

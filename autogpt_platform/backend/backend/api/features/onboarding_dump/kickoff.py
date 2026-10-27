@@ -28,10 +28,12 @@ from backend.copilot.model import (
     ONBOARDING_DRAFT_KIND,
     create_chat_session,
     delete_chat_session,
+    get_chat_session_metadata,
 )
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.turn_queue import turn_refusal
 from backend.util import product_analytics
+from backend.util.exceptions import DatabaseError
 
 logger = logging.getLogger(__name__)
 
@@ -110,20 +112,11 @@ def _no_tasks_coming(dump: OnboardingBrainDump) -> bool:
 async def _start_draft(target: _DraftTarget, task: SuggestedTask) -> bool:
     """Open the task's chat and start Otto's turn; False at the turn cap."""
     session_id = draft_session_id(target.user_id, target.recording_id, task.id)
-    await create_chat_session(
-        target.user_id,
-        dry_run=False,
-        session_id=session_id,
-        organization_id=target.organization_id,
-        team_id=target.team_id,
-        # The prompt is the user's own pick from their checklist, so the
-        # chat is theirs: workflows it starts still pause before anything
-        # that cannot be undone.
-        origin="interactive",
-        llm_auth_provider=target.llm_auth_provider,
-        llm_credential_id=target.llm_credential_id,
-        kind=ONBOARDING_DRAFT_KIND,
-    )
+    if not await _open_draft_chat(target, session_id):
+        # Its chat exists: another call started it, or an earlier one did
+        # and never got to mark the row. Its turn is not started twice.
+        await suggested_tasks.mark_kicked_off(target.user_id, task.id, session_id)
+        return True
     try:
         await schedule_turn(
             session_id=session_id,
@@ -147,6 +140,33 @@ async def _start_draft(target: _DraftTarget, task: SuggestedTask) -> bool:
     product_analytics.track_onboarding_draft_started(
         user_id=target.user_id, task_id=task.id, session_id=session_id
     )
+    return True
+
+
+async def _open_draft_chat(target: _DraftTarget, session_id: str) -> bool:
+    """Create the draft's chat; False when this user already has it."""
+    if await get_chat_session_metadata(session_id, target.user_id) is not None:
+        return False
+    try:
+        await create_chat_session(
+            target.user_id,
+            dry_run=False,
+            session_id=session_id,
+            organization_id=target.organization_id,
+            team_id=target.team_id,
+            # The prompt is the user's own pick from their checklist, so the
+            # chat is theirs: workflows it starts still pause before anything
+            # that cannot be undone.
+            origin="interactive",
+            llm_auth_provider=target.llm_auth_provider,
+            llm_credential_id=target.llm_credential_id,
+            kind=ONBOARDING_DRAFT_KIND,
+        )
+    except DatabaseError:
+        # The id is unique, so a racing call may have created it in between.
+        if await get_chat_session_metadata(session_id, target.user_id) is None:
+            raise
+        return False
     return True
 
 
