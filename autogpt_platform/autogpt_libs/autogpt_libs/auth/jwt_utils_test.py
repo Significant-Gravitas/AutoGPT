@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 import pytest
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519, rsa
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from jwt.algorithms import ECAlgorithm
@@ -394,6 +394,57 @@ def test_parse_jwt_token_unknown_kid_rejected():
 
     with pytest.raises(ValueError, match="Invalid token"):
         jwt_utils.parse_jwt_token(token)
+
+
+@pytest.mark.parametrize(
+    "algorithm, private_key",
+    [
+        ("RS256", rsa.generate_private_key(public_exponent=65537, key_size=2048)),
+        ("EdDSA", ed25519.Ed25519PrivateKey.generate()),
+    ],
+    ids=["RS256", "EdDSA"],
+)
+def test_parse_jwt_token_algorithm_other_than_its_keys_rejected(
+    algorithm: str, private_key: rsa.RSAPrivateKey | ed25519.Ed25519PrivateKey
+):
+    """A token claiming an accepted algorithm its key doesn't use is an auth
+    error, not a 500 from loading the ES256 key under that algorithm."""
+    token = jwt.encode(
+        TEST_USER_PAYLOAD,
+        private_key,
+        algorithm=algorithm,
+        headers={"kid": _SIGNING_KID},
+    )
+
+    with pytest.raises(ValueError, match="signing algorithm does not match its key"):
+        jwt_utils.parse_jwt_token(token)
+
+
+def test_parse_jwt_token_payload_not_an_object_rejected():
+    """The key lookup parses the payload before verification; a payload that
+    isn't a JSON object must fail there as an auth error too."""
+    assert _signing_key is not None
+    token = jwt.api_jws.encode(
+        b"[]", _signing_key, algorithm="ES256", headers={"kid": _SIGNING_KID}
+    )
+
+    with pytest.raises(ValueError, match="Invalid token"):
+        jwt_utils.parse_jwt_token(token)
+
+
+def test_parse_jwt_token_key_unusable_under_its_algorithm_rejected(
+    mocker: MockerFixture,
+):
+    """A published key that can't verify under its own algorithm (a P-384 key
+    labelled ES256) fails as an auth error, not a 500."""
+    p384_key = ec.generate_private_key(ec.SECP384R1())
+    jwk = ECAlgorithm.to_jwk(p384_key.public_key(), as_dict=True)
+    jwk.update({"kid": _SIGNING_KID, "alg": "ES256", "use": "sig"})
+    mocker.patch.object(jwt.PyJWKClient, "fetch_data", return_value={"keys": [jwk]})
+
+    with pytest.raises(ValueError, match="Invalid token") as exc_info:
+        jwt_utils.parse_jwt_token(create_token(TEST_USER_PAYLOAD))
+    assert isinstance(exc_info.value.__cause__, jwt.InvalidKeyError)
 
 
 def test_jwks_client_rekeys_when_url_changes(mocker: MockerFixture):

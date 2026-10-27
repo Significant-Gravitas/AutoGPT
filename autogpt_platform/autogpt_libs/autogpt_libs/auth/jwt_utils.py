@@ -109,21 +109,26 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
         raise ValueError("Invalid token: signing algorithm is not accepted")
 
     try:
-        key = _get_jwks_client().get_signing_key_from_jwt(token).key
-    except jwt.PyJWKClientError as e:
+        signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
+    except jwt.PyJWTError as e:
         raise ValueError(f"Invalid token: {str(e)}") from e
+
+    # A key verifies only under its own algorithm; under any other, PyJWT's key
+    # loader raises TypeError or InvalidKeyError instead of a token error.
+    if algorithm != signing_key.algorithm_name:
+        raise ValueError("Invalid token: signing algorithm does not match its key")
 
     try:
         payload = jwt.decode(
             token,
-            key,
-            algorithms=settings.JWT_JWKS_ALGORITHMS,
+            signing_key.key,
+            algorithms=[signing_key.algorithm_name],
             audience=audience,
         )
         return payload
     except jwt.ExpiredSignatureError as e:
         raise ValueError("Token has expired") from e
-    except jwt.InvalidTokenError as e:
+    except jwt.PyJWTError as e:
         raise ValueError(f"Invalid token: {str(e)}") from e
 
 
