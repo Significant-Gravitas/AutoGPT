@@ -3,6 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
+import { tourStartingPoint } from "@/lib/tour-targets";
 import { cn } from "@/lib/utils";
 import { Cancel01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import NextLink from "next/link";
@@ -66,6 +67,7 @@ function CardBody({ task, isSending, isBusy, onSend }: CardBodyProps) {
     return (
       <NextLink
         href={getChatHref(task.session_id)}
+        {...tourStartingPoint()}
         onClick={() => trackDraftOpened(task)}
         className={cn(CARD_CLASSES, "hover:border-brand/40 hover:shadow-md")}
       >
@@ -107,6 +109,7 @@ function CardBody({ task, isSending, isBusy, onSend }: CardBodyProps) {
   return (
     <button
       type="button"
+      {...tourStartingPoint()}
       disabled={isBusy}
       onClick={() => onSend(task)}
       className={cn(

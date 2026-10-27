@@ -32,6 +32,7 @@ const LATER_DUMP_KEY = "autogpt:onboarding-pending-later-dump";
 const FOLLOWUP_KEY = "autogpt:onboarding-intro-awaiting-followup";
 const WELCOME_PENDING_KEY = "autogpt:onboarding-welcome-pending";
 const GREETING_DONE_KEY = "autogpt:copilot-greeting-done";
+const TOUR_SEEN_KEY = "autogpt:first-run-tour-seen";
 
 const READY_INTRO: IntroCardResponse = {
   path: "A",
@@ -85,28 +86,16 @@ beforeEach(() => {
 });
 
 describe("useOnboardingIntroCard — availability", () => {
-  it("holds the composer until the intro answers", async () => {
-    // The hold stops the regular hero flashing before the greeting page
-    // takes over, so it lasts until the server has said something.
-    let answer: () => void = () => {};
-    const answered = new Promise<void>((resolve) => {
-      answer = resolve;
-    });
-    server.use(
-      http.get(INTRO_URL, async () => {
-        await answered;
-        return HttpResponse.json(READY_INTRO);
-      }),
-    );
+  it("holds the composer for a user fresh out of the wizard until the greeting answers", async () => {
+    // The hold exists to stop the regular hero flashing before the
+    // greeting page takes over, and the pending first run is seeded
+    // synchronously — so this user is held before the intro query resolves.
+    window.sessionStorage.setItem(WELCOME_PENDING_KEY, "1");
 
     const { result } = renderIntro();
-    await act(async () => {});
-    expect(result.current.isAwaitingGreeting).toBe(true);
-    expect(result.current.isVisible).toBe(false);
 
-    answer();
-    await waitFor(() => expect(result.current.isVisible).toBe(true));
-    expect(result.current.isAwaitingGreeting).toBe(false);
+    await waitFor(() => expect(result.current).toBeDefined());
+    expect(result.current.isAwaitingGreeting).toBe(true);
   });
 
   it("never asks again once this browser has seen this user finish the greeting", async () => {
@@ -132,16 +121,19 @@ describe("useOnboardingIntroCard — availability", () => {
 });
 
 describe("useOnboardingIntroCard — handoff from the wizard", () => {
-  it("consumes the recorded path once and reports it", async () => {
+  it("consumes the recorded path once, marks the first run pending and reports it", async () => {
     setIntroPath("A");
-    countIntroRequests();
+    const urls = countIntroRequests();
 
     const { result } = renderIntro();
-    await waitFor(() => expect(result.current.isVisible).toBe(true));
+    await waitFor(() => expect(result.current.isFirstRunPending).toBe(true));
 
+    // The greeting loads behind the walkthrough, which ends on its tasks.
+    await waitFor(() => expect(urls).toHaveLength(1));
     expect(window.sessionStorage.getItem("autogpt:onboarding-intro-path")).toBe(
       null,
     );
+    expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBe("1");
     expect(window.sessionStorage.getItem(FOLLOWUP_KEY)).toBe("1");
     expect(capture).toHaveBeenCalledWith("intro_path", { path: "A" });
     // Path A already dumped — nothing to point the mic at.
@@ -153,7 +145,7 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     countIntroRequests();
 
     const { result } = renderIntro();
-    await waitFor(() => expect(result.current.isVisible).toBe(true));
+    await waitFor(() => expect(result.current.isFirstRunPending).toBe(true));
 
     expect(window.sessionStorage.getItem(MIC_GLOW_KEY)).toBe("1");
     // The invitation Otto just issued: the first voice message in the
@@ -162,37 +154,91 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     expect(capture).toHaveBeenCalledWith("intro_path", { path: "B" });
   });
 
-  it("reports no path for a user who did not just come out of onboarding", async () => {
+  it("starts no first run for a user who did not just come out of onboarding", async () => {
     countIntroRequests();
 
     const { result } = renderIntro();
     await waitFor(() => expect(result.current.isVisible).toBe(true));
 
+    expect(result.current.isFirstRunPending).toBe(false);
     expect(capture).not.toHaveBeenCalledWith("intro_path", expect.anything());
   });
-});
 
-describe("useOnboardingIntroCard — first landing", () => {
-  it("fetches the greeting as soon as it mounts", async () => {
-    setIntroPath("A");
-    const urls = countIntroRequests();
-
-    const { result } = renderIntro();
-    await waitFor(() => expect(result.current.isVisible).toBe(true));
-
-    expect(result.current.greeting).toBe(READY_INTRO.greeting);
-    expect(result.current.isAwaitingGreeting).toBe(false);
-    expect(urls).toHaveLength(1);
-  });
-
-  it("ignores the welcome flag an earlier version left in the session", async () => {
+  it("keeps the first run pending across a refresh, with the greeting loading behind it", async () => {
     window.sessionStorage.setItem(WELCOME_PENDING_KEY, "1");
     const urls = countIntroRequests();
 
     const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isFirstRunPending).toBe(true));
+
+    // The walkthrough ends by pointing at the greeting's first tasks, so the
+    // greeting is fetched while it is still open.
+    await waitFor(() => expect(result.current.isVisible).toBe(true));
+    expect(urls).toHaveLength(1);
+    expect(result.current.isFirstRunPending).toBe(true);
+  });
+
+  it("consumes a saved wizard path without reopening a walkthrough this user already saw", async () => {
+    setIntroPath("A");
+    window.localStorage.setItem(TOUR_SEEN_KEY, "user-1");
+    const urls = countIntroRequests();
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isVisible).toBe(true));
+    expect(result.current.isFirstRunPending).toBe(false);
+    expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
+    expect(
+      window.sessionStorage.getItem("autogpt:onboarding-intro-path"),
+    ).toBeNull();
+    expect(capture).toHaveBeenCalledWith("intro_path", { path: "A" });
+    expect(urls).toHaveLength(1);
+  });
+
+  it("drops a stale pending first run for a user who already saw the walkthrough", async () => {
+    window.sessionStorage.setItem(WELCOME_PENDING_KEY, "1");
+    window.localStorage.setItem(TOUR_SEEN_KEY, "user-1");
+    countIntroRequests();
+
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isFirstRunPending).toBe(false));
+
+    expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
+    await waitFor(() => expect(result.current.isVisible).toBe(true));
+  });
+});
+
+describe("useOnboardingIntroCard — finishing the first run", () => {
+  it("reports the end and clears the pending flag, leaving the greeting up", async () => {
+    setIntroPath("A");
+    countIntroRequests();
+
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isFirstRunPending).toBe(true));
     await waitFor(() => expect(result.current.isVisible).toBe(true));
 
-    expect(urls).toHaveLength(1);
+    act(() => result.current.finishFirstRun({ wasShown: true }));
+
+    expect(capture).toHaveBeenCalledWith("welcome_dialog_closed", {});
+    expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
+    expect(result.current.isFirstRunPending).toBe(false);
+    expect(result.current.greeting).toBe(READY_INTRO.greeting);
+  });
+});
+
+describe("useOnboardingIntroCard — a first run that never showed", () => {
+  it("clears the pending flag without reporting a walkthrough that did not open", async () => {
+    setIntroPath("A");
+    countIntroRequests();
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isFirstRunPending).toBe(true));
+
+    act(() => result.current.finishFirstRun({ wasShown: false }));
+
+    expect(capture).not.toHaveBeenCalledWith(
+      "welcome_dialog_closed",
+      expect.anything(),
+    );
+    expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
+    expect(result.current.isFirstRunPending).toBe(false);
   });
 });
 
@@ -420,7 +466,8 @@ describe("useOnboardingIntroCard — starting the suggested tasks", () => {
     );
   }
 
-  it("retries kickoff when the greeting arrives", async () => {
+  it("retries kickoff while the first-run tour is pending", async () => {
+    setIntroPath("A");
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let introCalls = 0;
     server.use(
@@ -442,6 +489,7 @@ describe("useOnboardingIntroCard — starting the suggested tasks", () => {
 
     await waitFor(() => expect(result.current.isVisible).toBe(true));
     await waitFor(() => expect(calls.kickoffs).toBe(1));
+    expect(result.current.isFirstRunPending).toBe(true);
     // Settled with "nothing", yet a background kickoff may have started the
     // tasks meanwhile, so the list is read again.
     await waitFor(() => expect(calls.taskReads).toBe(2));

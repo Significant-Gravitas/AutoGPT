@@ -2,6 +2,8 @@
 
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
+import { tourTarget } from "@/lib/tour-targets";
+import { useFirstRunTourAutoStart } from "@/app/(platform)/components/FirstRunTour/useFirstRunTourAutoStart";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -76,6 +78,10 @@ export function EmptySession({
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
   const intro = useOnboardingIntroCard();
+  useFirstRunTourAutoStart({
+    isPending: intro.isFirstRunPending,
+    onFinished: intro.finishFirstRun,
+  });
 
   const {
     options,
@@ -133,8 +139,8 @@ export function EmptySession({
               disabled={isComposerDisabled || !!atReset}
             />
           ) : intro.isAwaitingGreeting ? (
-            // Until the intro answers and for as long as the pipeline is
-            // still writing. The orb it renders is the same
+            // For as long as the pipeline is still writing, which can be
+            // behind the first-run walkthrough. The orb it renders is the same
             // element the card above puts in its heading, so the swap
             // moves it there rather than replacing it.
             <GreetingLoader />
@@ -153,6 +159,7 @@ export function EmptySession({
           {!intro.isAwaitingGreeting && (
             <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
               <div
+                {...tourTarget("composer")}
                 className={cn(
                   "text-left transition-colors duration-300 ease-out",
                   // The greeting's prompt card bleeds 1.25rem past the text

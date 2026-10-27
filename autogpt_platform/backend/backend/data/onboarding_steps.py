@@ -57,6 +57,16 @@ class OnboardingStep(StrEnum):
     BUILDER_RUN_AGENT = "BUILDER_RUN_AGENT"
     # deprecated: no longer set (welcome overlay removed 2026-10)
     CAPABILITY_CARDS = "CAPABILITY_CARDS"
+    # The guided first run over the real sidebar (chats, Team, Files, the
+    # wallet, the first tasks), finished or skipped. Unrewarded; recorded so
+    # it opens by itself only once per user. Replayable from the profile menu.
+    FIRST_RUN_TOUR = "FIRST_RUN_TOUR"
+    # One-time contextual tips, each shown the first time its surface matters:
+    # a second chat appears, Otto brings up a cost, Otto proposes an expert.
+    # Unrewarded; recorded so each tip shows once per user.
+    CHATS_TIP = "CHATS_TIP"
+    COST_TIP = "COST_TIP"
+    EXPERT_TIP = "EXPERT_TIP"
     # First-visit intro card for a tab, dismissed via its CTA or otherwise.
     # Unrewarded; recorded so each tab introduces itself only once per user.
     AGENTS_TAB_INTRO = "AGENTS_TAB_INTRO"
@@ -75,6 +85,10 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.CONGRATS,
     OnboardingStep.ONBOARDING_COMPLETE,
     OnboardingStep.BUILDER_OPEN,
+    OnboardingStep.FIRST_RUN_TOUR,
+    OnboardingStep.CHATS_TIP,
+    OnboardingStep.COST_TIP,
+    OnboardingStep.EXPERT_TIP,
     OnboardingStep.AGENTS_TAB_INTRO,
     OnboardingStep.MARKETPLACE_TAB_INTRO,
     OnboardingStep.BUILD_TAB_INTRO,

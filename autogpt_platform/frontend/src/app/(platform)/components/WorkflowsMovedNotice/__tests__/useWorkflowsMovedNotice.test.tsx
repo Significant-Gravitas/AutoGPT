@@ -162,14 +162,20 @@ describe("migration notice eligibility", () => {
         );
       });
       expect(result.current.migration.isOpen).toBe(false);
+      expect(result.current.intro.isFirstRunPending).toBe(true);
       expect(peekIntroPath()).toBeNull();
 
       // The path is consumed on the greeting page, yet the rest of this
       // visit stays deferred so the notice never lands on the greeting.
       rerender();
-      await act(async () => {});
+      await waitFor(() =>
+        expect(result.current.intro.isFirstRunPending).toBe(true),
+      );
       expect(result.current.migration.isOpen).toBe(false);
 
+      act(() => result.current.intro.finishFirstRun({ wasShown: true }));
+      expect(result.current.intro.isFirstRunPending).toBe(false);
+      expect(result.current.migration.isOpen).toBe(false);
       context.pathname = "/team";
       rerender();
       await waitFor(() => expect(result.current.migration.isOpen).toBe(true));

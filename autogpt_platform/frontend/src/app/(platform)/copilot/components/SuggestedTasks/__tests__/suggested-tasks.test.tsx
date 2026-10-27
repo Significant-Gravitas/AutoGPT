@@ -1,3 +1,4 @@
+import { focusStartingPoint } from "@/app/(platform)/components/FirstRunTour/focusStartingPoint";
 import { getGetBrainDumpIntroMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
@@ -418,6 +419,14 @@ describe("Suggested first tasks — drafts Otto started", () => {
       screen.getByRole("button", { name: `Hide: ${TASKS[1].title}` }),
     ).toBeDefined();
 
+    const list = link.closest("ol");
+    if (!list) throw new Error("Draft list is missing");
+    vi.spyOn(list, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ x: 10, y: 100, width: 240, height: 40 }),
+    );
+    focusStartingPoint();
+    await waitFor(() => expect(document.activeElement).toBe(link));
+
     await userEvent.click(link);
 
     expect(onStartTask).not.toHaveBeenCalled();
@@ -437,6 +446,14 @@ describe("Suggested first tasks — drafts Otto started", () => {
     expect(link.getAttribute("href")).toBe("/copilot?sessionId=draft-2");
     const rows = within(block).getAllByTestId("suggested-task");
     expect(within(rows[0]).getByRole("link")).toBe(link);
+
+    const list = link.closest("ol");
+    if (!list) throw new Error("Draft list is missing");
+    vi.spyOn(list, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ x: 10, y: 100, width: 240, height: 40 }),
+    );
+    focusStartingPoint();
+    await waitFor(() => expect(document.activeElement).toBe(link));
 
     await userEvent.click(link);
 

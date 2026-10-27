@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  clearWelcomePending,
   peekGreetingDone,
   peekIntroPath,
+  peekWelcomePending,
   setGreetingDone,
   setIntroAwaitingFollowup,
   setIntroPath,
   setMicGlow,
   setPendingLaterDump,
+  setWelcomePending,
   takeIntroAwaitingFollowup,
   takeIntroPath,
   takeMicGlow,
@@ -15,6 +18,7 @@ import {
 
 const INTRO_PATH_KEY = "autogpt:onboarding-intro-path";
 const MIC_GLOW_KEY = "autogpt:onboarding-mic-glow";
+const WELCOME_PENDING_KEY = "autogpt:onboarding-welcome-pending";
 const GREETING_DONE_KEY = "autogpt:copilot-greeting-done";
 
 beforeEach(() => {
@@ -91,6 +95,37 @@ describe("one-shot session flags", () => {
     expect(takeIntroAwaitingFollowup()).toBe(false);
     expect(takePendingLaterDump()).toBe(false);
     expect(takeMicGlow()).toBe(true);
+  });
+});
+
+describe("welcome pending", () => {
+  it("peeking does not consume it — the overlay survives a refresh", () => {
+    setWelcomePending();
+
+    expect(peekWelcomePending()).toBe(true);
+    expect(peekWelcomePending()).toBe(true);
+  });
+
+  it("is only cleared deliberately", () => {
+    setWelcomePending();
+    clearWelcomePending();
+
+    expect(peekWelcomePending()).toBe(false);
+    expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
+  });
+
+  it("lives in sessionStorage, so it does not survive a new browser session", () => {
+    setWelcomePending();
+
+    expect(window.localStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
+    window.sessionStorage.clear();
+    expect(peekWelcomePending()).toBe(false);
+  });
+
+  it("clearing when nothing is pending is harmless", () => {
+    clearWelcomePending();
+
+    expect(peekWelcomePending()).toBe(false);
   });
 });
 

@@ -41,9 +41,13 @@ from backend.copilot.model import (
     ChatSession,
     child_session_origin,
     create_chat_session,
+    delete_chat_session,
     get_chat_session,
 )
-from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
+from backend.copilot.sdk.session_waiter import (
+    TurnNotDispatched,
+    run_copilot_turn_via_queue,
+)
 from backend.copilot.tree import SpawnRequest
 from backend.data.db_accessors import experts_db
 
@@ -185,78 +189,18 @@ class DelegateToExpertTool(BaseTool):
         if refusal is not None:
             return self._error(refusal, session)
 
-        inner_session_id = await self._resolve_session(
+        return await start_delegation(
             user_id=user_id,
             session=session,
             target=target,
+            prompt=prompt,
+            system_context=system_context,
             delegated_session_id=delegated_session_id.strip(),
-        )
-        if isinstance(inner_session_id, ErrorResponse):
-            return inner_session_id
-
-        caller = await self._caller_name(user_id, session.expert_id)
-        started_at = time.monotonic()
-        outcome, result = await run_copilot_turn_via_queue(
-            session_id=inner_session_id,
-            user_id=user_id,
-            message=_handoff_message(caller, system_context, prompt),
-            timeout=max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS)),
-            permissions=get_current_permissions(),
-            tool_call_id=(
-                f"delegate:{session.session_id}" if session.session_id else "delegate"
-            ),
-            tool_name="delegate_to_expert",
-            # A teammate keeps their own teammates; depth still bounds the chain.
-            spawn=SpawnRequest(may_spawn=True),
-            allow_queue=False,
-            message_metadata=sent_from_metadata(session, caller),
-        )
-        elapsed = time.monotonic() - started_at
-        discarded = (
-            not delegated_session_id.strip()
-            and await discard_unused_sub_session(inner_session_id, user_id, outcome)
-        )
-        if discarded:
-            # The thread is gone; handing back its id would send the model to
-            # poll a delegation that no longer exists.
-            return self._error(
-                (
-                    spawn_limit_message()
-                    if outcome == "rejected_concurrent_turn_cap"
-                    else result.refusal or f"{target.name} could not start this task."
-                ),
-                session,
-            )
-        workspace_files = (
-            await list_sub_workspace_files(user_id, inner_session_id)
-            if outcome == "completed"
-            else None
-        )
-        delegated = response_from_outcome(
-            outcome=outcome,
-            result=result,
-            inner_session_id=inner_session_id,
-            parent_session_id=session.session_id,
-            elapsed=elapsed,
-            workspace_files=workspace_files,
-            actor=target.name,
-        )
-        delegated.message += await build_spawn_state_note()
-        return apply_delegated_expert(
-            delegated,
-            DelegatedExpertInfo(
-                id=target.id,
-                name=target.name,
-                role=target.role,
-                avatar_url=target.avatar_url,
-                color=target.color,
-            ),
+            wait_for_result=wait_for_result,
         )
 
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:
-        return ErrorResponse(
-            message=message, session_id=session.session_id
-        ).from_outside()
+        return _error(message, session)
 
     async def _load_delegate_target(
         self, user_id: str, target_id: str, session: ChatSession
@@ -274,85 +218,246 @@ class DelegateToExpertTool(BaseTool):
                 await unknown_target_message(user_id, target_id, session.expert_id),
                 session,
             )
-        if target.schedules_paused_at is not None:
-            return self._error(
-                f"{target.name} is paused (budget guardrail or archive) and "
-                "cannot take delegated work until the user resumes them.",
-                session,
-            )
+        if (paused := paused_refusal(target)) is not None:
+            return self._error(paused, session)
         return target
 
-    async def _resolve_session(
-        self,
-        *,
-        user_id: str,
-        session: ChatSession,
-        target: Expert,
-        delegated_session_id: str,
-    ) -> str | ErrorResponse:
-        """Reuse a prior delegation thread with this teammate, or open one.
 
-        Resuming is restricted to threads this session itself delegated, so a
-        session can never read or steer another scope's conversation by
-        guessing an id.
-        """
-        if not delegated_session_id:
-            new_session = await create_chat_session(
-                user_id,
-                dry_run=session.dry_run,
-                llm_auth_provider=session.metadata.llm_auth_provider,
-                llm_credential_id=session.metadata.llm_credential_id,
-                expert_id=target.id,
-                delegated_by_expert_id=session.expert_id,
-                delegated_by_session_id=session.session_id,
-                origin=child_session_origin(session.metadata),
-                # Decided here, from the expert row already in hand, so the
-                # thread cannot pick up a looser default written in between.
-                inherited_autopilot_mode=child_autopilot_mode(
-                    session, target.autopilot_mode
-                ),
-            )
-            return new_session.session_id
+def paused_refusal(target: Expert) -> str | None:
+    """Why a paused teammate can't take delegated work, or ``None``.
 
-        prior = await get_chat_session(delegated_session_id)
-        if (
-            prior is None
-            or prior.user_id != user_id
-            or prior.expert_id != target.id
-            or prior.metadata.delegated_by_session_id != session.session_id
-            or prior.metadata.handed_off_from_expert_id is not None
-        ):
-            return self._error(
-                f"delegated_session_id {delegated_session_id} is not a "
-                f"delegation you started with {target.name}. Leave it empty "
-                "to open a fresh one.",
-                session,
-            )
-        if (
-            prior.metadata.llm_auth_provider != session.metadata.llm_auth_provider
-            or prior.metadata.llm_credential_id != session.metadata.llm_credential_id
-        ):
-            return self._error(
-                f"That delegation thread with {target.name} runs on a "
-                "different model connection than this chat does, so it "
-                "cannot be resumed from here. Leave delegated_session_id "
-                "empty to open a fresh one.",
-                session,
-            )
-        return delegated_session_id
+    Shared with ``hire_handoff``: re-hiring a template returns the existing
+    hire unchanged, so a "new" hire can be one the budget guardrail paused.
+    """
+    if target.schedules_paused_at is None:
+        return None
+    return (
+        f"{target.name} is paused (budget guardrail or archive) and "
+        "cannot take delegated work until the user resumes them."
+    )
 
-    async def _caller_name(self, user_id: str, caller_expert_id: str | None) -> str:
-        """Who to introduce the hand-off as. Plain sessions are Otto."""
-        if caller_expert_id is None:
-            return "Otto"
-        try:
-            caller = await experts_db().get_expert(
-                user_id, caller_expert_id, include_workflows=False
-            )
-        except Exception as e:
-            logger.warning(f"Delegating expert lookup failed: {e}")
-            return "a teammate"
-        return caller.name if caller else "a teammate"
+
+async def start_delegation(
+    *,
+    user_id: str,
+    session: ChatSession,
+    target: Expert,
+    prompt: str,
+    system_context: str = "",
+    delegated_session_id: str = "",
+    wait_for_result: int = 60,
+) -> ToolResponseBase:
+    """Run *prompt* as *target* in a thread delegated from *session*.
+
+    The part of ``delegate_to_expert`` after its checks. The caller has
+    already resolved *target* and cleared ``chain_refusal``.
+    """
+    inner_session_id = await _resolve_session(
+        user_id=user_id,
+        session=session,
+        target=target,
+        delegated_session_id=delegated_session_id,
+    )
+    if isinstance(inner_session_id, ErrorResponse):
+        return inner_session_id
+    return await run_delegated_turn(
+        user_id=user_id,
+        session=session,
+        target=target,
+        inner_session_id=inner_session_id,
+        prompt=prompt,
+        system_context=system_context,
+        opened_here=not delegated_session_id,
+        wait_for_result=wait_for_result,
+    )
+
+
+async def run_delegated_turn(
+    *,
+    user_id: str,
+    session: ChatSession,
+    target: Expert,
+    inner_session_id: str,
+    prompt: str,
+    system_context: str = "",
+    opened_here: bool,
+    wait_for_result: int,
+) -> ToolResponseBase:
+    """Queue *prompt* on a delegation thread and report what happened.
+
+    Shared with ``hire_handoff``, which opens the thread itself first
+    (``open_delegation_thread``) so it always knows where a task went, so a
+    task handed to a new hire runs exactly like any other delegation: same
+    provenance, permissions, mode and result contract. ``opened_here``
+    drops a thread this call opened when its turn never reached it
+    (``TurnNotDispatched`` is re-raised after).
+    """
+    caller = await _caller_name(user_id, session.expert_id)
+    started_at = time.monotonic()
+    try:
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id=inner_session_id,
+            user_id=user_id,
+            message=_handoff_message(caller, system_context, prompt),
+            timeout=max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS)),
+            permissions=get_current_permissions(),
+            tool_call_id=(
+                f"delegate:{session.session_id}" if session.session_id else "delegate"
+            ),
+            tool_name="delegate_to_expert",
+            # A teammate keeps their own teammates; depth still bounds the chain.
+            spawn=SpawnRequest(may_spawn=True),
+            allow_queue=False,
+            message_metadata=sent_from_metadata(session, caller),
+        )
+    except TurnNotDispatched:
+        # Nothing reached the queue, so a thread opened for this task is
+        # empty. Any other error, or a cancellation (which can land inside
+        # the publish), may have left the task in it, so the thread stays.
+        if opened_here:
+            await _discard_thread(inner_session_id, user_id)
+        raise
+    elapsed = time.monotonic() - started_at
+    discarded = opened_here and await discard_unused_sub_session(
+        inner_session_id, user_id, outcome
+    )
+    if discarded:
+        # The thread is gone; handing back its id would send the model to
+        # poll a delegation that no longer exists.
+        return _error(
+            (
+                spawn_limit_message()
+                if outcome == "rejected_concurrent_turn_cap"
+                else result.refusal or f"{target.name} could not start this task."
+            ),
+            session,
+        )
+    workspace_files = (
+        await list_sub_workspace_files(user_id, inner_session_id)
+        if outcome == "completed"
+        else None
+    )
+    delegated = response_from_outcome(
+        outcome=outcome,
+        result=result,
+        inner_session_id=inner_session_id,
+        parent_session_id=session.session_id,
+        elapsed=elapsed,
+        workspace_files=workspace_files,
+        actor=target.name,
+    )
+    delegated.message += await _spawn_note()
+    return apply_delegated_expert(
+        delegated,
+        DelegatedExpertInfo(
+            id=target.id,
+            name=target.name,
+            role=target.role,
+            avatar_url=target.avatar_url,
+            color=target.color,
+        ),
+    )
+
+
+async def _spawn_note() -> str:
+    """The tree's state for the result, or nothing: it is read after the task
+    is queued, so failing here must not report that task as failed."""
+    try:
+        return await build_spawn_state_note()
+    except Exception:
+        logger.warning("Could not read the spawn state note", exc_info=True)
+        return ""
+
+
+async def _discard_thread(inner_session_id: str, user_id: str) -> None:
+    """Remove a delegation thread nothing was sent to. Best-effort, like
+    ``discard_unused_sub_session``: an empty thread is the lesser harm."""
+    try:
+        await delete_chat_session(inner_session_id, user_id)
+    except Exception:
+        logger.warning("Failed to remove an unused delegation thread", exc_info=True)
+
+
+def _error(message: str, session: ChatSession) -> ErrorResponse:
+    return ErrorResponse(message=message, session_id=session.session_id).from_outside()
+
+
+async def _resolve_session(
+    *,
+    user_id: str,
+    session: ChatSession,
+    target: Expert,
+    delegated_session_id: str,
+) -> str | ErrorResponse:
+    """Reuse a prior delegation thread with this teammate, or open one.
+
+    Resuming is restricted to threads this session itself delegated, so a
+    session can never read or steer another scope's conversation by
+    guessing an id.
+    """
+    if not delegated_session_id:
+        return await open_delegation_thread(user_id, session, target)
+
+    prior = await get_chat_session(delegated_session_id)
+    if (
+        prior is None
+        or prior.user_id != user_id
+        or prior.expert_id != target.id
+        or prior.metadata.delegated_by_session_id != session.session_id
+        or prior.metadata.handed_off_from_expert_id is not None
+    ):
+        return _error(
+            f"delegated_session_id {delegated_session_id} is not a "
+            f"delegation you started with {target.name}. Leave it empty "
+            "to open a fresh one.",
+            session,
+        )
+    if (
+        prior.metadata.llm_auth_provider != session.metadata.llm_auth_provider
+        or prior.metadata.llm_credential_id != session.metadata.llm_credential_id
+    ):
+        return _error(
+            f"That delegation thread with {target.name} runs on a "
+            "different model connection than this chat does, so it "
+            "cannot be resumed from here. Leave delegated_session_id "
+            "empty to open a fresh one.",
+            session,
+        )
+    return delegated_session_id
+
+
+async def open_delegation_thread(
+    user_id: str, session: ChatSession, target: Expert
+) -> str:
+    """Open a fresh thread for *target*, delegated from *session*."""
+    new_session = await create_chat_session(
+        user_id,
+        dry_run=session.dry_run,
+        llm_auth_provider=session.metadata.llm_auth_provider,
+        llm_credential_id=session.metadata.llm_credential_id,
+        expert_id=target.id,
+        delegated_by_expert_id=session.expert_id,
+        delegated_by_session_id=session.session_id,
+        origin=child_session_origin(session.metadata),
+        # Decided here, from the expert row already in hand, so the
+        # thread cannot pick up a looser default written in between.
+        inherited_autopilot_mode=child_autopilot_mode(session, target.autopilot_mode),
+    )
+    return new_session.session_id
+
+
+async def _caller_name(user_id: str, caller_expert_id: str | None) -> str:
+    """Who to introduce the hand-off as. Plain sessions are Otto."""
+    if caller_expert_id is None:
+        return "Otto"
+    try:
+        caller = await experts_db().get_expert(
+            user_id, caller_expert_id, include_workflows=False
+        )
+    except Exception as e:
+        logger.warning(f"Delegating expert lookup failed: {e}")
+        return "a teammate"
+    return caller.name if caller else "a teammate"
 
 
 def _handoff_message(caller: str, system_context: str, prompt: str) -> str:

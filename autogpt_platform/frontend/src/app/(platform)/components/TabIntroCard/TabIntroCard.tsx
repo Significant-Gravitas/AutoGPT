@@ -29,7 +29,7 @@ interface Props {
   onDismiss: () => void;
 }
 
-// One-card, first-visit intro for a tab: tinted stage carrying the icon,
+// One-card, first-visit intro for a tab: a tinted stage carrying the icon,
 // copy below, one way forward and one way out.
 export function TabIntroCard({
   isOpen,

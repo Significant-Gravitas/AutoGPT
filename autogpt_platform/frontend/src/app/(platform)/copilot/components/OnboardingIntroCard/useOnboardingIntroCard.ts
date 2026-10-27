@@ -1,12 +1,17 @@
+import { peekFirstRunTourSeen } from "@/app/(platform)/components/FirstRunTour/helpers";
 import { useGetBrainDumpIntro } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
+  clearWelcomePending,
   peekGreetingDone,
+  peekIntroPath,
+  peekWelcomePending,
   setGreetingDone,
   setIntroAwaitingFollowup,
   setMicGlow,
   setPendingLaterDump,
+  setWelcomePending,
   takeIntroPath,
 } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useState } from "react";
@@ -30,6 +35,15 @@ export function useOnboardingIntroCard() {
   // starts clean.
   const [isDone, setIsDone] = useState(() => peekGreetingDone(userId));
 
+  // A user fresh out of onboarding gets the guided first run over the real
+  // sidebar (FirstRunTour). The greeting loads behind it rather than after
+  // it: the walkthrough ends by pointing at the greeting's first tasks.
+  // Seeded from sessionStorage so a refresh mid-walkthrough brings it back
+  // rather than skipping it.
+  const [isFirstRunPending, setIsFirstRunPending] = useState(
+    () => peekWelcomePending() || Boolean(peekIntroPath()),
+  );
+
   // The server render can't see localStorage or the intro answer, so it
   // always emits the held hero; the first client frame must match it or
   // hydration flashes the composer before the greeting page arrives.
@@ -47,6 +61,15 @@ export function useOnboardingIntroCard() {
   }, [userId]);
 
   useEffect(() => {
+    // This browser already saw this user finish or skip the walkthrough —
+    // never reopen it, even if the pending flag somehow survived.
+    if (isFirstRunPending && peekFirstRunTourSeen(userId)) {
+      clearWelcomePending();
+      setIsFirstRunPending(false);
+    }
+  }, [isFirstRunPending, userId]);
+
+  useEffect(() => {
     const path = takeIntroPath();
     if (!path) return;
     if (path === "B") {
@@ -59,7 +82,11 @@ export function useOnboardingIntroCard() {
     // consumed by the first real message afterwards.
     setIntroAwaitingFollowup();
     trackBrainDump("intro_path", { path });
-  }, []);
+    if (!peekFirstRunTourSeen(userId)) {
+      setWelcomePending();
+      setIsFirstRunPending(true);
+    }
+  }, [userId]);
 
   const { data, isError } = useGetBrainDumpIntro({
     query: {
@@ -107,6 +134,13 @@ export function useOnboardingIntroCard() {
     }
   }, [serverSaysDone, userId]);
 
+  // The first run is over: the walkthrough ended, or never had to open.
+  function finishFirstRun({ wasShown }: { wasShown: boolean }) {
+    if (wasShown) trackBrainDump("welcome_dialog_closed", {});
+    clearWelcomePending();
+    setIsFirstRunPending(false);
+  }
+
   // `serverSaysDone` as well as `isDone`: the effect that caches the verdict
   // runs after render, so a payload that still carries a greeting would
   // otherwise flash the card for one paint before it takes effect.
@@ -117,8 +151,6 @@ export function useOnboardingIntroCard() {
     hasIntroAnswer &&
     Boolean(intro?.greeting);
 
-  // The greeting has stored its prompts by the time it shows, so a kickoff
-  // the wizard asked for too early ("pending") can start them now.
   useKickoffSuggestedTasks(isVisible);
 
   return {
@@ -139,6 +171,10 @@ export function useOnboardingIntroCard() {
     // stays centered — that is the distance the orb travels when the
     // greeting lands.
     anchorTop: isVisible,
+    // Independent of the greeting: whether someone has had the walkthrough
+    // has nothing to do with whether they have sent their first message.
+    isFirstRunPending,
+    finishFirstRun,
     greeting: intro?.greeting ?? "",
     transcript: typeof intro?.transcript === "string" ? intro.transcript : "",
     path: intro?.path ?? "B",
