@@ -41,4 +41,17 @@ describe("Microsoft callback recovery", () => {
     expect(html).not.toContain("private-upstream-text");
     expect(html).not.toContain("oauth_popup_result");
   });
+
+  it("never puts the callback's own text on the approval page", async () => {
+    const hostile = encodeURIComponent('<img src=x onerror="alert(1)">');
+    const response = await GET(
+      new Request(
+        `https://app.example/auth/integrations/oauth_callback?admin_consent=True&error=${hostile}&error_description=AADSTS65004${hostile}`,
+      ),
+    );
+    const html = await response.text();
+    expect(html).toContain("AADSTS65004");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("onerror");
+  });
 });

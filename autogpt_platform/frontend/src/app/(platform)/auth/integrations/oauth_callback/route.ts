@@ -22,18 +22,26 @@ const HTML_HEADERS = {
   "Referrer-Policy": "no-referrer",
 };
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 // Microsoft's organization-wide approval returns here with no code to
 // exchange: it opened in its own tab, so all that's left is to say how it
 // went. A refusal is marked admin_consent=True too, so the error decides.
-// The page only ever shows our own messages and an AADSTS number.
 function organizationApprovalPage(error: string | null, description: string) {
   const text = error
     ? `${microsoftCallbackMessage(error, description)} You can close this tab.`
     : 'Approved for your organization. You can close this tab and choose "Check again" in AutoGPT.';
+  // Only our own messages and an AADSTS number get here, but the number is
+  // read out of the URL.
   return `<!DOCTYPE html>
 <html>
   <body style="font-family: system-ui, sans-serif; padding: 2rem;">
-    <p>${text}</p>
+    <p>${escapeHtml(text)}</p>
   </body>
 </html>`;
 }
