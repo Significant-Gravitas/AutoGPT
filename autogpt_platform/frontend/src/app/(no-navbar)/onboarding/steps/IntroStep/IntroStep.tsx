@@ -51,7 +51,7 @@ export function IntroStep({ slide }: Props) {
           variant="large"
           as="p"
           tone="muted"
-          className="max-w-md text-center md:max-w-full md:text-[1.5rem] md:leading-[1.2]"
+          className="max-w-md text-center md:max-w-full md:text-[1.125rem] md:leading-[1.2]"
         >
           {body}
         </Text>
