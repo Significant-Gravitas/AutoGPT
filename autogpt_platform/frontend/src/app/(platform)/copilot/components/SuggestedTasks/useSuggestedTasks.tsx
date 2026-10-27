@@ -18,6 +18,7 @@ import {
   getTaskState,
   hasWorkingDraft,
   mergeUpdatedTasks,
+  sortKickoffFirst,
   withState,
 } from "./helpers";
 
@@ -50,7 +51,9 @@ export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
   });
   const list = response?.status === 200 ? response.data : null;
   const tasks = list?.tasks ?? [];
-  const shownTasks = getShownTasks(tasks);
+  // Drafts lead here rather than at render, so the positions analytics
+  // reports are the ones on screen.
+  const shownTasks = sortKickoffFirst(getShownTasks(tasks));
 
   // One scope, so writes reach the server in the order they were made even
   // when the block that made them has already collapsed.

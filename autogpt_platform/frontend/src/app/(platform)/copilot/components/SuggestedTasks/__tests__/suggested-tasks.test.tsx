@@ -14,7 +14,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EmptySession } from "../../EmptySession/EmptySession";
 
 const capture = vi.hoisted(() => vi.fn());
@@ -435,6 +435,8 @@ describe("Suggested first tasks — drafts Otto started", () => {
       name: `${TASKS[2].title} Draft · ready to review`,
     });
     expect(link.getAttribute("href")).toBe("/copilot?sessionId=draft-2");
+    const rows = within(block).getAllByTestId("suggested-task");
+    expect(within(rows[0]).getByRole("link")).toBe(link);
 
     await userEvent.click(link);
 
@@ -443,26 +445,62 @@ describe("Suggested first tasks — drafts Otto started", () => {
     ]);
   });
 
-  it("polls while a draft is working", async () => {
-    // On Home, so no kickoff call refetches the list in between.
-    draft(0, "working");
+  it("reports the position on screen when a draft leads", async () => {
+    withGreeting();
+    draft(2, "ready");
     renderHome();
 
-    await screen.findByRole("link", {
-      name: `${TASKS[0].title} Otto is working on it`,
-    });
-    const readsBefore = reads;
-    draft(0, "ready");
+    await userEvent.click(
+      await screen.findByRole("button", { name: TASKS[0].title }),
+    );
+    expect(events("home_suggestion_clicked")).toEqual([
+      { position: 1, surface: "intro", remaining: 1 },
+    ]);
 
-    expect(
-      await screen.findByRole(
-        "link",
-        { name: `${TASKS[0].title} Draft · ready to review` },
-        { timeout: 8000 },
-      ),
-    ).toBeDefined();
-    expect(reads).toBeGreaterThan(readsBefore);
-  }, 12_000);
+    await userEvent.click(
+      await screen.findByRole("button", { name: `Hide: ${TASKS[1].title}` }),
+    );
+    expect(events("home_suggestion_dismissed")).toEqual([
+      { position: 2, surface: "intro", remaining: 0, scope: "one" },
+    ]);
+  });
+
+  describe("while a draft is working", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function advance(ms: number) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    }
+
+    it("polls until the draft is ready, then stops", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      // On Home, so no kickoff call refetches the list in between.
+      draft(0, "working");
+      renderHome();
+
+      await screen.findByRole("link", {
+        name: `${TASKS[0].title} Otto is working on it`,
+      });
+      const readsBefore = reads;
+      draft(0, "ready");
+
+      await advance(5_000);
+
+      expect(
+        await screen.findByRole("link", {
+          name: `${TASKS[0].title} Draft · ready to review`,
+        }),
+      ).toBeDefined();
+      expect(reads).toBe(readsBefore + 1);
+
+      await advance(10_000);
+      expect(reads).toBe(readsBefore + 1);
+    });
+  });
 });
 
 describe("Suggested first tasks — Home after the first message", () => {
