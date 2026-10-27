@@ -1,5 +1,6 @@
 """Unit tests for the Parallel Decisions blocks beyond the registry smoke test."""
 
+import json
 from typing import Any, ClassVar
 
 import pytest
@@ -68,6 +69,9 @@ async def run_block(block, fake: FakeDecisions, **inputs) -> dict[str, Any]:
         (0.5, 0.5, "yes"),
         (0.7, 0.8, "unsure"),
         (0.15, 0.8, "no"),
+        # 1 - 0.67 is 0.32999... in floats; the boundary must still count as no.
+        (0.33, 0.67, "no"),
+        (0.67, 0.67, "yes"),
     ],
 )
 async def test_yes_no_routes_data_by_probability(probability, min_probability, pin):
@@ -168,13 +172,16 @@ async def test_score_handles_refusal_without_a_zero_score():
 
 
 @pytest.mark.asyncio
-async def test_ask_many_rejects_names_the_api_would_reject():
-    with pytest.raises(ValueError, match="bad name"):
+@pytest.mark.parametrize("name", ["bad name", "trailing\n", ""])
+async def test_ask_many_rejects_names_the_api_would_reject(name):
+    fake = FakeDecisions({})
+    with pytest.raises(ValueError, match="Question names may only use"):
         await run_block(
             ParallelAskManyDecisionsBlock(),
-            FakeDecisions({}),
-            questions={"bad name": {"type": "noul", "question": "Is it?"}},
+            fake,
+            questions={name: {"type": "noul", "question": "Is it?"}},
         )
+    assert fake.calls == []
 
 
 @pytest.mark.asyncio
@@ -215,7 +222,7 @@ class FakeResponse:
         return self.content.decode()
 
     def json(self) -> dict[str, Any]:
-        raise AssertionError("an error response must not be parsed as a decision")
+        return json.loads(self.content)
 
 
 class FakeRequests:
@@ -228,6 +235,23 @@ class FakeRequests:
     async def post(self, url, json):
         FakeRequests.sent.update(url=url, json=json)
         return FakeRequests.response
+
+
+@pytest.mark.asyncio
+async def test_make_decision_sends_the_documented_body(monkeypatch):
+    monkeypatch.setattr(_api, "Requests", FakeRequests)
+    body = mock_response({"a": NOUL_ANSWER})
+    FakeRequests.response = FakeResponse(200, json.dumps(body).encode())
+    questions = {"a": {"type": "noul", "instructions": "A?"}}
+    assert (
+        await _api.make_decision(TEST_CREDENTIALS, TEST_CONTEXT, questions, False)
+        == body
+    )
+    assert FakeRequests.sent["json"] == {
+        "state": TEST_CONTEXT,
+        "questions": questions,
+        "include_excerpts": False,
+    }
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,8 @@
 import re
 from typing import Any
 
+from pydantic import model_validator
+
 from backend.sdk import (
     APIKeyCredentials,
     BlockCategory,
@@ -21,7 +23,7 @@ from ._test import (
     mock_response,
 )
 
-QUESTION_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
+QUESTION_NAME = re.compile(r"[A-Za-z0-9_-]+")
 
 
 class ParallelAskManyDecisionsBlock(ParallelDecisionBase):
@@ -37,6 +39,17 @@ class ParallelAskManyDecisionsBlock(ParallelDecisionBase):
             min_length=1,
             max_length=100,
         )
+
+        @model_validator(mode="after")
+        def _check_names(self):
+            # Checked here, not in run(), so a bad input fails before any charge.
+            bad = [n for n in self.questions if not QUESTION_NAME.fullmatch(n)]
+            if bad:
+                raise ValueError(
+                    "Question names may only use letters, numbers, underscores "
+                    f"and hyphens: {', '.join(map(repr, bad))}"
+                )
+            return self
 
     class Output(ParallelDecisionOutput):
         answers: dict[str, dict[str, Any]] = SchemaField(
@@ -90,12 +103,6 @@ class ParallelAskManyDecisionsBlock(ParallelDecisionBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        bad_names = [n for n in input_data.questions if not QUESTION_NAME.match(n)]
-        if bad_names:
-            raise ValueError(
-                "Question names may only use letters, numbers, underscores and "
-                f"hyphens: {', '.join(bad_names)}"
-            )
         result = await self.decide(
             credentials,
             input_data,

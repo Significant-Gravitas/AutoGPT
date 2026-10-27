@@ -1,4 +1,7 @@
+from math import isclose
 from typing import Any
+
+from pydantic import model_validator
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -50,6 +53,13 @@ class ParallelYesNoDecisionBlock(ParallelDecisionBase):
                 "Anything less certain goes to unsure. 0.5 never gives unsure."
             ),
         )
+
+        @model_validator(mode="after")
+        def _check_criteria(self):
+            # Checked here, not in run(), so a bad input fails before any charge.
+            if bool(self.true_means) != bool(self.false_means):
+                raise ValueError("Set both true_means and false_means, or neither.")
+            return self
 
     class Output(ParallelDecisionOutput):
         probability: float = SchemaField(
@@ -113,16 +123,17 @@ class ParallelYesNoDecisionBlock(ParallelDecisionBase):
 
 
 def _criteria(true_means: str, false_means: str) -> NoulCriteria | None:
-    if not true_means and not false_means:
+    if not true_means:
         return None
-    if not true_means or not false_means:
-        raise ValueError("Set both true_means and false_means, or neither.")
     return NoulCriteria(true=true_means, false=false_means)
 
 
 def _pin(probability: float, min_probability: float) -> str:
     if probability >= min_probability:
         return "yes"
-    if 1 - probability >= min_probability:
+    # isclose: 1 - p is inexact in floats (1 - 0.33 < 0.67), which would
+    # otherwise send a no exactly at the threshold to unsure.
+    no_probability = 1 - probability
+    if no_probability >= min_probability or isclose(no_probability, min_probability):
         return "no"
     return "unsure"
