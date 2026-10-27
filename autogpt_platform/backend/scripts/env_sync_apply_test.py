@@ -136,7 +136,14 @@ def test_a_leftover_lock_is_named_in_the_error(tmp_path):
     assert target.read_text() == "OTHER='stay'\n"
 
 
-@pytest.mark.parametrize("suffix", sync.TEMPLATE_SUFFIXES)
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        *sync.TEMPLATE_SUFFIXES,
+        ".DEFAULT",
+        ".Example",
+    ],
+)
 def test_template_targets_are_refused(tmp_path, suffix):
     target = tmp_path / f".env{suffix}"
     target.write_text("OTHER='stay'\n")
@@ -155,7 +162,10 @@ def test_symlinked_targets_are_refused(tmp_path):
     assert real.read_text() == "OTHER='stay'\n"
 
 
-@pytest.mark.parametrize("name", [".env", "-secrets.env"])
+@pytest.mark.parametrize(
+    "name",
+    [".env", "-secrets.env", ":(literal).env"],
+)
 def test_tracked_targets_are_refused(tmp_path, name):
     target = _tracked_file(tmp_path / "repo", name)
     with pytest.raises(ValueError, match="tracked file"):
@@ -168,6 +178,14 @@ def test_an_inherited_git_dir_cannot_hide_a_tracked_target(tmp_path, monkeypatch
     other = tmp_path / "other"
     subprocess.run(["git", "init", "-q", str(other)], check=True)
     monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    with pytest.raises(ValueError, match="tracked file"):
+        sync.apply_updates(target, {"MICROSOFT_CLIENT_SECRET": "new-value"})
+    assert target.read_text() == "OTHER='stay'\n"
+
+
+def test_inherited_pathspec_settings_do_not_break_the_check(tmp_path, monkeypatch):
+    target = _tracked_file(tmp_path / "repo", ".env")
+    monkeypatch.setenv("GIT_ICASE_PATHSPECS", "1")
     with pytest.raises(ValueError, match="tracked file"):
         sync.apply_updates(target, {"MICROSOFT_CLIENT_SECRET": "new-value"})
     assert target.read_text() == "OTHER='stay'\n"
@@ -194,5 +212,8 @@ def _tracked_file(repo: Path, name: str) -> Path:
     """A file called *name* holding ``OTHER='stay'``, tracked in a new repository."""
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     (repo / name).write_text("OTHER='stay'\n")
-    subprocess.run(["git", "-C", str(repo), "add", "--force", "--", name], check=True)
+    subprocess.run(
+        ["git", "--literal-pathspecs", "-C", str(repo), "add", "--force", "--", name],
+        check=True,
+    )
     return repo / name

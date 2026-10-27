@@ -20,6 +20,14 @@ MICROSOFT_KEYS = [
 ]
 POWERSHELL_SINGLE_QUOTES = "'\u2018\u2019\u201a\u201b"
 TEMPLATE_SUFFIXES = (".default", ".example", ".template", ".sample", ".dist", ".tpl")
+# Kept from the tracked check, which matches names literally: git refuses to
+# combine the glob and icase settings with --literal-pathspecs.
+PATHSPEC_VARIABLES = (
+    "GIT_GLOB_PATHSPECS",
+    "GIT_NOGLOB_PATHSPECS",
+    "GIT_ICASE_PATHSPECS",
+    "GIT_LITERAL_PATHSPECS",
+)
 
 
 def main() -> None:
@@ -169,7 +177,7 @@ def apply_updates(target: Path, values: dict[str, str], replace: bool = False) -
 
 def check_target(target: Path) -> None:
     """Refuse a target that must not hold credentials, before reading anything."""
-    if target.is_symlink() or target.name.endswith(TEMPLATE_SUFFIXES):
+    if target.is_symlink() or target.name.lower().endswith(TEMPLATE_SUFFIXES):
         raise ValueError("Target must be a private, regular env file.")
     # Only a dry run meets a missing directory; --apply creates it first.
     if target.parent.is_dir() and _tracked(target):
@@ -181,8 +189,9 @@ def _tracked(target: Path) -> bool:
 
     Git's repository variables (``GIT_DIR``, ``GIT_INDEX_FILE`` and the rest)
     are dropped so an inherited one cannot point the check at another
-    repository.  Any answer but tracked, untracked or "not a git repository"
-    stops the sync.
+    repository, and the name is matched literally, never as pathspec magic
+    such as ``:(literal)``.  Any answer but tracked, untracked or "not a git
+    repository" stops the sync.
     """
     local = subprocess.run(
         ["git", "rev-parse", "--local-env-vars"],
@@ -190,10 +199,11 @@ def _tracked(target: Path) -> bool:
         text=True,
         check=True,
     ).stdout.split()
-    env = {name: value for name, value in os.environ.items() if name not in local}
-    ls_files = ["git", "-C", str(target.parent), "ls-files", "--error-unmatch"]
+    dropped = {*local, *PATHSPEC_VARIABLES}
+    env = {name: value for name, value in os.environ.items() if name not in dropped}
+    ls_files = ["git", "--literal-pathspecs", "-C", str(target.parent), "ls-files"]
     result = subprocess.run(
-        [*ls_files, "--", target.name],
+        [*ls_files, "--error-unmatch", "--", target.name],
         capture_output=True,
         encoding="utf-8",
         errors="replace",
