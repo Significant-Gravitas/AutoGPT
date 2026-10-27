@@ -89,7 +89,7 @@ export function RecommendedExpertCard({
             {expert.name}
           </Text>
           <Text variant="small" tone="muted" className="truncate">
-            {getExpertRoleLabel(expert.role)}
+            {expert.job_title || getExpertRoleLabel(expert.role)}
           </Text>
         </div>
       </div>

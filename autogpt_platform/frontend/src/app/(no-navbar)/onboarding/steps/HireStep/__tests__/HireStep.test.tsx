@@ -137,6 +137,21 @@ describe("HireStep — the team", () => {
     ).toBeDefined();
   });
 
+  it("titles a card with the expert's job title, and its role only without one", async () => {
+    mockTeam({
+      ...TEAM,
+      experts: [
+        { ...TEAM.experts![0], job_title: "Content Marketer" },
+        TEAM.experts![1],
+      ],
+    });
+    render(<HireStep />);
+
+    expect(await screen.findByText("Content Marketer")).toBeDefined();
+    expect(screen.queryByText("Marketing")).toBeNull();
+    expect(screen.getByText("Sales Development Rep")).toBeDefined();
+  });
+
   it("says the team came from the wizard answers when the dump was not read", async () => {
     mockTeam(FALLBACK_TEAM);
     render(<HireStep />);

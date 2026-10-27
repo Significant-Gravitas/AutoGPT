@@ -21,13 +21,18 @@ TRANSCRIPT = "LinkedIn posts and cold outreach eat my week, and tickets pile up.
 
 
 def _template(
-    template_id: str, name: str, role: str, workflows: list[str] = []
+    template_id: str,
+    name: str,
+    role: str,
+    workflows: list[str] = [],
+    job_title: str | None = None,
 ) -> Expert:
     return Expert.model_construct(
         id=template_id,
         name=name,
         avatar_url=f"/experts/{name.lower()}.svg",
         role=role,
+        job_title=job_title,
         tagline=f"{name} handles {role.lower()}.",
         bio=None,
         skills=[],
@@ -57,6 +62,7 @@ MARIA = _template(
     "Maria",
     "Marketing",
     ["LinkedIn Post Generator", "Automated Blog Writer", "Webpage Copy Improver"],
+    job_title="Content Marketer",
 )
 MAX = _template("tpl-max", "Max", "Sales", ["Lead Finder", "Contact Enricher"])
 FRANKIE = _template("tpl-frankie", "Frankie", "Ops", ["Meeting Brief"])
@@ -95,6 +101,7 @@ def test_parse_copies_identity_from_the_template_not_the_model():
                 "template_id": "tpl-maria",
                 "name": "Impostor",
                 "role": "CFO",
+                "job_title": "Chief Impostor",
                 "avatar_url": "https://evil.example/avatar.png",
                 "reason": "x" * 500,
             }
@@ -105,6 +112,7 @@ def test_parse_copies_identity_from_the_template_not_the_model():
 
     assert expert.name == "Maria"
     assert expert.role == "Marketing"
+    assert expert.job_title == "Content Marketer"
     assert expert.avatar_url == "/experts/maria.svg"
     assert len(expert.reason) == recommend_experts.MAX_REASON_CHARS
 
@@ -262,6 +270,7 @@ def test_the_fallback_reason_comes_from_the_template():
     ).experts[0]
 
     assert expert.reason == "Maria handles marketing."
+    assert expert.job_title == "Content Marketer"
     assert expert.workflow_names == [
         "LinkedIn Post Generator",
         "Automated Blog Writer",
