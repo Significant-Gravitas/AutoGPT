@@ -101,9 +101,9 @@ const RUNS = ["exec-1", "exec-2", "exec-3", "exec-4"];
 
 // Four runs each paused on one expert's spend approval, served like the backend.
 function serveSpendRuns({
-  failRun,
+  decidedElsewhere,
   holdRefetch,
-}: { failRun?: string; holdRefetch?: Promise<void> } = {}) {
+}: { decidedElsewhere?: string; holdRefetch?: Promise<void> } = {}) {
   const waiting = new Set(RUNS);
   const calls = { posted: [] as string[][], heldRefetches: 0 };
   server.use(
@@ -146,8 +146,12 @@ function serveSpendRuns({
           { status: 400 },
         );
       }
-      if (failRun && ofRuns.has(failRun)) {
-        return HttpResponse.json({ detail: "unavailable" }, { status: 503 });
+      if (decidedElsewhere && ofRuns.has(decidedElsewhere)) {
+        waiting.delete(decidedElsewhere);
+        return HttpResponse.json(
+          { detail: "Review already processed" },
+          { status: 409 },
+        );
       }
       for (const run of ofRuns) waiting.delete(run);
       return HttpResponse.json({
@@ -207,13 +211,14 @@ test("a group can't be decided again while its later runs are still unsent", asy
   expect((reject as HTMLButtonElement).disabled).toBe(true);
 
   release();
-  await waitFor(() => expect(calls.posted).toHaveLength(4), {
+  await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1), {
     timeout: 5000,
   });
+  expect(calls.posted).toHaveLength(4);
 });
 
-test("a run whose request fails doesn't keep the other runs from being sent", async () => {
-  const calls = serveSpendRuns({ failRun: "exec-1" });
+test("a run decided elsewhere doesn't keep the group's other runs from being sent", async () => {
+  const calls = serveSpendRuns({ decidedElsewhere: "exec-1" });
   renderRuns();
   await screen.findByText("4 reviews");
 
@@ -221,9 +226,8 @@ test("a run whose request fails doesn't keep the other runs from being sent", as
     screen.getByRole("button", { name: "Approve 4 reviews" }),
   );
 
-  await waitFor(() => expect(calls.posted).toHaveLength(4), {
+  await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1), {
     timeout: 5000,
   });
-  expect(await screen.findByText("1 review")).toBeDefined();
-  expect(onSend).not.toHaveBeenCalled();
+  expect(calls.posted).toHaveLength(4);
 });
