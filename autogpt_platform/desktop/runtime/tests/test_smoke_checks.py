@@ -18,7 +18,7 @@ import time
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import psutil
 import pytest
@@ -2586,7 +2586,289 @@ def test_retained_stop_intent_cannot_name_different_work(
     assert report.failures
 
 
-def test_persisted_run_refuses_a_cluster_that_is_still_running(tmp_path: Path):
+@pytest.fixture
+def persisted_oracle(tmp_path, monkeypatch):
+    from autogpt_desktop import layout, maintenance, ports, postgres, process, winlinks
+
+    monkeypatch.setattr(
+        smoke_test, "shutil", SimpleNamespace(**vars(smoke_test.shutil))
+    )
+    source = tmp_path / "source"
+    (source / "postgres" / "base").mkdir(parents=True)
+    (source / "postgres" / "PG_VERSION").write_text("18")
+    (source / "postgres" / "base" / "rows").write_bytes(b"durable source rows")
+    before = smoke_test.snapshot(source)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    roots = []
+    events = []
+    user = "S-1-5-21-123-456-789-1001"
+    chmod = Path.chmod
+
+    def keep_root_permissions(path, mode, **kwargs):
+        assert path not in roots
+        assert not path.is_relative_to(source)
+        assert path != scratch and path not in scratch.parents
+        return chmod(path, mode, **kwargs)
+
+    monkeypatch.setattr(Path, "chmod", keep_root_permissions)
+
+    def create(path, principals):
+        assert not path.exists()
+        assert path.parent == scratch
+        assert principals == (user, "SY")
+        path.mkdir()
+        roots.append(path)
+        events.append("private")
+        return True
+
+    monkeypatch.setattr(
+        smoke_test,
+        "sys",
+        SimpleNamespace(platform="win32", version_info=sys.version_info),
+    )
+    monkeypatch.setattr(layout, "WINDOWS", True)
+    monkeypatch.setattr(smoke_test.tempfile, "gettempdir", lambda: str(scratch))
+    monkeypatch.setattr(winlinks, "current_user_sid", Mock(return_value=user))
+    creator = Mock(side_effect=create)
+    monkeypatch.setattr(winlinks, "_create_directory", creator)
+    lock = MagicMock()
+    lock.__enter__.side_effect = lambda: events.append("lock")
+    lock.__exit__.side_effect = lambda *args: events.append("unlock")
+    lock_factory = Mock(return_value=lock)
+    monkeypatch.setattr(maintenance, "DataLock", lock_factory)
+    prepare = Mock(side_effect=layout.DataDir.prepare)
+    monkeypatch.setattr(layout.DataDir, "prepare", lambda data: prepare(data))
+    copytree = smoke_test.shutil.copytree
+
+    def copy(original, destination):
+        events.append("copy")
+        return copytree(original, destination)
+
+    copying = Mock(side_effect=copy)
+    monkeypatch.setattr(smoke_test.shutil, "copytree", copying)
+    allocate = Mock(return_value={"postgres": 15432})
+    monkeypatch.setattr(ports, "allocate", allocate)
+    server = Mock()
+    server.start.side_effect = lambda: events.append("start")
+    server.stop.side_effect = lambda: events.append("stop")
+    server.exit_code.return_value = 0
+    factory = Mock(return_value=server)
+    monkeypatch.setattr(postgres, "process", factory)
+    connection = MagicMock()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.fetchone.return_value = ("TERMINATED", 0)
+    connect = Mock(return_value=connection)
+    monkeypatch.setattr(smoke_test.psycopg2, "connect", connect)
+    wait = Mock(side_effect=lambda check, timeout, interval: check())
+    monkeypatch.setattr(process, "wait_until", wait)
+    monkeypatch.setattr(
+        smoke_test,
+        "secrets",
+        Mock(return_value={"POSTGRES_PASSWORD": "synthetic-only"}),
+    )
+    remove = Mock(wraps=smoke_test.shutil.rmtree)
+    monkeypatch.setattr(smoke_test.shutil, "rmtree", remove)
+    yield SimpleNamespace(**locals())
+    assert smoke_test.snapshot(source) == before
+    assert (
+        source / "postgres" / "base" / "rows"
+    ).read_bytes() == b"durable source rows"
+
+
+@pytest.mark.parametrize("row", [("TERMINATED", 0), ("RUNNING", 1)])
+def test_persisted_oracle_creates_private_root_before_copy_and_start(
+    persisted_oracle, row
+):
+    oracle = persisted_oracle
+    oracle.cursor.fetchone.return_value = row
+    assert smoke_test.persisted_run(DESKTOP, oracle.source, "graph/run") == row
+    assert oracle.events == ["lock", "private", "copy", "start", "stop", "unlock"]
+    (root,) = oracle.roots
+    oracle.creator.assert_called_once_with(root, (oracle.user, "SY"))
+    copied = oracle.prepare.call_args.args[0]
+    assert copied.root == root
+    oracle.copying.assert_called_once_with(oracle.source / "postgres", copied.postgres)
+    oracle.allocate.assert_called_once_with(copied.ports_file, ("postgres",))
+    oracle.factory.assert_called_once_with(
+        oracle.layout.Bundle(DESKTOP),
+        copied,
+        15432,
+        {
+            "default_transaction_read_only": "on",
+            "shared_buffers": "16MB",
+            "max_connections": "20",
+        },
+    )
+    oracle.connect.assert_called_once_with(
+        host="127.0.0.1",
+        port=15432,
+        user="postgres",
+        password="synthetic-only",
+        dbname="postgres",
+        connect_timeout=2,
+        options="-c default_transaction_read_only=on -c statement_timeout=10000",
+    )
+    assert oracle.wait.call_args.args[1:] == (30,)
+    assert oracle.wait.call_args.kwargs == {"interval": 0.1}
+    sql, parameters = oracle.cursor.execute.call_args.args
+    assert sql.startswith('SELECT e."executionStatus"::text, ')
+    assert "n.\"executionStatus\" = 'RUNNING'" in sql
+    assert parameters == ("run",)
+    oracle.connection.close.assert_called_once_with()
+    oracle.server.stop.assert_called_once_with()
+    oracle.lock_factory.assert_called_once_with(oracle.source)
+    assert not root.exists()
+
+
+@pytest.mark.parametrize(
+    "stage", ["prepare", "copying", "allocate", "factory", "cursor"]
+)
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt, SystemExit])
+def test_persisted_oracle_cleans_owned_root_on_failure(
+    persisted_oracle, stage, error_type
+):
+    oracle = persisted_oracle
+    error = error_type("synthetic failure")
+    target = oracle.cursor.execute if stage == "cursor" else getattr(oracle, stage)
+    target.side_effect = error
+    with pytest.raises(error_type) as raised:
+        smoke_test.persisted_run(DESKTOP, oracle.source, "graph/run")
+    assert raised.value is error
+    assert len(oracle.roots) == 1
+    assert not oracle.roots[0].exists()
+    assert oracle.events[-1] == "unlock"
+    assert oracle.server.stop.call_count == int(stage == "cursor")
+
+
+@pytest.mark.parametrize("succeed", [False, True])
+def test_persisted_oracle_never_adopts_or_removes_collisions(persisted_oracle, succeed):
+    oracle = persisted_oracle
+    foreign = []
+
+    def collision(path, principals):
+        if succeed and foreign:
+            return oracle.create(path, principals)
+        path.mkdir()
+        (path / "foreign").write_bytes(b"keep")
+        foreign.append(path)
+        return False
+
+    oracle.creator.side_effect = collision
+    if succeed:
+        assert smoke_test.persisted_run(DESKTOP, oracle.source, "run") == (
+            "TERMINATED",
+            0,
+        )
+        assert oracle.creator.call_count == 2
+        assert not oracle.roots[0].exists()
+    else:
+        with pytest.raises(FileExistsError):
+            smoke_test.persisted_run(DESKTOP, oracle.source, "run")
+        assert 1 < oracle.creator.call_count <= 100
+        oracle.copying.assert_not_called()
+        oracle.factory.assert_not_called()
+        oracle.remove.assert_not_called()
+    assert len(set(foreign)) == len(foreign)
+    assert all((path / "foreign").read_bytes() == b"keep" for path in foreign)
+
+
+@pytest.mark.parametrize("stage", ["current_user_sid", "_create_directory"])
+def test_persisted_oracle_private_api_error_prevents_launch(persisted_oracle, stage):
+    oracle = persisted_oracle
+    error = PermissionError("synthetic denial")
+    getattr(oracle.winlinks, stage).side_effect = error
+    with pytest.raises(PermissionError) as raised:
+        smoke_test.persisted_run(DESKTOP, oracle.source, "run")
+    assert raised.value is error
+    oracle.copying.assert_not_called()
+    oracle.factory.assert_not_called()
+    oracle.remove.assert_not_called()
+    assert list(oracle.scratch.iterdir()) == []
+
+
+@pytest.mark.parametrize("query_fails", [False, True])
+def test_persisted_oracle_cleanup_failure_stays_visible(persisted_oracle, query_fails):
+    oracle = persisted_oracle
+    primary = RuntimeError("synthetic query failure")
+    if query_fails:
+        oracle.cursor.execute.side_effect = primary
+    cleanup = PermissionError("synthetic cleanup failure")
+    oracle.remove.side_effect = cleanup
+    with pytest.raises(PermissionError) as raised:
+        smoke_test.persisted_run(DESKTOP, oracle.source, "run")
+    assert raised.value is cleanup
+    if query_fails:
+        assert raised.value.__context__ is primary
+    assert len(oracle.roots) == 1
+    assert oracle.events[-1] == "unlock"
+
+
+def test_persisted_oracle_posix_keeps_temporary_directory(
+    persisted_oracle, monkeypatch
+):
+    oracle = persisted_oracle
+    monkeypatch.setattr(smoke_test, "sys", SimpleNamespace(platform="linux"))
+    temporary = Mock(wraps=smoke_test.tempfile.TemporaryDirectory)
+    monkeypatch.setattr(smoke_test.tempfile, "TemporaryDirectory", temporary)
+    assert smoke_test.persisted_run(DESKTOP, oracle.source, "run") == ("TERMINATED", 0)
+    temporary.assert_called_once_with(prefix="autogpt-stop-oracle-")
+    oracle.creator.assert_not_called()
+    oracle.winlinks.current_user_sid.assert_not_called()
+    assert not oracle.prepare.call_args.args[0].root.exists()
+
+
+def test_persisted_oracle_cleans_read_only_copy(persisted_oracle):
+    oracle = persisted_oracle
+
+    def start():
+        copied = oracle.prepare.call_args.args[0]
+        rows = copied.postgres / "base" / "rows"
+        assert rows.read_bytes() == b"durable source rows"
+        rows.chmod(0o400)
+
+    oracle.server.start.side_effect = start
+    smoke_test.persisted_run(DESKTOP, oracle.source, "run")
+    assert not oracle.roots[0].exists()
+
+
+@pytest.mark.parametrize("failure", ["start", "timeout", "missing", "still_running"])
+def test_persisted_oracle_keeps_server_and_read_assertions(persisted_oracle, failure):
+    oracle = persisted_oracle
+    if failure == "start":
+        oracle.server.start.side_effect = RuntimeError("synthetic start failure")
+    elif failure == "timeout":
+        oracle.wait.side_effect = None
+        oracle.wait.return_value = False
+    elif failure == "missing":
+        oracle.cursor.fetchone.return_value = None
+    else:
+        oracle.server.exit_code.return_value = None
+    with pytest.raises(RuntimeError):
+        smoke_test.persisted_run(DESKTOP, oracle.source, "run")
+    oracle.server.stop.assert_called_once_with()
+    assert not oracle.roots[0].exists()
+
+
+@pytest.mark.parametrize("failure", ["link", "lock"])
+def test_persisted_oracle_preserves_source_guards(
+    persisted_oracle, monkeypatch, failure
+):
+    oracle = persisted_oracle
+    with monkeypatch.context() as patch:
+        if failure == "link":
+            patch.setattr(smoke_test, "is_link", lambda path: path.name == "rows")
+        else:
+            oracle.lock.__enter__.side_effect = RuntimeError("synthetic lock refusal")
+        with pytest.raises(RuntimeError):
+            smoke_test.persisted_run(DESKTOP, oracle.source, "run")
+    oracle.copying.assert_not_called()
+    oracle.factory.assert_not_called()
+
+
+def test_persisted_run_refuses_a_cluster_that_is_still_running(
+    tmp_path: Path, persisted_oracle
+):
     (tmp_path / "postgres").mkdir()
     (tmp_path / "postgres/postmaster.pid").write_text("123")
     with pytest.raises(RuntimeError, match="while PostgreSQL is running"):

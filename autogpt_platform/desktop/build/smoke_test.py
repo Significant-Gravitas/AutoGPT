@@ -118,6 +118,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
+from uuid import uuid4
 
 import psutil
 import psycopg2
@@ -1662,6 +1663,37 @@ def stop_runs_budget(install: Install) -> float:
     )
 
 
+@contextlib.contextmanager
+def private_scratch(prefix: str):
+    if sys.platform != "win32":
+        with tempfile.TemporaryDirectory(prefix=prefix) as temporary:
+            yield Path(temporary)
+        return
+
+    from autogpt_desktop import winlinks
+
+    parent = Path(tempfile.gettempdir())
+    user = winlinks.current_user_sid()
+    for _ in range(10):
+        path = parent / f"{prefix}{uuid4().hex}"
+        if not winlinks.create_private(path, user):
+            continue
+        try:
+            yield path
+        finally:
+            if sys.version_info >= (3, 12):
+                shutil.rmtree(path, onexc=_remove_read_only)
+            else:
+                shutil.rmtree(
+                    path,
+                    onerror=lambda remove, target, info: _remove_read_only(
+                        remove, target, info[1]
+                    ),
+                )
+        return
+    raise FileExistsError("Cannot create a fresh private smoke directory")
+
+
 def persisted_run(runtime: Path, data: Path, run: str) -> tuple[str, int]:
     """Read a stopped cluster's copy without starting any AutoGPT service.
     The supervisor may commit less than one polling interval before it
@@ -1673,7 +1705,7 @@ def persisted_run(runtime: Path, data: Path, run: str) -> tuple[str, int]:
 
     with (
         DataLock(data),
-        tempfile.TemporaryDirectory(prefix="autogpt-stop-oracle-") as temporary,
+        private_scratch(prefix="autogpt-stop-oracle-") as temporary,
     ):
         source = data / "postgres"
         if (source / "postmaster.pid").exists():
