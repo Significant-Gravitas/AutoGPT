@@ -59,6 +59,7 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
+  * [A brain dump that helps you answer, a calmer trial welcome, and a guided first run](changelog/october-27-2026.md)
   * [Expert pages with an Overview, an app that fits your phone, and a lighter login](changelog/october-23-2026.md)
   * [A clearer wallet, a kinder trial, and shorter replies from Otto](changelog/october-8-october-14-2026.md)
   * [A bigger roster, Clay & Rock avatars, folders in your workspace](changelog/september-24-september-30-2026.md)
