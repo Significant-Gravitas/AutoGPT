@@ -1,6 +1,7 @@
 import type { ExpertFirstJob } from "@/app/api/__generated__/models/expertFirstJob";
 import type { ExpertFirstJobStatus } from "@/app/api/__generated__/models/expertFirstJobStatus";
 import { serviceLabelFromIcon } from "@/components/contextual/IntegrationsPanel/helpers";
+import { getChatHref } from "@/app/(platform)/copilot/components/SuggestedTasks/helpers";
 import { trackFunnel } from "@/services/experts/experts-analytics";
 
 const STATUS_CONFIG: Record<
@@ -19,13 +20,14 @@ const CHAT_STATUSES: ExpertFirstJobStatus[] = ["working", "ready", "needs_you"];
 const MOVING_STATUSES: ExpertFirstJobStatus[] = ["installing", "working"];
 
 export function getFirstJobHref(item: ExpertFirstJob) {
+  const expertID = encodeURIComponent(item.expert_id);
   if (item.status === "open") {
-    return `/copilot?expertId=${item.expert_id}&kickoff=1`;
+    return `/copilot?expertId=${expertID}&kickoff=1`;
   }
   if (CHAT_STATUSES.includes(item.status) && item.session_id) {
-    return `/copilot?sessionId=${item.session_id}`;
+    return getChatHref(item.session_id);
   }
-  return `/team/${item.expert_id}`;
+  return `/team/${expertID}`;
 }
 
 export function getStatusLabel(status: ExpertFirstJobStatus) {

@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const capture = vi.hoisted(() => vi.fn());
 vi.mock("posthog-js", () => ({ default: { capture } }));
@@ -381,6 +381,18 @@ describe("useOnboardingIntroCard — team selection belongs to the wizard", () =
 });
 
 describe("useOnboardingIntroCard — starting the suggested tasks", () => {
+  const GREETING_POLL_MS = 1_500;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function advance(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
+
   // Counts kickoff calls and suggested-task reads, the latter through a
   // list mounted beside the hook as the home page mounts it.
   function trackKickoff(status: "started" | "pending" | "nothing") {
@@ -409,6 +421,7 @@ describe("useOnboardingIntroCard — starting the suggested tasks", () => {
   }
 
   it("retries kickoff when the greeting arrives", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     let introCalls = 0;
     server.use(
       http.get(INTRO_URL, () => {
@@ -425,19 +438,17 @@ describe("useOnboardingIntroCard — starting the suggested tasks", () => {
     await waitFor(() => expect(calls.taskReads).toBe(1));
     expect(calls.kickoffs).toBe(0);
 
-    await waitFor(() => expect(result.current.isVisible).toBe(true), {
-      timeout: 6000,
-    });
+    await advance(GREETING_POLL_MS);
+
+    await waitFor(() => expect(result.current.isVisible).toBe(true));
     await waitFor(() => expect(calls.kickoffs).toBe(1));
     // Settled with "nothing", yet a background kickoff may have started the
     // tasks meanwhile, so the list is read again.
     await waitFor(() => expect(calls.taskReads).toBe(2));
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    });
+    await advance(10 * GREETING_POLL_MS);
     expect(calls.kickoffs).toBe(1);
-  }, 10_000);
+  });
 
   it("does not kick off for a user who already saw the greeting", async () => {
     countIntroRequests({

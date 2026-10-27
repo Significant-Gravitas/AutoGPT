@@ -45,6 +45,18 @@ describe("getFirstJobHref", () => {
     );
   });
 
+  it("encodes the ids it puts in a link", () => {
+    expect(getFirstJobHref(job({ expert_id: "a/b&c" }))).toBe(
+      "/copilot?expertId=a%2Fb%26c&kickoff=1",
+    );
+    expect(getFirstJobHref(job({ status: "ready", session_id: "s?1#2" }))).toBe(
+      "/copilot?sessionId=s%3F1%232",
+    );
+    expect(
+      getFirstJobHref(job({ status: "installing", expert_id: "a/b" })),
+    ).toBe("/team/a%2Fb");
+  });
+
   it.each(["installing", "needs_setup"] as const)(
     "sends a %s job to the expert's page",
     (status) => {
