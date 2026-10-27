@@ -23,6 +23,7 @@ import { type ArtifactRef, useCopilotUIStore } from "../../store";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { SOUL_CHANGE_TOOLS } from "./helpers";
+import { useLiveTipMoment } from "@/app/(platform)/components/ContextualTips/useTipMoment";
 import { asObject, str } from "./resultHelpers";
 import {
   handoffOutcomeOf,
@@ -114,6 +115,11 @@ interface Proposal {
   confirmationId: string;
   /** The "hire and start" choice, when the hire is for a task. */
   handoff: { confirmationId: string; subject: string; title: string } | null;
+}
+
+function isOpenExpertProposal(part: ToolUIPart) {
+  const kind = proposalOf(part)?.kind;
+  return kind === "hire" || kind === "raise";
 }
 
 /** A hire/raise/Soul preview the user can still say yes or no to. */
@@ -698,6 +704,12 @@ export function ExpertChangeGroup({
   const visible = parts.filter((part) =>
     isVisibleExpertPart(part, isCurrentlyStreaming),
   );
+  // Otto proposing an expert is the moment to say experts can own tasks.
+  // Only live: a decided proposal still reads as open in an old chat.
+  useLiveTipMoment("first-expert", {
+    happened: !readOnly && visible.some(isOpenExpertProposal),
+    isLive: isCurrentlyStreaming,
+  });
   if (visible.length === 0) return null;
 
   const current = Math.min(step, visible.length - 1);
