@@ -283,12 +283,15 @@ export function ConnectorRow({ row }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5">
+    <div className="flex flex-wrap items-center gap-3 border-b border-separator px-4 py-5 last:border-b-0">
       <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-separator bg-surface p-1.5">
-        <ProviderAvatar id={row.provider} name={row.displayName} />
+        <ProviderAvatar
+          id={row.iconId ?? row.provider}
+          name={row.displayName}
+        />
       </span>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-32 flex-1 flex-col gap-1">
         <span className="truncate text-sm font-medium text-foreground-strong">
           {row.displayName}
         </span>
@@ -312,13 +315,34 @@ export function ConnectorRow({ row }: Props) {
             </span>
           )
         )}
+        {isSatisfied && row.selected?.title && (
+          <span className="break-words text-xs text-foreground-tertiary">
+            {row.selected.title}
+          </span>
+        )}
+        {awaitingReconnect && (
+          <span className="text-xs text-error-foreground">
+            Access needs attention. Connect this account again.
+          </span>
+        )}
       </div>
 
       {isSatisfied && !linksOnAyrshare ? (
-        <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-foreground-tertiary">
-          <Icon icon={CheckmarkCircle02Icon} size={16} />
-          {expertGrant ? "Granted" : "Connected"}
-        </span>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span className="flex items-center gap-1.5 text-sm font-medium text-foreground-tertiary">
+            <Icon icon={CheckmarkCircle02Icon} size={16} />
+            {expertGrant ? "Granted" : "Connected"}
+          </span>
+          {!expertGrant && (
+            <button
+              type="button"
+              onClick={openDialog}
+              className="text-xs text-foreground-tertiary underline underline-offset-2"
+            >
+              Change account
+            </button>
+          )}
+        </div>
       ) : (
         <Button
           variant="primary"
@@ -356,7 +380,7 @@ export function ConnectorRow({ row }: Props) {
                 isPending: isGranting,
                 error: grantError,
               }
-            : hasChoice
+            : hasChoice || (isSatisfied && pickable.length > 0)
               ? {
                   credentials: pickable,
                   onUse: pick,
