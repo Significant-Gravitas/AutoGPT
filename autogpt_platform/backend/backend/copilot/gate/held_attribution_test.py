@@ -39,11 +39,13 @@ async def test_mixed_trial_and_paid_deliveries_keep_their_own_origin(monkeypatch
         origins.append(get_trial_cost_context("user-1"))
         return "approved", "done"
 
-    monkeypatch.setattr(held, "_outcome", outcome)
+    monkeypatch.setattr(held, "_settled", outcome)
+    delivered = []
     with restore_cost_context("user-1", paid):
-        delivered = await held.resolve_answered(
-            "user-1", ChatSession.new(user_id="user-1", dry_run=False)
-        )
+        async for _status in held.resolve_answered(
+            "user-1", ChatSession.new(user_id="user-1", dry_run=False), delivered.append
+        ):
+            pass
         assert get_trial_cost_context("user-1") == paid
     assert len(delivered) == 2
     assert origins == [trial, paid]
@@ -69,13 +71,19 @@ async def test_unknown_held_origin_closes_without_running(monkeypatch, snapshot)
         lambda: MagicMock(get_reviews_by_node_exec_ids=AsyncMock(return_value={})),
     )
     consume = AsyncMock()
-    outcome = AsyncMock(return_value=("approved", "done"))
+    run = AsyncMock(return_value=("approved", "done"))
+    settled = AsyncMock(return_value=("approved", "done"))
     monkeypatch.setattr(held.review_store, "consume", consume)
-    monkeypatch.setattr(held, "_outcome", outcome)
-    [result] = await held.resolve_answered(
-        "user-1", ChatSession.new(user_id="user-1", dry_run=False)
-    )
-    outcome.assert_not_awaited()
+    monkeypatch.setattr(held, "_run", run)
+    monkeypatch.setattr(held, "_settled", settled)
+    delivered = []
+    async for _status in held.resolve_answered(
+        "user-1", ChatSession.new(user_id="user-1", dry_run=False), delivered.append
+    ):
+        pass
+    [result] = delivered
+    run.assert_not_awaited()
+    settled.assert_not_awaited()
     consume.assert_awaited_once_with("review-1", "user-1")
     assert result.metadata["held_call"]["outcome"] == "closed"
     assert "send the request again" in result.content

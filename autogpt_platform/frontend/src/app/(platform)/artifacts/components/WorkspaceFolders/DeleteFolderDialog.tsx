@@ -31,7 +31,7 @@ export function DeleteFolderDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="body" className="text-zinc-600">
+          <Text variant="body" className="text-foreground-secondary">
             Delete{" "}
             <span className="font-medium">&ldquo;{folderName}&rdquo;</span>
             {subfolderCount > 0

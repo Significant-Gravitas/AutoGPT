@@ -751,6 +751,10 @@ class TestSDKDisallowedTools:
     def test_schedule_wakeup_tool_is_disallowed(self):
         assert "ScheduleWakeup" in SDK_DISALLOWED_TOOLS
 
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_workflow_tool_is_disallowed(self, use_e2b: bool):
+        assert "Workflow" in get_sdk_disallowed_tools(use_e2b=use_e2b)
+
     @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
     def test_cli_cron_tools_are_disallowed(self, tool: str):
         """The CLI's cron built-ins schedule nothing that outlives the turn.

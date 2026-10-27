@@ -1,9 +1,11 @@
+import gc
 import importlib
 import logging
 import multiprocessing
 import signal
 import threading
 import time
+import weakref
 
 import pytest
 
@@ -169,6 +171,40 @@ def test_local_starts_no_flags(mocker):
     instance.execute_run_command(silent=False)
 
     assert order == NO_FLAGS
+
+
+@pytest.fixture
+def unfrozen_heap():
+    gc.unfreeze()
+    yield
+    gc.unfreeze()
+
+
+def test_freezing_exempts_the_live_heap_from_full_collections(unfrozen_heap):
+    assert gc.get_freeze_count() == 0
+
+    process_module.freeze_startup_heap()
+
+    assert gc.get_freeze_count() > 0
+
+
+def test_garbage_left_by_startup_is_collected_not_frozen(unfrozen_heap):
+    class Node:
+        cycle: object
+
+    # Only the helper's own collection may free the cycle, not an automatic one.
+    gc.disable()
+    try:
+        node = Node()
+        node.cycle = node
+        alive = weakref.ref(node)
+        del node
+
+        process_module.freeze_startup_heap()
+    finally:
+        gc.enable()
+
+    assert alive() is None
 
 
 def _record_lifecycle(mocker, instance: AppProcess) -> list[str]:

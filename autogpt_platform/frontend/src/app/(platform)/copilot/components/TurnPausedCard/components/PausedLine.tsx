@@ -14,18 +14,18 @@ export function PausedLine({ title, note }: Props) {
     <div
       role="note"
       aria-label={note ? `${title}. ${note}` : title}
-      className="my-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-zinc-50 px-3 py-2"
+      className="my-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-surface-muted px-3 py-2"
     >
       <Icon
         icon={PauseCircleIcon}
         size={14}
-        className="shrink-0 text-zinc-400"
+        className="shrink-0 text-foreground-subtle"
       />
-      <Text variant="small" className="!text-zinc-600">
+      <Text variant="small" className="!text-foreground-secondary">
         {title}
       </Text>
       {note && (
-        <Text variant="small" className="!text-zinc-400">
+        <Text variant="small" className="!text-foreground-subtle">
           {note}
         </Text>
       )}

@@ -55,7 +55,7 @@ export function ExpertWorkflowListItem({
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex flex-col items-stretch gap-3 rounded-2xl bg-white px-3.5 py-2.5 transition-colors smooth-shadow-ring-sm hover:bg-zinc-50 sm:flex-row sm:items-center sm:gap-4"
+      className="group relative flex flex-col items-stretch gap-3 rounded-2xl bg-surface px-3.5 py-2.5 transition-colors smooth-shadow-ring-sm hover:bg-surface-muted sm:flex-row sm:items-center sm:gap-4"
     >
       {libraryHref ? (
         <NextLink
@@ -67,14 +67,14 @@ export function ExpertWorkflowListItem({
 
       <div className="pointer-events-none min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" tone="primary" className="truncate">
+          <Text variant="body-md-medium" tone="primary" className="truncate">
             {name}
           </Text>
           <Text
             variant="small-medium"
             as="span"
             className={cn(
-              "shrink-0 rounded-md px-2 py-0.5 ring-1 ring-inset ring-zinc-200/80",
+              "shrink-0 rounded-md px-2 py-0.5 ring-1 ring-inset ring-border-base/80",
               status.className,
             )}
           >
@@ -82,24 +82,26 @@ export function ExpertWorkflowListItem({
           </Text>
         </div>
         {workflow.description ? (
-          <Text variant="body" tone="muted" className="mt-0.5 truncate">
+          <Text variant="body-md" tone="muted" className="mt-0.5 truncate">
             {workflow.description}
           </Text>
         ) : null}
         {meta.length > 0 || credentialProviders.length > 0 ? (
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm leading-5 text-zinc-600">
+          <div className="mt-1 flex flex-wrap items-center gap-2">
             {meta.length > 0 ? (
               <Text
-                variant="body"
+                variant="body-md"
                 tone="secondary"
-                className="flex items-center gap-1.5 leading-5"
+                className="flex items-center gap-1.5"
               >
                 <Icon icon={Activity01Icon} size={14} className="shrink-0" />
                 {meta.join(" · ")}
               </Text>
             ) : null}
             {meta.length > 0 && credentialProviders.length > 0 ? (
-              <span className="text-zinc-300">•</span>
+              <Text variant="body-md" as="span" tone="disabled">
+                •
+              </Text>
             ) : null}
             <WorkflowCredentialStack providers={credentialProviders} />
           </div>

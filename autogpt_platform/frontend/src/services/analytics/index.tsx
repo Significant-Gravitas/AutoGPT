@@ -35,8 +35,9 @@ export function SetupAnalytics(props: SetupProps) {
 
   return (
     <>
-      {/* Google tag: GA4 + Google Ads */}
-      {googleTagEnabled ? (
+      {/* Google tag: GA4 + Google Ads. Nothing to load without an ID: a
+          self-hosted install must not report to anyone else's property */}
+      {googleTagEnabled && (gaId || adsID) ? (
         <>
           <GoogleConsentModeSync />
           <Script
@@ -59,8 +60,11 @@ export function SetupAnalytics(props: SetupProps) {
           />
         </>
       ) : null}
-      {/* Datafa.st — onLoad is load-bearing: it delivers the events that were
-          queued before the script finished loading */}
+      {/* DataFast is kept for attribution only: the script records the visit
+          and sets the visitor and session cookies that the server-side signup
+          goal, the X-Datafast-* headers and the Stripe checkout metadata read.
+          In-app behaviour goes to PostHog. onLoad is load-bearing: it delivers
+          the /tour events queued before the script finished loading */}
       {dataFastEnabled ? (
         <Script
           strategy="afterInteractive"
@@ -94,7 +98,9 @@ function buildGoogleTagInitScript({
     `window['${DATA_LAYER_NAME}'] = window['${DATA_LAYER_NAME}'] || [];`,
     `function gtag(){window['${DATA_LAYER_NAME}'].push(arguments);}`,
     `gtag('js', new Date());`,
-    `gtag('config', ${JSON.stringify(GAID)}${debugMode ? ", { 'debug_mode': true }" : ""});`,
+    GAID
+      ? `gtag('config', ${JSON.stringify(GAID)}${debugMode ? ", { 'debug_mode': true }" : ""});`
+      : "",
     adsID
       ? `gtag('config', ${JSON.stringify(adsID)}, { 'allow_enhanced_conversions': true });`
       : "",
@@ -155,7 +161,13 @@ function sendDatafastEvent(
 }
 
 export function flushDatafastQueue() {
-  if (typeof window === "undefined" || !window.datafast) return;
+  if (typeof window === "undefined") return;
+  if (!hasConsentFor("analytics")) {
+    datafastQueue.length = 0;
+    datafastQueueOverflowWarned = false;
+    return;
+  }
+  if (!window.datafast) return;
   const datafast = window.datafast;
   datafastQueue
     .splice(0, datafastQueue.length)

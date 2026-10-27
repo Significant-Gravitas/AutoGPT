@@ -1,7 +1,7 @@
 import React from "react";
 import { MenuItem } from "../MenuItem";
 import { useBlockMenuSidebar } from "./useBlockMenuSidebar";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 import { DefaultStateType } from "../types";
@@ -106,7 +106,10 @@ export const BlockMenuSidebar = () => {
           onClick={() => setDefaultState(item.type as DefaultStateType)}
         />
       ))}
-      <div className="ml-[0.5365rem] space-y-2 border-l border-black/10 pl-[0.75rem]">
+      <div
+        // TODO(tokens): no fitting role for border-black/10 #141414; #141414 is foreground-base (a text colour)
+        className="ml-[0.5365rem] space-y-2 border-l border-black/10 pl-[0.75rem]"
+      >
         {subMenuItems.map((item) => (
           <MenuItem
             key={item.type}

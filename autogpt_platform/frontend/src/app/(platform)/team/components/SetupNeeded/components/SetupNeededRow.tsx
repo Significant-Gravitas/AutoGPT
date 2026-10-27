@@ -26,14 +26,14 @@ export function SetupNeededRow({
   const { title, detail } = getSetupRowCopy(item);
 
   return (
-    <article className="flex items-center gap-2.5 rounded-2xl bg-white px-3.5 py-2.5 smooth-shadow-ring-sm">
+    <article className="flex items-center gap-2.5 rounded-2xl bg-surface px-3.5 py-2.5 smooth-shadow-ring-sm">
       {isCredential && provider ? (
         <IntegrationLogo provider={provider} size={20} className="shrink-0" />
       ) : (
         <Icon
           icon={Calendar03Icon}
           size={18}
-          className="shrink-0 text-zinc-500"
+          className="shrink-0 text-foreground-tertiary"
           aria-hidden="true"
         />
       )}
@@ -41,11 +41,15 @@ export function SetupNeededRow({
         <Text
           variant="body-medium"
           as="span"
-          className="truncate !text-zinc-800"
+          className="truncate !text-foreground-emphasis"
         >
           {title}
         </Text>
-        <Text variant="small" as="span" className="truncate !text-zinc-400">
+        <Text
+          variant="small"
+          as="span"
+          className="truncate !text-foreground-subtle"
+        >
           {detail}
         </Text>
       </div>
@@ -65,7 +69,11 @@ export function SetupNeededRow({
               Connect
             </Button>
           ) : (
-            <Text variant="small" as="span" className="!text-zinc-500">
+            <Text
+              variant="small"
+              as="span"
+              className="!text-foreground-tertiary"
+            >
               Needs a platform key
             </Text>
           )

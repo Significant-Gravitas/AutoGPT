@@ -20,14 +20,10 @@ is ``registry.py``'s job; this module only says what the crons are. Adding a
 future cron (P8 cross-scope insight, ...) is a row in
 :data:`DREAM_SYSTEM_JOBS` plus a job-id column on ``MemoryScopeSchedule``.
 
-Three layers of flag gating, all on the scope owner's flags:
-
-  1. **Registry** — the cheapest gate; runs before any database read, so
-     a flag-off user costs neither a query nor a scheduler RPC.
-  2. **Scheduler ``@expose`` method** — defense-in-depth for direct
-     callers (admin endpoint, ad-hoc scripts) that bypass the registry.
-  3. **Job body** — if the flag flips off after registration, the job
-     still fires but short-circuits before the work runs.
+Community rebuilds are part of memory maintenance. Dream passes and skill
+learning retain their independent flags, checked by the registry, scheduler
+registration methods and job bodies. Every cron still checks scope lifecycle
+and owner restrictions before running.
 """
 
 from __future__ import annotations
@@ -71,8 +67,8 @@ class DreamSystemJob:
     job_id_prefix: str
     """Job ids are ``f"{job_id_prefix}_{scope_key}"``."""
 
-    flag: Flag
-    """LD feature flag gate, evaluated for the scope's owner."""
+    flag: Flag | None
+    """Optional feature flag gate, evaluated for the scope's owner."""
 
     skip_reason: str
     """The ``reason`` recorded when the flag is off, so "why does this scope
@@ -128,8 +124,8 @@ DREAM_SYSTEM_JOBS: list[DreamSystemJob] = [
     DreamSystemJob(
         name="Community rebuild",
         job_id_prefix=COMMUNITY_REBUILD_JOB_PREFIX,
-        flag=Flag.GRAPHITI_COMMUNITIES_ENABLED,
-        skip_reason="graphiti_communities_disabled",
+        flag=None,
+        skip_reason="",
         row_field="community_job_id",
         register=_register_community_rebuild,
     ),

@@ -1,5 +1,11 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-amber-100 #FEF3C7, bg-blue-100 #DBEAFE, bg-gray-100 #F3F4F6,
+// bg-indigo-100 #E0E7FF, bg-purple-100 #EFE8FE, bg-red-100 #FDECEC,
+// text-blue-700 #1D4ED8, text-gray-500 #6B7280, text-gray-700 #374151,
+// text-indigo-700 #4338CA, text-purple-700 #5424AE.
+
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
@@ -16,12 +22,12 @@ const TIERS = [
 type Tier = (typeof TIERS)[number];
 
 const TIER_COLORS: Record<Tier, string> = {
-  NO_TIER: "bg-red-100 text-red-700",
+  NO_TIER: "bg-red-100 text-error-foreground",
   BASIC: "bg-gray-100 text-gray-700",
   PRO: "bg-blue-100 text-blue-700",
   MAX: "bg-indigo-100 text-indigo-700",
   BUSINESS: "bg-purple-100 text-purple-700",
-  ENTERPRISE: "bg-amber-100 text-amber-700",
+  ENTERPRISE: "bg-amber-100 text-warning-foreground",
 };
 
 function tierLabel(tier: Tier): string {
@@ -63,7 +69,7 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
     : data.daily_cost_used_microdollars === 0;
 
   return (
-    <div className={className ?? "rounded-md border bg-white p-6"}>
+    <div className={className ?? "rounded-md border bg-surface p-6"}>
       <div className="mb-4 flex items-start justify-between">
         <div>
           <h2 className="mb-1 text-lg font-semibold">
@@ -87,7 +93,7 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
         <select
           aria-label="Subscription tier"
           value={currentTier}
-          className="rounded-md border bg-white px-3 py-1.5 text-sm"
+          className="rounded-md border bg-surface px-3 py-1.5 text-sm"
           disabled
         >
           {TIERS.map((tier) => (
@@ -120,7 +126,7 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
           aria-label="Reset scope"
           value={resetWeekly ? "both" : "daily"}
           onChange={(e) => setResetWeekly(e.target.value === "both")}
-          className="rounded-md border bg-white px-3 py-1.5 text-sm"
+          className="rounded-md border bg-surface px-3 py-1.5 text-sm"
           disabled={isResetting}
         >
           <option value="daily">Reset daily only</option>

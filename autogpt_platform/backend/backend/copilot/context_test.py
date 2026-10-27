@@ -17,6 +17,7 @@ from backend.copilot.context import (
     get_execution_context,
     get_sdk_cwd,
     is_allowed_local_path,
+    is_sdk_tool_path,
     is_unattended_turn,
     resolve_sandbox_path,
     set_execution_context,
@@ -95,6 +96,23 @@ def test_get_sdk_cwd_returns_set_value():
 # ---------------------------------------------------------------------------
 # is_allowed_local_path
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "relative,expected",
+    [
+        ("test-encoded-dir/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-results/o", True),
+        ("test-encoded-dir/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-outputs/o", True),
+        ("other-session/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-results/o", False),
+        ("test-encoded-dir/settings.json", False),
+    ],
+)
+def test_is_sdk_tool_path_only_allows_current_session_results(relative, expected):
+    token = _current_project_dir.set("test-encoded-dir")
+    try:
+        assert is_sdk_tool_path(os.path.join(SDK_PROJECTS_DIR, relative)) is expected
+    finally:
+        _current_project_dir.reset(token)
 
 
 def test_is_allowed_local_path_empty():

@@ -1,9 +1,10 @@
 "use client";
 
+import { FormProvider } from "react-hook-form";
 import * as React from "react";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
@@ -88,21 +89,30 @@ export function EditAgentForm({
 
   return (
     <div className="mx-auto flex w-full flex-col">
-      <Form {...form}>
+      <FormProvider {...form}>
         <form
           onSubmit={form.handleSubmit(handleFormSubmit)}
           className="flex flex-col gap-5 pb-5"
         >
-          <section className="rounded-[18px] border border-amber-200 bg-amber-50 p-4">
+          <section className="rounded-[18px] border border-warning-border bg-warning-surface p-4">
             <div className="mb-4 flex items-start gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-700 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface text-warning-foreground shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
                 <Icon icon={InformationCircleIcon} size={18} />
               </div>
               <div className="flex min-w-0 flex-col gap-1">
-                <Text variant="body-medium" as="h3" className="text-amber-950">
+                <Text
+                  // TODO(tokens): no exact role for text-amber-950 #451a03
+                  variant="body-medium"
+                  as="h3"
+                  className="text-amber-950"
+                >
                   Update note
                 </Text>
-                <Text variant="small" className="text-amber-800">
+                <Text
+                  // TODO(tokens): no exact role for text-amber-800 #92400e
+                  variant="small"
+                  className="text-amber-800"
+                >
                   Reviewers use this to understand why this submission was
                   edited.
                 </Text>
@@ -139,31 +149,36 @@ export function EditAgentForm({
             collapsible
             value={openAccordion}
             onValueChange={setOpenAccordion}
-            className="overflow-hidden rounded-[14px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)] [&>*+*]:border-t [&>*+*]:border-zinc-200"
+            className="overflow-hidden rounded-[14px] border border-border-base bg-surface shadow-[0_1px_2px_rgba(15,15,20,0.04)] [&>*+*]:border-t [&>*+*]:border-border-base"
           >
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  className="flex items-center gap-2 text-textBlack"
+                >
                   <Icon
                     icon={Store01Icon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-foreground-tertiary"
                   />
                   Listing basics
                   {basicsHasError ? (
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
+                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
                       className="text-rose-500"
                     />
                   ) : basicsComplete ? (
                     <Icon
                       icon={CheckmarkCircle02Icon}
                       size={16}
-                      className="text-purple-500"
+                      className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <div className="grid gap-x-4 sm:grid-cols-2">
@@ -231,27 +246,32 @@ export function EditAgentForm({
 
             <AccordionItem value="thumbnails" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  className="flex items-center gap-2 text-textBlack"
+                >
                   <Icon
                     icon={Album01Icon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-foreground-tertiary"
                   />
                   Thumbnails
                   {thumbnailsHasError ? (
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
+                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
                       className="text-rose-500"
                     />
                   ) : thumbnailsComplete ? (
                     <Icon
                       icon={CheckmarkCircle02Icon}
                       size={16}
-                      className="text-purple-500"
+                      className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <ThumbnailImages
@@ -268,27 +288,32 @@ export function EditAgentForm({
 
             <AccordionItem value="experience" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  className="flex items-center gap-2 text-textBlack"
+                >
                   <Icon
                     icon={SparklesIcon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-foreground-tertiary"
                   />
                   Experience details
                   {experienceHasError ? (
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
+                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
                       className="text-rose-500"
                     />
                   ) : experienceComplete ? (
                     <Icon
                       icon={CheckmarkCircle02Icon}
                       size={16}
-                      className="text-purple-500"
+                      className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <FormField
@@ -353,7 +378,7 @@ export function EditAgentForm({
             </AccordionItem>
           </Accordion>
 
-          <div className="flex flex-col-reverse gap-3 border-t border-zinc-200 pt-4 sm:flex-row sm:justify-end">
+          <div className="flex flex-col-reverse gap-3 border-t border-border-base pt-4 sm:flex-row sm:justify-end">
             <Button
               type="button"
               onClick={onClose}
@@ -374,7 +399,7 @@ export function EditAgentForm({
             </Button>
           </div>
         </form>
-      </Form>
+      </FormProvider>
     </div>
   );
 }

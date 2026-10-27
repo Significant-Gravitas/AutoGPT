@@ -16,19 +16,13 @@ const mockSidebar = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@/components/ui/sidebar", () => ({
+vi.mock("@/components/molecules/Sidebar/Sidebar", () => ({
   useOptionalSidebar: () => mockSidebar.current,
 }));
 
 const mockAuth = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
 }));
-
-const mockSentry = vi.hoisted(() => ({
-  getReplay: vi.fn(),
-}));
-
-const flushReplay = vi.fn();
 
 let tally: ReturnType<typeof stubTallyEmbed>;
 
@@ -37,7 +31,6 @@ const mockUseAuth = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth/actions", () => mockAuth);
-vi.mock("@sentry/nextjs", () => mockSentry);
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => mockUseAuth.current,
 }));
@@ -58,11 +51,6 @@ describe("AccountMenuFeedbackRow", () => {
     mockSidebar.current = null;
     mockUseAuth.current = { isLoggedIn: true, isUserLoading: false };
     mockAuth.getCurrentUser.mockReset();
-    flushReplay.mockReset();
-    mockSentry.getReplay.mockReturnValue({
-      getReplayId: () => "replay-123",
-      flush: flushReplay,
-    });
     window.history.replaceState({}, "", "/library?sort=updatedAt");
     tally = stubTallyEmbed();
   });
@@ -89,9 +77,6 @@ describe("AccountMenuFeedbackRow", () => {
       expect.objectContaining({
         emoji: { text: "👋", animation: "wave" },
         hiddenFields: {
-          sentryReplayId: "replay-123",
-          sentryReplayUrl:
-            "https://significant-gravitas.sentry.io/replays/replay-123/",
           pageUrl: `${window.location.origin}/library`,
           isAuthenticated: "true",
         },
@@ -112,24 +97,12 @@ describe("AccountMenuFeedbackRow", () => {
     expect(tally.openPopup).toHaveBeenCalledTimes(2);
   });
 
-  test("flushes the Sentry replay once the form is open", async () => {
-    fireEvent.click(await renderRow());
-    await tally.finishLoading();
-
-    act(() => tally.popupOptions().onOpen());
-
-    expect(flushReplay).toHaveBeenCalledTimes(1);
-  });
-
   test("marks values that are not known yet", async () => {
-    mockSentry.getReplay.mockReturnValue(undefined);
     mockUseAuth.current = { isLoggedIn: false, isUserLoading: true };
     fireEvent.click(await renderRow());
     await tally.finishLoading();
 
     expect(tally.popupOptions().hiddenFields).toMatchObject({
-      sentryReplayId: "not-initialized",
-      sentryReplayUrl: "not-initialized",
       isAuthenticated: "unknown",
     });
   });

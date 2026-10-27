@@ -1,4 +1,5 @@
 import { getSystemHeaders } from "@/lib/impersonation";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { getWebSocketToken } from "@/lib/auth/actions";
 import type { ChatStatus, UIMessage } from "ai";
 
@@ -25,6 +26,8 @@ export const COPILOT_COMPLETION_NOTIFICATION = {
  * Returns HTTP headers required for direct backend requests from copilot:
  * - Authorization Bearer token (JWT)
  * - X-Act-As-User-Id impersonation header (if an admin is impersonating a user)
+ * - X-PostHog-Session-Id (with analytics consent), so the chat's backend
+ *   events join the browser's PostHog session
  *
  * Use this for all direct-to-backend fetch/SSE calls so that admin user
  * impersonation works consistently across the entire copilot feature.
@@ -38,6 +41,7 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   return {
     Authorization: `Bearer ${token}`,
     ...getSystemHeaders(),
+    ...getPostHogSessionHeader(),
   };
 }
 
@@ -267,8 +271,9 @@ interface SuppressDuplicateArgs {
  * - ``"reconnecting"``: the stream is reconnecting; the caller should
  *   notify the user (the UI may not yet reflect the disabled state).
  * - ``"duplicate"``: the same text, with the same attachments, was just
- *   submitted and echoed back by the session — safe to silently drop
- *   (user double-clicked).
+ *   submitted, echoed back by the session and not answered yet — safe to
+ *   silently drop (user double-clicked), because the message is already
+ *   on screen.
  */
 export type SuppressReason = "reconnecting" | "duplicate" | null;
 
@@ -308,11 +313,18 @@ export function getSendSuppressionReason({
       .trim();
     // The same caption on other files is a new message, not a resend.
     const lastUserAttachments = attachmentKeys(lastUserMsg?.parts ?? []);
-    if (
+    const isResend =
       lastUserText === text &&
-      lastUserAttachments.join("\n") === attachments.join("\n")
-    )
-      return "duplicate";
+      lastUserAttachments.join("\n") === attachments.join("\n");
+    // A resend is a duplicate only while the first send is still being
+    // answered: the turn is in flight, or its echo is the newest message.
+    // Once a reply (or a Stop marker) followed it, "yes" after "yes" is a
+    // new message, and dropping it would lose text the composer already cleared.
+    const stillBeingAnswered =
+      status === "streaming" ||
+      status === "submitted" ||
+      lastMessage?.role === "user";
+    if (isResend && stillBeingAnswered) return "duplicate";
   }
 
   return null;

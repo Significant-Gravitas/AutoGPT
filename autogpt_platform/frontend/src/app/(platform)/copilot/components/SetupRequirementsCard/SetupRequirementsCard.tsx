@@ -1,13 +1,17 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { useContext, useEffect, useId, useMemo, useState } from "react";
-import { ChainActionsContext } from "../ToolChain/chainActions";
+import { useContext, useEffect, useId, useState } from "react";
+import {
+  ChainActionsContext,
+  type ChainActions,
+} from "../ToolChain/chainActions";
 import {
   useAreAllConnected,
   useConnectedProvidersStore,
@@ -90,23 +94,27 @@ export function SetupRequirementsCard({
 
   const rejection = output.rejection ?? null;
 
+  const requirements = output.setup_info.requirements;
   const expectedInputs = coerceExpectedInputs(
-    (output.setup_info.requirements as Record<string, unknown>)?.inputs,
+    (requirements as Record<string, unknown>)?.inputs,
   );
 
-  const initialValues = useMemo(
-    () => extractInitialValues(expectedInputs),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- stabilise on the raw prop
-    [output.setup_info.requirements],
+  // Derived from the raw prop, so the compiler caches it on `requirements`:
+  // `expectedInputs` is rebuilt every render.
+  const initialValues = extractInitialValues(
+    coerceExpectedInputs((requirements as Record<string, unknown>)?.inputs),
   );
 
   const [inputValues, setInputValues] =
     useState<Record<string, unknown>>(initialValues);
 
   const initialValuesKey = JSON.stringify(initialValues);
-  useEffect(() => {
+  const mergeInitialValues = useStableCallback(() => {
     setInputValues((prev) => mergeInputValues(initialValues, prev));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync when serialised values change
+  });
+  // Sync only when the serialised values change.
+  useEffect(() => {
+    mergeInitialValues();
   }, [initialValuesKey]);
 
   const isEditMode = inputsMode === "edit";
@@ -121,16 +129,12 @@ export function SetupRequirementsCard({
   // Build siblingInputs for credential modal host prefill. In edit mode we also
   // include the live form values; in preview mode there is no form so only
   // discriminator-derived values contribute.
-  const siblingInputs = useMemo(() => {
-    const fromCreds = buildSiblingInputsFromCredentials(
-      output.setup_info.user_readiness?.missing_credentials,
-    );
-    return isEditMode ? { ...inputValues, ...fromCreds } : fromCreds;
-  }, [
+  const fromCreds = buildSiblingInputsFromCredentials(
     output.setup_info.user_readiness?.missing_credentials,
-    inputValues,
-    isEditMode,
-  ]);
+  );
+  const siblingInputs = isEditMode
+    ? { ...inputValues, ...fromCreds }
+    : fromCreds;
 
   function handleCredentialChange(key: string, value?: CredentialsMetaInput) {
     setInputCredentials((prev) => ({ ...prev, [key]: value }));
@@ -172,6 +176,39 @@ export function SetupRequirementsCard({
     !hasUserActionableInputs &&
     !needsManualPick &&
     !rejection;
+
+  function buildProceedMessage() {
+    return isTriggerMode
+      ? buildTriggerSetupMessage(inputCredentials)
+      : isEditMode
+        ? buildRunMessage(
+            needsCredentials,
+            needsInputs,
+            inputValues,
+            retryInstruction,
+          )
+        : buildPreviewRunMessage(needsCredentials);
+  }
+
+  function markSent() {
+    setHasSent(true);
+    if (sessionID && requestedProviders.length > 0) {
+      useConnectedProvidersStore
+        .getState()
+        .markConnected({ sessionID, providers: requestedProviders });
+    }
+    onComplete?.();
+    if (isEditMode) setInputValues({});
+  }
+
+  function handleRun() {
+    const message = buildProceedMessage();
+    markSent();
+    void reportCredentialPicks(sessionID, inputCredentials).then(() =>
+      onSend(message),
+    );
+  }
+
   // Inside a chain this card renders no Proceed of its own — the chain only
   // renders one for inputs/questions — so a completed sign-in is the sole "go"
   // signal; without this the chain stalls after the user connects. It must be
@@ -193,7 +230,7 @@ export function SetupRequirementsCard({
   // pattern would leak the claim across StrictMode's double-invoke
   // (cleanup cancels the first microtask, but the claim is still held, so
   // the second effect run can't re-claim and the send never fires).
-  useEffect(() => {
+  const autoDismiss = useStableCallback(() => {
     if (chainActions || !canAutoDismiss || hasSent) return;
     if (!sessionID || requestedProviders.length === 0) return;
     const claimed = useConnectedProvidersStore
@@ -204,7 +241,10 @@ export function SetupRequirementsCard({
       return;
     }
     handleRun();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; claim guards re-entry
+  });
+  // handleRun captures latest state; the claim guards re-entry.
+  useEffect(() => {
+    autoDismiss();
   }, [chainActions, canAutoDismiss, hasSent]);
 
   // Only a sign-in that renewed the refused credential itself lifts the
@@ -219,10 +259,8 @@ export function SetupRequirementsCard({
 
   // Inside a tool chain the card's own Proceed is replaced by the chain's
   // single Proceed step — register readiness + message with the chain.
-  useEffect(() => {
-    if (!chainActions || hasSent) return;
-    if (!needsCredentials && !needsInputs) return;
-    chainActions.register({
+  const registerWithChain = useStableCallback((actions: ChainActions) => {
+    actions.register(actionId, {
       id: actionId,
       ready: canRun,
       manualProceed: needsManualPick || hasUserActionableInputs,
@@ -262,8 +300,13 @@ export function SetupRequirementsCard({
             }
           : undefined,
     });
+  });
+  // buildProceedMessage/markSent capture latest state each registration.
+  useEffect(() => {
+    if (!chainActions || hasSent) return;
+    if (!needsCredentials && !needsInputs) return;
+    registerWithChain(chainActions);
     return () => chainActions.unregister(actionId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- buildProceedMessage/markSent capture latest state each registration
   }, [
     chainActions,
     hasSent,
@@ -282,38 +325,6 @@ export function SetupRequirementsCard({
     return <ContentMessage>Connected. Continuing…</ContentMessage>;
   }
 
-  function buildProceedMessage() {
-    return isTriggerMode
-      ? buildTriggerSetupMessage(inputCredentials)
-      : isEditMode
-        ? buildRunMessage(
-            needsCredentials,
-            needsInputs,
-            inputValues,
-            retryInstruction,
-          )
-        : buildPreviewRunMessage(needsCredentials);
-  }
-
-  function markSent() {
-    setHasSent(true);
-    if (sessionID && requestedProviders.length > 0) {
-      useConnectedProvidersStore
-        .getState()
-        .markConnected({ sessionID, providers: requestedProviders });
-    }
-    onComplete?.();
-    if (isEditMode) setInputValues({});
-  }
-
-  function handleRun() {
-    const message = buildProceedMessage();
-    markSent();
-    void reportCredentialPicks(sessionID, inputCredentials).then(() =>
-      onSend(message),
-    );
-  }
-
   return (
     <div className="grid gap-2">
       <ContentMessage>{output.message}</ContentMessage>
@@ -324,7 +335,10 @@ export function SetupRequirementsCard({
           below it; standalone the card keeps the full credentials picker. */}
       {needsCredentials && !chainActions && (
         <div className="rounded-2xl border bg-background p-3">
-          <Text variant="small" className="w-fit border-b text-zinc-500">
+          <Text
+            variant="small"
+            className="w-fit border-b text-foreground-tertiary"
+          >
             {credentialsLabel ??
               (isEditMode ? "Credentials" : "Workflow credentials")}
           </Text>
@@ -344,7 +358,10 @@ export function SetupRequirementsCard({
           renders in the card below it, not inside the accordion. */}
       {isEditMode && !chainActions && (inputSchema || hasAdvancedFields) && (
         <div className="rounded-2xl border bg-background p-3 pt-4">
-          <Text variant="small" className="w-fit border-b text-zinc-500">
+          <Text
+            variant="small"
+            className="w-fit border-b text-foreground-tertiary"
+          >
             Inputs
           </Text>
           {inputSchema && (

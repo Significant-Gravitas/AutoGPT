@@ -215,17 +215,7 @@ def cli():
     pass
 
 
-AVAILABLE_SCOPES = [
-    "EXECUTE_GRAPH",
-    "READ_GRAPH",
-    "EXECUTE_BLOCK",
-    "READ_BLOCK",
-    "READ_STORE",
-    "USE_TOOLS",
-    "MANAGE_INTEGRATIONS",
-    "READ_INTEGRATIONS",
-    "DELETE_INTEGRATIONS",
-]
+AVAILABLE_SCOPES = [permission.value for permission in APIKeyPermission]
 
 DEFAULT_GRANT_TYPES = ["authorization_code", "refresh_token"]
 
@@ -271,7 +261,7 @@ def prompt_for_scopes() -> list[str]:
     click.echo(
         "\nSelect scopes by number (comma-separated) or enter scope names directly:"
     )
-    click.echo("  Example: 1,2 or EXECUTE_GRAPH,READ_GRAPH")
+    click.echo("  Example: 1,2 or RUN_AGENT,READ_LIBRARY")
 
     while True:
         selection = click.prompt("Scopes", type=str)

@@ -49,7 +49,7 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/auth/user/timezone",
     "PUT /api/chat/transports/default",
     "GET /api/experiments/assignments",
-    "POST /api/experiments/assignments",
+    "GET /api/experiments/assignments/{experiment}",
     "GET /api/invitations/pending",
     "POST /api/invitations/{token}/accept",
     "POST /api/invitations/{token}/decline",
@@ -61,6 +61,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/memory/facts",
     "DELETE /api/memory/facts/{fact_uuid}",
     "GET /api/memory/overview",
+    "DELETE /api/memory/understanding",
+    "GET /api/memory/understanding",
     "GET /api/oauth/app/{client_id}",
     "PATCH /api/oauth/apps/{app_id}/logo",
     "PATCH /api/oauth/apps/{app_id}/status",
@@ -78,7 +80,6 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/orgs/{org_id}/invitations",
     "DELETE /api/orgs/{org_id}/invitations/{invitation_id}",
     "GET /api/orgs/{org_id}/members",
-    "POST /api/orgs/{org_id}/members",
     "DELETE /api/orgs/{org_id}/members/{uid}",
     "PATCH /api/orgs/{org_id}/members/{uid}",
     "POST /api/orgs/{org_id}/transfer-ownership",
@@ -148,6 +149,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/onboarding/brain-dump/recommended-providers",
     "GET /api/onboarding/brain-dump/recording",
     "GET /api/onboarding/brain-dump/status",
+    "GET /api/onboarding/brain-dump/suggested-tasks",
+    "POST /api/onboarding/brain-dump/suggested-tasks",
     "GET /api/onboarding/completed",
     "POST /api/onboarding/profile",
     "POST /api/onboarding/reset",
@@ -217,6 +220,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/review/execution/{graph_exec_id}",
     "GET /api/review/pending",
     "GET /api/review/session/{chat_session_id}",
+    "GET /api/review/session/{chat_session_id}/answered",
     "GET /api/schedules",
     "GET /api/schedules/followups",
     "GET /api/schedules/followups/paused",
@@ -291,7 +295,9 @@ OPEN_WHILE_PAYWALLED = {
     "PATCH /api/workspace/folders/{folder_id}",
     # No signed-in user to check: public pages, provider webhooks and token
     # endpoints. A webhook's runs check their owner (add_graph_execution).
+    "GET /.well-known/oauth-protected-resource/api/v2/mcp",
     "POST /api/auth/email/send",
+    "POST /api/auth/email/suppression",
     "POST /api/auth/user/preferences/from-email",
     "GET /api/chat/config/ttl",
     "GET /api/chat/schema/tool-responses",
@@ -389,10 +395,6 @@ def test_the_open_lists_name_only_routes_that_exist():
 def test_an_account_without_a_plan_gets_402_from_a_closed_route(
     call: str, mock_jwt_user, paywalled_user, mocker
 ):
-    mocker.patch(
-        "backend.api.features.store.skill_routes.is_feature_enabled",
-        new=mocker.AsyncMock(return_value=True),
-    )
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     try:
         method, path = call.split(" ", 1)

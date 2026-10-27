@@ -1,7 +1,8 @@
 "use client";
 
+import { FormProvider } from "react-hook-form";
 import { CronExpressionDialog } from "@/components/contextual/CronScheduler/cron-scheduler-dialog";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormField } from "@/components/molecules/Form/Form";
 import {
   Accordion,
   AccordionContent,
@@ -14,7 +15,6 @@ import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
 import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
-import { cn } from "@/lib/utils";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import * as React from "react";
 import { StepHeader } from "../StepHeader";
@@ -126,23 +126,28 @@ export function AgentInfoStep({
     <div className="mx-auto flex w-full flex-col">
       <StepHeader title={title} description={description} currentStep="info" />
 
-      <Form {...form}>
+      <FormProvider {...form}>
         <form onSubmit={handleSubmit} className="flex flex-col gap-5 pb-5">
           {isMarketplaceUpdate && (
-            <section className="rounded-[18px] border border-amber-200 bg-amber-50 p-4">
+            <section className="rounded-[18px] border border-warning-border bg-warning-surface p-4">
               <div className="mb-4 flex items-start gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-700 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface text-warning-foreground shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
                   <Icon icon={InformationCircleIcon} size={18} />
                 </div>
                 <div className="flex min-w-0 flex-col gap-1">
                   <Text
                     variant="body-medium"
                     as="h3"
+                    // TODO(tokens): no exact role for text-amber-950 #451a03
                     className="text-amber-950"
                   >
                     Update note
                   </Text>
-                  <Text variant="small" className="text-amber-800">
+                  <Text
+                    // TODO(tokens): no exact role for text-amber-800 #92400e
+                    variant="small"
+                    className="text-amber-800"
+                  >
                     Reviewers use this to understand why the marketplace listing
                     needs a new version.
                   </Text>
@@ -175,31 +180,36 @@ export function AgentInfoStep({
             collapsible
             value={openAccordion}
             onValueChange={setOpenAccordion}
-            className="overflow-hidden rounded-[14px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)] [&>*+*]:border-t [&>*+*]:border-zinc-200"
+            className="overflow-hidden rounded-[14px] border border-border-base bg-surface shadow-[0_1px_2px_rgba(15,15,20,0.04)] [&>*+*]:border-t [&>*+*]:border-border-base"
           >
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  className="flex items-center gap-2 text-textBlack"
+                >
                   <Icon
                     icon={Store01Icon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-foreground-tertiary"
                   />
                   Listing basics
                   {basicsHasError ? (
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
+                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
                       className="text-rose-500"
                     />
                   ) : basicsComplete ? (
                     <Icon
                       icon={CheckmarkCircle02Icon}
                       size={16}
-                      className="text-purple-500"
+                      className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <div className="grid gap-x-4 sm:grid-cols-2">
@@ -284,27 +294,32 @@ export function AgentInfoStep({
 
             <AccordionItem value="thumbnails" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  className="flex items-center gap-2 text-textBlack"
+                >
                   <Icon
                     icon={Album01Icon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-foreground-tertiary"
                   />
                   Thumbnails
                   {thumbnailsHasError ? (
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
+                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
                       className="text-rose-500"
                     />
                   ) : thumbnailsComplete ? (
                     <Icon
                       icon={CheckmarkCircle02Icon}
                       size={16}
-                      className="text-purple-500"
+                      className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <ThumbnailImages
@@ -319,27 +334,32 @@ export function AgentInfoStep({
 
             <AccordionItem value="experience" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  className="flex items-center gap-2 text-textBlack"
+                >
                   <Icon
                     icon={SparklesIcon}
                     size={18}
-                    className="text-zinc-500"
+                    className="text-foreground-tertiary"
                   />
                   Experience details
                   {experienceHasError ? (
                     <Icon
                       icon={AlertCircleIcon}
                       size={16}
+                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
                       className="text-rose-500"
                     />
                   ) : experienceComplete ? (
                     <Icon
                       icon={CheckmarkCircle02Icon}
                       size={16}
-                      className="text-purple-500"
+                      className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <FormField
@@ -431,7 +451,11 @@ export function AgentInfoStep({
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-1">
-                          <Text variant="body" as="span" className="text-black">
+                          <Text
+                            variant="body"
+                            as="span"
+                            className="text-foreground-base"
+                          >
                             Recommended schedule
                           </Text>
                           <InformationTooltip
@@ -443,23 +467,24 @@ export function AgentInfoStep({
                       <button
                         type="button"
                         onClick={() => setCronScheduleDialogOpen(true)}
-                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-left text-sm font-normal text-black shadow-none transition-colors hover:border-zinc-300 focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                        // TODO(tokens): no exact role for focus:border-purple-400 #925cf7, focus:ring-purple-400 #925cf7
+                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-border-base bg-surface px-4 py-2.5 text-left text-foreground-base shadow-none transition-colors hover:border-border-strong focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
                       >
                         <Icon
                           icon={Calendar03Icon}
                           size={16}
-                          className="shrink-0 text-zinc-500"
+                          className="shrink-0 text-foreground-tertiary"
                         />
-                        <span
-                          className={cn(
-                            "truncate",
-                            !field.value && "text-zinc-400",
-                          )}
+                        <Text
+                          variant="body-tight"
+                          as="span"
+                          tone={field.value ? "inherit" : "subtle"}
+                          className="truncate"
                         >
                           {field.value
                             ? humanizeCronExpression(field.value)
                             : "Set schedule"}
-                        </span>
+                        </Text>
                       </button>
                     </div>
                   )}
@@ -493,7 +518,7 @@ export function AgentInfoStep({
             }
           />
         </form>
-      </Form>
+      </FormProvider>
 
       <CronExpressionDialog
         open={cronScheduleDialogOpen}

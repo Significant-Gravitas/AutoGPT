@@ -93,11 +93,11 @@ export function SubmissionItem({
               delay: Math.min(rowIndex, ROW_STAGGER_CAP) * ROW_STAGGER,
             }
       }
-      className="ease-[cubic-bezier(0.16,1,0.3,1)] border-b border-zinc-100 transition-colors duration-150 last:border-b-0 hover:bg-zinc-50/60"
+      className="ease-[cubic-bezier(0.16,1,0.3,1)] border-b border-separator transition-colors duration-150 last:border-b-0 hover:bg-surface-muted/60"
     >
       <td className="px-4 py-3 align-middle">
         <div className="flex items-center gap-3">
-          <div className="relative aspect-video w-20 shrink-0 select-none overflow-hidden rounded-[8px] bg-zinc-100">
+          <div className="relative aspect-video w-20 shrink-0 select-none overflow-hidden rounded-[8px] bg-surface-hover">
             {thumbnail ? (
               <Image
                 src={thumbnail}
@@ -114,7 +114,7 @@ export function SubmissionItem({
                 <UIIcon
                   icon={ImageNotFound01Icon}
                   size={20}
-                  className="pointer-events-none text-zinc-400"
+                  className="pointer-events-none text-foreground-subtle"
                 />
               </div>
             )}
@@ -139,7 +139,7 @@ export function SubmissionItem({
                   <UIIcon
                     icon={LinkSquare01Icon}
                     size={14}
-                    className="shrink-0 text-zinc-500"
+                    className="shrink-0 text-foreground-tertiary"
                     aria-hidden
                   />
                 </Link>
@@ -155,7 +155,7 @@ export function SubmissionItem({
               <Text
                 variant="small"
                 as="span"
-                className="shrink-0 text-zinc-600"
+                className="shrink-0 text-foreground-secondary"
               >
                 v{submission.graph_version}
               </Text>
@@ -163,7 +163,7 @@ export function SubmissionItem({
             <Text
               variant="small"
               as="span"
-              className="line-clamp-1 max-w-[420px] text-zinc-500"
+              className="line-clamp-1 max-w-[420px] text-foreground-tertiary"
             >
               {submission.description}
             </Text>
@@ -180,11 +180,11 @@ export function SubmissionItem({
         </span>
       </td>
 
-      <td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-zinc-700">
+      <td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-foreground-body">
         {formatSubmittedAt(submission.submitted_at)}
       </td>
 
-      <td className="whitespace-nowrap px-4 py-3 text-right align-middle text-sm tabular-nums text-zinc-700">
+      <td className="whitespace-nowrap px-4 py-3 text-right align-middle text-sm tabular-nums text-foreground-body">
         {formatRuns(submission.run_count ?? 0)}
       </td>
 
@@ -195,7 +195,7 @@ export function SubmissionItem({
               type="button"
               aria-label="Submission actions"
               data-testid="submission-actions"
-              className="ease-[cubic-bezier(0.16,1,0.3,1)] inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
+              className="ease-[cubic-bezier(0.16,1,0.3,1)] inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground-tertiary transition-[background-color,color,transform] duration-150 hover:bg-surface-hover hover:text-foreground-strong active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
             >
               <UIIcon icon={MoreVerticalIcon} size={18} />
             </button>
@@ -241,6 +241,7 @@ export function SubmissionItem({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => setConfirmDeleteOpen(true)}
+                  // TODO(tokens): no exact role (text-rose-600 #E11D48, focus:text-rose-700 #BE123C)
                   className="flex cursor-pointer items-center gap-2 text-rose-600 focus:text-rose-700"
                 >
                   <UIIcon icon={Delete02Icon} size={14} />
@@ -260,7 +261,7 @@ export function SubmissionItem({
           }}
         >
           <Dialog.Content>
-            <Text variant="body" className="text-zinc-700">
+            <Text variant="body" className="text-foreground-body">
               This will remove <strong>{submission.name}</strong> from the
               store. This action cannot be undone.
             </Text>

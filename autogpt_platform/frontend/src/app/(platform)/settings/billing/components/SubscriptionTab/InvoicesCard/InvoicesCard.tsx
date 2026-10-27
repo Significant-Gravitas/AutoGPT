@@ -59,18 +59,22 @@ export function InvoicesCard({ index = 0 }: Props) {
         </Text>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+      <div className="overflow-hidden rounded-2xl border border-border-base bg-surface">
         {invoices.length === 0 ? (
           <div className="px-4 py-6">
-            <Text variant="small" as="span" className="text-zinc-500">
+            <Text
+              variant="small"
+              as="span"
+              className="text-foreground-tertiary"
+            >
               No invoices yet.
             </Text>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left">
-              <thead className="bg-zinc-50">
-                <tr className="border-b border-zinc-200">
+              <thead className="bg-surface-muted">
+                <tr className="border-b border-border-base">
                   <Th>Invoice</Th>
                   <Th className="hidden sm:table-cell">Date</Th>
                   <Th className="hidden md:table-cell">Description</Th>
@@ -92,8 +96,8 @@ export function InvoicesCard({ index = 0 }: Props) {
                     variants={reduceMotion ? undefined : rowVariants}
                     className={
                       rowIndex !== invoices.length - 1
-                        ? "border-b border-zinc-100 transition-colors hover:bg-zinc-50/60"
-                        : "transition-colors hover:bg-zinc-50/60"
+                        ? "border-b border-separator transition-colors hover:bg-surface-muted/60"
+                        : "transition-colors hover:bg-surface-muted/60"
                     }
                   >
                     <td className="px-2 py-4 sm:px-4">
@@ -106,12 +110,20 @@ export function InvoicesCard({ index = 0 }: Props) {
                       </Text>
                     </td>
                     <td className="hidden px-2 py-4 sm:table-cell sm:px-4">
-                      <Text variant="body" as="span" className="text-zinc-600">
+                      <Text
+                        variant="body"
+                        as="span"
+                        className="text-foreground-secondary"
+                      >
                         {invoice.date}
                       </Text>
                     </td>
                     <td className="hidden px-2 py-4 md:table-cell md:px-4">
-                      <Text variant="body" as="span" className="text-zinc-600">
+                      <Text
+                        variant="body"
+                        as="span"
+                        className="text-foreground-secondary"
+                      >
                         {invoice.description}
                       </Text>
                     </td>
@@ -178,7 +190,8 @@ function Th({ children, align = "left", className = "" }: ThProps) {
       <Text
         variant="small-medium"
         as="span"
-        className="uppercase tracking-[0.04em] text-zinc-500"
+        // TODO(tokens): no exact text token (tracking-[0.04em])
+        className="uppercase tracking-[0.04em] text-foreground-tertiary"
       >
         {children}
       </Text>

@@ -20,27 +20,14 @@ const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 const defaultFlags = {
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
-  [Flag.ARTIFACTS_PAGE]: false,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
-  [Flag.CHAT_SEARCH]: false,
-  [Flag.AUTOGPT_NEW_LAYOUT]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
-  [Flag.HIRE_EXPERTS]: false,
-  [Flag.SKILLS_HUB]: false,
   // Off by default so a LaunchDarkly outage or a missing key hides the card
   // rather than exposing the in-progress design to everyone.
   [Flag.SETTINGS_NOTIFICATIONS]: false,
-  // Off by default: with no LaunchDarkly key (local dev, CI, Playwright)
-  // the wizard falls back to this map, and a ``true`` here renders the
-  // brain dump for everyone — which is what the backend 404s are meant to
-  // prevent. Use NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP locally.
-  [Flag.ONBOARDING_BRAIN_DUMP]: false,
-  [Flag.ONBOARDING_EXPERT_TEAM]: false,
-  [Flag.GRAPHITI_MEMORY]: false,
-  [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
   [Flag.DREAM_SKILL_LEARNING_ENABLED]: false,
@@ -76,36 +63,18 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS;
     case Flag.ENABLE_PLATFORM_PAYMENT:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ENABLE_PLATFORM_PAYMENT;
-    case Flag.SKILLS_HUB:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_SKILLS_HUB;
-    case Flag.ARTIFACTS_PAGE:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS_PAGE;
     case Flag.CHAT_MODE_OPTION:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION;
     case Flag.GENERIC_TRIGGER_AGENTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
-    case Flag.CHAT_SEARCH:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SEARCH;
-    case Flag.AUTOGPT_NEW_LAYOUT:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_AUTOGPT_NEW_LAYOUT;
     case Flag.CHAT_WORKSPACE_FILES:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_WORKSPACE_FILES;
     case Flag.CHAT_PINNING:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_PINNING;
     case Flag.TASK_PROGRESS_BAR:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_PROGRESS_BAR;
-    case Flag.HIRE_EXPERTS:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS;
     case Flag.SETTINGS_NOTIFICATIONS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_SETTINGS_NOTIFICATIONS;
-    case Flag.ONBOARDING_BRAIN_DUMP:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_BRAIN_DUMP;
-    case Flag.ONBOARDING_EXPERT_TEAM:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_EXPERT_TEAM;
-    case Flag.GRAPHITI_MEMORY:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY;
-    case Flag.GRAPHITI_COMMUNITIES_ENABLED:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_COMMUNITIES_ENABLED;
     case Flag.DREAM_PASS_ENABLED:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_ENABLED;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
