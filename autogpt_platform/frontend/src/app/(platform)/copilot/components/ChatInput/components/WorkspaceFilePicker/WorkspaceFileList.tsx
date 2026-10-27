@@ -94,7 +94,9 @@ export function WorkspaceFileList({
   if (files.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-8">
-        <p className="text-center text-sm text-zinc-500">{emptyMessage}</p>
+        <p className="text-center text-sm text-foreground-tertiary">
+          {emptyMessage}
+        </p>
         {emptyAction}
       </div>
     );
@@ -105,10 +107,10 @@ export function WorkspaceFileList({
       {/* White scroll-fade so rows dissolve into the dialog — only on the
           side that still has hidden content. */}
       {edges.top && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-white to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-surface to-transparent" />
       )}
       {edges.bottom && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-white to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-surface to-transparent" />
       )}
       <div
         ref={scrollRef}
@@ -132,26 +134,30 @@ export function WorkspaceFileList({
                 onKeyDown={(e) => handleRangeKey(e, index, onSelect)}
                 aria-pressed={isSelected}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left transition-colors",
+                  "flex w-full items-center gap-3 rounded-2xl border bg-surface p-3 text-left transition-colors",
                   isSelected
-                    ? "border-violet-300 ring-1 ring-violet-200"
-                    : "border-zinc-200 hover:border-zinc-300",
+                    ? // TODO(tokens): no exact role for border-violet-300, ring-violet-200
+                      "border-violet-300 ring-1 ring-violet-200"
+                    : "border-border-base hover:border-border-strong",
                 )}
               >
                 <Icon
                   icon={fileIcon}
                   size={20}
-                  className="shrink-0 text-zinc-500"
+                  className="shrink-0 text-foreground-tertiary"
                 />
                 <div className="flex min-w-0 flex-1 flex-col">
                   <Text
                     variant="body-medium"
-                    className="truncate text-zinc-900"
+                    className="truncate text-foreground-strong"
                     title={file.name}
                   >
                     {file.name}
                   </Text>
-                  <Text variant="small" className="truncate text-zinc-500">
+                  <Text
+                    variant="small"
+                    className="truncate text-foreground-tertiary"
+                  >
                     {getFileTypeLabel(file.mime_type)} ·{" "}
                     {formatFileSize(file.size_bytes)} ·{" "}
                     {formatRelativeDate(file.created_at)}
@@ -160,6 +166,7 @@ export function WorkspaceFileList({
                 {isSelected && (
                   <Icon
                     icon={CheckmarkCircle02Icon}
+                    // TODO(tokens): no exact role for text-violet-600
                     className="h-5 w-5 shrink-0 text-violet-600"
                   />
                 )}

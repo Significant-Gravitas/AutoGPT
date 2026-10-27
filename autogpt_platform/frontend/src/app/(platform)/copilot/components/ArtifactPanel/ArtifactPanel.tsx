@@ -54,13 +54,19 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
   // panel can keep rendering its contents while the close animation plays —
   // by then `activeArtifact` is already null, and unmounting outright would
   // snap the panel shut without animating.
-  const lastShownRef = useRef<{
-    artifact: NonNullable<typeof activeArtifact>;
-    classification: NonNullable<typeof classification>;
-  } | null>(null);
-  if (activeArtifact && classification) {
-    lastShownRef.current = { artifact: activeArtifact, classification };
+  const live =
+    activeArtifact && classification
+      ? { artifact: activeArtifact, classification }
+      : null;
+  const [lastShown, setLastShown] = useState(live);
+  if (
+    live &&
+    (lastShown?.artifact !== live.artifact ||
+      lastShown.classification !== live.classification)
+  ) {
+    setLastShown(live);
   }
+  const shown = live ?? lastShown;
 
   // The stored width is a preference, not a guarantee: the panel is shrink-0,
   // so on narrow viewports it would overflow the flex row and get clipped on
@@ -91,7 +97,6 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
   }, [showDesktopPanel]);
 
   if (mobile) {
-    const shown = lastShownRef.current;
     if (!shown) return null;
 
     return (
@@ -111,6 +116,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
               we render our own backdrop with click-to-close. */}
           <div
             onClick={clearArtifactPreview}
+            // TODO(tokens): no fitting role for bg-black/20 #141414; #141414 is foreground-base (a text colour)
             className="fixed inset-0 z-[60] bg-black/20 backdrop-blur-[2px]"
             aria-hidden="true"
           />
@@ -146,10 +152,6 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
       </Drawer.Root>
     );
   }
-
-  // Keep painting the outgoing artifact through the close tween — by then
-  // `activeArtifact` is already null, same reason the mobile drawer holds it.
-  const shown = lastShownRef.current;
 
   // jsdom reports offsetWidth 0 — treat non-positive readings as "unknown"
   // and fall back to the stored width.

@@ -38,12 +38,14 @@ from backend.copilot.gate.mcp_seam import (
     screen_non_registry_read,
 )
 from backend.copilot.gate.reads import model_view
+from backend.copilot.google_data_redaction import remember_cut_google_output
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
     expand_file_refs_in_args,
     read_file_bytes,
 )
+from backend.copilot.tool_image import truncate_mcp_result
 from backend.copilot.tools import (
     DEFERRED_TOOL_NAMES,
     TOOL_REGISTRY,
@@ -361,7 +363,8 @@ async def _execute_tool_sync(
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
     return {
-        "content": [{"type": "text", "text": text}],
+        "content": [{"type": "text", "text": text}]
+        + ([result.image.mcp()] if result.image is not None else []),
         "isError": not result.success,
     }
 
@@ -862,7 +865,10 @@ def _make_truncating_wrapper(
                 return released
 
         result = await run(args)
-        truncated = truncate(result, _MCP_MAX_CHARS)
+        truncated = truncate_mcp_result(result, _MCP_MAX_CHARS)
+        remember_cut_google_output(
+            _text_from_mcp_result(result), _text_from_mcp_result(truncated)
+        )
         # Registry tools were judged inside ``BaseTool.execute`` on this cap.
         if session is not None and name not in TOOL_REGISTRY:
             truncated = await screen_non_registry_read(
@@ -1132,6 +1138,17 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 #   sdk_cwd is a per-session /tmp dir that is never restored.  Leaving them
 #   exposed lets the model promise unattended monitoring that silently never
 #   fires — `schedule_followup` is the primitive that actually persists.
+# ListAgents/SendMessage: reach other CLI sessions in the same pod.
+# NotebookEdit: writes files outside the MCP Write/Edit tools.
+# Skill: Claude Code's own skills; copilot skills go through read_skill.
+# Workflow: spawns multi-agent runs with no copilot budget or UI.  With
+#   slash commands disabled its description also grows from ~5K to ~20K
+#   chars on every request.
+# EnterWorktree/ExitWorktree/ReportFindings: Claude Code dev-loop tools.
+# TaskStop: unused here, and permissions cannot name it, so filtered sessions
+#   would drop it anyway.
+# A built-in in neither this list nor _SDK_BUILTIN_* is denied by
+# security_hooks and fails cli_builtin_tools_test.py.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
@@ -1146,6 +1163,13 @@ SDK_DISALLOWED_TOOLS = [
     "CronDelete",
     "ListAgents",
     "SendMessage",
+    "NotebookEdit",
+    "Skill",
+    "Workflow",
+    "EnterWorktree",
+    "ExitWorktree",
+    "ReportFindings",
+    "TaskStop",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
@@ -1159,33 +1183,9 @@ BLOCKED_TOOLS = {
     "command",
 }
 
-# Tools allowed only when their path argument stays within the SDK workspace.
-# The SDK uses these to handle oversized tool results (writes to tool-results/
-# files, then reads them back) and for workspace file operations.
-# Read is included because the SDK reads back oversized tool results from
-# tool-results/ and tool-outputs/ directories.  It is also in
-# SDK_DISALLOWED_TOOLS (which controls the SDK's disallowed_tools config),
-# but the security hooks check workspace scope BEFORE the blocked list
-# so that these internal reads are permitted.
-# Write and Edit are NOT included: they are fully replaced by MCP equivalents.
-WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep", "Read"}
-
-# Dangerous patterns in tool inputs
-DANGEROUS_PATTERNS = [
-    r"sudo",
-    r"rm\s+-rf",
-    r"dd\s+if=",
-    r"/etc/passwd",
-    r"/etc/shadow",
-    r"chmod\s+777",
-    r"curl\s+.*\|.*sh",
-    r"wget\s+.*\|.*sh",
-    r"eval\s*\(",
-    r"exec\s*\(",
-    r"__import__",
-    r"os\.system",
-    r"subprocess",
-]
+# Allowed Glob/Grep calls must also stay within the session's local paths.
+# Native Read/Write/Edit stay blocked; MCP handlers provide file access.
+WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep"}
 
 # Platform-tool names whose MCP wrappers must NOT be exposed to SDK mode.
 # Baseline ships an MCP ``TodoWrite`` for model-flexibility parity; SDK mode

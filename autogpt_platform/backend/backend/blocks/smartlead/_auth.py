@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import SecretStr
 
-from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
+from backend.data.model import APIKeyCredentials, CredentialsMetaInput
 from backend.integrations.providers import ProviderName
 
 SmartLeadCredentials = APIKeyCredentials
@@ -24,12 +24,3 @@ TEST_CREDENTIALS_INPUT = {
     "type": TEST_CREDENTIALS.type,
     "title": TEST_CREDENTIALS.title,
 }
-
-
-def SmartLeadCredentialsField() -> SmartLeadCredentialsInput:
-    """
-    Creates a SmartLead credentials input on a block.
-    """
-    return CredentialsField(
-        description="The SmartLead integration can be used with an API Key.",
-    )

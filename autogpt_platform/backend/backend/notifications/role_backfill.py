@@ -25,7 +25,9 @@ import logging
 from collections import Counter
 from collections.abc import Callable
 from datetime import datetime
+from functools import partial
 
+from posthog import Posthog
 from pydantic import BaseModel
 
 from backend.data.notifications import SubscriberField
@@ -44,7 +46,7 @@ from backend.notifications.mailerlite import (
 )
 from backend.notifications.mailerlite_backfill import BatchAnswer, _refusal
 from backend.notifications.mailerlite_field_backfill import Current
-from backend.util.posthog_client import get_posthog_client
+from backend.util.posthog_client import send_each
 from backend.util.product_analytics import set_onboarding_role
 
 logger = logging.getLogger(__name__)
@@ -52,8 +54,6 @@ logger = logging.getLogger(__name__)
 # One person every two seconds, a read and a write each: half MailerLite's
 # 120 calls a minute, so the live consumer keeps the rest.
 WRITE_INTERVAL_SECONDS = 2.0
-# The PostHog client drops events once its in-memory queue is full.
-POSTHOG_FLUSH_EVERY = 500
 
 
 class RoleRecord(BaseModel):
@@ -166,18 +166,22 @@ def _plan_mailerlite(
         result.mailerlite.append(assignment)
 
 
-async def send_to_posthog(assignments: list[RoleAssignment]) -> None:
-    """A `$set_once` per person, flushed as it goes."""
-    client = get_posthog_client()
-    if client is None:
-        raise RuntimeError("PostHog is not configured")
-    for index, assignment in enumerate(assignments, start=1):
-        set_onboarding_role(
-            user_id=assignment.user_id, role=assignment.role, keep_existing=True
-        )
-        if index % POSTHOG_FLUSH_EVERY == 0:
-            await asyncio.to_thread(client.flush)
-    await asyncio.to_thread(client.flush)
+async def send_to_posthog(assignments: list[RoleAssignment]) -> int:
+    """A `$set_once` per person. Returns how many PostHog didn't take
+    (`posthog_client.send_each`); a rerun sends them again."""
+    return await send_each(
+        (assignment.user_id, partial(_send_role, assignment))
+        for assignment in assignments
+    )
+
+
+def _send_role(assignment: RoleAssignment, client: Posthog) -> bool:
+    return set_onboarding_role(
+        user_id=assignment.user_id,
+        role=assignment.role,
+        keep_existing=True,
+        client=client,
+    )
 
 
 async def apply(

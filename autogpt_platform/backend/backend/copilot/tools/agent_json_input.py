@@ -33,6 +33,7 @@ from backend.copilot.sdk.file_ref import (
     parse_file_ref,
     read_file_bytes,
 )
+from backend.data.workspace_internal import WORKING_FILE_METADATA
 
 from .models import ErrorResponse
 
@@ -101,6 +102,24 @@ async def resolve_agent_json_input(
     return None, None
 
 
+def reads_workspace_file(args: dict[str, Any]) -> bool:
+    """Whether these arguments make the tool read the graph from a workspace file.
+
+    True for an ``agent_json_ref``, and for a string ``agent_json`` that isn't
+    inline JSON, which :func:`resolve_agent_json_input` also resolves as a
+    file reference. External callers need READ_FILES for that.
+    """
+    ref = args.get("agent_json_ref")
+    if isinstance(ref, str) and ref.strip():
+        return True
+    agent_json = args.get("agent_json")
+    return (
+        isinstance(agent_json, str)
+        and bool(agent_json.strip())
+        and _coerce_to_graph(agent_json) is None
+    )
+
+
 async def resolve_agent_json_or_error(
     *,
     agent_json: Any,
@@ -129,7 +148,24 @@ async def resolve_agent_json_or_error(
         return None, ErrorResponse(
             message=missing_message, error=missing_error, session_id=session_id
         )
+    if shape_error := _shape_error(graph):
+        return None, ErrorResponse(
+            message=shape_error, error=invalid_error, session_id=session_id
+        )
     return graph, None
+
+
+def _shape_error(graph: dict[str, Any]) -> str | None:
+    """Why *graph* can't be read as nodes and links, or None.
+
+    Checked before the fixer and validator walk it, which assume objects and
+    would otherwise fail with an internal error.
+    """
+    for key in ("nodes", "links"):
+        items = graph.get(key, [])
+        if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
+            return f"The agent JSON's '{key}' must be a list of objects."
+    return None
 
 
 def _coerce_to_graph(value: Any) -> dict[str, Any] | None:
@@ -160,9 +196,9 @@ async def _resolve_ref(
     uri = _ref_to_uri(ref)
     if uri is None:
         return None, (
-            f"Could not interpret agent graph reference "
+            f"Could not interpret workflow reference "
             f"'{os.path.basename(ref)[:80]}' as a workspace file reference. "
-            "Pass the agent graph inline as agent_json, or a "
+            "Pass the workflow inline as agent_json, or a "
             "'workspace:///agent.json' reference as agent_json_ref."
         )
 
@@ -172,13 +208,13 @@ async def _resolve_ref(
     try:
         data = await read_file_bytes(uri, user_id, session)
     except ValueError:
-        return None, f"Could not read referenced agent graph file '{ref_name}'."
+        return None, f"Could not read referenced workflow file '{ref_name}'."
 
     parsed = _try_parse_json(data.decode("utf-8", errors="replace"))
     if not isinstance(parsed, dict) or not parsed:
         return None, (
-            f"Referenced agent graph file '{ref_name}' did not contain a JSON "
-            "object. Ensure the file holds the full agent graph before "
+            f"Referenced workflow file '{ref_name}' did not contain a JSON "
+            "object. Ensure the file holds the full workflow before "
             "referencing it."
         )
     return parsed, None
@@ -243,7 +279,8 @@ async def write_agent_json_to_workspace(
             content=json.dumps(agent_json, indent=2).encode("utf-8"),
             filename=write_to,
             overwrite=True,
-            metadata={"origin": "agent-created"},
+            # A handoff to the next tool, not something the user asked for.
+            metadata={"origin": "agent-created", **WORKING_FILE_METADATA},
         )
     except Exception as e:
         logger.warning(f"Failed to write agent JSON to {write_to!r}: {e}")

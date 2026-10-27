@@ -33,15 +33,11 @@ function makeWrapper() {
   };
 }
 
-function renderPreparing(args: {
-  onComplete?: () => void;
-  isBrainDumpEnabled?: boolean;
-}) {
+function renderPreparing(args: { onComplete?: () => void }) {
   return renderHook(
     () =>
       usePreparingStep({
         onComplete: args.onComplete ?? vi.fn(),
-        isBrainDumpEnabled: args.isBrainDumpEnabled ?? false,
       }),
     { wrapper: makeWrapper() },
   );
@@ -76,25 +72,21 @@ describe("usePreparingStep — checklist copy", () => {
   it("uses the honest dump copy only when the user actually dumped", () => {
     setIntroPath("A");
 
-    const { result } = renderPreparing({ isBrainDumpEnabled: true });
+    const { result } = renderPreparing({});
 
     expect(result.current.checklist).toEqual(DUMP_CHECKLIST);
   });
 
-  it("falls back to the generic copy on the skip path and with the flag off", () => {
+  it("uses the generic copy on the skip path", () => {
     setIntroPath("B");
-    const skipped = renderPreparing({ isBrainDumpEnabled: true });
+    const skipped = renderPreparing({});
     expect(skipped.result.current.checklist).toEqual(GENERIC_CHECKLIST);
-
-    setIntroPath("A");
-    const flagOff = renderPreparing({ isBrainDumpEnabled: false });
-    expect(flagOff.result.current.checklist).toEqual(GENERIC_CHECKLIST);
   });
 
   it("does not consume the intro path — the copilot home still needs it", () => {
     setIntroPath("A");
 
-    renderPreparing({ isBrainDumpEnabled: true });
+    renderPreparing({});
 
     expect(window.sessionStorage.getItem("autogpt:onboarding-intro-path")).toBe(
       "A",
@@ -165,8 +157,7 @@ describe("usePreparingStep — completion", () => {
     const stale = vi.fn();
     const fresh = vi.fn();
     const { rerender } = renderHook(
-      ({ onComplete }) =>
-        usePreparingStep({ onComplete, isBrainDumpEnabled: false }),
+      ({ onComplete }) => usePreparingStep({ onComplete }),
       { initialProps: { onComplete: stale }, wrapper: makeWrapper() },
     );
 
@@ -194,7 +185,7 @@ describe("usePreparingStep — recommendation gate (dump path)", () => {
   it("completes after the full duration once recommendations are ready", async () => {
     setIntroPath("A");
     const onComplete = vi.fn();
-    renderPreparing({ onComplete, isBrainDumpEnabled: true });
+    renderPreparing({ onComplete });
 
     await advance(START_DELAY_MS);
     await advance(DUMP_TOTAL_MS - 100);
@@ -210,7 +201,6 @@ describe("usePreparingStep — recommendation gate (dump path)", () => {
     const onComplete = vi.fn();
     const { result } = renderPreparing({
       onComplete,
-      isBrainDumpEnabled: true,
     });
 
     await advance(START_DELAY_MS);
@@ -229,7 +219,6 @@ describe("usePreparingStep — recommendation gate (dump path)", () => {
     const onComplete = vi.fn();
     const { result } = renderPreparing({
       onComplete,
-      isBrainDumpEnabled: true,
     });
 
     await advance(START_DELAY_MS);
@@ -253,7 +242,7 @@ describe("usePreparingStep — recommendation gate (dump path)", () => {
     setIntroPath("A");
     mockRecommendations(false);
     const onComplete = vi.fn();
-    renderPreparing({ onComplete, isBrainDumpEnabled: true });
+    renderPreparing({ onComplete });
 
     await advance(START_DELAY_MS);
     await advance(RECOMMENDATIONS_MAX_WAIT_MS + 1_000);
@@ -265,7 +254,7 @@ describe("usePreparingStep — recommendation gate (dump path)", () => {
     setIntroPath("B");
     mockRecommendations(false);
     const onComplete = vi.fn();
-    renderPreparing({ onComplete, isBrainDumpEnabled: true });
+    renderPreparing({ onComplete });
 
     await advance(START_DELAY_MS);
     await advance(GENERIC_TOTAL_MS + 200);

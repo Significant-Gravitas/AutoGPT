@@ -88,6 +88,7 @@ class AgentMailCreateInboxBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -336,6 +337,7 @@ class AgentMailUpdateInboxBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

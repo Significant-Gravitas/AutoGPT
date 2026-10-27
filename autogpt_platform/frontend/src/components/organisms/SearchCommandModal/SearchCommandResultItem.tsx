@@ -1,5 +1,6 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import type { MutableRefObject } from "react";
 import { highlightMatch, type SearchCommandItem } from "./helpers";
@@ -34,67 +35,95 @@ export function SearchCommandResultItem({
       ref={isHighlighted ? highlightedRef : undefined}
       id={`${idPrefix}-${item.id}`}
       type="button"
-      variant="ghost"
+      variant="compact-ghost"
+      size="compact"
       role="option"
       aria-selected={isHighlighted}
       onMouseEnter={onHighlight}
       onClick={onSelect}
       className={cn(
         "relative h-auto w-full justify-start rounded-md px-3 py-2 text-left transition-colors duration-150",
-        isHighlighted ? "bg-zinc-100 hover:bg-zinc-100" : "hover:bg-zinc-50",
+        isHighlighted
+          ? "bg-surface-hover hover:bg-surface-hover"
+          : "hover:bg-surface-muted",
       )}
     >
       <span
         aria-hidden="true"
+        data-slot="search-command-result-item-indicator"
         className={cn(
-          "absolute inset-y-0 left-0 my-auto h-5 w-[3px] rounded-full bg-zinc-900 transition-opacity duration-150",
+          "absolute inset-y-0 left-0 my-auto h-5 w-[3px] rounded-full bg-action-hover transition-opacity duration-150",
           isHighlighted ? "opacity-100" : "opacity-0",
         )}
       />
-      <div className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5">
+      <div
+        data-slot="search-command-result-item-body"
+        className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5"
+      >
         {Icon ? (
-          <span aria-hidden className="contents">
+          <span
+            aria-hidden
+            data-slot="search-command-result-item-icon"
+            className="contents"
+          >
             <Icon
               className={cn(
                 "h-4 w-4 shrink-0 transition-colors duration-150",
-                isHighlighted ? "text-zinc-900" : "text-zinc-500",
+                isHighlighted
+                  ? "text-foreground-strong"
+                  : "text-foreground-tertiary",
               )}
             />
           </span>
         ) : null}
-        <div className="min-w-0 flex-1">
-          <div
+        <div
+          data-slot="search-command-result-item-content"
+          className="min-w-0 flex-1"
+        >
+          <Text
+            variant="body-tight"
+            as="div"
+            data-slot="search-command-result-item-title"
             className={cn(
-              "truncate text-sm font-normal transition-colors duration-150",
-              isHighlighted ? "text-zinc-950" : "text-zinc-800",
+              "truncate transition-colors duration-150",
+              isHighlighted ? "text-foreground" : "text-foreground-emphasis",
             )}
           >
             {highlightMatch(item.title, query).map((part, partIndex) => (
               <span
                 key={`${part.text}-${partIndex}`}
+                data-slot="search-command-result-item-title-segment"
                 className={part.isMatch ? "font-semibold" : undefined}
               >
                 {part.text}
               </span>
             ))}
-          </div>
+          </Text>
           {item.subtitle ? (
-            <div className="mt-0.5 truncate text-xs text-zinc-500">
+            <Text
+              variant="small-medium-tight"
+              as="div"
+              tone="muted"
+              data-slot="search-command-result-item-subtitle"
+              className="mt-0.5 truncate"
+            >
               {item.subtitle}
-            </div>
+            </Text>
           ) : null}
         </div>
         {isLoading ? (
           <LoadingSpinner
             size="small"
             aria-label="Opening"
-            className="shrink-0 text-zinc-500"
+            className="shrink-0 text-foreground-tertiary"
           />
         ) : (
           <span
             aria-hidden="true"
+            data-slot="search-command-result-item-key"
             className={cn(
-              "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white px-1 font-sans text-[11px] text-zinc-600 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)] transition-opacity duration-150",
+              // TODO(tokens): no shadow token for the key-cap shadow.
+              "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-border-base bg-surface px-1 font-sans text-caption-sm leading-inherit text-foreground-secondary shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)] transition-opacity duration-150",
               isHighlighted ? "opacity-100" : "opacity-0",
             )}
           >

@@ -8,7 +8,6 @@ import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endp
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
-import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -88,12 +87,6 @@ export function ScheduleActionsDropdown({
       });
 
       const newRunID = okData(res)?.id;
-      if (newRunID) {
-        trackAgentRunGoal(
-          { id: schedule.graph_id, name: agent.name },
-          "library",
-        );
-      }
 
       await queryClient.invalidateQueries({
         queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
@@ -119,11 +112,16 @@ export function ScheduleActionsDropdown({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
+            // TODO(tokens): no exact role for hover:bg-gray-100 (#F3F4F6)
             className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <Icon icon={MoreVerticalIcon} className="h-5 w-5 text-gray-400" />
+            <Icon
+              // TODO(tokens): no exact role for text-gray-400 (#9CA3AF)
+              icon={MoreVerticalIcon}
+              className="h-5 w-5 text-gray-400"
+            />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
