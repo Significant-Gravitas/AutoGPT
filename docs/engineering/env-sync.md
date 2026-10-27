@@ -22,7 +22,15 @@ the target. Use repeated `--key KEY_NAME` to select another explicit allowlist.
 Use `--windows-host HOST` for additional Windows SSH aliases (`desktop` is one
 by default).
 
-Applying creates a private backup and replaces the target atomically, keeping
-unrelated settings. Tracked files, symlinks and template env files are
-rejected. Only local targets are writable; remote environments stay unchanged.
-Choose a canonical source before enabling any scheduled sync.
+Applying checks the target again under a lock just before writing, so a value
+another run added since the report still needs `--replace`. It then copies the
+existing target to `~/.local/state/autogpt-env-sync/`
+(`$XDG_STATE_HOME/autogpt-env-sync/` when that is set), a directory only you
+can read and outside any repository, so `git add` cannot stage the copy. It
+prints the copy's path. The script never deletes these copies, and each holds
+every setting the target had, so remove old ones you no longer need. Finally it
+replaces the target atomically, keeping unrelated settings.
+
+Tracked files, symlinks and template env files are rejected. Only local
+targets are writable; remote environments stay unchanged. Choose a canonical
+source before enabling any scheduled sync.

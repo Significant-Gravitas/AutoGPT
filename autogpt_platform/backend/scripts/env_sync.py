@@ -35,11 +35,7 @@ def main() -> None:
     try:
         sources = [read_source(source, args.windows_host) for source in args.source]
         values = select_values(sources, keys)
-        target = dotenv_values(args.target, interpolate=False)
-        changes = {
-            key: value for key, value in values.items() if target.get(key) != value
-        }
-        conflicts = [key for key in changes if target.get(key)]
+        changes = changed_values(values, dotenv_values(args.target, interpolate=False))
         for key in keys:
             status = "missing at source"
             if key in values:
@@ -48,13 +44,8 @@ def main() -> None:
         if not args.apply:
             print("Dry run; no files changed.")
             return
-        if conflicts and not args.replace:
-            raise ValueError(
-                "Use --replace to replace target keys: " + ", ".join(conflicts)
-            )
-        if changes:
-            apply_updates(args.target, changes)
-        print(f"Applied {len(changes)} selected keys.")
+        applied = apply_updates(args.target, values, replace=args.replace)
+        print(f"Applied {applied} selected keys.")
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         # External process output can contain env values; never print it.
         message = str(error) if type(error) is ValueError else type(error).__name__
@@ -63,7 +54,7 @@ def main() -> None:
 
 def read_source(source: str, windows_hosts: list[str]) -> dict[str, str | None]:
     if source.startswith("local:"):
-        text = Path(source[6:]).read_text()
+        text = Path(source[6:]).read_text(encoding="utf-8")
     else:
         host, separator, path = source.partition(":")
         if not separator or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@-]*", host):
@@ -76,7 +67,7 @@ def read_source(source: str, windows_hosts: list[str]) -> dict[str, str | None]:
         result = subprocess.run(
             ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", host, command],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             timeout=30,
             check=True,
         )
@@ -112,7 +103,19 @@ def select_values(
     return selected
 
 
-def apply_updates(target: Path, updates: dict[str, str]) -> None:
+def changed_values(
+    values: dict[str, str], target: dict[str, str | None]
+) -> dict[str, str]:
+    return {key: value for key, value in values.items() if target.get(key) != value}
+
+
+def apply_updates(target: Path, values: dict[str, str], replace: bool = False) -> int:
+    """Write the selected values that differ; return how many were written.
+
+    What changes, and whether that replaces a value, is decided from the
+    target as read under its lock, so a value another run wrote after this
+    run's report still needs ``replace``.
+    """
     if target.is_symlink() or target.name.endswith(
         (".default", ".example", ".template")
     ):
@@ -128,32 +131,63 @@ def apply_updates(target: Path, updates: dict[str, str]) -> None:
     lock = target.with_name(target.name + ".sync-lock")
     lock_fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        _write_updates(target, updates)
+        return _write_updates(target, values, replace)
     finally:
         os.close(lock_fd)
         lock.unlink()
 
 
-def _write_updates(target: Path, updates: dict[str, str]) -> None:
+def _write_updates(target: Path, values: dict[str, str], replace: bool) -> int:
     original = target.read_bytes() if target.exists() else b""
+    current = dotenv_values(
+        stream=io.StringIO(original.decode("utf-8")), interpolate=False
+    )
+    changes = changed_values(values, current)
+    conflicts = [key for key in changes if current.get(key)]
+    if conflicts and not replace:
+        raise ValueError(
+            "Use --replace to replace target keys: " + ", ".join(conflicts)
+        )
+    if not changes:
+        return 0
     fd, filename = tempfile.mkstemp(prefix=".env-sync-", dir=target.parent)
     temporary = Path(filename)
     try:
         with os.fdopen(fd, "wb") as stream:
             stream.write(original)
-        for key, value in updates.items():
+        for key, value in changes.items():
             set_key(str(temporary), key, value, quote_mode="always")
         if (target.read_bytes() if target.exists() else b"") != original:
             raise ValueError("Target changed during synchronization; retry.")
         if target.exists():
-            backup = target.with_name(f"{target.name}.backup-{time.time_ns()}")
-            backup_fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(backup_fd, "wb") as stream:
-                stream.write(original)
+            print(f"Saved the previous {target.name} to {back_up(target, original)}")
         os.chmod(temporary, 0o600)
         os.replace(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
+    return len(changes)
+
+
+def back_up(target: Path, original: bytes) -> Path:
+    """Copy the target into a private directory outside any repository.
+
+    The copy holds every secret in the target, so beside the target ``git add``
+    could stage it.
+    """
+    directory = backup_directory()
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(directory, 0o700)
+    name = f"{target.parent.name}-{target.name.lstrip('.')}-{time.time_ns()}"
+    backup_fd = os.open(directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(backup_fd, "wb") as stream:
+        stream.write(original)
+    return directory / name
+
+
+def backup_directory() -> Path:
+    state = os.environ.get("XDG_STATE_HOME", "")
+    root = Path(state) if os.path.isabs(state) else Path.home() / ".local" / "state"
+    return root / "autogpt-env-sync"
 
 
 if __name__ == "__main__":
