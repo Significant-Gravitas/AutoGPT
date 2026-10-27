@@ -717,6 +717,10 @@ async def device_auth_initiate(
     scopes: Annotated[
         str, Query(title="Comma-separated list of authorization scopes")
     ] = "",
+    credential_id: Annotated[
+        str | None,
+        Query(title="ID of existing credential to upgrade scopes for"),
+    ] = None,
 ) -> DeviceAuthInitiateResponse:
     handler = _get_device_auth_handler(provider)
 
@@ -731,6 +735,10 @@ async def device_auth_initiate(
         )
 
     requested_scopes = scopes.split(",") if scopes else []
+    if credential_id:
+        requested_scopes = await _prepare_scope_upgrade(
+            user_id, provider, credential_id, requested_scopes
+        )
     requested_scopes = handler.handle_default_scopes(requested_scopes)
 
     try:
@@ -762,6 +770,9 @@ async def device_auth_initiate(
                 "interval": initiation.interval,
                 "user_code": initiation.user_code,
             },
+            # The poll then upgrades this connection, and refuses to put
+            # another account in its place.
+            credential_id=credential_id,
         )
     except Exception as e:
         # The upstream device code is already issued at this point; it simply

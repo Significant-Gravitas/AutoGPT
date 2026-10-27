@@ -25,6 +25,7 @@ export function useMicrosoftConnection({ scopes }: Args) {
   const credentials = saved.data?.status === 200 ? saved.data.data : [];
   const [selectedID, setSelectedID] = useState("");
   const [recovery, setRecovery] = useState<MicrosoftSetupReason | null>(null);
+  const [adding, setAdding] = useState(false);
   const credential =
     credentials.find((item) => item.id === selectedID) ?? credentials[0];
   const access = useMicrosoftAccessCheck(credential?.id);
@@ -43,6 +44,7 @@ export function useMicrosoftConnection({ scopes }: Args) {
 
   async function handleConnected(value?: CredentialsMetaResponse) {
     setRecovery(null);
+    setAdding(false);
     await saved.refetch();
     if (!value) return;
     setSelectedID(value.id);
@@ -55,6 +57,18 @@ export function useMicrosoftConnection({ scopes }: Args) {
   function signIn() {
     setRecovery(null);
     void oauth.connect();
+  }
+
+  // Without browser sign-in, another account connects with a code from the
+  // same view as the first one.
+  function addAccount() {
+    setRecovery(null);
+    setAdding(true);
+  }
+
+  function cancelAddAccount() {
+    setRecovery(null);
+    setAdding(false);
   }
 
   function allow(requested: string[]) {
@@ -77,8 +91,11 @@ export function useMicrosoftConnection({ scopes }: Args) {
     isLoading: saved.isLoading,
     pending: pendingScopes(check),
     recovery,
+    adding,
     oauth,
     signIn,
+    addAccount,
+    cancelAddAccount,
     allow,
     recheck,
     select: setSelectedID,

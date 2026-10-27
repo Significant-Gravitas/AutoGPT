@@ -72,13 +72,34 @@ const WORK_IQ = "api://workiq.svc.cloud.microsoft/WorkIQAgent.Ask";
 
 let credentials: unknown[] = [];
 let loginRequests: URL[] = [];
+let codeRequests: URL[] = [];
+let codeRefusal: unknown = null;
 let workCheckOverride: unknown = null;
 
 beforeEach(() => {
   credentials = [];
   loginRequests = [];
+  codeRequests = [];
+  codeRefusal = null;
   workCheckOverride = null;
   server.use(
+    http.post(
+      "*/api/integrations/:provider/device-auth/initiate",
+      ({ request }) => {
+        codeRequests.push(new URL(request.url));
+        if (codeRefusal) {
+          return HttpResponse.json({ detail: codeRefusal }, { status: 400 });
+        }
+        return HttpResponse.json({
+          state_token: "state-token",
+          user_code: "CODE-1234",
+          verification_url: "https://microsoft.com/devicelogin",
+          verification_url_complete: null,
+          expires_in: 900,
+          interval: 60,
+        });
+      },
+    ),
     http.get("*/api/integrations/:provider/credentials", ({ params }) =>
       HttpResponse.json(params.provider === "microsoft" ? credentials : []),
     ),
@@ -287,12 +308,77 @@ describe("Microsoft connection", () => {
       <MicrosoftConnectionPanel browserAvailable={false} onDone={vi.fn()} />,
     );
 
-    expect(
+    fireEvent.click(
       await screen.findByRole("button", { name: "Connect Work IQ" }),
-    ).toBeTruthy();
+    );
     expect(
       screen.queryByRole("button", { name: "Connect Microsoft" }),
     ).toBeNull();
+    await waitFor(() => expect(codeRequests).toHaveLength(1));
+    expect(codeRequests[0].searchParams.get("scopes")).toBe(WORK_IQ);
+    expect(codeRequests[0].searchParams.get("credential_id")).toBe("work-id");
+  });
+
+  it("asks for more permissions on the same account with a sign-in code", async () => {
+    credentials = [work];
+    render(
+      <MicrosoftConnectionPanel browserAvailable={false} onDone={vi.fn()} />,
+    );
+
+    await screen.findByText("Needs your permission");
+    fireEvent.click(screen.getByRole("button", { name: "Connect Microsoft" }));
+
+    await waitFor(() => expect(codeRequests).toHaveLength(1));
+    expect(codeRequests[0].searchParams.get("scopes")).toBe("Chat.ReadWrite");
+    // Whoever signs in on the code's page must be this account.
+    expect(codeRequests[0].searchParams.get("credential_id")).toBe("work-id");
+  });
+
+  it("connects another account with a sign-in code", async () => {
+    credentials = [personal];
+    render(
+      <MicrosoftConnectionPanel browserAvailable={false} onDone={vi.fn()} />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect another account" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect Microsoft" }),
+    );
+
+    await waitFor(() => expect(codeRequests).toHaveLength(1));
+    expect(codeRequests[0].searchParams.get("credential_id")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+    expect(
+      await screen.findByRole("button", { name: "Connect another account" }),
+    ).toBeTruthy();
+  });
+
+  it("explains why a sign-in code was refused", async () => {
+    codeRefusal = {
+      reason: "admin_consent_required",
+      message: "Your Microsoft administrator needs to approve access.",
+      error_code: "AADSTS90094",
+    };
+    render(
+      <MicrosoftConnectionPanel browserAvailable={false} onDone={vi.fn()} />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect Microsoft" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Your Microsoft administrator needs to approve access.",
+      ),
+    ).toBeTruthy();
+    // Trying again is a new code; this server can't sign in in the browser.
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Connect Microsoft" }),
+    ).toBeTruthy();
   });
 
   it("lets an admin approve everything for the organization", async () => {

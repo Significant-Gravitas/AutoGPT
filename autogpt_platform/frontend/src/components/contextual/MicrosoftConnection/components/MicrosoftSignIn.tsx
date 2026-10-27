@@ -16,6 +16,7 @@ interface Props {
   recovery: MicrosoftSetupReason | null;
   onSignIn: () => void;
   onDeviceConnected: (credential?: CredentialsMetaResponse) => void;
+  onDeviceError: (error: unknown) => void;
   onSkip?: () => void;
 }
 
@@ -27,6 +28,7 @@ export function MicrosoftSignIn({
   recovery,
   onSignIn,
   onDeviceConnected,
+  onDeviceError,
   onSkip,
 }: Props) {
   return (
@@ -51,9 +53,16 @@ export function MicrosoftSignIn({
           providerName="Microsoft"
           scopes={scopes}
           onSuccess={onDeviceConnected}
+          onError={onDeviceError}
         />
       )}
-      {recovery && <MicrosoftAdminSetup reason={recovery} onRetry={onSignIn} />}
+      {recovery && (
+        <MicrosoftAdminSetup
+          reason={recovery}
+          // A sign-in code is tried again from its own button.
+          onRetry={browserAvailable ? onSignIn : undefined}
+        />
+      )}
       {onSkip && (
         <Button variant="ghost" onClick={onSkip}>
           Not now

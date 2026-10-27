@@ -20,6 +20,8 @@ interface Props {
   providerName: string;
   onSuccess: (credentials?: CredentialsMetaResponse) => void;
   scopes?: string[];
+  /** Adds the scopes to this connection instead of making a new one. */
+  credentialID?: string;
   onError?: (error: unknown) => void;
   onTrouble?: () => void;
 }
@@ -29,11 +31,18 @@ export function DeviceAuthConnectButton({
   providerName,
   onSuccess,
   scopes,
+  credentialID,
   onError,
   onTrouble,
 }: Props) {
   const { connect, cancel, phase, userCode, verificationUrl } =
-    useDeviceAuthConnect({ provider, onSuccess, scopes, onError });
+    useDeviceAuthConnect({
+      provider,
+      onSuccess,
+      scopes,
+      credentialID,
+      onError,
+    });
 
   // `awaiting_user` spans the initiate round-trip, when there is no code and
   // no URL yet. Rendering the code panel then shows an empty box above a link

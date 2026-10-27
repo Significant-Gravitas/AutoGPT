@@ -34,7 +34,7 @@ export function MicrosoftConnectionPanel({
   const { credential, check } = connection;
   const workIQ = workIQToAllow(check);
 
-  if (!credential) {
+  if (!credential || connection.adding) {
     return (
       <MicrosoftSignIn
         browserAvailable={browserAvailable}
@@ -44,7 +44,8 @@ export function MicrosoftConnectionPanel({
         recovery={connection.recovery}
         onSignIn={connection.signIn}
         onDeviceConnected={connection.handleConnected}
-        onSkip={onSkip}
+        onDeviceError={connection.handleError}
+        onSkip={credential ? connection.cancelAddAccount : onSkip}
       />
     );
   }
@@ -90,7 +91,9 @@ export function MicrosoftConnectionPanel({
             provider={MICROSOFT_PROVIDER}
             providerName="Microsoft"
             scopes={connection.pending}
+            credentialID={credential.id}
             onSuccess={connection.handleConnected}
+            onError={connection.handleError}
           />
         ))}
       {!browserAvailable && workIQ && (
@@ -98,7 +101,9 @@ export function MicrosoftConnectionPanel({
           provider={MICROSOFT_PROVIDER}
           providerName="Work IQ"
           scopes={workIQ.scopes}
+          credentialID={credential.id}
           onSuccess={connection.handleConnected}
+          onError={connection.handleError}
         />
       )}
       {check?.admin_consent_url && (
@@ -139,11 +144,13 @@ export function MicrosoftConnectionPanel({
         >
           Check again
         </Button>
-        {browserAvailable && (
-          <Button variant="ghost" size="small" onClick={connection.signIn}>
-            Connect another account
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="small"
+          onClick={browserAvailable ? connection.signIn : connection.addAccount}
+        >
+          Connect another account
+        </Button>
         <Button
           variant="primary"
           size="small"

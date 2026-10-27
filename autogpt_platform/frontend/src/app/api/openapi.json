@@ -10355,6 +10355,15 @@
               "title": "Comma-separated list of authorization scopes",
               "default": ""
             }
+          },
+          {
+            "name": "credential_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "ID of existing credential to upgrade scopes for"
+            }
           }
         ],
         "responses": {
