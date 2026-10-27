@@ -96,7 +96,7 @@ class HireExpertTool(BaseTool):
                 },
                 "handoff_title": {
                     "type": "string",
-                    "description": "That task in a few words, for the button.",
+                    "description": "That task in a few words, for the card.",
                 },
                 "handoff_task": {
                     "type": "string",
@@ -196,7 +196,7 @@ def _preview(template: Expert, name: str) -> ExpertChangePreview:
 
 async def _park(proposal: ExpertChangeProposal) -> tuple[str, str | None]:
     """Park *proposal* under a fresh id and, when it carries a task, its
-    "hire and hand off" twin under a second; returns both ids."""
+    "hire and start" twin under a second; returns both ids."""
     redis = await get_redis_async()
     confirmation_id = str(uuid.uuid4())
     if proposal.handoff is None:
@@ -231,12 +231,11 @@ def _proposed_message(with_handoff: bool) -> str:
         )
     return (
         "Nothing hired yet. The user is looking at this expert on a card "
-        "with three buttons: hire and hand off the task, hire only, or "
-        "decline — do not describe them in text or ask which. Reply with one "
-        "short line at most and wait. Their answer names one id: call "
-        "tool:confirm_expert_change with exactly that one, "
-        "handoff_confirmation_id to hire and start the task, confirmation_id "
-        "to hire only."
+        "with two buttons: hire and start the task, or not now — do not "
+        "describe them in text. Reply with one short line at most and wait. "
+        "If they approve, call tool:confirm_expert_change with "
+        "handoff_confirmation_id. Use confirmation_id only if they ask to "
+        "hire without starting the task."
     )
 
 

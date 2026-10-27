@@ -17,7 +17,8 @@ The hire stands whatever happens to the task, and what is reported is only
 what is known: started, queued for a task slot, refused (no retry: the
 refusal says why), or, when the send raised, whether it provably never left.
 ``TurnNotDispatched`` means nothing reached the queue: ``run_delegated_turn``
-has removed the empty thread and a retry is safe. Any other error, a publish
+has removed the empty thread and a retry is safe, through one path only: the
+card's Try again (``handoff.retry``), never Otto re-sending it as well. Any other error, a publish
 that raised included, may have delivered the task, so it is reported
 unconfirmed with its thread and never sent a second time.
 """
@@ -142,7 +143,7 @@ def _report(
     expert = applied.expert
     link = _sub_session_link(thread)
     if status == "failed":
-        message = _failed_message(expert.name, expert.id, task, reason, retry)
+        message = _failed_message(expert.name, task, reason, retry)
     else:
         message = _sent_message(status, expert.name, task, thread or "", link)
     return applied.model_copy(
@@ -184,15 +185,15 @@ def _sent_message(
     return (
         f"{name} is hired and {state}. Tell the user in one short line that "
         f"it is with {name} and where to follow along. Don't ask whether to hand "
-        "it over: they chose that on the card. Their result comes back here; "
-        f"check it with tool:get_sub_session_result (sub_session_id: {thread}) "
-        "when you need it. Their workflows and skills finish installing in the "
-        "background."
+        "it over: they chose that on the card. Nothing sends their result back "
+        "to this chat: read it with tool:get_sub_session_result "
+        f"(sub_session_id: {thread}) when you need it. Their workflows and "
+        "skills finish installing in the background."
     )
 
 
 def _failed_message(
-    name: str, expert_id: str, task: ExpertHandoffTask, reason: str, retry: bool
+    name: str, task: ExpertHandoffTask, reason: str, retry: bool
 ) -> str:
     lead = f"{name} is hired and on the team, but {task.title} did not reach them: "
     if not retry:
@@ -200,8 +201,10 @@ def _failed_message(
             f"{lead}{reason} Tell the user why in one short line, and don't ask "
             "them again whether to hand it over."
         )
+    # One retry path: the card's Try again. Otto re-sending it too could
+    # start the task twice.
     return (
-        f"{lead}{reason} The user already approved handing it over on the card, "
-        f"so start it with delegate_to_expert (expert_id: {expert_id}) and the "
-        "same task instead of asking them again."
+        f"{lead}{reason} Nothing reached them, so it can be sent again: tell "
+        "the user in one short line that it didn't start and that Try again on "
+        "the card sends it. Don't hand it over yourself, so it can't start twice."
     )

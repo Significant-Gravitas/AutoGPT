@@ -85,7 +85,7 @@ export function handoffStateOf(
   return outcome.status === "queued" ? "waiting" : "working";
 }
 
-/** Subject of the decision line for "hire and hand off". It reads as one
+/** Subject of the decision line for "hire and start". It reads as one
  *  phrase after the verb, so the gate's regex and the decision note both
  *  keep working: "hire James to take on the Printify order pipeline". */
 export function handoffSubject(name: string, task: HandoffTask): string {

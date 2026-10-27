@@ -112,7 +112,7 @@ interface Proposal {
   kind: ExpertKind | "soul" | null;
   name: string;
   confirmationId: string;
-  /** The "hire and hand off" choice, when the hire is for a task. */
+  /** The "hire and start" choice, when the hire is for a task. */
   handoff: { confirmationId: string; subject: string; title: string } | null;
 }
 

@@ -2,11 +2,13 @@
 off on one approval (SECRT-3138).
 
 The principle under test, end to end through the real tools: ``hire_expert``
-with a task offers two one-time ids, "hire and hand off" and "hire only";
-confirming the first hires exactly the previewed template and starts the task
-in a thread run by the new expert, and says where; confirming the second only
-hires. Either one burns the other, so the user's single answer can never hire
-twice. Only the queue, the session store and the roster are faked.
+with a task parks two one-time ids, "hire and start" (what the card's Hire
+and start sends) and the plain hire (for a user who asks in chat to hire
+without starting the task); confirming the first hires exactly the previewed
+template and starts the task in a thread run by the new expert, and says
+where; confirming the second only hires. Either one burns the other, so the
+user's single answer can never hire twice. Only the queue, the session store
+and the roster are faked.
 """
 
 import json
@@ -187,7 +189,7 @@ async def _propose_with_task(session) -> ExpertChangeProposedResponse:
 
 class TestHireAndHandOffInOneApproval:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_the_card_offers_hire_and_hand_off_beside_hire_only(self):
+    async def test_a_hire_for_a_task_parks_the_hand_off_beside_the_plain_hire(self):
         with _env() as env:
             preview = await _propose_with_task(make_session(_USER))
         assert preview.handoff is not None
@@ -197,6 +199,22 @@ class TestHireAndHandOffInOneApproval:
         assert preview.handoff_confirmation_id != preview.confirmation_id
         env.db.hire_expert.assert_not_called()
         env.turn.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_otto_is_told_the_card_has_two_buttons(self):
+        """The card asks Hire and start or Not now. Telling Otto about a
+        Hire only button it doesn't have could make him confirm the plain id
+        on a free-text yes, and the task would never start (Sentry, #16101)."""
+        with _env():
+            preview = await _propose_with_task(make_session(_USER))
+        message = preview.message.lower()
+        assert "two buttons: hire and start the task, or not now" in message
+        assert "hire only" not in message
+        assert "three buttons" not in message
+        # An approval starts the task; the plain id only on an explicit ask.
+        assert "if they approve, call tool:confirm_expert_change with " in message
+        assert "handoff_confirmation_id" in message
+        assert "only if they ask to hire without starting the task" in message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_approving_the_hand_off_hires_and_starts_the_task(self):
@@ -239,6 +257,13 @@ class TestHireAndHandOffInOneApproval:
         assert resp.handoff.link == "/copilot?sessionId=thread-1"
         assert "/copilot?sessionId=thread-1" in resp.message
         assert "don't ask whether to hand it over" in resp.message.lower()
+        # Nothing pushes a delegated result back to this chat: Otto reads it
+        # with get_sub_session_result, and must not wait for it (Pwuts).
+        assert "comes back here" not in resp.message
+        assert "Nothing sends their result back to this chat" in resp.message
+        assert "tool:get_sub_session_result (sub_session_id: thread-1)" in (
+            resp.message
+        )
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_hire_only_hires_without_handing_anything_off(self):
@@ -412,7 +437,11 @@ class TestHandOffOnlyClaimsWhatHappened:
         assert resp.handoff.status == "failed"
         assert resp.handoff.link is None
         assert resp.handoff.retry is True
-        assert "delegate_to_expert" in resp.message
+        # One retry path, the card's Try again: Otto re-sending it as well
+        # could start the task twice (kcze).
+        assert "Try again on the card sends it" in resp.message
+        assert "Don't hand it over yourself" in resp.message
+        assert "delegate_to_expert" not in resp.message
         env.deleted.assert_awaited_once_with("thread-1", _USER)
 
 

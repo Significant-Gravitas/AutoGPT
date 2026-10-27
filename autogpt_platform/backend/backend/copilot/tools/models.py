@@ -852,8 +852,9 @@ class ExpertChangeProposedResponse(ToolResponseBase):
     preview: ExpertChangePreview
     confirmation_id: str
     # Set when the hire was proposed for a task already in the chat: the card
-    # then offers "hire and hand off" under ``handoff_confirmation_id`` beside
-    # "hire only" under ``confirmation_id``.
+    # then asks Hire and start (``handoff_confirmation_id``) or Not now; the
+    # plain ``confirmation_id`` is for a user who asks in chat to hire without
+    # starting the task.
     handoff: ExpertHandoffTask | None = None
     handoff_confirmation_id: str | None = None
 
