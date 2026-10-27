@@ -159,7 +159,14 @@ async def verify_microsoft_connection(
     credential_id: Annotated[str, Body(embed=True)],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> MicrosoftAccessCheck:
-    credential = await creds_manager.get(user_id, credential_id)
+    try:
+        credential = await creds_manager.get(user_id, credential_id)
+    except MicrosoftAuthError as e:
+        # Getting the connection renews an expired token, which Microsoft may
+        # refuse (a revoked grant, a password change).
+        raise HTTPException(400, detail=e.recovery.model_dump()) from None
+    except ValueError as e:
+        raise HTTPException(400, detail=str(e)) from None
     if (
         not isinstance(credential, OAuth2Credentials)
         or credential.provider not in MICROSOFT_PROVIDERS
@@ -505,8 +512,15 @@ async def _exchange_code_for_credentials(
         if len(credentials.scopes) == 1 and " " in credentials.scopes[0]:
             credentials.scopes = credentials.scopes[0].split(" ")
 
+        # Microsoft consents to Work IQ (api://) together with Graph, but the
+        # token it returns is Graph's and lists only Graph's permissions.
+        expected = (
+            [scope for scope in scopes if not scope.startswith("api://")]
+            if provider in MICROSOFT_PROVIDERS
+            else scopes
+        )
         # Check if the granted scopes are sufficient for the requested scopes
-        if not set(scopes).issubset(set(credentials.scopes)):
+        if not set(expected).issubset(set(credentials.scopes)):
             # Stored and accepted anyway; the frontend then refuses to select it,
             # so this is the only record that the credential is short.
             report_credential_failure(

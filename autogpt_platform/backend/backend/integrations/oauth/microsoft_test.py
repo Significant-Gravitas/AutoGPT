@@ -186,6 +186,26 @@ async def test_sign_in_codes_with_a_deployment_app_send_its_secret(mocker) -> No
 
 
 @pytest.mark.asyncio
+async def test_refresh_keeps_the_account_and_its_title(mocker) -> None:
+    _app(mocker, "deployment-app", "secret")
+    populate = mocker.patch(
+        "backend.integrations.oauth.microsoft_tokens.populate_microsoft_identity",
+        AsyncMock(),
+    )
+    _http(mocker, TOKENS)
+    current = _connection()
+    current.title = "Pat (work account)"
+
+    refreshed = await refresh_microsoft_credentials(current)
+
+    # A refresh's ID token needs no fresh key lookup: the grant already
+    # belongs to this account, and its title may have been edited.
+    populate.assert_not_awaited()
+    assert refreshed.title == "Pat (work account)"
+    assert refreshed.metadata["microsoft_identity"]["account_id"] == "account"
+
+
+@pytest.mark.asyncio
 async def test_refresh_uses_the_app_that_issued_the_grant(mocker) -> None:
     _app(mocker, "deployment-app", "secret")
     client = _http(mocker, {**TOKENS, "id_token": None}, {**TOKENS, "id_token": None})

@@ -186,23 +186,23 @@ async def credentials_from_tokens(
         "scopes": scopes,
     }
     if current:
-        credentials = current.model_copy(update=tokens)
-    else:
-        credentials = OAuth2Credentials(
-            provider=ProviderName.MICROSOFT,
-            title="Microsoft",
-            refresh_token_expires_at=None,
-            metadata={
-                "microsoft_client_id": client_id,
-                "microsoft_auth_flow": auth_flow,
-            },
-            **tokens,
-        )
+        # A refresh renews the grant of the account the connection already
+        # names, and keeps any title the person gave it.
+        return current.model_copy(update=tokens)
     id_token = payload.get("id_token")
-    if isinstance(id_token, str) and id_token:
-        await populate_microsoft_identity(credentials, id_token, client_id)
-    elif current is None:
+    if not isinstance(id_token, str) or not id_token:
         raise ValueError("Microsoft did not return verified account information.")
+    credentials = OAuth2Credentials(
+        provider=ProviderName.MICROSOFT,
+        title="Microsoft",
+        refresh_token_expires_at=None,
+        metadata={
+            "microsoft_client_id": client_id,
+            "microsoft_auth_flow": auth_flow,
+        },
+        **tokens,
+    )
+    await populate_microsoft_identity(credentials, id_token, client_id)
     return credentials
 
 
