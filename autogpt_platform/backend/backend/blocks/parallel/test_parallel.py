@@ -151,7 +151,7 @@ async def test_score_handles_refusal_without_a_zero_score():
         levels=TEST_LEVELS,
     )
     assert outputs["refused"] is True
-    assert "score" not in outputs
+    assert not {"score", "legend", "probabilities", "max_score"} & outputs.keys()
 
 
 @pytest.mark.asyncio
@@ -256,7 +256,10 @@ async def test_make_decision_sends_the_documented_body(monkeypatch):
         "include_excerpts": False,
     }
     # The key travels in x-api-key, which redirects would carry to any host.
-    assert FakeRequests.sent["kwargs"] == {"allow_redirects": False}
+    assert FakeRequests.sent["kwargs"] == {
+        "allow_redirects": False,
+        "timeout": _api.REQUEST_TIMEOUT,
+    }
     assert FakeRequests.sent["init"]["retry_max_attempts"] == 3
 
 

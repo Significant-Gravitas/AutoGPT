@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from aiohttp import ClientTimeout
 from pydantic import ValidationError
 
 from backend.sdk import APIKeyCredentials, BaseModel, Requests
@@ -12,6 +13,10 @@ PARALLEL_API_URL = "https://api.parallel.ai"
 # Parallel's published price: $1 per 1,000 Decisions requests, regardless of
 # how many questions a request carries.
 DECISION_REQUEST_COST_USD = 0.001
+
+# Parallel quotes 200 ms-1 s per request; fail well before aiohttp's 300 s
+# default so a hung call doesn't hold an executor worker.
+REQUEST_TIMEOUT = ClientTimeout(total=60)
 
 
 async def make_decision(
@@ -38,6 +43,7 @@ async def make_decision(
         # Requests re-sends extra_headers on every hop and only strips
         # Authorization/Cookie, so a redirect would leak x-api-key.
         allow_redirects=False,
+        timeout=REQUEST_TIMEOUT,
         json={
             "state": state,
             "questions": questions,
