@@ -1,11 +1,18 @@
+export type ConnectionState = boolean | "needs_expert_grant" | null;
+
 export interface CapabilityListing {
   id: string;
   name: string;
   purpose: string;
   kind: string;
   class?: string;
-  connected?: boolean | null;
+  connected?: ConnectionState;
   eager?: boolean;
+}
+
+export interface ConnectionBadge {
+  label: string;
+  className: string;
 }
 
 export interface CapabilityListOutput {
@@ -81,6 +88,24 @@ export function getAnimationText(part: FindCapabilityToolPart): string {
     default:
       return "Searching capabilities";
   }
+}
+
+export function connectionBadge(
+  item: CapabilityListing,
+): ConnectionBadge | null {
+  if (item.connected === undefined || item.connected === null) return null;
+  if (item.connected === "needs_expert_grant") {
+    // TODO(tokens): no exact role for amber-100 #FEF3C7, amber-800 #92400E
+    return { label: "grant needed", className: "bg-amber-100 text-amber-800" };
+  }
+  if (item.connected) {
+    // TODO(tokens): no exact role for green-100 #B7E2C7, green-800 #0C5A29
+    return { label: "connected", className: "bg-green-100 text-green-800" };
+  }
+  return {
+    label: "sign in",
+    className: "bg-surface-hover text-foreground-tertiary",
+  };
 }
 
 export function kindLabel(item: CapabilityListing): string {

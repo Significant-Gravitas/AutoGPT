@@ -6,12 +6,14 @@ into ``outbound`` — including the casing round-trip (``platform.value`` vs
 """
 
 import asyncio
+import logging
+import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.platform_linking.models import Platform
-from backend.util.service import UnhealthyServiceError
+from backend.util.service import BaseAppService, UnhealthyServiceError
 
 from .app import CoPilotChatBridge
 from .outbound import DeliveryResult
@@ -156,3 +158,124 @@ async def test_run_adapters_exposes_webhook_adapters_outbound_only():
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
+
+
+# ── shutdown ───────────────────────────────────────────────────────────────
+
+
+def test_cleanup_stops_the_adapters_while_the_loop_still_runs(mocker, caplog):
+    """Sentry AUTOGPT-SERVER-AAQ: stopping the loop alone abandoned the adapters
+    task, so the Discord client was never closed and its heartbeat thread then
+    scheduled onto the closed loop."""
+    adapter = _GatewayAdapter()
+    bridge, api, service = _serve(mocker, adapter)
+
+    bridge.cleanup()
+
+    assert adapter.stopped
+    api.close.assert_awaited_once()
+    service.join(timeout=30)
+    assert not service.is_alive()
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+def test_cleanup_stops_adapters_the_loop_has_not_run_yet(mocker):
+    """A SIGTERM can reach cleanup between `run_service` scheduling the adapters
+    and the loop first running them."""
+    adapter = _GatewayAdapter()
+    _stub_backend(mocker, adapter)
+    bridge = CoPilotChatBridge()
+    loop = bridge.shared_event_loop = asyncio.new_event_loop()
+    held, release = threading.Event(), threading.Event()
+
+    def hold_the_loop() -> None:
+        held.set()
+        release.wait(30)
+
+    loop.call_soon(hold_the_loop)
+    loop_thread = threading.Thread(target=bridge._run_shared_event_loop, daemon=True)
+    mocker.patch.object(BaseAppService, "run_service", lambda _: loop_thread.start())
+
+    bridge.run_service()
+    assert held.wait(timeout=30)
+    threading.Timer(0.1, release.set).start()
+    bridge.cleanup()
+
+    assert adapter.stopped
+    loop_thread.join(timeout=30)
+    assert not loop_thread.is_alive()
+
+
+def test_an_adapter_that_hangs_on_stop_cannot_hold_cleanup(mocker):
+    mocker.patch("backend.copilot.bot.app._ADAPTER_STOP_TIMEOUT_SECONDS", 0.2)
+    bridge, _, service = _serve(mocker, _GatewayAdapter(hang_on_stop=True))
+    raised: list[Exception] = []
+
+    def run_cleanup() -> None:
+        try:
+            bridge.cleanup()
+        except Exception as e:
+            raised.append(e)
+
+    cleanup = threading.Thread(target=run_cleanup, daemon=True)
+    cleanup.start()
+    cleanup.join(timeout=30)
+
+    assert not cleanup.is_alive()
+    assert raised == []
+    service.join(timeout=30)
+    assert not service.is_alive()
+
+
+def test_cleanup_before_run_service_goes_straight_to_the_base_cleanup(mocker):
+    base_cleanup = mocker.patch.object(BaseAppService, "cleanup")
+
+    CoPilotChatBridge().cleanup()
+
+    base_cleanup.assert_called_once_with()
+
+
+def _serve(
+    mocker, adapter: "_GatewayAdapter"
+) -> tuple[CoPilotChatBridge, MagicMock, threading.Thread]:
+    """Run the bridge's real `run_service` on a real loop, adapters started."""
+    api = _stub_backend(mocker, adapter)
+    bridge = CoPilotChatBridge()
+    bridge.shared_event_loop = asyncio.new_event_loop()
+    service = threading.Thread(target=bridge.run_service, daemon=True)
+    service.start()
+    assert adapter.started.wait(timeout=30)
+    return bridge, api, service
+
+
+def _stub_backend(mocker, adapter: "_GatewayAdapter") -> MagicMock:
+    api = MagicMock(close=AsyncMock())
+    mocker.patch("backend.copilot.bot.app.BotBackend", return_value=api)
+    mocker.patch(
+        "backend.copilot.bot.app._build_socket_adapters", return_value=[adapter]
+    )
+    mocker.patch("backend.copilot.bot.app.build_webhook_adapters", return_value=[])
+    return api
+
+
+class _GatewayAdapter:
+    """A socket adapter whose `start()` holds its connection until cancelled."""
+
+    platform_name = "discord"
+
+    def __init__(self, hang_on_stop: bool = False):
+        self.started = threading.Event()
+        self.stopped = False
+        self._hang_on_stop = hang_on_stop
+
+    def on_message(self, callback) -> None:
+        pass
+
+    async def start(self) -> None:
+        self.started.set()
+        await asyncio.Event().wait()
+
+    async def stop(self) -> None:
+        if self._hang_on_stop:
+            await asyncio.Event().wait()
+        self.stopped = True

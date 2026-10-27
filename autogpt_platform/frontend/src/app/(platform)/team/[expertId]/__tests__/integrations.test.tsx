@@ -3,6 +3,10 @@ import {
   getListExpertCredentialsMockHandler,
   getListExpertRunsMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getGetHomeDashboardMockHandler,
+  getGetHomeDashboardResponseMock200,
+} from "@/app/api/__generated__/endpoints/home/home.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { ExpertCredentialRef } from "@/app/api/__generated__/models/expertCredentialRef";
@@ -47,17 +51,6 @@ vi.mock("@/components/contextual/DeviceAuth/DeviceAuthConnectButton", () => ({
 vi.mock("framer-motion", async (importActual) => {
   const actual = await importActual<typeof import("framer-motion")>();
   return { ...actual, useReducedMotion: () => true };
-});
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: () => ({ enabled: true, ready: true }),
-  };
 });
 
 vi.mock("next/navigation", () => ({
@@ -106,10 +99,16 @@ const linkedin: ExpertCredentialRef = {
   provider: "linkedin",
   title: "Work LinkedIn",
   type: "oauth2",
+  service: "linkedin",
+  service_name: null,
+  service_icon: "linkedin",
 };
 
 beforeEach(() => {
   server.use(
+    getGetHomeDashboardMockHandler(
+      getGetHomeDashboardResponseMock200({ attention: [] }),
+    ),
     getGetExpertMockHandler(maria),
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     getListExpertRunsMockHandler([]),
@@ -163,13 +162,13 @@ describe("managing an expert's integrations", () => {
     await within(section).findByText("Work LinkedIn");
 
     await userEvent.type(
-      within(section).getByRole("searchbox", { name: "Search integrations" }),
+      within(section).getByRole("textbox", { name: "Search integrations" }),
       "notion",
     );
     expect(within(section).getByText("No integrations match.")).toBeDefined();
 
     await userEvent.clear(
-      within(section).getByRole("searchbox", { name: "Search integrations" }),
+      within(section).getByRole("textbox", { name: "Search integrations" }),
     );
     expect(within(section).getByText("Work LinkedIn")).toBeDefined();
   });
@@ -183,9 +182,7 @@ describe("managing an expert's integrations", () => {
 
     const section = await screen.findByTestId("expert-integrations-section");
     expect(
-      await within(section).findByText(
-        /Nothing connected yet\. Add a tool and Maria can use it/,
-      ),
+      await within(section).findByText(/Connect a tool and Maria can use it/),
     ).toBeDefined();
   });
 
@@ -278,7 +275,7 @@ describe("managing an expert's integrations", () => {
     await openIntegrationsTab();
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
     );
 
     expect(await screen.findByLabelText("Search services")).toBeDefined();
@@ -408,7 +405,7 @@ describe("managing an expert's integrations", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     await userEvent.click(
-      screen.getByRole("button", { name: /Add integration/ }),
+      screen.getAllByRole("button", { name: /Add integration/ })[0],
     );
     dialog = await screen.findByRole("dialog");
     expect(
@@ -451,7 +448,7 @@ describe("managing an expert's integrations", () => {
 
     await openIntegrationsTab();
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
     );
     const dialog = await screen.findByRole("dialog");
     const list = await within(dialog).findByRole("list", { name: "Services" });
@@ -474,24 +471,45 @@ describe("managing an expert's integrations", () => {
     expect(within(list).queryByRole("button", { name: /Slack/ })).toBeNull();
   });
 
-  it("excludes MCP presets from the native-method picker", async () => {
+  it("offers a vendor once and opens its sign-in first, with an API key alternative", async () => {
     server.use(
       getListExpertCredentialsMockHandler([]),
       http.get("*/api/integrations/providers", () =>
         HttpResponse.json([
           {
-            name: "notion",
-            description: "Docs and databases",
+            name: "linear",
+            description: "Issues and projects",
             supported_auth_types: ["api_key"],
+            service: "linear",
+            service_name: null,
+            service_icon: "linear",
           },
           {
-            name: "mcp_airtable",
-            display_name: "Airtable",
+            name: "mcp_linear",
+            display_name: "Linear",
             supported_auth_types: [],
+            service: "linear",
+            service_name: "Linear",
+            service_icon: "linear",
             mcp_server: {
-              server_url: "https://mcp.airtable.com/mcp",
-              documentation_url: "https://support.airtable.com",
-              setup_instructions: "Sign in to Airtable.",
+              server_url: "https://mcp.linear.app/mcp",
+              documentation_url: "https://linear.app/docs",
+              setup_instructions: "Sign in to Linear.",
+              connection_mode: "hosted",
+              auth_methods: ["oauth"],
+            },
+          },
+          {
+            name: "mcp_sentry",
+            display_name: "Sentry",
+            supported_auth_types: [],
+            service: "sentry",
+            service_name: "Sentry",
+            service_icon: "sentry",
+            mcp_server: {
+              server_url: "https://mcp.sentry.dev/mcp",
+              documentation_url: "https://docs.sentry.io",
+              setup_instructions: "Sign in to Sentry.",
               connection_mode: "hosted",
               auth_methods: ["oauth"],
             },
@@ -503,16 +521,117 @@ describe("managing an expert's integrations", () => {
     render(<ExpertDetailPage />);
     await openIntegrationsTab();
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
     );
     const dialog = await screen.findByRole("dialog");
     const list = await within(dialog).findByRole("list", { name: "Services" });
 
-    expect(within(list).queryByRole("button", { name: /Airtable/ })).toBeNull();
-    await userEvent.click(within(list).getByRole("button", { name: /Notion/ }));
+    expect(
+      within(list).getAllByRole("button", { name: /Linear/ }),
+    ).toHaveLength(1);
+    expect(within(list).getByRole("button", { name: /Sentry/ })).toBeDefined();
+    expect(within(dialog).queryByText("MCP")).toBeNull();
+
+    await userEvent.click(within(list).getByRole("button", { name: /Linear/ }));
+    expect(await within(dialog).findByText("Sign in to Linear.")).toBeDefined();
+    expect(
+      within(dialog).getByRole("button", { name: "More ways to connect" }),
+    ).toBeDefined();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "More ways to connect" }),
+    );
     expect(
       await within(dialog).findByRole("button", { name: /API Key/ }),
     ).toBeDefined();
+    expect(
+      within(dialog).getByRole("button", {
+        name: "Use the Linear sign-in instead",
+      }),
+    ).toBeDefined();
+  });
+
+  it("grants a credential connected through the service sign-in", async () => {
+    let granted: string[] = [];
+    server.use(
+      getListExpertCredentialsMockHandler([]),
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          {
+            name: "mcp_sentry",
+            display_name: "Sentry",
+            supported_auth_types: [],
+            service: "sentry",
+            service_name: "Sentry",
+            service_icon: "sentry",
+            mcp_server: {
+              server_url: "https://mcp.sentry.dev/mcp",
+              documentation_url: "https://docs.sentry.io",
+              setup_instructions: "Paste your Sentry token.",
+              connection_mode: "hosted",
+              auth_methods: ["bearer"],
+            },
+          },
+        ]),
+      ),
+      http.post("*/api/mcp/discover-tools", () =>
+        HttpResponse.json({
+          tools: [],
+          server_url: "https://mcp.sentry.dev/mcp",
+        }),
+      ),
+      http.post("*/api/mcp/token", () =>
+        HttpResponse.json({
+          id: "cred-sentry",
+          provider: "mcp",
+          type: "oauth2",
+          title: "MCP: mcp.sentry.dev",
+          host: "https://mcp.sentry.dev/mcp",
+          service: "sentry",
+          service_name: "Sentry",
+          service_icon: "sentry",
+        }),
+      ),
+      http.post(
+        "*/api/experts/expert-maria/credentials",
+        async ({ request }) => {
+          const body = (await request.json()) as { credential_ids: string[] };
+          granted = body.credential_ids;
+          return HttpResponse.json([
+            {
+              credential_id: "cred-sentry",
+              provider: "mcp",
+              title: "MCP: mcp.sentry.dev",
+              type: "oauth2",
+              service: "sentry",
+              service_name: "Sentry",
+              service_icon: "sentry",
+            },
+          ]);
+        },
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+    await openIntegrationsTab();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(
+        await within(dialog).findByRole("list", { name: "Services" }),
+      ).getByRole("button", { name: /Sentry/ }),
+    );
+    await userEvent.type(
+      await within(dialog).findByLabelText("API token"),
+      "sntrys_token_value",
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Save token" }),
+    );
+
+    await waitFor(() => expect(granted).toEqual(["cred-sentry"]));
   });
 
   it("grants only the credential the dialog created", async () => {
@@ -571,7 +690,7 @@ describe("managing an expert's integrations", () => {
     await openIntegrationsTab();
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
     );
     await userEvent.click(await screen.findByText("Notion"));
 
@@ -651,7 +770,7 @@ describe("managing an expert's integrations", () => {
     await within(section).findByText("Work LinkedIn");
 
     await userEvent.click(
-      screen.getByRole("button", { name: /Add integration/ }),
+      screen.getAllByRole("button", { name: /Add integration/ })[0],
     );
     await userEvent.click(await screen.findByText("Notion"));
     expect(await screen.findByText("Connect AutoGPT to Notion")).toBeDefined();
@@ -694,8 +813,9 @@ describe("managing an expert's integrations", () => {
     );
     render(<ExpertDetailPage />);
     await openIntegrationsTab();
+    // The empty state offers its own "Add integration" beside the header's.
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
     );
     await userEvent.click(await screen.findByText("OpenAI"));
     await userEvent.click(
@@ -724,7 +844,7 @@ describe("managing an expert's integrations", () => {
     await openIntegrationsTab();
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
     );
 
     const dialog = await screen.findByRole("dialog");
@@ -739,25 +859,115 @@ describe("managing an expert's integrations", () => {
     expect(grantAttempts).toBe(0);
   });
 
-  it("names an MCP credential after the service behind it", async () => {
+  it("files an MCP credential under its service, with no MCP wording", async () => {
     server.use(
       getListExpertCredentialsMockHandler([
         {
           credential_id: "cred-mcp",
           provider: "mcp",
           title: "MCP: mcp.sentry.dev",
-          type: "host_scoped",
+          type: "oauth2",
+          service: "sentry",
+          service_name: "Sentry",
+          service_icon: "sentry",
         },
       ]),
     );
 
     render(<ExpertDetailPage />);
-
     await openIntegrationsTab();
 
     const section = await screen.findByTestId("expert-integrations-section");
     expect(await within(section).findByText("Sentry")).toBeDefined();
-    expect(within(section).getByText("MCP server")).toBeDefined();
+    expect(within(section).queryByText(/MCP/)).toBeNull();
     expect(within(section).getByText("Ready")).toBeDefined();
+    expect(
+      within(section)
+        .getByRole("img", { name: "Sentry logo" })
+        .getAttribute("src"),
+    ).toContain("sentry.png");
+  });
+
+  it("files a self-hosted MCP credential under its hostname", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([
+        {
+          credential_id: "cred-mcp-custom",
+          provider: "mcp",
+          title: "MCP: mcp.internal.example",
+          type: "oauth2",
+          service: "mcp:mcp.internal.example",
+          service_name: "mcp.internal.example",
+          service_icon: null,
+        },
+      ]),
+    );
+
+    render(<ExpertDetailPage />);
+    await openIntegrationsTab();
+
+    const section = await screen.findByTestId("expert-integrations-section");
+    expect(
+      await within(section).findAllByText("mcp.internal.example"),
+    ).toHaveLength(2);
+    expect(
+      within(section).getByRole("img", { name: "mcp.internal.example logo" }),
+    ).toBeDefined();
+    expect(within(section).queryByText(/MCP server/)).toBeNull();
+  });
+
+  it("groups an MCP credential and an API key for the same vendor together", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([
+        {
+          credential_id: "cred-linear-key",
+          provider: "linear",
+          title: "Linear key",
+          type: "api_key",
+          service: "linear",
+          service_name: null,
+          service_icon: "linear",
+        },
+        {
+          credential_id: "cred-linear-mcp",
+          provider: "mcp",
+          title: "MCP: mcp.linear.app",
+          type: "oauth2",
+          service: "linear",
+          service_name: "Linear",
+          service_icon: "linear",
+        },
+        {
+          credential_id: "cred-posthog-key",
+          provider: "posthog",
+          title: "PostHog key",
+          type: "api_key",
+          service: "posthog",
+          service_name: null,
+          service_icon: null,
+        },
+        {
+          credential_id: "cred-posthog-mcp",
+          provider: "mcp",
+          title: "MCP: mcp.posthog.com",
+          type: "oauth2",
+          service: "posthog",
+          service_name: "PostHog",
+          service_icon: "posthog",
+        },
+      ]),
+    );
+
+    render(<ExpertDetailPage />);
+    await openIntegrationsTab();
+
+    const section = await screen.findByTestId("expert-integrations-section");
+    const rows = await within(section).findAllByTestId(
+      "expert-integration-row",
+    );
+    expect(rows).toHaveLength(4);
+    expect(within(section).getAllByText("Linear")).toHaveLength(1);
+    expect(within(section).getAllByText("PostHog")).toHaveLength(1);
+    expect(within(section).queryByText("Posthog")).toBeNull();
   });
 });

@@ -28,8 +28,8 @@ import type { UIMessageChunk } from "ai";
  * stream.
  */
 
-const TICK_DELAY_MS = 10;
-const BACKLOG_DRAIN_TICKS = 25;
+export const TICK_DELAY_MS = 10;
+export const BACKLOG_DRAIN_TICKS = 25;
 
 type SmoothableChunk = Extract<
   UIMessageChunk,
@@ -57,7 +57,7 @@ function makeDelta(pending: PendingText, delta: string): UIMessageChunk {
  * A trailing run of non-whitespace is a partial word and gets no cut point —
  * it stays buffered until more text or a flush arrives.
  */
-function findWordCutPoints(text: string): number[] {
+export function findWordCutPoints(text: string): number[] {
   const wordWithTrailingSpace = /\s*\S+\s+/gy;
   const cuts: number[] = [];
   while (wordWithTrailingSpace.exec(text)) {

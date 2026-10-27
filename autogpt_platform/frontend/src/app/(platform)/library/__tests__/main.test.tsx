@@ -224,6 +224,9 @@ describe("LibraryPage", () => {
 
     render(<LibraryPage />);
 
-    expect(await screen.findByText("Running Agent")).toBeDefined();
+    // The briefing panel's running list names it too, once executions load.
+    expect(
+      (await screen.findAllByText("Running Agent")).length,
+    ).toBeGreaterThan(0);
   });
 });

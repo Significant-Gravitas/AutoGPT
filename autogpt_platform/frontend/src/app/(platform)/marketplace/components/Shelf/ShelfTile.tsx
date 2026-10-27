@@ -15,7 +15,8 @@ interface Props {
 }
 
 const TILE =
-  "flex w-full items-center gap-3 rounded-xl border border-zinc-200/80 bg-white p-2.5 text-left outline-none transition-colors hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-violet-600";
+  // TODO(tokens): no exact role: focus-visible:ring-violet-600 #7C3AED
+  "flex w-full items-center gap-3 rounded-xl border border-border-base/80 bg-surface p-2.5 text-left outline-none transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-violet-600";
 
 export function ShelfTile({
   media,
@@ -40,11 +41,11 @@ export function ShelfTile({
       <span className="min-w-0 flex-1">
         <span
           title={title}
-          className="block truncate text-sm font-medium text-zinc-900"
+          className="block truncate text-sm font-medium text-foreground-strong"
         >
           {title}
         </span>
-        <span className="block truncate text-[13px] text-zinc-500">
+        <span className="block truncate text-body-sm leading-inherit text-foreground-tertiary">
           {subtitle}
         </span>
       </span>

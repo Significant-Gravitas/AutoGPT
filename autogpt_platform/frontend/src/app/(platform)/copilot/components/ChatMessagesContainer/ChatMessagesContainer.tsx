@@ -1,3 +1,5 @@
+import { useCostReplyMoment } from "@/app/(platform)/components/ContextualTips/useTipMoment";
+import { parseSpecialMarkers } from "../../helpers/messageMarkers";
 import { CredentialMentionText } from "../CredentialMention/CredentialMentionText";
 import { cn } from "@/lib/utils";
 import { useMemo, useState } from "react";
@@ -5,79 +7,65 @@ import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
+} from "@/components/organisms/Conversation/Conversation";
 import {
   Message,
-  MessageActions,
   MessageContent,
-} from "@/components/ai-elements/message";
+} from "@/components/organisms/Message/Message";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { UIDataTypes, UIMessage, UITools } from "ai";
+import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
-import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
-import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
+import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
-import { countHeldCalls, getHeldCallRowKind } from "./heldCallRows";
 import {
-  extractReviewTarget,
-  getLastCompactionCallId,
-  getLatestCompactionPhase,
-  getLatestCompactionStats,
-  parseSpecialMarkers,
-} from "./helpers";
+  answeredLabel,
+  countHeldCalls,
+  getHeldCallRowKind,
+} from "./heldCallRows";
+import { extractReviewTargets, getLatestCompactionPhase } from "./helpers";
 import {
+  buildMessageIndexById,
   isMidTurnSegmentRow,
   splitMessagesAtDrainHints,
   turnMessagesForRow,
 } from "./midTurnSplit";
 import {
-  getLatestAssistantStatusMessage,
   isBookkeepingPart,
   PENDING_DRAINED_PART_TYPE,
 } from "../../messageParts";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
+import { TURN_PAUSED_PART_TYPE } from "../../turnPause";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
-import { WorkCard } from "../WorkCard/WorkCard";
-import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
-import { AssistantMessageActions } from "./components/AssistantMessageActions";
-import { ChainMessageParts } from "./components/ChainMessageParts";
-import { withToolDisplayNames } from "../../helpers/toolDisplay";
-import { CopyButton } from "./components/CopyButton";
+import { getWorkRunMetadata } from "../WorkCard/helpers";
 import { TailSpacer } from "./components/TailSpacer";
-import { MessageAttachments } from "./components/MessageAttachments";
-import { MessagePartRenderer } from "./components/MessagePartRenderer";
-import { QueueBadge } from "./components/QueueBadge";
-import { ThreadHeader } from "./components/ThreadHeader";
+import { VirtualTranscript } from "./components/VirtualTranscript/VirtualTranscript";
+import type { TranscriptRow } from "./components/VirtualTranscript/helpers";
+import type { JumpToMessage } from "./components/VirtualTranscript/useVirtualTranscript";
+import { MessageRow } from "./components/MessageRow/MessageRow";
+import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
+import { ThreadHeader, type FloatingControls } from "./components/ThreadHeader";
 import {
   PENDING_UPLOAD_MESSAGE_ID,
   PendingUploadMessage,
 } from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
-import { UserMessageClamp } from "./components/UserMessageClamp";
-import { SentFromBadge } from "./components/SentFromBadge";
-import { getVisibleUserMessageParts } from "./userMessageParts";
-import {
-  getSentFromMetadata,
-  isSessionOpeningMessage,
-  type SentFrom,
-} from "../../sentFrom";
+import { isSessionOpeningMessage, type SentFrom } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
-import {
-  WORKSPACE_FOLDER_PART_TYPE,
-  type WorkspaceFolderPartData,
-} from "../../helpers/workspaceAttachments";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
+
+type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
 
 interface Props {
-  messages: UIMessage<unknown, UIDataTypes, UITools>[];
+  messages: ChatMessage[];
   status: string;
   error: Error | undefined;
   isLoading: boolean;
@@ -133,9 +121,9 @@ interface Props {
    *  metadata). Shown on the row that opened the thread (DB sequence 0) when
    *  that row carries no provenance of its own. */
   sessionSentFrom?: SentFrom | null;
-  /** The layout floats its sidebar/files controls over the chat's top-left
-   *  corner on small viewports (see ThreadHeader). */
-  hasFloatingControls?: boolean;
+  /** Which layout floats its controls over the chat's top-left corner on
+   *  small viewports (see ThreadHeader). */
+  floatingControls?: FloatingControls;
   /** Compact thread for side panels: smaller text, tighter bubbles and
    *  spacing. */
   variant?: "default" | "compact";
@@ -176,7 +164,9 @@ export function LoadMoreSentinel({
 }) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const onLoadMoreRef = useRef(onLoadMore);
-  onLoadMoreRef.current = onLoadMore;
+  useInsertionEffect(() => {
+    onLoadMoreRef.current = onLoadMore;
+  });
   // Pre-mutation scroll snapshot, written synchronously before onLoadMore
   const scrollSnapshotRef = useRef({ scrollHeight: 0, scrollTop: 0 });
   // Consecutive auto-triggered loads that left the container non-scrollable
@@ -258,6 +248,7 @@ export function LoadMoreSentinel({
       {isLoading ? (
         <LoadingSpinner
           data-testid="load-more-spinner"
+          // TODO(tokens): no exact role for text-neutral-400
           className="h-5 w-5 text-neutral-400"
         />
       ) : (
@@ -299,7 +290,7 @@ export function ChatMessagesContainer({
   expertIdentity,
   isResolvingExpertIdentity = false,
   sessionSentFrom = null,
-  hasFloatingControls = false,
+  floatingControls,
   variant = "default",
   showThreadHeader = true,
 }: Props) {
@@ -328,7 +319,24 @@ export function ChatMessagesContainer({
   // Rendered rows, not the array `useChat` owns: a turn whose pending buffer
   // was drained mid-stream renders as chain → follow-up bubble → chain, while
   // the underlying message stays whole. See `splitMessagesAtDrainHints`.
-  const renderRows = splitMessagesAtDrainHints(messages);
+  // These lists stay memos with the compiler on: the transcript rows reach
+  // the windowed transcript's hooks, which the compiler skips and which key
+  // their row measurements on the rows' identity.
+  const renderRows = useMemo(
+    () => splitMessagesAtDrainHints(messages),
+    [messages],
+  );
+  const messageIndexById = buildMessageIndexById(messages);
+  const transcriptRows = useMemo(
+    () => toTranscriptRows(renderRows),
+    [renderRows],
+  );
+  // The minimap scrolls to rows by their DOM node; one the windowed
+  // transcript has unmounted is reached through the transcript instead.
+  const jumpRef = useRef<JumpToMessage | null>(null);
+  const [jumpToUnmountedMessage] = useState(
+    () => (messageID: string) => jumpRef.current?.(messageID),
+  );
   const lastMessage = messages[messages.length - 1];
   const showPendingSend = !readOnly && !!pendingSend;
   // Read off the rendered rows: a fallback follow-up row the split drops in
@@ -337,7 +345,7 @@ export function ChatMessagesContainer({
   const lastUserMessageID = showPendingSend
     ? PENDING_UPLOAD_MESSAGE_ID
     : (renderRows.findLast((row) => row.role === "user")?.id ?? null);
-  const reviewTarget = useMemo(() => extractReviewTarget(messages), [messages]);
+  const reviewTargets = extractReviewTargets(messages);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
   // yields a ``StreamError`` SSE event on final-failure paths. Both surface
@@ -345,20 +353,7 @@ export function ChatMessagesContainer({
   // the SSE event sets ``error`` on ``useChat``. Without dedup, the user sees
   // the same error twice. Suppress the trailing banner whenever the last
   // assistant message already carries the marker.
-  const lastAssistantHasErrorMarker = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      if (msg.role !== "assistant") continue;
-      for (let j = msg.parts.length - 1; j >= 0; j--) {
-        const part = msg.parts[j];
-        if (part.type !== "text") continue;
-        const { markerType } = parseSpecialMarkers(part.text);
-        return markerType === "error" || markerType === "retryable_error";
-      }
-      return false;
-    }
-    return false;
-  }, [messages]);
+  const lastAssistantHasErrorMarker = hasTrailingErrorMarker(messages);
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
@@ -393,6 +388,9 @@ export function ChatMessagesContainer({
     // into the next part without flashing back to "Thinking...".
     if (lastPart.type === "step-start") return true;
 
+    // A pause is how the turn ends, so nothing more is coming to wait on.
+    if (lastPart.type === TURN_PAUSED_PART_TYPE) return true;
+
     if (
       lastPart.type.startsWith(TOOL_PART_PREFIX) &&
       "state" in lastPart &&
@@ -404,12 +402,12 @@ export function ChatMessagesContainer({
     return false;
   })();
 
-  // Surface the latest `data-status` message from the live assistant when
-  // the Thinking indicator is up — but only if it wasn't invalidated by a
-  // more recent content part (in which case the model has moved on and the
-  // status is stale).
-  const latestStatusMessage = getLatestAssistantStatusMessage(messages);
   const isActivelyStreaming = status === "streaming" || status === "submitted";
+  useCostReplyMoment({
+    messages,
+    isStreaming: isActivelyStreaming,
+    enabled: !readOnly,
+  });
 
   // A live compaction narrates itself via CompactionCard — the generic
   // Thinking indicator must not stack a second spinner and timer under it.
@@ -428,15 +426,16 @@ export function ChatMessagesContainer({
     !isRestoringActiveSession &&
     liveCompactionPhase === null &&
     (status === "submitted" || (status === "streaming" && !hasInflight));
-  const { elapsedSeconds } = useElapsedTimer(
+  // Only the start time lives here: the indicator ticks its own label, so
+  // the transcript does not re-render every second for the whole turn.
+  const streamClock = useElapsedAnchor(
     isActivelyStreaming,
     activeStreamStartedAt,
   );
   const indicator = (
     <ThinkingIndicator
       active={showThinking}
-      elapsedSeconds={elapsedSeconds}
-      statusMessage={latestStatusMessage}
+      startedAtMs={streamClock.startedAtMs}
     />
   );
   // Public viewers of a shared chat never see a live turn, so the indicator
@@ -454,35 +453,80 @@ export function ChatMessagesContainer({
     );
     return () => clearTimeout(timer);
   }, [isRestoringActiveSession]);
-  const { elapsedSeconds: restoreElapsedSeconds } =
-    useElapsedTimer(showRestoreFallback);
+  const restoreClock = useElapsedAnchor(showRestoreFallback);
 
-  // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
-  // Reset when a new streaming turn begins.
-  const frozenElapsedRef = useRef(0);
-  const wasStreamingRef = useRef(false);
-  useEffect(() => {
-    if (isActivelyStreaming) {
-      if (!wasStreamingRef.current) {
-        frozenElapsedRef.current = 0;
-      }
-      if (elapsedSeconds > 0) {
-        frozenElapsedRef.current = elapsedSeconds;
-      }
+  function renderRow({ message, rowIndex }: TranscriptRow) {
+    if (getRowHeldCallKind(message) === "answered") {
+      return (
+        <Text
+          variant="small"
+          className="py-1 text-center text-foreground-tertiary"
+        >
+          {answeredLabel(renderRows, rowIndex)}
+        </Text>
+      );
     }
-    wasStreamingRef.current = isActivelyStreaming;
-  });
 
-  return (
+    const isLastRow = rowIndex === renderRows.length - 1;
+    const isAssistant = message.role === "assistant";
+    const isLastAssistant = isLastRow && isAssistant;
+    const isCurrentlyStreaming = isLastAssistant && isActivelyStreaming;
+    const nextRow = renderRows[rowIndex + 1];
+    // A segment that only runs up to a mid-turn drain is never the end
+    // of its turn — the same backend turn continues under the follow-up
+    // bubble, so the stats bar and the assistant actions belong to the
+    // last segment alone.
+    const isLastInTurn =
+      isAssistant &&
+      !isMidTurnSegmentRow(message) &&
+      (!nextRow || nextRow.role === "user");
+    const showsTurnStats = isLastInTurn && !isCurrentlyStreaming;
+
+    return (
+      <MessageRow
+        message={message}
+        isLastAssistant={isLastAssistant}
+        isCurrentlyStreaming={isCurrentlyStreaming}
+        isLastInTurn={isLastInTurn}
+        turnStat={turnStats?.get(message.id)}
+        turnMessages={
+          showsTurnStats
+            ? turnMessagesForRow(messages, message, messageIndexById)
+            : undefined
+        }
+        elapsedSeconds={isLastRow ? streamClock.frozenSeconds : undefined}
+        indicator={isLastAssistant && showIndicator ? indicator : null}
+        isSessionQueued={
+          message.role === "user" && sessionChatStatus === "queued"
+        }
+        sessionSentFrom={
+          isSessionOpeningMessage(message) ? sessionSentFrom : null
+        }
+        sessionID={sessionID}
+        readOnly={readOnly}
+        compact={isCompact}
+        filePattern={filePattern}
+        fileUrlBuilder={fileUrlBuilder}
+        onRetry={isLastAssistant ? onRetry : undefined}
+      />
+    );
+  }
+
+  const thread = (
     <>
       {showThreadHeader && (
         <ThreadHeader
           expertIdentity={expertIdentity}
           isResolvingExpertIdentity={isResolvingExpertIdentity}
-          hasFloatingControls={hasFloatingControls}
+          floatingControls={floatingControls}
         />
       )}
-      {!isCompact && <ChatMinimap messages={messages} />}
+      {!isCompact && (
+        <ChatMinimap
+          messages={messages}
+          onJumpToUnmounted={jumpToUnmountedMessage}
+        />
+      )}
       <Conversation
         key={sessionID ?? "new"}
         resize="instant"
@@ -495,8 +539,9 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
+            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-4 pb-4 pt-14 md:px-6",
             isCompact && "gap-4 px-4 pt-4",
+            showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
           )}
           style={
@@ -518,270 +563,21 @@ export function ChatMessagesContainer({
             !isRestoringActiveSession &&
             !showPendingSend && (
               <div className="flex flex-1 items-center justify-center">
-                <LoadingSpinner className="text-neutral-600" />
+                <LoadingSpinner
+                  // TODO(tokens): no exact role for text-neutral-600
+                  className="text-neutral-600"
+                />
               </div>
             )}
-          {renderRows.map((message, rowIndex) => {
-            // A run-post rides structured metadata — render a compact WorkCard
-            // instead of the raw markdown wall (legacy posts have no metadata
-            // and fall through to normal rendering).
-            const runMetadata = getWorkRunMetadata(message.metadata);
-            if (runMetadata) {
-              const preview = toPreview(
-                message.parts
-                  .filter(
-                    (p): p is Extract<typeof p, { type: "text" }> =>
-                      p.type === "text",
-                  )
-                  .map((p) => p.text)
-                  .join(" "),
-              );
-              return (
-                <Message
-                  from={message.role}
-                  key={message.id}
-                  data-message-id={message.id}
-                  className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
-                >
-                  <MessageContent className="group-[.is-assistant]:bg-transparent">
-                    <WorkCard metadata={runMetadata} preview={preview} />
-                  </MessageContent>
-                </Message>
-              );
-            }
-
-            const heldCallRow = getHeldCallRowKind(message.metadata);
-            if (heldCallRow === "result") return null;
-            if (heldCallRow === "answered") {
-              return (
-                <Text
-                  key={message.id}
-                  variant="small"
-                  className="py-1 text-center text-zinc-500"
-                >
-                  Approval answered
-                </Text>
-              );
-            }
-
-            const isLastAssistant =
-              rowIndex === renderRows.length - 1 &&
-              message.role === "assistant";
-
-            const isCurrentlyStreaming =
-              isLastAssistant &&
-              (status === "streaming" || status === "submitted");
-
-            const isAssistant = message.role === "assistant";
-
-            const nextRow = renderRows[rowIndex + 1];
-            // A segment that only runs up to a mid-turn drain is never the end
-            // of its turn — the same backend turn continues under the follow-up
-            // bubble, so the stats bar and the assistant actions belong to the
-            // last segment alone.
-            const isLastInTurn =
-              isAssistant &&
-              !isMidTurnSegmentRow(message) &&
-              (!nextRow || nextRow.role === "user");
-            // Bookkeeping parts are stripped before any render/split logic so
-            // they never reach the user UI, and so one landing between two
-            // tool calls can't split a chain. data-status surfaces via
-            // ThinkingIndicator; data-compaction via CompactionCard.
-            const renderableParts = withToolDisplayNames(
-              message.role === "user"
-                ? getVisibleUserMessageParts(message.parts)
-                : message.parts,
-            ).filter((p) => !isBookkeepingPart(p));
-            // Only a message that is actively streaming can have a live
-            // compaction phase — a stopped or failed turn must not leave an
-            // eternal progress bar. Replayed/settled messages never carry
-            // `data-compaction` parts, so they derive null either way.
-            const compactionPhase = isCurrentlyStreaming
-              ? getLatestCompactionPhase(message.parts)
-              : null;
-            // The phase belongs to the LAST compaction row only; earlier
-            // (settled) rows in the same message stay settled.
-            const liveCompactionCallId =
-              compactionPhase !== null
-                ? getLastCompactionCallId(message.parts)
-                : null;
-            // Stats streamed on the `data-compaction` parts pace the live
-            // progress curve while the tool row is still open (its own
-            // output stats only exist once it closes).
-            const liveCompactionStats =
-              compactionPhase !== null
-                ? getLatestCompactionStats(message.parts)
-                : undefined;
-            const textParts = renderableParts.filter(
-              (p): p is Extract<typeof p, { type: "text" }> =>
-                p.type === "text",
-            );
-            const lastTextPart = textParts[textParts.length - 1];
-            const markerType =
-              lastTextPart !== undefined
-                ? parseSpecialMarkers(lastTextPart.text).markerType
-                : null;
-            const hasErrorMarker =
-              markerType === "error" || markerType === "retryable_error";
-            const showActions =
-              isLastInTurn &&
-              !isCurrentlyStreaming &&
-              textParts.length > 0 &&
-              !hasErrorMarker;
-
-            const fileParts = renderableParts.filter(
-              (p): p is FileUIPart => p.type === "file",
-            );
-            const folderParts = renderableParts.flatMap((p) =>
-              p.type === WORKSPACE_FOLDER_PART_TYPE
-                ? [(p as { data: WorkspaceFolderPartData }).data]
-                : [],
-            );
-
-            const sentFrom = readOnly
-              ? null
-              : (getSentFromMetadata(message.metadata) ??
-                (isSessionOpeningMessage(message) ? sessionSentFrom : null));
-
-            return (
-              <Message
-                from={message.role}
-                key={message.id}
-                data-message-id={message.id}
-                className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
-              >
-                <MessageContent
-                  className={cn(
-                    isCompact
-                      ? "text-sm leading-6 group-[.is-user]:rounded-xl"
-                      : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
-                    "group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900",
-                    "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
-                    // Chain hover pills use negative margins that the base
-                    // overflow-hidden would clip.
-                    "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900",
-                  )}
-                >
-                  {isAssistant ? (
-                    <ChainMessageParts
-                      parts={renderableParts}
-                      messageID={message.id}
-                      isCurrentlyStreaming={isCurrentlyStreaming}
-                      onRetry={isLastAssistant ? onRetry : undefined}
-                      fileUrlBuilder={fileUrlBuilder}
-                      readOnly={readOnly}
-                      compactionPhase={compactionPhase}
-                      liveCompactionCallId={liveCompactionCallId}
-                      liveCompactionStats={liveCompactionStats}
-                    />
-                  ) : (
-                    <UserMessageClamp
-                      trailing={
-                        sentFrom ? <SentFromBadge sentFrom={sentFrom} /> : null
-                      }
-                    >
-                      {renderableParts.map((part, i) => (
-                        <MessagePartRenderer
-                          key={`${message.id}-${i}`}
-                          part={part}
-                          messageID={message.id}
-                          partIndex={i}
-                          fileUrlBuilder={fileUrlBuilder}
-                          readOnly={readOnly}
-                          compactionPhase={compactionPhase}
-                          liveCompactionCallId={liveCompactionCallId}
-                          liveCompactionStats={liveCompactionStats}
-                          isCurrentlyStreaming={isCurrentlyStreaming}
-                        />
-                      ))}
-                    </UserMessageClamp>
-                  )}
-                  {isLastInTurn && !isCurrentlyStreaming && (
-                    <TurnStatsBar
-                      turnMessages={turnMessagesForRow(messages, message)}
-                      elapsedSeconds={
-                        rowIndex === renderRows.length - 1
-                          ? frozenElapsedRef.current
-                          : undefined
-                      }
-                      stats={turnStats?.get(message.id)}
-                    />
-                  )}
-                  {isLastAssistant && showIndicator && indicator}
-                </MessageContent>
-                {!readOnly &&
-                  message.role === "user" &&
-                  sessionChatStatus === "queued" &&
-                  (() => {
-                    const stats = turnStats?.get(message.id);
-                    if (!stats?.isLatestUserMessage) {
-                      return null;
-                    }
-                    return (
-                      <MessageActions
-                        className="mt-1 items-center justify-end gap-1.5"
-                        data-testid="queue-status-row"
-                      >
-                        <QueueBadge sessionID={sessionID ?? null} />
-                      </MessageActions>
-                    );
-                  })()}
-                {message.role === "user" && textParts.length > 0 && (
-                  <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                    {(() => {
-                      const createdAt = turnStats?.get(message.id)?.createdAt;
-                      if (!createdAt) return null;
-                      const date = new Date(createdAt);
-                      if (Number.isNaN(date.getTime())) return null;
-                      return (
-                        <span className="text-[11px] tabular-nums text-neutral-500">
-                          {date.toLocaleString(undefined, {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          })}
-                        </span>
-                      );
-                    })()}
-                    <CopyButton
-                      text={textParts.map((p) => p.text).join("\n")}
-                    />
-                  </MessageActions>
-                )}
-                {(fileParts.length > 0 || folderParts.length > 0) && (
-                  <MessageAttachments
-                    files={fileParts}
-                    folders={folderParts}
-                    isUser={message.role === "user"}
-                    filePattern={filePattern}
-                    readOnly={readOnly}
-                  />
-                )}
-                {!readOnly && showActions && (
-                  <AssistantMessageActions
-                    message={message}
-                    sessionID={sessionID ?? null}
-                    className={cn(
-                      !isLastAssistant &&
-                        "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
-                    )}
-                  />
-                )}
-                {readOnly && showActions && (
-                  <MessageActions
-                    className={cn(
-                      "mt-1 items-center justify-start gap-2",
-                      !isLastAssistant &&
-                        "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
-                    )}
-                  >
-                    <CopyButton
-                      text={textParts.map((p) => p.text).join("\n")}
-                    />
-                  </MessageActions>
-                )}
-              </Message>
-            );
-          })}
+          {transcriptRows.length > 0 && (
+            <VirtualTranscript
+              rows={transcriptRows}
+              renderRow={renderRow}
+              lastUserMessageID={lastUserMessageID}
+              compact={isCompact}
+              jumpRef={jumpRef}
+            />
+          )}
           {showPendingSend && pendingSend && (
             <PendingUploadMessage
               pendingSend={pendingSend}
@@ -793,48 +589,59 @@ export function ChatMessagesContainer({
               from="assistant"
               className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
             >
-              <MessageContent className="text-[1rem] leading-relaxed">
+              <MessageContent className="text-body-lg leading-relaxed">
                 {indicator}
               </MessageContent>
             </Message>
           )}
           {!readOnly && isRestoringActiveSession && (
             <Message from="assistant">
-              <MessageContent className="text-[1rem] leading-relaxed text-slate-900">
+              <MessageContent
+                // TODO(tokens): no exact role for text-slate-900
+                className="text-body-lg leading-relaxed text-slate-900"
+              >
                 {showRestoreFallback ? (
-                  <div className="flex flex-col gap-1 text-sm text-slate-500">
+                  <div
+                    // TODO(tokens): no exact role for text-slate-500
+                    className="flex flex-col gap-1 text-sm text-slate-500"
+                  >
                     <ThinkingIndicator
                       active
-                      elapsedSeconds={restoreElapsedSeconds}
-                      statusMessage={
-                        restoreStatusMessage ?? "Reconnecting to live stream..."
-                      }
+                      startedAtMs={restoreClock.startedAtMs}
+                      statusMessage={restoreStatusMessage ?? "Reconnecting…"}
                     />
-                    <span className="pl-6 text-xs text-slate-400">
+                    <span
+                      // TODO(tokens): no exact role for text-slate-400
+                      className="pl-6 text-xs text-slate-400"
+                    >
                       Still syncing the latest progress.
                     </span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                    <LoadingSpinner className="h-4 w-4 text-neutral-500" />
+                  <div
+                    // TODO(tokens): no exact role for text-slate-500
+                    className="flex items-center gap-2 text-sm text-slate-500"
+                  >
+                    <LoadingSpinner
+                      // TODO(tokens): no exact role for text-neutral-500
+                      className="h-4 w-4 text-neutral-500"
+                    />
                     <span>Retrieving latest messages</span>
                   </div>
                 )}
               </MessageContent>
             </Message>
           )}
-          {!readOnly && reviewTarget?.kind === "graph" && (
-            <CopilotPendingReviews
-              graphExecId={reviewTarget.graphExecId}
-              graphId={reviewTarget.graphId}
-            />
+          {!readOnly && reviewTargets.runs.length > 0 && (
+            <CopilotPendingReviews runs={reviewTargets.runs} />
           )}
           {!readOnly && sessionID && (
             <CopilotPendingReviews
               chatSessionId={sessionID}
-              pollWhileEmpty={reviewTarget?.kind === "chat"}
+              pollWhileEmpty={reviewTargets.chat}
               refetchKey={countHeldCalls(messages)}
               expertName={expertIdentity?.name ?? null}
+              expert={expertIdentity ?? null}
             />
           )}
           {!readOnly &&
@@ -842,16 +649,19 @@ export function ChatMessagesContainer({
               <Message key={idx} from="user">
                 <MessageContent
                   className={cn(
-                    "flex flex-col gap-1 border border-dashed border-zinc-300 bg-zinc-100 px-4 py-2.5 text-zinc-900 opacity-60",
+                    "flex flex-col gap-1 border border-dashed border-border-strong bg-surface-hover px-4 py-2.5 text-foreground-strong opacity-60",
                     isCompact
                       ? "rounded-xl text-sm leading-6"
-                      : "rounded-3xl text-[1rem] leading-relaxed",
+                      : "rounded-3xl text-body-lg leading-relaxed",
                   )}
                 >
                   <span>
                     <CredentialMentionText text={msg} />
                   </span>
-                  <span className="flex items-center gap-1 text-xs text-slate-500">
+                  <span
+                    // TODO(tokens): no exact role for text-slate-500
+                    className="flex items-center gap-1 text-xs text-slate-500"
+                  >
                     <Icon icon={Clock01Icon} className="size-3" />
                     Queued
                   </span>
@@ -859,15 +669,7 @@ export function ChatMessagesContainer({
               </Message>
             ))}
           {!readOnly && error && !lastAssistantHasErrorMarker && (
-            <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-              <summary className="cursor-pointer font-medium">
-                The assistant encountered an error. Please try sending your
-                message again.
-              </summary>
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
-                {error instanceof Error ? error.message : String(error)}
-              </pre>
-            </details>
+            <ChatErrorBanner error={error} />
           )}
           <TailSpacer
             messageID={lastUserMessageID}
@@ -878,4 +680,52 @@ export function ChatMessagesContainer({
       </Conversation>
     </>
   );
+
+  // Every chat surface renders through here, so the pending-answer state
+  // (clarifying questions, a hire's onboarding, held calls) lives here too
+  // instead of in each host. Read-only viewers receive saved answers only.
+  return (
+    <PendingAnswerContexts messages={allMessages} readOnly={readOnly}>
+      {thread}
+    </PendingAnswerContexts>
+  );
+}
+
+// A run-post renders as a WorkCard inside the row, whatever else its
+// metadata carries.
+function getRowHeldCallKind(message: ChatMessage) {
+  return getWorkRunMetadata(message.metadata)
+    ? null
+    : getHeldCallRowKind(message.metadata);
+}
+
+// A held call's result row renders nothing, so it stays out of the list: an
+// empty row would still take a gap.
+function toTranscriptRows(renderRows: ChatMessage[]): TranscriptRow[] {
+  const rows: TranscriptRow[] = [];
+  renderRows.forEach((message, rowIndex) => {
+    if (getRowHeldCallKind(message) !== "result") {
+      rows.push({ message, rowIndex });
+    }
+  });
+  return rows;
+}
+
+/** Whether the last assistant message's last text part is a persisted error
+ *  marker (the in-line ErrorCard bubble). */
+function hasTrailingErrorMarker(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== "assistant") continue;
+    for (let j = msg.parts.length - 1; j >= 0; j--) {
+      const part = msg.parts[j];
+      if (part.type !== "text") continue;
+      const { markerType } = parseSpecialMarkers(part.text);
+      return markerType === "error" || markerType === "retryable_error";
+    }
+    return false;
+  }
+  return false;
 }

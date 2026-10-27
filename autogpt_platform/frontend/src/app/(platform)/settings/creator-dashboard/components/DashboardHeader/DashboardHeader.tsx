@@ -34,12 +34,15 @@ export function DashboardHeader({
       className="flex flex-col gap-5 pb-2 pl-4 pr-1 md:flex-row md:items-end md:justify-between"
     >
       <div className="flex min-w-0 flex-col">
-        <Text variant="h4" as="h1" className="leading-[28px] text-textBlack">
+        <Text variant="h4" as="h1" className="leading-7 text-textBlack">
           Creator dashboard
         </Text>
-        <Text variant="body" className="mt-3 max-w-[640px] text-zinc-700">
+        <Text
+          variant="body"
+          className="mt-3 max-w-[640px] text-foreground-body"
+        >
           Track your store submissions, see how they perform, and ship updates
-          for the agents you publish.
+          for the workflows you publish.
         </Text>
       </div>
 
@@ -54,7 +57,7 @@ export function DashboardHeader({
             onClick={onOpenSubmit}
             leftIcon={<Icon icon={PlusSignIcon} size={18} />}
           >
-            Submit agent
+            Submit workflow
           </Button>
         }
       />

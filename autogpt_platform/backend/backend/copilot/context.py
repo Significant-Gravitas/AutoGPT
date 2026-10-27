@@ -7,6 +7,8 @@ without creating circular dependencies.
 
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
@@ -135,6 +137,32 @@ _current_envelope: "ContextVar[TurnEnvelope | None]" = ContextVar(
 _current_hidden_tools: ContextVar[frozenset[str]] = ContextVar(
     "_current_hidden_tools", default=frozenset()
 )
+# Set while an approved held call replays with the arguments it was stored with;
+# see ``replaying_bound_args``. Never from the model's arguments.
+_replaying_bound_args: ContextVar[bool] = ContextVar(
+    "_replaying_bound_args", default=False
+)
+
+
+@contextmanager
+def replaying_bound_args(bound: bool) -> Iterator[None]:
+    """Replay a held call whose arguments were already resolved when it was
+    held, so the tool runs them as approved instead of resolving them again."""
+    token = _replaying_bound_args.set(bound)
+    try:
+        yield
+    finally:
+        _replaying_bound_args.reset(token)
+
+
+def args_already_bound() -> bool:
+    return _replaying_bound_args.get()
+
+
+# Whether anyone is watching the running turn; see ``set_turn_unattended``.
+_current_turn_unattended: ContextVar[bool] = ContextVar(
+    "_current_turn_unattended", default=False
+)
 
 
 def encode_cwd_for_cli(cwd: str) -> str:
@@ -190,6 +218,23 @@ def get_current_envelope() -> "TurnEnvelope | None":
 def get_current_hidden_tools() -> frozenset[str]:
     """Short tool names hidden from the model this turn."""
     return _current_hidden_tools.get()
+
+
+def set_turn_unattended(session: ChatSession, *, scheduled: bool) -> None:
+    """Record whether anyone is watching the running turn. The executor sets
+    it for every turn, so a value never carries over to the next one.
+
+    Nobody is when the scheduler fired the turn, even into the user's own
+    chat, or when an automation opened the chat: a scheduled run's own chat, a
+    sub-session, a graph's AutoPilot block. A legacy chat without an origin
+    counts as watched, the way ``pauses_irreversible_actions`` reads it.
+    """
+    _current_turn_unattended.set(scheduled or session.metadata.origin == "automation")
+
+
+def is_unattended_turn() -> bool:
+    """Whether nobody can answer a question this turn puts to the user."""
+    return _current_turn_unattended.get()
 
 
 def get_current_sandbox() -> "AsyncSandbox | None":

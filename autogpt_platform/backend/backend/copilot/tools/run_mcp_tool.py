@@ -168,13 +168,13 @@ class RunMCPToolTool(BaseTool):
                 result=None,
                 success=True,
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if tool_arguments is not None and not isinstance(tool_arguments, dict):
             return ErrorResponse(
                 message="tool_arguments must be a JSON object.",
                 session_id=session_id,
-            )
+            ).from_outside()
         resolved_tool_arguments: dict[str, Any] = (
             tool_arguments if isinstance(tool_arguments, dict) else {}
         )
@@ -183,7 +183,7 @@ class RunMCPToolTool(BaseTool):
             return ErrorResponse(
                 message="Please provide a server_url for the MCP server.",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         _parsed = urlparse(server_url)
         if _parsed.username or _parsed.password:
@@ -193,7 +193,7 @@ class RunMCPToolTool(BaseTool):
                     "Use the MCP credential setup flow instead."
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
         if _parsed.query or _parsed.fragment:
             return ErrorResponse(
                 message=(
@@ -201,13 +201,13 @@ class RunMCPToolTool(BaseTool):
                     "Use the MCP credential setup flow instead."
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if not user_id:
             return ErrorResponse(
                 message="Authentication required.",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         # Validate URL to prevent SSRF — blocks loopback and private IP ranges
         try:
@@ -221,7 +221,7 @@ class RunMCPToolTool(BaseTool):
                 )
             else:
                 user_msg = f"Blocked server URL: {msg}"
-            return ErrorResponse(message=user_msg, session_id=session_id)
+            return ErrorResponse(message=user_msg, session_id=session_id).from_outside()
 
         # Fast DB lookup — no network call.
         # Normalize for matching because stored credentials use normalized URLs.
@@ -391,7 +391,7 @@ class RunMCPToolTool(BaseTool):
                         ),
                         session_id=session_id,
                         error=f"HTTP {e.status_code}: {str(e)[:300]}",
-                    )
+                    ).from_outside(str(e)[:300])
                 return await self._build_setup_requirements(
                     server_url,
                     session_id,
@@ -406,14 +406,14 @@ class RunMCPToolTool(BaseTool):
                 message=(f"MCP request to {host} failed with HTTP {e.status_code}."),
                 session_id=session_id,
                 error=f"HTTP {e.status_code}: {str(e)[:300]}",
-            )
+            ).from_outside(str(e)[:300])
 
         except MCPClientError as e:
             logger.warning("MCP client error for %s: %s", server_host(server_url), e)
             return ErrorResponse(
                 message=str(e),
                 session_id=session_id,
-            )
+            ).from_outside(str(e))
 
         except Exception:
             logger.error(
@@ -424,7 +424,7 @@ class RunMCPToolTool(BaseTool):
             return ErrorResponse(
                 message="An unexpected error occurred connecting to the MCP server. Please try again.",
                 session_id=session_id,
-            )
+            ).from_outside()
         finally:
             # Release any legacy session; a no-op on stateless servers.
             await client.close()
@@ -479,7 +479,7 @@ class RunMCPToolTool(BaseTool):
             server_url=server_url,
             tools=tool_infos,
             session_id=session_id,
-        )
+        ).from_outside(tool_infos)
 
     async def _execute_tool(
         self,
@@ -521,7 +521,7 @@ class RunMCPToolTool(BaseTool):
                         "Ensure the file exists before referencing it."
                     ),
                     session_id=session_id,
-                )
+                ).from_outside()
 
         result = await client.call_tool(
             tool_name, tool_arguments, input_schema=input_schema
@@ -533,14 +533,14 @@ class RunMCPToolTool(BaseTool):
                 for item in result.content
                 if item.get("type") == "text"
             )
-            hint = await self._build_error_hint(client, tool_name)
+            hint, listed = await self._build_error_hint(client, tool_name)
             return ErrorResponse(
                 message=(
                     f"MCP tool '{tool_name}' returned an error: "
                     f"{error_text or 'Unknown error'}{hint}"
                 ),
                 session_id=session_id,
-            )
+            ).from_outside(error_text, listed)
 
         result_value = parse_mcp_content(result.content)
 
@@ -551,10 +551,13 @@ class RunMCPToolTool(BaseTool):
             result=result_value,
             success=True,
             session_id=session_id,
-        )
+        ).from_outside(result_value)
 
-    async def _build_error_hint(self, client: MCPClient, tool_name: str) -> str:
-        """Self-correction hint appended to tool-error responses.
+    async def _build_error_hint(
+        self, client: MCPClient, tool_name: str
+    ) -> tuple[str, str]:
+        """Self-correction hint appended to tool-error responses, and the part
+        of it the server wrote.
 
         Discovery omits full input schemas (context cost), so this is where
         the model gets the one schema it actually needs: the failed tool's.
@@ -567,16 +570,16 @@ class RunMCPToolTool(BaseTool):
             match = next((t for t in tools if t.name == tool_name), None)
             if match is not None:
                 schema_json = _bounded_schema_hint(match.input_schema)
-                return f" Input schema for '{tool_name}': {schema_json}"
+                return f" Input schema for '{tool_name}': {schema_json}", schema_json
             names = ", ".join(t.name for t in tools[:40])
             return (
                 f" No tool named '{tool_name}' exists on this server. "
                 f"Available tools: {names}"
-            )
+            ), names
         except Exception:
             # Best-effort — a failed hint lookup must not mask the original
             # tool error.
-            return ""
+            return "", ""
 
     async def _lookup_tool_schema(
         self,
@@ -654,7 +657,7 @@ class RunMCPToolTool(BaseTool):
                     "— no credentials configured."
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if user_id is not None and not connected:
             missing_creds_dict = await annotate_expert_grants(
@@ -711,7 +714,7 @@ class RunMCPToolTool(BaseTool):
             graph_id=None,
             graph_version=None,
             rejection=rejection,
-        )
+        ).from_outside(rejection.detail if rejection else None)
 
 
 def _rejection(creds: OAuth2Credentials, error: HTTPClientError) -> CredentialRejection:

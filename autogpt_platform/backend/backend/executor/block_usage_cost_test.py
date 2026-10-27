@@ -1,6 +1,7 @@
 """Tests for the dynamic-pricing branches of block_usage_cost."""
 
 import math
+from unittest.mock import patch
 
 import pytest
 
@@ -30,6 +31,15 @@ from backend.integrations.credentials_store import (
     fal_credentials,
     openai_credentials,
 )
+from backend.sdk.cost_integration import register_provider_costs_for_block
+
+
+@pytest.fixture
+def registered_exa_costs():
+    with patch.dict(BLOCK_COSTS):
+        BLOCK_COSTS.pop(ExaSearchBlock, None)
+        register_provider_costs_for_block(ExaSearchBlock)
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -285,7 +295,7 @@ def test_fal_video_block_bills_fifteen_credits_per_second():
     assert cost == 0
 
 
-def test_exa_blocks_bill_cost_usd_via_sdk_config():
+def test_exa_blocks_bill_cost_usd_via_sdk_config(registered_exa_costs):
     """End-to-end: Exa's ProviderBuilder.with_base_cost(100, COST_USD) is live."""
     block = ExaSearchBlock()
     creds = {

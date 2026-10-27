@@ -6,7 +6,6 @@ import base64
 import hashlib
 import hmac
 import logging
-from enum import Enum
 from typing import cast
 
 from fastapi import HTTPException, Request
@@ -22,6 +21,7 @@ from backend.sdk import (
 from backend.util.request import HTTPClientError, HTTPServerError
 
 from ._api import (
+    AirtableWebhookEvent,
     WebhookFilters,
     WebhookSpecification,
     create_webhook,
@@ -30,12 +30,6 @@ from ._api import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class AirtableWebhookEvent(str, Enum):
-    TABLE_DATA = "tableData"
-    TABLE_FIELDS = "tableFields"
-    TABLE_METADATA = "tableMetadata"
 
 
 class AirtableWebhookManager(BaseWebhooksManager):
@@ -137,7 +131,7 @@ class AirtableWebhookManager(BaseWebhooksManager):
         # Prepare webhook specification
         webhook_specification = WebhookSpecification(
             filters=WebhookFilters(
-                dataTypes=events,
+                dataTypes=[AirtableWebhookEvent(event) for event in events],
             )
         )
 

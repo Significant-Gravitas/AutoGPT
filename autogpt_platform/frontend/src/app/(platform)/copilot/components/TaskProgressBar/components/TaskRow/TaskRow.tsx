@@ -20,10 +20,10 @@ export function TaskRow({ todo, isStreaming, reduceMotion }: Props) {
   const completed = status === "completed";
   const label = active && todo.activeForm ? todo.activeForm : todo.content;
   const textClass = completed
-    ? `text-zinc-400 ${reduceMotion ? "line-through" : ""}`
+    ? `text-foreground-subtle ${reduceMotion ? "line-through" : ""}`
     : active
-      ? "font-medium text-zinc-900"
-      : "text-zinc-600";
+      ? "font-medium text-foreground-strong"
+      : "text-foreground-secondary";
 
   return (
     <li className="flex items-start gap-2 text-sm">
@@ -61,6 +61,7 @@ export function TaskRow({ todo, isStreaming, reduceMotion }: Props) {
           {completed && !reduceMotion && (
             <motion.span
               aria-hidden
+              // TODO(tokens): no fitting role for bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
               className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-zinc-400"
               initial={{ scaleX: 0 }}
               animate={{ scaleX: 1 }}

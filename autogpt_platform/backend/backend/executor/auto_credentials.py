@@ -71,7 +71,7 @@ async def acquire_auto_credentials(
                         raise ValueError(
                             f"{provider.capitalize()} credential id for "
                             f"'{file_name}' in field '{field_name}' is empty "
-                            f"or invalid. Please open the agent in the "
+                            f"or invalid. Please open the workflow in the "
                             f"builder and re-select the file."
                         )
                     file_name = field_data.get("name", "selected file")
@@ -100,9 +100,9 @@ async def acquire_auto_credentials(
                             f"{provider.capitalize()} credentials for "
                             f"'{file_name}' in field '{field_name}' are not "
                             f"available in your account. "
-                            f"This can happen if the agent was created by "
+                            f"This can happen if the workflow was created by "
                             f"another user or the credentials were deleted. "
-                            f"Please open the agent in the builder and "
+                            f"Please open the workflow in the builder and "
                             f"re-select the file to authenticate with your "
                             f"own account."
                         )

@@ -6,8 +6,11 @@ import stripe
 from prisma import Prisma
 from prisma.enums import SubscriptionTier
 
+from backend.data import subscription_activation
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.stripe_client import stripe_call, stripe_list_items
+from backend.data.subscription_activation_target import record_checkout_consumption
+from backend.data.subscription_checkout import other_plan_has_access
 from backend.data.subscription_trial import TrialState, get_subscription_trial
 from backend.data.subscription_trial_claims import claim_trial_identities
 from backend.data.subscription_trial_payment import Invoice as Invoice
@@ -17,6 +20,10 @@ from backend.data.subscription_trial_payment import (
 from backend.data.subscription_trial_payment import get_customer_default_payment_method
 from backend.data.subscription_trial_rejection import TrialRejectionReason
 
+# Our clock may trail Stripe's: a trial Stripe ended "now" can read as ending
+# a moment from now here.
+STRIPE_CLOCK_SKEW_SECONDS = 300
+
 
 async def reconcile_trial_subscription(
     user_id: str, subscription_id: str
@@ -25,6 +32,7 @@ async def reconcile_trial_subscription(
     if trial is None:
         return None
     async with transaction() as tx:
+        await subscription_activation.lock_activation_user(user_id, tx)
         await query_raw_with_schema(
             'SELECT "id" FROM {schema_prefix}"SubscriptionTrial" '
             'WHERE "userId" = $1 FOR UPDATE',
@@ -38,6 +46,7 @@ async def reconcile_trial_subscription(
 async def _reconcile_locked(
     trial: TrialState, subscription_id: str, tx: Prisma
 ) -> tuple[dict, SubscriptionTier | None] | None:
+    previously_converted = trial.converted_at is not None
     raw = await stripe_call(
         stripe.Subscription.retrieve_async,
         subscription_id,
@@ -84,7 +93,7 @@ async def _reconcile_locked(
                 rejection_reason = TrialRejectionReason.CARD_VERIFICATION_FAILED
             elif not await claim_trial_identities(trial, fingerprint, tx):
                 rejection_reason = TrialRejectionReason.INTRO_OFFER_ALREADY_USED
-        if snapshot.cancel_at_period_end or rejection_reason:
+        if rejection_reason or await _ends_scheduled_cancellation_now(trial, snapshot):
             cancel_params: stripe.Subscription.CancelParams = {
                 "invoice_now": False,
                 "prorate": False,
@@ -102,23 +111,54 @@ async def _reconcile_locked(
             snapshot = SubscriptionSnapshot.model_validate(raw)
             if snapshot.id != subscription_id or snapshot.status != "canceled":
                 raise ValueError("Stripe did not confirm trial cancellation")
-    if (
-        trial.converted_at is None
-        and snapshot.status in ("active", "trialing")
-        and not snapshot.has_accepted_price(trial.offer)
-    ):
-        raise ValueError(
-            "Stripe items do not match the accepted trial price and quantity"
-        )
+    target = None
+    if trial.converted_at is None and snapshot.status in ("active", "trialing"):
+        if snapshot.status == "active":
+            target = await subscription_activation.accepted_conversion_target(
+                trial, dict(raw), tx
+            )
+        if (
+            not snapshot.has_accepted_price(trial.offer)
+            and target is None
+            and not (snapshot.status == "active" and snapshot.chosen_plan())
+        ):
+            raise ValueError(
+                "Stripe items do not match the accepted trial price and quantity"
+            )
     tier = (
         trial_subscription_tier(trial, snapshot, now)
         if checkout_complete
         else SubscriptionTier.NO_TIER
     )
+    if target is not None and tier not in (
+        SubscriptionTier.NO_TIER,
+        SubscriptionTier.TRIAL,
+    ):
+        tier = target[0]
+    if (
+        tier in subscription_activation.PAID_CONVERSION_TIERS
+        and not previously_converted
+    ):
+        assert target is not None
+        tier, price_id = target
+        await record_checkout_consumption(trial, snapshot.id, now, tx)
+        user = await tx.user.find_unique_or_raise(where={"id": trial.user_id})
+        if not await subscription_activation.publish_initial_pro_activation(
+            user, dict(raw), price_id, tx, trial
+        ):
+            tier = SubscriptionTier.NO_TIER
+        # Preserve the activation's first invoice, even if a later renewal is
+        # already latest_invoice when the delayed event is reconciled.
+        refreshed = await tx.subscriptiontrial.find_unique_or_raise(
+            where={"userId": trial.user_id}
+        )
+        if refreshed.convertedAt:
+            trial.converted_at = refreshed.convertedAt
+            trial.conversion_invoice_id = refreshed.stripeConversionInvoiceId
     await _save_snapshot(
         trial, snapshot, tier, now, tx, checkout_complete, rejection_reason
     )
-    if trial.converted_at:
+    if previously_converted:
         return dict(raw), None
     if tier == SubscriptionTier.NO_TIER:
         for status in ("active", "trialing"):
@@ -131,14 +171,42 @@ async def _reconcile_locked(
             async for other in stripe_list_items(others):
                 if other.id != snapshot.id:
                     return dict(raw), None
-    await tx.user.update_many(
-        where={
-            "id": trial.user_id,
-            "subscriptionTier": {"not": SubscriptionTier.ENTERPRISE},
-        },
-        data={"subscriptionTier": tier},
-    )
+    if tier == SubscriptionTier.NO_TIER:
+        # The trial ended: stamp the drop for the product-mail win-back
+        # window, unless the account was already on NO_TIER.
+        await tx.user.update_many(
+            where={
+                "id": trial.user_id,
+                "subscriptionTier": {
+                    "not_in": [SubscriptionTier.ENTERPRISE, SubscriptionTier.NO_TIER]
+                },
+            },
+            data={"subscriptionTier": tier, "subscriptionEndedAt": now},
+        )
+    else:
+        await tx.user.update_many(
+            where={
+                "id": trial.user_id,
+                "subscriptionTier": {"not": SubscriptionTier.ENTERPRISE},
+            },
+            data={"subscriptionTier": tier, "subscriptionEndedAt": None},
+        )
     return dict(raw), tier
+
+
+async def _ends_scheduled_cancellation_now(
+    trial: TrialState, snapshot: SubscriptionSnapshot
+) -> bool:
+    """A cancel-pending trial keeps its access until Stripe ends it at trial_end.
+
+    A plan bought meanwhile ends it now, so TRIAL never overwrites that plan if
+    its stale-subscription cleanup failed. So do items changed off the accepted
+    price: the reconcile refuses an unconverted trial on any other price."""
+    if not snapshot.cancel_at_period_end:
+        return False
+    if not snapshot.has_accepted_price(trial.offer):
+        return True
+    return await other_plan_has_access(trial.customer_id, snapshot.id)
 
 
 async def _completed_card_checkout(
@@ -195,19 +263,24 @@ def trial_subscription_tier(
     if end is None:
         return SubscriptionTier.NO_TIER
     if subscription.status == "trialing" and end > now.timestamp():
-        if subscription.has_verified_card(now):
+        # A cancel-pending trial is never charged, so the card verified at its
+        # start holds even if it expires before trial_end.
+        if subscription.has_verified_card(now) or (
+            subscription.cancel_at_period_end and trial.card_verified_at is not None
+        ):
             return SubscriptionTier.TRIAL
         return SubscriptionTier.NO_TIER
     invoice = subscription.latest_invoice
     if (
         subscription.status == "active"
-        and end <= now.timestamp()
+        and end <= now.timestamp() + STRIPE_CLOCK_SKEW_SECONDS
         and invoice is not None
         and invoice.status == "paid"
         and invoice.created >= end
         and invoice.billing_reason != "subscription_create"
     ):
-        return SubscriptionTier(trial.offer.tier)
+        chosen = subscription.chosen_plan()
+        return chosen.tier if chosen else SubscriptionTier(trial.offer.tier)
     return SubscriptionTier.NO_TIER
 
 
@@ -230,7 +303,11 @@ async def _save_snapshot(
         consumed_at = consumed_at or now
     converted_at = trial.converted_at
     conversion_invoice_id = trial.conversion_invoice_id
-    if converted_at is None and tier.value == trial.offer.tier:
+    # Only a paid conversion reads as a paid tier here.
+    if converted_at is None and tier not in (
+        SubscriptionTier.TRIAL,
+        SubscriptionTier.NO_TIER,
+    ):
         if snapshot.latest_invoice is None:
             raise ValueError("Trial conversion requires a paid invoice")
         converted_at = now

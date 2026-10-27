@@ -19,6 +19,7 @@ zstandard = ">=0.23.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.10.0"
+fakeredis = { version = "^2.32.0", extras = ["lua"] }
 isort = "^5.13.2"
 pyright = "^1.1.407"
 pytest = "^8.4.1"

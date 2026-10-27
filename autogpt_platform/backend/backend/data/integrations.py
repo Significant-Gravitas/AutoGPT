@@ -49,9 +49,9 @@ class Webhook(BaseDbModel):
     def url(self) -> str:
         return webhook_ingress_url(self.provider, self.id)
 
-    @staticmethod
-    def from_db(webhook: IntegrationWebhook):
-        return Webhook(
+    @classmethod
+    def from_db(cls, webhook: IntegrationWebhook):
+        return cls(
             id=webhook.id,
             user_id=webhook.userId,
             provider=ProviderName(webhook.provider),
@@ -67,9 +67,22 @@ class Webhook(BaseDbModel):
         )
 
 
-# LibraryAgentPreset import must be after Webhook definition to avoid
-# broken circular import:
-# integrations.py → library/model.py → integrations.py (for Webhook)
+class WebhookWithoutSecrets(Webhook):
+    """
+    Webhook variant that excludes the signing secret and the provider's webhook
+    id from serialization (GHSA-4m2w-qfr5-9f3v).
+
+    Used where a webhook leaves the backend: API responses and the
+    database-manager RPC. The defaults let the payload validate back on the
+    other side, so a preset survives the trip instead of arriving as a dict.
+    """
+
+    secret: str = Field(default="", exclude=True)
+    provider_webhook_id: str = Field(default="", exclude=True)
+
+
+# LibraryAgentPreset import must be after the webhook models to avoid a
+# circular import: integrations.py → library/model.py → integrations.py
 from backend.api.features.library.model import LibraryAgentPreset  # noqa: E402
 
 # Resolve forward refs
@@ -80,15 +93,15 @@ class WebhookWithRelations(Webhook):
     triggered_nodes: list[NodeModel]
     triggered_presets: list[LibraryAgentPreset]
 
-    @staticmethod
-    def from_db(webhook: IntegrationWebhook):
+    @classmethod
+    def from_db(cls, webhook: IntegrationWebhook):
         if webhook.AgentNodes is None or webhook.AgentPresets is None:
             raise ValueError(
                 "AgentNodes and AgentPresets must be included in "
                 "IntegrationWebhook query with relations"
             )
 
-        return WebhookWithRelations(
+        return cls(
             **Webhook.from_db(webhook).model_dump(),
             triggered_nodes=[NodeModel.from_db(node) for node in webhook.AgentNodes],
             triggered_presets=[

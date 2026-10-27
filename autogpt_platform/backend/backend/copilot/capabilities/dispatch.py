@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 from backend.copilot.capabilities.registry import configured_tool, get_registry
 from backend.copilot.capabilities.resolve import resolve_entry
-from backend.copilot.capabilities.sources import SKILL_TOOL, skill_name
+from backend.copilot.capabilities.sources import SKILL_TOOL, expert_dispatch, skill_name
 
 if TYPE_CHECKING:
     from backend.copilot.tools.base import BaseTool
@@ -33,11 +33,14 @@ def resolve_tool_dispatch(
     tool_name: str, args: Mapping[str, Any] | None
 ) -> DispatchedToolCall | None:
     """The platform tool a ``run_capability`` call runs, or None when the call
-    is not one — another tool, a block or MCP id, or ``validate_only``.
+    is not one — another tool, a block or MCP id, ``validate_only``, or a
+    ``connect`` call.
 
     A ``skill:<name>`` id is the ``read_skill`` call that loads the skill,
     with the name taken from the id, so a skill found by search is loaded
-    through the one tool path like any other skill.
+    through the one tool path like any other skill.  An ``expert:`` id is the
+    ``hire_expert`` call for that template and a ``teammate:`` id the
+    ``delegate_to_expert`` call for that expert, the id bound over the input.
 
     Never raises: it runs on the streaming path, where a bad id must degrade to
     the dispatcher's own "unknown capability" answer rather than break the turn.
@@ -49,8 +52,11 @@ def resolve_tool_dispatch(
     try:
         capability_id = str(args.get("id") or "")
         skill = skill_name(capability_id)
+        expert = expert_dispatch(capability_id)
         if skill is not None:
             name, bound = SKILL_TOOL, {"name": skill}
+        elif expert is not None:
+            name, bound = expert
         else:
             entry = resolve_entry(get_registry(), capability_id)
             if entry is None or entry.kind != "tool" or not entry.implementations:
@@ -66,5 +72,8 @@ def resolve_tool_dispatch(
     if payload is not None and not isinstance(payload, Mapping):
         # Coercing it to {} would run the tool on its defaults; the dispatcher
         # owns the "input must be an object" answer, so leave the call to it.
+        return None
+    if payload and payload.get("connect"):
+        # A tool has nothing to connect; the dispatcher describes it instead.
         return None
     return DispatchedToolCall(tool, name, {**dict(payload or {}), **bound})

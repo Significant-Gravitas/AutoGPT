@@ -2,12 +2,15 @@
 
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
-import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import {
+  SidebarInset,
+  SidebarProvider,
+} from "@/components/molecules/Sidebar/Sidebar";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import dynamic from "next/dynamic";
 import { CSSProperties } from "react";
 import { TourChatHost } from "./TourChatHost";
+import { DotDistortionShader } from "./components/DotDistortionShader/DotDistortionShader";
 import { TourChatHeader } from "./components/TourChatHeader/TourChatHeader";
 import { TourSidebar } from "./components/TourSidebar/TourSidebar";
 import { buildTourArtifactRef } from "./helpers";

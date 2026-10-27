@@ -3,18 +3,32 @@
 import json
 import logging
 from collections import deque
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, Sequence
 
 from openai.types.chat import ChatCompletionToolParam
+from prisma.enums import APIKeyPermission
 
-from backend.copilot.context import get_current_envelope
+from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
+from backend.copilot.context import args_already_bound, get_current_envelope
+from backend.copilot.google_data_redaction import (
+    GOOGLE_DATA_METADATA_KEY,
+    is_google_call,
+    remember_cut_google_output,
+    remember_google_output,
+    tracing_google_data,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import (
     _MAX_TOOL_OUTPUT_SIZE,
     StreamToolOutputAvailable,
 )
+from backend.copilot.tool_image import HeldImage, parse_held_image
+from backend.copilot.trial_reads import trial_reads_fresh
+from backend.copilot.turn_tracing import tool_transaction
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
+from backend.data.workspace_internal import TOOL_OUTPUT_PURPOSE
+from backend.util import tracing
 from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
@@ -23,14 +37,22 @@ from .models import (
     ApprovalRequiredResponse,
     ErrorResponse,
     NeedLoginResponse,
+    ResponseType,
     ToolResponseBase,
 )
 
 if TYPE_CHECKING:
+    from backend.copilot.gate import Decision
     from backend.copilot.gate.headline import Headline
     from backend.copilot.gate.subject import Subject
 
 logger = logging.getLogger(__name__)
+
+# Outputs that stop a call to wait on the user (an approval card, a sign-in),
+# which is not the tool failing.
+_AWAITING_THE_USER = frozenset(
+    {ResponseType.APPROVAL_REQUIRED.value, ResponseType.NEED_LOGIN.value}
+)
 
 # Persist full tool output to workspace when it exceeds this threshold.
 # Must be below _MAX_TOOL_OUTPUT_SIZE (100K) in response_model.py so we
@@ -100,6 +122,7 @@ async def _persist_and_summarize(
     session_id: str,
     tool_call_id: str,
     digest: bool = False,
+    google_data: bool = False,
 ) -> str:
     """Persist full output to workspace and return a preview with retrieval
     instructions — a structural outline when *digest*, else a middle-out slice.
@@ -144,7 +167,10 @@ async def _persist_and_summarize(
             filename=f"{tool_call_id}.json",
             path=file_path,
             mime_type="application/json",
-            metadata={"purpose": "tool-output"},
+            metadata={
+                "purpose": TOOL_OUTPUT_PURPOSE,
+                **({GOOGLE_DATA_METADATA_KEY: True} if google_data else {}),
+            },
             overwrite=True,
         )
     except Exception:
@@ -344,6 +370,38 @@ async def _record_activity(
 # Passed to ``_execute`` of a tool with a gate subject when the user approved
 # this exact call; stripped from the model's own arguments so it cannot be forged.
 GATE_APPROVED = "_gate_approved"
+# Passed beside it when an active gate reached any verdict on the call: a card,
+# a rule, the mode or the supervisor. Stripped the same way.
+GATE_DECIDED = "_gate_decided"
+# Passed when ``bind_args`` already resolved the call's arguments, so the tool
+# runs them as reviewed rather than resolving them a second time. Stripped the
+# same way.
+ARGS_BOUND = "_args_bound"
+
+
+def parameters_without(parameters: dict[str, Any], *names: str) -> dict[str, Any]:
+    """A copy of a tool's parameter schema without the named arguments."""
+    return {
+        **parameters,
+        "properties": {
+            name: spec
+            for name, spec in parameters.get("properties", {}).items()
+            if name not in names
+        },
+        "required": [
+            name for name in parameters.get("required", []) if name not in names
+        ],
+    }
+
+
+def _awaits_the_user(output: StreamToolOutputAvailable) -> bool:
+    raw = output.output
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return False
+    return isinstance(raw, dict) and raw.get("type") in _AWAITING_THE_USER
 
 
 class BaseTool:
@@ -372,9 +430,17 @@ class BaseTool:
         raise NotImplementedError
 
     @property
-    def requires_auth(self) -> bool:
-        """Whether this tool requires authentication."""
-        return False
+    def model_parameters(self) -> dict[str, Any]:
+        """``parameters`` as the model is sent them: without the card's hints."""
+        return without_card_hints(self.parameters)
+
+    @property
+    def search_keywords(self) -> tuple[str, ...]:
+        """Extra words ``find_capability`` indexes for this tool.
+
+        Index-only: never sent to the model, so they cost no schema budget.
+        """
+        return ()
 
     @property
     def is_available(self) -> bool:
@@ -385,6 +451,53 @@ class BaseTool:
         never offered an option that will immediately fail.
         """
         return True
+
+    @property
+    def requires_auth(self) -> bool:
+        """Whether this tool requires an authenticated end user."""
+        return False
+
+    @property
+    def allow_external_use(
+        self,
+    ) -> tuple[Literal[False], None] | tuple[Literal[True], Sequence[APIKeyPermission]]:
+        """
+        Whether this tool may be used through our external MCP server.
+        Returns `True` and the API-key permissions it requires if so.
+
+        Every tool must either override this or be listed with a reason in
+        ``EXTERNAL_USE_EXCLUSIONS`` (api/external/v2/mcp_server.py);
+        mcp_server_test.py fails otherwise.
+        """
+        return False, None
+
+    @property
+    def external_parameters(self) -> dict[str, Any]:
+        """The parameters an external caller may pass; a subset of ``parameters``.
+
+        The MCP server advertises this schema and refuses a call that passes
+        anything outside it. Override to keep an argument off the external
+        surface when it reaches something the v2 API has no permission for.
+        """
+        return self.parameters
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        """Permissions an external call needs on top of ``allow_external_use``'s.
+
+        For a tool whose arguments decide what it does: a branch that writes
+        what the tool's own permissions don't cover names that permission
+        here, so choosing an argument can't reach past the caller's scopes.
+        """
+        return []
+
+    @property
+    def spends_platform_money(self) -> bool:
+        """Whether a call bills the platform's own account, such as a paid model.
+
+        The MCP server checks the caller's paywall and usage allowance before
+        running one, as a chat turn does before it spends the same budget.
+        """
+        return False
 
     def activity_event(
         self,
@@ -412,6 +525,19 @@ class BaseTool:
         """
         return None
 
+    async def bind_args(
+        self, user_id: str | None, session: ChatSession, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """The call's arguments as they will run. A tool that resolves part of
+        its input at run time (a file reference) resolves it here, once, so the
+        approval binds what runs and a changed file asks again."""
+        return args
+
+    async def gate_context(self, args: dict[str, Any]) -> dict[str, str | None] | None:
+        """The content of files this call runs, by path, for the supervisor; None
+        for one that could not be read, which holds the call."""
+        return None
+
     def as_openai_tool(self) -> ChatCompletionToolParam:
         """Convert to OpenAI tool format."""
         return ChatCompletionToolParam(
@@ -419,7 +545,7 @@ class BaseTool:
             function={
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.parameters,
+                "parameters": self.model_parameters,
             },
         )
 
@@ -432,6 +558,11 @@ class BaseTool:
     ) -> StreamToolOutputAvailable:
         """Execute the tool with authentication check.
 
+        Each call is its own Sentry ``copilot.tool`` transaction, named after
+        the tool, in the trace of the turn that made it, and a PostHog
+        ``$ai_span`` in the trace of the reply (``copilot.ai_spans``): its
+        name, latency and whether it failed, never its input or output.
+
         Args:
             user_id: User ID (None for anonymous users)
             session_id: Chat session ID
@@ -441,7 +572,34 @@ class BaseTool:
             Pydantic response object
 
         """
+        with (
+            tool_transaction(self.name, tool_call_id, session.session_id) as span,
+            trial_reads_fresh(),
+            tool_span(
+                self.name,
+                user_id=user_id,
+                session_id=session.session_id,
+                tool_call_id=tool_call_id,
+            ) as outcome,
+        ):
+            output = await self._execute_checked(
+                user_id, session, tool_call_id, **kwargs
+            )
+            span.set_tag("copilot.tool.success", "true" if output.success else "false")
+            if not output.success and not _awaits_the_user(output):
+                outcome.is_error = True
+            return output
+
+    async def _execute_checked(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        tool_call_id: str,
+        **kwargs,
+    ) -> StreamToolOutputAvailable:
         kwargs.pop(GATE_APPROVED, None)
+        kwargs.pop(GATE_DECIDED, None)
+        kwargs.pop(ARGS_BOUND, None)
         if self.requires_auth and not user_id:
             logger.warning(
                 "Attempted tool call for %s but user not authenticated",
@@ -504,12 +662,31 @@ class BaseTool:
         # ``_execute_tool_sync`` — so there is one place to add, not two.
         # Must stay AFTER the envelope and name gates: a call the envelope refuses can
         # never run, so approving it would spend a user's decision on nothing.
-        gated, approved = await self._gate(user_id, session, tool_call_id, kwargs)
+        # The gate's model calls quote the call's arguments and result in
+        # prompts of their own, so for a Google call their traces are redacted.
+        google_call = is_google_call(kwargs)
+        # What the call will run, resolved once: the gate reviews, the card
+        # shows and the approval binds these values, and the tool runs them.
+        # An approved held call replays the arguments it was resolved to.
+        replayed = self.has_gate_subject and args_already_bound()
+        bound = (
+            await self.bind_args(user_id, session, kwargs)
+            if self.has_gate_subject and not replayed
+            else kwargs
+        )
+        args_bound = replayed or bound is not kwargs
+        with tracing_google_data(google_call):
+            gated, decision = await self._gate(
+                user_id, session, tool_call_id, bound, args_bound
+            )
         if gated is not None:
             return gated
-        run_kwargs = kwargs
-        if approved and self.has_gate_subject:
-            run_kwargs = {**kwargs, GATE_APPROVED: True}
+        run_kwargs = {**bound, ARGS_BOUND: True} if args_bound else kwargs
+        if decision is not None and self.has_gate_subject:
+            if decision.approved:
+                run_kwargs = {**run_kwargs, GATE_APPROVED: True}
+            if decision.decided:
+                run_kwargs = {**run_kwargs, GATE_DECIDED: True}
 
         # After the gates, so a refused call never looks to a turn-scoped gate
         # like the tool having run, and before the await, because the gates ask
@@ -518,9 +695,11 @@ class BaseTool:
 
         try:
             result = await self._execute(user_id, session, **run_kwargs)
+            if result.type == ResponseType.ERROR:
+                mark_tool_failed()
             if user_id:
                 await _record_activity(self, user_id, session, result, kwargs)
-            raw_output = result.model_dump_json(exclude_none=True)
+            raw_output = full = result.model_dump_json(exclude_none=True)
 
             digest = (
                 self.digest_large_output
@@ -528,29 +707,52 @@ class BaseTool:
                 and user_id is not None
             )
             threshold = _DIGEST_THRESHOLD if digest else _LARGE_OUTPUT_THRESHOLD
-            if len(raw_output) > threshold and user_id and session.session_id:
+            # An External API client can't follow a preview to the copy it
+            # points at, so it gets the output itself, cut in the middle past
+            # _MAX_TOOL_OUTPUT_SIZE, and nothing is written to its workspace.
+            if (
+                len(raw_output) > threshold
+                and user_id
+                and session.session_id
+                and not session.external_caller
+            ):
                 raw_output = await _persist_and_summarize(
-                    raw_output, user_id, session.session_id, tool_call_id, digest
+                    raw_output,
+                    user_id,
+                    session.session_id,
+                    tool_call_id,
+                    digest,
+                    google_data=result.holds_google_data,
                 )
-
             output = StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=raw_output,
-            )
+            ).with_image(result.image)
+            # Remembered as the model gets it, previews and caps included, so
+            # the traces can redact it even where it no longer parses.
+            if result.holds_google_data and isinstance(output.output, str):
+                remember_google_output(output.output)
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
+            tracing.set_status("internal_error")
+            mark_tool_raised(e)
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=ErrorResponse(
                     message=f"An error occurred while executing {self.name}",
-                    error=str(e),
+                    # AutoPilot's model reads the detail to recover; an
+                    # External API client gets no internal detail.
+                    error=None if session.external_caller else str(e),
                     session_id=session.session_id,
                 ).model_dump_json(),
                 success=False,
             )
-        return await self._screen_read(user_id, session, tool_call_id, kwargs, output)
+        with tracing_google_data(google_call or result.holds_google_data):
+            return await self._screen_read(
+                user_id, session, tool_call_id, kwargs, output, result.outside, full
+            )
 
     async def _gate(
         self,
@@ -558,9 +760,10 @@ class BaseTool:
         session: ChatSession,
         tool_call_id: str,
         kwargs: dict[str, Any],
-    ) -> tuple[StreamToolOutputAvailable | None, bool]:
+        args_bound: bool = False,
+    ) -> tuple[StreamToolOutputAvailable | None, "Decision | None"]:
         """A refusal to return instead of running (or None to proceed), and
-        whether the user approved this exact call.
+        the gate's decision on a call that proceeds.
 
         A gate that crashes must not become a gate that passes, so an
         unexpected failure here refuses the call rather than falling through.
@@ -578,6 +781,8 @@ class BaseTool:
                 session,
                 tool_call_id,
                 subject_of=subject_of if self.has_gate_subject else None,
+                context_of=lambda: self.gate_context(kwargs),
+                args_bound=args_bound,
             )
         except Exception:
             logger.warning(f"Action gate failed for {self.name}", exc_info=True)
@@ -589,11 +794,11 @@ class BaseTool:
                     "settings, so nothing ran. Tell the user and stop.",
                     args=kwargs,
                 ),
-                False,
+                None,
             )
 
         if decision.allowed:
-            return None, decision.approved
+            return None, decision
         return (
             self._refusal(
                 tool_call_id,
@@ -603,7 +808,7 @@ class BaseTool:
                 args=kwargs,
                 headline=decision.headline,
             ),
-            False,
+            None,
         )
 
     async def _released_read(
@@ -627,12 +832,13 @@ class BaseTool:
             )
         if release is None:
             return None
+        image_result = parse_held_image(release.output) if release.released else None
         return StreamToolOutputAvailable(
             toolCallId=tool_call_id,
             toolName=self.name,
-            output=release.output,
+            output=image_result.text if image_result else release.output,
             success=release.success,
-        )
+        ).with_image(image_result.image if image_result else None)
 
     async def _screen_read(
         self,
@@ -641,8 +847,11 @@ class BaseTool:
         tool_call_id: str,
         kwargs: dict[str, Any],
         result: StreamToolOutputAvailable,
+        outside: tuple[Any, ...] | None,
+        full: str,
     ) -> StreamToolOutputAvailable:
-        """Judge the output as the model will receive it, after every cap."""
+        """Judge the output as the model will receive it, after every cap: the
+        parts ``outside`` declares, or all of it when nothing was declared."""
         from backend.copilot.gate.reads import model_view, readable_parts, screen_read
 
         seen = (
@@ -652,7 +861,14 @@ class BaseTool:
         )
         view = model_view.get()
         if view is not None:
-            seen = view(seen, result.success)
+            whole, seen = seen, view(seen, result.success)
+            remember_cut_google_output(whole, seen)
+        if result.image is not None:
+            whole, seen = (
+                seen,
+                HeldImage(text=seen, image=result.image).model_dump_json(),
+            )
+            remember_cut_google_output(whole, seen)
         text, images = readable_parts(seen)
         stub = await screen_read(
             self.name,
@@ -664,6 +880,8 @@ class BaseTool:
             text=text,
             images=images,
             tool_call_id=tool_call_id,
+            outside=outside,
+            full=full,
         )
         if stub is None:
             return result
@@ -717,3 +935,21 @@ class BaseTool:
 
         """
         raise NotImplementedError
+
+
+# Read by the approval card (gate/review.py, gate/references.py), never by the
+# model: a label, how to show the value, and what platform thing an id names.
+CARD_HINTS = frozenset({"title", "format", "entity"})
+
+
+def without_card_hints(schema: dict[str, Any]) -> dict[str, Any]:
+    properties = schema.get("properties")
+    if not properties:
+        return schema
+    return {
+        **schema,
+        "properties": {
+            key: {k: v for k, v in spec.items() if k not in CARD_HINTS}
+            for key, spec in properties.items()
+        },
+    }

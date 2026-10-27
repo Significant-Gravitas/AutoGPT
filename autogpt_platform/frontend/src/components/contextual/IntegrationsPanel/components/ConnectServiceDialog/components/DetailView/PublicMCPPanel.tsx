@@ -3,13 +3,15 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
+import type { ReactNode } from "react";
 import { useCheckMCPConnection } from "./useCheckMCPConnection";
 
 interface Props {
   serverURL: string;
+  actions?: ReactNode;
 }
 
-export function PublicMCPPanel({ serverURL }: Props) {
+export function PublicMCPPanel({ serverURL, actions }: Props) {
   const { check, isPending, toolCount, error } =
     useCheckMCPConnection(serverURL);
   return (
@@ -21,7 +23,7 @@ export function PublicMCPPanel({ serverURL }: Props) {
         value={serverURL}
         readOnly
       />
-      <Text variant="small" className="text-zinc-600">
+      <Text variant="small" className="text-foreground-secondary">
         This server can be used without connecting an account.
       </Text>
       {toolCount !== null && (
@@ -32,24 +34,27 @@ export function PublicMCPPanel({ serverURL }: Props) {
         </Text>
       )}
       {toolCount !== null && (
-        <Text variant="small" className="text-zinc-600">
-          No connection was saved. Use this server URL when adding MCP tools to
-          an agent.
+        <Text variant="small" className="text-foreground-secondary">
+          This service needs no sign-in, so nothing was saved. Add it to a
+          workflow or ask an expert to use it.
         </Text>
       )}
       {error && (
-        <Text variant="small" role="alert" className="text-red-700">
+        <Text variant="small" role="alert" className="text-error-foreground">
           {error}
         </Text>
       )}
-      <Button
-        variant="primary"
-        size="small"
-        onClick={check}
-        loading={isPending}
-      >
-        Check connection
-      </Button>
+      <div className="flex items-center justify-end gap-2">
+        {actions}
+        <Button
+          variant="primary"
+          size="small"
+          onClick={check}
+          loading={isPending}
+        >
+          Check connection
+        </Button>
+      </div>
     </div>
   );
 }

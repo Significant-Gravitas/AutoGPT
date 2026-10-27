@@ -17,6 +17,7 @@ import {
 } from "../ExpertCards";
 import type { ChainRow } from "../helpers";
 import { ToolResult } from "../ToolResult";
+import gatedProposal from "./gatedProposal.json";
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),
@@ -411,6 +412,18 @@ describe("expert approval", () => {
     );
   }
 
+  it("offers Approve on a preview run under Ask First", async () => {
+    const user = userEvent.setup();
+    renderGroup([expertPart("output-available", gatedProposal)]);
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+
+    // The line gate/card_approval.py takes as the answer to the confirm.
+    expect(onSend).toHaveBeenCalledWith(
+      "Approved: create Otto (confirmation_id: 5f0c2a3e-7b1d-4c9e-8a6f-0d2b4e6c8a10).",
+    );
+  });
+
   it("moves to the next expert on each decision, then sends all of them", async () => {
     const user = userEvent.setup();
     renderGroup([proposal("Fiona", "a"), proposal("Bhaskar", "b")]);
@@ -442,14 +455,22 @@ describe("expert approval", () => {
     expect(screen.queryByRole("button", { name: "Undo decline" })).toBeNull();
   });
 
-  it("holds the send until the stream has settled", async () => {
+  it("takes no answer until the stream has settled, then sends on one click", async () => {
     const user = userEvent.setup();
     const { rerender } = renderGroup([proposal("Otto", "a")], {
       isCurrentlyStreaming: true,
     });
 
-    await user.click(screen.getByRole("button", { name: "Approve" }));
-    expect(screen.queryByRole("button", { name: "Send decisions" })).toBeNull();
+    // Another proposal can still land and turn this into a pager, so an
+    // answer now could not do what the button says.
+    const approve = screen.getByRole("button", { name: "Approve" });
+    expect(approve).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Decline" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    await user.click(approve);
+    expect(onSend).not.toHaveBeenCalled();
 
     rerender(
       <CopilotChatActionsProvider onSend={onSend}>
@@ -460,9 +481,10 @@ describe("expert approval", () => {
       </CopilotChatActionsProvider>,
     );
 
-    expect(
-      screen.getByRole("button", { name: "Send decisions" }),
-    ).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    expect(onSend).toHaveBeenCalledWith(
+      "Approved: create Otto (confirmation_id: c-a).",
+    );
   });
 
   it("offers no send without a chat actions provider", async () => {
@@ -495,8 +517,9 @@ describe("expert approval", () => {
     const user = userEvent.setup();
     renderGroup([proposal("Otto", "a")]);
 
+    // A lone proposal's answer is the send: no separate Send click.
     await user.click(screen.getByRole("button", { name: "Approve" }));
-    await user.click(screen.getByRole("button", { name: "Send decisions" }));
+    expect(screen.queryByRole("button", { name: "Send decisions" })).toBeNull();
 
     expect(onSend).toHaveBeenCalledWith(
       "Approved: create Otto (confirmation_id: c-a).",
@@ -509,7 +532,6 @@ describe("expert approval", () => {
     renderGroup([proposal("Otto", "a")]);
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
-    await user.click(screen.getByRole("button", { name: "Send decisions" }));
 
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith(
@@ -540,7 +562,6 @@ describe("expert approval", () => {
     ]);
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
-    await user.click(screen.getByRole("button", { name: "Send decisions" }));
 
     expect(onSend).toHaveBeenCalledWith(
       "Approved: update Otto (confirmation_id: c-u).",

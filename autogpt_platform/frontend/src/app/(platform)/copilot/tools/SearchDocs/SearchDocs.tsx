@@ -1,7 +1,6 @@
 "use client";
 
 import type { ToolUIPart } from "ai";
-import { useMemo } from "react";
 
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import {
@@ -57,12 +56,12 @@ export function SearchDocsTool({ part }: Props) {
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
-  const normalized = useMemo(() => {
-    if (!output) return null;
-    const title = getDocsToolTitle(part.type, output);
-    const label = getToolLabel(part.type);
-    return { title, label };
-  }, [output, part.type]);
+  const normalized = output
+    ? {
+        title: getDocsToolTitle(part.type, output),
+        label: getToolLabel(part.type),
+      }
+    : null;
 
   const isOutputAvailable = part.state === "output-available" && !!output;
 
@@ -103,7 +102,7 @@ export function SearchDocsTool({ part }: Props) {
         />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 

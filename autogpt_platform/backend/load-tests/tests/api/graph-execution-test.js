@@ -3,7 +3,7 @@ import http from "k6/http";
 import { check, sleep, group } from "k6";
 import { Rate, Trend, Counter } from "k6/metrics";
 import { getEnvironmentConfig } from "../../configs/environment.js";
-import { getPreAuthenticatedHeaders } from "../../configs/pre-authenticated-tokens.js";
+import { authHeaders, authSetupTimeout, setupAuth } from "../../lib/auth.js";
 // Test data generation functions
 function generateTestGraph(name = null) {
   const graphName =
@@ -53,24 +53,47 @@ function generateTestGraph(name = null) {
   };
 }
 
+// Graph inputs are keyed by the input block's `name`.
 function generateExecutionInputs() {
   return {
-    "Load Test Input": {
-      name: "Load Test Input",
-      description: "Test input for load testing",
-      value: `Test execution at ${new Date().toISOString()}`,
-    },
+    "Load Test Input": `Test execution at ${new Date().toISOString()}`,
   };
 }
 
 const config = getEnvironmentConfig();
 
+// A 402 is a billing refusal: the account has no credits, or no subscription
+// while the payment paywall applies to it. A new account can meet either,
+// depending on the target's flags. The route answered as designed, so it is
+// not a failed request, but no graph ran: graph_executions_total counts only
+// the runs that started, and each refusal has its own counter.
+const EXECUTION_STATUSES = http.expectedStatuses(200, 402);
+
 // Custom metrics for graph execution testing
 const graphCreations = new Counter("graph_creations_total");
 const graphExecutions = new Counter("graph_executions_total");
+const graphExecutionsNoCredits = new Counter(
+  "graph_executions_refused_no_credits_total",
+);
+const graphExecutionsNoSubscription = new Counter(
+  "graph_executions_refused_no_subscription_total",
+);
 const graphExecutionTime = new Trend("graph_execution_duration");
 const graphCreationTime = new Trend("graph_creation_duration");
 const executionErrors = new Rate("execution_errors");
+
+// Which billing refusal a 402 is, from its detail; null for any other 402.
+function billingRefusal(response) {
+  let detail = "";
+  try {
+    detail = String(response.json("detail") || "");
+  } catch (e) {
+    detail = "";
+  }
+  if (/insufficient balance/i.test(detail)) return "no credits";
+  if (/subscription is required/i.test(detail)) return "no subscription";
+  return null;
+}
 
 // Configurable options for easy load adjustment
 export const options = {
@@ -92,7 +115,7 @@ export const options = {
     name: "AutoGPT Platform - Graph Creation & Execution Test",
   },
   // Timeout configurations to prevent early termination
-  setupTimeout: "60s",
+  setupTimeout: authSetupTimeout(),
   teardownTimeout: "60s",
   noConnectionReuse: false,
   userAgent: "k6-load-test/1.0",
@@ -104,6 +127,7 @@ export function setup() {
     `Configuration: VUs=${parseInt(__ENV.VUS) || 5}, Duration=${__ENV.DURATION || "2m"}`,
   );
   return {
+    ...setupAuth(),
     timestamp: Date.now(),
   };
 }
@@ -111,20 +135,7 @@ export function setup() {
 export default function (data) {
   // Get load multiplier - how many concurrent operations each VU should perform
   const requestsPerVU = parseInt(__ENV.REQUESTS_PER_VU) || 1;
-
-  // Get pre-authenticated headers (no auth API calls during test)
-  const headers = getPreAuthenticatedHeaders(__VU);
-
-  // Handle missing token gracefully
-  if (!headers || !headers.Authorization) {
-    console.log(
-      `⚠️ VU ${__VU} has no valid pre-authenticated token - skipping graph execution`,
-    );
-    check(null, {
-      "Graph Execution: Failed gracefully without crashing VU": () => true,
-    });
-    return; // Exit iteration gracefully without crashing
-  }
+  const headers = authHeaders(data);
 
   console.log(
     `🚀 VU ${__VU} performing ${requestsPerVU} concurrent graph operations...`,
@@ -140,7 +151,7 @@ export default function (data) {
     // Add graph creation request
     graphRequests.push({
       method: "POST",
-      url: `${config.API_BASE_URL}/api/graphs`,
+      url: `${config.API_BASE_URL}/graphs`,
       body: JSON.stringify(graphData),
       params: { headers },
     });
@@ -195,12 +206,12 @@ export default function (data) {
 
       executionRequests.push({
         method: "POST",
-        url: `${config.API_BASE_URL}/api/graphs/${graph.id}/execute/${graph.version}`,
+        url: `${config.API_BASE_URL}/graphs/${graph.id}/execute/${graph.version}`,
         body: JSON.stringify({
           inputs: executionInputs,
           credentials_inputs: {},
         }),
-        params: { headers },
+        params: { headers, responseCallback: EXECUTION_STATUSES },
       });
     }
 
@@ -208,22 +219,31 @@ export default function (data) {
     const executionResponses = http.batch(executionRequests);
 
     let executionSuccessCount = 0;
+    const refusals = { "no credits": 0, "no subscription": 0 };
     for (let i = 0; i < executionResponses.length; i++) {
       const response = executionResponses[i];
+      const refusal = response.status === 402 ? billingRefusal(response) : null;
 
-      const success = check(response, {
-        [`Graph ${i + 1} execution initiated`]: (r) =>
-          r.status === 200 || r.status === 402,
+      check(response, {
+        [`Graph ${i + 1} execution started, or refused for no credits or no subscription (402)`]:
+          (r) => r.status === 200 || refusal !== null,
       });
 
-      if (success) {
+      if (response.status === 200) {
         executionSuccessCount++;
         graphExecutions.add(1);
+      } else if (refusal === "no credits") {
+        refusals[refusal]++;
+        graphExecutionsNoCredits.add(1);
+      } else if (refusal === "no subscription") {
+        refusals[refusal]++;
+        graphExecutionsNoSubscription.add(1);
       }
     }
 
     console.log(
-      `✅ VU ${__VU} executed ${executionSuccessCount}/${graphsToExecute.length} graphs`,
+      `✅ VU ${__VU} executed ${executionSuccessCount}/${graphsToExecute.length} graphs ` +
+        `(refused: ${refusals["no credits"]} no credits, ${refusals["no subscription"]} no subscription)`,
     );
   }
 
@@ -231,13 +251,9 @@ export default function (data) {
   sleep(Math.random() * 2 + 1); // 1-3 seconds
 }
 
-// Legacy functions removed - replaced by concurrent execution in main function
-// These functions are no longer used since implementing http.batch() for true concurrency
-
 export function teardown(data) {
+  // graph_creations_total and graph_executions_total are in k6's summary.
   console.log("🧹 Cleaning up graph execution load test...");
-  console.log(`Total graph creations: ${graphCreations.value || 0}`);
-  console.log(`Total graph executions: ${graphExecutions.value || 0}`);
 
   const testDuration = Date.now() - data.timestamp;
   console.log(`Test completed in ${testDuration}ms`);

@@ -19,13 +19,13 @@ interface SectionProps {
 // Same section labels as the team page's soul editor (SoulDrawer), so the
 // charter reads the same here as where it gets edited.
 const LABEL =
-  "mb-1.5 text-xs font-medium uppercase tracking-[0.12em] text-zinc-700";
+  "mb-1.5 text-xs font-medium uppercase tracking-caps text-foreground-body";
 
 function Section({ title, text }: SectionProps) {
   return (
     <section>
       <div className={LABEL}>{title}</div>
-      <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-600">
+      <p className="whitespace-pre-line text-sm leading-relaxed text-foreground-secondary">
         {text}
       </p>
     </section>
@@ -79,16 +79,18 @@ export function ExpertArtifactContent({ expert: artifact }: Props) {
           size={48}
         />
         <div className="min-w-0">
-          <p className="truncate text-base font-semibold text-zinc-900">
+          <p className="truncate text-base font-semibold text-foreground-strong">
             {expert.name}
           </p>
           {expert.role && (
-            <p className="truncate text-sm text-zinc-500">{expert.role}</p>
+            <p className="truncate text-sm text-foreground-tertiary">
+              {expert.role}
+            </p>
           )}
         </div>
       </div>
       {expert.tagline && (
-        <p className="text-sm leading-relaxed text-zinc-700">
+        <p className="text-sm leading-relaxed text-foreground-body">
           {expert.tagline}
         </p>
       )}
@@ -114,7 +116,7 @@ export function ExpertArtifactContent({ expert: artifact }: Props) {
       {expert.color && swatchClassFor(expert.color) && (
         <section>
           <div className={LABEL}>Accent</div>
-          <div className="flex items-center gap-2 text-sm text-zinc-600">
+          <div className="flex items-center gap-2 text-sm text-foreground-secondary">
             <span
               aria-hidden="true"
               className={cn(

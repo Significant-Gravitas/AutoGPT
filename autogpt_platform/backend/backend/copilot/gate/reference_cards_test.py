@@ -64,7 +64,6 @@ _CALLS: list[tuple[str, str, dict[str, Any]]] = [
         },
     ),
     ("Pause schedule", "pause_schedule", {"schedule_id": "sch-digest"}),
-    ("Hire expert", "hire_expert", {"template_id": "tpl-ada", "name": "Ada"}),
     ("Message chat", "message_session", {"session_id": "s-q3", "message": "Done?"}),
     (
         "Grant credential",
@@ -88,6 +87,29 @@ _CALLS: list[tuple[str, str, dict[str, Any]]] = [
         {"file_id": "file-q3", "path": "/reports/q3-report.pdf"},
     ),
     ("Unresolved id", "delete_preset", {"preset_id": "3f0c9a2e-preset-gone"}),
+    (
+        "Follow-up in two days",
+        "schedule_followup",
+        {
+            "message": "Check that Ada finished the partner dossiers.",
+            "delay_seconds": 183_420,
+            "session_id": "s-q3",
+        },
+    ),
+    (
+        "Weekly follow-up",
+        "schedule_followup",
+        {"message": "Review the sales pipeline.", "cron": "0 9 * * 1"},
+    ),
+    (
+        "Delegate and wait",
+        "delegate_to_expert",
+        {
+            "expert_id": "exp-ada",
+            "prompt": "Backfill the partner dossiers for the three new accounts.",
+            "wait_for_result": 180,
+        },
+    ),
 ]
 
 
@@ -101,6 +123,10 @@ async def build_cards() -> list[dict[str, Any]]:
         patch.object(references, "get_workspace_manager", _workspace),
         patch.object(references, "store_db", return_value=_store()),
         patch.object(references, "get_redis_async", _redis),
+        patch(
+            "backend.copilot.tools.expert_delegation.experts_db",
+            return_value=_experts(),
+        ),
     ):
         cards = [await _card(*call) for call in _CALLS]
     return json.loads(json.dumps(cards, default=str))
@@ -197,11 +223,12 @@ def _preset(id: str, name: str, description: str, webhook_id: str | None) -> Mag
 
 def _experts() -> MagicMock:
     experts = MagicMock()
-    ada = _template("tpl-ada", "Ada", "Keeps the books balanced.", None, "Finance")
     grace = _template(
         "tpl-grace", "Grace", "Ships on Thursdays.", "Release manager", "Engineering"
     )
-    experts.list_templates = AsyncMock(return_value=[ada, grace])
+    experts.get_template = AsyncMock(
+        side_effect=lambda template_id: grace if template_id == grace.id else None
+    )
     experts.with_bundled_skills = AsyncMock(
         side_effect=lambda templates, user_id: templates
     )
@@ -238,8 +265,7 @@ def _template(
 
 
 _SKILLS = {
-    "tpl-ada": ["Month-end close", "Receipt matching", "Cash forecast", "Payroll"],
-    "tpl-grace": ["Release notes", "Changelog"],
+    "tpl-grace": ["Release notes", "Changelog", "Incident review", "Hotfixes"],
 }
 
 

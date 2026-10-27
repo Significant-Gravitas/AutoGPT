@@ -8,7 +8,7 @@ import hashlib
 import os
 import shutil
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -924,14 +924,15 @@ class TestReadPathTraversal:
 
 class TestReadBinaryFile:
     @pytest.mark.asyncio
-    async def test_binary_file_rejected(self, sdk_cwd):
+    async def test_corrupt_image_rejected(self, sdk_cwd):
         path = os.path.join(sdk_cwd, "image.png")
         with open(path, "wb") as f:
             f.write(b"\x89PNG\r\n\x1a\n")
         result = await _handle_read_file({"file_path": "image.png"})
         assert result["isError"]
         text = result["content"][0]["text"]
-        assert "binary" in text.lower()
+        assert "Image not shown" in text
+        assert "corrupt" in text
 
     @pytest.mark.asyncio
     async def test_text_file_not_rejected_as_binary(self, sdk_cwd):
@@ -1007,6 +1008,26 @@ class TestEditToolSchema:
 
     def test_tool_name_is_edit(self):
         assert EDIT_TOOL_NAME == "Edit"
+
+
+@pytest.mark.asyncio
+async def test_an_edit_the_sandbox_refuses_to_check_is_an_error_not_a_crash(
+    monkeypatch,
+):
+    from backend.util.sandbox_login import LoginChainChanged
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: MagicMock()
+    )
+    monkeypatch.setattr(
+        "backend.copilot.sdk.e2b_file_tools.run_internal",
+        AsyncMock(side_effect=LoginChainChanged("/etc/profile changed")),
+    )
+    result = await _handle_edit_file(
+        {"file_path": "/home/user/a.txt", "old_string": "a", "new_string": "b"}
+    )
+    assert result["isError"] is True
+    assert "/etc/profile changed" in result["content"][0]["text"]
 
 
 class TestNormalEdit:
