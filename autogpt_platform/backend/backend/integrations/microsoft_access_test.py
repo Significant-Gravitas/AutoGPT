@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import SecretStr
 
+from backend.blocks.mcp.client import MCPClientError
 from backend.data.model import OAuth2Credentials
 from backend.integrations import microsoft_access
 from backend.integrations.microsoft_access import check_microsoft_access
@@ -15,6 +16,7 @@ from backend.integrations.oauth.microsoft_services import (
     COPILOT_SCOPES,
     MICROSOFT_SERVICE_SCOPES,
 )
+from backend.util.request import HTTPClientError, HTTPServerError
 
 PERSONAL_TENANT = "9188040d-6c67-4c5b-b112-36a304b66dad"
 BASE = ["User.Read", "Mail.ReadWrite", "Mail.Send", "Calendars.ReadWrite"]
@@ -244,3 +246,25 @@ async def test_a_stalled_work_iq_doesnt_hold_up_the_check(mocker) -> None:
     # A slow answer says nothing about the organization's setup.
     assert _statuses(result)["work_iq"] == "unavailable"
     client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error, status",
+    [
+        (HTTPClientError("HTTP 403 Error", 403), "setup_required"),
+        (MCPClientError("MCP server error [-32001]: not enabled"), "setup_required"),
+        (HTTPClientError("HTTP 429 Error", 429), "unavailable"),
+        (HTTPServerError("HTTP 503 Error", 503), "unavailable"),
+        (ConnectionResetError("connection reset"), "unavailable"),
+    ],
+)
+async def test_work_iq_needs_setup_only_when_it_refuses(mocker, error, status) -> None:
+    # Signed in and approved, so only Work IQ refusing points at the
+    # organization; a busy, failing or unreachable service doesn't.
+    _work_iq(mocker)
+    microsoft_access.MCPClient.return_value.list_tools.side_effect = error
+
+    result = await check_microsoft_access(_connection("company", BASE))
+
+    assert _statuses(result)["work_iq"] == status
