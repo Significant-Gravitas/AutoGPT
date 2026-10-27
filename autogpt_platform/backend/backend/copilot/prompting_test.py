@@ -624,3 +624,41 @@ class TestGuardrailsReachEveryBasePrompt:
     def test_base_prompt_does_not_repeat_them(self):
         assert "End every turn with visible text" not in CACHEABLE_SYSTEM_PROMPT
         assert "Only say a card is showing" not in CACHEABLE_SYSTEM_PROMPT
+
+
+class TestCostSourceRule:
+    # SECRT-3133: Otto said a step "costs a few cents in image credits" and a
+    # trial user could not tell whether that came off the trial, a balance or
+    # the card they had just entered. The rule rides SHARED_TOOL_NOTES so Otto
+    # and every expert get it on both engines, whatever the Langfuse prompt.
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_supplement_carries_the_rule(self, use_e2b):
+        assert "### What things cost" in prompting.get_sdk_supplement(use_e2b=use_e2b)
+
+    def test_names_what_pays_for_each_kind_of_cost(self):
+        notes = prompting.SHARED_TOOL_NOTES
+        # The model's own work is metered on the chat allowance
+        # (rate_limit.record_cost_usage); a priced block or workflow run is
+        # debited from the credit balance (tools/helpers._charge_block_credits).
+        assert "uses the user's chat allowance" in notes
+        assert "paid from the user's automation credits" in notes
+        assert "never charges the user's card directly" in notes
+
+    def test_says_where_a_cost_comes_from_in_the_same_sentence(self):
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "of your automation credits, not a direct charge to your card" in notes
+        assert 'Never invent a name for it, such as "image credits"' in notes
+
+    def test_does_not_promise_an_untouched_card_when_auto_refill_may_be_on(self):
+        # Auto-refill tops credits up from the card once spending drops the
+        # balance under its threshold (credit.py spend_credits), trial or not,
+        # and the model cannot see whether the user turned it on.
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "including an auto-refill they turned on" in notes
+        assert "you can't see whether auto-refill is on" in notes
+
+    def test_the_rule_does_not_model_the_dashes_it_forbids(self):
+        start = prompting.SHARED_TOOL_NOTES.index("### What things cost")
+        end = prompting.SHARED_TOOL_NOTES.index("### Math")
+        section = prompting.SHARED_TOOL_NOTES[start:end]
+        assert "—" not in section and "–" not in section
