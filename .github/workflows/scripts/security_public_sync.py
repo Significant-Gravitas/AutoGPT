@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from security_public_api import PublicDataError, PublicErrorCode
+from security_public_api import PublicDataError, PublicErrorCode, public_pages
 from security_release_notes import (
     BASE_URL,
     END,
@@ -218,13 +218,41 @@ def public_release_notes(snapshot, tag, existing):
     return managed_section(existing, START, END, "\n".join(lines), append=True)
 
 
-def unlinked_advisories(snapshot):
-    """Published advisories no release lists, usually because the description lacks
-    a link to the release that fixed them."""
+UNLINKED_HINT = (
+    "Check that each one's description links the release that fixed it, that its "
+    "patched version matches that release, and that the release is published."
+)
+
+
+def published_release(release):
+    return (
+        isinstance(release, dict)
+        and type(release.get("id")) is int
+        and release["id"] > 0
+        and release.get("draft") is False
+        and bool(release.get("published_at"))
+        and matches(TAG_PATTERN, release.get("tag_name"))
+        # GitHub returns null for a release with no notes.
+        and (release.get("body") is None or isinstance(release["body"], str))
+    )
+
+
+def fetch_releases():
+    return public_pages("releases")
+
+
+def published_release_tags(releases):
+    return {release["tag_name"] for release in releases if published_release(release)}
+
+
+def unlinked_advisories(snapshot, release_tags):
+    """Published advisories that no published release lists: the description doesn't
+    link the release that fixed it, the patched version doesn't match that release,
+    or the release isn't published."""
     return [
         a["ghsa_id"]
         for a in validate_snapshot(snapshot)["advisories"]
-        if not a["release_tags"]
+        if not set(a["release_tags"]) & release_tags
     ]
 
 
@@ -239,9 +267,10 @@ def prepare_credits(root, expected_digest):
     security = root / "SECURITY.md"
     updated = acknowledgments(snapshot, security.read_text(encoding="utf-8"))
     difference = changes(previous, snapshot)
+    unlinked = unlinked_advisories(snapshot, published_release_tags(fetch_releases()))
     security.write_text(updated, encoding="utf-8")
     (root / SNAPSHOT_PATH).write_text(snapshot_text(snapshot), encoding="utf-8")
-    return dict(difference, unlinked=unlinked_advisories(snapshot))
+    return dict(difference, unlinked=unlinked)
 
 
 def main():

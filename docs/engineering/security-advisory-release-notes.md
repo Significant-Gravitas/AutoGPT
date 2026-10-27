@@ -59,9 +59,11 @@ The jobs have separate permissions and no shared report artifacts:
 1. The read-only job checks out trusted `master` code and passes only a
    snapshot digest and source commit to the writers. Its job summary previews
    the exact generated security sections and their public target releases, and
-   names any published advisory that no release lists, which usually means its
-   description lacks a link to the release that fixed it. The credits PR names
-   them too. The preview contains no existing release text or raw advisory content.
+   names any published advisory that no published release lists. That happens when
+   its description doesn't link the release that fixed it, its patched version
+   doesn't match that release, or the release isn't published yet. The credits PR
+   names them too. The preview contains no existing release text or raw advisory
+   content.
 2. The credits job uses that exact code commit, re-fetches anonymous public
    records, and requires the digest to agree. It treats `dev` as data, generates
    the two allowed files, and opens or updates one PR against `dev`. The existing
@@ -124,7 +126,7 @@ history remain public history; withdrawal cannot erase previously published data
 4. Review the generated credits PR. The batch-bot App opens it, so its CI runs on
    its own; it still needs an approving review, and this automation never
    approves or merges its own PRs. Its body names any published advisory that no
-   release lists.
+   published release lists.
 5. After reviewing the public release preview, set
    `PUBLIC_SECURITY_RELEASE_NOTES_ENABLED=true` and dispatch with `dry_run: false`.
    Verify the first applied release sections, preservation of unrelated notes,

@@ -113,7 +113,7 @@ jobs:
 
             - Update the four-field public snapshot and generated acknowledgments.
             - No report text, pending credits, or private advisory inventory is used.
-            - Published advisories that no release lists: ${{ steps.credits.outputs.unlinked }}
+            - Published advisories that no published release lists: ${{ steps.credits.outputs.unlinked }}
 
             ### Agents and large language models used
 
