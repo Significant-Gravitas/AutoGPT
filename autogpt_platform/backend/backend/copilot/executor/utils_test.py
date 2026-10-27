@@ -339,6 +339,7 @@ async def test_schedule_chat_turn_tracks_the_session_channel() -> None:
         expert_id="expert-1",
         origin="interactive",
         source_platform="discord",
+        message_metadata=None,
     )
 
 

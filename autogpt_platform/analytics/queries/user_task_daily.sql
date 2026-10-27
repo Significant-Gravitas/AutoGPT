@@ -146,6 +146,7 @@ turns AS (
   WHERE m."role" = 'user'
     AND m."createdAt" > CURRENT_DATE - INTERVAL '90 days'
     AND COALESCE(s."metadata"::jsonb->>'kind', 'normal') <> 'dream'
+    AND COALESCE(m."metadata"::jsonb->>'kind', '') <> 'onboarding_draft_kickoff'
   GROUP BY 1, 2
 ),
 schedules AS (

@@ -1923,6 +1923,7 @@ async def stream_chat_completion_baseline(
                 expert_id=session.expert_id,
                 origin=session.metadata.origin,
                 source_platform=session.metadata.source_platform,
+                message_metadata=message_metadata,
             )
 
     # Capture count *before* the pending drain so is_first_turn and the

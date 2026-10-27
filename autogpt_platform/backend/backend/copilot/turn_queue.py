@@ -595,6 +595,7 @@ async def _promote_head(user_id: str) -> bool | None:
                 expert_id=head.expert_id,
                 origin=head.metadata.origin,
                 source_platform=head.metadata.source_platform,
+                message_metadata=pending.metadata,
             )
         except Exception:
             logger.warning("Failed to track promoted chat turn", exc_info=True)

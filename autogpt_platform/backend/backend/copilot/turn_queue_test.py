@@ -633,6 +633,7 @@ async def test_promoted_turn_tracking_preserves_session_attribution(
             expert_id=expert_id,
             origin=origin,
             source_platform=source_platform,
+            message_metadata=pending.metadata,
         )
     else:
         tracked_message.assert_not_called()

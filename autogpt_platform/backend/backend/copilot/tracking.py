@@ -7,12 +7,18 @@ sent for a known user: a synthetic distinct id would create a PostHog person
 nobody can merge.
 """
 
+from collections.abc import Mapping
 from typing import Any, Literal
 
 from backend.util import posthog_client, product_analytics
 from backend.util.posthog_events import PostHogEvent
 
 SOURCE = "chat_copilot"
+
+# ``ChatMessage.metadata["kind"]`` of the prompt Otto sends to open a chat it
+# starts for the user during onboarding. The user picked the task but did not
+# send it, so it is not their turn; the analytics queries skip it too.
+ONBOARDING_DRAFT_KICKOFF_KIND = "onboarding_draft_kickoff"
 
 ChatOutcomeType = Literal["agent_run_success", "schedule_created"]
 
@@ -25,11 +31,13 @@ def track_user_message(
     expert_id: str | None = None,
     origin: str | None = None,
     source_platform: str | None = None,
+    message_metadata: Mapping[str, Any] | None = None,
 ) -> None:
     """Track when a user sends a message in chat.
 
     One ``chat_message_sent`` per turn (``expert_id`` set in an expert chat),
-    carrying the message length.
+    carrying the message length. Otto's opening prompt in an onboarding
+    draft is not sent: the user did not write it.
 
     Args:
         user_id: The user's ID; no event without one
@@ -40,7 +48,10 @@ def track_user_message(
             automation turns are not sent
         source_platform: The bot platform the message came from (slack,
             discord, ...); unset for the web app
+        message_metadata: The message row's metadata, when the caller has it
     """
+    if is_onboarding_draft_kickoff(message_metadata):
+        return
     product_analytics.track_chat_turn(
         user_id=user_id,
         session_id=session_id,
@@ -48,6 +59,13 @@ def track_user_message(
         origin=origin,
         source_platform=source_platform,
         message_length=message_length,
+    )
+
+
+def is_onboarding_draft_kickoff(metadata: Mapping[str, Any] | None) -> bool:
+    """Whether message metadata marks Otto's opening prompt in a draft."""
+    return metadata is not None and metadata.get("kind") == (
+        ONBOARDING_DRAFT_KICKOFF_KIND
     )
 
 

@@ -30,6 +30,7 @@ from backend.copilot.model import (
     delete_chat_session,
     get_chat_session_metadata,
 )
+from backend.copilot.tracking import ONBOARDING_DRAFT_KICKOFF_KIND
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.turn_queue import turn_refusal
 from backend.util import product_analytics
@@ -123,6 +124,8 @@ async def _start_draft(target: _DraftTarget, task: SuggestedTask) -> bool:
             user_id=target.user_id,
             turn_id=str(uuid.uuid4()),
             message=task.prompt,
+            # The user picked the task but did not send it: not their turn.
+            message_metadata={"kind": ONBOARDING_DRAFT_KICKOFF_KIND},
             # Nobody is in the browser to answer this turn's questions.
             unattended=True,
             organization_id=target.organization_id,

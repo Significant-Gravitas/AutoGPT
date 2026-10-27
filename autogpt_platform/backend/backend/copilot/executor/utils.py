@@ -947,6 +947,7 @@ async def schedule_chat_turn(
                     expert_id=expert_id,
                     origin=session_origin,
                     source_platform=session_source_platform,
+                    message_metadata=message_metadata,
                 )
 
         if is_duplicate:

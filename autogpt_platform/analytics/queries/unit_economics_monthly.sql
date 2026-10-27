@@ -87,6 +87,7 @@ turns AS (
   WHERE m."role" = 'user'
     AND m."createdAt" > DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months'
     AND COALESCE(s."metadata"::jsonb->>'kind', 'normal') <> 'dream'
+    AND COALESCE(m."metadata"::jsonb->>'kind', '') <> 'onboarding_draft_kickoff'
   GROUP BY 1, 2
 ),
 -- Distinct calendar days on which a person did something (a human-started
@@ -110,6 +111,7 @@ activity_days AS (
     WHERE m."role" = 'user'
       AND m."createdAt" > DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months'
       AND COALESCE(s."metadata"::jsonb->>'kind', 'normal') <> 'dream'
+      AND COALESCE(m."metadata"::jsonb->>'kind', '') <> 'onboarding_draft_kickoff'
       AND COALESCE(s."metadata"::jsonb->>'origin', 'interactive') <> 'automation'
   ) d
   GROUP BY 1, 2

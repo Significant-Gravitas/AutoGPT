@@ -5165,6 +5165,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             expert_id=session.expert_id,
             origin=session.metadata.origin,
             source_platform=session.metadata.source_platform,
+            message_metadata=message_metadata,
         )
 
     # Structured log prefix: [SDK][<session>][T<turn>]

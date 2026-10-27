@@ -58,6 +58,7 @@ events AS (
   JOIN platform."ChatSession" s ON s."id" = m."sessionId"
   WHERE m."role" = 'user'
     AND COALESCE(s."metadata"::jsonb->>'kind', 'normal') <> 'dream'
+    AND COALESCE(m."metadata"::jsonb->>'kind', '') <> 'onboarding_draft_kickoff'
     AND COALESCE(s."metadata"::jsonb->>'origin', 'interactive') <> 'automation'
 ),
 first_task AS (

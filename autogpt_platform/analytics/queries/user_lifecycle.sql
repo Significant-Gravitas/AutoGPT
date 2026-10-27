@@ -156,6 +156,7 @@ turns AS (
   JOIN platform."ChatSession" s ON s."id" = m."sessionId"
   WHERE m."role" = 'user'
     AND COALESCE(s."metadata"::jsonb->>'kind', 'normal') <> 'dream'
+    AND COALESCE(m."metadata"::jsonb->>'kind', '') <> 'onboarding_draft_kickoff'
     AND COALESCE(s."metadata"::jsonb->>'origin', 'interactive') <> 'automation'
   GROUP BY 1
 ),
@@ -174,6 +175,7 @@ task_events AS (
   JOIN platform."ChatSession" s ON s."id" = m."sessionId"
   WHERE m."role" = 'user'
     AND COALESCE(s."metadata"::jsonb->>'kind', 'normal') <> 'dream'
+    AND COALESCE(m."metadata"::jsonb->>'kind', '') <> 'onboarding_draft_kickoff'
     AND COALESCE(s."metadata"::jsonb->>'origin', 'interactive') <> 'automation'
 ),
 task_days AS (

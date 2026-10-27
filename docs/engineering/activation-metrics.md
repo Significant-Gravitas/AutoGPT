@@ -30,7 +30,10 @@ exists, so a change to one must be made in all four.
   `user` message in an Autopilot or expert session whose origin is not
   `automation`). A run the copilot tool started (`triggerSource` = `copilot`)
   is counted once, through the chat turn that asked for it. Dry runs, nested
-  sub-graph runs and dream/memory sessions are never tasks.
+  sub-graph runs and dream/memory sessions are never tasks, nor is the prompt
+  Otto sends to open a draft it starts during onboarding (message
+  `metadata.kind` = `onboarding_draft_kickoff`); the user's own replies in
+  that chat are.
 - **Automated task**: a schedule fire, a webhook trigger, or a scheduled
   follow-up turn. Counted separately so "people doing things" and "agents
   running" can be compared.

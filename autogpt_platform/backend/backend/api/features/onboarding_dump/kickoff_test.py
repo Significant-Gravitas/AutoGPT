@@ -152,6 +152,11 @@ async def test_kickoff_starts_at_most_two_open_tasks(
         draft_session_id("1"),
     ]
     assert all(call.kwargs["unattended"] is True for call in scheduled)
+    # The prompt is Otto's, not a message the user sent.
+    assert all(
+        call.kwargs["message_metadata"] == {"kind": "onboarding_draft_kickoff"}
+        for call in scheduled
+    )
     stored = rows.stored()
     assert [
         (t.get("state"), t.get("kickoff"), t.get("session_id")) for t in stored
