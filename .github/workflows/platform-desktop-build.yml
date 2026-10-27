@@ -64,6 +64,31 @@ jobs:
         run: python -B -m pytest -q -p no:cacheprovider -c runtime/pyproject.toml runtime/tests build/tests
       - name: Electron shell unit tests
         run: npm test
+      - name: Check Windows PostgreSQL initialization
+        id: postgres_native
+        if: >-
+          runner.os == 'Windows' &&
+          ((github.event_name == 'workflow_dispatch' && inputs.package) ||
+           (github.event_name == 'pull_request' &&
+            github.event.pull_request.head.repo.full_name == github.repository &&
+            contains(github.event.pull_request.labels.*.name, 'desktop-build')))
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          python -B build/postgres_windows_check.py `
+            --work-dir "$env:RUNNER_TEMP/desktop-postgres-native"
+          exit $LASTEXITCODE
+      - name: Retain the PostgreSQL initialization summary
+        if: >-
+          always() && runner.os == 'Windows' &&
+          steps.postgres_native.outcome != 'skipped' &&
+          steps.postgres_native.outcome != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-postgres-windows-${{ github.sha }}
+          path: ${{ runner.temp }}/desktop-postgres-native/result.json
+          if-no-files-found: warn
+          retention-days: 7
 
   package:
     name: Experimental installer (${{ matrix.os }})

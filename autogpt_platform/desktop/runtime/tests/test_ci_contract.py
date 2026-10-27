@@ -106,6 +106,42 @@ def test_installed_windows_evidence_upload_is_an_exact_summary_allowlist():
     assert "retention-days: 7" in upload
 
 
+def test_postgres_initialization_blocks_packaging_only_when_opted_in_on_windows():
+    workflow = CALLER.read_text("utf-8")
+    checks, packaging = workflow.split("\n  package:\n", 1)
+    probe = checks.split("      - name: Check Windows PostgreSQL initialization\n", 1)[
+        1
+    ]
+    probe = probe.split("      - name:", 1)[0]
+    assert "id: postgres_native" in probe
+    assert "runner.os == 'Windows' &&" in probe
+    assert "github.event_name == 'workflow_dispatch' && inputs.package" in probe
+    assert "github.event_name == 'pull_request' &&" in probe
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in probe
+    assert "contains(github.event.pull_request.labels.*.name, 'desktop-build')" in probe
+    assert "shell: pwsh" in probe and "timeout-minutes: 5" in probe
+    assert "python -B build/postgres_windows_check.py" in probe
+    assert '--work-dir "$env:RUNNER_TEMP/desktop-postgres-native"' in probe
+    assert "exit $LASTEXITCODE" in probe
+    assert "continue-on-error" not in checks
+    assert "needs: checks" in packaging
+
+
+def test_postgres_probe_uploads_only_its_summary_even_after_failure():
+    checks = CALLER.read_text("utf-8").split("\n  package:\n", 1)[0]
+    upload = checks.split(
+        "      - name: Retain the PostgreSQL initialization summary\n", 1
+    )[1]
+    assert "always() && runner.os == 'Windows'" in upload
+    assert "steps.postgres_native.outcome != 'skipped'" in upload
+    assert "steps.postgres_native.outcome != ''" in upload
+    assert "uses: actions/upload-artifact@" in upload
+    paths = re.findall(r"^\s+path: (.+)$", upload, re.MULTILINE)
+    assert paths == ["${{ runner.temp }}/desktop-postgres-native/result.json"]
+    assert "retention-days: 7" in upload
+    assert "include-hidden-files" not in upload
+
+
 def test_every_path_that_triggers_the_build_exists():
     """A path filter naming a file upstream renamed never triggers again."""
     paths = re.findall(r'^\s+- "([^"]+)"$', CALLER.read_text("utf-8"), re.M)
