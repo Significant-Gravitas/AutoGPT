@@ -37,7 +37,6 @@ export const MICROSOFT_STATUS_LABELS: Record<
 export type MicrosoftSetupReason =
   | "tenant_setup_required"
   | "admin_consent_required"
-  | "billing_setup_required"
   | "app_setup_required"
   | "access_denied"
   | "sign_in_failed";
@@ -46,8 +45,6 @@ export const MICROSOFT_SETUP_MESSAGES: Record<MicrosoftSetupReason, string> = {
   tenant_setup_required: "Your organization needs to enable Work IQ.",
   admin_consent_required:
     "Your Microsoft administrator needs to approve access.",
-  billing_setup_required:
-    "Your organization needs to finish Work IQ billing setup.",
   app_setup_required:
     "Browser sign-in needs configuration by the application owner.",
   access_denied:

@@ -7,7 +7,6 @@ from pydantic import BaseModel
 MicrosoftRecoveryReason = Literal[
     "tenant_setup_required",
     "admin_consent_required",
-    "billing_setup_required",
     "app_setup_required",
     "access_denied",
     "sign_in_failed",
@@ -23,7 +22,6 @@ class MicrosoftRecovery(BaseModel):
 MESSAGES: dict[MicrosoftRecoveryReason, str] = {
     "tenant_setup_required": "Your organization needs to enable Work IQ.",
     "admin_consent_required": "Your Microsoft administrator needs to approve access.",
-    "billing_setup_required": "Your organization needs to finish Work IQ billing setup.",
     "app_setup_required": "Microsoft sign-in needs configuration by the application owner.",
     "access_denied": "Microsoft access was declined. Your existing connections are still available.",
     "sign_in_failed": "Microsoft sign-in did not finish. You can try again or open setup help.",
