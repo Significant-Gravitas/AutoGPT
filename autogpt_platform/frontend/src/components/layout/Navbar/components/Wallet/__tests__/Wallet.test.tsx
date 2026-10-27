@@ -7,7 +7,6 @@ import userEvent from "@testing-library/user-event";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getGetV1GetAutoTopUpMockHandler } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { getGetTrialsGetTrialStatusMockHandler200 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
 import { server } from "@/mocks/mock-server";
 import {
@@ -337,17 +336,13 @@ describe("Wallet onboarding notifications", () => {
 // SECRT-3133: a trial user saw chat usage, automation credits and earn credits
 // with nothing saying which one an image comes out of, or whether the card
 // they had just entered would be charged.
-describe("Wallet explains what pays for what", () => {
+describe("Wallet trial line and explainer", () => {
   afterEach(() => setTrialUser(null));
 
-  function mockTrial(
-    overrides: Parameters<typeof trialResponse>[0] = {},
-    autoRefill = { amount: 0, threshold: 0 },
-  ) {
+  function mockTrial(overrides: Parameters<typeof trialResponse>[0] = {}) {
     setTrialUser();
     server.use(
       getGetTrialsGetTrialStatusMockHandler200(trialResponse(overrides)),
-      getGetV1GetAutoTopUpMockHandler(autoRefill),
     );
   }
 
@@ -359,83 +354,56 @@ describe("Wallet explains what pays for what", () => {
     return screen.findByRole("dialog", { name: "Usage and credits" });
   }
 
-  it("tells a trial user up front that their card is not charged, and when it will be", async () => {
+  it("names the day the plan starts in one line during a trial", async () => {
     mockTrial({ ends_at: new Date("2030-09-17T15:00:00Z") });
     const dialog = await openWallet();
 
-    const note = await screen.findByText(
-      "Your card isn't charged during your trial unless you buy credits",
-    );
-    expect(
-      screen.getByText(
-        /Your card is charged for your plan when it starts on Sep 17\./,
-      ),
-    ).toBeDefined();
-    // Focus lands on the first button, so the note is the dialog's
+    const line = await screen.findByText("Your plan starts Sep 17");
+    // Focus lands on the first button, so the line is the dialog's
     // description: a screen reader announces it as the wallet opens.
     const description = document.getElementById(
       dialog.getAttribute("aria-describedby") ?? "",
     );
-    expect(description?.contains(note)).toBe(true);
+    expect(description?.contains(line)).toBe(true);
+    expect(screen.queryByText(/charged/)).toBeNull();
   });
 
-  it("does not promise an untouched card when auto-refill is on", async () => {
-    mockTrial(
-      { ends_at: new Date("2030-09-17T15:00:00Z") },
-      { amount: 1000, threshold: 500 },
-    );
-    await openWallet();
-
-    expect(
-      await screen.findByText(
-        "Your card is only charged for credits during your trial",
-      ),
-    ).toBeDefined();
-    expect(
-      screen.queryByText(
-        "Your card isn't charged during your trial unless you buy credits",
-      ),
-    ).toBeNull();
-  });
-
-  it("says in one line what each part of the wallet pays for", async () => {
+  it("explains usage and credits in a dialog opened from the wallet", async () => {
     mockTrial();
     await openWallet();
 
-    expect(
-      await screen.findByText("Covers your chats with Otto and your experts."),
-    ).toBeDefined();
-    expect(
-      screen.getByText(
-        "Pays for workflow runs and paid steps, like making images.",
-      ),
-    ).toBeDefined();
-    expect(
-      screen.getByText("Finish setup steps to get free automation credits."),
-    ).toBeDefined();
-  });
-
-  it("tells someone who canceled their trial that no plan will be charged", async () => {
-    mockTrial({ cancel_at_period_end: true });
-    await openWallet();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "How it works" }),
+    );
 
     expect(
-      await screen.findByText("Your card won't be charged for a plan"),
+      await screen.findByRole("dialog", { name: "How usage and credits work" }),
     ).toBeDefined();
+    expect(screen.getByText("What does chat usage cover?")).toBeDefined();
+    expect(screen.getByText("When is my card charged?")).toBeDefined();
     expect(
-      screen.queryByText(
-        "Your card isn't charged during your trial unless you buy credits",
-      ),
+      screen.queryByRole("dialog", { name: "Usage and credits" }),
     ).toBeNull();
   });
 
-  it("says nothing about the card once the trial is over", async () => {
+  it("names the trial's end instead of a plan once the trial is canceled", async () => {
+    mockTrial({
+      cancel_at_period_end: true,
+      ends_at: new Date("2030-09-17T15:00:00Z"),
+    });
+    await openWallet();
+
+    expect(await screen.findByText("Your trial ends Sep 17")).toBeDefined();
+    expect(screen.queryByText(/Your plan starts/)).toBeNull();
+  });
+
+  it("shows no trial line once the trial is over", async () => {
     mockTrial({ active: false });
     await openWallet();
 
     expect(await screen.findByText("Automation credits")).toBeDefined();
     await waitFor(() => {
-      expect(screen.queryByText(/charged/)).toBeNull();
+      expect(screen.queryByText(/Your plan starts|Your trial ends/)).toBeNull();
     });
   });
 

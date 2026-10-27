@@ -22,24 +22,15 @@ export function WalletCopilotUsage() {
 
   return (
     <section aria-label="Chat usage" className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-3">
-          <Text variant="large-medium" as="h2">
-            Chat usage
-          </Text>
-          {tierLabel && (
-            <Badge
-              variant="info"
-              size="small"
-              className={TIER_BADGE_CLASS_NAME}
-            >
-              {tierLabel === "Trial" ? "Free trial" : `${tierLabel} plan`}
-            </Badge>
-          )}
-        </div>
-        <Text variant="small" tone="secondary">
-          Covers your chats with Otto and your experts.
+      <div className="flex items-center justify-between gap-3">
+        <Text variant="large-medium" as="h2">
+          Chat usage
         </Text>
+        {tierLabel && (
+          <Badge variant="info" size="small" className={TIER_BADGE_CLASS_NAME}>
+            {tierLabel === "Trial" ? "Free trial" : `${tierLabel} plan`}
+          </Badge>
+        )}
       </div>
       {usage ? (
         <UsageWindows usage={usage} />

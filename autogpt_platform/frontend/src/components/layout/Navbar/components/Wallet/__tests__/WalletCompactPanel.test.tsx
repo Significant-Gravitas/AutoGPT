@@ -7,7 +7,7 @@ import { WalletCompactPanel } from "../components/WalletCompactPanel";
 import {
   getEarnGroups,
   getTaskGroups,
-  getTrialCardNote,
+  getTrialPlanLine,
   TaskGroup,
 } from "../helpers";
 
@@ -128,17 +128,14 @@ describe("WalletCompactPanel", () => {
         formattedCredits="$9.79"
         trialNoteID="trial-note"
         onAddCredits={() => {}}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
     expect(screen.getByText("Automation credits")).toBeDefined();
     expect(screen.getByText("$9.79")).toBeDefined();
     expect(screen.getByText("Earn credits")).toBeDefined();
-    expect(
-      screen.getByText(
-        "Pays for workflow runs and paid steps, like making images.",
-      ),
-    ).toBeDefined();
     expect(screen.getByText("First Wins · 2 of 2")).toBeDefined();
     expect(screen.getByText("Done")).toBeDefined();
     expect(screen.getByText("Consistency Challenge · 0 of 2")).toBeDefined();
@@ -154,11 +151,13 @@ describe("WalletCompactPanel", () => {
         formattedCredits="$9.79"
         trialNoteID="trial-note"
         onAddCredits={() => {}}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
     const hideTasks = screen.getByRole("button", {
-      name: /Finish setup steps to get free automation credits/,
+      name: /Hide onboarding tasks/,
     });
     await userEvent.click(screen.getByRole("button", { name: /First Wins/ }));
     await userEvent.click(
@@ -169,7 +168,7 @@ describe("WalletCompactPanel", () => {
     await userEvent.click(hideTasks);
 
     const showTasks = screen.getByRole("button", {
-      name: /Finish setup steps to get free automation credits/,
+      name: /Show onboarding tasks/,
     });
     expect(showTasks.getAttribute("aria-expanded")).toBe("false");
     expect(screen.getByText("Earn credits")).toBeDefined();
@@ -203,6 +202,8 @@ describe("WalletCompactPanel", () => {
         formattedCredits="$9.79"
         trialNoteID="trial-note"
         onAddCredits={() => {}}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
@@ -224,6 +225,8 @@ describe("WalletCompactPanel", () => {
         formattedCredits="$9.79"
         trialNoteID="trial-note"
         onAddCredits={() => {}}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
@@ -245,6 +248,8 @@ describe("WalletCompactPanel", () => {
         formattedCredits="$9.79"
         trialNoteID="trial-note"
         onAddCredits={() => {}}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
@@ -257,6 +262,8 @@ describe("WalletCompactPanel", () => {
         formattedCredits="$9.79"
         trialNoteID="trial-note"
         onAddCredits={() => {}}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
@@ -273,6 +280,8 @@ describe("WalletCompactPanel", () => {
         formattedCredits="$9.79"
         trialNoteID="trial-note"
         onAddCredits={onAddCredits}
+        onOpenExplainer={() => {}}
+        onNavigate={() => {}}
       />,
     );
 
@@ -280,72 +289,60 @@ describe("WalletCompactPanel", () => {
 
     expect(onAddCredits).toHaveBeenCalledTimes(1);
   });
+
+  it("leaves the explanations to the dialog and links to billing settings", async () => {
+    const onOpenExplainer = vi.fn();
+    const onNavigate = vi.fn();
+    render(
+      <WalletCompactPanel
+        groups={groups}
+        completedSteps={completedSteps}
+        formattedCredits="$9.79"
+        trialNoteID="trial-note"
+        onAddCredits={() => {}}
+        onOpenExplainer={onOpenExplainer}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    expect(screen.queryByText(/Pays for workflow runs/)).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "How it works" }));
+    expect(onOpenExplainer).toHaveBeenCalledTimes(1);
+
+    const billingLink = screen.getByRole("link", { name: /Billing settings/ });
+    expect(billingLink.getAttribute("href")).toBe("/settings/billing");
+  });
 });
 
-describe("getTrialCardNote", () => {
+describe("getTrialPlanLine", () => {
   const trial = {
     active: true,
     cancel_at_period_end: false,
     ends_at: new Date("2030-09-17T15:00:00Z"),
   };
 
-  const noRefill = { amount: 0, threshold: 0 };
-
-  it("names the day the card is first charged during an active trial", () => {
-    expect(getTrialCardNote(trial, noRefill)).toEqual({
-      title: "Your card isn't charged during your trial unless you buy credits",
-      body: "Your card is charged for your plan when it starts on Sep 17.",
-    });
+  it("names the day the plan starts during an active trial", () => {
+    expect(getTrialPlanLine(trial)).toBe("Your plan starts Sep 17");
   });
 
   it("falls back to the end of the trial when the date is unknown", () => {
-    expect(getTrialCardNote({ ...trial, ends_at: null }, noRefill)?.body).toBe(
-      "Your card is charged for your plan when your trial ends.",
+    expect(getTrialPlanLine({ ...trial, ends_at: null })).toBe(
+      "Your plan starts when your trial ends",
     );
   });
 
-  it("only mentions bought credits once the trial is canceled", () => {
+  it("names the trial's end instead of a plan once the trial is canceled", () => {
+    expect(getTrialPlanLine({ ...trial, cancel_at_period_end: true })).toBe(
+      "Your trial ends Sep 17",
+    );
     expect(
-      getTrialCardNote({ ...trial, cancel_at_period_end: true }, noRefill),
-    ).toEqual({
-      title: "Your card won't be charged for a plan",
-      body: "You canceled, so your trial won't turn into a paid plan. Only credits you buy are charged.",
-    });
-  });
-
-  // Auto-refill tops up from the card as soon as spending drops the balance
-  // under its threshold, trial or not, so the note must not promise otherwise.
-  const autoRefill = { amount: 1000, threshold: 500 };
-
-  it("names auto-refill as a card charge during an active trial", () => {
-    expect(getTrialCardNote(trial, autoRefill)).toEqual({
-      title: "Your card is only charged for credits during your trial",
-      body: "Auto-refill is on, so it buys $10.00 of credits when your balance is below $5.00. Your plan starts on Sep 17.",
-    });
-  });
-
-  it("counts auto-refill among the credits a canceled trial still pays for", () => {
-    expect(
-      getTrialCardNote({ ...trial, cancel_at_period_end: true }, autoRefill)
-        ?.body,
-    ).toBe(
-      "You canceled, so your trial won't turn into a paid plan. Only credits you buy, including auto-refill, are charged.",
-    );
-  });
-
-  it("treats auto-refill without a threshold as off, as the backend does", () => {
-    expect(getTrialCardNote(trial, { amount: 1000, threshold: 0 })?.title).toBe(
-      "Your card isn't charged during your trial unless you buy credits",
-    );
+      getTrialPlanLine({ ...trial, cancel_at_period_end: true, ends_at: null }),
+    ).toBeNull();
   });
 
   it("says nothing without an active trial", () => {
-    expect(getTrialCardNote({ ...trial, active: false }, noRefill)).toBeNull();
-    expect(getTrialCardNote({}, noRefill)).toBeNull();
-    expect(getTrialCardNote(undefined, noRefill)).toBeNull();
-  });
-
-  it("says nothing until it knows whether auto-refill is on", () => {
-    expect(getTrialCardNote(trial, undefined)).toBeNull();
+    expect(getTrialPlanLine({ ...trial, active: false })).toBeNull();
+    expect(getTrialPlanLine({})).toBeNull();
+    expect(getTrialPlanLine(undefined)).toBeNull();
   });
 });

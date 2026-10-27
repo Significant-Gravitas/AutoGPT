@@ -7,7 +7,8 @@ import {
 import { TopUpDialog } from "@/components/layout/TopUpPrompt/TopUpDialog/TopUpDialog";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { cn } from "@/lib/utils";
-import { useId } from "react";
+import { UsageCreditsDialog } from "@/components/organisms/UsageCreditsDialog/UsageCreditsDialog";
+import { useId, useState } from "react";
 import { WalletCompactPanel } from "./components/WalletCompactPanel";
 import { WalletFullPanel } from "./components/WalletFullPanel";
 import { useWallet } from "./useWallet";
@@ -36,6 +37,7 @@ export function Wallet({ compact = false }: Props) {
     onTopUpClose,
   } = useWallet();
   const trialNoteID = useId();
+  const [explainerOpen, setExplainerOpen] = useState(false);
 
   // Do not render until we have both credits and onboarding data
   if (!isBillingEnabled || credits === null || !state) return null;
@@ -60,7 +62,7 @@ export function Wallet({ compact = false }: Props) {
           align={compact ? "start" : "end"}
           collisionPadding={16}
           onCloseAutoFocus={(event) => {
-            if (topUpOpen) event.preventDefault();
+            if (topUpOpen || explainerOpen) event.preventDefault();
           }}
           aria-label={compact ? "Usage and credits" : "Automation credits"}
           aria-describedby={compact ? trialNoteID : undefined}
@@ -78,6 +80,11 @@ export function Wallet({ compact = false }: Props) {
               formattedCredits={formatCredits(credits)}
               trialNoteID={trialNoteID}
               onAddCredits={onAddCredits}
+              onOpenExplainer={() => {
+                setWalletOpen(false);
+                setExplainerOpen(true);
+              }}
+              onNavigate={() => setWalletOpen(false)}
             />
           ) : (
             <WalletFullPanel
@@ -88,11 +95,17 @@ export function Wallet({ compact = false }: Props) {
         </PopoverContent>
       </Popover>
       {compact && (
-        <TopUpDialog
-          isOpen={topUpOpen}
-          onClose={onTopUpClose}
-          variant="add-credits"
-        />
+        <>
+          <TopUpDialog
+            isOpen={topUpOpen}
+            onClose={onTopUpClose}
+            variant="add-credits"
+          />
+          <UsageCreditsDialog
+            isOpen={explainerOpen}
+            onOpenChange={setExplainerOpen}
+          />
+        </>
       )}
     </>
   );

@@ -48,9 +48,6 @@ describe("WalletCopilotUsage", () => {
     render(<WalletCopilotUsage />);
 
     expect(screen.getByText("Chat usage")).toBeDefined();
-    expect(
-      screen.getByText("Covers your chats with Otto and your experts."),
-    ).toBeDefined();
     expect(await screen.findByText("Pro plan")).toBeDefined();
     expect(
       screen

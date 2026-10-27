@@ -1,5 +1,3 @@
-import { formatCents } from "@/app/(platform)/copilot/components/usageHelpers";
-import type { AutoTopUpConfig } from "@/app/api/__generated__/models/autoTopUpConfig";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { formatTrialEndDate } from "@/components/organisms/TrialCard/helpers";
 import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
@@ -169,32 +167,15 @@ export function getEarnGroups(
   });
 }
 
-// The card is charged for the plan when an active trial ends and for credits
-// the person buys, which includes auto-refill: spending credits below its
-// threshold tops them up from the card (credit.py spend_credits), trial or not.
-// Until auto-refill's setting is known, nothing is said: the note could
-// otherwise promise an untouched card to someone whose refill is on.
-export function getTrialCardNote(
-  trial: TrialStatusResponse | undefined,
-  autoRefill: AutoTopUpConfig | undefined,
-) {
-  if (!trial?.active || !autoRefill) return null;
-  const refills = Boolean(autoRefill.threshold);
-  if (trial.cancel_at_period_end) {
-    return {
-      title: "Your card won't be charged for a plan",
-      body: `You canceled, so your trial won't turn into a paid plan. Only credits you buy${refills ? ", including auto-refill," : ""} are charged.`,
-    };
-  }
+// One line during an active trial; the explainer dialog covers what the card
+// pays for. A canceled trial has no plan to start, so it names the end instead.
+export function getTrialPlanLine(trial: TrialStatusResponse | undefined) {
+  if (!trial?.active) return null;
   const date = trial.ends_at ? formatTrialEndDate(trial.ends_at) : null;
-  if (refills) {
-    return {
-      title: "Your card is only charged for credits during your trial",
-      body: `Auto-refill is on, so it buys ${formatCents(autoRefill.amount)} of credits when your balance is below ${formatCents(autoRefill.threshold)}. Your plan starts ${date ? `on ${date}` : "at the end of your trial"}.`,
-    };
+  if (trial.cancel_at_period_end) {
+    return date ? `Your trial ends ${date}` : null;
   }
-  return {
-    title: "Your card isn't charged during your trial unless you buy credits",
-    body: `Your card is charged for your plan ${date ? `when it starts on ${date}` : "when your trial ends"}.`,
-  };
+  return date
+    ? `Your plan starts ${date}`
+    : "Your plan starts when your trial ends";
 }
