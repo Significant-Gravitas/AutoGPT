@@ -15,7 +15,8 @@ import {
   Tooltip as SidebarTooltip,
   TooltipContent as SidebarTooltipContent,
   TooltipTrigger as SidebarTooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 
@@ -61,11 +62,15 @@ export function SidebarUserActions() {
     >
       <div className="flex w-full items-center justify-between group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1">
         {isCollapsed ? (
-          <SidebarTooltip>
+          <SidebarTooltip inheritDelay>
             <SidebarTooltipTrigger asChild>
               <div>{accountMenu}</div>
             </SidebarTooltipTrigger>
-            <SidebarTooltipContent side="right">Account</SidebarTooltipContent>
+            <TooltipPortal>
+              <SidebarTooltipContent side="right">
+                Account
+              </SidebarTooltipContent>
+            </TooltipPortal>
           </SidebarTooltip>
         ) : (
           accountMenu

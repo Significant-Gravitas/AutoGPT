@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { useSidebar } from "@/components/molecules/Sidebar/Sidebar";
 import { tourTarget } from "@/lib/tour-targets";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
@@ -41,8 +41,8 @@ export function AppSidebarTrigger({ className }: Props) {
 
   return (
     <Button
-      variant="ghost"
-      size="icon"
+      variant="compact-ghost"
+      size="compact-icon"
       data-sidebar="trigger"
       // The phone's way into the sidebar inside a chat: the walkthrough and
       // the tips point here when the sidebar item itself is in the sheet.

@@ -1,5 +1,6 @@
+import { FormProvider } from "react-hook-form";
 import { Card, CardContent, CardFooter } from "@/components/atoms/Card/Card";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormField } from "@/components/molecules/Form/Form";
 import {
   Popover,
   PopoverContent,
@@ -62,7 +63,7 @@ export const NewSaveControl = () => {
           // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-slate-900 #2A313A
           className="border-none dark:bg-slate-900"
         >
-          <Form {...form}>
+          <FormProvider {...form}>
             <form onSubmit={form.handleSubmit(handleSave)}>
               <CardContent className="p-0">
                 <div className="space-y-3">
@@ -134,7 +135,7 @@ export const NewSaveControl = () => {
                 </Button>
               </CardFooter>
             </form>
-          </Form>
+          </FormProvider>
         </Card>
       </PopoverContent>
     </Popover>

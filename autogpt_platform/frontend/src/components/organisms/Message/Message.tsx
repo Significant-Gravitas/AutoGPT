@@ -1,15 +1,15 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupText } from "./components/ButtonGroup";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { Button as AtomButton } from "@/components/atoms/Button/Button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { MapAwarePre } from "@/components/contextual/MapEmbed/MapAwarePre";
 import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@/lib/streamdown-code-plugin";
@@ -19,7 +19,12 @@ import { mermaid } from "@/lib/streamdown-mermaid-plugin";
 import rehypeKatex from "rehype-katex";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
+import type {
+  ButtonHTMLAttributes,
+  ComponentProps,
+  HTMLAttributes,
+  ReactElement,
+} from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import type { LinkSafetyModalProps } from "streamdown";
@@ -79,9 +84,16 @@ export const MessageActions = ({
   </div>
 );
 
-export type MessageActionProps = ComponentProps<typeof Button> & {
+// Callers name the compact ghost icon look of the deleted ui/button by its old
+// names; these maps keep that API.
+const MESSAGE_ACTION_VARIANT = { ghost: "compact-ghost" } as const;
+const MESSAGE_ACTION_SIZE = { "icon-sm": "compact-icon-sm" } as const;
+
+export type MessageActionProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   tooltip?: string;
   label?: string;
+  variant?: keyof typeof MESSAGE_ACTION_VARIANT;
+  size?: keyof typeof MESSAGE_ACTION_SIZE;
 };
 
 export const MessageAction = ({
@@ -95,9 +107,9 @@ export const MessageAction = ({
 }: MessageActionProps) => {
   const button = (
     <Button
-      size={size}
+      size={MESSAGE_ACTION_SIZE[size]}
       type="button"
-      variant={variant}
+      variant={MESSAGE_ACTION_VARIANT[variant]}
       // A finger needs a bigger target than the 32px icon box.
       className={cn("[@media(pointer:coarse)]:size-10", className)}
       {...props}
@@ -250,7 +262,8 @@ export const MessageBranchSelector = ({
   );
 };
 
-export type MessageBranchPreviousProps = ComponentProps<typeof Button>;
+export type MessageBranchPreviousProps =
+  ButtonHTMLAttributes<HTMLButtonElement>;
 
 export const MessageBranchPrevious = ({
   children,
@@ -263,9 +276,9 @@ export const MessageBranchPrevious = ({
       aria-label="Previous branch"
       disabled={totalBranches <= 1}
       onClick={goToPrevious}
-      size="icon-sm"
+      size="compact-icon-sm"
       type="button"
-      variant="ghost"
+      variant="compact-ghost"
       {...props}
     >
       {children ?? <ChevronLeftIcon size={14} />}
@@ -273,7 +286,7 @@ export const MessageBranchPrevious = ({
   );
 };
 
-export type MessageBranchNextProps = ComponentProps<typeof Button>;
+export type MessageBranchNextProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
 export const MessageBranchNext = ({
   children,
@@ -286,9 +299,9 @@ export const MessageBranchNext = ({
       aria-label="Next branch"
       disabled={totalBranches <= 1}
       onClick={goToNext}
-      size="icon-sm"
+      size="compact-icon-sm"
       type="button"
-      variant="ghost"
+      variant="compact-ghost"
       {...props}
     >
       {children ?? <ChevronRightIcon size={14} />}
@@ -358,12 +371,12 @@ function ExternalLinkModal({
           {url}
         </Text>
         <Dialog.Footer>
-          <AtomButton variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
-          </AtomButton>
-          <AtomButton variant="primary" onClick={onConfirm}>
+          </Button>
+          <Button variant="primary" onClick={onConfirm}>
             Open link
-          </AtomButton>
+          </Button>
         </Dialog.Footer>
       </Dialog.Content>
     </Dialog>
@@ -410,7 +423,10 @@ const LINK_SAFETY = {
   renderModal: renderExternalLinkModal,
 };
 
-const TABLE_COMPONENT: StreamdownComponents = { table: MessageTable };
+const TABLE_COMPONENT: StreamdownComponents = {
+  table: MessageTable,
+  pre: MapAwarePre,
+};
 
 const mergeTableComponent = createComponentsMerger((components) => ({
   ...TABLE_COMPONENT,

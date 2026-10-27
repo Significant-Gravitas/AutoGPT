@@ -703,78 +703,44 @@ def test_list_files_offset_is_echoed_back(mock_manager_cls, mock_get_workspace):
     )
 
 
+@pytest.mark.parametrize(
+    "query, passed",
+    [
+        pytest.param(
+            "origin=generated&session_id=sess-123",
+            {"include_all_sessions": False},
+            id="origin_ignored_when_session_id_set",
+        ),
+        pytest.param("q=report", {"name_contains": "report"}, id="q_search"),
+        pytest.param("q=%20%20%20", {}, id="blank_q_becomes_none"),
+        pytest.param("folder_id=fld-1", {"folder_id": "fld-1"}, id="folder_id"),
+        pytest.param("root_only=true", {"root_only": True}, id="root_only"),
+    ],
+)
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
 @patch("backend.api.features.workspace.routes.WorkspaceManager")
-def test_list_files_origin_ignored_when_session_id_set(
-    mock_manager_cls, mock_get_workspace
+def test_list_files_passes_the_query_through(
+    mock_manager_cls, mock_get_workspace, query, passed
 ):
-    """origin is dropped when session_id is provided (session implies origin)."""
     mock_get_workspace.return_value = _make_workspace()
     mock_instance = AsyncMock()
     mock_instance.list_files.return_value = []
     mock_manager_cls.return_value = mock_instance
 
-    response = client.get("/files?origin=generated&session_id=sess-123")
+    response = client.get(f"/files?{query}")
     assert response.status_code == 200
-    mock_instance.list_files.assert_called_once_with(
-        limit=201,
-        offset=0,
-        include_all_sessions=False,
-        name_contains=None,
-        metadata_equals=None,
-        metadata_not_equals=None,
-        folder_id=None,
-        root_only=False,
-        include_internal=False,
-    )
-
-
-@patch("backend.api.features.workspace.routes.get_or_create_workspace")
-@patch("backend.api.features.workspace.routes.WorkspaceManager")
-def test_list_files_q_search_passed_through(mock_manager_cls, mock_get_workspace):
-    """q forwards to name_contains after stripping."""
-    mock_get_workspace.return_value = _make_workspace()
-    mock_instance = AsyncMock()
-    mock_instance.list_files.return_value = []
-    mock_manager_cls.return_value = mock_instance
-
-    response = client.get("/files?q=report")
-    assert response.status_code == 200
-    mock_instance.list_files.assert_called_once_with(
-        limit=201,
-        offset=0,
-        include_all_sessions=True,
-        name_contains="report",
-        metadata_equals=None,
-        metadata_not_equals=None,
-        folder_id=None,
-        root_only=False,
-        include_internal=False,
-    )
-
-
-@patch("backend.api.features.workspace.routes.get_or_create_workspace")
-@patch("backend.api.features.workspace.routes.WorkspaceManager")
-def test_list_files_blank_q_becomes_none(mock_manager_cls, mock_get_workspace):
-    """Whitespace-only q is normalized to None instead of an empty filter."""
-    mock_get_workspace.return_value = _make_workspace()
-    mock_instance = AsyncMock()
-    mock_instance.list_files.return_value = []
-    mock_manager_cls.return_value = mock_instance
-
-    response = client.get("/files?q=%20%20%20")
-    assert response.status_code == 200
-    mock_instance.list_files.assert_called_once_with(
-        limit=201,
-        offset=0,
-        include_all_sessions=True,
-        name_contains=None,
-        metadata_equals=None,
-        metadata_not_equals=None,
-        folder_id=None,
-        root_only=False,
-        include_internal=False,
-    )
+    defaults = {
+        "limit": 201,
+        "offset": 0,
+        "include_all_sessions": True,
+        "name_contains": None,
+        "metadata_equals": None,
+        "metadata_not_equals": None,
+        "folder_id": None,
+        "root_only": False,
+        "include_internal": False,
+    }
+    mock_instance.list_files.assert_called_once_with(**(defaults | passed))
 
 
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
@@ -835,95 +801,26 @@ def test_list_files_rejects_invalid_origin():
     assert response.status_code == 422
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        # session_id and folder_id/root_only are separate axes, and folder_id
+        # and root_only contradict each other.
+        "session_id=sess-1&folder_id=fld-1",
+        "session_id=sess-1&root_only=true",
+        "folder_id=fld-1&root_only=true",
+    ],
+)
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
 @patch("backend.api.features.workspace.routes.WorkspaceManager")
-def test_list_files_folder_id_passed_through(mock_manager_cls, mock_get_workspace):
-    """folder_id forwards to the manager and scopes the listing to that folder."""
-    mock_get_workspace.return_value = _make_workspace()
-    mock_instance = AsyncMock()
-    mock_instance.list_files.return_value = []
-    mock_manager_cls.return_value = mock_instance
-
-    response = client.get("/files?folder_id=fld-1")
-    assert response.status_code == 200
-    mock_instance.list_files.assert_called_once_with(
-        limit=201,
-        offset=0,
-        include_all_sessions=True,
-        name_contains=None,
-        metadata_equals=None,
-        metadata_not_equals=None,
-        folder_id="fld-1",
-        root_only=False,
-        include_internal=False,
-    )
-
-
-@patch("backend.api.features.workspace.routes.get_or_create_workspace")
-@patch("backend.api.features.workspace.routes.WorkspaceManager")
-def test_list_files_root_only_passed_through(mock_manager_cls, mock_get_workspace):
-    """root_only forwards to the manager to surface only root-level files."""
-    mock_get_workspace.return_value = _make_workspace()
-    mock_instance = AsyncMock()
-    mock_instance.list_files.return_value = []
-    mock_manager_cls.return_value = mock_instance
-
-    response = client.get("/files?root_only=true")
-    assert response.status_code == 200
-    mock_instance.list_files.assert_called_once_with(
-        limit=201,
-        offset=0,
-        include_all_sessions=True,
-        name_contains=None,
-        metadata_equals=None,
-        metadata_not_equals=None,
-        folder_id=None,
-        root_only=True,
-        include_internal=False,
-    )
-
-
-@patch("backend.api.features.workspace.routes.get_or_create_workspace")
-@patch("backend.api.features.workspace.routes.WorkspaceManager")
-def test_list_files_rejects_session_id_with_folder_id(
-    mock_manager_cls, mock_get_workspace
+def test_list_files_rejects_combined_scopes(
+    mock_manager_cls, mock_get_workspace, query
 ):
-    """session_id and folder_id are mutually exclusive axes — reject with 400."""
     mock_get_workspace.return_value = _make_workspace()
     mock_instance = AsyncMock()
     mock_manager_cls.return_value = mock_instance
 
-    response = client.get("/files?session_id=sess-1&folder_id=fld-1")
-    assert response.status_code == 400
-    mock_instance.list_files.assert_not_called()
-
-
-@patch("backend.api.features.workspace.routes.get_or_create_workspace")
-@patch("backend.api.features.workspace.routes.WorkspaceManager")
-def test_list_files_rejects_session_id_with_root_only(
-    mock_manager_cls, mock_get_workspace
-):
-    """session_id and root_only are mutually exclusive axes — reject with 400."""
-    mock_get_workspace.return_value = _make_workspace()
-    mock_instance = AsyncMock()
-    mock_manager_cls.return_value = mock_instance
-
-    response = client.get("/files?session_id=sess-1&root_only=true")
-    assert response.status_code == 400
-    mock_instance.list_files.assert_not_called()
-
-
-@patch("backend.api.features.workspace.routes.get_or_create_workspace")
-@patch("backend.api.features.workspace.routes.WorkspaceManager")
-def test_list_files_rejects_folder_id_with_root_only(
-    mock_manager_cls, mock_get_workspace
-):
-    """folder_id and root_only contradict each other — reject with 400."""
-    mock_get_workspace.return_value = _make_workspace()
-    mock_instance = AsyncMock()
-    mock_manager_cls.return_value = mock_instance
-
-    response = client.get("/files?folder_id=fld-1&root_only=true")
+    response = client.get(f"/files?{query}")
     assert response.status_code == 400
     mock_instance.list_files.assert_not_called()
 
@@ -1057,6 +954,43 @@ class TestSanitizeFilenameForHeader:
 
         result = _sanitize_filename_for_header("")
         assert result == 'attachment; filename=""'
+
+    @staticmethod
+    def _parse(header_value: str):
+        from email import policy
+        from email.message import EmailMessage
+
+        msg = EmailMessage(policy=policy.default)
+        msg["Content-Disposition"] = header_value
+        header = msg["Content-Disposition"]
+        return header.content_disposition, dict(header.params), header.defects
+
+    def test_backslash_quote_cannot_inject_params(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        name = "report.pdf\\\"; filename*=UTF-8''pwn.exe; x=\""
+        disposition, params, defects = self._parse(_sanitize_filename_for_header(name))
+        assert disposition == "attachment"
+        assert not defects
+        assert params == {"filename": name}
+
+    def test_trailing_backslash_is_well_formed(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header("a\\")
+        assert result == 'attachment; filename="a\\\\"'
+        _, params, defects = self._parse(result)
+        assert not defects
+        assert params == {"filename": "a\\"}
+
+    def test_unicode_encodes_raw_name(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header('日本"語\\.pdf')
+        assert "%5C%22" not in result
+        _, params, defects = self._parse(result)
+        assert not defects
+        assert params == {"filename": '日本"語\\.pdf'}
 
 
 # -- _create_streaming_response tests --
