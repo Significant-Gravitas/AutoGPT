@@ -31,6 +31,7 @@ export interface MentionInput {
   value: string;
   selectionStart: number | null;
   setSelectionRange: (start: number, end: number) => void;
+  focus?: () => void;
 }
 
 /** The `@query` under the caret and where it sits in the message. */
@@ -155,11 +156,23 @@ export function useChatMentions({
   ];
 
   const {
-    highlightedIndex,
+    highlightedIndex: cursorIndex,
     highlightedRef,
     moveHighlight,
     setHighlightedIndex,
   } = useKeyboardNav(options.length, query);
+  // With nothing matched only "Connect an integration" is left, and it waits
+  // to be arrowed or pointed to: pre-selecting it would turn Enter after any
+  // unmatched `@word` into opening the dialog instead of sending.
+  const [pointedAtQuery, setPointedAtQuery] = useState<string | null>(null);
+  const hasResults = options.length > 1;
+  const highlightedIndex =
+    hasResults || pointedAtQuery === query ? cursorIndex : -1;
+
+  function highlight(index: number) {
+    setPointedAtQuery(query);
+    setHighlightedIndex(index);
+  }
 
   // The caret lands wherever the browser puts it after a programmatic value
   // change (usually the end); move it to just after the inserted mention once
@@ -168,6 +181,8 @@ export function useChatMentions({
     if (pendingCaret === null) return;
     const textarea = textareaRef.current;
     if (textarea && textarea.value.length >= pendingCaret) {
+      // Back from the connect dialog, which has no trigger to hand focus to.
+      textarea.focus?.();
       textarea.setSelectionRange(pendingCaret, pendingCaret);
     }
     setPendingCaret(null);
@@ -225,9 +240,10 @@ export function useChatMentions({
 
   function resumeAfterConnect(request: ActiveMention) {
     setConnectRequest(null);
-    // The message can't change behind the dialog, but only reopen when the
-    // `@query` is still exactly where it was.
-    if (value.slice(request.start, request.end) !== `@${request.query}`) return;
+    // The live text, not this render's: in an expert chat the dialog closes
+    // before the grant lands, so the user may already be typing again.
+    const text = textareaRef.current?.value ?? value;
+    if (text.slice(request.start, request.end) !== `@${request.query}`) return;
     setActive(request);
     setPendingCaret(request.end);
   }
@@ -241,14 +257,17 @@ export function useChatMentions({
     }
     if (isKey(e, "ArrowDown")) {
       e.preventDefault();
+      setPointedAtQuery(query);
       moveHighlight(1);
       return true;
     }
     if (isKey(e, "ArrowUp")) {
       e.preventDefault();
+      setPointedAtQuery(query);
       moveHighlight(-1);
       return true;
     }
+    if (highlightedIndex < 0) return false;
     if (isKey(e, "Enter", "Tab")) {
       e.preventDefault();
       accept(options[highlightedIndex]);
@@ -266,7 +285,7 @@ export function useChatMentions({
     isError: includeWorkspaceFiles && search.isError,
     highlightedIndex,
     highlightedRef,
-    setHighlightedIndex,
+    setHighlightedIndex: highlight,
     bindInput: (input: MentionInput) => {
       textareaRef.current = input;
     },

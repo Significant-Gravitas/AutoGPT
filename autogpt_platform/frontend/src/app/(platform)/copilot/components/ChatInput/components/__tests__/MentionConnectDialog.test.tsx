@@ -155,7 +155,7 @@ function arrangeSentry() {
 async function openConnectFromMention() {
   await userEvent.type(screen.getByRole("textbox"), "Check @sentry");
   await screen.findByText("No connected integrations to mention.");
-  await userEvent.keyboard("{Enter}");
+  await userEvent.keyboard("{ArrowDown}{Enter}");
   return screen.findByRole("dialog", { name: "Connect a service" });
 }
 
@@ -196,10 +196,10 @@ describe("Connect an integration from the @ mention list", () => {
       await screen.findByRole("option", { name: /mcp\.sentry\.dev/ }),
     ).toBeDefined();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(screen.getByRole("textbox")).toHaveProperty(
-      "value",
-      "Check @sentry",
-    );
+    const textbox = screen.getByRole("textbox");
+    expect(textbox).toHaveProperty("value", "Check @sentry");
+    await waitFor(() => expect(document.activeElement).toBe(textbox));
+    expect(textbox).toHaveProperty("selectionStart", 13);
     expect(onSend).not.toHaveBeenCalled();
   });
 
@@ -258,7 +258,7 @@ describe("Connect an integration from the @ mention list", () => {
 
     await userEvent.type(screen.getByRole("textbox"), "Check @linear");
     await screen.findByText("No connected integrations to mention.");
-    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard("{ArrowDown}{Enter}");
     const dialog = await screen.findByRole("dialog", {
       name: "Connect a service",
     });

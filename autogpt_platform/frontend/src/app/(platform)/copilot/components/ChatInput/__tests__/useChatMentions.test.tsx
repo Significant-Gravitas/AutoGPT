@@ -556,6 +556,11 @@ describe("useChatMentions", () => {
       { kind: "connect", query: "linear" },
     ]);
 
+    expect(result.current.highlightedIndex).toBe(-1);
+    act(() => {
+      expect(result.current.onKeyDown(keyEvent("ArrowDown"))).toBe(true);
+    });
+    expect(result.current.highlightedIndex).toBe(0);
     act(() => {
       expect(result.current.onKeyDown(keyEvent("Enter"))).toBe(true);
     });
@@ -568,6 +573,30 @@ describe("useChatMentions", () => {
     expect(result.current.connectRequest).toBeNull();
     expect(result.current.isOpen).toBe(true);
     expect(textarea.setSelectionRange).toHaveBeenCalledWith(11, 11);
+  });
+
+  it("lets Enter through to send when nothing matched and the connect row was not chosen", () => {
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "ask @john",
+          setValue: vi.fn(),
+          addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
+          includeWorkspaceFiles: false,
+          integrations: [GOOGLE],
+        }),
+      { wrapper: Wrapper },
+    );
+
+    act(() => result.current.detect(fakeTextarea("ask @john")));
+    const enter = keyEvent("Enter");
+    act(() => {
+      expect(result.current.onKeyDown(enter)).toBe(false);
+    });
+    expect(enter.preventDefault).not.toHaveBeenCalled();
+    expect(result.current.connectRequest).toBeNull();
   });
 
   it("does not reopen when the @query is no longer where it was", () => {

@@ -187,7 +187,7 @@ export const NoMatchingIntegration: Story = {
     await userEvent.type(canvas.getByRole("textbox"), "Summarise my @linear");
     await expect(
       await canvas.findByRole("option", { name: /Connect an integration/ }),
-    ).toHaveAttribute("aria-selected", "true");
+    ).toHaveAttribute("aria-selected", "false");
   },
 };
 
@@ -196,7 +196,7 @@ export const ConnectFromMention: Story = {
     const canvas = within(canvasElement);
     await userEvent.type(canvas.getByRole("textbox"), "Summarise my @linear");
     await canvas.findByText("No matching files or integrations.");
-    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard("{ArrowDown}{Enter}");
     const body = within(canvasElement.ownerDocument.body);
     await expect(
       await body.findByRole("textbox", { name: "Search services" }),
