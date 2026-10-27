@@ -19,6 +19,12 @@ const { posthog, searchParams } = vi.hoisted(() => ({
 
 vi.mock("posthog-js", () => ({ default: posthog }));
 
+// A skip from the brain dump step that has not reached the server yet.
+const skip = vi.hoisted(() => ({ current: Promise.resolve() }));
+vi.mock("../../../../BrainDumpStep/useBrainDumpStep", () => ({
+  whenSkipSettled: () => skip.current,
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
   usePathname: () => "/onboarding",
@@ -132,6 +138,7 @@ async function advance(ms: number) {
 }
 
 beforeEach(() => {
+  skip.current = Promise.resolve();
   vi.useFakeTimers();
   posthog.capture.mockClear();
   searchParams.current = new URLSearchParams();
@@ -255,6 +262,28 @@ describe("usePlan polling", () => {
     await advance(POLL_MS);
 
     expect(result.current.plan).toEqual(WRITING);
+  });
+});
+
+describe("usePlan after a skip", () => {
+  test("reads the plan only once a skip still on its way has landed", async () => {
+    // Back from the plan step, then Skip: until the skip lands, the server
+    // still answers for the take the user went Back from.
+    let land!: () => void;
+    skip.current = new Promise<void>((resolve) => {
+      land = resolve;
+    });
+    const requests = servePlans(READY);
+    const { result } = renderPlan();
+
+    await advance(1_000);
+    expect(requests.count).toBe(0);
+    expect(result.current.plan).toBeNull();
+
+    land();
+    await advance(100);
+    expect(requests.count).toBe(1);
+    expect(result.current.plan).toEqual(READY);
   });
 });
 

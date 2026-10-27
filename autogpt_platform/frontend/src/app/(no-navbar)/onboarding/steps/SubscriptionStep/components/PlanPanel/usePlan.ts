@@ -1,4 +1,5 @@
 import {
+  getBrainDumpPlan,
   type getBrainDumpPlanResponse,
   useGetBrainDumpPlan,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
@@ -7,6 +8,7 @@ import { trackPlan } from "@/services/onboarding/plan-analytics";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useOnboardingWizardStore } from "../../../../store";
+import { whenSkipSettled } from "../../../BrainDumpStep/useBrainDumpStep";
 import {
   EMPTY_PLAN,
   getStepTasks,
@@ -36,6 +38,12 @@ export function usePlan() {
   const query = useGetBrainDumpPlan({
     query: {
       enabled: !restored,
+      // A skip still on its way would leave the server answering for the
+      // take the user went Back from.
+      queryFn: async ({ signal }) => {
+        await whenSkipSettled();
+        return getBrainDumpPlan({ signal });
+      },
       // Back to the brain dump and a re-record changes the plan, so a plan
       // cached before this mount is never what the step shows.
       refetchOnMount: "always",

@@ -28,9 +28,15 @@ import { useMicrophoneRetry } from "./useMicrophoneRetry";
 import { usePromptRotation } from "./usePromptRotation";
 
 // A skip whose discard and record are still on the wire. Module scope, so the
-// remount that Back from Hire causes waits for it before sending a new take,
-// which the late skip would otherwise replace.
+// remount that Back from the plan step causes waits for it before sending a
+// new take, which the late skip would otherwise replace.
 let pendingSkip: Promise<void> = Promise.resolve();
+
+// The plan step reads the plan only once the skip has landed: before then
+// the server still holds the take the user went Back from.
+export function whenSkipSettled() {
+  return pendingSkip;
+}
 
 export type ScreenState =
   | "rest"
