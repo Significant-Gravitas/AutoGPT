@@ -60,7 +60,7 @@ export function useBrainDumpStep() {
   });
   const microphone = useMicrophoneRetry({
     recorder,
-    canRecord: () => screenRef.current === "typing",
+    canRecord: () => screenRef.current === "typing" && !isSubmittingRef.current,
     onRecording: () => setScreen("recording"),
   });
   // A refused microphone is one fallback to typing per visit, however many
@@ -120,8 +120,11 @@ export function useBrainDumpStep() {
 
   // Permission denial is never a dead end: the typing composer takes over
   // under the same headline.
+  // A retry refused while the typed text is on its way leaves the submission
+  // alone: reopening the composer would let it be sent a second time.
   useEffect(() => {
     if (!recorder.permissionDenied) return;
+    if (isSubmittingRef.current || screenRef.current === "processing") return;
     setScreen("typing");
     if (typedFallbackTrackedRef.current) return;
     typedFallbackTrackedRef.current = true;
@@ -358,7 +361,7 @@ export function useBrainDumpStep() {
 
   async function handleSubmitTyped() {
     const text = typedText.trim();
-    if (!text) return;
+    if (!text || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setIsTypedTooLong(false);
     try {

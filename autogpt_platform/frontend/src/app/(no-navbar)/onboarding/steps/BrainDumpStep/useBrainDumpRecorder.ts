@@ -185,7 +185,8 @@ export function useBrainDumpRecorder({ promptSet }: Args = {}) {
       durationSecs: 0,
       finalized: false,
     });
-    if (unmountedRef.current) {
+    // The caller can move on during the write too.
+    if (unmountedRef.current || shouldRecord?.() === false) {
       stopTracks();
       return false;
     }

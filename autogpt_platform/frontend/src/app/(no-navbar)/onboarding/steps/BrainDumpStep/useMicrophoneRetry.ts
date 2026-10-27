@@ -32,7 +32,9 @@ export function useMicrophoneRetry({ recorder, canRecord, onRecording }: Args) {
   });
   // A retry clears the refusal while the browser is asked again; the
   // notice stays up through it and is refreshed in place if it is refused.
-  const [isRetrying, setIsRetrying] = useState(false);
+  // Only a retry after a refusal keeps the blocked notice up; one after an
+  // unavailable mic keeps that notice instead.
+  const [isRetryingRefusal, setIsRetryingRefusal] = useState(false);
   const isRetryingRef = useRef(false);
 
   function handlePermissionChange(state: MicrophonePermission) {
@@ -51,7 +53,7 @@ export function useMicrophoneRetry({ recorder, canRecord, onRecording }: Args) {
     if (isRetryingRef.current) return;
     isRetryingRef.current = true;
     const permissionState = permission.state;
-    setIsRetrying(true);
+    setIsRetryingRefusal(recorder.permissionDenied);
     recorder.clearPermissionDenied();
     let started = false;
     try {
@@ -67,14 +69,14 @@ export function useMicrophoneRetry({ recorder, canRecord, onRecording }: Args) {
       });
     } finally {
       isRetryingRef.current = false;
-      setIsRetrying(false);
+      setIsRetryingRefusal(false);
     }
     if (started) onRecording();
     else await permission.refresh();
   }
 
   return {
-    isBlocked: recorder.permissionDenied || isRetrying,
+    isBlocked: recorder.permissionDenied || isRetryingRefusal,
     permissionState: permission.state,
     retry,
   };

@@ -396,6 +396,29 @@ describe("useBrainDumpRecorder", () => {
       expect(onMicAnswer).toHaveBeenCalledExactlyOnceWith("unavailable");
     });
 
+    it("starts no take when the caller moves on during the first write", async () => {
+      const track = { stop: vi.fn() };
+      stubGetUserMedia(vi.fn().mockResolvedValue({ getTracks: () => [track] }));
+      const shouldRecord = vi
+        .fn()
+        .mockReturnValueOnce(true)
+        .mockReturnValue(false);
+      const { result } = renderHook(() => useBrainDumpRecorder());
+
+      let started: boolean | undefined;
+      await act(async () => {
+        started = await result.current.start({ shouldRecord });
+      });
+
+      expect(started).toBe(false);
+      expect(shouldRecord).toHaveBeenCalledTimes(2);
+      expect(track.stop).toHaveBeenCalled();
+      expect(trackBrainDump).not.toHaveBeenCalledWith(
+        "brain_dump_started",
+        expect.anything(),
+      );
+    });
+
     it("starts no take when the caller no longer wants one", async () => {
       const track = { stop: vi.fn() };
       stubGetUserMedia(vi.fn().mockResolvedValue({ getTracks: () => [track] }));

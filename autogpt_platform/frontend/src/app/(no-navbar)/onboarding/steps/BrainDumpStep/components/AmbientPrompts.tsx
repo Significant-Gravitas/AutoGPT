@@ -1,10 +1,9 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { AnimatePresence, motion } from "framer-motion";
 import type { ScreenState } from "../useBrainDumpStep";
 import { useIsWideLayout } from "../useIsWideLayout";
+import { AmbientCard } from "./AmbientCard";
 import { useAmbientPrompts } from "./useAmbientPrompts";
 
 interface Props {
@@ -70,58 +69,27 @@ export function AmbientPrompts({ role, screen }: Props) {
     >
       {CARDS.map((card) => {
         const isQuote = "example" in card;
-        const text = isQuote
-          ? `“${ambient.examples[card.example]}”`
-          : ambient.questions[card.question].text;
         return (
-          <motion.div
+          <AmbientCard
             key={card.position}
-            className={cn(
-              "absolute w-[196px] rounded-xl bg-surface-hover px-3 py-2.5 transition-opacity duration-500",
-              card.position,
-              isTyping && "besideComposer" in card && "opacity-0",
-            )}
-            animate={ambient.reduceMotion ? undefined : { y: [0, -6, 0] }}
-            transition={
-              ambient.reduceMotion
-                ? undefined
-                : {
-                    duration: card.driftSecs,
-                    delay: card.delaySecs,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }
+            position={card.position}
+            label={
+              isQuote ? "For example" : ambient.questions[card.question].label
             }
-          >
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={text}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: ambient.reduceMotion ? 0 : 0.4 }}
-                className={cn(isQuote && "italic")}
-              >
-                <Text
-                  variant="small-semibold"
-                  as="span"
-                  className="block text-caption-sm uppercase tracking-eyebrow text-accent-strong"
-                >
-                  {isQuote
-                    ? "For example"
-                    : ambient.questions[card.question].label}
-                </Text>
-                <Text
-                  variant="body"
-                  as="span"
-                  tone="secondary"
-                  className="block text-body-sm"
-                >
-                  {text}
-                </Text>
-              </motion.div>
-            </AnimatePresence>
-          </motion.div>
+            text={
+              isQuote
+                ? `“${ambient.examples[card.example]}”`
+                : ambient.questions[card.question].text
+            }
+            isQuote={isQuote}
+            isHidden={isTyping && "besideComposer" in card}
+            drift={
+              isShown && !ambient.reduceMotion
+                ? { durationSecs: card.driftSecs, delaySecs: card.delaySecs }
+                : null
+            }
+            reduceMotion={ambient.reduceMotion}
+          />
         );
       })}
     </div>

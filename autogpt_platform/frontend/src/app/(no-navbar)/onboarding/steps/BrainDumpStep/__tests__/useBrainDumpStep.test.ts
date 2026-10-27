@@ -26,6 +26,7 @@ const { captureException, recorderState } = vi.hoisted(() => ({
     audioStream: null as MediaStream | null,
     hasSpoken: false,
     permissionDenied: false,
+    micUnavailable: false,
     recordingId: null as string | null,
     mimeType: "audio/webm",
     clearPermissionDenied: vi.fn(),
@@ -137,6 +138,7 @@ beforeEach(() => {
     audioStream: null,
     hasSpoken: false,
     permissionDenied: false,
+    micUnavailable: false,
     recordingId: null,
     mimeType: "audio/webm",
   });
@@ -1245,6 +1247,73 @@ describe("useBrainDumpStep — a refused microphone", () => {
 
     expect(started).toBe(false);
     expect(result.current.screen).toBe("processing");
+  });
+
+  it("keeps the typed text on its way when a retry is refused meanwhile", async () => {
+    let refuse!: () => void;
+    recorderState.start.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          refuse = () => {
+            recorderState.permissionDenied = true;
+            resolve(false);
+          };
+        }),
+    );
+    finalizeBrainDump.mockReturnValue(
+      deferred<ReturnType<typeof completed>>().promise,
+    );
+    const { result, rerender } = await renderRefused();
+
+    act(() => {
+      void result.current.handleRetryMicrophone();
+      result.current.setTypedText("I run a bakery.");
+    });
+    act(() => {
+      void result.current.handleSubmitTyped();
+    });
+    await waitFor(() => expect(result.current.screen).toBe("processing"));
+
+    await act(async () => {
+      refuse();
+    });
+    rerender();
+
+    expect(result.current.screen).toBe("processing");
+  });
+
+  it("sends the typed text once however fast it is submitted", async () => {
+    finalizeBrainDump.mockReturnValue(
+      deferred<ReturnType<typeof completed>>().promise,
+    );
+    const { result } = await renderRefused();
+    act(() => {
+      result.current.setTypedText("I run a bakery.");
+    });
+
+    act(() => {
+      void result.current.handleSubmitTyped();
+      void result.current.handleSubmitTyped();
+    });
+
+    await waitFor(() => expect(finalizeBrainDump).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps the unavailable notice, not the blocked one, while that retry runs", async () => {
+    recorderState.permissionDenied = false;
+    recorderState.micUnavailable = true;
+    recorderState.start.mockReturnValue(new Promise<boolean>(() => {}));
+    const { result } = await renderStep();
+    act(() => {
+      result.current.showTyping();
+    });
+
+    act(() => {
+      void result.current.handleRetryMicrophone();
+    });
+
+    expect(result.current.isMicBlocked).toBe(false);
+    expect(result.current.isMicUnavailable).toBe(true);
   });
 
   it("goes back to the orb from record instead when nothing was refused", async () => {
