@@ -53,8 +53,8 @@ _PROPOSAL_KEY_PREFIX = "copilot:expert_change_proposal:"
 # answered with "already done" instead of the same message an expired
 # preview gets.
 _CONSUMED_KEY_PREFIX = "copilot:expert_change_consumed:"
-# Claimed by whichever of a hire's two ids (hire only / hire and hand off) is
-# confirmed first, so one approval can never hire twice.
+# Claimed by whichever of a hire's two ids (the plain hire / hire and start)
+# is confirmed first, so one approval can never hire twice.
 _CLAIM_KEY_PREFIX = "copilot:expert_change_claim:"
 _LOG_ID_PREFIX_LENGTH = 12
 _PREVIEW_TOOLS = "tool:hire_expert, tool:raise_expert or tool:update_expert"
@@ -309,7 +309,7 @@ async def load_bound_proposal(
     sibling = proposal.sibling_confirmation_id
     if sibling is None:
         return await _consume(redis, confirmation_id, session.session_id, proposal)
-    # One hire offered two ways ("hire only" / "hire and hand off"): a SET NX
+    # One hire parked two ways (the plain hire / "hire and start"): a SET NX
     # on a key both ids share decides which answer takes it. The other id's
     # proposal is left in place and refused by this claim, so nothing is
     # destroyed before this confirm is sure to complete; a failure releases

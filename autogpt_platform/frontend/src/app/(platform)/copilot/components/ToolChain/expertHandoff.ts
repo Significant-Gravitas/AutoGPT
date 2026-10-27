@@ -12,6 +12,9 @@ export interface HandoffOutcome {
   status: HandoffStatus;
   subSessionId: string | null;
   link: string | null;
+  /** Only for a failed hand-off: the backend says sending it again can help.
+   *  A refusal (paused, out of budget, no free slot) is never retryable. */
+  retry: boolean;
 }
 
 /** The task a hire was proposed for, when the proposal offers the hand-off. */
@@ -37,6 +40,7 @@ export function handoffOutcomeOf(
     status: statusOf(handoff),
     subSessionId: str(handoff, "sub_session_id") ?? null,
     link: str(handoff, "link") ?? null,
+    retry: handoff.retry === true,
   };
 }
 
@@ -61,17 +65,20 @@ export type HandoffState =
   | "unconfirmed"
   | "waiting"
   | "working"
-  | "stopped";
+  | "stopped"
+  | "unknown";
 
 /** What the card says now: the thread's live status once the poll has read
- *  it, and the outcome frozen at hire time only while it can't (not read
- *  yet, or "unknown" after the poll died). */
+ *  it, and the outcome frozen at hire time only until the first read. A poll
+ *  that died ("unknown") claims nothing: the task was sent, and whether it
+ *  is running is not known. */
 export function handoffStateOf(
   outcome: HandoffOutcome,
   live: string | null,
 ): HandoffState {
   if (outcome.status === "failed") return "failed";
   if (outcome.status === "unconfirmed") return "unconfirmed";
+  if (live === "unknown") return "unknown";
   if (live === "completed") return "stopped";
   if (live === "queued") return "waiting";
   if (live === "running") return "working";

@@ -1,8 +1,8 @@
 """Start the task a new hire was approved for, in the same confirm.
 
 A hire Otto proposes for a task the user already described carries that task
-(``hire_expert``'s ``handoff_title`` / ``handoff_task``), and its card offers
-"hire and hand off" beside "hire only". Without this the approval only hired:
+(``hire_expert``'s ``handoff_title`` / ``handoff_task``), and its card asks
+Hire and start or Not now. Without this the approval only hired:
 the model then asked in prose whether to hand the task over, and the user had
 to type a second answer to something they had just approved (SECRT-3138).
 
@@ -105,7 +105,9 @@ async def hand_off_to_new_hire(
 def with_hire_only(
     applied: ExpertChangeAppliedResponse, task: ExpertHandoffTask
 ) -> ExpertChangeAppliedResponse:
-    """The user picked "hire only" on a card that offered the hand-off too."""
+    """The plain hire id was confirmed for a hire proposed with a task: the
+    user asked in chat to hire without starting it (the card itself offers
+    only Hire and start or Not now)."""
     return applied.model_copy(
         update={
             "message": (
@@ -147,7 +149,11 @@ def _report(
         update={
             "message": message,
             "handoff": ExpertHandoffOutcome(
-                title=task.title, status=status, sub_session_id=thread, link=link
+                title=task.title,
+                status=status,
+                sub_session_id=thread,
+                link=link,
+                retry=status == "failed" and retry,
             ),
         }
     )

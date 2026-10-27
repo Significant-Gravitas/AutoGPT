@@ -232,6 +232,7 @@ class TestHireAndHandOffInOneApproval:
         # Only queued so far: a worker can still refuse it at pickup, so
         # nothing may claim it started (Sentry).
         assert resp.handoff.status == "sent"
+        assert resp.handoff.retry is False
         assert "started" not in resp.message
         assert resp.handoff.title == _TITLE
         assert resp.handoff.sub_session_id == "thread-1"
@@ -305,6 +306,8 @@ class TestHireAndHandOffInOneApproval:
         # to retry at once either (Sentry, third review).
         assert "don't ask them again" in resp.message
         assert "delegate_to_expert" not in resp.message
+        # The card offers Try again only when the backend says it can help.
+        assert resp.handoff.retry is False
 
 
 class TestHandOffOnlyClaimsWhatHappened:
@@ -330,6 +333,7 @@ class TestHandOffOnlyClaimsWhatHappened:
         assert "paused" in resp.message
         # Nothing to retry until the user resumes them.
         assert "delegate_to_expert" not in resp.message
+        assert resp.handoff.retry is False
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_task_waiting_for_a_slot_is_queued_not_started(self):
@@ -359,6 +363,7 @@ class TestHandOffOnlyClaimsWhatHappened:
         assert resp.handoff.status == "failed"
         assert "out of budget" in resp.message
         assert "delegate_to_expert" not in resp.message
+        assert resp.handoff.retry is False
         env.turn.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -384,6 +389,8 @@ class TestHandOffOnlyClaimsWhatHappened:
         assert len(env.created) == 1
         assert resp.handoff is not None
         assert resp.handoff.status == "unconfirmed"
+        # It may be running: sending it again could run it twice.
+        assert resp.handoff.retry is False
         assert resp.handoff.sub_session_id == "thread-1"
         assert resp.handoff.link == "/copilot?sessionId=thread-1"
         assert "thread-1" in resp.message
@@ -404,6 +411,7 @@ class TestHandOffOnlyClaimsWhatHappened:
         assert resp.handoff is not None
         assert resp.handoff.status == "failed"
         assert resp.handoff.link is None
+        assert resp.handoff.retry is True
         assert "delegate_to_expert" in resp.message
         env.deleted.assert_awaited_once_with("thread-1", _USER)
 

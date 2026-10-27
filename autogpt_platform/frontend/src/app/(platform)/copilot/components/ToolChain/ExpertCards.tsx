@@ -44,9 +44,6 @@ interface Props {
   /** Offered while the proposal is still open; absent once applied, on a
    *  read-only transcript, or when the output carries no confirmation. */
   onDecide?: (decision: Decision) => void;
-  /** Offered beside Approve when the hire was proposed for a task: hires
-   *  and starts that task in one answer. */
-  onHandOff?: () => void;
   /** Takes the decision back so Approve/Decline can be chosen again. */
   onUndo?: () => void;
   /** The turn is still streaming: answers wait until the proposals are all
@@ -58,9 +55,6 @@ interface Props {
   /** Which way the pager just moved — the identity block slides in from
    *  that side while the shell (Details, pager, decision) stays put. */
   stepDirection?: StepDirection;
-  /** For a card that offered the hand-off: whether the stored approval was
-   *  "hire and hand off", so paging back shows what will be sent. */
-  handedOff?: boolean;
   /** Sends a chat message (a hand-off that didn't start offers Try again);
    *  absent on a read-only transcript. */
   onSend?: (message: string) => void;
@@ -157,11 +151,12 @@ function proposalOf(part: ToolUIPart): Proposal | null {
   };
 }
 
-/** The line for one answer. Hire and hand off is an approval of the
- *  proposal's other id, which confirm_expert_change reads as "also start
- *  the task". */
-function answerLine(proposal: Proposal, answer: Answer): string {
-  if (answer.decision === "approved" && answer.handOff && proposal.handoff) {
+/** The line for one answer. A hire proposed for a task asks one question,
+ *  Hire and start or Not now, so its approval is always of the proposal's
+ *  hand-off id, which confirm_expert_change reads as "also start the task".
+ *  Not now declines the hire itself. */
+function answerLine(proposal: Proposal, decision: Decision): string {
+  if (decision === "approved" && proposal.handoff) {
     return decisionLine(
       {
         ...proposal,
@@ -171,12 +166,7 @@ function answerLine(proposal: Proposal, answer: Answer): string {
       "approved",
     );
   }
-  return decisionLine(proposal, answer.decision);
-}
-
-interface Answer {
-  decision: Decision;
-  handOff: boolean;
+  return decisionLine(proposal, decision);
 }
 
 // gate/card_approval.py reads the Approved line as the answer to the confirm.
@@ -244,12 +234,10 @@ export function ExpertChangeCard({
   pager,
   decision = null,
   onDecide,
-  onHandOff,
   onUndo,
   action,
   stepDirection,
   waiting = false,
-  handedOff = false,
   onSend,
 }: Props) {
   const [showCharter, setShowCharter] = useState(false);
@@ -289,14 +277,26 @@ export function ExpertChangeCard({
   );
 
   if (outcome) {
+    // Two confirms can share a group (two hires in one send): the pager
+    // stays under the status so every expert's outcome can be reached.
     return (
-      <HandoffStatus
-        outcome={outcome}
-        name={name}
-        avatarUrl={str(expert, "avatar_url")}
-        color={str(expert, "color")}
-        onSend={onSend}
-      />
+      <div className="flex flex-col gap-2">
+        <HandoffStatus
+          key={artifactId ?? name}
+          outcome={outcome}
+          name={name}
+          expertId={str(expert, "id")}
+          avatarUrl={str(expert, "avatar_url")}
+          color={str(expert, "color")}
+          onSend={onSend}
+        />
+        {(!!pager || !!action) && (
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">{pager}</div>
+            {action}
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -311,11 +311,10 @@ export function ExpertChangeCard({
           about={summary}
           task={task}
           actions={
-            !decision && onDecide && onHandOff
+            !decision && onDecide
               ? {
-                  onHandOff,
-                  onHireOnly: () => onDecide("approved"),
-                  onDecline: () => onDecide("declined"),
+                  onStart: () => onDecide("approved"),
+                  onNotNow: () => onDecide("declined"),
                   disabled: waiting,
                 }
               : null
@@ -331,10 +330,10 @@ export function ExpertChangeCard({
             onUndo={onUndo}
             action={action}
             chosen={
-              decision === "approved"
-                ? handedOff
-                  ? "Hire and hand off chosen"
-                  : "Hire only chosen"
+              decision
+                ? decision === "approved"
+                  ? "Hire and start chosen"
+                  : "Not now chosen"
                 : undefined
             }
           />
@@ -524,7 +523,11 @@ function DecisionFooter({
             leftIcon={<Icon icon={UndoIcon} size={14} />}
             className="h-8 !min-w-0 px-3"
           >
-            {decision === "approved" ? "Unapprove" : "Undo decline"}
+            {chosen
+              ? "Change"
+              : decision === "approved"
+                ? "Unapprove"
+                : "Undo decline"}
           </Button>
         )}
         {!decision && onDecide && (
@@ -611,12 +614,10 @@ interface PartProps {
   pager?: ReactNode;
   decision?: Decision | null;
   onDecide?: (decision: Decision) => void;
-  onHandOff?: () => void;
   onUndo?: () => void;
   action?: ReactNode;
   stepDirection?: StepDirection;
   waiting?: boolean;
-  handedOff?: boolean;
   onSend?: (message: string) => void;
 }
 
@@ -630,12 +631,10 @@ export function ExpertChangePart({
   pager,
   decision,
   onDecide,
-  onHandOff,
   onUndo,
   action,
   stepDirection,
   waiting,
-  handedOff,
   onSend,
 }: PartProps) {
   if (part.state === "output-error") return <GenericTool part={part} />;
@@ -649,12 +648,10 @@ export function ExpertChangePart({
         pager={pager}
         decision={decision}
         onDecide={onDecide}
-        onHandOff={onHandOff}
         onUndo={onUndo}
         action={action}
         stepDirection={stepDirection}
         waiting={waiting}
-        handedOff={handedOff}
         onSend={onSend}
       />
     );
@@ -696,7 +693,6 @@ export function ExpertChangeGroup({
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState<StepDirection | undefined>();
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
-  const [handOffs, setHandOffs] = useState<Record<string, boolean>>({});
   const [sent, setSent] = useState(false);
   const actions = useContext(CopilotChatActionsContext);
   const visible = parts.filter((part) =>
@@ -742,32 +738,24 @@ export function ExpertChangeGroup({
     );
   }
 
-  function send(
-    answered: Record<string, Decision>,
-    handedOff: Record<string, boolean>,
-  ) {
+  function send(answered: Record<string, Decision>) {
     sendMessage(
       proposals
-        .map((proposal) =>
-          answerLine(proposal, {
-            decision: answered[proposal.toolCallId],
-            handOff: !!handedOff[proposal.toolCallId],
-          }),
-        )
+        .map((proposal) => answerLine(proposal, answered[proposal.toolCallId]))
         .join("\n"),
     );
     setSent(true);
   }
 
-  function decide(decision: Decision, handOff: boolean) {
+  function decide(decision: Decision) {
     if (!currentProposal || isCurrentlyStreaming) return;
-    const id = currentProposal.toolCallId;
-    const nextDecisions = { ...decisions, [id]: decision };
-    const nextHandOffs = { ...handOffs, [id]: handOff };
+    const nextDecisions = {
+      ...decisions,
+      [currentProposal.toolCallId]: decision,
+    };
     setDecisions(nextDecisions);
-    setHandOffs(nextHandOffs);
     if (answerSends) {
-      send(nextDecisions, nextHandOffs);
+      send(nextDecisions);
       return;
     }
     if (!isLast) goTo(current + 1);
@@ -840,7 +828,7 @@ export function ExpertChangeGroup({
       variant="primary"
       size="icon"
       aria-label="Send decisions"
-      onClick={() => send(decisions, handOffs)}
+      onClick={() => send(decisions)}
       className="size-8 p-0"
     >
       <Icon icon={SentIcon} size={15} />
@@ -854,11 +842,7 @@ export function ExpertChangeGroup({
     return (
       <div className="my-2">
         <HandoffReceipt>
-          {receiptFor(
-            proposals[0],
-            decisions[proposals[0].toolCallId],
-            !!handOffs[proposals[0].toolCallId],
-          )}
+          {receiptFor(proposals[0], decisions[proposals[0].toolCallId])}
         </HandoffReceipt>
       </div>
     );
@@ -874,35 +858,23 @@ export function ExpertChangeGroup({
         isCurrentlyStreaming={isCurrentlyStreaming}
         pager={pager || undefined}
         decision={decisions[part.toolCallId] ?? null}
-        onDecide={
-          currentProposal && !sent
-            ? (decision: Decision) => decide(decision, false)
-            : undefined
-        }
-        onHandOff={
-          currentProposal?.handoff && !sent
-            ? () => decide("approved", true)
-            : undefined
-        }
+        onDecide={currentProposal && !sent ? decide : undefined}
         onUndo={currentProposal && !sent ? undo : undefined}
         action={action || undefined}
         stepDirection={direction}
         waiting={isCurrentlyStreaming}
-        handedOff={!!handOffs[part.toolCallId]}
         onSend={sendable ? sendMessage : undefined}
       />
     </div>
   );
 }
 
-function receiptFor(
-  proposal: Proposal,
-  decision: Decision | undefined,
-  handedOff: boolean,
-): string {
-  if (decision !== "approved") return `You declined hiring ${proposal.name}.`;
-  if (handedOff && proposal.handoff) {
-    return `You hired ${proposal.name} and handed off ${proposal.handoff.title}.`;
+/** The record of the choice, worded as the choice: the confirm runs after
+ *  the send and can still fail, and the expert's own card says what came of
+ *  it. Only a hire proposed for a task shrinks to a receipt. */
+function receiptFor(proposal: Proposal, decision: Decision | undefined) {
+  if (decision === "approved" && proposal.handoff) {
+    return `You chose to hire ${proposal.name} to take on ${proposal.handoff.title}.`;
   }
-  return `You hired ${proposal.name}.`;
+  return `You chose not to hire ${proposal.name} for now.`;
 }

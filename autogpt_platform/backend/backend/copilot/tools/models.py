@@ -686,6 +686,10 @@ class ExpertHandoffOutcome(BaseModel):
     status: Literal["sent", "queued", "unconfirmed", "failed"]
     sub_session_id: str | None = None
     link: str | None = None
+    # Only for ``failed``: nothing reached the expert and sending it again can
+    # help. A refusal (paused, out of budget or depth, no free task slot)
+    # says itself what has to change first, so it is never retryable.
+    retry: bool = False
 
 
 class ExpertSummary(BaseModel):

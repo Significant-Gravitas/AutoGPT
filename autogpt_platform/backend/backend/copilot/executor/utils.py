@@ -495,7 +495,7 @@ async def enqueue_copilot_turn(
         )
     except Exception as e:
         raise TurnPublishUnconfirmed(
-            "The turn's publish raised; it may or may not be queued."
+            f"The turn's publish raised; it may or may not be queued: {e}"
         ) from e
 
 

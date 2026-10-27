@@ -1,17 +1,8 @@
 "use client";
 
-import {
-  Alert02Icon,
-  ArrowUpRight01Icon,
-  Clock01Icon,
-  InformationCircleIcon,
-} from "@hugeicons/core-free-icons";
+import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import NextLink from "next/link";
-import { useState } from "react";
-import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import { cn } from "@/lib/utils";
 import {
   frozenStatusOf,
   type HandoffOutcome,
@@ -19,11 +10,15 @@ import {
   handoffStateOf,
   possessive,
 } from "./expertHandoff";
+import { HandoffRetry } from "./HandoffRetry";
+import { StatusAvatar } from "./HandoffStatusAvatar";
 import { useSubSessionEffectiveStatus } from "./SubSessionLive";
 
 interface Props {
   outcome: HandoffOutcome;
   name: string;
+  /** The hire; absent on outputs that don't carry it. */
+  expertId: string | null;
   avatarUrl: string | null;
   color: string | null;
   /** Sends a chat message; absent on a read-only transcript. */
@@ -38,6 +33,7 @@ interface Props {
 export function HandoffStatus({
   outcome,
   name,
+  expertId,
   avatarUrl,
   color,
   onSend,
@@ -47,18 +43,18 @@ export function HandoffStatus({
     frozenStatusOf(outcome),
   );
   const state = handoffStateOf(outcome, live);
-  const unknown = live === "unknown";
+  const unknown = state === "unknown";
   const avatar = (size: number) => (
     <StatusAvatar
       name={name}
       avatarUrl={avatarUrl}
       color={color}
-      state={unknown ? null : state}
+      state={state}
       size={size}
     />
   );
 
-  if (state === "waiting" || state === "working") {
+  if (state === "waiting" || state === "working" || unknown) {
     return (
       <div className="w-full overflow-hidden rounded-3xl border border-separator bg-surface">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
@@ -101,8 +97,15 @@ export function HandoffStatus({
           <HandoffSentence outcome={outcome} name={name} state={state} />
         </p>
         {state === "failed"
-          ? onSend && (
-              <RetryHandoff outcome={outcome} name={name} onSend={onSend} />
+          ? outcome.retry &&
+            onSend &&
+            expertId && (
+              <HandoffRetry
+                title={outcome.title}
+                name={name}
+                expertId={expertId}
+                onSend={onSend}
+              />
             )
           : outcome.link && (
               <NextLink
@@ -120,99 +123,6 @@ export function HandoffStatus({
             )}
       </div>
     </div>
-  );
-}
-
-interface RetryProps {
-  outcome: HandoffOutcome;
-  name: string;
-  onSend: (message: string) => void;
-}
-
-/** The task didn't reach the expert; asking Otto again is the way back. */
-function RetryHandoff({ outcome, name, onSend }: RetryProps) {
-  const [asked, setAsked] = useState(false);
-  if (asked) {
-    return (
-      <span className="text-sm text-foreground-tertiary">
-        Asked Otto to try again.
-      </span>
-    );
-  }
-  return (
-    <Button
-      variant="secondary"
-      size="small"
-      onClick={() => {
-        setAsked(true);
-        onSend(`Try handing ${outcome.title} to ${name} again.`);
-      }}
-      className="h-8 !min-w-0 px-3"
-    >
-      Try again
-    </Button>
-  );
-}
-
-const BADGES: Record<
-  Exclude<HandoffState, "unconfirmed">,
-  { className: string; icon: typeof Clock01Icon | null }
-> = {
-  working: { className: "bg-info-surface text-info", icon: null },
-  waiting: {
-    className: "bg-warning-surface text-warning-foreground",
-    icon: Clock01Icon,
-  },
-  // Neutral, not success: an idle thread may hold a question or an error.
-  stopped: {
-    className: "bg-surface-hover text-foreground-secondary",
-    icon: InformationCircleIcon,
-  },
-  failed: {
-    className: "bg-warning-surface text-warning-foreground",
-    icon: Alert02Icon,
-  },
-};
-
-interface AvatarProps {
-  name: string;
-  avatarUrl: string | null;
-  color: string | null;
-  state: HandoffState | null;
-  size: number;
-}
-
-/** The expert with what their thread is doing on the corner. The badge is
- *  decoration: the sentence beside it always says the same in words. */
-function StatusAvatar({ name, avatarUrl, color, state, size }: AvatarProps) {
-  const badge = state && state !== "unconfirmed" ? BADGES[state] : null;
-  const badgeSize = Math.round(size * 0.5);
-  return (
-    <span className="relative inline-flex shrink-0">
-      <ExpertAvatar
-        name={name}
-        avatarUrl={avatarUrl}
-        color={color}
-        size={size}
-      />
-      {badge && (
-        <span
-          aria-hidden
-          data-testid="handoff-badge"
-          style={{ width: badgeSize, height: badgeSize }}
-          className={cn(
-            "absolute -bottom-0.5 -end-0.5 flex items-center justify-center rounded-full ring-2 ring-surface",
-            badge.className,
-          )}
-        >
-          {badge.icon ? (
-            <Icon icon={badge.icon} size={Math.round(badgeSize * 0.7)} />
-          ) : (
-            <span className="size-[60%] animate-spin rounded-full border-[1.5px] border-current border-t-transparent motion-reduce:animate-none" />
-          )}
-        </span>
-      )}
-    </span>
   );
 }
 
@@ -260,6 +170,13 @@ function HandoffSentence({ outcome, name, state }: SentenceProps) {
       return (
         <>
           {who} is working on {outcome.title}.
+        </>
+      );
+    // The live status can't be read: say only what is known.
+    case "unknown":
+      return (
+        <>
+          Sent {outcome.title} to {who}. Open their chat to see where it stands.
         </>
       );
   }

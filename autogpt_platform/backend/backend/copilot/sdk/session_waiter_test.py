@@ -723,6 +723,8 @@ async def test_a_failure_before_the_dispatch_is_typed_as_not_dispatched():
             tool_name="delegate_to_expert",
         )
     assert isinstance(raised.value.__cause__, ConnectionError)
+    # Callers that report str(exc) (the AutoPilot block) keep the reason.
+    assert "redis down" in str(raised.value)
 
 
 @pytest.mark.asyncio
@@ -732,7 +734,7 @@ async def test_a_failed_status_check_is_typed_as_not_dispatched():
             "backend.copilot.sdk.session_waiter.is_turn_in_flight",
             new=AsyncMock(side_effect=ConnectionError("redis down")),
         ),
-        pytest.raises(TurnNotDispatched),
+        pytest.raises(TurnNotDispatched, match="redis down"),
     ):
         await run_copilot_turn_via_queue(
             session_id="s",
@@ -813,6 +815,8 @@ async def test_a_wait_for_a_slot_that_stored_nothing_is_not_dispatched(
     with pytest.raises(TurnNotDispatched) as raised:
         await _queue_that_raised(_chat())
     assert isinstance(raised.value.__cause__, ConnectionError)
+    # Callers that report str(exc) (the AutoPilot block) keep the reason.
+    assert "redis down" in str(raised.value)
 
 
 @pytest.mark.asyncio

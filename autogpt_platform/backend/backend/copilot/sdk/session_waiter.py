@@ -268,7 +268,7 @@ async def run_copilot_turn_via_queue(
         )
         in_flight = not already_waiting and await is_turn_in_flight(session_id)
     except Exception as e:
-        raise TurnNotDispatched("The checks before the dispatch failed.") from e
+        raise TurnNotDispatched(f"The checks before the dispatch failed: {e}") from e
     if session is None:
         raise TurnNotDispatched("copilot_session_not_found")
 
@@ -370,7 +370,7 @@ async def run_copilot_turn_via_queue(
         )
         return "rejected_concurrent_turn_cap", SessionResult()
     except Exception as e:
-        raise TurnNotDispatched("The turn could not be dispatched.") from e
+        raise TurnNotDispatched(f"The turn could not be dispatched: {e}") from e
     if timeout <= 0:
         # The turn is queued and the caller waits for nothing. Subscribing
         # anyway could only fail, and a failure here, after the dispatch,
@@ -468,7 +468,7 @@ async def _queue_for_slot(
         return "rejected_concurrent_turn_cap", SessionResult()
     except Exception as e:
         if await _nothing_queued(session_id):
-            raise TurnNotDispatched("The turn could not be queued.") from e
+            raise TurnNotDispatched(f"The turn could not be queued: {e}") from e
         raise
     if timeout <= 0:
         # Stored, so it runs when a slot frees; as after a dispatch, a read

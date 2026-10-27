@@ -19,6 +19,7 @@ const BRIEF =
   "Own the Printify order pipeline: move new Etsy orders into Printify and sync tracking numbers back to Etsy every morning.";
 const TAGLINE = "Runs your operating rhythm, SOPs and vendors.";
 const HAND_OFF = "Hire and start";
+const NOT_NOW = "Not now";
 
 function hire(id: string, name = "James", withTask = true): ToolUIPart {
   return {
@@ -56,13 +57,16 @@ function isHidden(text: string) {
 describe("hiring an expert for a task already in the chat", () => {
   beforeEach(() => onSend.mockClear());
 
-  it("asks one question and offers hire and start as the main answer", () => {
+  it("asks one yes/no question: hire and start, or not now", () => {
     renderGroup([hire("a")]);
 
     expect(screen.getByText(`Hire James to take on ${TITLE}?`)).toBeDefined();
-    expect(screen.getByRole("button", { name: HAND_OFF })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Hire only" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Decline" })).toBeDefined();
+    const answers = screen
+      .getAllByRole("button")
+      .filter((b) => b.textContent === HAND_OFF || b.textContent === NOT_NOW);
+    expect(answers.map((b) => b.textContent)).toEqual([HAND_OFF, NOT_NOW]);
+    expect(screen.queryByRole("button", { name: "Hire only" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 
@@ -82,7 +86,7 @@ describe("hiring an expert for a task already in the chat", () => {
     expect(isHidden(TAGLINE)).toBe(false);
   });
 
-  it("hires and hands off in one click, then shrinks to a receipt", async () => {
+  it("hires and starts in one click, then records the choice", async () => {
     const user = userEvent.setup();
     renderGroup([hire("a")]);
 
@@ -93,9 +97,11 @@ describe("hiring an expert for a task already in the chat", () => {
     expect(onSend).toHaveBeenCalledWith(
       `Approved: hire James to take on ${TITLE} (confirmation_id: h-a).`,
     );
+    // Worded as the choice: the confirm runs after the send and can fail.
     expect(
-      screen.getByText(`You hired James and handed off ${TITLE}.`),
+      screen.getByText(`You chose to hire James to take on ${TITLE}.`),
     ).toBeDefined();
+    expect(screen.queryByText(/You hired/)).toBeNull();
     expect(screen.queryByText(`Hire James to take on ${TITLE}?`)).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
   });
@@ -108,7 +114,7 @@ describe("hiring an expert for a task already in the chat", () => {
       </CopilotChatActionsProvider>,
     );
 
-    for (const label of [HAND_OFF, "Hire only", "Decline"]) {
+    for (const label of [HAND_OFF, NOT_NOW]) {
       expect(screen.getByRole("button", { name: label })).toHaveProperty(
         "disabled",
         true,
@@ -129,28 +135,18 @@ describe("hiring an expert for a task already in the chat", () => {
     );
   });
 
-  it("hires without the task on Hire only", async () => {
+  it("says not now to the hire, not just the task", async () => {
     const user = userEvent.setup();
     renderGroup([hire("a")]);
 
-    await user.click(screen.getByRole("button", { name: "Hire only" }));
-
-    expect(onSend).toHaveBeenCalledWith(
-      "Approved: hire James (confirmation_id: c-a).",
-    );
-    expect(screen.getByText("You hired James.")).toBeDefined();
-  });
-
-  it("declines the hire, not just the task", async () => {
-    const user = userEvent.setup();
-    renderGroup([hire("a")]);
-
-    await user.click(screen.getByRole("button", { name: "Decline" }));
+    await user.click(screen.getByRole("button", { name: NOT_NOW }));
 
     expect(onSend).toHaveBeenCalledWith(
       "Not approved: do not hire James, discard that proposal (confirmation_id: c-a).",
     );
-    expect(screen.getByText("You declined hiring James.")).toBeDefined();
+    expect(
+      screen.getByText("You chose not to hire James for now."),
+    ).toBeDefined();
   });
 
   it("keeps each expert's choice when several are sent together", async () => {
@@ -158,13 +154,13 @@ describe("hiring an expert for a task already in the chat", () => {
     renderGroup([hire("a"), hire("b", "Nadia")]);
 
     await user.click(screen.getByRole("button", { name: HAND_OFF }));
-    await user.click(screen.getByRole("button", { name: "Hire only" }));
+    await user.click(screen.getByRole("button", { name: NOT_NOW }));
     expect(onSend).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Send decisions" }));
 
     expect(onSend).toHaveBeenCalledWith(
       `Approved: hire James to take on ${TITLE} (confirmation_id: h-a).\n` +
-        "Approved: hire Nadia (confirmation_id: c-b).",
+        "Not approved: do not hire Nadia, discard that proposal (confirmation_id: c-b).",
     );
     // Several experts keep their pager after the send, not one receipt.
     expect(screen.getByText("Sent")).toBeDefined();
@@ -175,12 +171,13 @@ describe("hiring an expert for a task already in the chat", () => {
     renderGroup([hire("a"), hire("b", "Nadia")]);
 
     await user.click(screen.getByRole("button", { name: HAND_OFF }));
-    await user.click(screen.getByRole("button", { name: "Hire only" }));
-    expect(screen.getByText("Hire only chosen")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: NOT_NOW }));
+    expect(screen.getByText("Not now chosen")).toBeDefined();
 
     await user.click(screen.getByRole("button", { name: "Previous expert" }));
-    expect(screen.getByText("Hire and hand off chosen")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Unapprove" })).toBeDefined();
+    // The label names the button that was pressed.
+    expect(screen.getByText(`${HAND_OFF} chosen`)).toBeDefined();
+    expect(screen.getByRole("button", { name: "Change" })).toBeDefined();
     expect(screen.queryByRole("button", { name: HAND_OFF })).toBeNull();
     expect(onSend).not.toHaveBeenCalled();
   });
@@ -196,7 +193,7 @@ describe("hiring an expert for a task already in the chat", () => {
     expect(onSend).toHaveBeenCalledWith(
       "Approved: hire James (confirmation_id: c-a).",
     );
-    expect(screen.queryByText(/You hired James/)).toBeNull();
+    expect(screen.queryByText(/You chose/)).toBeNull();
   });
 });
 
@@ -217,19 +214,50 @@ const expert = { id: "exp-james", name: "James", role: "Operations" };
 function appliedOutput(
   status: string,
   link: string | null = "/copilot?sessionId=thread-1",
+  { retry = false, who = expert } = {},
 ) {
   return {
     type: "expert_change_applied",
     applied: true,
     kind: "hire",
-    expert,
+    expert: who,
     handoff: {
       title: TITLE,
       status,
       ...(link ? { sub_session_id: "thread-1" } : {}),
       link,
+      retry,
     },
   };
+}
+
+function confirmPart(id: string, output: Record<string, unknown>) {
+  return {
+    type: "tool-confirm_expert_change",
+    state: "output-available",
+    toolCallId: `call-${id}`,
+    input: {},
+    output,
+  } as ToolUIPart;
+}
+
+/** The hire's own chats, as the session list returns them. */
+function expertThreads(ids: string[]) {
+  return http.get("/api/proxy/api/chat/sessions", () =>
+    HttpResponse.json({
+      sessions: ids.map((id) => ({
+        id,
+        created_at: "2026-10-26T00:00:00Z",
+        updated_at: "2026-10-26T00:00:00Z",
+        title: id,
+        chat_status: "running",
+        is_processing: true,
+        is_pinned: false,
+        expert_id: "exp-james",
+      })),
+      total: ids.length,
+    }),
+  );
 }
 
 function sentCard(status: "sent" | "queued" | "unconfirmed") {
@@ -336,6 +364,11 @@ describe("after the hire and hand-off", () => {
 
     expect(await screen.findByText("Status unknown")).toBeDefined();
     expect(screen.queryByTestId("handoff-badge")).toBeNull();
+    // The sentence claims no more than the chip: it was sent, nothing else.
+    expect(screen.queryByText(/is working on/)).toBeNull();
+    expect(screen.getByText(/Sent the Printify/).textContent).toBe(
+      `Sent ${TITLE} to James. Open their chat to see where it stands.`,
+    );
   });
 
   it("never reads an idle thread as a reply when the start is unconfirmed", async () => {
@@ -373,23 +406,64 @@ describe("after the hire and hand-off", () => {
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
   });
 
-  it("offers to try again when the task did not start", async () => {
+  it("offers to try again when the backend says it can help", async () => {
+    server.use(expertThreads([]));
     const user = userEvent.setup();
     renderGroup([
-      {
-        type: "tool-confirm_expert_change",
-        state: "output-available",
-        toolCallId: "call-confirm",
-        input: {},
-        output: appliedOutput("failed", null),
-      } as ToolUIPart,
+      confirmPart("confirm", appliedOutput("failed", null, { retry: true })),
     ]);
 
-    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
 
     expect(onSend).toHaveBeenCalledWith(`Try handing ${TITLE} to James again.`);
     expect(screen.getByText("Asked Otto to try again.")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  it("never offers to try again after a refusal a retry can't fix", async () => {
+    server.use(expertThreads([]));
+    renderGroup([confirmPart("confirm", appliedOutput("failed", null))]);
+
+    expect((await screen.findByRole("status")).textContent).toBe(
+      `James is hired, but ${TITLE} didn't start.`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  it("points at the expert's chat instead of a second copy once Otto sent it again", async () => {
+    server.use(expertThreads(["thread-2"]));
+    renderGroup([
+      confirmPart("confirm", appliedOutput("failed", null, { retry: true })),
+    ]);
+
+    const link = await screen.findByRole("link", { name: "Open James's chat" });
+    expect(link.getAttribute("href")).toBe("/copilot?sessionId=thread-2");
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  it("keeps every expert's outcome reachable when two hires were confirmed together", async () => {
+    server.use(thread("running"), expertThreads([]));
+    const user = userEvent.setup();
+    renderGroup([
+      confirmPart("one", appliedOutput("sent")),
+      confirmPart(
+        "two",
+        appliedOutput("failed", null, {
+          who: { id: "exp-nadia", name: "Nadia", role: "Finance" },
+        }),
+      ),
+    ]);
+
+    expect((await screen.findByText(/is working on/)).textContent).toBe(
+      `James is working on ${TITLE}.`,
+    );
+    await user.click(screen.getByRole("button", { name: "Next expert" }));
+
+    expect(screen.getByRole("status").textContent).toBe(
+      `Nadia is hired, but ${TITLE} didn't start.`,
+    );
+    expect(screen.getByText("2 of 2")).toBeDefined();
   });
 
   it("keeps the full card for a hire saved without a hand-off", () => {

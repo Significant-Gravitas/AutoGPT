@@ -18,9 +18,8 @@ interface ProposalProps {
   task: HandoffTask;
   /** Absent once answered, or on a read-only transcript. */
   actions: {
-    onHandOff: () => void;
-    onHireOnly: () => void;
-    onDecline: () => void;
+    onStart: () => void;
+    onNotNow: () => void;
     disabled: boolean;
   } | null;
   /** Opens the full charter in the side panel, where there is one. */
@@ -31,9 +30,9 @@ interface ProposalProps {
 }
 
 /** A hire proposed for a task the user already described, asked as one
- *  question. The brief and the expert's charter stay behind one disclosure:
- *  the user wrote the task a moment ago and only needs who, what and the
- *  choice to answer. */
+ *  yes/no question: Hire and start, or Not now. The brief and the expert's
+ *  charter stay behind one disclosure: the user wrote the task a moment ago
+ *  and only needs who, what and the choice to answer. */
 export function HandoffProposal({
   name,
   role,
@@ -72,28 +71,19 @@ export function HandoffProposal({
               variant="primary"
               size="small"
               disabled={actions.disabled}
-              onClick={actions.onHandOff}
+              onClick={actions.onStart}
               className="h-8 !min-w-0 px-3.5"
             >
               Hire and start
             </Button>
             <Button
-              variant="secondary"
-              size="small"
-              disabled={actions.disabled}
-              onClick={actions.onHireOnly}
-              className="h-8 !min-w-0 px-3"
-            >
-              Hire only
-            </Button>
-            <Button
               variant="ghost"
               size="small"
               disabled={actions.disabled}
-              onClick={actions.onDecline}
+              onClick={actions.onNotNow}
               className="h-8 !min-w-0 px-3"
             >
-              Decline
+              Not now
             </Button>
           </div>
         )}

@@ -5,9 +5,11 @@ has room, and park the exact proposal under a one-time ``confirmation_id``.
 ``confirm_expert_change`` applies it once the user approves.
 
 A hire proposed for a task the user already described carries that task, and
-is parked twice: "hire only" under ``confirmation_id`` and "hire and hand
-off" under ``handoff_confirmation_id``. The card offers both, so the user's
-one click both hires and starts the work (see ``hire_handoff``).
+is parked twice: the plain hire under ``confirmation_id`` and "hire and
+start" under ``handoff_confirmation_id``. The card asks one question, Hire
+and start or Not now, so the user's one click both hires and starts the work
+(see ``hire_handoff``); the plain id stays for a user who asks in chat to
+hire without starting the task.
 """
 
 import uuid

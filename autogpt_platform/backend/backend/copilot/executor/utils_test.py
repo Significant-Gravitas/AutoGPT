@@ -657,6 +657,8 @@ async def test_a_failed_publish_is_unconfirmed_not_unsent() -> None:
         )
 
     assert isinstance(raised.value.__cause__, OSError)
+    # Callers that report str(exc) (the AutoPilot block) keep the reason.
+    assert "confirm lost" in str(raised.value)
     slot.keep.assert_not_called()
 
 
