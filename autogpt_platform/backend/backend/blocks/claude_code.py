@@ -455,6 +455,9 @@ class ClaudeCodeBlock(Block):
 
             result = await sandbox.commands.run(
                 claude_command,
+                # The key picked for this run, also on a resumed box that was
+                # created with another one.
+                envs={"ANTHROPIC_API_KEY": anthropic_api_key},
                 timeout=0,  # No command timeout - let sandbox timeout handle it
             )
 

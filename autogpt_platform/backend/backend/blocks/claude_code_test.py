@@ -105,3 +105,56 @@ async def test_the_users_own_anthropic_key_runs_claude_code():
     execute.assert_awaited_once()
     assert execute.await_args.kwargs["anthropic_api_key"] == "mock-anthropic-api-key"
     assert ("response", "done") in outputs
+
+
+async def test_a_resumed_sandbox_runs_claude_on_the_key_picked_for_this_run():
+    block = ClaudeCodeBlock()
+    box = AsyncMock()
+    box.sandbox_id = "sb-mine"
+
+    async def run(command: str, **kwargs):
+        stdout = '{"result": "done"}' if "claude" in command else "2026-10-27T00:00:00"
+        return AsyncMock(exit_code=0, stdout=stdout, stderr="")
+
+    box.commands.run = AsyncMock(side_effect=run)
+    info = AsyncMock(
+        metadata={
+            "service": "autogpt-platform",
+            "autogpt_owner": "user:user-a",
+            "autogpt_kind": "claude_code",
+            "autogpt_source": "block",
+            "autogpt_env": "dev",
+            "autogpt_user": "user-a",
+        }
+    )
+    with (
+        patch("backend.blocks.claude_code.BaseAsyncSandbox") as cls,
+        patch(
+            "backend.blocks.claude_code.connect_sandbox",
+            AsyncMock(return_value=box),
+        ),
+        patch(
+            "backend.blocks.claude_code.extract_and_store_sandbox_files",
+            AsyncMock(return_value=[]),
+        ),
+    ):
+        cls.get_info = AsyncMock(return_value=info)
+        response, *_ = await block.execute_claude_code(
+            e2b_api_key="k",
+            anthropic_api_key="the-users-own-key",
+            prompt="hi",
+            timeout=60,
+            setup_commands=[],
+            working_directory="/home/user",
+            session_id="s1",
+            existing_sandbox_id="sb-mine",
+            conversation_history="",
+            dispose_sandbox=False,
+            execution_context=ExecutionContext(user_id="user-a"),
+        )
+
+    assert response == "done"
+    claude_call = next(
+        call for call in box.commands.run.await_args_list if "claude" in call.args[0]
+    )
+    assert claude_call.kwargs["envs"] == {"ANTHROPIC_API_KEY": "the-users-own-key"}

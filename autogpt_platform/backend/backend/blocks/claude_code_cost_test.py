@@ -54,23 +54,23 @@ def test_claude_code_registered_as_cost_usd_150():
 
 
 @pytest.mark.parametrize(
-    "e2b_meta, anthropic_meta, expected_credits",
+    "e2b_meta, expected_credits",
     [
-        # Platform sandbox with the user's own Anthropic key: billed.
-        (_meta(e2b_credentials), _own_meta("anthropic"), 75),
-        # Both of the user's own: nothing of the platform's is spent.
-        (_own_meta("e2b"), _own_meta("anthropic"), 0),
+        # The platform sandbox: billed.
+        (_meta(e2b_credentials), 75),
+        # The user's own sandbox: nothing of the platform's is spent.
+        (_own_meta("e2b"), 0),
     ],
 )
-def test_run_is_billed_when_it_uses_the_platform_sandbox(
-    e2b_meta, anthropic_meta, expected_credits
-):
+def test_run_is_billed_when_it_uses_the_platform_sandbox(e2b_meta, expected_credits):
+    """Billing keys on the E2B credential only; the Anthropic key is always the
+    user's own."""
     stats = NodeExecutionStats(provider_cost=0.50, provider_cost_type="cost_usd")
     cost, _ = block_usage_cost(
         block=ClaudeCodeBlock(),
         input_data={
             "e2b_credentials": e2b_meta,
-            "anthropic_credentials": anthropic_meta,
+            "anthropic_credentials": _own_meta("anthropic"),
         },
         stats=stats,
     )
