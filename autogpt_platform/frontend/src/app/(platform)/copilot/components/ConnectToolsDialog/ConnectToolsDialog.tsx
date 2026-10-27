@@ -17,6 +17,7 @@ interface Props {
 // provider before it closes anything, so a half-typed key is never lost.
 export function ConnectToolsDialog({ isOpen, onClose }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const pressStartedOnBackdrop = useRef(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -63,8 +64,18 @@ export function ConnectToolsDialog({ isOpen, onClose }: Props) {
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950/30 px-4"
+      // Only a press that starts on the backdrop closes it: a text selection
+      // dragged out of the dialog ends with a click here too.
+      onPointerDown={(event) => {
+        pressStartedOnBackdrop.current = event.target === event.currentTarget;
+      }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (
+          event.target === event.currentTarget &&
+          pressStartedOnBackdrop.current
+        )
+          onClose();
+        pressStartedOnBackdrop.current = false;
       }}
     >
       <div

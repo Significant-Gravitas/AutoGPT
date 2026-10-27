@@ -42,6 +42,11 @@ const sessionList = vi.hoisted(() => ({
     sessions: [] as { id: string }[],
     isLoading: false,
     isListLoaded: true,
+  } as {
+    sessions: { id: string }[];
+    isLoading: boolean;
+    isListLoaded: boolean;
+    dataUpdatedAt?: number;
   },
 }));
 vi.mock("@/app/(platform)/copilot/useSessionList", () => ({
@@ -52,6 +57,7 @@ import { ExpertChangeGroup } from "@/app/(platform)/copilot/components/ToolChain
 import { BudgetLowHint } from "@/app/(platform)/copilot/components/UsageLimits/BudgetLowHint";
 import type { UsageSnapshot } from "@/services/usageExperience/useUsageExperience";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import type { User } from "@/lib/auth/types";
 import { tourTarget } from "@/lib/tour-targets";
 import { useFirstRunTourStore } from "../../FirstRunTour/store";
@@ -124,6 +130,8 @@ describe("contextual tips — when a cost comes up", () => {
     "Each image is 1 credit.",
     "It comes out of your trial allowance, not your card.",
     "Automation credits pay for scheduled runs.",
+    "That leaves 40% of your allowance for the week.",
+    "You have 120 credits left.",
   ])("counts Otto's billing words: %s", (text) => {
     expect(mentionsCost(text)).toBe(true);
   });
@@ -134,6 +142,10 @@ describe("contextual tips — when a cost comes up", () => {
     "Update the credit card on file in Stripe.",
     "We take credit cards and bank transfers.",
     "Give credit to the photographer in the caption.",
+    "EVs can qualify for up to $7,500 in federal tax credits.",
+    "The stock pays a dividend of 30 cents a share.",
+    "Check the baggage allowance before you book the flight.",
+    "We bill 5 cents per kilowatt hour on the shop's meter.",
   ])("ignores money talk that is about the business: %s", (text) => {
     expect(mentionsCost(text)).toBe(false);
   });
@@ -328,6 +340,35 @@ describe("contextual tips — the first second chat", () => {
         "second-chat",
       ),
     );
+  });
+
+  it("starts counting afresh in another organization", async () => {
+    // The chat list is per organization: switching from a personal org with
+    // one chat to a team's with three is not starting a second chat.
+    act(() => useOrgTeamStore.setState({ activeOrgID: "org-personal" }));
+    sessionList.current = {
+      sessions: [{ id: "a" }],
+      isLoading: false,
+      isListLoaded: true,
+      dataUpdatedAt: 1,
+    };
+    const { rerender } = render(<Page />);
+
+    // The switch renders once with the last org's list still on screen,
+    // before the reset refetches it for the new one.
+    act(() => useOrgTeamStore.setState({ activeOrgID: "org-team" }));
+    await act(async () => {});
+    sessionList.current = {
+      sessions: [{ id: "x" }, { id: "y" }, { id: "z" }],
+      isLoading: false,
+      isListLoaded: true,
+      dataUpdatedAt: Date.now() + 60_000,
+    };
+    rerender(<Page />);
+    await act(async () => {});
+
+    expect(useContextualTipStore.getState().requested).toEqual([]);
+    act(() => useOrgTeamStore.setState({ activeOrgID: null }));
   });
 
   it("points at the chat list when a second chat appears", async () => {
@@ -645,6 +686,30 @@ describe("contextual tips — showing one", () => {
       expect(screen.queryByTestId("contextual-tip")).toBeNull(),
     );
     expect(onboarding.current.completeStep).toHaveBeenCalledWith("CHATS_TIP");
+  });
+
+  it("lets an Escape outside it through untouched, for the card or menu it belongs to", async () => {
+    // Radix's dismiss layer marks every Escape on the page as handled, so
+    // the expert card's "Skip questions · Esc" (which skips a handled one)
+    // and any open menu never heard it while a tip was up.
+    render(<Page />);
+    act(() => requestTip("second-chat"));
+    await screen.findByText("You have two chats now");
+    let outsideEscapeWasHandled: boolean | null = null;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape")
+        outsideEscapeWasHandled = event.defaultPrevented;
+    }
+    window.addEventListener("keydown", onKeyDown);
+    try {
+      screen.getByRole("textbox", { name: "Message" }).focus();
+      await userEvent.keyboard("{Escape}");
+    } finally {
+      window.removeEventListener("keydown", onKeyDown);
+    }
+
+    expect(outsideEscapeWasHandled).toBe(false);
+    expect(screen.getByTestId("contextual-tip")).toBeDefined();
   });
 
   it("stays put when Escape belongs to something else on the page", async () => {

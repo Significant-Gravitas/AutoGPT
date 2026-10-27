@@ -11,6 +11,10 @@ interface FirstRunTourState {
   stepID: string | null;
   /** "Connect your tools", offered from the last step, outlives the tour. */
   isConnectToolsOpen: boolean;
+  /** "Show me around" from another page: opens once Home has loaded. */
+  pendingReplay: boolean;
+  requestReplay: () => void;
+  startPendingReplay: () => void;
   open: (source: TourSource) => void;
   goTo: (stepID: string) => void;
   close: () => void;
@@ -21,6 +25,19 @@ export const useFirstRunTourStore = create<FirstRunTourState>((set) => ({
   source: null,
   stepID: null,
   isConnectToolsOpen: false,
+  pendingReplay: false,
+  requestReplay() {
+    set({ pendingReplay: true });
+  },
+  startPendingReplay() {
+    set((state) =>
+      !state.pendingReplay
+        ? state
+        : state.source
+          ? { pendingReplay: false }
+          : { pendingReplay: false, source: "menu", stepID: null },
+    );
+  },
   open(source) {
     set((state) => (state.source ? state : { source, stepID: null }));
   },
@@ -41,5 +58,6 @@ onAccountChange(() =>
     source: null,
     stepID: null,
     isConnectToolsOpen: false,
+    pendingReplay: false,
   }),
 );

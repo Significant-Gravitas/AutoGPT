@@ -12,7 +12,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import NextLink from "next/link";
-import { tourTarget } from "@/lib/tour-targets";
+import { tourStartingPoint, tourTarget } from "@/lib/tour-targets";
 import { getChatHref, getPromptIcon, getTaskState } from "./helpers";
 
 interface Props {
@@ -88,6 +88,7 @@ export function SuggestedTaskList({
               ) : (
                 <button
                   type="button"
+                  {...tourStartingPoint()}
                   disabled={isBusy}
                   onClick={() => onSend(task)}
                   className={cn(

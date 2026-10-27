@@ -76,16 +76,17 @@ export function useFirstRunTour() {
   }, [isMobile, setOpenMobile]);
 
   useEffect(() => {
-    if (source) trackFirstRun("first_run_tour_shown", { source });
+    if (source) trackFirstRun("first_run_tour_shown", { opened_from: source });
   }, [source]);
 
-  function trackStep(stop: MeasuredStop | undefined) {
-    if (!source || !step) return;
+  // The stop names its own step: it can be reported after the next one is up.
+  function trackStep(stop: MeasuredStop) {
+    if (!source) return;
     trackFirstRun("first_run_tour_step_viewed", {
-      source,
-      step_id: step.id,
-      step_index: safeIndex,
-      target: stop?.target ?? null,
+      opened_from: source,
+      step_id: stop.stepID,
+      step_index: steps.findIndex((candidate) => candidate.id === stop.stepID),
+      target: stop.target,
     });
   }
 
@@ -98,7 +99,7 @@ export function useFirstRunTour() {
       outcome === "completed"
         ? "first_run_tour_completed"
         : "first_run_tour_skipped",
-      { source, step_id: step.id, step_index: safeIndex, via },
+      { opened_from: source, step_id: step.id, step_index: safeIndex, via },
     );
     setFirstRunTourSeen(userID);
     completeStep("FIRST_RUN_TOUR");

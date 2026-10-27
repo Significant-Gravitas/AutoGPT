@@ -121,6 +121,7 @@ afterEach(async () => {
   // The walkthrough outlives a test's render; end it the way a user would.
   const skip = screen.queryByRole("button", { name: "Skip tour" });
   if (skip) await userEvent.click(skip);
+  window.history.replaceState({}, "", "/");
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
@@ -174,6 +175,9 @@ describe("first run, as the user sees it", () => {
   });
 
   it("replays from the profile menu's Show me around", async () => {
+    // On Home itself it opens straight away; from another page it waits for
+    // the route to change there.
+    window.history.replaceState({}, "", "/home");
     renderInApp(
       <AccountMenu
         userName="Ada Lovelace"

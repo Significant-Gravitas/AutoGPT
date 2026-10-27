@@ -44,7 +44,13 @@ vi.mock("@/services/usageExperience/useUsageExperience", () => ({
 
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import type { User } from "@/lib/auth/types";
-import { tourTarget, type TourTarget } from "@/lib/tour-targets";
+import { SuggestedTaskList } from "@/app/(platform)/copilot/components/SuggestedTasks/SuggestedTaskList";
+import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
+import {
+  tourStartingPoint,
+  tourTarget,
+  type TourTarget,
+} from "@/lib/tour-targets";
 import { FirstRunTour } from "../FirstRunTour";
 import { useFirstRunTourStore } from "../store";
 import { useFirstRunTourAutoStart } from "../useFirstRunTourAutoStart";
@@ -85,7 +91,13 @@ function Targets({ only }: { only?: TourTarget[] }) {
       {show("first-tasks") && (
         <ol {...tourTarget("first-tasks")}>
           <li>
-            <button type="button">Draft my Monday status report</button>
+            <button type="button" {...tourStartingPoint()}>
+              Draft my Monday status report
+            </button>
+            <button
+              type="button"
+              aria-label="Hide: Draft my Monday status report"
+            />
           </li>
         </ol>
       )}
@@ -178,7 +190,7 @@ describe("first-run walkthrough", () => {
       ),
     );
     expect(capture).toHaveBeenCalledWith("first_run_tour_completed", {
-      source: "auto",
+      opened_from: "auto",
       step_id: "start",
       step_index: 4,
       via: "start_here",
@@ -458,6 +470,73 @@ describe("first-run walkthrough", () => {
     }
   });
 
+  it("reports each step it shows once, and never as the emitter's source", async () => {
+    renderTour();
+    openTour("menu");
+    await screen.findByRole("dialog", { name: "Every task gets its own chat" });
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await screen.findByRole("dialog", {
+      name: "Experts take tasks off your plate",
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    await screen.findByRole("dialog", { name: "Every task gets its own chat" });
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await screen.findByRole("dialog", {
+      name: "Experts take tasks off your plate",
+    });
+
+    await waitFor(() => {
+      const viewed = capture.mock.calls
+        .filter(([event]) => event === "first_run_tour_step_viewed")
+        .map(([, properties]) => properties.step_id);
+      expect(viewed).toEqual(["chats", "team"]);
+    });
+    expect(capture).toHaveBeenCalledWith("first_run_tour_shown", {
+      opened_from: "menu",
+    });
+    // `source` is the emitter's super property (`web`); an event property
+    // of that name would overwrite it in PostHog.
+    for (const [event, properties] of capture.mock.calls)
+      if (String(event).startsWith("first_run_tour_"))
+        expect(properties).not.toHaveProperty("source");
+  });
+
+  it("reports what a phone's step points at once the sheet has opened, not the menu before it", async () => {
+    const width = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    try {
+      render(
+        <SidebarProvider defaultOpen={false}>
+          <div {...tourTarget("menu")}>Menu</div>
+          <Sidebar>
+            <div {...tourTarget("chats")}>Recent chats</div>
+          </Sidebar>
+          <FirstRunTour />
+        </SidebarProvider>,
+      );
+      openTour();
+
+      await waitFor(() =>
+        expect(capture).toHaveBeenCalledWith(
+          "first_run_tour_step_viewed",
+          expect.objectContaining({ step_id: "chats" }),
+        ),
+      );
+      expect(capture).toHaveBeenCalledWith(
+        "first_run_tour_step_viewed",
+        expect.objectContaining({ step_id: "chats", target: "chats" }),
+      );
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: width,
+      });
+    }
+  });
+
   it("stays reachable over the phone's sidebar sheet, for screen readers too", async () => {
     // The sheet is a modal dialog of its own: it hides everything outside
     // it from assistive tech and takes focus. The card has to end up above it.
@@ -557,7 +636,7 @@ describe("first-run walkthrough", () => {
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(capture).toHaveBeenCalledWith("first_run_tour_skipped", {
-      source: "menu",
+      opened_from: "menu",
       step_id: "chats",
       step_index: 0,
       via: null,
@@ -644,6 +723,74 @@ describe("first-run walkthrough", () => {
       "FIRST_RUN_TOUR",
     );
     act(() => useFirstRunTourStore.getState().setConnectToolsOpen(false));
+  });
+
+  it("starts on a task's own button, never its Hide button", async () => {
+    // A task already sent is a link, and a busy row keeps Hide enabled, so
+    // the first enabled button in the list can be "Hide: …".
+    const tasks: SuggestedTask[] = [
+      {
+        id: "0",
+        title: "Chase unpaid Shopify invoices",
+        prompt: "Chase every unpaid invoice.",
+        icon: "bell",
+        state: "sent",
+        session_id: "session-1",
+      },
+      {
+        id: "1",
+        title: "Turn sales calls into CRM updates",
+        prompt: "Update the CRM after each call.",
+        icon: "users",
+        state: "open",
+      },
+    ];
+    function renderWithTasks(disabled: boolean) {
+      return render(
+        <SidebarProvider defaultOpen={false}>
+          <Targets only={["chats", "team", "files", "wallet", "composer"]} />
+          <SuggestedTaskList
+            tasks={tasks}
+            sendingId={null}
+            disabled={disabled}
+            onSend={vi.fn()}
+            onHide={vi.fn()}
+          />
+          <FirstRunTour />
+        </SidebarProvider>,
+      );
+    }
+
+    const { unmount } = renderWithTasks(false);
+    openTour();
+    act(() => useFirstRunTourStore.getState().goTo("start"));
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: /Start with one task|Start here/,
+      }),
+    );
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toContain(
+        "Turn sales calls into CRM updates",
+      ),
+    );
+    expect(document.activeElement?.getAttribute("aria-label")).toBeNull();
+    unmount();
+
+    // Every row busy: no task to start, so the composer.
+    renderWithTasks(true);
+    openTour();
+    act(() => useFirstRunTourStore.getState().goTo("start"));
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: /Start with one task|Start here/,
+      }),
+    );
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("textbox", { name: "Message Otto" }),
+      ),
+    );
   });
 
   it("hands focus to the composer when Connect your tools closes", async () => {

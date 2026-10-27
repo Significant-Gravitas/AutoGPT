@@ -1,7 +1,12 @@
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import type { User } from "@/lib/auth/types";
-import { QueryClient } from "@tanstack/react-query";
-import { act, renderHook } from "@testing-library/react";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from "@tanstack/react-query";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { useClearOnAccountChange } from "../useClearOnAccountChange";
 
@@ -14,6 +19,45 @@ function signIn(id: string | null) {
 }
 
 describe("useClearOnAccountChange", () => {
+  it("refetches what is on screen for the next account instead of leaving it pending", async () => {
+    // clear() drops queries without telling mounted observers, which then
+    // wait forever; the next account's screen must load its own data.
+    const queryClient = new QueryClient();
+    signIn("user-1");
+    let fetches = 0;
+    function useChats() {
+      return useQuery({
+        queryKey: ["copilot", "session-list"],
+        queryFn: async () => {
+          fetches += 1;
+          return [`chat for fetch ${fetches}`];
+        },
+      });
+    }
+    const { result } = renderHook(
+      () => {
+        useClearOnAccountChange(queryClient);
+        return useChats();
+      },
+      {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        ),
+      },
+    );
+    await waitFor(() =>
+      expect(result.current.data).toEqual(["chat for fetch 1"]),
+    );
+
+    signIn("user-2");
+
+    await waitFor(() =>
+      expect(result.current.data).toEqual(["chat for fetch 2"]),
+    );
+  });
+
   it("keeps the cache when the page's first account arrives", () => {
     // Every page load starts signed out and then learns its session; that is
     // not an account change, and must not throw away what is cached.

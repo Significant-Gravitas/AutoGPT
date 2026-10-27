@@ -12,6 +12,7 @@ import { isPartlyOffScreen, withMenuHint, type Box } from "../helpers";
 import type { TourTarget } from "@/lib/tour-targets";
 import { stepListOf } from "../steps";
 import type { useFirstRunTour } from "../useFirstRunTour";
+import { useStepViewed } from "../useStepViewed";
 import { useTourStops } from "../useTourStops";
 import { TourScrim } from "./TourScrim";
 import { TourStepCard } from "./TourStepCard";
@@ -70,13 +71,7 @@ export function TourSpotlight({ tour }: Props) {
     element.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [element, target]);
 
-  const trackedStepRef = useRef<string | null>(null);
-  const trackStep = useStableCallback(tour.trackStep);
-  useEffect(() => {
-    if (!stop || trackedStepRef.current === step.id) return;
-    trackedStepRef.current = step.id;
-    trackStep(stop);
-  }, [stop, step.id, trackStep]);
+  useStepViewed(stop, tour.trackStep);
 
   function focusPrimary() {
     contentRef.current

@@ -4,8 +4,10 @@ import { ConnectToolsDialog } from "@/app/(platform)/copilot/components/ConnectT
 import { TourSpotlight } from "./components/TourSpotlight";
 import { useFirstRunTourStore } from "./store";
 import { useFirstRunTour } from "./useFirstRunTour";
+import { useReplayOnArrival } from "./useReplayOnArrival";
 
 export function FirstRunTour() {
+  useReplayOnArrival();
   const source = useFirstRunTourStore((state) => state.source);
   const isConnectToolsOpen = useFirstRunTourStore(
     (state) => state.isConnectToolsOpen,

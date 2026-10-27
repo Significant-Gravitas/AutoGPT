@@ -17,3 +17,11 @@ export const TOUR_TARGET_ATTRIBUTE = "data-tour-target";
 export function tourTarget(target: TourTarget) {
   return { [TOUR_TARGET_ATTRIBUTE]: target };
 }
+
+// What "Start here" focuses inside a target: a task's own button, not the
+// controls beside it (a row's "Hide" button).
+export const TOUR_STARTING_POINT_ATTRIBUTE = "data-tour-starting-point";
+
+export function tourStartingPoint() {
+  return { [TOUR_STARTING_POINT_ATTRIBUTE]: "" };
+}

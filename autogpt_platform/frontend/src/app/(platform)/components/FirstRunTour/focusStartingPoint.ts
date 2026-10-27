@@ -1,4 +1,5 @@
 import { isTouchDevice } from "@/lib/platform";
+import { TOUR_STARTING_POINT_ATTRIBUTE } from "@/lib/tour-targets";
 import { findTourTarget } from "./helpers";
 
 export function focusStartingPoint() {
@@ -26,10 +27,11 @@ function focusAfterTour(find: () => HTMLElement | null) {
   });
 }
 
+// A task's own button, never a "Hide" beside it; a busy row has none enabled.
 function firstTask() {
   return (
     findTourTarget("first-tasks")?.querySelector<HTMLElement>(
-      "button:not([disabled])",
+      `[${TOUR_STARTING_POINT_ATTRIBUTE}]:not([disabled])`,
     ) ?? null
   );
 }

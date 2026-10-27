@@ -4,11 +4,8 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { BulbIcon } from "@hugeicons/core-free-icons";
-import {
-  Popover,
-  PopoverAnchor,
-  PopoverContent,
-} from "@/components/molecules/Popover/Popover";
+import { AnchoredPanel } from "@/components/molecules/AnchoredPanel/AnchoredPanel";
+import { isKey } from "@/lib/keyboard";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
 import { useEffect, useId, useRef } from "react";
@@ -102,62 +99,57 @@ function ContextualTip({
   return (
     <>
       <TourScrim boxes={[box]} dim={false} />
-      <Popover open modal={false}>
-        <PopoverAnchor virtualRef={virtualRef} />
-        <PopoverContent
-          side={isMenu ? "bottom" : "right"}
-          align="start"
-          sideOffset={12}
-          collisionPadding={16}
-          updatePositionStrategy="always"
-          onOpenAutoFocus={(event) => event.preventDefault()}
-          onCloseAutoFocus={(event) => event.preventDefault()}
-          onInteractOutside={(event) => event.preventDefault()}
-          // Radix hears Escape page-wide; only one from inside is for us.
-          onEscapeKeyDown={(event) => {
-            if (contentRef.current?.contains(event.target as Node)) onDismiss();
-          }}
-          ref={contentRef}
-          role="region"
-          aria-labelledby={titleID}
-          data-testid="contextual-tip"
-          className="z-[120] w-[18rem] max-w-[calc(100vw-2rem)] rounded-2xl border-border-base p-4 shadow-xl"
-        >
-          <div className="flex flex-col gap-2">
-            <span className="flex items-center gap-1.5 text-foreground-secondary">
-              <Icon icon={BulbIcon} size={14} aria-hidden />
-              <Text variant="small-medium" tone="inherit">
-                Tip
-              </Text>
-            </span>
-            <Text
-              as="h2"
-              id={titleID}
-              variant="body-medium"
-              tone="primary"
-              className="[overflow-wrap:anywhere]"
-            >
-              {tip.title}
+      <AnchoredPanel
+        virtualRef={virtualRef}
+        side={isMenu ? "bottom" : "right"}
+        align="start"
+        sideOffset={12}
+        collisionPadding={16}
+        updatePositionStrategy="always"
+        // Escape from inside puts it away; one elsewhere is left alone.
+        onKeyDown={(event) => {
+          if (isKey(event, "Escape")) onDismiss();
+        }}
+        ref={contentRef}
+        role="region"
+        aria-labelledby={titleID}
+        data-testid="contextual-tip"
+        className="z-[120] w-[18rem] max-w-[calc(100vw-2rem)] rounded-2xl border-border-base p-4 shadow-xl"
+      >
+        <div className="flex flex-col gap-2">
+          <span className="flex items-center gap-1.5 text-foreground-secondary">
+            <Icon icon={BulbIcon} size={14} aria-hidden />
+            <Text variant="small-medium" tone="inherit">
+              Tip
             </Text>
-            <Text
-              variant="small"
-              tone="secondary"
-              className="text-pretty [overflow-wrap:anywhere]"
-            >
-              {body}
-            </Text>
-            <Button
-              type="button"
-              variant="secondary"
-              size="xs"
-              onClick={onDismiss}
-              className="mt-1 self-end"
-            >
-              Got it
-            </Button>
-          </div>
-        </PopoverContent>
-      </Popover>
+          </span>
+          <Text
+            as="h2"
+            id={titleID}
+            variant="body-medium"
+            tone="primary"
+            className="[overflow-wrap:anywhere]"
+          >
+            {tip.title}
+          </Text>
+          <Text
+            variant="small"
+            tone="secondary"
+            className="text-pretty [overflow-wrap:anywhere]"
+          >
+            {body}
+          </Text>
+          <Button
+            type="button"
+            variant="secondary"
+            size="xs"
+            onClick={onDismiss}
+            className="mt-1 self-end"
+          >
+            Got it
+          </Button>
+        </div>
+      </AnchoredPanel>
       <p className="sr-only" role="status" aria-live="polite">
         {`Tip: ${tip.title}. ${body}`}
       </p>

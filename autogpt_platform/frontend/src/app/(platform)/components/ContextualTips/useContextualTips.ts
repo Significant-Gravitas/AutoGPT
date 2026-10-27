@@ -4,6 +4,7 @@ import { useSessionList } from "@/app/(platform)/copilot/useSessionList";
 import { useBillingStatus } from "@/hooks/useIsBillingEnabled";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import { trackFirstRun } from "@/services/onboarding/first-run-analytics";
 import { useEffect, useRef } from "react";
 import { useFirstRunTourStore } from "../FirstRunTour/store";
@@ -107,19 +108,32 @@ export function useContextualTips() {
 }
 
 // Watched on the chat list, so every way of starting a chat counts. Goes by
-// the most chats seen per account, so a dip back to one does not count.
+// the most chats seen in this list, so a dip back to one does not count. The
+// list is per account and per organization, and so is the count; after a
+// switch, the new list's baseline waits for data fetched for it, since the
+// last list stays on screen for a render before the reset refetches it.
 function useSecondChatMoment(isLoggedIn: boolean, userID: string | null) {
-  const { sessions, isListLoaded } = useSessionList({ enabled: isLoggedIn });
-  const mostSeen = useRef<{ userID: string | null; count: number } | null>(
-    null,
-  );
+  const { sessions, isListLoaded, dataUpdatedAt } = useSessionList({
+    enabled: isLoggedIn,
+  });
+  const orgID = useOrgTeamStore((store) => store.activeOrgID);
+  const listKey = `${userID}:${orgID}`;
+  const mostSeen = useRef<{ listKey: string; count: number } | null>(null);
+  const switched = useRef<{ listKey: string; at: number } | null>(null);
   const count = sessions.length;
 
   useEffect(() => {
     if (!isLoggedIn || !isListLoaded) return;
-    const seen = mostSeen.current?.userID === userID ? mostSeen.current : null;
+    const previous = mostSeen.current;
+    if (previous && previous.listKey !== listKey) {
+      if (switched.current?.listKey !== listKey)
+        switched.current = { listKey, at: Date.now() };
+      if (dataUpdatedAt !== undefined && dataUpdatedAt <= switched.current.at)
+        return;
+    }
+    const seen = previous?.listKey === listKey ? previous : null;
     if (isFirstSecondChat(seen?.count ?? null, count))
       requestTip("second-chat");
-    mostSeen.current = { userID, count: Math.max(seen?.count ?? 0, count) };
-  }, [isLoggedIn, isListLoaded, count, userID]);
+    mostSeen.current = { listKey, count: Math.max(seen?.count ?? 0, count) };
+  }, [isLoggedIn, isListLoaded, count, listKey, dataUpdatedAt]);
 }

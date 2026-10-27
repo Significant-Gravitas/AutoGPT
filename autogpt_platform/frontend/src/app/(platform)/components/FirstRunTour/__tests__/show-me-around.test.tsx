@@ -4,7 +4,7 @@ import {
 } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { act, render, renderHook } from "@/tests/integrations/test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sidebar = vi.hoisted(() => ({
   current: { isMobile: true, setOpenMobile: vi.fn() } as {
@@ -17,7 +17,23 @@ vi.mock("@/components/molecules/Sidebar/Sidebar", async (original) => ({
   useOptionalSidebar: () => sidebar.current,
 }));
 
+const nav = vi.hoisted(() => ({ pathname: "/build", push: vi.fn() }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: nav.push,
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  usePathname: () => nav.pathname,
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+}));
+
 import { useFirstRunTourStore } from "../store";
+import { useReplayOnArrival } from "../useReplayOnArrival";
 import { useShowMeAround } from "../useShowMeAround";
 
 afterEach(() => {
@@ -25,6 +41,14 @@ afterEach(() => {
 });
 
 describe("Show me around", () => {
+  beforeEach(() => {
+    window.history.replaceState({}, "", "/home");
+    nav.pathname = "/home";
+  });
+  afterEach(() => {
+    window.history.replaceState({}, "", "/");
+  });
+
   it("closes the phone's sidebar sheet before the walkthrough opens over it", () => {
     const setOpenMobile = vi.fn();
     sidebar.current = { isMobile: true, setOpenMobile };
@@ -44,6 +68,52 @@ describe("Show me around", () => {
     act(() => result.current());
 
     expect(setOpenMobile).not.toHaveBeenCalled();
+    expect(useFirstRunTourStore.getState().source).toBe("menu");
+  });
+});
+
+describe("Show me around, from another page", () => {
+  afterEach(() => {
+    window.history.replaceState({}, "", "/");
+    nav.pathname = "/build";
+    nav.push.mockClear();
+  });
+
+  it("opens the walkthrough once Home has loaded, not over the page it left", () => {
+    // Opened before the route lands, it mounted over the builder's
+    // forced-collapsed sidebar and borrowed (and later gave back) that.
+    window.history.replaceState({}, "", "/build");
+    nav.pathname = "/build";
+    sidebar.current = null;
+    const { result, rerender } = renderHook(() => {
+      useReplayOnArrival();
+      return useShowMeAround();
+    });
+
+    act(() => result.current());
+
+    expect(nav.push).toHaveBeenCalledWith("/home");
+    expect(useFirstRunTourStore.getState().source).toBeNull();
+
+    nav.pathname = "/home";
+    rerender();
+
+    expect(useFirstRunTourStore.getState().source).toBe("menu");
+    expect(useFirstRunTourStore.getState().pendingReplay).toBe(false);
+  });
+
+  it("opens straight away on Home itself", () => {
+    window.history.replaceState({}, "", "/home");
+    nav.pathname = "/home";
+    sidebar.current = null;
+    const { result } = renderHook(() => {
+      useReplayOnArrival();
+      return useShowMeAround();
+    });
+
+    act(() => result.current());
+
+    expect(nav.push).not.toHaveBeenCalled();
     expect(useFirstRunTourStore.getState().source).toBe("menu");
   });
 });

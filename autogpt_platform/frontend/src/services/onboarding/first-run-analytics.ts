@@ -10,9 +10,15 @@ import posthog from "posthog-js";
 
 type FirstRunEventName = EventName<typeof FirstRunEvent>;
 
+// `source` is the emitter's own super property (`web` here); an event
+// property of that name would overwrite it.
+type FirstRunProperties = Record<string, string | number | boolean | null> & {
+  source?: never;
+};
+
 export function trackFirstRun(
   event: FirstRunEventName,
-  properties: Record<string, string | number | boolean | null>,
+  properties: FirstRunProperties,
 ) {
   try {
     posthog.capture(event, properties);
