@@ -26,6 +26,8 @@ export const SCOPE_DESCRIPTIONS: Record<APIKeyPermission, string> = {
     "View your credit balance, transactions, invoices and subscription",
   READ_FILES: "List and download workspace files",
   WRITE_FILES: "Upload and delete workspace files",
+  READ_AUTOPILOT:
+    "View your chats with Otto and your experts, and their live status",
   USE_TOOLS:
     "Search and fetch web pages for you; web searches count against your usage allowance",
   MANAGE_INTEGRATIONS: "Set up new integrations",
@@ -60,6 +62,7 @@ export const SCOPE_API_VERSION: Record<APIKeyPermission, ScopeAPIVersion> = {
   READ_CREDITS: "v2",
   READ_FILES: "v2",
   WRITE_FILES: "v2",
+  READ_AUTOPILOT: "v2",
 };
 
 export const SCOPE_GROUPS: { version: ScopeAPIVersion; label: string }[] = [

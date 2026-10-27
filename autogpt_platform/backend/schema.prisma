@@ -3173,6 +3173,7 @@ enum APIKeyPermission {
   READ_CREDITS // Can get credit balance and transactions
   READ_FILES // Can list and download workspace files
   WRITE_FILES // Can upload and delete workspace files
+  READ_AUTOPILOT // Can list AutoPilot chat sessions and their live status
 }
 
 model APIKey {

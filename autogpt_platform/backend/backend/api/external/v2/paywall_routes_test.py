@@ -29,6 +29,7 @@ PLAN_CHECK = require_paid_permission().__code__
 
 OPEN_WHILE_PAYWALLED = {
     # Reading the account's own data, or the catalog.
+    "GET /autopilot/sessions",
     "GET /blocks",
     "GET /files",
     "GET /files/{file_id}",

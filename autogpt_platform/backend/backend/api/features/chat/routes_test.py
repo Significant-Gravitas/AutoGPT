@@ -3411,7 +3411,7 @@ def test_list_sessions_returns_sessions(mocker: pytest_mock.MockerFixture) -> No
     mock_pipe.execute = AsyncMock(return_value=["done"])
     mock_redis.pipeline = MagicMock(return_value=mock_pipe)
     mocker.patch(
-        "backend.api.features.chat.routes.get_redis_async",
+        "backend.copilot.stream_registry.get_redis_async",
         new_callable=AsyncMock,
         return_value=mock_redis,
     )
@@ -3441,7 +3441,7 @@ def test_list_sessions_returns_source_platform(
     mock_pipe.execute = AsyncMock(return_value=["done"])
     mock_redis.pipeline = MagicMock(return_value=mock_pipe)
     mocker.patch(
-        "backend.api.features.chat.routes.get_redis_async",
+        "backend.copilot.stream_registry.get_redis_async",
         new_callable=AsyncMock,
         return_value=mock_redis,
     )
@@ -3467,7 +3467,7 @@ def test_list_sessions_returns_is_pinned(
     mock_pipe.execute = AsyncMock(return_value=["done"])
     mock_redis.pipeline = MagicMock(return_value=mock_pipe)
     mocker.patch(
-        "backend.api.features.chat.routes.get_redis_async",
+        "backend.copilot.stream_registry.get_redis_async",
         new_callable=AsyncMock,
         return_value=mock_redis,
     )
@@ -3494,7 +3494,7 @@ def test_list_sessions_filters_by_expert_id(
     mock_pipe.execute = AsyncMock(return_value=["done"])
     mock_redis.pipeline = MagicMock(return_value=mock_pipe)
     mocker.patch(
-        "backend.api.features.chat.routes.get_redis_async",
+        "backend.copilot.stream_registry.get_redis_async",
         new_callable=AsyncMock,
         return_value=mock_redis,
     )
@@ -3554,7 +3554,7 @@ def test_list_sessions_marks_running_as_processing(
     mock_pipe.execute = AsyncMock(return_value=["running"])
     mock_redis.pipeline = MagicMock(return_value=mock_pipe)
     mocker.patch(
-        "backend.api.features.chat.routes.get_redis_async",
+        "backend.copilot.stream_registry.get_redis_async",
         new_callable=AsyncMock,
         return_value=mock_redis,
     )
@@ -3576,7 +3576,7 @@ def test_list_sessions_redis_failure_defaults_to_not_processing(
         return_value=([session], 1),
     )
     mocker.patch(
-        "backend.api.features.chat.routes.get_redis_async",
+        "backend.copilot.stream_registry.get_redis_async",
         side_effect=Exception("Redis down"),
     )
 

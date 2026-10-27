@@ -178,7 +178,6 @@ from backend.copilot.transports import (
 from backend.copilot.trial_reads import sharing_trial_reads
 from backend.copilot.turn_tracing import MODEL_OUTPUT_CHUNKS
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
-from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block
 from backend.data.workspace_folder import resolve_attachable_workspace_folders
@@ -643,30 +642,9 @@ async def list_sessions(
         pinned_first=pinned_first,
     )
 
-    # Batch-check Redis for active stream status on each session
-    processing_set: set[str] = set()
-    if sessions:
-        try:
-            redis = await get_redis_async()
-            pipe = redis.pipeline(transaction=False)
-            for session in sessions:
-                # Use the canonical helper so the hash-tag braces match every
-                # other writer; building the key inline drops the braces and
-                # silently misses every running session on cluster mode.
-                pipe.hget(
-                    stream_registry.get_session_meta_key(session.session_id),
-                    "status",
-                )
-            statuses = await pipe.execute()
-            processing_set = {
-                session.session_id
-                for session, st in zip(sessions, statuses)
-                if st == "running"
-            }
-        except Exception:
-            logger.warning(
-                "Failed to fetch processing status from Redis; defaulting to empty"
-            )
+    processing_set = await stream_registry.running_session_ids(
+        [session.session_id for session in sessions]
+    )
 
     return ListSessionsResponse(
         sessions=[

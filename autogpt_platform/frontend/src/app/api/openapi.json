@@ -19511,7 +19511,8 @@
           "WRITE_RUN_REVIEW",
           "READ_CREDITS",
           "READ_FILES",
-          "WRITE_FILES"
+          "WRITE_FILES",
+          "READ_AUTOPILOT"
         ],
         "title": "APIKeyPermission"
       },

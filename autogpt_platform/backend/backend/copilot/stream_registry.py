@@ -181,6 +181,34 @@ def get_session_meta_key(session_id: str) -> str:
     return _get_session_meta_key(session_id)
 
 
+async def running_session_ids(session_ids: list[str]) -> set[str]:
+    """The sessions among *session_ids* with a turn streaming right now.
+
+    One pipelined round trip. Never raises: a Redis failure reports nothing
+    running, since a list view must not fail on a status badge.
+    """
+    if not session_ids:
+        return set()
+    try:
+        redis = await get_redis_async()
+        pipe = redis.pipeline(transaction=False)
+        for session_id in session_ids:
+            # The canonical key: building it inline drops the hash-tag braces
+            # and silently misses every running session on cluster mode.
+            pipe.hget(_get_session_meta_key(session_id), "status")
+        statuses = await pipe.execute()
+    except Exception:
+        logger.warning(
+            "Failed to fetch processing status from Redis; defaulting to empty"
+        )
+        return set()
+    return {
+        session_id
+        for session_id, status in zip(session_ids, statuses)
+        if status == "running"
+    }
+
+
 def _get_turn_stream_key(turn_id: str) -> str:
     """Get Redis key for turn message stream (keyed by turn_id for per-turn isolation)."""
     return f"{config.turn_stream_prefix}{turn_id}"
