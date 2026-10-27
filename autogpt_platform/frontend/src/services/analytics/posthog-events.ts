@@ -70,14 +70,6 @@ export const BrainDumpEvent = {
   // browser's `error_name` (NotFoundError, NotReadableError, …).
   BRAIN_DUMP_MIC_FAILED: "brain_dump_mic_failed",
   BRAIN_DUMP_TYPED_FALLBACK: "brain_dump_typed_fallback",
-  // The welcome dialog shown on first copilot landing was closed — the
-  // greeting fetch and reveal animation start from this moment.
-  WELCOME_DIALOG_CLOSED: "welcome_dialog_closed",
-  // Capability-cards first-run funnel: which cards were reached and how
-  // the modal ended (finished the deck vs skipped at card_index).
-  CAPABILITY_CARD_VIEWED: "capability_card_viewed",
-  CAPABILITY_CARDS_COMPLETED: "capability_cards_completed",
-  CAPABILITY_CARDS_SKIPPED: "capability_cards_skipped",
   TRANSCRIPTION_FAILED: "transcription_failed",
   INTRO_PATH: "intro_path",
   // The user's first real message after seeing the intro card — the

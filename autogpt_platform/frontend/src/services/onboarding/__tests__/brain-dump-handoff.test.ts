@@ -1,17 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  clearWelcomePending,
-  peekCapabilityCardsSeen,
   peekGreetingDone,
   peekIntroPath,
-  peekWelcomePending,
-  setCapabilityCardsSeen,
   setGreetingDone,
   setIntroAwaitingFollowup,
   setIntroPath,
   setMicGlow,
   setPendingLaterDump,
-  setWelcomePending,
   takeIntroAwaitingFollowup,
   takeIntroPath,
   takeMicGlow,
@@ -20,9 +15,7 @@ import {
 
 const INTRO_PATH_KEY = "autogpt:onboarding-intro-path";
 const MIC_GLOW_KEY = "autogpt:onboarding-mic-glow";
-const WELCOME_PENDING_KEY = "autogpt:onboarding-welcome-pending";
 const GREETING_DONE_KEY = "autogpt:copilot-greeting-done";
-const CAPABILITY_CARDS_KEY = "autogpt:copilot-capability-cards-seen";
 
 beforeEach(() => {
   window.sessionStorage.clear();
@@ -101,37 +94,6 @@ describe("one-shot session flags", () => {
   });
 });
 
-describe("welcome pending", () => {
-  it("peeking does not consume it — the overlay survives a refresh", () => {
-    setWelcomePending();
-
-    expect(peekWelcomePending()).toBe(true);
-    expect(peekWelcomePending()).toBe(true);
-  });
-
-  it("is only cleared deliberately", () => {
-    setWelcomePending();
-    clearWelcomePending();
-
-    expect(peekWelcomePending()).toBe(false);
-    expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
-  });
-
-  it("lives in sessionStorage, so it does not survive a new browser session", () => {
-    setWelcomePending();
-
-    expect(window.localStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
-    window.sessionStorage.clear();
-    expect(peekWelcomePending()).toBe(false);
-  });
-
-  it("clearing when nothing is pending is harmless", () => {
-    clearWelcomePending();
-
-    expect(peekWelcomePending()).toBe(false);
-  });
-});
-
 describe("greeting done", () => {
   it("is stored against the user id, not as a boolean", () => {
     setGreetingDone("user-1");
@@ -160,30 +122,6 @@ describe("greeting done", () => {
     window.sessionStorage.clear();
 
     expect(peekGreetingDone("user-1")).toBe(true);
-  });
-});
-
-describe("capability cards seen", () => {
-  it("is stored against the user id", () => {
-    setCapabilityCardsSeen("user-1");
-
-    expect(window.localStorage.getItem(CAPABILITY_CARDS_KEY)).toBe("user-1");
-    expect(peekCapabilityCardsSeen("user-1")).toBe(true);
-    expect(peekCapabilityCardsSeen("user-2")).toBe(false);
-  });
-
-  it("ignores a missing user id on both read and write", () => {
-    setCapabilityCardsSeen(null);
-
-    expect(window.localStorage.getItem(CAPABILITY_CARDS_KEY)).toBeNull();
-    expect(peekCapabilityCardsSeen(null)).toBe(false);
-    expect(peekCapabilityCardsSeen(undefined)).toBe(false);
-  });
-
-  it("is tracked separately from the greeting flag", () => {
-    setCapabilityCardsSeen("user-1");
-
-    expect(peekGreetingDone("user-1")).toBe(false);
   });
 });
 

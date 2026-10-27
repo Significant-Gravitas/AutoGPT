@@ -134,7 +134,7 @@ describe("migration notice eligibility", () => {
   });
 
   it.each(["A", "B"] as const)(
-    "gives pending welcome path %s priority over migration",
+    "gives pending onboarding path %s priority over migration",
     async (path) => {
       setIntroPath(path);
       const queryClient = new QueryClient({
@@ -149,7 +149,7 @@ describe("migration notice eligibility", () => {
       }
       const { result, rerender } = renderHook(
         () => ({
-          welcome: useOnboardingIntroCard(),
+          intro: useOnboardingIntroCard(),
           migration: useWorkflowsMovedNotice(),
         }),
         { wrapper: Wrapper },
@@ -162,19 +162,14 @@ describe("migration notice eligibility", () => {
         );
       });
       expect(result.current.migration.isOpen).toBe(false);
-      expect(result.current.welcome.isWelcomeOpen).toBe(true);
       expect(peekIntroPath()).toBeNull();
 
+      // The path is consumed on the greeting page, yet the rest of this
+      // visit stays deferred so the notice never lands on the greeting.
       rerender();
-      await waitFor(() =>
-        expect(result.current.welcome.isWelcomeOpen).toBe(true),
-      );
+      await act(async () => {});
       expect(result.current.migration.isOpen).toBe(false);
-      expect(peekIntroPath()).toBeNull();
 
-      act(() => result.current.welcome.closeWelcome());
-      expect(result.current.welcome.isWelcomeOpen).toBe(false);
-      expect(result.current.migration.isOpen).toBe(false);
       context.pathname = "/team";
       rerender();
       await waitFor(() => expect(result.current.migration.isOpen).toBe(true));

@@ -71,12 +71,15 @@ describe("chat handoffs", () => {
     );
   });
 
-  it("defers imported prompts and welcome handoffs", () => {
+  it("defers imported prompts", () => {
     window.sessionStorage.setItem("importWorkflowPrompt", "Run my workflow");
     expect(hasPendingChatHandoff()).toBe(true);
-    window.sessionStorage.removeItem("importWorkflowPrompt");
+    window.sessionStorage.clear();
+  });
+
+  it("no longer defers for the retired welcome overlay's flag", () => {
     window.sessionStorage.setItem("autogpt:onboarding-welcome-pending", "1");
-    expect(hasPendingChatHandoff()).toBe(true);
+    expect(hasPendingChatHandoff()).toBe(false);
     window.sessionStorage.clear();
   });
 

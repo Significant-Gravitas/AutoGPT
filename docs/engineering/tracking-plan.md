@@ -345,10 +345,6 @@ merges the website pageviews into the new user:
 | `brain_dump_mic_failed` | browser | live | `error_name` | The microphone fails to open, for any reason, a refused permission included. |
 | `brain_dump_typed_fallback` | browser | live | `reason` | The user types instead of speaking. |
 | `transcription_failed` | browser | live | `error_code`, `finalize_latency_ms` | Finalize returns a failure. |
-| `welcome_dialog_closed` | browser | live | — | The first-landing welcome dialog closes. |
-| `capability_card_viewed` | browser | live | `card_index`, `deck` | A capability card is shown. |
-| `capability_cards_completed` | browser | live | `card_index`, `deck` | The deck is finished. |
-| `capability_cards_skipped` | browser | live | `card_index`, `deck` | The deck is skipped. |
 | `intro_path` | browser | live | `path` | The intro path (A/B) is chosen. |
 | `intro_followup_sent` | browser | live | `chars` | First message after the intro card. |
 | `onboarding_draft_started` | backend | live | `task_id`, `chat_session_id` | Otto starts a suggested first task on the user's behalf during onboarding (kickoff). |
@@ -716,6 +712,7 @@ history PostHog already holds.
 | `experiment_exposed` | browser | Nothing: `useLaunchDarklyExperiment` had no caller and was deleted. PostHog-bucketed experiments use `$feature_flag_called`. |
 | `copilot_trigger_setup` | backend | Nothing: never sent (no caller). |
 | `intro_card_dismissed`, `raise_door_clicked`, `intro_start_with_autopilot` | browser | Nothing: declared, never sent. |
+| `welcome_dialog_closed`, `capability_card_viewed`, `capability_cards_completed`, `capability_cards_skipped` | browser | Nothing: the welcome overlay and its capability cards were removed; the greeting page is the first landing (`intro_path` still marks it). |
 
 ## Renamed
 

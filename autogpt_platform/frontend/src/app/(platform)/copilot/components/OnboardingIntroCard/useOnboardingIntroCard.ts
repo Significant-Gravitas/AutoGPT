@@ -2,17 +2,11 @@ import { useGetBrainDumpIntro } from "@/app/api/__generated__/endpoints/brain-du
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
-  clearWelcomePending,
-  peekCapabilityCardsSeen,
   peekGreetingDone,
-  peekIntroPath,
-  peekWelcomePending,
-  setCapabilityCardsSeen,
   setGreetingDone,
   setIntroAwaitingFollowup,
   setMicGlow,
   setPendingLaterDump,
-  setWelcomePending,
   takeIntroPath,
 } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useState } from "react";
@@ -35,15 +29,6 @@ export function useOnboardingIntroCard() {
   // starts clean.
   const [isDone, setIsDone] = useState(() => peekGreetingDone(userId));
 
-  // A user fresh out of onboarding gets the full-screen welcome overlay
-  // first. The greeting is not even fetched until they close it — the
-  // reveal animation must start on a page they are actually looking at.
-  // Seeded from sessionStorage so a refresh keeps the overlay up rather
-  // than skipping it.
-  const [isWelcomeOpen, setIsWelcomeOpen] = useState(
-    () => peekWelcomePending() || Boolean(peekIntroPath()),
-  );
-
   // The server render can't see localStorage or the intro answer, so it
   // always emits the held hero; the first client frame must match it or
   // hydration flashes the composer before the greeting page arrives.
@@ -61,15 +46,6 @@ export function useOnboardingIntroCard() {
   }, [userId]);
 
   useEffect(() => {
-    // This browser already saw this user finish or skip the cards —
-    // never reshow, even if the pending flag somehow survived.
-    if (isWelcomeOpen && peekCapabilityCardsSeen(userId)) {
-      clearWelcomePending();
-      setIsWelcomeOpen(false);
-    }
-  }, [isWelcomeOpen, userId]);
-
-  useEffect(() => {
     const path = takeIntroPath();
     if (!path) return;
     if (path === "B") {
@@ -82,15 +58,11 @@ export function useOnboardingIntroCard() {
     // consumed by the first real message afterwards.
     setIntroAwaitingFollowup();
     trackBrainDump("intro_path", { path });
-    if (!peekCapabilityCardsSeen(userId)) {
-      setWelcomePending();
-      setIsWelcomeOpen(true);
-    }
   }, []);
 
   const { data, isError } = useGetBrainDumpIntro({
     query: {
-      enabled: !isDone && !isWelcomeOpen,
+      enabled: !isDone,
       staleTime: Infinity,
       gcTime: Infinity,
       refetchInterval: (query) => {
@@ -134,13 +106,6 @@ export function useOnboardingIntroCard() {
     }
   }, [serverSaysDone, userId]);
 
-  function closeWelcome() {
-    trackBrainDump("welcome_dialog_closed", {});
-    clearWelcomePending();
-    setCapabilityCardsSeen(userId);
-    setIsWelcomeOpen(false);
-  }
-
   // `serverSaysDone` as well as `isDone`: the effect that caches the verdict
   // runs after render, so a payload that still carries a greeting would
   // otherwise flash the card for one paint before it takes effect.
@@ -148,14 +113,13 @@ export function useOnboardingIntroCard() {
     isMounted &&
     !isDone &&
     !serverSaysDone &&
-    !isWelcomeOpen &&
     hasIntroAnswer &&
     Boolean(intro?.greeting);
 
   return {
     isVisible,
-    // The greeting is on its way (modal up, no server answer yet, or the
-    // pipeline still writing): the page shows the orb alone, centered, and
+    // The greeting is on its way (no server answer yet, or the pipeline
+    // still writing): the page shows the orb alone, centered, and
     // holds the composer until the greeting takes over. The orb then
     // travels into the heading rather than being replaced by it, so this
     // must go false in the same commit `isVisible` goes true.
@@ -165,14 +129,11 @@ export function useOnboardingIntroCard() {
     // before the greeting page arrived. The loader fades in on a delay, so
     // the first frame does not flash the composer.
     isAwaitingGreeting:
-      !isMounted ||
-      (!isDone && (isWelcomeOpen || !hasIntroAnswer || isPendingGeneration)),
+      !isMounted || (!isDone && (!hasIntroAnswer || isPendingGeneration)),
     // Only the greeting itself reads top-down like a letter. The loader
     // stays centered — that is the distance the orb travels when the
     // greeting lands.
     anchorTop: isVisible,
-    isWelcomeOpen: !isDone && isWelcomeOpen,
-    closeWelcome,
     greeting: intro?.greeting ?? "",
     transcript: typeof intro?.transcript === "string" ? intro.transcript : "",
     path: intro?.path ?? "B",

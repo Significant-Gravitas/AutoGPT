@@ -44,43 +44,6 @@ export function takePendingLaterDump() {
   return takeFlag(PENDING_LATER_DUMP_KEY);
 }
 
-// Set when the user leaves onboarding for the copilot home, cleared when
-// they close the full-screen welcome overlay there. Refresh-safe: the
-// overlay must keep covering the page (and keep the greeting unfetched)
-// until it is deliberately dismissed.
-const WELCOME_PENDING_KEY = "autogpt:onboarding-welcome-pending";
-
-export function setWelcomePending() {
-  setFlag(WELCOME_PENDING_KEY);
-}
-
-export function peekWelcomePending() {
-  if (typeof window === "undefined") return false;
-  return window.sessionStorage.getItem(WELCOME_PENDING_KEY) === "1";
-}
-
-export function clearWelcomePending() {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(WELCOME_PENDING_KEY);
-}
-
-// The capability-cards first-run modal was completed or skipped. The
-// backend's CAPABILITY_CARDS onboarding step is the source of truth;
-// this is its local cache so the modal never reshows even if that call
-// failed or hasn't been checked. Value is the user id, same reasoning
-// as the greeting flag below.
-const CAPABILITY_CARDS_KEY = "autogpt:copilot-capability-cards-seen";
-
-export function peekCapabilityCardsSeen(userId: string | null | undefined) {
-  if (typeof window === "undefined" || !userId) return false;
-  return window.localStorage.getItem(CAPABILITY_CARDS_KEY) === userId;
-}
-
-export function setCapabilityCardsSeen(userId: string | null | undefined) {
-  if (typeof window === "undefined" || !userId) return;
-  window.localStorage.setItem(CAPABILITY_CARDS_KEY, userId);
-}
-
 // The greeting is retired for good the first time the user sends a
 // message. localStorage rather than sessionStorage because it must
 // survive new tabs and restarts; the backend flag is the source of

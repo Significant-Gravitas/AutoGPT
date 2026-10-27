@@ -145,8 +145,6 @@
         "src/app/(platform)/copilot/components/ChatInput/ChatInput.tsx",
         "src/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer.tsx",
         "src/app/(platform)/copilot/components/ChatMessagesContainer/components/VirtualTranscript/useVirtualTranscript.ts",
-        "src/app/(platform)/copilot/components/OnboardingIntroCard/useOnboardingIntroCard.ts",
-        "src/app/(platform)/copilot/components/OnboardingWelcomeDialog/OnboardingWelcomeDialog.tsx",
         "src/app/(platform)/copilot/components/RateLimitResetDialog/useRateLimitRefresh.ts",
         "src/app/(platform)/copilot/components/SetupRequirementsCard/SetupRequirementsCard.tsx",
         "src/app/(platform)/copilot/components/ToolChain/DesktopStreamCard.tsx",

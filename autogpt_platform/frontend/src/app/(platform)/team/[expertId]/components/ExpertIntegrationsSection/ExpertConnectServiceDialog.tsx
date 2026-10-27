@@ -1,7 +1,7 @@
 "use client";
 
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-import { ConnectProviderRow } from "@/app/(platform)/copilot/components/OnboardingWelcomeDialog/ConnectProviderRow";
+import { ConnectProviderRow } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectProviderRow";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -45,9 +45,8 @@ interface Props {
   onConnected: (credential: CredentialsMetaResponse) => void;
 }
 
-/** The welcome dialog's "Connect your tools" panel, minus the recommendations:
- *  every service is listed, and a successful connect hands the credential
- *  back so the expert is granted it. */
+/** Lists every service to connect; a successful connect hands the
+ *  credential back so the expert is granted it. */
 export function ExpertConnectServiceDialog({
   open,
   expertName,

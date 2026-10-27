@@ -1,7 +1,4 @@
-import {
-  peekIntroPath,
-  peekWelcomePending,
-} from "@/services/onboarding/brain-dump-handoff";
+import { peekIntroPath } from "@/services/onboarding/brain-dump-handoff";
 
 export const EXPERTS_ROLLOUT_AT = "2026-09-21T00:00:00Z";
 
@@ -43,7 +40,6 @@ export function hasPendingChatHandoff() {
   if (typeof window === "undefined") return false;
   try {
     return (
-      peekWelcomePending() ||
       Boolean(peekIntroPath()) ||
       Boolean(window.sessionStorage.getItem("importWorkflowPrompt")) ||
       new URLSearchParams(window.location.hash.slice(1)).has("prompt")

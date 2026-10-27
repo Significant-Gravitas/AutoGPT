@@ -6,6 +6,7 @@ import { getGetBrainDumpIntroMockHandler200 } from "@/app/api/__generated__/endp
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
+import { setIntroPath } from "@/services/onboarding/brain-dump-handoff";
 import {
   normalizeWhitespace,
   render,
@@ -370,4 +371,22 @@ it("opens a fresh Home visit on Otto after choosing another recipient", async ()
   expect(
     screen.queryByPlaceholderText("What should Maria work on?"),
   ).toBeNull();
+});
+
+it("shows the greeting without a welcome overlay", async () => {
+  setIntroPath("A");
+  server.use(
+    getGetBrainDumpIntroMockHandler200({
+      path: "A",
+      greeting: "You have an invoicing problem and a sales problem.",
+      prompts: [],
+      greeting_done: false,
+      greeting_pending: false,
+      team: null,
+      team_pending: false,
+    }),
+  );
+  renderEmptySession("");
+  await screen.findByTestId("onboarding-intro-card");
+  expect(screen.queryByTestId("onboarding-welcome-overlay")).toBeNull();
 });

@@ -22,9 +22,6 @@ const LIVE_EVENT_NAMES = [
   "brain_dump_typed_fallback",
   "briefing_opened",
   "briefing_outcome_clicked",
-  "capability_card_viewed",
-  "capability_cards_completed",
-  "capability_cards_skipped",
   "checkout_abandoned",
   "credential_card_never_rendered",
   "credential_oauth_flow_timed_out",
@@ -75,7 +72,6 @@ const LIVE_EVENT_NAMES = [
   "voice_turn_completed",
   "voice_turn_dropped",
   "voice_turn_sent",
-  "welcome_dialog_closed",
 ];
 
 const PLANNED_EVENT_NAMES: string[] = [];
@@ -83,6 +79,10 @@ const PLANNED_EVENT_NAMES: string[] = [];
 // No longer sent, or renamed (SECRT-2722). The names stay reserved: reusing one would
 // splice a different action onto the history PostHog already holds for it.
 const RETIRED_EVENT_NAMES = [
+  // The welcome overlay and its capability cards were removed.
+  "capability_card_viewed",
+  "capability_cards_completed",
+  "capability_cards_skipped",
   "experiment_exposed",
   // Renamed to feature_flag_mismatched before it reached production.
   "feature_flag_mismatch",
@@ -98,6 +98,7 @@ const RETIRED_EVENT_NAMES = [
   "subscription_trial_offer_viewed",
   "voice_first_sound_latency_ms",
   "voice_transcribe_latency_ms",
+  "welcome_dialog_closed",
 ];
 
 describe("PostHog event names", () => {

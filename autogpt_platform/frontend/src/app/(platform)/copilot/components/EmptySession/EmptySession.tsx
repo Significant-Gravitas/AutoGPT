@@ -11,7 +11,6 @@ import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/Conne
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
 import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
-import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWelcomeDialog";
 import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
 import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
 import { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
@@ -113,10 +112,6 @@ export function EmptySession({
 
   return (
     <div className="relative flex h-full flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
-      <OnboardingWelcomeDialog
-        isOpen={intro.isWelcomeOpen}
-        onClose={intro.closeWelcome}
-      />
       {/* Which connection the new chat runs on, kept out of the composer and
           in the page corner, level with the inset header's controls. */}
       <div className="absolute right-3 top-3 z-30 empty:hidden">
@@ -138,8 +133,8 @@ export function EmptySession({
               disabled={isComposerDisabled || !!atReset}
             />
           ) : intro.isAwaitingGreeting ? (
-            // Behind the welcome modal's blur and for as long as the
-            // pipeline is still writing. The orb it renders is the same
+            // Until the intro answers and for as long as the pipeline is
+            // still writing. The orb it renders is the same
             // element the card above puts in its heading, so the swap
             // moves it there rather than replacing it.
             <GreetingLoader />

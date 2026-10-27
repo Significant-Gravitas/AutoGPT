@@ -13,14 +13,13 @@ interface Props {
   provider: ConnectableProvider;
   onSelect: (id: string) => void;
   isConnected?: boolean;
-  /** Second line, used by the recommended list to show the model's reason. */
+  /** Second line under the provider name. */
   description?: string | null;
   className?: string;
 }
 
-// The welcome dialog's provider card: compact (two per row), name plus an
-// optional one-line reason, with a Connected state once credentials exist
-// for the provider.
+// A compact provider card (two per row): name plus an optional second line,
+// with a Connected state once credentials exist for the provider.
 export function ConnectProviderRow({
   provider,
   onSelect,
