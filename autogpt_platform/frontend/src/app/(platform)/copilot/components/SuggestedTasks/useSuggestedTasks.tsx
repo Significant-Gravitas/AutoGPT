@@ -16,6 +16,7 @@ import {
   countOpenTasks,
   getShownTasks,
   getTaskState,
+  hasWorkingDraft,
   mergeUpdatedTasks,
   withState,
 } from "./helpers";
@@ -32,6 +33,7 @@ interface Args {
 }
 
 const UNDO_TOAST_MS = 6000;
+const DRAFT_POLL_MS = 5000;
 const QUERY_KEY = getGetBrainDumpSuggestedTasksQueryKey();
 
 export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
@@ -39,7 +41,12 @@ export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
   const [sendingId, setSendingId] = useState<string | null>(null);
 
   const { data: response } = useGetBrainDumpSuggestedTasks({
-    query: { enabled },
+    query: {
+      enabled,
+      // A draft Otto is still writing turns ready on its own; poll until it does.
+      refetchInterval: (query) =>
+        hasWorkingDraft(query.state.data) ? DRAFT_POLL_MS : false,
+    },
   });
   const list = response?.status === 200 ? response.data : null;
   const tasks = list?.tasks ?? [];
@@ -178,6 +185,7 @@ export function useSuggestedTasks({ surface, onSend, enabled }: Args) {
   return {
     isStored: Boolean(list?.stored),
     tasks: shownTasks,
+    hasKickoffs: shownTasks.some((task) => task.kickoff),
     sendingId,
     sendTask,
     hideTask: (task: SuggestedTask) => hideTasks([task], "one"),

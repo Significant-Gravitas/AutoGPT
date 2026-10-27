@@ -49,6 +49,7 @@ function makeSuggestions(
   return {
     isStored: true,
     tasks,
+    hasKickoffs: tasks.some((task) => task.kickoff),
     sendingId: null,
     sendTask: async (task: SuggestedTask) => sendTask(task),
     hideTask: vi.fn(),
@@ -131,6 +132,43 @@ describe("OnboardingIntroCard — content", () => {
     expect(screen.queryByRole("list")).toBeNull();
     expect(screen.getByText(EMPTY_FOOTER)).toBeDefined();
     expect(screen.queryByText(FOOTER)).toBeNull();
+  });
+});
+
+describe("OnboardingIntroCard — drafts Otto started", () => {
+  const MADE_A_START = "I made a start while you were setting up.";
+
+  it("shows the made-a-start line when a draft exists", () => {
+    render(
+      <OnboardingIntroCard
+        name="Alex"
+        greeting={GREETING}
+        suggestions={makeSuggestions([
+          PROMPTS[0],
+          {
+            ...PROMPTS[1],
+            state: "sent",
+            session_id: "draft-1",
+            kickoff: true,
+            kickoff_status: "working",
+          },
+        ])}
+      />,
+    );
+
+    expect(screen.getByText(MADE_A_START)).toBeDefined();
+  });
+
+  it("leaves the line out when Otto started nothing", () => {
+    render(
+      <OnboardingIntroCard
+        name="Alex"
+        greeting={GREETING}
+        suggestions={makeSuggestions(PROMPTS)}
+      />,
+    );
+
+    expect(screen.queryByText(MADE_A_START)).toBeNull();
   });
 });
 

@@ -1,3 +1,4 @@
+import { useKickoffSuggestedTasks } from "@/app/(platform)/copilot/components/SuggestedTasks/useKickoffSuggestedTasks";
 import { useGetBrainDumpRecommendedProviders } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { peekIntroPath } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useRef, useState } from "react";
@@ -70,6 +71,9 @@ export function usePreparingStep({ onComplete }: { onComplete: () => void }) {
     (recommendedQuery.data !== undefined &&
       (recommendedQuery.data.status !== 200 ||
         recommendedQuery.data.data.ready));
+  // By now the dump has been read, so Otto can start the first suggested
+  // tasks; the copilot home asks again in case this was too early.
+  useKickoffSuggestedTasks(isDumpPath && isRecommendationsReady);
   const isRecommendationsReadyRef = useRef(isRecommendationsReady);
   isRecommendationsReadyRef.current = isRecommendationsReady;
 

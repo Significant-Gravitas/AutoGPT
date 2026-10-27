@@ -12,7 +12,13 @@ import {
 } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import NextLink from "next/link";
-import { getChatHref, getPromptIcon, getTaskState } from "./helpers";
+import {
+  getChatHref,
+  getKickoffLabel,
+  getPromptIcon,
+  getTaskState,
+  trackDraftOpened,
+} from "./helpers";
 
 interface Props {
   tasks: SuggestedTask[];
@@ -45,98 +51,123 @@ export function SuggestedTaskList({
       )}
     >
       <AnimatePresence initial={false}>
-        {tasks.map((task) => {
-          const promptIcon = getPromptIcon(task.icon);
-          const isSent = getTaskState(task) === "sent";
-          return (
-            <motion.li
-              key={task.id}
-              exit={
-                prefersReducedMotion ? undefined : { height: 0, opacity: 0 }
-              }
-              transition={{ duration: 0.15 }}
-              className="group/row flex items-center transition-colors duration-150 hover:bg-surface-muted"
-              data-testid="suggested-task"
+        {tasks.map((task) => (
+          <motion.li
+            key={task.id}
+            exit={prefersReducedMotion ? undefined : { height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="group/row flex items-center transition-colors duration-150 hover:bg-surface-muted"
+            data-testid="suggested-task"
+          >
+            <RowBody
+              task={task}
+              isSending={sendingId === task.id}
+              isBusy={isBusy}
+              onSend={onSend}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              withTooltip={false}
+              aria-label={`Hide: ${task.title}`}
+              disabled={sendingId !== null}
+              onClick={() => onHide(task)}
+              className="mr-2 shrink-0 text-foreground-subtle opacity-0 transition-opacity duration-150 hover:text-foreground-body focus-visible:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100"
             >
-              {isSent && task.session_id ? (
-                <NextLink
-                  href={getChatHref(task.session_id)}
-                  className={ROW_CLASSES}
-                >
-                  <Icon
-                    icon={promptIcon}
-                    size={15}
-                    className="shrink-0 text-foreground-disabled"
-                  />
-                  <Text
-                    variant="body-medium"
-                    tone="muted"
-                    className="text-pretty"
-                  >
-                    {task.title}
-                  </Text>
-                  <Text
-                    variant="small"
-                    tone="muted"
-                    className="ml-auto shrink-0 whitespace-nowrap"
-                  >
-                    In progress
-                  </Text>
-                </NextLink>
-              ) : (
-                <button
-                  type="button"
-                  disabled={isBusy}
-                  onClick={() => onSend(task)}
-                  className={cn(
-                    ROW_CLASSES,
-                    "cursor-pointer disabled:cursor-default disabled:opacity-60",
-                  )}
-                >
-                  <Icon
-                    icon={promptIcon}
-                    size={15}
-                    className="shrink-0 text-foreground-subtle"
-                  />
-                  <Text
-                    variant="body-medium"
-                    tone="primary"
-                    className="text-pretty"
-                  >
-                    {task.title}
-                  </Text>
-                  {sendingId === task.id ? (
-                    <Icon
-                      icon={Loading03Icon}
-                      size={15}
-                      className="ml-auto shrink-0 animate-spin text-foreground-subtle"
-                      aria-label="Starting"
-                    />
-                  ) : (
-                    <Icon
-                      icon={ArrowRight01Icon}
-                      size={15}
-                      className="ml-auto shrink-0 text-foreground-subtle"
-                    />
-                  )}
-                </button>
-              )}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                withTooltip={false}
-                aria-label={`Hide: ${task.title}`}
-                disabled={sendingId !== null}
-                onClick={() => onHide(task)}
-                className="mr-2 shrink-0 text-foreground-subtle opacity-0 transition-opacity duration-150 hover:text-foreground-body focus-visible:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100"
-              >
-                <Icon icon={Cancel01Icon} size={14} />
-              </Button>
-            </motion.li>
-          );
-        })}
+              <Icon icon={Cancel01Icon} size={14} />
+            </Button>
+          </motion.li>
+        ))}
       </AnimatePresence>
     </ol>
+  );
+}
+
+interface RowBodyProps {
+  task: SuggestedTask;
+  isSending: boolean;
+  isBusy: boolean;
+  onSend: (task: SuggestedTask) => void;
+}
+
+function RowBody({ task, isSending, isBusy, onSend }: RowBodyProps) {
+  const promptIcon = getPromptIcon(task.icon);
+
+  if (task.kickoff && task.session_id) {
+    return (
+      <NextLink
+        href={getChatHref(task.session_id)}
+        onClick={() => trackDraftOpened(task)}
+        className={ROW_CLASSES}
+      >
+        <Icon
+          icon={promptIcon}
+          size={15}
+          className="shrink-0 text-foreground-subtle"
+        />
+        <Text variant="body-medium" tone="primary" className="text-pretty">
+          {task.title}
+        </Text>
+        <Text
+          variant="small-medium"
+          className="ml-auto shrink-0 whitespace-nowrap rounded-full bg-accent-surface px-2 py-0.5 text-brand"
+        >
+          {getKickoffLabel(task)}
+        </Text>
+      </NextLink>
+    );
+  }
+
+  if (getTaskState(task) === "sent" && task.session_id) {
+    return (
+      <NextLink href={getChatHref(task.session_id)} className={ROW_CLASSES}>
+        <Icon
+          icon={promptIcon}
+          size={15}
+          className="shrink-0 text-foreground-disabled"
+        />
+        <Text variant="body-medium" tone="muted" className="text-pretty">
+          {task.title}
+        </Text>
+        <Text
+          variant="small"
+          tone="muted"
+          className="ml-auto shrink-0 whitespace-nowrap"
+        >
+          In progress
+        </Text>
+      </NextLink>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={isBusy}
+      onClick={() => onSend(task)}
+      className={cn(
+        ROW_CLASSES,
+        "cursor-pointer disabled:cursor-default disabled:opacity-60",
+      )}
+    >
+      <Icon
+        icon={promptIcon}
+        size={15}
+        className="shrink-0 text-foreground-subtle"
+      />
+      <Text variant="body-medium" tone="primary" className="text-pretty">
+        {task.title}
+      </Text>
+      <Icon
+        icon={isSending ? Loading03Icon : ArrowRight01Icon}
+        size={15}
+        className={cn(
+          "ml-auto shrink-0 text-foreground-subtle",
+          isSending && "animate-spin",
+        )}
+        aria-label={isSending ? "Starting" : undefined}
+      />
+    </button>
   );
 }

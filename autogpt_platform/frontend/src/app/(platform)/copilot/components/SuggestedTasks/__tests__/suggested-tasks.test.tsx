@@ -388,6 +388,83 @@ describe("Suggested first tasks — while the greeting is being written", () => 
   });
 });
 
+describe("Suggested first tasks — drafts Otto started", () => {
+  function draft(index: number, status: "working" | "ready") {
+    stored[index] = {
+      ...stored[index],
+      state: "sent",
+      session_id: `draft-${index}`,
+      kickoff: true,
+      kickoff_status: status,
+    };
+  }
+
+  it("renders a working draft as a link with 'Otto is working on it'", async () => {
+    withGreeting();
+    draft(1, "working");
+    const onStartTask = vi.fn(async () => "session-1");
+    renderHome({ onStartTask });
+
+    const link = await screen.findByRole("link", {
+      name: `${TASKS[1].title} Otto is working on it`,
+    });
+    expect(link.getAttribute("href")).toBe("/copilot?sessionId=draft-1");
+    const cards = screen.getAllByTestId("suggested-task");
+    expect(within(cards[0]).getByRole("link")).toBe(link);
+    expect(
+      screen.getByText("I made a start while you were setting up."),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: `Hide: ${TASKS[1].title}` }),
+    ).toBeDefined();
+
+    await userEvent.click(link);
+
+    expect(onStartTask).not.toHaveBeenCalled();
+    expect(events("onboarding_draft_opened")).toEqual([
+      { task_id: "1", kickoff_status: "working" },
+    ]);
+  });
+
+  it("renders a finished draft as 'Draft · ready to review'", async () => {
+    draft(2, "ready");
+    renderHome();
+
+    const block = await findBlock();
+    const link = within(block).getByRole("link", {
+      name: `${TASKS[2].title} Draft · ready to review`,
+    });
+    expect(link.getAttribute("href")).toBe("/copilot?sessionId=draft-2");
+
+    await userEvent.click(link);
+
+    expect(events("onboarding_draft_opened")).toEqual([
+      { task_id: "2", kickoff_status: "ready" },
+    ]);
+  });
+
+  it("polls while a draft is working", async () => {
+    // On Home, so no kickoff call refetches the list in between.
+    draft(0, "working");
+    renderHome();
+
+    await screen.findByRole("link", {
+      name: `${TASKS[0].title} Otto is working on it`,
+    });
+    const readsBefore = reads;
+    draft(0, "ready");
+
+    expect(
+      await screen.findByRole(
+        "link",
+        { name: `${TASKS[0].title} Draft · ready to review` },
+        { timeout: 8000 },
+      ),
+    ).toBeDefined();
+    expect(reads).toBeGreaterThan(readsBefore);
+  }, 12_000);
+});
+
 describe("Suggested first tasks — Home after the first message", () => {
   it("shows the rest of the list, and the started one as in progress", async () => {
     stored[0] = { ...stored[0], state: "sent", session_id: "session-1" };

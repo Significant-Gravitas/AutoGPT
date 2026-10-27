@@ -1,5 +1,14 @@
+import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
 import { describe, expect, it } from "vitest";
-import { getMentionedProviders } from "../helpers";
+import {
+  getKickoffLabel,
+  getMentionedProviders,
+  sortKickoffFirst,
+} from "../helpers";
+
+function task(id: string, extra: Partial<SuggestedTask> = {}): SuggestedTask {
+  return { id, title: `Task ${id}`, prompt: `Do ${id}`, ...extra };
+}
 
 describe("getMentionedProviders", () => {
   it.each([
@@ -20,5 +29,43 @@ describe("getMentionedProviders", () => {
     ["Review githubish and slackbot tools", []],
   ])("finds providers in %s", (title, expected) => {
     expect(getMentionedProviders(title)).toEqual(expected);
+  });
+});
+
+describe("sortKickoffFirst", () => {
+  it("puts the drafts first and keeps the order within each group", () => {
+    const tasks = [
+      task("0"),
+      task("1", { kickoff: true }),
+      task("2"),
+      task("3", { kickoff: true }),
+    ];
+
+    expect(sortKickoffFirst(tasks).map(({ id }) => id)).toEqual([
+      "1",
+      "3",
+      "0",
+      "2",
+    ]);
+  });
+
+  it("leaves a list without drafts as it was", () => {
+    const tasks = [task("0"), task("1", { kickoff: false }), task("2")];
+
+    expect(sortKickoffFirst(tasks)).toEqual(tasks);
+  });
+});
+
+describe("getKickoffLabel", () => {
+  it("says Otto is on it while the draft is running", () => {
+    expect(
+      getKickoffLabel(task("0", { kickoff: true, kickoff_status: "working" })),
+    ).toBe("Otto is working on it");
+  });
+
+  it("offers a finished draft for review", () => {
+    expect(
+      getKickoffLabel(task("0", { kickoff: true, kickoff_status: "ready" })),
+    ).toBe("Draft · ready to review");
   });
 });

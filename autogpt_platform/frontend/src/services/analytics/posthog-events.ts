@@ -46,6 +46,8 @@ export const ExpertsFunnelEvent = {
   // or under the Home composer (`surface: home`).
   HOME_SUGGESTION_CLICKED: "home_suggestion_clicked",
   HOME_SUGGESTION_DISMISSED: "home_suggestion_dismissed",
+  // A draft Otto started during onboarding, opened from its card.
+  ONBOARDING_DRAFT_OPENED: "onboarding_draft_opened",
 } as const;
 
 export const HireFlowEvent = {

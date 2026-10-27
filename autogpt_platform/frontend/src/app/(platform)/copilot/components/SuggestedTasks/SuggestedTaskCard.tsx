@@ -8,9 +8,11 @@ import { Cancel01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import NextLink from "next/link";
 import {
   getChatHref,
+  getKickoffLabel,
   getMentionedProviders,
   getPromptIcon,
   getTaskState,
+  trackDraftOpened,
 } from "./helpers";
 
 interface Props {
@@ -33,43 +35,14 @@ export function SuggestedTaskCard({
   onSend,
   onHide,
 }: Props) {
-  const isSent = getTaskState(task) === "sent";
-
   return (
     <>
-      {isSent && task.session_id ? (
-        <NextLink
-          href={getChatHref(task.session_id)}
-          className={cn(CARD_CLASSES, "hover:border-border-strong")}
-        >
-          <CardTop task={task} muted />
-          <Text variant="body-medium" tone="muted" className="text-pretty">
-            {task.title}
-          </Text>
-          <Text
-            variant="small-medium"
-            tone="muted"
-            className="mt-auto self-start rounded-full bg-surface-hover px-2 py-0.5"
-          >
-            In progress
-          </Text>
-        </NextLink>
-      ) : (
-        <button
-          type="button"
-          disabled={isBusy}
-          onClick={() => onSend(task)}
-          className={cn(
-            CARD_CLASSES,
-            "cursor-pointer hover:border-brand/40 hover:shadow-md disabled:cursor-default disabled:opacity-60 disabled:hover:border-border-base disabled:hover:shadow-none",
-          )}
-        >
-          <CardTop task={task} isSending={isSending} />
-          <Text variant="body-medium" tone="primary" className="text-pretty">
-            {task.title}
-          </Text>
-        </button>
-      )}
+      <CardBody
+        task={task}
+        isSending={isSending}
+        isBusy={isBusy}
+        onSend={onSend}
+      />
       <Button
         type="button"
         variant="secondary"
@@ -83,6 +56,69 @@ export function SuggestedTaskCard({
         <Icon icon={Cancel01Icon} size={12} />
       </Button>
     </>
+  );
+}
+
+type CardBodyProps = Pick<Props, "task" | "isSending" | "isBusy" | "onSend">;
+
+function CardBody({ task, isSending, isBusy, onSend }: CardBodyProps) {
+  if (task.kickoff && task.session_id) {
+    return (
+      <NextLink
+        href={getChatHref(task.session_id)}
+        onClick={() => trackDraftOpened(task)}
+        className={cn(CARD_CLASSES, "hover:border-brand/40 hover:shadow-md")}
+      >
+        <CardTop task={task} />
+        <Text variant="body-medium" tone="primary" className="text-pretty">
+          {task.title}
+        </Text>
+        <Text
+          variant="small-medium"
+          className="mt-auto self-start rounded-full bg-accent-surface px-2 py-0.5 text-brand"
+        >
+          {getKickoffLabel(task)}
+        </Text>
+      </NextLink>
+    );
+  }
+
+  if (getTaskState(task) === "sent" && task.session_id) {
+    return (
+      <NextLink
+        href={getChatHref(task.session_id)}
+        className={cn(CARD_CLASSES, "hover:border-border-strong")}
+      >
+        <CardTop task={task} muted />
+        <Text variant="body-medium" tone="muted" className="text-pretty">
+          {task.title}
+        </Text>
+        <Text
+          variant="small-medium"
+          tone="muted"
+          className="mt-auto self-start rounded-full bg-surface-hover px-2 py-0.5"
+        >
+          In progress
+        </Text>
+      </NextLink>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={isBusy}
+      onClick={() => onSend(task)}
+      className={cn(
+        CARD_CLASSES,
+        "cursor-pointer hover:border-brand/40 hover:shadow-md disabled:cursor-default disabled:opacity-60 disabled:hover:border-border-base disabled:hover:shadow-none",
+      )}
+    >
+      <CardTop task={task} isSending={isSending} />
+      <Text variant="body-medium" tone="primary" className="text-pretty">
+        {task.title}
+      </Text>
+    </button>
   );
 }
 

@@ -3,10 +3,13 @@ import { server } from "@/mocks/mock-server";
 import { setIntroPath } from "@/services/onboarding/brain-dump-handoff";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePreparingStep } from "../usePreparingStep";
 
+const KICKOFF_URL =
+  "http://localhost:3000/api/proxy/api/onboarding/brain-dump/suggested-tasks/kickoff";
 const START_DELAY_MS = 300;
 const GENERIC_TOTAL_MS = 4_000;
 const DUMP_TOTAL_MS = 10_000;
@@ -259,5 +262,45 @@ describe("usePreparingStep — recommendation gate (dump path)", () => {
     await advance(GENERIC_TOTAL_MS + 200);
 
     expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("usePreparingStep — starting the suggested tasks", () => {
+  function countKickoffs() {
+    const calls = { count: 0 };
+    server.use(
+      http.post(KICKOFF_URL, () => {
+        calls.count += 1;
+        return HttpResponse.json({ status: "pending", started_task_ids: [] });
+      }),
+    );
+    return calls;
+  }
+
+  it("kicks off suggested tasks once recommendations are ready", async () => {
+    setIntroPath("A");
+    mockRecommendations(false);
+    const kickoffs = countKickoffs();
+    renderPreparing({});
+
+    await advance(START_DELAY_MS + 1_000);
+    expect(kickoffs.count).toBe(0);
+
+    mockRecommendations(true);
+    await advance(3_000);
+    expect(kickoffs.count).toBe(1);
+
+    await advance(DUMP_TOTAL_MS);
+    expect(kickoffs.count).toBe(1);
+  });
+
+  it("does not kick off on the generic path", async () => {
+    setIntroPath("B");
+    const kickoffs = countKickoffs();
+    renderPreparing({});
+
+    await advance(START_DELAY_MS + GENERIC_TOTAL_MS + 200);
+
+    expect(kickoffs.count).toBe(0);
   });
 });

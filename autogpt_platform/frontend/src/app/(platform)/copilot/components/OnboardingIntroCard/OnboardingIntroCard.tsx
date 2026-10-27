@@ -166,6 +166,11 @@ export function OnboardingIntroCard({
 
       {suggestions.tasks.length > 0 && (
         <motion.div {...reveal(promptsStart)} className="mt-5">
+          {suggestions.hasKickoffs && (
+            <Text variant="body" tone="secondary" className="mb-3">
+              I made a start while you were setting up.
+            </Text>
+          )}
           <SuggestedTaskCards
             tasks={suggestions.tasks}
             sendingId={suggestions.sendingId}

@@ -1,5 +1,7 @@
+import type { getBrainDumpSuggestedTasksResponse } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
 import type { SuggestedTaskState } from "@/app/api/__generated__/models/suggestedTaskState";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import {
   Analytics01Icon,
   CalendarCheckIcon,
@@ -67,6 +69,37 @@ export function countOpenTasks(tasks: SuggestedTask[]) {
 
 export function getChatHref(sessionId: string) {
   return `/copilot?sessionId=${encodeURIComponent(sessionId)}`;
+}
+
+// The drafts Otto started during onboarding lead, each group keeping the
+// order the server gave it.
+export function sortKickoffFirst(tasks: SuggestedTask[]) {
+  return [
+    ...tasks.filter((task) => task.kickoff),
+    ...tasks.filter((task) => !task.kickoff),
+  ];
+}
+
+export function getKickoffLabel(task: SuggestedTask) {
+  return task.kickoff_status === "ready"
+    ? "Draft · ready to review"
+    : "Otto is working on it";
+}
+
+export function hasWorkingDraft(
+  response: getBrainDumpSuggestedTasksResponse | undefined,
+) {
+  if (response?.status !== 200) return false;
+  return (response.data.tasks ?? []).some(
+    (task) => task.kickoff_status === "working",
+  );
+}
+
+export function trackDraftOpened(task: SuggestedTask) {
+  trackFunnel("onboarding_draft_opened", {
+    task_id: task.id,
+    kickoff_status: task.kickoff_status ?? null,
+  });
 }
 
 interface MergeArgs {

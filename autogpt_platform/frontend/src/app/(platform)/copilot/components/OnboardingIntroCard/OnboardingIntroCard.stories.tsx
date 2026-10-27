@@ -23,6 +23,7 @@ const SUGGESTIONS: Suggestions = {
       state: "open",
     },
   ],
+  hasKickoffs: false,
   sendingId: null,
   sendTask: async () => undefined,
   hideTask: () => undefined,

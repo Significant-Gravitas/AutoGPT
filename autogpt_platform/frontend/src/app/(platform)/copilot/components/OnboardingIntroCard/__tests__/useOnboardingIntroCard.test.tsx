@@ -1,3 +1,4 @@
+import { useGetBrainDumpSuggestedTasks } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { getGetBrainDumpIntroMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import type { IntroCardResponse } from "@/app/api/__generated__/models/introCardResponse";
 import { server } from "@/mocks/mock-server";
@@ -22,6 +23,10 @@ import { useOnboardingIntroCard } from "../useOnboardingIntroCard";
 
 const INTRO_URL =
   "http://localhost:3000/api/proxy/api/onboarding/brain-dump/intro";
+const KICKOFF_URL =
+  "http://localhost:3000/api/proxy/api/onboarding/brain-dump/suggested-tasks/kickoff";
+const TASKS_URL =
+  "http://localhost:3000/api/proxy/api/onboarding/brain-dump/suggested-tasks";
 const MIC_GLOW_KEY = "autogpt:onboarding-mic-glow";
 const LATER_DUMP_KEY = "autogpt:onboarding-pending-later-dump";
 const FOLLOWUP_KEY = "autogpt:onboarding-intro-awaiting-followup";
@@ -373,4 +378,82 @@ describe("useOnboardingIntroCard — team selection belongs to the wizard", () =
     },
     10_000,
   );
+});
+
+describe("useOnboardingIntroCard — starting the suggested tasks", () => {
+  // Counts kickoff calls and suggested-task reads, the latter through a
+  // list mounted beside the hook as the home page mounts it.
+  function trackKickoff(status: "started" | "pending" | "nothing") {
+    const calls = { kickoffs: 0, taskReads: 0 };
+    server.use(
+      http.post(KICKOFF_URL, () => {
+        calls.kickoffs += 1;
+        return HttpResponse.json({ status, started_task_ids: [] });
+      }),
+      http.get(TASKS_URL, () => {
+        calls.taskReads += 1;
+        return HttpResponse.json({ tasks: [], stored: true });
+      }),
+    );
+    return calls;
+  }
+
+  function renderWithTasks() {
+    return renderHook(
+      () => {
+        useGetBrainDumpSuggestedTasks();
+        return useOnboardingIntroCard();
+      },
+      { wrapper: makeWrapper() },
+    );
+  }
+
+  it("retries kickoff when the greeting arrives", async () => {
+    let introCalls = 0;
+    server.use(
+      http.get(INTRO_URL, () => {
+        introCalls += 1;
+        return HttpResponse.json(
+          introCalls === 1 ? PENDING_INTRO : READY_INTRO,
+        );
+      }),
+    );
+    const calls = trackKickoff("nothing");
+
+    const { result } = renderWithTasks();
+    await waitFor(() => expect(result.current.isAwaitingGreeting).toBe(true));
+    await waitFor(() => expect(calls.taskReads).toBe(1));
+    expect(calls.kickoffs).toBe(0);
+
+    await waitFor(() => expect(result.current.isVisible).toBe(true), {
+      timeout: 6000,
+    });
+    await waitFor(() => expect(calls.kickoffs).toBe(1));
+    // Settled with "nothing", yet a background kickoff may have started the
+    // tasks meanwhile, so the list is read again.
+    await waitFor(() => expect(calls.taskReads).toBe(2));
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    expect(calls.kickoffs).toBe(1);
+  }, 10_000);
+
+  it("does not kick off for a user who already saw the greeting", async () => {
+    countIntroRequests({
+      path: "A",
+      greeting: "Welcome back.",
+      greeting_done: true,
+    });
+    const calls = trackKickoff("started");
+
+    const { result } = renderWithTasks();
+    await waitFor(() =>
+      expect(window.localStorage.getItem(GREETING_DONE_KEY)).toBe("user-1"),
+    );
+    await act(async () => {});
+
+    expect(result.current.isVisible).toBe(false);
+    expect(calls.kickoffs).toBe(0);
+  });
 });

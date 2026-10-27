@@ -10,6 +10,7 @@ import {
   takeIntroPath,
 } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useState } from "react";
+import { useKickoffSuggestedTasks } from "../SuggestedTasks/useKickoffSuggestedTasks";
 
 // While the pipeline is still writing the greeting the intro endpoint
 // answers `greeting_pending` — poll at this cadence until the real
@@ -115,6 +116,10 @@ export function useOnboardingIntroCard() {
     !serverSaysDone &&
     hasIntroAnswer &&
     Boolean(intro?.greeting);
+
+  // The greeting has stored its prompts by the time it shows, so a kickoff
+  // the wizard asked for too early ("pending") can start them now.
+  useKickoffSuggestedTasks(isVisible);
 
   return {
     isVisible,

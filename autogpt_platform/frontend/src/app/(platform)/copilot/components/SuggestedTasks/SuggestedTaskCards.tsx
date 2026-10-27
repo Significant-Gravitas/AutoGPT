@@ -3,6 +3,7 @@
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { sortKickoffFirst } from "./helpers";
 import { SuggestedTaskCard } from "./SuggestedTaskCard";
 
 interface Props {
@@ -29,7 +30,7 @@ export function SuggestedTaskCards({
   return (
     <ol className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2", className)}>
       <AnimatePresence initial={false}>
-        {tasks.map((task) => (
+        {sortKickoffFirst(tasks).map((task) => (
           <motion.li
             key={task.id}
             layout={!prefersReducedMotion}
