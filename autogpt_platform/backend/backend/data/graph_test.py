@@ -3655,15 +3655,17 @@ def test_linked_llm_model_preserves_required_legacy_credential_slot():
 
 @pytest.mark.parametrize(
     "sink_name,argument",
-    [("query", "query"), ("createRequest_#_objects", "createRequest")],
+    [
+        ("query", "query"),
+        ("createRequest_#_objects", "createRequest"),
+        ("tool_arguments_#_query", "query"),
+    ],
 )
-def test_a_link_named_after_an_mcp_tool_argument_is_valid(
-    sink_name: str, argument: str
-):
-    """The executor folds an input named after a tool argument into
-    `tool_arguments`, and the builder and AutoPilot name a link that way.
-    Validation refused the name, so such a workflow could neither be saved nor
-    run; a required argument fed by the link also counts as provided."""
+def test_a_link_into_an_mcp_tool_argument_is_valid(sink_name: str, argument: str):
+    """The builder and AutoPilot name a link into a tool argument after the
+    argument, and validation refused that name, so the workflow could neither
+    be saved nor run. A `tool_arguments_#_` link saved, but its argument still
+    read as missing at run time. Either form now provides the argument."""
     graph = make_graph_model(
         _value_to_mcp_tool_graph(sink_name, required=[argument]), user_id="user-1"
     )

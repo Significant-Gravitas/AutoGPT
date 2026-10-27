@@ -55,7 +55,7 @@ from backend.util.text import split_camelcase
 
 from .block import BlockInput
 from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
-from .dynamic_fields import is_tool_pin, sanitize_pin_name
+from .dynamic_fields import DICT_SPLIT, is_tool_pin, sanitize_pin_name
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
 
@@ -1004,6 +1004,8 @@ class GraphModel(Graph, GraphMeta):
                 ]
                 + ([name for name in node_input_mask] if node_input_mask else [])
             )
+            if block.block_type == BlockType.MCP_TOOL:
+                provided_inputs |= _linked_tool_arguments(input_links.get(node.id, []))
             InputSchema = block.input_schema
 
             for name in (required_fields := InputSchema.get_required_fields()):
@@ -1380,6 +1382,16 @@ def _is_blank_io_name(block: "AnyBlockSchema", field: str, value: Any) -> bool:
         and block.block_type in (BlockType.INPUT, BlockType.OUTPUT)
         and not str(value or "").strip()
     )
+
+
+def _linked_tool_arguments(links: list[Link]) -> set[str]:
+    """The MCP tool arguments that `tool_arguments_#_<argument>` links feed."""
+    prefix = f"tool_arguments{DICT_SPLIT}"
+    return {
+        sanitize_pin_name(link.sink_name.removeprefix(prefix))
+        for link in links
+        if link.sink_name.startswith(prefix)
+    }
 
 
 def _node_title(node: Node) -> str:
