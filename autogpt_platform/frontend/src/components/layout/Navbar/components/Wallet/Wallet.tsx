@@ -8,7 +8,7 @@ import { TopUpDialog } from "@/components/layout/TopUpPrompt/TopUpDialog/TopUpDi
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { cn } from "@/lib/utils";
 import { UsageCreditsDialog } from "@/components/organisms/UsageCreditsDialog/UsageCreditsDialog";
-import { useId, useState } from "react";
+import { useId } from "react";
 import { WalletCompactPanel } from "./components/WalletCompactPanel";
 import { WalletFullPanel } from "./components/WalletFullPanel";
 import { useWallet } from "./useWallet";
@@ -35,9 +35,11 @@ export function Wallet({ compact = false }: Props) {
     topUpOpen,
     onAddCredits,
     onTopUpClose,
+    explainerOpen,
+    onOpenExplainer,
+    onExplainerOpenChange,
   } = useWallet();
   const trialNoteID = useId();
-  const [explainerOpen, setExplainerOpen] = useState(false);
 
   // Do not render until we have both credits and onboarding data
   if (!isBillingEnabled || credits === null || !state) return null;
@@ -80,10 +82,7 @@ export function Wallet({ compact = false }: Props) {
               formattedCredits={formatCredits(credits)}
               trialNoteID={trialNoteID}
               onAddCredits={onAddCredits}
-              onOpenExplainer={() => {
-                setWalletOpen(false);
-                setExplainerOpen(true);
-              }}
+              onOpenExplainer={onOpenExplainer}
               onNavigate={() => setWalletOpen(false)}
             />
           ) : (
@@ -103,7 +102,7 @@ export function Wallet({ compact = false }: Props) {
           />
           <UsageCreditsDialog
             isOpen={explainerOpen}
-            onOpenChange={setExplainerOpen}
+            onOpenChange={onExplainerOpenChange}
           />
         </>
       )}

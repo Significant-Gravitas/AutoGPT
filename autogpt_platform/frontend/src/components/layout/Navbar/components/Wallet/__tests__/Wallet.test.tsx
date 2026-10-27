@@ -18,6 +18,10 @@ import { Wallet } from "../Wallet";
 import { TaskGroups } from "../components/WalletTaskGroups";
 import { getTaskGroups } from "../helpers";
 
+// Noon on Sep 17 in the runner's own time zone: the trial date is shown in the
+// viewer's time zone, so a fixed UTC instant lands on Sep 18 east of UTC+9.
+const SEP_17_LOCAL_NOON = new Date(2030, 8, 17, 12);
+
 const confettiMock = vi.hoisted(() => vi.fn());
 const fetchCreditsMock = vi.hoisted(() => vi.fn());
 const updateStateMock = vi.hoisted(() => vi.fn());
@@ -355,7 +359,7 @@ describe("Wallet trial line and explainer", () => {
   }
 
   it("names the day the plan starts in one line during a trial", async () => {
-    mockTrial({ ends_at: new Date("2030-09-17T15:00:00Z") });
+    mockTrial({ ends_at: SEP_17_LOCAL_NOON });
     const dialog = await openWallet();
 
     const line = await screen.findByText("Your plan starts Sep 17");
@@ -386,10 +390,32 @@ describe("Wallet trial line and explainer", () => {
     ).toBeNull();
   });
 
+  // Sentry: the explainer opens from inside the popover, which unmounts, so
+  // closing it left focus on <body> instead of the wallet button.
+  it("returns focus to the wallet button when the explainer closes", async () => {
+    mockTrial();
+    await openWallet();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "How it works" }),
+    );
+    await screen.findByRole("dialog", { name: "How usage and credits work" });
+    await userEvent.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "How usage and credits work" }),
+      ).toBeNull();
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Usage and credits" }),
+      );
+    });
+  });
+
   it("names the trial's end instead of a plan once the trial is canceled", async () => {
     mockTrial({
       cancel_at_period_end: true,
-      ends_at: new Date("2030-09-17T15:00:00Z"),
+      ends_at: SEP_17_LOCAL_NOON,
     });
     await openWallet();
 
