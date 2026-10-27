@@ -30,6 +30,7 @@ from backend.util import tracing
 
 if TYPE_CHECKING:
     from backend.copilot.executor.utils import CoPilotExecutionEntry
+    from backend.copilot.model import ChatSessionOrigin
 
 TURN_OP = "copilot.turn"
 TOOL_OP = "copilot.tool"
@@ -48,6 +49,7 @@ class TurnTrace:
         self._chunks = 0
         self._tool_calls = 0
         self.engine: str | None = None
+        self.origin: str | None = None
         self.outcome = "completed"
         self.error_code: str | None = None
 
@@ -56,6 +58,11 @@ class TurnTrace:
         self.engine = engine
         self.span.set_tag("copilot.engine", engine)
         tracing.set_timing("copilot.turn.setup_ms", self._elapsed_ms(), span=self.span)
+
+    def set_origin(self, origin: str) -> None:
+        """What started the turn, once its chat session is known."""
+        self.origin = origin
+        self.span.set_tag("copilot.turn.origin", origin)
 
     def observe(self, chunk: StreamBaseResponse) -> None:
         """Account for one chunk the turn streamed."""
@@ -107,7 +114,7 @@ class TurnTrace:
             outcome=self.outcome,
             error_code=self.error_code,
             engine=self.engine,
-            origin=turn_origin(entry),
+            origin=self.origin or turn_origin(entry),
             tool_call_count=self._tool_calls,
         )
 
@@ -152,14 +159,22 @@ def turn_transaction(entry: "CoPilotExecutionEntry") -> Iterator[TurnTrace]:
             turn.report_to_posthog(entry)
 
 
-def turn_origin(entry: "CoPilotExecutionEntry") -> str:
+def turn_origin(
+    entry: "CoPilotExecutionEntry",
+    session_origin: "ChatSessionOrigin | None" = None,
+) -> str:
     """What started a turn: ``scheduled`` (a schedule, or a turn nobody is
-    watching), ``spawned`` (a subtask), ``system`` (the platform, not a
-    message) or ``chat`` (a message someone sent)."""
+    watching), ``spawned`` (a subtask), ``automation`` (a turn in a chat a
+    workflow's AutoPilot block opened, whose every prompt is machine-written),
+    ``system`` (the platform, not a message) or ``chat`` (a message someone
+    sent). Without *session_origin*, an automation chat's turn reads as
+    ``chat``; the executor passes it once the session is loaded."""
     if entry.scheduled is not None or entry.unattended:
         return "scheduled"
     if entry.envelope is not None and entry.envelope.depth > 0:
         return "spawned"
+    if session_origin == "automation":
+        return "automation"
     if not entry.is_user_message:
         return "system"
     return "chat"

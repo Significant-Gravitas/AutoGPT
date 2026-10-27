@@ -131,7 +131,7 @@ def test_attribution_outside_a_turn_sends_no_turn_origin():
 
 
 @pytest.mark.asyncio
-async def test_a_turn_origin_does_not_leak_into_another_turn():
+async def test_concurrent_turns_each_send_their_own_origin():
     async def turn(origin: str) -> str | None:
         set_turn_origin(origin)
         await asyncio.sleep(0)

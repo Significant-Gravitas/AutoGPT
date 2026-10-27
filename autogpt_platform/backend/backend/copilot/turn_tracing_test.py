@@ -68,6 +68,35 @@ def test_turn_origin_says_what_started_the_turn(
     assert turn_origin(entry) == expected
 
 
+@pytest.mark.parametrize(
+    ("changes", "expected"),
+    [
+        ({}, "automation"),
+        ({"is_user_message": False}, "automation"),
+        ({"envelope": TurnEnvelope(tree_id="turn-0", depth=1)}, "spawned"),
+        ({"unattended": True}, "scheduled"),
+    ],
+    ids=["its message", "the platform", "a subtask", "unattended"],
+)
+def test_a_turn_in_a_chat_a_workflow_opened_is_automation(
+    changes: dict[str, object], expected: str
+):
+    entry = _entry().model_copy(update=changes)
+
+    assert turn_origin(entry, "automation") == expected
+    assert turn_origin(entry, "interactive") != "automation"
+
+
+def test_the_origin_the_executor_sets_is_the_one_the_trace_reports(
+    capture: MagicMock,
+):
+    with turn_transaction(_entry()) as turn:
+        turn.set_origin("automation")
+        turn.engine_started("sdk")
+
+    assert capture.call_args.args[2]["turn_origin"] == "automation"
+
+
 def test_a_failed_turn_carries_its_error_code_not_its_message(capture: MagicMock):
     with turn_transaction(_entry()) as turn:
         turn.engine_started("sdk")

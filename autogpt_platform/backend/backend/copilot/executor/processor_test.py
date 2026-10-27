@@ -244,7 +244,9 @@ class TestExecuteAsyncScheduledTurnContext:
     Every tool test sets those directly, so this seam is checked here."""
 
     @staticmethod
-    async def _seen_by_the_turn(entry: CoPilotExecutionEntry) -> dict:
+    async def _seen_by_the_turn(
+        entry: CoPilotExecutionEntry, session: ChatSession | None = None
+    ) -> dict:
         from backend.copilot.context import is_unattended_turn
         from backend.copilot.credential_selection import turn_credential_pins
 
@@ -278,7 +280,9 @@ class TestExecuteAsyncScheduledTurnContext:
             ),
             patch(
                 "backend.copilot.model.get_chat_session",
-                new=AsyncMock(return_value=ChatSession.new("user-1", dry_run=False)),
+                new=AsyncMock(
+                    return_value=session or ChatSession.new("user-1", dry_run=False)
+                ),
             ),
         ):
             await asyncio.create_task(
@@ -320,6 +324,17 @@ class TestExecuteAsyncScheduledTurnContext:
             "turn_origin": "chat",
             "span_id": "turn-1",
         }
+
+    @pytest.mark.asyncio
+    async def test_a_workflow_blocks_turn_is_not_tagged_as_typed(self) -> None:
+        """An AutoPilot block dispatches like a typed message; its chat's
+        origin is what says nobody wrote the prompt."""
+        session = ChatSession.new("user-1", dry_run=False, origin="automation")
+
+        seen = await self._seen_by_the_turn(_make_entry(), session)
+
+        assert seen["turn_origin"] == "automation"
+        assert seen["unattended"] is True
 
     @pytest.mark.asyncio
     async def test_an_impersonated_turn_is_marked_for_llm_analytics(self) -> None:
