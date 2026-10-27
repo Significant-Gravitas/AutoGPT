@@ -275,7 +275,7 @@ curl -s -X POST "$AUTOGPT_API_URL/library/agents/$AGENT_ID/runs" \
 
 * Use a value that identifies the job, such as an order ID or a UUID you store with it. Up to 255 characters. A key made up fresh for each call protects only that call's own retries, so a library should let its callers pass the key.
 * A key lasts 24 hours and is scoped to your user and organization.
-* A key is bound to the request it first came with: the agent or preset, and the whole body. The first request with a key starts the run, and every later request with that key and the same agent or preset and body returns `202` and the same run. The same key with another agent or preset, or a different body, is `422 validation_error`. To start a different run, use a new key.
+* A key is bound to the request it first came with: the agent or preset, and the whole body. The first request with a key starts the run, and once it has recorded that run, every later request with that key and the same agent or preset and body returns `202` and the same run. The same key with another agent or preset, or a different body, is `422 validation_error`. To start a different run, use a new key.
 * If the first request is still starting the run, a duplicate gets `409 conflict`. Wait a moment and retry with the same key.
 * If the key can't be checked (the store that holds keys is unreachable), the request is `503 service_unavailable` and no run starts. Retry with the same key.
 * If `409` persists, the first request probably started a run but couldn't record it under the key, and the key stays blocked until it expires. Don't start the job again under a new key until you've looked for that run with `GET /runs?graph_id=...&started_after=...`.
