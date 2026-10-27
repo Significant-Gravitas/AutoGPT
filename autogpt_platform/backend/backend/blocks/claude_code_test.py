@@ -1,11 +1,24 @@
-"""Claude Code only resumes a sandbox that was created for the same user."""
+"""Claude Code only resumes a sandbox that was created for the same user, and
+runs only on the user's own Anthropic key."""
 
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.blocks.claude_code import ClaudeCodeBlock, ClaudeCodeExecutionError
+from backend.blocks.claude_code import (
+    OWN_ANTHROPIC_KEY_REQUIRED,
+    TEST_ANTHROPIC_CREDENTIALS,
+    TEST_ANTHROPIC_CREDENTIALS_INPUT,
+    TEST_E2B_CREDENTIALS_INPUT,
+    ClaudeCodeBlock,
+    ClaudeCodeExecutionError,
+)
+from backend.data.model import APIKeyCredentials
 from backend.executor.utils import ExecutionContext
+from backend.integrations.credentials_store import (
+    anthropic_credentials,
+    e2b_credentials,
+)
 
 
 async def test_resuming_another_users_sandbox_is_refused():
@@ -47,3 +60,48 @@ async def test_resuming_another_users_sandbox_is_refused():
     cls.connect.assert_not_awaited()
     theirs.commands.run.assert_not_awaited()
     theirs.kill.assert_not_awaited()
+
+
+async def _run_with(anthropic: APIKeyCredentials) -> tuple[list, AsyncMock]:
+    block = ClaudeCodeBlock()
+    execute = AsyncMock(return_value=("done", [], "history", "s1", None))
+    with patch.object(block, "execute_claude_code", execute):
+        outputs = [
+            output
+            async for output in block.run(
+                ClaudeCodeBlock.Input(
+                    e2b_credentials=TEST_E2B_CREDENTIALS_INPUT,
+                    anthropic_credentials=TEST_ANTHROPIC_CREDENTIALS_INPUT,
+                    prompt="hi",
+                    setup_commands=[],
+                ),
+                e2b_credentials=e2b_credentials,
+                anthropic_credentials=anthropic,
+                execution_context=ExecutionContext(user_id="user-a"),
+            )
+        ]
+    return outputs, execute
+
+
+async def test_the_platform_anthropic_key_is_refused():
+    outputs, execute = await _run_with(anthropic_credentials)
+
+    assert outputs == [("error", OWN_ANTHROPIC_KEY_REQUIRED)]
+    execute.assert_not_awaited()
+
+
+async def test_a_managed_anthropic_key_is_refused():
+    managed = TEST_ANTHROPIC_CREDENTIALS.model_copy(update={"is_managed": True})
+
+    outputs, execute = await _run_with(managed)
+
+    assert outputs == [("error", OWN_ANTHROPIC_KEY_REQUIRED)]
+    execute.assert_not_awaited()
+
+
+async def test_the_users_own_anthropic_key_runs_claude_code():
+    outputs, execute = await _run_with(TEST_ANTHROPIC_CREDENTIALS)
+
+    execute.assert_awaited_once()
+    assert execute.await_args.kwargs["anthropic_api_key"] == "mock-anthropic-api-key"
+    assert ("response", "done") in outputs
