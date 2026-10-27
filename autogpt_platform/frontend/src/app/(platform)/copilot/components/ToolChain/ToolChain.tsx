@@ -36,6 +36,7 @@ import {
   buildChainReply,
   ChainActionsContext,
   type ChainActionEntry,
+  uniqueChainEntries,
 } from "./chainActions";
 import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
@@ -100,23 +101,24 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // Action cards (credential setup, clarifying questions) register here
   // instead of rendering their own Proceed/Answer buttons — the chain
   // renders one Proceed that sends everything as a single message.
-  const [actionEntries, setActionEntries] = useState<
+  // Keyed by the registering component, not the card id (see ChainActions).
+  const [registrations, setRegistrations] = useState<
     ReadonlyMap<string, ChainActionEntry>
   >(new Map());
   // Kept as memos with the compiler on: the cards' register effects depend on
   // this context value, and re-running them would re-register every card.
-  const register = useCallback((entry: ChainActionEntry) => {
-    setActionEntries((prev) => {
+  const register = useCallback((owner: string, entry: ChainActionEntry) => {
+    setRegistrations((prev) => {
       const next = new Map(prev);
-      next.set(entry.id, entry);
+      next.set(owner, entry);
       return next;
     });
   }, []);
-  const unregister = useCallback((id: string) => {
-    setActionEntries((prev) => {
-      if (!prev.has(id)) return prev;
+  const unregister = useCallback((owner: string) => {
+    setRegistrations((prev) => {
+      if (!prev.has(owner)) return prev;
       const next = new Map(prev);
-      next.delete(id);
+      next.delete(owner);
       return next;
     });
   }, []);
@@ -125,7 +127,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     [register, unregister],
   );
 
-  const pendingActions = [...actionEntries.values()];
+  const pendingActions = uniqueChainEntries(registrations);
   const connectorRequests = pendingActions
     .map((entry) => entry.connectors)
     .filter((request) => request !== undefined);
@@ -213,7 +215,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     [canAutoSend],
   );
 
-  useCredentialFailureCounters({ entries: actionEntries });
+  useCredentialFailureCounters({ entries: registrations });
 
   // Kept as a memo: the compiler folds this into the scope of everything
   // rendered below the early return, so without it the rows would be rebuilt

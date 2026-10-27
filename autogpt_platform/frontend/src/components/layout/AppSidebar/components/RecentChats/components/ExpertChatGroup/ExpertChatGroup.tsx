@@ -189,7 +189,7 @@ function NewChatLink({ href, label }: { href: string; label: string }) {
           aria-label={name}
           className={cn(
             // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour), not a focus ring
-            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-foreground-tertiary transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-surface-active hover:text-foreground-strong focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 md:opacity-0",
+            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-foreground-tertiary transition-opacity hover:bg-surface-active hover:text-foreground-strong focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 md:opacity-0",
             NEW_CHAT_SLOT_SIZE_CLASS,
             NEW_CHAT_LINK_OFFSET_CLASS,
           )}

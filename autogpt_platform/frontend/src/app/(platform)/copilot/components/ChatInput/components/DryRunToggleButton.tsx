@@ -4,7 +4,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
@@ -25,7 +26,7 @@ export function DryRunToggleButton({ isDryRun, onToggle }: Props) {
   const ariaLabel = isDryRun ? "Test mode active" : "Enable Test mode";
 
   return (
-    <Tooltip>
+    <Tooltip inheritDelay>
       <TooltipTrigger asChild>
         <button
           type="button"
@@ -43,7 +44,9 @@ export function DryRunToggleButton({ isDryRun, onToggle }: Props) {
           <Icon icon={FlaskConicalIcon} size={16} />
         </button>
       </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
+      <TooltipPortal>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </TooltipPortal>
     </Tooltip>
   );
 }

@@ -184,7 +184,7 @@ While server components and actions are cool and cutting-edge, they introduce a 
 - Use the design system under `src/components` for primitives and building blocks
 - Do not use anything under `src/components/_legacy__`; migrate away from it when touching old code
 - Reference the design system catalog on Chromatic: [`https://dev--670f94474adee5e32c896b98.chromatic.com/`](https://dev--670f94474adee5e32c896b98.chromatic.com/)
-- Use the [`tailwind-scrollbar`](https://www.npmjs.com/package/tailwind-scrollbar) plugin utilities for scrollbar styling
+- Use the `scrollbar-*` utilities for scrollbar styling: [`tailwind-scrollbar`](https://www.npmjs.com/package/tailwind-scrollbar) 3's classes, kept in `tailwind.scrollbar.ts`
 
 ---
 
@@ -622,7 +622,8 @@ Control flow:
 
 - Use Tailwind utilities; prefer semantic, composable class names
 - Use shadcn/ui components as building blocks when available
-- Use the `tailwind-scrollbar` utilities for scrollbar styling
+- Use the `scrollbar-*` utilities (`tailwind.scrollbar.ts`) for scrollbar styling
+- Tailwind CSS 4 runs with Tailwind 3's theme and output (`tailwind.v3-preset.ts`, `src/app/tailwind-v3-preflight.css`, `postcss.tailwind3-compat.cjs`), so every class keeps its Tailwind 3 value. Look values up in the [Tailwind 3 docs](https://v3.tailwindcss.com/docs): `shadow-sm` is still the small shadow, a bare `ring` is 3px and `outline-none` draws a transparent outline. Names that exist only in Tailwind 4, such as `shadow-xs`, `rounded-xs` or `blur-xs`, generate nothing
 - Keep responsive and dark-mode behavior consistent with the design system
 
 Additional requirements:

@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { useRouter } from "next/navigation";
@@ -9,9 +9,7 @@ export const PublishAuthPrompt = () => {
     <div>
       <div className="mx-auto inline-flex h-[370px] w-full flex-col items-center justify-center gap-6 px-4 py-5 sm:px-6">
         <div className="flex flex-col items-center gap-4 text-center">
-          <Text variant="h3" className="font-semibold">
-            Share your AI creations
-          </Text>
+          <Text variant="h3-semibold">Share your AI creations</Text>
           <Text
             variant="lead"
             // TODO(tokens): no exact role for text-neutral-600 #525252

@@ -1,186 +1,216 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-@source "../node_modules/streamdown/dist/*.js";
+@import "./tailwind-v3-preflight.css";
+@config "../../tailwind.config.ts";
 
-@layer base {
-  /* Design tokens. Each colour is an RGB channel triplet, so Tailwind's
-     opacity modifiers keep working: tailwind.config.ts maps every name to
-     `rgb(var(--color-<name>) / <alpha-value>)`. Values are what renders
-     today; the hex beside each one is the class it replaces. */
-  :root {
-    /* Surfaces */
-    --color-canvas: 246 247 248; /* #F6F7F8, the page behind everything */
-    --color-surface: 254 254 254; /* white #FEFEFE */
-    --color-surface-muted: 249 249 250; /* zinc-50 #F9F9FA */
-    --color-surface-hover: 239 239 240; /* zinc-100 #EFEFF0 */
-    --color-surface-active: 218 218 220; /* zinc-200 #DADADC */
-    --color-overlay: 120 113 108; /* stone-500 #78716C, used at /20 */
+/* Defaults Tailwind 4 reads from its own theme, which is not loaded: the
+   values Tailwind 3 used for a bare `transition`, `ring` and `outline`. */
+@theme inline {
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  --default-ring-width: 3px;
+  --default-ring-color: rgb(59 130 246 / 0.5);
+  --default-outline-width: medium;
+}
 
-    /* Text */
-    --color-foreground-base: 20 20 20; /* black #141414, the Text default */
-    --color-foreground-strong: 44 44 48; /* zinc-900 #2C2C30 */
-    --color-foreground-emphasis: 62 62 67; /* zinc-800 #3E3E43 */
-    --color-foreground-body: 80 80 87; /* zinc-700 #505057 */
-    --color-foreground-secondary: 104 104 111; /* zinc-600 #68686F */
-    --color-foreground-tertiary: 131 131 140; /* zinc-500 #83838C */
-    --color-foreground-subtle: 173 173 179; /* zinc-400 #ADADB3 */
-    --color-foreground-disabled: 197 197 201; /* zinc-300 #C5C5C9 */
-    --color-placeholder: 131 131 140; /* zinc-500 #83838C */
+/* Tailwind 4 only applies `hover:` on devices that can hover, so a tap on a
+   touch screen no longer shows it. Tailwind 3 applied it on every device. */
+@custom-variant hover (&:hover);
 
-    /* Borders */
-    --color-separator: 239 239 240; /* zinc-100 #EFEFF0 */
-    --color-border-base: 218 218 220; /* zinc-200 #DADADC */
-    --color-border-strong: 197 197 201; /* zinc-300 #C5C5C9 */
-    --color-focus: 10 10 10; /* neutral-950 #0A0A0A, the Button focus ring */
+/* Design tokens. Each colour is an RGB channel triplet, so Tailwind's
+   opacity modifiers keep working: tailwind.config.ts maps every name to
+   `rgb(var(--color-<name>) / <alpha-value>)`. Values are what renders
+   today; the hex beside each one is the class it replaces. */
+:root {
+  /* Surfaces */
+  --color-canvas: 246 247 248; /* #F6F7F8, the page behind everything */
+  --color-surface: 254 254 254; /* white #FEFEFE */
+  --color-surface-muted: 249 249 250; /* zinc-50 #F9F9FA */
+  --color-surface-hover: 239 239 240; /* zinc-100 #EFEFF0 */
+  --color-surface-active: 218 218 220; /* zinc-200 #DADADC */
+  --color-overlay: 120 113 108; /* stone-500 #78716C, used at /20 */
 
-    /* Action */
-    --color-action: 62 62 67; /* zinc-800 #3E3E43, primary Button */
-    --color-action-hover: 44 44 48; /* zinc-900 #2C2C30 */
-    --color-action-foreground: 254 254 254; /* white #FEFEFE */
+  /* Text */
+  --color-foreground-base: 20 20 20; /* black #141414, the Text default */
+  --color-foreground-strong: 44 44 48; /* zinc-900 #2C2C30 */
+  --color-foreground-emphasis: 62 62 67; /* zinc-800 #3E3E43 */
+  --color-foreground-body: 80 80 87; /* zinc-700 #505057 */
+  --color-foreground-secondary: 104 104 111; /* zinc-600 #68686F */
+  --color-foreground-tertiary: 131 131 140; /* zinc-500 #83838C */
+  --color-foreground-subtle: 173 173 179; /* zinc-400 #ADADB3 */
+  --color-foreground-disabled: 197 197 201; /* zinc-300 #C5C5C9 */
+  --color-placeholder: 131 131 140; /* zinc-500 #83838C */
 
-    /* Accent */
-    --color-brand: 119 51 245; /* purple-500 #7733F5 */
-    --color-brand-hover: 108 46 223; /* purple-600 #6C2EDF */
-    --color-accent-surface: 245 243 255; /* violet-50 #F5F3FF */
-    --color-accent-strong: 109 40 217; /* violet-700 #6D28D9 */
+  /* Borders */
+  --color-separator: 239 239 240; /* zinc-100 #EFEFF0 */
+  --color-border-base: 218 218 220; /* zinc-200 #DADADC */
+  --color-border-strong: 197 197 201; /* zinc-300 #C5C5C9 */
+  --color-focus: 10 10 10; /* neutral-950 #0A0A0A, the Button focus ring */
 
-    /* Status */
-    --color-error: 239 68 68; /* red-500 #EF4444 */
-    --color-error-hover: 217 54 54; /* red-600 #D93636 */
-    --color-error-foreground: 170 48 48; /* red-700 #AA3030 */
-    --color-error-surface: 254 245 245; /* red-50 #FEF5F5 */
-    --color-warning: 245 158 11; /* amber-500 #F59E0B */
-    --color-warning-foreground: 180 83 9; /* amber-700 #B45309 */
-    --color-warning-surface: 255 251 235; /* amber-50 #FFFBEB */
-    --color-warning-border: 253 230 138; /* amber-200 #FDE68A */
-    --color-success: 20 148 67; /* green-600 #149443 */
-    --color-success-foreground: 16 116 53; /* green-700 #107435 */
-    --color-success-surface: 232 246 237; /* green-50 #E8F6ED */
-    --color-info: 59 130 246; /* blue-500 #3B82F6 */
-    --color-info-foreground: 37 99 235; /* blue-600 #2563EB */
-    --color-info-surface: 239 246 255; /* blue-50 #EFF6FF */
+  /* Action */
+  --color-action: 62 62 67; /* zinc-800 #3E3E43, primary Button */
+  --color-action-hover: 44 44 48; /* zinc-900 #2C2C30 */
+  --color-action-foreground: 254 254 254; /* white #FEFEFE */
 
-    /* Builder (flow editor) */
-    --color-builder-canvas: 249 249 249; /* #F9F9F9, what the transparent canvas shows (the app inset); not read yet */
-    --color-builder-grid: 145 145 154; /* #91919A, xyflow's default dot colour */
-    --color-node-surface: 254 254 254; /* white #FEFEFE, the node card */
-    --color-node-border: 207 212 219; /* slate-200 #CFD4DB, the node ring at /60 */
-    --color-node-selected: 207 212 219; /* slate-200 #CFD4DB, the selected node's ring */
-    --color-edge: 131 131 140; /* zinc-500 #83838C, an untyped edge (at /50, solid on hover) */
-    --color-handle: 156 163 175; /* gray-400 #9CA3AF, a node's input and output handles */
+  /* Accent */
+  --color-brand: 119 51 245; /* purple-500 #7733F5 */
+  --color-brand-hover: 108 46 223; /* purple-600 #6C2EDF */
+  --color-accent-surface: 245 243 255; /* violet-50 #F5F3FF */
+  --color-accent-strong: 109 40 217; /* violet-700 #6D28D9 */
 
-    /* shadcn names, at the values their old HSL variables rendered.
-       TODO(tokens): several differ from the role of the same intent above
-       (foreground #09090B vs foreground-base #141414, muted-foreground
-       #71717A vs foreground-tertiary #83838C, border #E4E4E7 vs border-base
-       #DADADC, ring/primary #18181B vs focus/action). Hundreds of classes
-       render these today, so they keep their values until DS5 moves them. */
-    --color-background: 250 250 250; /* #FAFAFA */
-    --color-foreground: 9 9 11; /* #09090B */
-    --color-card: 255 255 255;
-    --color-card-foreground: 9 9 11;
-    --color-popover: 255 255 255;
-    --color-popover-foreground: 9 9 11;
-    --color-primary: 24 24 27; /* #18181B */
-    --color-primary-foreground: 250 250 250;
-    --color-secondary: 244 244 245; /* #F4F4F5 */
-    --color-secondary-foreground: 24 24 27;
-    --color-muted: 244 244 245;
-    --color-muted-foreground: 113 113 122; /* #71717A */
-    --color-accent: 124 59 237; /* #7C3BED */
-    --color-accent-foreground: 255 255 255;
-    --color-destructive: 239 68 68; /* #EF4444 */
-    --color-destructive-foreground: 250 250 250;
-    --color-border: 228 228 231; /* #E4E4E7, every element's default */
-    --color-input: 214 214 219; /* #D6D6DB */
-    --color-ring: 24 24 27;
-    --color-sidebar: 250 250 250;
-    --color-sidebar-foreground: 63 63 70; /* #3F3F46 */
-    --color-sidebar-primary: 24 24 27;
-    --color-sidebar-primary-foreground: 250 250 250;
-    --color-sidebar-accent: 244 244 245;
-    --color-sidebar-accent-foreground: 24 24 27;
-    --color-sidebar-border: 229 231 235; /* #E5E7EB */
-    --color-sidebar-ring: 59 130 246; /* #3B82F6 */
+  /* Status */
+  --color-error: 239 68 68; /* red-500 #EF4444 */
+  --color-error-hover: 217 54 54; /* red-600 #D93636 */
+  --color-error-foreground: 170 48 48; /* red-700 #AA3030 */
+  --color-error-surface: 254 245 245; /* red-50 #FEF5F5 */
+  --color-warning: 245 158 11; /* amber-500 #F59E0B */
+  --color-warning-foreground: 180 83 9; /* amber-700 #B45309 */
+  --color-warning-surface: 255 251 235; /* amber-50 #FFFBEB */
+  --color-warning-border: 253 230 138; /* amber-200 #FDE68A */
+  --color-success: 20 148 67; /* green-600 #149443 */
+  --color-success-foreground: 16 116 53; /* green-700 #107435 */
+  --color-success-surface: 232 246 237; /* green-50 #E8F6ED */
+  --color-info: 59 130 246; /* blue-500 #3B82F6 */
+  --color-info-foreground: 37 99 235; /* blue-600 #2563EB */
+  --color-info-surface: 239 246 255; /* blue-50 #EFF6FF */
 
-    --radius: 0.5rem;
-  }
+  /* Builder (flow editor) */
+  --color-builder-canvas: 249 249 249; /* #F9F9F9, what the transparent canvas shows (the app inset); not read yet */
+  --color-builder-grid: 145 145 154; /* #91919A, xyflow's default dot colour */
+  --color-node-surface: 254 254 254; /* white #FEFEFE, the node card */
+  --color-node-border: 207 212 219; /* slate-200 #CFD4DB, the node ring at /60 */
+  --color-node-selected: 207 212 219; /* slate-200 #CFD4DB, the selected node's ring */
+  --color-edge: 131 131 140; /* zinc-500 #83838C, an untyped edge (at /50, solid on hover) */
+  --color-handle: 156 163 175; /* gray-400 #9CA3AF, a node's input and output handles */
 
-  .dark {
-    --color-background: 9 9 11;
-    --color-foreground: 250 250 250;
-    --color-card: 9 9 11;
-    --color-card-foreground: 250 250 250;
-    --color-popover: 9 9 11;
-    --color-popover-foreground: 250 250 250;
-    --color-primary: 250 250 250;
-    --color-primary-foreground: 24 24 27;
-    --color-secondary: 39 39 42;
-    --color-secondary-foreground: 250 250 250;
-    --color-muted: 39 39 42;
-    --color-muted-foreground: 161 161 170;
-    --color-accent: 39 39 42;
-    --color-accent-foreground: 250 250 250;
-    --color-destructive: 127 29 29;
-    --color-destructive-foreground: 250 250 250;
-    --color-border: 39 39 42;
-    --color-input: 39 39 42;
-    --color-ring: 212 212 216;
-    --color-sidebar: 24 24 27;
-    --color-sidebar-foreground: 244 244 245;
-    --color-sidebar-primary: 29 78 216;
-    --color-sidebar-primary-foreground: 255 255 255;
-    --color-sidebar-accent: 39 39 42;
-    --color-sidebar-accent-foreground: 244 244 245;
-    --color-sidebar-border: 39 39 42;
-    --color-sidebar-ring: 59 130 246;
-  }
+  /* shadcn names, at the values their old HSL variables rendered.
+     TODO(tokens): several differ from the role of the same intent above
+     (foreground #09090B vs foreground-base #141414, muted-foreground
+     #71717A vs foreground-tertiary #83838C, border #E4E4E7 vs border-base
+     #DADADC, ring/primary #18181B vs focus/action). Hundreds of classes
+     render these today, so they keep their values until DS5 moves them. */
+  --color-background: 250 250 250; /* #FAFAFA */
+  --color-foreground: 9 9 11; /* #09090B */
+  --color-card: 255 255 255;
+  --color-card-foreground: 9 9 11;
+  --color-popover: 255 255 255;
+  --color-popover-foreground: 9 9 11;
+  --color-primary: 24 24 27; /* #18181B */
+  --color-primary-foreground: 250 250 250;
+  --color-secondary: 244 244 245; /* #F4F4F5 */
+  --color-secondary-foreground: 24 24 27;
+  --color-muted: 244 244 245;
+  --color-muted-foreground: 113 113 122; /* #71717A */
+  --color-accent: 124 59 237; /* #7C3BED */
+  --color-accent-foreground: 255 255 255;
+  --color-destructive: 239 68 68; /* #EF4444 */
+  --color-destructive-foreground: 250 250 250;
+  --color-border: 228 228 231; /* #E4E4E7, every element's default */
+  --color-input: 214 214 219; /* #D6D6DB */
+  --color-ring: 24 24 27;
+  --color-sidebar: 250 250 250;
+  --color-sidebar-foreground: 63 63 70; /* #3F3F46 */
+  --color-sidebar-primary: 24 24 27;
+  --color-sidebar-primary-foreground: 250 250 250;
+  --color-sidebar-accent: 244 244 245;
+  --color-sidebar-accent-foreground: 24 24 27;
+  --color-sidebar-border: 229 231 235; /* #E5E7EB */
+  --color-sidebar-ring: 59 130 246; /* #3B82F6 */
 
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-canvas font-sans text-foreground antialiased transition-colors;
-  }
+  --radius: 0.5rem;
+}
 
-  /* Touch screens: no grey flash on tap, and no double-tap zoom on controls,
-     which also drops the wait the browser adds to tell a tap from one. */
-  html {
-    -webkit-tap-highlight-color: transparent;
-  }
+.dark {
+  --color-background: 9 9 11;
+  --color-foreground: 250 250 250;
+  --color-card: 9 9 11;
+  --color-card-foreground: 250 250 250;
+  --color-popover: 9 9 11;
+  --color-popover-foreground: 250 250 250;
+  --color-primary: 250 250 250;
+  --color-primary-foreground: 24 24 27;
+  --color-secondary: 39 39 42;
+  --color-secondary-foreground: 250 250 250;
+  --color-muted: 39 39 42;
+  --color-muted-foreground: 161 161 170;
+  --color-accent: 39 39 42;
+  --color-accent-foreground: 250 250 250;
+  --color-destructive: 127 29 29;
+  --color-destructive-foreground: 250 250 250;
+  --color-border: 39 39 42;
+  --color-input: 39 39 42;
+  --color-ring: 212 212 216;
+  --color-sidebar: 24 24 27;
+  --color-sidebar-foreground: 244 244 245;
+  --color-sidebar-primary: 29 78 216;
+  --color-sidebar-primary-foreground: 255 255 255;
+  --color-sidebar-accent: 39 39 42;
+  --color-sidebar-accent-foreground: 244 244 245;
+  --color-sidebar-border: 39 39 42;
+  --color-sidebar-ring: 59 130 246;
+}
 
-  a,
-  button,
-  input,
-  label,
-  select,
-  summary,
-  textarea,
-  [role="button"] {
-    touch-action: manipulation;
-  }
+* {
+  @apply border-border;
+}
+body {
+  @apply bg-canvas font-sans text-foreground antialiased transition-colors;
+}
+
+/* Touch screens: no grey flash on tap, and no double-tap zoom on controls,
+   which also drops the wait the browser adds to tell a tap from one. */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+a,
+button,
+input,
+label,
+select,
+summary,
+textarea,
+[role="button"] {
+  touch-action: manipulation;
 }
 
 /* *** AutoGPT Design Components *** */
 
-@layer components {
-  .agpt-border-input {
-    /* TODO(tokens): gray-400 (#9CA3AF) has no role yet. */
-    @apply m-0.5 border border-input data-[state=open]:border-gray-400 data-[state=open]:ring-1 data-[state=open]:ring-gray-400 focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400;
-  }
+.agpt-border-input {
+  /* TODO(tokens): gray-400 (#9CA3AF) has no role yet. */
+  @apply m-0.5 border border-input focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400 data-[state=open]:border-gray-400 data-[state=open]:ring-1 data-[state=open]:ring-gray-400;
+}
 
-  .agpt-shadow-input {
-    @apply shadow-sm focus-visible:shadow-md;
-  }
+.agpt-shadow-input {
+  @apply shadow-sm focus-visible:shadow-md;
+}
 
-  .agpt-rounded-card {
-    @apply rounded-2xl;
-  }
+.agpt-rounded-card {
+  @apply rounded-2xl;
+}
 
-  .agpt-card {
-    @apply agpt-rounded-card border border-border-strong bg-surface p-[1px];
-  }
+.agpt-card {
+  @apply rounded-2xl border border-border-strong bg-surface p-[1px];
+}
+
+/*! tailwind-utilities:start (postcss.tailwind3-compat.cjs orders them) */
+@tailwind utilities source(none);
+/*! tailwind-utilities:end */
+
+/* Streamdown's stacked-variant classes, as Tailwind 3 read them (right to
+   left): they style the children of a block that is itself the first or last
+   child. tailwind.config.ts keeps Tailwind 4 from reading them left to right. */
+.\*\:first\:mt-0:first-child > * {
+  margin-top: 0rem;
+}
+.\*\:last\:mb-0:last-child > * {
+  margin-bottom: 0rem;
+}
+.\*\:last\:after\:inline:last-child > *::after {
+  content: var(--tw-content);
+  display: inline;
+}
+.\*\:last\:after\:align-baseline:last-child > *::after {
+  content: var(--tw-content);
+  vertical-align: baseline;
 }
 
 input[type="number"]::-webkit-outer-spin-button,
@@ -193,7 +223,9 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* Google Drive Picker: ensure picker appears above dialogs and can receive clicks */
+/* Google Drive Picker: ensure picker appears above dialogs and can receive
+   clicks. The picker is Google's own markup, so it has no slot; !important
+   beats the z-index and pointer-events Google's script writes inline. */
 [class*="picker-dialog"] {
   z-index: 10000 !important;
   pointer-events: auto !important;
@@ -266,17 +298,6 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   font-size: 1.1em;
 }
 
-/* Expert and Otto profile tabs: body copy inside a tab panel reads at the
-   Overview intro's 15px instead of the default 14px. Scoped to the panels so
-   the tab labels, cards' small captions and the rest of the app keep their
-   sizes. */
-[data-profile-tabs] [role="tabpanel"] .text-sm,
-[data-profile-tabs] [role="tabpanel"] .text-body,
-[data-profile-tabs] [role="tabpanel"] [class*="text-[0.875rem]"] {
-  font-size: 15px;
-  line-height: 1.5rem;
-}
-
 /* DS2b keyframes */
 
 /* GlassOrb (molecules/GlassOrb): each blob turns on its own spinner and
@@ -336,8 +357,8 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
 }
 
 /* DS5g keyframes */
-/* Copilot loaders, moved unchanged from the OrbitLoader, PixelGridLoader and
-   ScaleLoader CSS modules. The modules scoped the names, so they are prefixed
+/* Copilot loaders, moved unchanged from the OrbitLoader and ScaleLoader CSS
+   modules. The modules scoped the names, so they are prefixed
    here. */
 @keyframes orbit-loader-rotate {
   0% {
@@ -378,16 +399,6 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   100% {
     box-shadow: calc(var(--spacing)) 0 0 #a1a1aa;
     margin-top: 0;
-  }
-}
-
-@keyframes pixel-grid-loader-on {
-  0%,
-  100% {
-    opacity: 0.15;
-  }
-  50% {
-    opacity: 1;
   }
 }
 

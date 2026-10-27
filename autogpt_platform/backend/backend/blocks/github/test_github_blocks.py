@@ -1414,6 +1414,31 @@ class TestListDiscussions:
             _list_discussions([categories], category="Ideas")
 
 
+class _FakeAiohttpContent:
+    def __init__(self, body: bytes):
+        self._body = body
+
+    async def iter_chunked(self, size: int):
+        yield self._body
+
+
+class _FakeAiohttpResponse:
+    def __init__(self, method: str, body: bytes):
+        self.method = method
+        self.status = 200
+        self.headers: dict[str, str] = {}
+        self.reason = "OK"
+        self.content_length = len(body)
+        self.content = _FakeAiohttpContent(body)
+        self.request_info = None
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
 def _via_requests(call, responses: list[object]):
     """Run `call` through the real `Requests` stack (only aiohttp.ClientSession
     stubbed); return its result and the (method, url, json) of each request."""
@@ -1428,9 +1453,7 @@ def _via_requests(call, responses: list[object]):
     @contextlib.asynccontextmanager
     async def fake_request(method, url, **req_kwargs):
         sent.append((method, url, copy.deepcopy(req_kwargs.get("json"))))
-        response = mock.Mock(status=200, headers={}, reason="OK")
-        response.read = mock.AsyncMock(return_value=json.dumps(queue.pop(0)).encode())
-        yield response
+        yield _FakeAiohttpResponse(method, json.dumps(queue.pop(0)).encode())
 
     @contextlib.asynccontextmanager
     async def fake_session(**session_kwargs):
