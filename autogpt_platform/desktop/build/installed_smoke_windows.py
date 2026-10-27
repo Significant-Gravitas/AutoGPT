@@ -52,6 +52,73 @@ DIAGNOSTIC_PREFIX = "DESKTOP_SMOKE_DIAGNOSTIC "
 RUNTIME_DIAGNOSTIC_PREFIX = "DESKTOP_SMOKE_RUNTIME_DIAGNOSTIC "
 MAX_RUNTIME_DIAGNOSTICS = 8
 MAX_RUNTIME_DIAGNOSTIC_BYTES = 2048
+MAX_STARTUP_TRACE_BYTES = 1024 * 1024
+MAX_STARTUP_TRACE_LINES = 4096
+MAX_STARTUP_TRACE_LINE_BYTES = 4096
+MAX_STARTUP_TRACE_FRAMES = 32
+MAX_STARTUP_TRACE_EXCEPTIONS = 8
+STARTUP_TRACE_MODULES = {
+    "__init__.py": "autogpt_desktop.__init__",
+    "__main__.py": "autogpt_desktop.__main__",
+    "apps.py": "autogpt_desktop.apps",
+    "backend_entries.py": "autogpt_desktop.backend_entries",
+    "backup.py": "autogpt_desktop.backup",
+    "bootstrap.py": "autogpt_desktop.bootstrap",
+    "claude_code.py": "autogpt_desktop.claude_code",
+    "cookies.py": "autogpt_desktop.cookies",
+    "events.py": "autogpt_desktop.events",
+    "install.py": "autogpt_desktop.install",
+    "layout.py": "autogpt_desktop.layout",
+    "maintenance.py": "autogpt_desktop.maintenance",
+    "migrations.py": "autogpt_desktop.migrations",
+    "ports.py": "autogpt_desktop.ports",
+    "postgres.py": "autogpt_desktop.postgres",
+    "process.py": "autogpt_desktop.process",
+    "proxy.py": "autogpt_desktop.proxy",
+    "rabbitmq.py": "autogpt_desktop.rabbitmq",
+    "resources.py": "autogpt_desktop.resources",
+    "runs.py": "autogpt_desktop.runs",
+    "servicehost.py": "autogpt_desktop.servicehost",
+    "settings.py": "autogpt_desktop.settings",
+    "supervisor.py": "autogpt_desktop.supervisor",
+    "timing.py": "autogpt_desktop.timing",
+    "valkey.py": "autogpt_desktop.valkey",
+    "winlinks.py": "autogpt_desktop.winlinks",
+}
+STARTUP_TRACE_EXCEPTIONS = {
+    "Exception": "unknown",
+    "RuntimeError": "runtime_error",
+    "NotImplementedError": "runtime_error",
+    "AssertionError": "assertion_error",
+    "AttributeError": "attribute_error",
+    "TypeError": "type_error",
+    "ValueError": "value_error",
+    "KeyError": "lookup_error",
+    "IndexError": "lookup_error",
+    "ImportError": "import_error",
+    "ModuleNotFoundError": "import_error",
+    "OSError": "os_error",
+    "FileNotFoundError": "os_error",
+    "PermissionError": "os_error",
+    "FileExistsError": "os_error",
+    "NotADirectoryError": "os_error",
+    "IsADirectoryError": "os_error",
+    "ConnectionError": "os_error",
+    "ConnectionRefusedError": "os_error",
+    "ConnectionResetError": "os_error",
+    "BrokenPipeError": "os_error",
+    "TimeoutError": "timeout",
+    "subprocess.TimeoutExpired": "timeout",
+    "subprocess.CalledProcessError": "subprocess_error",
+    "subprocess.SubprocessError": "subprocess_error",
+    "autogpt_desktop.supervisor.StartupError": "runtime_error",
+    "autogpt_desktop.supervisor.Abandoned": "runtime_error",
+    "autogpt_desktop.bootstrap.InterruptedMigrationError": "runtime_error",
+    "autogpt_desktop.migrations.IncompatibleSchemaError": "runtime_error",
+    "autogpt_desktop.postgres.IncompatibleDataError": "runtime_error",
+    "autogpt_desktop.rabbitmq.IncompatibleDataError": "runtime_error",
+    "autogpt_desktop.servicehost.ContractError": "runtime_error",
+}
 RUNTIME_DIAGNOSTIC_ENUMS = {
     "point": {"ready", "stop"},
     "settle": {
@@ -838,6 +905,158 @@ def run_stage(
             stage.setdefault("exit_code", process.poll())
 
 
+def _parse_startup_failure_trace(raw: bytes) -> dict:
+    """Untrusted log hints only: no extracted text is copied into the result."""
+    result: dict = {
+        "version": 1,
+        "exceptions": [],
+        "truncated": len(raw) > MAX_STARTUP_TRACE_BYTES,
+        "rejected": False,
+        "unavailable": True,
+    }
+    lines = raw[:MAX_STARTUP_TRACE_BYTES].split(b"\n", MAX_STARTUP_TRACE_LINES)
+    if lines[-1]:
+        result["truncated"] = True
+    lines.pop()
+    state = "search"
+    frames: list[dict] = []
+    omitted = 0
+    frame_count = 0
+    header = "Traceback (most recent call last):"
+    logger_prefix = (
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2},[0-9]{3}"
+        r" \[desktop\] "
+    )
+    starts = {
+        f"== start {index} of 4: {title}" for index, title in enumerate(STARTS, 1)
+    }
+    chains = {
+        "The above exception was the direct cause of the following exception:",
+        "During handling of the above exception, another exception occurred:",
+    }
+    for raw_line in lines:
+        if len(raw_line) + 1 > MAX_STARTUP_TRACE_LINE_BYTES:
+            result["truncated"] = True
+            break
+        try:
+            line = raw_line.removesuffix(b"\r").decode("utf-8")
+        except UnicodeError:
+            result["rejected"] = True
+            break
+        if re.search(r"[\x00-\x08\x0b-\x1f\x7f]", line):
+            result["rejected"] = True
+            break
+        marker = re.fullmatch(logger_prefix + r"ERROR startup failed", line)
+        if state == "search":
+            if marker:
+                state = "header"
+                result["unavailable"] = False
+            continue
+        if state == "trailing":
+            if (
+                marker
+                or line == header
+                or line in chains
+                or line.startswith(("  File ", "  + "))
+            ):
+                result["rejected"] = True
+                break
+            continue
+        if state in {"header", "chain_header"}:
+            if state == "chain_header" and not line:
+                continue
+            if line == header:
+                state = "frames"
+                continue
+        elif state == "chain":
+            if not line:
+                continue
+            if line in chains:
+                state = "chain_header"
+                continue
+            if not marker and (
+                re.fullmatch(
+                    logger_prefix + r"(?:DEBUG|INFO|WARNING|ERROR|CRITICAL) .*", line
+                )
+                or line.startswith((DIAGNOSTIC_PREFIX, RUNTIME_DIAGNOSTIC_PREFIX))
+                or line in starts
+            ):
+                state = "trailing"
+                continue
+        else:
+            frame = re.fullmatch(
+                r'  File "([^"\r\n]+)", line ([1-9][0-9]{0,6}), in [^\r\n]+', line
+            )
+            if frame:
+                frame_count += 1
+                if frame_count > MAX_STARTUP_TRACE_FRAMES:
+                    result["truncated"] = True
+                    break
+                number = int(frame[2])
+                if number > 1_000_000:
+                    result["rejected"] = True
+                    break
+                path = frame[1].replace("\\", "/")
+                parts = path.split("/")
+                module = (
+                    STARTUP_TRACE_MODULES.get(parts[-1])
+                    if len(parts) >= 2
+                    and parts[-2] == "autogpt_desktop"
+                    and not {".", ".."}.intersection(parts)
+                    and "://" not in path
+                    else None
+                )
+                if module is None:
+                    omitted += 1
+                else:
+                    frames.append({"module": module, "line": number})
+                continue
+            if (frames or omitted) and line.startswith("    "):
+                continue
+            exception = re.fullmatch(r"([A-Za-z_][A-Za-z_0-9.]{0,199})(?::.*)?", line)
+            if exception and (frames or omitted):
+                if len(result["exceptions"]) >= MAX_STARTUP_TRACE_EXCEPTIONS:
+                    result["truncated"] = True
+                    break
+                result["exceptions"].append(
+                    {
+                        "category": STARTUP_TRACE_EXCEPTIONS.get(
+                            exception[1], "unknown"
+                        ),
+                        "frames": frames,
+                        "omitted_frames": omitted,
+                    }
+                )
+                frames = []
+                omitted = 0
+                state = "chain"
+                continue
+        result["rejected"] = True
+        break
+    if state not in {"search", "chain", "trailing"}:
+        result["rejected"] = True
+    if result["rejected"] or result["truncated"]:
+        result["exceptions"] = []
+    return result
+
+
+def startup_failure_trace(log: Path) -> dict:
+    with contextlib.suppress(Exception, KeyboardInterrupt):
+        plain_path(log)
+        require(stat.S_ISREG(log.stat().st_mode), "startup_trace_not_regular")
+        with log.open("rb") as stream:
+            return _parse_startup_failure_trace(
+                stream.read(MAX_STARTUP_TRACE_BYTES + 1)
+            )
+    return {
+        "version": 1,
+        "exceptions": [],
+        "truncated": False,
+        "rejected": False,
+        "unavailable": True,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifact-dir", type=Path, required=True)
@@ -903,6 +1122,7 @@ def main(argv: list[str] | None = None) -> int:
             result["stages"],
         )
         require(not any((private / "data").iterdir()), "data_directory_not_empty")
+        lifecycle_failed = True
         try:
             run_stage(
                 "lifecycle",
@@ -913,6 +1133,7 @@ def main(argv: list[str] | None = None) -> int:
                 owned,
                 result["stages"],
             )
+            lifecycle_failed = False
         finally:
             try:
                 runtime_diagnostics = {}
@@ -928,6 +1149,10 @@ def main(argv: list[str] | None = None) -> int:
                     "completed": False,
                     "summary_unavailable": True,
                 }
+            if lifecycle_failed or not result["lifecycle"]["completed"]:
+                result["startup_failure_trace"] = startup_failure_trace(
+                    private / "logs/lifecycle.log"
+                )
         require(result["lifecycle"]["completed"], "incomplete_lifecycle")
         result["ok"] = True
     except SmokeError as exc:

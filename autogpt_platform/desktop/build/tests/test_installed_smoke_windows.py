@@ -1,12 +1,16 @@
 """Installer-driver boundaries, without executing an installer or runtime."""
 
+import ast
 import importlib
+import io
 import json
+import logging
 import os
 import subprocess
 import sys
+import traceback
 from pathlib import Path
-from types import SimpleNamespace
+from types import CodeType, FunctionType, SimpleNamespace
 
 import pytest
 
@@ -963,6 +967,590 @@ def test_main_late_cleanup_discovery_cannot_hide_lifecycle_leak(
     assert result.get("error") == ("owned_process_or_port_leak" if leak else None)
     assert "PRIVATE-SENTINEL" not in json.dumps(result)
     assert result["upload_allowlist"] == ["result.json"]
+
+
+TRACE_MARKER = "2026-10-26 12:34:56,789 [desktop] ERROR startup failed\n"
+TRACE_HEADER = "Traceback (most recent call last):\n"
+TRACE_FRAME = (
+    '  File "C:\\PRIVATE-CANARY\\autogpt_desktop\\supervisor.py", '
+    "line 210, in PRIVATE_FUNCTION\n"
+)
+TRACE_BODY = TRACE_HEADER + TRACE_FRAME + "RuntimeError: PRIVATE-MESSAGE\n"
+
+
+def read_trace(driver, tmp_path, text):
+    log = tmp_path / "lifecycle.log"
+    log.write_bytes(text.encode("utf-8") if isinstance(text, str) else text)
+    return driver.startup_failure_trace(log)
+
+
+def trace_result(exceptions=(), **flags):
+    return {
+        "version": 1,
+        "exceptions": list(exceptions),
+        "truncated": False,
+        "rejected": False,
+        "unavailable": False,
+        **flags,
+    }
+
+
+def trace_exception(category="runtime_error", frames=None, omitted=0):
+    return {
+        "category": category,
+        "frames": (
+            [{"module": "autogpt_desktop.supervisor", "line": 210}]
+            if frames is None
+            else frames
+        ),
+        "omitted_frames": omitted,
+    }
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("chain", ["cause", "context"])
+def test_startup_trace_real_python_traceback(driver, tmp_path, newline, chain):
+    def trigger():
+        try:
+            raise FileNotFoundError("PRIVATE-URL https://secret.invalid/token")
+        except FileNotFoundError as cause:
+            if chain == "cause":
+                raise RuntimeError("PRIVATE-MESSAGE") from cause
+            raise RuntimeError("PRIVATE-MESSAGE")
+
+    trigger.__code__ = trigger.__code__.replace(
+        co_filename="C:/PRIVATE-CANARY/autogpt_desktop/postgres.py", co_firstlineno=1
+    )
+    try:
+        trigger()
+    except RuntimeError as exc:
+        text = "".join(traceback.format_exception(exc))
+    result = read_trace(driver, tmp_path, (TRACE_MARKER + text).replace("\n", newline))
+    assert result == trace_result(
+        [
+            trace_exception(
+                "os_error", [{"module": "autogpt_desktop.postgres", "line": 3}]
+            ),
+            trace_exception(
+                "runtime_error",
+                [
+                    {
+                        "module": "autogpt_desktop.postgres",
+                        "line": 6 if chain == "cause" else 7,
+                    }
+                ],
+                1,
+            ),
+        ]
+    )
+    assert "PRIVATE" not in json.dumps(result)
+
+
+def test_startup_trace_python313_carets_unknown_frames_and_classes(driver, tmp_path):
+    text = (
+        TRACE_MARKER
+        + TRACE_HEADER
+        + TRACE_FRAME
+        + "    await PRIVATE_FUNCTION(\n"
+        + "        'PRIVATE-TOKEN-😀',\n"
+        + "    )\n"
+        + "    ^^^^^^^^^^^^^^^^^^^^^^\n"
+        + '  File "C:/PRIVATE-CANARY/site-packages/unknown.py", line 99, in SECRET\n'
+        + "    PRIVATE_LOCALS = 'PRIVATE-SECRET'\n"
+        + "PRIVATE_CLASS: PRIVATE-VALUE\n"
+        + "\nDuring handling of the above exception, another exception occurred:\n\n"
+        + TRACE_HEADER
+        + TRACE_FRAME
+        + "subprocess.CalledProcessError: PRIVATE-ARGS\n"
+    )
+    assert read_trace(driver, tmp_path, text) == trace_result(
+        [trace_exception("unknown", omitted=1), trace_exception("subprocess_error")]
+    )
+
+
+def startup_producer_log(monkeypatch, continuation):
+    runtime = BUILD.parent / "runtime/autogpt_desktop"
+    output = io.StringIO()
+    logger = logging.getLogger("autogpt_desktop")
+    monkeypatch.setattr(logging.root, "handlers", [])
+    monkeypatch.setattr(logging.root, "level", logging.WARNING)
+    monkeypatch.setattr(logger, "handlers", [])
+    monkeypatch.setattr(logger, "propagate", True)
+    monkeypatch.setattr(logger, "level", logging.NOTSET)
+    monkeypatch.setattr(logger, "disabled", False)
+
+    def definition(filename, name, namespace):
+        path = runtime / filename
+        tree = ast.parse(path.read_bytes())
+        node = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == name
+        )
+        module = compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec")
+        code = next(value for value in module.co_consts if isinstance(value, CodeType))
+        return FunctionType(code, namespace)
+
+    events_namespace = {
+        "logging": logging,
+        "sys": SimpleNamespace(stderr=output),
+        "logger": logger,
+        "_emit": lambda record: None,
+    }
+    definition("events.py", "configure_logging", events_namespace)()
+    events = SimpleNamespace(error=definition("events.py", "error", events_namespace))
+    run = definition(
+        "supervisor.py", "run_until_stopped", {"logger": logger, "events": events}
+    )
+
+    def fail():
+        try:
+            inner = FileNotFoundError(
+                "PRIVATE-INNER\nPRIVATE-CONTINUATION"
+                if continuation == "inner_multiline"
+                else "PRIVATE-INNER"
+            )
+            if continuation == "inner_note":
+                inner.add_note("PRIVATE-NOTE")
+            raise inner
+        except FileNotFoundError as inner:
+            outer = RuntimeError(
+                "PRIVATE-OUTER\nPRIVATE-CONTINUATION"
+                if continuation == "outer_multiline"
+                else "PRIVATE-OUTER"
+            )
+            if continuation == "outer_note":
+                outer.add_note("PRIVATE-NOTE")
+            raise outer from inner
+
+    fail.__code__ = fail.__code__.replace(
+        co_filename="C:/PRIVATE/autogpt_desktop/postgres.py"
+    )
+    fake = SimpleNamespace(
+        start=fail,
+        stop_requested=SimpleNamespace(is_set=lambda: False),
+        forget_password_reset=lambda: "",
+    )
+    assert run(fake) == 1
+    return output.getvalue()
+
+
+@pytest.mark.parametrize(
+    "continuation",
+    ["none", "inner_multiline", "inner_note", "outer_multiline", "outer_note"],
+)
+def test_startup_trace_actual_producer_chain_completeness(
+    driver, tmp_path, monkeypatch, continuation
+):
+    text = startup_producer_log(monkeypatch, continuation)
+    assert "[desktop] ERROR startup failed\nTraceback (most recent call last):" in text
+    assert "RuntimeError: PRIVATE-OUTER" in text
+    assert "[desktop] ERROR PRIVATE-OUTER" in text
+    text += (
+        "DESKTOP_SMOKE_RUNTIME_DIAGNOSTIC "
+        + json.dumps(runtime_record())
+        + "\nDESKTOP_SMOKE_DIAGNOSTIC "
+        + json.dumps(diagnostic_record())
+        + "\n"
+    )
+    result = read_trace(driver, tmp_path, text)
+    if continuation == "none":
+        assert [item["category"] for item in result["exceptions"]] == [
+            "os_error",
+            "runtime_error",
+        ]
+        assert any(
+            frame["module"] == "autogpt_desktop.supervisor"
+            for frame in result["exceptions"][1]["frames"]
+        )
+        assert not any(result[key] for key in ("rejected", "truncated", "unavailable"))
+    else:
+        assert result == trace_result(rejected=True)
+    assert "PRIVATE" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    [
+        TRACE_MARKER.replace("startup failed", "PRIVATE-TRAILER"),
+        TRACE_MARKER.replace("ERROR startup failed", "INFO PRIVATE-TRAILER"),
+        "DESKTOP_SMOKE_DIAGNOSTIC {}\n",
+        "DESKTOP_SMOKE_RUNTIME_DIAGNOSTIC {}\n",
+        "== start 1 of 4: fresh install\n",
+    ],
+)
+@pytest.mark.parametrize("later_chain", [False, True])
+def test_startup_trace_boundary_cannot_hide_later_chain(
+    driver, tmp_path, boundary, later_chain
+):
+    text = TRACE_MARKER + TRACE_BODY + boundary
+    if later_chain:
+        text += (
+            "PRIVATE-CONTINUATION\n\n"
+            "The above exception was the direct cause of the following exception:\n\n"
+            + TRACE_BODY
+        )
+    result = read_trace(driver, tmp_path, text)
+    assert result == (
+        trace_result(rejected=True)
+        if later_chain
+        else trace_result([trace_exception()])
+    )
+
+
+@pytest.mark.parametrize(
+    "continuation", ["PRIVATE-NOTE", "    PRIVATE-NOTE", "未知", "__proto__"]
+)
+def test_startup_trace_unrecognized_continuation_is_rejected(
+    driver, tmp_path, continuation
+):
+    result = read_trace(
+        driver, tmp_path, TRACE_MARKER + TRACE_BODY + continuation + "\n"
+    )
+    assert result == trace_result(rejected=True)
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "[desktop] ERROR startup failed\n",
+        TRACE_MARKER.replace("ERROR", "INFO"),
+        TRACE_MARKER.replace("desktop", "other"),
+        TRACE_MARKER.rstrip() + " PRIVATE\n",
+        "PRIVATE " + TRACE_MARKER,
+        '{"message":"' + TRACE_MARKER.rstrip() + '"}\n',
+    ],
+)
+def test_startup_trace_requires_exact_logger_anchor(driver, tmp_path, marker):
+    assert read_trace(driver, tmp_path, marker + TRACE_BODY) == trace_result(
+        unavailable=True
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "RuntimeError: PRIVATE\n",
+        TRACE_HEADER + "RuntimeError: PRIVATE\n",
+        TRACE_HEADER + TRACE_FRAME + '{"__proto__":{"category":"os_error"}}\n',
+        TRACE_HEADER + TRACE_FRAME + "DESKTOP_SMOKE_DIAGNOSTIC {}\n",
+        TRACE_HEADER
+        + TRACE_FRAME.replace("210", "1000001")
+        + "RuntimeError: PRIVATE\n",
+        TRACE_HEADER + TRACE_FRAME.replace("210", "-1") + "RuntimeError: PRIVATE\n",
+        TRACE_HEADER + TRACE_FRAME.replace("210", "２１０") + "RuntimeError: PRIVATE\n",
+        TRACE_HEADER
+        + TRACE_FRAME.replace("  File", "File")
+        + "RuntimeError: PRIVATE\n",
+        TRACE_BODY + TRACE_FRAME,
+        TRACE_HEADER + TRACE_FRAME + TRACE_MARKER + TRACE_BODY,
+        TRACE_HEADER + TRACE_FRAME + "\x1b[31mRuntimeError: PRIVATE\x1b[0m\n",
+        TRACE_HEADER + TRACE_FRAME + "RuntimeError\r: PRIVATE\n",
+    ],
+)
+def test_startup_trace_rejects_malformed_or_injected_structure(driver, tmp_path, body):
+    result = read_trace(driver, tmp_path, TRACE_MARKER + body)
+    assert result["rejected"] is True
+    assert result["exceptions"] == []
+    assert "PRIVATE" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "C:/PRIVATE/autogpt_desktop/not_allowlisted.py",
+        "C:/PRIVATE/other/supervisor.py",
+        "C:/PRIVATE/autogpt_desktop/../supervisor.py",
+        "https://PRIVATE/autogpt_desktop/supervisor.py",
+        "autogpt_desktop/PRIVATE/supervisor.py",
+    ],
+)
+def test_startup_trace_unknown_paths_are_only_counted(driver, tmp_path, path):
+    text = TRACE_MARKER + TRACE_HEADER + f'  File "{path}", line 12, in PRIVATE\n'
+    assert read_trace(driver, tmp_path, text + "ValueError: PRIVATE\n") == trace_result(
+        [trace_exception("value_error", [], 1)]
+    )
+
+
+@pytest.mark.parametrize("suffix", [b"\xff\n", b"RuntimeError: cut", b"\xf0\x9f"])
+def test_startup_trace_invalid_utf8_and_partial_file(driver, tmp_path, suffix):
+    result = read_trace(
+        driver, tmp_path, (TRACE_MARKER + TRACE_HEADER + TRACE_FRAME).encode() + suffix
+    )
+    assert result["exceptions"] == []
+    assert result["rejected"] or result["truncated"]
+
+
+@pytest.mark.parametrize("limit", ["bytes", "lines", "line", "frames", "exceptions"])
+def test_startup_trace_resource_bounds(driver, tmp_path, limit):
+    if limit == "bytes":
+        text = ("x" * 1023 + "\n") * 1024 + TRACE_MARKER + TRACE_BODY
+    elif limit == "lines":
+        text = "\n" * 4096 + TRACE_MARKER + TRACE_BODY
+    elif limit == "line":
+        text = "x" * 1000000 + TRACE_MARKER + TRACE_BODY
+    elif limit == "frames":
+        text = (
+            TRACE_MARKER + TRACE_HEADER + TRACE_FRAME * 33 + "RuntimeError: PRIVATE\n"
+        )
+    else:
+        text = TRACE_MARKER + (
+            "\nThe above exception was the direct cause of the following exception:\n\n"
+        ).join([TRACE_BODY] * 9)
+    result = read_trace(driver, tmp_path, text)
+    assert result["truncated"] is True
+    assert result["exceptions"] == []
+    assert len(json.dumps(result)) < 200
+
+
+def test_startup_trace_read_is_bounded_and_read_only(driver, tmp_path, monkeypatch):
+    log = tmp_path / "lifecycle.log"
+    log.write_bytes(b"synthetic")
+    reads = []
+
+    class Stream(io.BytesIO):
+        def read(self, size=-1):
+            reads.append(size)
+            assert 0 < size <= 1024 * 1024 + 1
+            return super().read(size)
+
+    def opened(path, mode):
+        assert path == log
+        assert mode == "rb"
+        return Stream((TRACE_MARKER + TRACE_BODY).encode())
+
+    monkeypatch.setattr(Path, "open", opened)
+    assert driver.startup_failure_trace(log) == trace_result([trace_exception()])
+    assert reads == [1024 * 1024 + 1]
+
+
+@pytest.mark.parametrize(
+    "boundary", ["bytes", "lines", "line", "frames", "exceptions", "source_line"]
+)
+def test_startup_trace_exact_limits_are_accepted(driver, tmp_path, boundary):
+    text = TRACE_MARKER + TRACE_BODY
+    if boundary == "bytes":
+        remaining = 1024 * 1024 - len(text.encode())
+        text = (
+            ("x" * 4094 + "\n") * (remaining // 4095) + "\n" * (remaining % 4095) + text
+        )
+    elif boundary == "lines":
+        text = "\n" * (4096 - text.count("\n")) + text
+    elif boundary == "line":
+        text = (
+            TRACE_MARKER
+            + TRACE_HEADER
+            + TRACE_FRAME
+            + "RuntimeError: "
+            + "x" * (4095 - len("RuntimeError: "))
+            + "\n"
+        )
+    elif boundary == "frames":
+        text = (
+            TRACE_MARKER + TRACE_HEADER + TRACE_FRAME * 32 + "RuntimeError: PRIVATE\n"
+        )
+    elif boundary == "exceptions":
+        text = (
+            TRACE_MARKER
+            + "\nThe above exception was the direct cause of the following exception:\n\n".join(
+                [TRACE_BODY] * 8
+            )
+        )
+    else:
+        text = text.replace("line 210", "line 1000000")
+    result = read_trace(driver, tmp_path, text)
+    assert result["truncated"] is result["rejected"] is result["unavailable"] is False
+    assert len(result["exceptions"]) == (8 if boundary == "exceptions" else 1)
+    assert len(result["exceptions"][0]["frames"]) == (32 if boundary == "frames" else 1)
+    assert "PRIVATE" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_startup_trace_unavailable_file_is_safe(driver, tmp_path, missing):
+    log = tmp_path / "lifecycle.log"
+    if not missing:
+        log.mkdir()
+    assert driver.startup_failure_trace(log) == trace_result(unavailable=True)
+
+
+def test_startup_trace_reparse_path_is_not_opened(driver, tmp_path, monkeypatch):
+    log = tmp_path / "lifecycle.log"
+    monkeypatch.setattr(
+        Path,
+        "lstat",
+        lambda _: SimpleNamespace(st_mode=0o100600, st_file_attributes=0x400),
+    )
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("reparse log must not be opened")
+
+    monkeypatch.setattr(Path, "open", forbidden)
+    assert driver.startup_failure_trace(log) == trace_result(unavailable=True)
+
+
+@pytest.fixture
+def trace_wrapper(driver, processes, artifact, tmp_path, monkeypatch, capsys):
+    directory, desktop, _, _ = artifact
+    work = tmp_path / "trace-work"
+    monkeypatch.setattr(driver, "require_clean_host", lambda: None)
+    monkeypatch.setenv("GITHUB_SHA", COMMIT)
+    select = driver.select_artifact
+    monkeypatch.setattr(
+        driver, "select_artifact", lambda folder, sha: select(folder, sha, desktop)
+    )
+    monkeypatch.setattr(driver, "private_environment", lambda *args: {})
+    monkeypatch.setattr(driver, "OwnedProcesses", lambda *args: processes.tracker)
+    runtime = processes.install / "resources/runtime"
+    monkeypatch.setattr(
+        driver, "installed_runtime", lambda _: (runtime, runtime / "python.exe", {})
+    )
+    cleanup = processes.tracker.cleanup
+    cleaned = []
+
+    def clean():
+        cleaned.append(True)
+        return cleanup()
+
+    monkeypatch.setattr(processes.tracker, "cleanup", clean)
+
+    def run(failure, text=TRACE_MARKER + TRACE_BODY):
+        def stage(name, command, timeout, private, env, tracker, stages):
+            stages.append({"name": name, "exit_code": 0})
+            if name != "lifecycle":
+                return
+            headings = "\n".join(
+                f"== start {i} of 4: {title}"
+                for i, title in enumerate(driver.STARTS, 1)
+            )
+            (private / "logs/lifecycle.log").write_text(
+                text + headings + "\nOK in 1s\n", encoding="utf-8"
+            )
+            (processes.data / "config").mkdir(parents=True)
+            (processes.data / "config/ports.json").write_text(
+                '{"public":18473}', encoding="utf-8"
+            )
+            if failure is not None:
+                stages[-1]["exit_code"] = 37
+                processes.Process(
+                    55, executable=processes.install / "runtime-worker.exe"
+                )
+                raise failure
+
+        monkeypatch.setattr(driver, "run_stage", stage)
+        code = driver.main(
+            [
+                "--artifact-dir",
+                str(directory),
+                "--work-dir",
+                str(work),
+                "--expected-commit",
+                COMMIT,
+            ]
+        )
+        result = json.loads((work / "result.json").read_text("utf-8"))
+        assert cleaned == [True]
+        assert "PRIVATE" not in json.dumps(result) + capsys.readouterr().out
+        assert (work / "private/logs/lifecycle.log").read_text("utf-8").startswith(text)
+        if isinstance(failure, (RuntimeError, KeyboardInterrupt)):
+            original_log = (work / "private/logs/driver.log").read_text("utf-8")
+            assert type(failure).__name__ + ": PRIVATE-ORIGINAL" in original_log
+            assert "PRIVATE-IO" not in original_log
+            assert "PRIVATE-PARSE" not in original_log
+        assert result["upload_allowlist"] == ["result.json"]
+        return code, result
+
+    return run
+
+
+@pytest.mark.parametrize(
+    "failure", ["lifecycle_exit", "lifecycle_timeout", "driver", "interrupt"]
+)
+@pytest.mark.parametrize("parser_failure", [None, "io", "parse"])
+def test_startup_trace_failed_main_preserves_exit_and_full_cleanup(
+    driver, processes, trace_wrapper, monkeypatch, failure, parser_failure
+):
+    original = (
+        RuntimeError("PRIVATE-ORIGINAL")
+        if failure == "driver"
+        else (
+            KeyboardInterrupt("PRIVATE-ORIGINAL")
+            if failure == "interrupt"
+            else driver.SmokeError(failure)
+        )
+    )
+    if parser_failure == "io":
+        opened = Path.open
+
+        class Unreadable(io.BytesIO):
+            def read(self, size=-1):
+                raise OSError("PRIVATE-IO")
+
+        def open_log(path, mode="r", *args, **kwargs):
+            if path.name == "lifecycle.log" and mode == "rb":
+                with opened(path, mode) as stream:
+                    return Unreadable(stream.read())
+            return opened(path, mode, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", open_log)
+    elif parser_failure == "parse":
+
+        def cannot_parse(*args):
+            raise ValueError("PRIVATE-PARSE")
+
+        monkeypatch.setattr(driver, "_parse_startup_failure_trace", cannot_parse)
+    code, result = trace_wrapper(original)
+    assert code == 1
+    assert result["ok"] is False
+    assert result["error"] == (
+        failure
+        if failure.startswith("lifecycle")
+        else "driver_exception_private_logs_only"
+    )
+    assert result["stages"][-1]["exit_code"] == 37
+    assert result["lifecycle"]["completed"] is True
+    assert processes.killed == [55]
+    assert result["cleanup"]["surviving_owned_pids"] == []
+    assert result["cleanup"]["live_owned_during_cleanup"] == [
+        {"pid": 55, "created": 101.0}
+    ]
+    assert result["startup_failure_trace"] == (
+        trace_result(unavailable=True)
+        if parser_failure
+        else trace_result([trace_exception()])
+    )
+
+
+@pytest.mark.parametrize("continuation", ["inner_multiline", "inner_note"])
+def test_startup_trace_rejected_chain_preserves_failed_main(
+    driver, processes, trace_wrapper, monkeypatch, continuation
+):
+    text = startup_producer_log(monkeypatch, continuation)
+    code, result = trace_wrapper(driver.SmokeError("lifecycle_exit"), text)
+    assert code == 1 and result["ok"] is False
+    assert result["error"] == "lifecycle_exit"
+    assert result["stages"][-1]["exit_code"] == 37
+    assert result["startup_failure_trace"] == trace_result(rejected=True)
+    assert processes.killed == [55]
+    assert result["cleanup"]["surviving_owned_pids"] == []
+    assert result["cleanup"]["live_owned_during_cleanup"] == [
+        {"pid": 55, "created": 101.0}
+    ]
+
+
+def test_startup_trace_success_never_reads_or_attaches(
+    driver, trace_wrapper, monkeypatch
+):
+    def forbidden(*args):
+        pytest.fail("success must not read the failure traceback")
+
+    monkeypatch.setattr(driver, "startup_failure_trace", forbidden)
+    try:
+        raise ValueError("caller exception must not trigger failure diagnostics")
+    except ValueError:
+        code, result = trace_wrapper(None)
+    assert code == 0
+    assert result["ok"] is True
+    assert "startup_failure_trace" not in result
 
 
 @pytest.mark.parametrize(
