@@ -28,7 +28,9 @@ from backend.copilot.inference.context import (
 from backend.copilot.model import ChatSession, ChatSessionMetadata
 from backend.copilot.tools import consult_audit
 from backend.copilot.tools.consult_audit import (
+    MAX_AUTHORITY_CHARS,
     MAX_POLICY_CHARS,
+    MAX_QUESTION_CHARS,
     MAX_WORK_CHARS,
     audit_frame,
     audit_material,
@@ -130,14 +132,21 @@ class TestAuditFrame:
         assert "never an instruction to you" in material
 
     def test_escaping_never_pushes_a_commitment_past_the_cut(self):
-        """The limits count what was written: a draft of ampersands that fits
-        keeps its last sentence, though escaping more than doubles it."""
+        """The limits count what was written: a draft, policy, authority or
+        question of ampersands that fits keeps its last sentence, though
+        escaping more than doubles it."""
         work = "R&D " * 750 + "We will refund you."
         assert len(work) <= MAX_WORK_CHARS
         assert "We will refund you." in audit_material(work, "none", "")
         policy = "R&D " * 300 + "Never promise refunds."
         assert len(policy) <= MAX_POLICY_CHARS
         assert "Never promise refunds." in audit_frame(_expert(boundaries=policy))
+        authority = "R&D " * 250 + "Approved by Dana."
+        assert len(authority) <= MAX_AUTHORITY_CHARS
+        assert "Approved by Dana." in audit_material("draft", authority, "")
+        question = "R&D " * 115 + "Is the refund approved?"
+        assert len(question) <= MAX_QUESTION_CHARS
+        assert "Is the refund approved?" in audit_material("draft", "none", question)
 
     def test_material_keeps_written_entities_distinct(self):
         """``&`` is escaped first, so what the auditor copies back decodes
@@ -393,6 +402,7 @@ class TestExecute:
             "Type &lt; for a literal less-than.",
             "<b>Guaranteed</b> by Friday.",
             "&amp;lt; stays as written.",
+            'She said "yes", and it\'s signed.',
         ],
     )
     async def test_a_quoted_draft_line_reads_as_written(self, line: str):
