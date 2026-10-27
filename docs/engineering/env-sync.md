@@ -15,12 +15,13 @@ poetry run python -m scripts.env_sync \
   --target .env
 ```
 
-This is a dry run. Add `--apply` to write missing values. Replacing a different
-nonempty target value also requires `--replace`. Sources with conflicting values
-are rejected: choose one explicitly. Empty or missing source keys never clear
-the target. Use repeated `--key KEY_NAME` to select another explicit allowlist.
-Use `--windows-host HOST` for additional Windows SSH aliases (`desktop` is one
-by default).
+This is a dry run: it reports each key as `matches`, `different`,
+`missing at target` or `missing at source`. Add `--apply` to write the keys
+missing at the target. Replacing a `different` value also requires `--replace`.
+Sources with conflicting values are rejected: choose one explicitly. Empty or
+missing source keys never clear the target. Use repeated `--key KEY_NAME` to
+select another explicit allowlist. Use `--windows-host HOST` for additional
+Windows SSH aliases (`desktop` is one by default).
 
 Applying checks the target again under a lock just before writing, so a value
 another run added since the report still needs `--replace`. It then copies the
@@ -34,3 +35,7 @@ replaces the target atomically, keeping unrelated settings.
 Tracked files, symlinks and template env files are rejected. Only local
 targets are writable; remote environments stay unchanged. Choose a canonical
 source before enabling any scheduled sync.
+
+A sync that is killed mid-write can leave `<target>.sync-lock`, and possibly an
+`.env-sync-*` file, beside the target. The repository's `.gitignore` covers
+both. Later runs stop and name the lock; delete it once no sync is running.

@@ -35,12 +35,9 @@ def main() -> None:
     try:
         sources = [read_source(source, args.windows_host) for source in args.source]
         values = select_values(sources, keys)
-        changes = changed_values(values, dotenv_values(args.target, interpolate=False))
+        target = dotenv_values(args.target, interpolate=False)
         for key in keys:
-            status = "missing at source"
-            if key in values:
-                status = "different" if key in changes else "matches"
-            print(f"{key}: {status}")
+            print(f"{key}: {key_status(values.get(key), target.get(key))}")
         if not args.apply:
             print("Dry run; no files changed.")
             return
@@ -89,24 +86,24 @@ def windows_read_command(path: str) -> str:
 def select_values(
     sources: list[dict[str, str | None]], keys: list[str]
 ) -> dict[str, str]:
-    selected = {}
+    selected: dict[str, str] = {}
     for key in keys:
-        values = {source[key] for source in sources if source.get(key)}
+        values = {value for source in sources if (value := source.get(key))}
         if len(values) > 1:
             raise ValueError(
                 f"Sources disagree for {key}; choose one source explicitly."
             )
         if values:
-            value = values.pop()
-            if value is not None:
-                selected[key] = value
+            selected[key] = values.pop()
     return selected
 
 
-def changed_values(
-    values: dict[str, str], target: dict[str, str | None]
-) -> dict[str, str]:
-    return {key: value for key, value in values.items() if target.get(key) != value}
+def key_status(source: str | None, target: str | None) -> str:
+    if source is None:
+        return "missing at source"
+    if target == source:
+        return "matches"
+    return "different" if target else "missing at target"
 
 
 def apply_updates(target: Path, values: dict[str, str], replace: bool = False) -> int:
@@ -129,7 +126,13 @@ def apply_updates(target: Path, values: dict[str, str], replace: bool = False) -
     if tracked.returncode == 0:
         raise ValueError("Refusing to write credentials to a tracked file.")
     lock = target.with_name(target.name + ".sync-lock")
-    lock_fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        lock_fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        raise ValueError(
+            f"{lock.name} exists: another sync is running or one was killed. "
+            "Delete it if none is running."
+        ) from None
     try:
         return _write_updates(target, values, replace)
     finally:
@@ -142,7 +145,7 @@ def _write_updates(target: Path, values: dict[str, str], replace: bool) -> int:
     current = dotenv_values(
         stream=io.StringIO(original.decode("utf-8")), interpolate=False
     )
-    changes = changed_values(values, current)
+    changes = {key: value for key, value in values.items() if current.get(key) != value}
     conflicts = [key for key in changes if current.get(key)]
     if conflicts and not replace:
         raise ValueError(
@@ -150,22 +153,36 @@ def _write_updates(target: Path, values: dict[str, str], replace: bool) -> int:
         )
     if not changes:
         return 0
+    updated = _edited(original, changes)
+    if (target.read_bytes() if target.exists() else b"") != original:
+        raise ValueError("Target changed during synchronization; retry.")
+    if target.exists():
+        print(f"Saved the previous {target.name} to {back_up(target, original)}")
+    # The replacement has to sit beside the target for an atomic replace.
     fd, filename = tempfile.mkstemp(prefix=".env-sync-", dir=target.parent)
     temporary = Path(filename)
     try:
         with os.fdopen(fd, "wb") as stream:
-            stream.write(original)
-        for key, value in changes.items():
-            set_key(str(temporary), key, value, quote_mode="always")
-        if (target.read_bytes() if target.exists() else b"") != original:
-            raise ValueError("Target changed during synchronization; retry.")
-        if target.exists():
-            print(f"Saved the previous {target.name} to {back_up(target, original)}")
+            stream.write(updated)
         os.chmod(temporary, 0o600)
         os.replace(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
     return len(changes)
+
+
+def _edited(original: bytes, changes: dict[str, str]) -> bytes:
+    """The target's bytes with *changes* applied, drafted in the private directory.
+
+    ``set_key`` rewrites a file through a temporary file beside it, which here
+    lands outside the target's repository.
+    """
+    with tempfile.TemporaryDirectory(dir=private_directory()) as scratch:
+        draft = Path(scratch) / "draft.env"
+        draft.write_bytes(original)
+        for key, value in changes.items():
+            set_key(str(draft), key, value, quote_mode="always")
+        return draft.read_bytes()
 
 
 def back_up(target: Path, original: bytes) -> Path:
@@ -174,14 +191,19 @@ def back_up(target: Path, original: bytes) -> Path:
     The copy holds every secret in the target, so beside the target ``git add``
     could stage it.
     """
-    directory = backup_directory()
-    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(directory, 0o700)
+    directory = private_directory()
     name = f"{target.parent.name}-{target.name.lstrip('.')}-{time.time_ns()}"
     backup_fd = os.open(directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(backup_fd, "wb") as stream:
         stream.write(original)
     return directory / name
+
+
+def private_directory() -> Path:
+    directory = backup_directory()
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(directory, 0o700)
+    return directory
 
 
 def backup_directory() -> Path:

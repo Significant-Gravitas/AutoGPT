@@ -10,6 +10,25 @@ from dotenv import dotenv_values
 from scripts import env_sync as sync
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = BACKEND_DIR.parents[1]
+
+# Runs a sync that dies like a SIGKILL at its Nth file replacement.
+KILLED_SYNC = """
+import os, sys
+from pathlib import Path
+from scripts import env_sync
+
+replace, calls = os.replace, []
+
+def replace_or_die(*args):
+    calls.append(args)
+    if len(calls) == int(sys.argv[2]):
+        os._exit(9)
+    replace(*args)
+
+os.replace = replace_or_die
+env_sync.apply_updates(Path(sys.argv[1]), {"MICROSOFT_CLIENT_SECRET": "new-value"})
+"""
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +81,70 @@ def test_backup_is_private_and_reported_without_values(tmp_path, state_home, cap
     assert "old-value" not in output and "new-value" not in output
 
 
+@pytest.mark.parametrize("kill_at", [1, 2])
+def test_a_killed_sync_leaves_nothing_to_stage(tmp_path, kill_at):
+    repo = tmp_path / "repo"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / ".gitignore").write_text((REPO_ROOT / ".gitignore").read_text())
+    target = repo / ".env"
+    target.write_text("OTHER='stay'\n")
+    killed = subprocess.run(
+        [sys.executable, "-c", KILLED_SYNC, str(target), str(kill_at)],
+        cwd=BACKEND_DIR,
+        check=False,
+    )
+    assert killed.returncode == 9
+    assert target.read_text() == "OTHER='stay'\n"
+    status = subprocess.run(
+        ["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=all"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert status.stdout.splitlines() == ["?? .gitignore"]
+
+
+def test_a_leftover_lock_is_named_in_the_error(tmp_path):
+    target = tmp_path / ".env"
+    target.write_text("OTHER='stay'\n")
+    lock = tmp_path / ".env.sync-lock"
+    lock.touch()
+    with pytest.raises(ValueError, match=r"\.env\.sync-lock"):
+        sync.apply_updates(target, {"MICROSOFT_CLIENT_SECRET": "new-value"})
+    assert lock.exists()
+    assert target.read_text() == "OTHER='stay'\n"
+
+
+@pytest.mark.parametrize("name", [".env.default", ".env.example", ".env.template"])
+def test_template_targets_are_refused(tmp_path, name):
+    target = tmp_path / name
+    target.write_text("OTHER='stay'\n")
+    with pytest.raises(ValueError, match="private, regular env file"):
+        sync.apply_updates(target, {"MICROSOFT_CLIENT_SECRET": "new-value"})
+    assert target.read_text() == "OTHER='stay'\n"
+
+
+def test_symlinked_targets_are_refused(tmp_path):
+    real = tmp_path / "real.env"
+    real.write_text("OTHER='stay'\n")
+    target = tmp_path / ".env"
+    target.symlink_to(real)
+    with pytest.raises(ValueError, match="private, regular env file"):
+        sync.apply_updates(target, {"MICROSOFT_CLIENT_SECRET": "new-value"})
+    assert real.read_text() == "OTHER='stay'\n"
+
+
+def test_tracked_targets_are_refused(tmp_path):
+    repo = tmp_path / "repo"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    target = repo / ".env"
+    target.write_text("OTHER='stay'\n")
+    subprocess.run(["git", "-C", str(repo), "add", "--force", ".env"], check=True)
+    with pytest.raises(ValueError, match="tracked file"):
+        sync.apply_updates(target, {"MICROSOFT_CLIENT_SECRET": "new-value"})
+    assert target.read_text() == "OTHER='stay'\n"
+
+
 @pytest.mark.parametrize("state", [None, "relative/state"])
 def test_backups_default_to_the_home_state_directory(tmp_path, monkeypatch, state):
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -102,6 +185,26 @@ def test_value_written_after_the_report_still_needs_replace(
     assert "--replace" in capsys.readouterr().err
     secret = dotenv_values(target, interpolate=False)["MICROSOFT_CLIENT_SECRET"]
     assert secret == "theirs"
+
+
+def test_dry_run_reports_each_key_without_writing(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "source.env"
+    source.write_text("MICROSOFT_CLIENT_ID='id'\nMICROSOFT_CLIENT_SECRET='mine'\n")
+    target = tmp_path / ".env"
+    target.write_text("MICROSOFT_CLIENT_SECRET='theirs'\n")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["env_sync", "--source", f"local:{source}", "--target", str(target)],
+    )
+    sync.main()
+    assert capsys.readouterr().out.splitlines() == [
+        "MICROSOFT_CLIENT_ID: missing at target",
+        "MICROSOFT_CLIENT_SECRET: different",
+        "MICROSOFT_TENANT_ID: missing at source",
+        "Dry run; no files changed.",
+    ]
+    assert target.read_text() == "MICROSOFT_CLIENT_SECRET='theirs'\n"
 
 
 def test_non_ascii_values_survive_a_non_utf8_locale(tmp_path):

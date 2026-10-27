@@ -6,6 +6,9 @@ auto_gpt_workspace/*
 .autogpt/
 *.mpeg
 .env
+# Left beside an env file only if scripts/env_sync.py is killed mid-write
+.env-sync-*
+*.sync-lock
 # Root .env files
 /.env
 azure.yaml
