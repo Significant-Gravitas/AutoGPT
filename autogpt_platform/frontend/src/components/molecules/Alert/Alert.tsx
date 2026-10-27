@@ -49,10 +49,14 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
       <div
         ref={ref}
         role="alert"
+        data-slot="alert"
         className={cn(alertVariants({ variant: currentVariant }), className)}
         {...props}
       >
-        <IconComponent className="h-[1.125rem] w-[1.125rem]" />
+        <IconComponent
+          data-slot="alert-icon"
+          className="h-[1.125rem] w-[1.125rem]"
+        />
         {children}
       </div>
     );
@@ -67,6 +71,7 @@ const AlertTitle = React.forwardRef<
   // TODO(tokens): no tracking role for tracking-tight (-0.025em).
   <h5
     ref={ref}
+    data-slot="alert-title"
     className={cn("mb-1 font-medium leading-none tracking-tight", className)}
     {...props}
   />
@@ -80,6 +85,7 @@ const AlertDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
+    data-slot="alert-description"
     className={cn("text-body leading-5 [&_p]:leading-relaxed", className)}
     {...props}
   />

@@ -5,7 +5,7 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
-} from "@/components/__legacy__/ui/carousel";
+} from "@/components/molecules/Carousel/Carousel";
 import { Text } from "@/components/atoms/Text/Text";
 import { ReactNode } from "react";
 import { SectionHeader } from "../SectionHeader";
@@ -57,13 +57,17 @@ export function AgentsSection({
             subtitle={subtitle}
           />
         ) : sectionTitle ? (
-          <h2 className="mb-7 text-2xl font-semibold tracking-[-0.02em] text-zinc-900">
+          <h2 className="mb-7 text-2xl font-semibold tracking-heading text-foreground-strong">
             {sectionTitle}
           </h2>
         ) : null}
         {children}
         {!displayedAgents || displayedAgents.length === 0 ? (
-          <Text variant="body" className="ml-4 mt-8 text-gray-500">
+          <Text
+            // TODO(tokens): no exact role: text-gray-500 #6B7280
+            variant="body"
+            className="ml-4 mt-8 text-gray-500"
+          >
             No workflows found
           </Text>
         ) : (
@@ -98,8 +102,8 @@ export function AgentsSection({
                     </CarouselItem>
                   ))}
                 </CarouselContent>
-                <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[rgb(246,247,248)] to-transparent" />
-                <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[rgb(246,247,248)] to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-canvas to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-canvas to-transparent" />
               </div>
             </Carousel>
 

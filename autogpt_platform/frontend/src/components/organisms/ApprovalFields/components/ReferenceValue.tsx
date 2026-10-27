@@ -11,7 +11,7 @@ interface Props {
 export function ReferenceValue({ refs, total }: Props) {
   const more = total - refs.length;
   return (
-    <span>
+    <span data-slot="reference-value">
       {refs.map((ref, i) => (
         <Fragment key={`${ref.id}-${i}`}>
           {i > 0 && ", "}
@@ -19,7 +19,13 @@ export function ReferenceValue({ refs, total }: Props) {
         </Fragment>
       ))}
       {more > 0 && (
-        <span className="text-foreground-tertiary"> +{more} more</span>
+        <span
+          data-slot="reference-value-more"
+          className="text-foreground-tertiary"
+        >
+          {" "}
+          +{more} more
+        </span>
       )}
     </span>
   );
@@ -28,7 +34,11 @@ export function ReferenceValue({ refs, total }: Props) {
 function ReferenceName({ reference }: { reference: Reference }) {
   if (!reference.name)
     return (
-      <span translate="no" className="font-mono text-body-sm leading-inherit">
+      <span
+        translate="no"
+        data-slot="reference-name"
+        className="font-mono text-body-sm leading-inherit"
+      >
         {reference.id}
       </span>
     );

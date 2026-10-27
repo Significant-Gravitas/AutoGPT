@@ -8,10 +8,12 @@ export function BaseTrigger({ children }: PropsWithChildren) {
   const child = children as React.ReactElement<{
     className?: string;
     onClick?: () => void;
+    "data-slot"?: string;
   }>;
 
   return React.cloneElement(child, {
     onClick: ctx.handleOpen,
     className: cn("cursor-pointer", child.props.className),
+    "data-slot": child.props["data-slot"] ?? "dialog-trigger",
   });
 }

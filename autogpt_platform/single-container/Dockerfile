@@ -41,10 +41,11 @@ RUN npm install --global "npm@${NPM_VERSION}" \
 
 # RabbitMQ's official image ships a self-contained Erlang/OpenSSL runtime.
 # Pin the current supported 4.1.x patch by its multi-platform manifest.
-FROM rabbitmq:4.3.6@sha256:42b190dffdd0cdb656f989f5404c30e1049d6b7d9c987089669b1905e5e3a1a6 AS rabbitmq
+FROM rabbitmq:4.3.6@sha256:3e5cc23235b0eb850f604e8ace10d9a9b6d05be3e36730e53522ee9ead707a9e AS rabbitmq
 
 # FalkorDB provides the Graphiti memory store. Copy only the server and module;
 # its browser UI is not part of the appliance image.
+# Ahead of infra's 4.12.5 until every FalkorDB pin and the Redis license bundle move together (OPEN-3746, #16224).
 FROM falkordb/falkordb-server:v4.20.1@sha256:8b676c2e72271f5d06541136eb214b0db50180636cc86f7ee38d63287e9b8d13 AS falkordb
 
 # autogpt-backend is supplied by Docker Bake from the existing backend

@@ -26,7 +26,6 @@ from backend.data.onboarding_wizard import (
 )
 from backend.data.subscription_trial import get_subscription_trial
 from backend.data.user import get_user_by_id
-from backend.util.cache import cached
 from backend.util.json import SafeJson
 from backend.util.product_analytics import track_onboarding_completed
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -40,7 +39,6 @@ REASON_MAPPING: dict[str, list[str]] = {
     "personal_productivity": ["personal", "productivity"],
 }
 POINTS_AGENT_COUNT = 50  # Number of agents to calculate points for
-MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
 
 # OnboardingStep and FrontendOnboardingStep are imported from
 # backend.data.onboarding_steps and remain importable from this module for
@@ -565,15 +563,3 @@ def format_brain_dump_for_extraction(
             ),
         ]
     )
-
-
-@cached(maxsize=1, ttl_seconds=300)  # Cache for 5 minutes since this rarely changes
-async def onboarding_enabled() -> bool:
-    """
-    Check if onboarding should be enabled based on store agent count.
-    Cached to prevent repeated slow database queries.
-    """
-    # Use a more efficient query that stops counting after finding enough agents
-    count = await prisma.models.StoreAgent.prisma().count(take=MIN_AGENT_COUNT + 1)
-    # Onboarding is enabled if there are at least 2 agents in the store
-    return count >= MIN_AGENT_COUNT

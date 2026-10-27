@@ -127,6 +127,7 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>(
       <ConfettiContext.Provider value={api}>
         <canvas
           ref={canvasElRef}
+          data-slot="confetti"
           className={cn(
             "pointer-events-none fixed inset-0 z-50 h-full w-full",
             className,

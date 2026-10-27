@@ -35,7 +35,7 @@ export function BudgetLowHint({ usage, className }: Props) {
       )}
     >
       <BudgetRing label={WINDOW_LABEL[budget.window]} percent={percent} />
-      <Text variant="small" className="!text-xs !text-zinc-500">
+      <Text variant="small" className="!text-xs !text-foreground-tertiary">
         {budgetLowHint(budget.window, percent)}
       </Text>
     </div>

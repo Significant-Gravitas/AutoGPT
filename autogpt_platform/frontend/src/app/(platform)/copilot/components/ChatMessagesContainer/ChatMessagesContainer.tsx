@@ -6,8 +6,11 @@ import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+} from "@/components/organisms/Conversation/Conversation";
+import {
+  Message,
+  MessageContent,
+} from "@/components/organisms/Message/Message";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { UIDataTypes, UIMessage, UITools } from "ai";
@@ -244,6 +247,7 @@ export function LoadMoreSentinel({
       {isLoading ? (
         <LoadingSpinner
           data-testid="load-more-spinner"
+          // TODO(tokens): no exact role for text-neutral-400
           className="h-5 w-5 text-neutral-400"
         />
       ) : (
@@ -448,7 +452,10 @@ export function ChatMessagesContainer({
   function renderRow({ message, rowIndex }: TranscriptRow) {
     if (getRowHeldCallKind(message) === "answered") {
       return (
-        <Text variant="small" className="py-1 text-center text-zinc-500">
+        <Text
+          variant="small"
+          className="py-1 text-center text-foreground-tertiary"
+        >
           {answeredLabel(renderRows, rowIndex)}
         </Text>
       );
@@ -550,7 +557,10 @@ export function ChatMessagesContainer({
             !isRestoringActiveSession &&
             !showPendingSend && (
               <div className="flex flex-1 items-center justify-center">
-                <LoadingSpinner className="text-neutral-600" />
+                <LoadingSpinner
+                  // TODO(tokens): no exact role for text-neutral-600
+                  className="text-neutral-600"
+                />
               </div>
             )}
           {transcriptRows.length > 0 && (
@@ -573,28 +583,43 @@ export function ChatMessagesContainer({
               from="assistant"
               className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
             >
-              <MessageContent className="text-[1rem] leading-relaxed">
+              <MessageContent className="text-body-lg leading-relaxed">
                 {indicator}
               </MessageContent>
             </Message>
           )}
           {!readOnly && isRestoringActiveSession && (
             <Message from="assistant">
-              <MessageContent className="text-[1rem] leading-relaxed text-slate-900">
+              <MessageContent
+                // TODO(tokens): no exact role for text-slate-900
+                className="text-body-lg leading-relaxed text-slate-900"
+              >
                 {showRestoreFallback ? (
-                  <div className="flex flex-col gap-1 text-sm text-slate-500">
+                  <div
+                    // TODO(tokens): no exact role for text-slate-500
+                    className="flex flex-col gap-1 text-sm text-slate-500"
+                  >
                     <ThinkingIndicator
                       active
                       startedAtMs={restoreClock.startedAtMs}
                       statusMessage={restoreStatusMessage ?? "Reconnecting…"}
                     />
-                    <span className="pl-6 text-xs text-slate-400">
+                    <span
+                      // TODO(tokens): no exact role for text-slate-400
+                      className="pl-6 text-xs text-slate-400"
+                    >
                       Still syncing the latest progress.
                     </span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                    <LoadingSpinner className="h-4 w-4 text-neutral-500" />
+                  <div
+                    // TODO(tokens): no exact role for text-slate-500
+                    className="flex items-center gap-2 text-sm text-slate-500"
+                  >
+                    <LoadingSpinner
+                      // TODO(tokens): no exact role for text-neutral-500
+                      className="h-4 w-4 text-neutral-500"
+                    />
                     <span>Retrieving latest messages</span>
                   </div>
                 )}
@@ -621,16 +646,19 @@ export function ChatMessagesContainer({
               <Message key={idx} from="user">
                 <MessageContent
                   className={cn(
-                    "flex flex-col gap-1 border border-dashed border-zinc-300 bg-zinc-100 px-4 py-2.5 text-zinc-900 opacity-60",
+                    "flex flex-col gap-1 border border-dashed border-border-strong bg-surface-hover px-4 py-2.5 text-foreground-strong opacity-60",
                     isCompact
                       ? "rounded-xl text-sm leading-6"
-                      : "rounded-3xl text-[1rem] leading-relaxed",
+                      : "rounded-3xl text-body-lg leading-relaxed",
                   )}
                 >
                   <span>
                     <CredentialMentionText text={msg} />
                   </span>
-                  <span className="flex items-center gap-1 text-xs text-slate-500">
+                  <span
+                    // TODO(tokens): no exact role for text-slate-500
+                    className="flex items-center gap-1 text-xs text-slate-500"
+                  >
                     <Icon icon={Clock01Icon} className="size-3" />
                     Queued
                   </span>

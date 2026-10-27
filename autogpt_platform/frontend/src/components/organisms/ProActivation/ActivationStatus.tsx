@@ -38,8 +38,11 @@ export function ActivationStatus({
     attempt?.error_code ?? "",
   );
   return (
-    <div className="space-y-6">
-      <div className="rounded-xlarge border border-border-base bg-surface-muted p-5">
+    <div data-slot="activation-status" className="space-y-6">
+      <div
+        data-slot="activation-status-panel"
+        className="rounded-xlarge border border-border-base bg-surface-muted p-5"
+      >
         <Icon
           icon={
             isReady

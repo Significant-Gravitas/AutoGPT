@@ -38,6 +38,7 @@ from typing import Any
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
+from backend.data.workspace_internal import WORKING_FILE_METADATA
 from backend.util.egress_proxy import egress_proxy_url
 from backend.util.request import validate_url_host
 
@@ -231,7 +232,7 @@ _session_locks: dict[str, asyncio.Lock] = {}
 _session_locks_mutex = asyncio.Lock()
 
 # Workspace filename for persisted browser state (auto-scoped to session).
-# Dot-prefixed so it is hidden from user workspace listings.
+# Written as a working file, so the user's file lists leave it out.
 _STATE_FILENAME = "._browser_state.json"
 
 # Maximum concurrent subprocesses during cookie/storage restore.
@@ -336,6 +337,7 @@ async def _save_browser_state(
             filename=_STATE_FILENAME,
             mime_type="application/json",
             overwrite=True,
+            metadata=WORKING_FILE_METADATA,
         )
     except Exception:
         logger.warning(

@@ -29,7 +29,9 @@ const reactCompiler = require("babel-plugin-react-compiler");
 const FRONTEND_ROOT = path.resolve(__dirname, "../../../../..");
 const COMPILED_DIRS = [
   "src/app/(platform)/copilot",
-  "src/components/ai-elements",
+  "src/components/organisms/Conversation",
+  "src/components/organisms/Message",
+  "src/components/organisms/PromptInput",
 ];
 
 /**

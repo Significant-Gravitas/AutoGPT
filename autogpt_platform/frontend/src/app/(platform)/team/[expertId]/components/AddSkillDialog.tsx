@@ -208,8 +208,12 @@ function SkillOption({
   onAdd,
 }: OptionProps) {
   return (
-    <li className="flex items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2.5">
-      <Icon icon={icon} size={18} className="shrink-0 text-zinc-500" />
+    <li className="flex items-center gap-3 rounded-lg border border-border-base px-3 py-2.5">
+      <Icon
+        icon={icon}
+        size={18}
+        className="shrink-0 text-foreground-tertiary"
+      />
       <span className="min-w-0 flex-1">
         <Text
           variant="body-medium"

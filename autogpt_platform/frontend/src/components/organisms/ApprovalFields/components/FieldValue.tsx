@@ -24,10 +24,16 @@ interface Props {
 export function FieldValue({ name, value, clipped, format }: Props) {
   const kind = fieldKind(name, value);
   const shortened = clipped ? (
-    <span className="ml-1 text-foreground-subtle">(shortened)</span>
+    <span
+      data-slot="field-value-shortened"
+      className="ml-1 text-foreground-subtle"
+    >
+      (shortened)
+    </span>
   ) : null;
   const formatted = formattedText(format, value);
-  if (formatted) return <span>{formatted}</span>;
+  if (formatted)
+    return <span data-slot="field-value-formatted">{formatted}</span>;
 
   switch (kind) {
     case "secret":
@@ -36,6 +42,7 @@ export function FieldValue({ name, value, clipped, format }: Props) {
       return (
         <pre
           translate="no"
+          data-slot="field-value-code"
           // max-h-64: twelve lines at leading-5 plus py-2.
           // TODO(tokens): no foreground role for zinc-100 (#EFEFF0) on the
           // dark code surface.
@@ -49,18 +56,30 @@ export function FieldValue({ name, value, clipped, format }: Props) {
       return <LongText text={String(value)} shortened={shortened} />;
     case "list":
       return (
-        <span translate="no">
+        <span data-slot="field-value-list" translate="no">
           {listText(value as unknown[])}
           {shortened}
         </span>
       );
     case "object":
       return (
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-l border-border-base pl-3">
+        <dl
+          data-slot="field-value-object"
+          className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-l border-border-base pl-3"
+        >
           {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
-            <div key={k} className="contents">
-              <dt className="text-foreground-tertiary">{humanize(k)}</dt>
-              <dd className="min-w-0">
+            <div
+              key={k}
+              data-slot="field-value-object-row"
+              className="contents"
+            >
+              <dt
+                data-slot="field-value-object-label"
+                className="text-foreground-tertiary"
+              >
+                {humanize(k)}
+              </dt>
+              <dd data-slot="field-value-object-value" className="min-w-0">
                 {v === REDACTED ? (
                   <Hidden />
                 ) : Array.isArray(v) ? (
@@ -75,18 +94,24 @@ export function FieldValue({ name, value, clipped, format }: Props) {
       );
     case "json":
       return (
-        <details className="group">
-          <summary className="cursor-pointer text-foreground-secondary underline decoration-border-strong underline-offset-2 hover:text-foreground-strong">
+        <details data-slot="field-value-json" className="group">
+          <summary
+            data-slot="field-value-json-toggle"
+            className="cursor-pointer text-foreground-secondary underline decoration-border-strong underline-offset-2 hover:text-foreground-strong"
+          >
             View as JSON
           </summary>
-          <pre className="mt-1.5 max-h-64 overflow-auto rounded-lg bg-surface-muted px-3 py-2 font-mono text-xs text-foreground-emphasis">
+          <pre
+            data-slot="field-value-json-body"
+            className="mt-1.5 max-h-64 overflow-auto rounded-lg bg-surface-muted px-3 py-2 font-mono text-xs text-foreground-emphasis"
+          >
             {JSON.stringify(value, null, 2)}
           </pre>
         </details>
       );
     default:
       return (
-        <span>
+        <span data-slot="field-value-scalar">
           {scalarText(value)}
           {shortened}
         </span>
@@ -102,9 +127,13 @@ interface LongTextProps {
 function LongText({ text, shortened }: LongTextProps) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex flex-col items-start gap-1">
+    <div
+      data-slot="field-value-long-text"
+      className="flex flex-col items-start gap-1"
+    >
       <div
         tabIndex={open ? 0 : undefined}
+        data-slot="field-value-long-text-body"
         className={cn(
           "w-full rounded-lg bg-surface-muted px-3 py-2",
           open &&
@@ -112,6 +141,7 @@ function LongText({ text, shortened }: LongTextProps) {
         )}
       >
         <p
+          data-slot="field-value-long-text-content"
           // line-clamp-3 is CLAMP_LINES.
           className={cn("whitespace-pre-wrap", !open && "line-clamp-3")}
         >
@@ -137,8 +167,11 @@ function LongText({ text, shortened }: LongTextProps) {
 
 function Hidden() {
   return (
-    <span className="text-foreground-tertiary">
-      <span aria-hidden="true">•••••••• </span>hidden
+    <span data-slot="field-value-hidden" className="text-foreground-tertiary">
+      <span data-slot="field-value-hidden-mask" aria-hidden="true">
+        ••••••••{" "}
+      </span>
+      hidden
     </span>
   );
 }

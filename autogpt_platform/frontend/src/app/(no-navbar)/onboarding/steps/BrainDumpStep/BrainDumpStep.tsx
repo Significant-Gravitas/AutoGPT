@@ -18,6 +18,8 @@ import { OrbControlButton } from "./components/OrbControlButton";
 import { ScreenState, useBrainDumpStep } from "./useBrainDumpStep";
 
 const FAILURE_HEADLINE = "That didn't go through.";
+const MIC_UNAVAILABLE_COPY =
+  "We couldn't open your microphone. You can write it instead.";
 const TYPING_HEADLINE = "Write to me about your work";
 // "Catch" fits a mishearing, not a typed answer — the typed reject asks
 // for more instead of implying the system misheard.
@@ -130,10 +132,23 @@ export function BrainDumpStep() {
                   isOffline={dump.isOffline}
                 />
               ) : orbScreen === "rest" ? (
-                <RestActions
-                  onTalk={dump.handleStart}
-                  onWrite={dump.showTyping}
-                />
+                <>
+                  <RestActions
+                    onTalk={dump.handleStart}
+                    onWrite={dump.showTyping}
+                    writeFirst={dump.isMicUnavailable}
+                  />
+                  {dump.isMicUnavailable && (
+                    <Text
+                      variant="body"
+                      tone="muted"
+                      role="alert"
+                      className="mt-3 text-center"
+                    >
+                      {MIC_UNAVAILABLE_COPY}
+                    </Text>
+                  )}
+                </>
               ) : (
                 orbScreen === "failed" && (
                   <OrbControlButton

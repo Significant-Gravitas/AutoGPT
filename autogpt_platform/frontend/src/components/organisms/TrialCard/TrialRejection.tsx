@@ -10,7 +10,11 @@ interface Props {
 export function TrialRejection({ reason }: Props) {
   const alreadyUsed = reason === "intro_offer_already_used";
   return (
-    <div role="status" className="flex flex-col gap-3">
+    <div
+      role="status"
+      data-slot="trial-rejection"
+      className="flex flex-col gap-3"
+    >
       <TrialTitle>
         {alreadyUsed
           ? "This introductory offer has already been used"

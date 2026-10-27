@@ -165,7 +165,9 @@ export function PanelResizeHandle({
     >
       <div
         className={cn(
+          // TODO(tokens): no exact role for group-hover:bg-violet-400
           "h-full w-px bg-transparent transition-colors group-hover:w-0.5 group-hover:bg-violet-400",
+          // TODO(tokens): no exact role for bg-violet-500
           isDragging && "w-0.5 bg-violet-500",
         )}
       />

@@ -26,6 +26,7 @@ export function IntegrationsMarquee({ variant = "light", className }: Props) {
   return (
     <div
       aria-hidden
+      data-slot="integrations-marquee"
       className={cn(
         "relative flex h-[200px] w-[340px] flex-col justify-center gap-3 overflow-hidden [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_18%,black_82%,transparent_100%)] [mask-image:linear-gradient(to_right,transparent_0%,black_18%,black_82%,transparent_100%)]",
         className,
@@ -62,6 +63,7 @@ function MarqueeRow({
 
   return (
     <motion.div
+      data-slot="integrations-marquee-row"
       className="flex w-max gap-3 will-change-transform"
       animate={reduceMotion ? undefined : { x: animateX }}
       transition={
@@ -88,6 +90,7 @@ function GhostIntegrationCard({
   return (
     <div
       // TODO(tokens): no shadow token for 0 1px 2px rgba(0,0,0,0.03).
+      data-slot="integrations-marquee-card"
       className={cn(
         "flex h-[58px] w-[180px] shrink-0 items-center gap-3 rounded-xl border px-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)]",
         isDark
@@ -96,6 +99,7 @@ function GhostIntegrationCard({
       )}
     >
       <div
+        data-slot="integrations-marquee-card-logo-wrap"
         className={cn(
           "flex size-8 shrink-0 items-center justify-center rounded-lg",
           isDark ? "bg-surface/[0.06]" : "bg-surface-muted/60",
@@ -109,20 +113,26 @@ function GhostIntegrationCard({
           height={20}
           loading="lazy"
           decoding="async"
+          data-slot="integrations-marquee-card-logo"
           className={cn(
             "size-5 rounded-sm object-contain",
             isDark ? "" : "opacity-80",
           )}
         />
       </div>
-      <div className="flex flex-1 flex-col gap-1.5">
+      <div
+        data-slot="integrations-marquee-card-lines"
+        className="flex flex-1 flex-col gap-1.5"
+      >
         <div
+          data-slot="integrations-marquee-card-line"
           className={cn(
             "h-2 w-3/4 rounded-full",
             isDark ? "bg-surface/15" : "bg-surface-hover/80",
           )}
         />
         <div
+          data-slot="integrations-marquee-card-line"
           className={cn(
             "h-2 w-1/2 rounded-full",
             isDark ? "bg-surface/10" : "bg-surface-hover/80",

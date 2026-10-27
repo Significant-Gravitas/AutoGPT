@@ -20,7 +20,11 @@ interface Props extends SubscriptionPlansProps {
 export function SubscriptionOffer({ plan, onTrialDetails, ...props }: Props) {
   const presentation = getPlanPresentation(plan, props);
   return (
-    <section aria-label={`${plan.name} plan`} className="h-full">
+    <section
+      aria-label={`${plan.name} plan`}
+      data-slot="subscription-offer"
+      className="h-full"
+    >
       <Card
         className={cn(
           "flex h-full flex-col rounded-2xl border border-border-strong bg-surface p-5 shadow-none",
@@ -48,7 +52,10 @@ function OfferHeading({
   trial: TrialOfferResponse | null;
 }) {
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2">
+    <div
+      data-slot="offer-heading"
+      className="mb-3 flex flex-wrap items-center gap-2"
+    >
       <Text
         variant="h5"
         as="h2"
@@ -58,6 +65,7 @@ function OfferHeading({
       </Text>
       {plan.usage && (
         <span
+          data-slot="offer-heading-usage"
           // TODO(tokens): no role for the purple-100 pill or its purple-700
           // text.
           className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700"
@@ -67,6 +75,7 @@ function OfferHeading({
       )}
       {plan.badge && (
         <span
+          data-slot="offer-heading-badge"
           className={cn(
             "rounded-full px-2 py-0.5 text-xs",
             plan.highlighted
@@ -81,6 +90,7 @@ function OfferHeading({
       )}
       {trial && (
         <span
+          data-slot="offer-heading-trial"
           // TODO(tokens): no role for the purple-50 pill or its purple-700
           // text.
           className="ml-auto rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700"
@@ -99,7 +109,10 @@ function OfferPrice({
 }) {
   return (
     <>
-      <div className="mb-1 flex flex-wrap items-baseline gap-x-1.5">
+      <div
+        data-slot="offer-price"
+        className="mb-1 flex flex-wrap items-baseline gap-x-1.5"
+      >
         <Text
           variant="h3"
           as="span"
@@ -134,10 +147,18 @@ function OfferFeatures({
   isTeam: boolean;
 }) {
   return (
-    <ul className="mb-4 mt-3 flex-1 space-y-1.5 border-t border-separator pt-3">
+    <ul
+      data-slot="offer-features"
+      className="mb-4 mt-3 flex-1 space-y-1.5 border-t border-separator pt-3"
+    >
       {features.map((feature) => (
-        <li key={feature} className="flex items-start gap-2">
+        <li
+          key={feature}
+          data-slot="offer-features-item"
+          className="flex items-start gap-2"
+        >
           <span
+            data-slot="offer-features-icon"
             className={cn(
               "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full",
               // TODO(tokens): no role for the purple-50 tick surface.

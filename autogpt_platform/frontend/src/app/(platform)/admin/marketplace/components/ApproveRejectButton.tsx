@@ -6,7 +6,7 @@
 // text-red-600 = error-hover (a hover fill).
 
 import { useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { CheckCircle, XCircle } from "lucide-react";
 import {
   Dialog,
@@ -15,9 +15,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/__legacy__/ui/dialog";
-import { Label } from "@/components/__legacy__/ui/label";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
+import { Label } from "@/components/atoms/Label/Label";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import { useRouter } from "next/navigation";
 import {
@@ -60,8 +60,8 @@ export function ApproveRejectButtons({
     <>
       {!isApproved && (
         <Button
-          size="sm"
-          variant="outline"
+          size="legacy-sm"
+          variant="legacy-outline"
           className="text-success hover:bg-success-surface hover:text-success-foreground"
           onClick={(e) => {
             e.stopPropagation();
@@ -73,8 +73,8 @@ export function ApproveRejectButtons({
         </Button>
       )}
       <Button
-        size="sm"
-        variant="outline"
+        size="legacy-sm"
+        variant="legacy-outline"
         className="text-red-600 hover:bg-error-surface hover:text-error-foreground"
         onClick={(e) => {
           e.stopPropagation();
@@ -118,12 +118,14 @@ export function ApproveRejectButtons({
             <DialogFooter>
               <Button
                 type="button"
-                variant="outline"
+                variant="legacy-outline"
                 onClick={() => setIsApproveDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit">Approve</Button>
+              <Button variant="legacy-default" type="submit">
+                Approve
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -174,12 +176,12 @@ export function ApproveRejectButtons({
             <DialogFooter>
               <Button
                 type="button"
-                variant="outline"
+                variant="legacy-outline"
                 onClick={() => setIsRejectDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" variant="destructive">
+              <Button type="submit" variant="legacy-destructive">
                 {isApproved ? "Revoke" : "Reject"}
               </Button>
             </DialogFooter>
