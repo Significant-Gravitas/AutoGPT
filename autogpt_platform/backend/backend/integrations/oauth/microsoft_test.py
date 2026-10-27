@@ -38,9 +38,7 @@ TOKENS = {
 }
 
 
-def _app(
-    mocker, client_id: str = "", secret: str = "", browser: bool = True
-) -> None:
+def _app(mocker, client_id: str = "", secret: str = "", browser: bool = True) -> None:
     settings = mocker.patch(
         "backend.integrations.oauth.microsoft_tokens.Settings"
     ).return_value
