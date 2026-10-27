@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from sentry_sdk.tracing import Span
 
 from backend.copilot import ai_spans
+from backend.copilot.constants import AUTOPILOT_BLOCK_TOOL_NAME
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamReasoningDelta,
@@ -164,16 +165,21 @@ def turn_origin(
     session_origin: "ChatSessionOrigin | None" = None,
 ) -> str:
     """What started a turn: ``scheduled`` (a schedule, or a turn nobody is
-    watching), ``spawned`` (a subtask), ``automation`` (a turn in a chat a
-    workflow's AutoPilot block opened, whose every prompt is machine-written),
-    ``system`` (the platform, not a message) or ``chat`` (a message someone
-    sent). Without *session_origin*, an automation chat's turn reads as
-    ``chat``; the executor passes it once the session is loaded."""
+    watching), ``spawned`` (a subtask), ``automation`` (a workflow's AutoPilot
+    block, whose prompts are machine-written), ``system`` (the platform, not a
+    message) or ``chat`` (a message someone sent).
+
+    The block is known by what dispatched the turn (``entry.tool_name``), so a
+    message someone types into a chat the block opened stays ``chat``. An
+    entry queued before ``tool_name`` existed falls back to the chat's
+    origin, which the executor passes once the session is loaded."""
     if entry.scheduled is not None or entry.unattended:
         return "scheduled"
     if entry.envelope is not None and entry.envelope.depth > 0:
         return "spawned"
-    if session_origin == "automation":
+    if entry.tool_name == AUTOPILOT_BLOCK_TOOL_NAME:
+        return "automation"
+    if entry.tool_name is None and session_origin == "automation":
         return "automation"
     if not entry.is_user_message:
         return "system"

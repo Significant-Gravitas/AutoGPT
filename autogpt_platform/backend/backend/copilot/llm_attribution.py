@@ -20,10 +20,12 @@ OpenRouter Broadcast sends every generation to PostHog LLM analytics as an
   - ``metadata_environment``: the app environment;
   - ``metadata_impersonated``: whether an admin started the turn as the
     user;
-  - ``metadata_turn_origin``: what started the turn (``chat``,
-    ``scheduled``, ``spawned``, ``automation`` or ``system``), as on its
-    ``$ai_trace``
-    (``turn_tracing.turn_origin``), left out for a call made outside a turn;
+  - ``metadata_turn_origin``: what started the turn that made the call
+    (``chat``, ``scheduled``, ``spawned``, ``automation`` or ``system``,
+    ``turn_tracing.turn_origin``), left out for a call made outside a turn.
+    A reply's own calls match its ``$ai_trace``'s ``turn_origin``; a
+    subtask's calls join the reply's trace but carry the subtask's origin,
+    as on its ``$ai_span``;
   - ``metadata_revision``: the deployed build's git sha from
     ``config.sentry_release``, left out when that is blank.
 

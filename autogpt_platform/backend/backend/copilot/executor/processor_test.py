@@ -327,11 +327,12 @@ class TestExecuteAsyncScheduledTurnContext:
 
     @pytest.mark.asyncio
     async def test_a_workflow_blocks_turn_is_not_tagged_as_typed(self) -> None:
-        """An AutoPilot block dispatches like a typed message; its chat's
-        origin is what says nobody wrote the prompt."""
+        """An AutoPilot block dispatches like a typed message; what dispatched
+        the turn says nobody wrote the prompt."""
         session = ChatSession.new("user-1", dry_run=False, origin="automation")
+        entry = _make_entry().model_copy(update={"tool_name": "autopilot_block"})
 
-        seen = await self._seen_by_the_turn(_make_entry(), session)
+        seen = await self._seen_by_the_turn(entry, session)
 
         assert seen["turn_origin"] == "automation"
         assert seen["unattended"] is True

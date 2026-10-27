@@ -69,22 +69,45 @@ def test_turn_origin_says_what_started_the_turn(
 
 
 @pytest.mark.parametrize(
-    ("changes", "expected"),
+    ("changes", "session_origin", "expected"),
     [
-        ({}, "automation"),
-        ({"is_user_message": False}, "automation"),
-        ({"envelope": TurnEnvelope(tree_id="turn-0", depth=1)}, "spawned"),
-        ({"unattended": True}, "scheduled"),
+        ({"tool_name": "autopilot_block"}, None, "automation"),
+        ({"tool_name": "autopilot_block"}, "automation", "automation"),
+        (
+            {"tool_name": "autopilot_block", "is_user_message": False},
+            None,
+            "automation",
+        ),
+        ({"tool_name": "chat"}, "automation", "chat"),
+        ({"tool_name": None}, "automation", "automation"),
+        ({"tool_name": None}, "interactive", "chat"),
+        (
+            {
+                "tool_name": "autopilot_block",
+                "envelope": TurnEnvelope(tree_id="turn-0", depth=1),
+            },
+            None,
+            "spawned",
+        ),
+        ({"tool_name": "autopilot_block", "unattended": True}, None, "scheduled"),
     ],
-    ids=["its message", "the platform", "a subtask", "unattended"],
+    ids=[
+        "the block, legacy chat",
+        "the block",
+        "the block's system note",
+        "someone typing in the block's chat",
+        "an old entry in an automation chat",
+        "an old entry in a typed chat",
+        "a subtask",
+        "unattended",
+    ],
 )
-def test_a_turn_in_a_chat_a_workflow_opened_is_automation(
-    changes: dict[str, object], expected: str
+def test_a_workflows_autopilot_block_turn_is_automation(
+    changes: dict[str, object], session_origin: str | None, expected: str
 ):
     entry = _entry().model_copy(update=changes)
 
-    assert turn_origin(entry, "automation") == expected
-    assert turn_origin(entry, "interactive") != "automation"
+    assert turn_origin(entry, session_origin) == expected  # type: ignore[arg-type]
 
 
 def test_the_origin_the_executor_sets_is_the_one_the_trace_reports(
