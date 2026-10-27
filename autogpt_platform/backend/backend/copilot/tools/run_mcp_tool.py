@@ -542,7 +542,7 @@ class RunMCPToolTool(BaseTool):
                 session_id=session_id,
             ).from_outside(error_text, listed)
 
-        result_value = parse_mcp_content(result.content)
+        result_value = parse_mcp_content(result.content, result.structured_content)
 
         return MCPToolOutputResponse(
             message=f"MCP tool '{tool_name}' executed successfully.",

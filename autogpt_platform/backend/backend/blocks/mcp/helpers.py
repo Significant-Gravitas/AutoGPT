@@ -74,9 +74,13 @@ def mcp_authorization_header(credentials: OAuth2Credentials) -> str:
     return f"Bearer {token}"
 
 
-def parse_mcp_content(content: list[dict[str, Any]]) -> Any:
+def parse_mcp_content(
+    content: list[dict[str, Any]],
+    structured_content: dict[str, Any] | None = None,
+) -> Any:
     """Parse MCP tool response content into a plain Python value.
 
+    Structured content is authoritative when present, including an empty object.
     - text items: parsed as JSON when possible, kept as str otherwise
     - image items: kept as ``{type, data, mimeType}`` dict for frontend rendering
     - resource items: unwrapped to their resource payload dict
@@ -84,6 +88,8 @@ def parse_mcp_content(content: list[dict[str, Any]]) -> Any:
     Single-item responses are unwrapped from the list; multiple items are
     returned as a list; empty content returns ``None``.
     """
+    if structured_content is not None:
+        return structured_content
     output_parts: list[Any] = []
     for item in content:
         item_type = item.get("type")
