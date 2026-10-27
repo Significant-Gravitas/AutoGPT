@@ -132,6 +132,11 @@ class SuggestedTask(SuggestedPrompt):
     session_id: str | None = None
     """The chat a ``sent`` row started."""
     updated_at: datetime | None = None
+    kickoff: bool = False
+    """Otto started this row's chat on the user's behalf during onboarding."""
+    kickoff_status: Literal["working", "ready"] | None = None
+    """For a ``kickoff`` row, whether Otto is still on it. Read from the
+    chat on every list read and never stored."""
 
 
 class SuggestedTasksResponse(BaseModel):

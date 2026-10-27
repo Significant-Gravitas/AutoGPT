@@ -951,6 +951,33 @@ async def test_intro_card_is_withheld_from_a_user_who_already_has_a_session(
 
 
 @pytest.mark.asyncio
+async def test_intro_card_survives_onboarding_draft_sessions(
+    dumps: DumpStore, has_session: AsyncMock
+):
+    # Otto starts the user's first tasks in the background during
+    # onboarding; those sessions are not the user chatting, so the
+    # greeting must still meet them.
+    async def only_drafts(user_id: str, *, ignore_onboarding_drafts: bool = False):
+        return not ignore_onboarding_drafts
+
+    has_session.side_effect = only_drafts
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You mentioned the weekly order emails.",
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_done is False
+    assert card.greeting == "You mentioned the weekly order emails."
+    assert dumps.greeting_seen_writes == 0
+
+
+@pytest.mark.asyncio
 async def test_intro_card_is_withheld_from_a_chatting_user_without_a_dump_row(
     dumps: DumpStore, has_session: AsyncMock
 ):

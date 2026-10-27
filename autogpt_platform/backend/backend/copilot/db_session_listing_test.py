@@ -22,6 +22,7 @@ from uuid import uuid4
 import pytest
 from prisma.enums import ResourceVisibility
 from prisma.models import ChatSession as PrismaChatSession
+from prisma.models import User
 from prisma.types import ChatSessionCreateInput
 
 from backend.copilot.db import (
@@ -36,7 +37,7 @@ from backend.copilot.db import (
     update_chat_session_title,
     user_has_any_session,
 )
-from backend.copilot.model import ChatSessionMetadata
+from backend.copilot.model import ONBOARDING_DRAFT_KIND, ChatSessionMetadata
 from backend.util.json import SafeJson
 
 _NULL_SAFE_DREAM_FILTER = "(metadata->>'kind' IS DISTINCT FROM 'dream')"
@@ -239,6 +240,22 @@ async def test_presence_is_false_when_the_user_owns_no_visible_session():
         assert await user_has_any_session("u1") is False
 
 
+@pytest.mark.asyncio
+async def test_presence_can_leave_out_onboarding_drafts():
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await user_has_any_session("u1")
+        default_query = raw.call_args.args[0]
+        await user_has_any_session("u1", ignore_onboarding_drafts=True)
+        draftless_query = raw.call_args.args[0]
+
+    draft_filter = "(metadata->>'kind' IS DISTINCT FROM 'onboarding_draft')"
+    assert draft_filter not in default_query
+    assert draft_filter in draftless_query
+    assert _NULL_SAFE_DREAM_FILTER in draftless_query
+    assert "LIMIT 1" in draftless_query
+
+
 # ---------- NULL semantics against the real database ----------
 
 
@@ -339,6 +356,24 @@ async def test_title_search_matches_literally_and_skips_dream_sessions(
     assert normal.session_id in result_ids
     assert decoy.session_id not in result_ids
     assert dream.session_id not in result_ids
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_onboarding_draft_sessions_count_only_when_asked(server):
+    """A user whose only chat is one Otto started during onboarding has
+    a session, but not one they started themselves."""
+    user_id = str(uuid4())
+    await User.prisma().create(
+        data={"id": user_id, "email": f"{uuid4().hex}@example.com"}
+    )
+    await create_chat_session(
+        str(uuid4()),
+        user_id,
+        metadata=ChatSessionMetadata(kind=ONBOARDING_DRAFT_KIND),
+    )
+
+    assert await user_has_any_session(user_id) is True
+    assert await user_has_any_session(user_id, ignore_onboarding_drafts=True) is False
 
 
 # ---------- get_sessions_with_pending_question (Home "Needs You") ----------

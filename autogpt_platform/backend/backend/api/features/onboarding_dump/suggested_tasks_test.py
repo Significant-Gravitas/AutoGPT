@@ -6,6 +6,7 @@ proven against Postgres in ``suggested_tasks_db_test.py``.
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from unittest.mock import AsyncMock
 
 import fastapi
 import fastapi.testclient
@@ -15,8 +16,9 @@ from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
 from pytest_mock import MockerFixture
 
-from backend.api.features.onboarding_dump import intro, routes
+from backend.api.features.onboarding_dump import intro, routes, suggested_tasks
 from backend.api.rest_api import app as rest_app
+from backend.copilot.model import ChatSessionInfo
 
 app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
 app.include_router(routes.router)
@@ -257,3 +259,86 @@ def test_an_empty_id_list_is_refused(rows: RowStore):
     rows.put(STORED)
 
     assert update([], "dismissed").status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_mark_kicked_off_sets_sent_session_and_flag(rows: RowStore):
+    rows.put(STORED)
+
+    response = await suggested_tasks.mark_kicked_off(
+        "test-user-id", "1", "draft-session-1"
+    )
+
+    task = response.tasks[1]
+    assert (task.state, task.session_id, task.kickoff) == (
+        "sent",
+        "draft-session-1",
+        True,
+    )
+    assert task.updated_at is not None
+    assert [t.kickoff for t in response.tasks] == [False, True, False]
+    assert rows.row is not None
+    stored = rows.row.suggestedPrompts
+    assert isinstance(stored, list)
+    assert stored[1]["kickoff"] is True
+    assert all("kickoff_status" not in item for item in stored)
+
+
+@pytest.mark.asyncio
+async def test_mark_kicked_off_is_idempotent(rows: RowStore):
+    rows.put(STORED)
+    await suggested_tasks.mark_kicked_off("test-user-id", "1", "draft-session-1")
+
+    response = await suggested_tasks.mark_kicked_off(
+        "test-user-id", "1", "another-session"
+    )
+
+    assert response.tasks[1].session_id == "draft-session-1"
+    assert rows.writes == 1
+
+
+def test_get_suggested_tasks_reports_kickoff_status_from_chat_status(
+    rows: RowStore, mocker: MockerFixture, test_user_id: str
+):
+    def kicked_off(session_id: str) -> dict[str, Any]:
+        return {**STORED[0], "state": "sent", "session_id": session_id, "kickoff": True}
+
+    rows.put(
+        [
+            {**STORED[0], "state": "sent", "session_id": "typed-by-user"},
+            kicked_off("draft-running"),
+            kicked_off("draft-queued"),
+            kicked_off("draft-done"),
+            kicked_off("draft-gone"),
+        ]
+    )
+    chat_statuses = {
+        "draft-running": "running",
+        "draft-queued": "queued",
+        "draft-done": "idle",
+    }
+
+    async def session_meta(session_id: str, user_id: str | None = None):
+        status = chat_statuses.get(session_id)
+        if status is None:
+            return None
+        return ChatSessionInfo.model_construct(chat_status=status)
+
+    meta = mocker.patch.object(
+        suggested_tasks,
+        "get_chat_session_metadata",
+        new=AsyncMock(side_effect=session_meta),
+    )
+
+    tasks = client.get(URL).json()["tasks"]
+
+    assert [t["kickoff_status"] for t in tasks] == [
+        None,
+        "working",
+        "working",
+        "ready",
+        "ready",
+    ]
+    looked_up = {call.args[0] for call in meta.await_args_list}
+    assert "typed-by-user" not in looked_up
+    assert all(call.args[1:] == (test_user_id,) for call in meta.await_args_list)

@@ -29,6 +29,7 @@ from backend.util.json import SafeJson, dumps, sanitize_string
 
 from .model import (
     CHAT_STATUS_RUNNING,
+    ONBOARDING_DRAFT_KIND,
     ChatMessage,
     ChatSessionInfo,
     ChatSessionMetadata,
@@ -815,6 +816,9 @@ def exclude_dream_sessions_sql(column: str = "metadata") -> str:
 
 
 _EXCLUDE_DREAM_SESSIONS_SQL = exclude_dream_sessions_sql()
+_EXCLUDE_ONBOARDING_DRAFTS_SQL = (
+    f"(metadata->>'kind' IS DISTINCT FROM '{ONBOARDING_DRAFT_KIND}')"
+)
 
 
 async def get_user_chat_sessions(
@@ -934,16 +938,25 @@ async def get_user_session_count(
     return rows[0]["count"] if rows else 0
 
 
-async def user_has_any_session(user_id: str) -> bool:
+async def user_has_any_session(
+    user_id: str, *, ignore_onboarding_drafts: bool = False
+) -> bool:
     """Whether the user has at least one visible chat session.
 
     The presence-only counterpart to :func:`get_user_session_count`, for
     callers that only compare the total against zero: it stops at the
     first matching row instead of scanning every session the user owns.
+
+    ``ignore_onboarding_drafts`` leaves out the sessions Otto started on
+    the user's behalf during onboarding, for callers asking whether the
+    user has chatted themselves.
     """
+    conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    if ignore_onboarding_drafts:
+        conditions.append(_EXCLUDE_ONBOARDING_DRAFTS_SQL)
     rows = await db.query_raw_with_schema(
-        'SELECT 1 FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
-        + _EXCLUDE_DREAM_SESSIONS_SQL
+        'SELECT 1 FROM {schema_prefix}"ChatSession" WHERE '
+        + " AND ".join(conditions)
         + " LIMIT 1",
         user_id,
     )

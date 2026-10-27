@@ -844,7 +844,7 @@ async def _retire_greeting_if_chatted(user_id: str) -> bool:
     it answers "no" and the rest of the checks decide.
     """
     try:
-        if not await user_has_any_session(user_id):
+        if not await user_has_any_session(user_id, ignore_onboarding_drafts=True):
             return False
     except Exception as e:
         logger.warning("Brain dump greeting: session lookup failed: %s", e)

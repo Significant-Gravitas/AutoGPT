@@ -99,6 +99,12 @@ class PendingQuestion(BaseModel):
     asked_at: datetime
 
 
+# ``ChatSessionMetadata.kind`` of a session Otto started on the user's
+# behalf during onboarding (a suggested first task). It is a real chat the
+# user reads and replies to, but not one they started themselves.
+ONBOARDING_DRAFT_KIND = "onboarding_draft"
+
+
 class ChatSessionMetadata(BaseModel):
     """Typed metadata stored in the ``metadata`` JSON column of ChatSession.
 
@@ -545,6 +551,7 @@ class ChatSession(ChatSessionInfo):
         delegated_by_session_id: str | None = None,
         handed_off_from_expert_id: str | None = None,
         autopilot_mode: AutopilotMode | None = None,
+        kind: str = "normal",
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -566,6 +573,7 @@ class ChatSession(ChatSessionInfo):
                 delegated_by_session_id=delegated_by_session_id,
                 handed_off_from_expert_id=handed_off_from_expert_id,
                 autopilot_mode=autopilot_mode,
+                kind=kind,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1409,6 +1417,7 @@ async def create_chat_session(
     handed_off_from_expert_id: str | None = None,
     autopilot_mode: AutopilotMode | None = None,
     inherited_autopilot_mode: AutopilotMode | None = None,
+    kind: str = "normal",
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1444,6 +1453,8 @@ async def create_chat_session(
             target expert (``gate.child_autopilot_mode``). Stored
             as-is: it is a constraint rather than a pick, so the flag does
             not drop it and the expert is not read a second time.
+        kind: ``ChatSessionMetadata.kind``; ``ONBOARDING_DRAFT_KIND`` for a
+            suggested first task Otto starts during onboarding.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1474,6 +1485,7 @@ async def create_chat_session(
         delegated_by_session_id=delegated_by_session_id,
         handed_off_from_expert_id=handed_off_from_expert_id,
         autopilot_mode=autopilot_mode,
+        kind=kind,
     )
 
     # Create in database first - fail fast if this fails
