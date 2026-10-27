@@ -11,6 +11,7 @@ import logging
 from typing import Any
 
 from backend.copilot.expert_kickoff import is_hidden_chat_message
+from backend.copilot.hidden_rows import is_hidden_from_model
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.service import strip_injected_context_for_display
 from backend.data.db_accessors import chat_db, experts_db
@@ -340,9 +341,12 @@ def _render(
 
     Mirrors the chat API's own read path: control turns the UI hides stay
     hidden, and the server-injected ``<…_context>`` prefixes are stripped
-    from user rows.
+    from user rows. The platform's notes to the owner are left out too: this
+    goes to a model, and no model reads those back.
     """
     if message.sequence is None or is_hidden_chat_message(message.metadata):
+        return None
+    if is_hidden_from_model(message.metadata):
         return None
     if message.role == "tool" and not include_tool_results:
         return None

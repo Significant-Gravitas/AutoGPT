@@ -39,6 +39,7 @@ export function typeBadgeLabel(type: CredentialType): string {
 }
 
 const PROVIDER_DISPLAY_NAME_OVERRIDES: Record<string, string> = {
+  aiml_api: "AI/ML API",
   github: "GitHub",
   google: "Google",
   google_maps: "Google Maps",
@@ -148,7 +149,7 @@ function toCredentialView(
     isSignIn,
     blocksNote:
       isSignIn && hasBlocks
-        ? `${serviceLabel} blocks in agents need their own connection.`
+        ? `${serviceLabel} blocks in workflows need their own connection.`
         : null,
   };
 }

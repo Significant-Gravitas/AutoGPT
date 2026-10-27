@@ -21,6 +21,7 @@ import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
 import { SelectedViewLayout } from "../SelectedViewLayout";
+import { RunFailures } from "./components/RunFailures/RunFailures";
 import { RunOutputs } from "./components/RunOutputs";
 import { RunSummary } from "./components/RunSummary";
 import { SelectedRunActions } from "./components/SelectedRunActions/SelectedRunActions";
@@ -103,6 +104,8 @@ export function SelectedRunView({
                 />
               )}
 
+            {run ? <RunFailures run={run} /> : null}
+
             <ScrollableTabs
               defaultValue={withReviews ? "reviews" : "output"}
               className="-mt-2 flex flex-col"
@@ -140,7 +143,7 @@ export function SelectedRunView({
                             emptyMessage="No pending reviews for this execution"
                           />
                         ) : (
-                          <Text variant="body" className="text-zinc-700">
+                          <Text variant="body" className="text-foreground-body">
                             No pending reviews for this execution
                           </Text>
                         )}
@@ -159,7 +162,7 @@ export function SelectedRunView({
                             <Text variant="lead-semibold">Summary</Text>
                             <InformationTooltip
                               iconSize={20}
-                              description="This AI-generated summary describes how the agent handled your task. It's an experimental feature and may occasionally be inaccurate."
+                              description="This AI-generated summary describes how the workflow handled your task. It's an experimental feature and may occasionally be inaccurate."
                             />
                           </div>
                         }
@@ -175,13 +178,23 @@ export function SelectedRunView({
                   <div className="scroll-mt-4">
                     <RunDetailCard title="Output">
                       {isLoading ? (
-                        <div className="text-neutral-500">
+                        <div
+                          // TODO(tokens): no exact role for text-neutral-500 (#737373)
+                          className="text-neutral-500"
+                        >
                           <LoadingSpinner />
                         </div>
                       ) : run && "outputs" in run ? (
-                        <RunOutputs outputs={run.outputs as any} />
+                        <RunOutputs
+                          outputs={run.outputs as any}
+                          hiddenFromReplay
+                        />
                       ) : (
-                        <Text variant="body" className="text-neutral-600">
+                        <Text
+                          // TODO(tokens): no exact role for text-neutral-600 (#525252)
+                          variant="body"
+                          className="text-neutral-600"
+                        >
                           No output from this run.
                         </Text>
                       )}
@@ -198,7 +211,7 @@ export function SelectedRunView({
                           <Text variant="lead-semibold">Your input</Text>
                           <InformationTooltip
                             iconSize={20}
-                            description="This is the input that was provided to the agent for running this task."
+                            description="This is the input that was provided to the workflow for running this task."
                           />
                         </div>
                       }

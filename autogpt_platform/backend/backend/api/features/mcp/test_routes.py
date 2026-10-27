@@ -5,19 +5,23 @@ to avoid creating blocking portals that can corrupt pytest-asyncio's session eve
 """
 
 import asyncio
+from http import HTTPStatus
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 import fastapi
 import httpx
 import pytest
 import pytest_asyncio
 from autogpt_libs.auth import get_user_id
+from multidict import CIMultiDict, CIMultiDictProxy
 from pydantic import SecretStr
 
+from backend.api.features.mcp.oauth_registration import preregistered_client
 from backend.api.features.mcp.routes import NO_OAUTH_CODE, router
 from backend.blocks.mcp.client import MCPClientError, MCPTool
 from backend.data.model import OAuth2Credentials
-from backend.util.request import HTTPClientError, HTTPServerError
+from backend.util.request import HTTPClientError, HTTPServerError, Response
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -269,6 +273,36 @@ class TestDiscoverTools:
         assert response.status_code == 401
         assert "requires authentication" in response.json()["detail"]
 
+    @pytest.mark.parametrize(
+        "remote_status, expected_status", [(404, 400), (429, 429), (503, 502)]
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_discover_tools_never_shows_the_remote_error_page(
+        self, client, remote_status, expected_status
+    ):
+        # Only the HTTP layer is faked, so the real client's era fallback
+        # produces the exception the route has to map.
+        with (
+            patch("backend.blocks.mcp.client.Requests") as MockRequests,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            MockRequests.return_value.post = AsyncMock(
+                return_value=_website_error_page(remote_status)
+            )
+            response = await client.post(
+                "/discover-tools",
+                json={"server_url": "https://blog.example.com/mcp"},
+            )
+
+        detail = response.json()["detail"]
+        assert response.status_code == expected_status
+        assert f"HTTP {remote_status}" in detail
+        assert "<!doctype" not in detail.lower()
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_missing_url(self, client):
         response = await client.post("/discover-tools", json={})
@@ -306,7 +340,7 @@ class TestOAuthLogin:
             )
             mock_register.return_value = {
                 "client_id": "registered-client-id",
-                "client_secret": "registered-secret",
+                "client_secret": "registered-secret",  # pragma: allowlist secret
             }
             mock_cm.store.store_state_token = AsyncMock(
                 return_value=("state-token-123", "code-challenge-abc")
@@ -382,6 +416,233 @@ class TestOAuthLogin:
         assert response.status_code == 200
         data = response.json()
         assert "autogpt-platform" in data["login_url"]
+
+    @staticmethod
+    def _mock_slack_discovery(MockClient, **metadata_overrides):
+        # What mcp.slack.com serves: no registration_endpoint, confidential
+        # clients only.
+        instance = MockClient.return_value
+        instance.discover_auth = AsyncMock(
+            return_value={
+                "authorization_servers": ["https://mcp.slack.com"],
+                "resource": "https://mcp.slack.com",
+                "scopes_supported": ["search:read.public", "users:read"],
+            }
+        )
+        instance.discover_auth_server_metadata = AsyncMock(
+            return_value=(
+                {
+                    "issuer": "https://mcp.slack.com",
+                    "authorization_endpoint": "https://slack.com/oauth/v2_user/authorize",
+                    "token_endpoint": "https://slack.com/api/oauth.v2.user.access",
+                    "token_endpoint_auth_methods_supported": ["client_secret_post"],
+                    **metadata_overrides,
+                },
+                "https://mcp.slack.com",
+            )
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_slack_uses_configured_client(self, client):
+        """Slack has no DCR, so sign-in must send the platform's Slack app id,
+        not the placeholder Slack rejects with "Invalid client_id parameter"."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            self._mock_slack_discovery(MockClient)
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+            mock_settings.secrets.slack_mcp_client_id = "1234.5678"
+            mock_settings.secrets.slack_mcp_client_secret = "slack-secret"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.slack.com/mcp"},
+            )
+
+        assert response.status_code == 200
+        login_url = urlsplit(response.json()["login_url"])
+        assert login_url.scheme == "https"
+        assert login_url.hostname == "slack.com"
+        assert login_url.path == "/oauth/v2_user/authorize"
+        query = parse_qs(login_url.query)
+        assert query["client_id"] == ["1234.5678"]
+        assert "client_secret" not in query
+        assert "slack-secret" not in login_url.query
+        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
+            "state_metadata"
+        ]
+        assert state_metadata["client_id"] == "1234.5678"
+        assert state_metadata["client_secret"] == "slack-secret"
+        assert state_metadata["token_endpoint_auth_method"] == "client_secret_post"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_slack_unconfigured_is_no_oauth(self, client):
+        """Without a Slack app configured, say so instead of sending Slack a
+        client id it will reject after the user has left the platform."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            self._mock_slack_discovery(MockClient)
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+            mock_settings.secrets.slack_mcp_client_id = ""
+            mock_settings.secrets.slack_mcp_client_secret = ""
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.slack.com/mcp"},
+            )
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert detail["code"] == NO_OAUTH_CODE
+        assert detail["message"] == (
+            "Sign-in to mcp.slack.com is not set up on this platform yet: the "
+            "server only accepts an OAuth app registered with it in advance. "
+            "You may need to provide an auth credential manually."
+        )
+        mock_cm.store.store_state_token.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "server_url",
+        [
+            "https://mcp.slack.com.evil.example/mcp",
+            "https://evilmcp.slack.com/mcp",
+            "https://mcp.slack.com@evil.example/mcp",
+            "http://mcp.slack.com/mcp",
+        ],
+    )
+    def test_preregistered_client_matches_exact_host(self, server_url):
+        secrets = MagicMock(
+            slack_mcp_client_id="1234.5678", slack_mcp_client_secret="slack-secret"
+        )
+        assert preregistered_client(server_url, secrets) is None
+        assert preregistered_client("https://mcp.slack.com/mcp", secrets) == (
+            "1234.5678",
+            "slack-secret",
+        )
+
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            {"token_endpoint": "http://slack.com/api/oauth.v2.user.access"},
+            {"token_endpoint": "https://collector.example/token"},
+            {"token_endpoint": "https://slack.com.evil.example/token"},
+            {"token_endpoint": "https://slack.com@collector.example/token"},
+            {"authorization_endpoint": "http://slack.com/oauth/v2_user/authorize"},
+            {"authorization_endpoint": "https://evil.example/oauth/authorize"},
+        ],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_slack_refuses_untrusted_endpoints(
+        self, client, endpoint
+    ):
+        """The secret is posted to the discovered token endpoint, so a Slack
+        sign-in whose endpoints are not Slack's own over HTTPS is refused
+        before the secret is stored for the callback."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            self._mock_slack_discovery(MockClient, **endpoint)
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+            mock_settings.secrets.slack_mcp_client_id = "1234.5678"
+            mock_settings.secrets.slack_mcp_client_secret = "slack-secret"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.slack.com/mcp"},
+            )
+
+        assert response.status_code == 400
+        assert "slack-secret" not in response.text
+        mock_cm.store.store_state_token.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "revocation_endpoint,expected",
+        [
+            ("https://collector.example/revoke", None),
+            ("https://slack.com.evil.example/revoke", None),
+            ("https://slack.com/api/auth.revoke", "https://slack.com/api/auth.revoke"),
+        ],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_slack_drops_off_host_revocation_endpoint(
+        self, client, revocation_endpoint, expected
+    ):
+        """Revocation authenticates with the client secret too, so an off-host
+        revocation endpoint is dropped while sign-in itself still works."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            self._mock_slack_discovery(
+                MockClient, revocation_endpoint=revocation_endpoint
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+            mock_settings.secrets.slack_mcp_client_id = "1234.5678"
+            mock_settings.secrets.slack_mcp_client_secret = "slack-secret"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.slack.com/mcp"},
+            )
+
+        assert response.status_code == 200
+        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
+            "state_metadata"
+        ]
+        assert state_metadata["client_secret"] == "slack-secret"
+        assert state_metadata["revoke_url"] == expected
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_cleartext_slack_url_never_gets_the_secret(self, client):
+        """Over plain HTTP the discovery answer can be rewritten in transit,
+        so the platform's Slack app is not used at all."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            self._mock_slack_discovery(
+                MockClient, token_endpoint="https://collector.example/token"
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+            mock_settings.secrets.slack_mcp_client_id = "1234.5678"
+            mock_settings.secrets.slack_mcp_client_secret = "slack-secret"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "http://mcp.slack.com/mcp"},
+            )
+
+        # Slack only takes secret-holding clients, so with its app ruled out
+        # the placeholder cannot sign in either: refused, nothing stored.
+        assert response.status_code == 400
+        assert response.json()["detail"]["code"] == NO_OAUTH_CODE
+        assert "1234.5678" not in response.text
+        assert "slack-secret" not in response.text
+        mock_cm.store.store_state_token.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth_login_binds_issuer_and_iss_requirement(self, client):
@@ -825,7 +1086,7 @@ class TestOAuthCallback:
                 "authorize_url": "https://auth.sentry.io/authorize",
                 "token_url": "https://auth.sentry.io/token",
                 "client_id": "test-client-id",
-                "client_secret": "test-secret",
+                "client_secret": "test-secret",  # pragma: allowlist secret
                 "server_url": "https://mcp.sentry.dev/mcp",
             }
             mock_state.scopes = ["openid"]
@@ -1504,3 +1765,14 @@ class TestSSRFValidation:
 
         assert response.status_code == 400
         assert "blocked loopback" in response.json()["detail"].lower()
+
+
+def _website_error_page(status: int) -> Response:
+    """What a website answers at a URL that is not an MCP endpoint."""
+    page = Response.__new__(Response)
+    page.status = status
+    page.reason = HTTPStatus(status).phrase
+    page.headers = CIMultiDictProxy(CIMultiDict({"content-type": "text/html"}))
+    page.url = "https://blog.example.com/mcp"
+    page.content = b"<!doctype html><title>Page not found</title><p>Sorry.</p>"
+    return page

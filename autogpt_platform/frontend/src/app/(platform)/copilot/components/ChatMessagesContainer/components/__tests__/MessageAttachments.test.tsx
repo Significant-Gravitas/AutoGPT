@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { FileUIPart } from "ai";
+import { useCopilotUIStore } from "../../../../store";
 import { MessageAttachments } from "../MessageAttachments";
 
 vi.mock("../../../../components/ArtifactCard/ArtifactCard", () => ({
@@ -9,13 +10,14 @@ vi.mock("../../../../components/ArtifactCard/ArtifactCard", () => ({
 
 const FILE_ID = "550e8400-e29b-41d4-a716-446655440000";
 
-function filePart(url: string, filename = "report.pdf"): FileUIPart {
-  return {
-    type: "file",
-    url,
-    filename,
-    mediaType: "application/pdf",
-  } as FileUIPart;
+const FILE_URL = `/api/proxy/api/workspace/files/${FILE_ID}/download`;
+
+function filePart(
+  url: string,
+  filename = "report.pdf",
+  mediaType = "application/pdf",
+): FileUIPart {
+  return { type: "file", url, filename, mediaType } as FileUIPart;
 }
 
 describe("MessageAttachments", () => {
@@ -59,6 +61,47 @@ describe("MessageAttachments", () => {
     expect(container.firstChild).not.toBeNull();
     // Zero direct files may still hold subfolders the part does not count.
     expect(screen.queryByText(/Empty/)).toBeNull();
+  });
+
+  it("shows an image the user sent as a picture that opens in the panel", () => {
+    render(
+      <MessageAttachments
+        files={[filePart(FILE_URL, "photo.jpg", "image/jpeg")]}
+        isUser
+      />,
+    );
+
+    expect(screen.queryByTestId("artifact-card")).toBeNull();
+    const image = screen.getByRole("img", { name: "photo.jpg" });
+    expect(image.getAttribute("src")).toBe(FILE_URL);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open photo.jpg" }));
+    expect(useCopilotUIStore.getState().artifactPanel.activeArtifact?.id).toBe(
+      FILE_ID,
+    );
+  });
+
+  it("falls back to the card when the picture fails to load", () => {
+    render(
+      <MessageAttachments
+        files={[filePart(FILE_URL, "photo.jpg", "image/jpeg")]}
+        isUser
+      />,
+    );
+
+    fireEvent.error(screen.getByRole("img", { name: "photo.jpg" }));
+    expect(screen.getByTestId("artifact-card")).toBeDefined();
+  });
+
+  it("keeps the card for an image Otto sent", () => {
+    render(
+      <MessageAttachments
+        files={[filePart(FILE_URL, "chart.png", "image/png")]}
+      />,
+    );
+
+    expect(screen.getByTestId("artifact-card")).toBeDefined();
+    expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("falls back to the file card for non-workspace files", () => {

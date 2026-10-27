@@ -7,17 +7,17 @@ import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCo
 import { cn } from "@/lib/utils";
 import { AUTOPILOT_PILL_CLASS, AUTOPILOT_ROLE } from "../../helpers";
 import {
-  AUTOPILOT_COVER_COLOR,
   AUTOPILOT_COVER_URL,
   AUTOPILOT_NAME,
 } from "@/components/molecules/AutopilotAvatar/helpers";
+import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 
 export function AutopilotHeader() {
   return (
     <header>
       <ExpertCover
         className="h-36"
-        color={AUTOPILOT_COVER_COLOR}
+        color={AUTOPILOT_HEX}
         art={AUTOPILOT_COVER_URL}
       />
 
@@ -25,11 +25,12 @@ export function AutopilotHeader() {
         <AutopilotAvatar
           size={96}
           transparent={false}
-          className="relative z-10 -mt-12 ml-14 rounded-full"
+          // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3
+          className="relative z-10 -mt-12 ml-4 rounded-full border border-[#e3e3e3]"
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-[-0.02em] text-zinc-900">
+            <h1 className="text-2xl font-semibold tracking-heading text-foreground-strong">
               {AUTOPILOT_NAME}
             </h1>
             <Text

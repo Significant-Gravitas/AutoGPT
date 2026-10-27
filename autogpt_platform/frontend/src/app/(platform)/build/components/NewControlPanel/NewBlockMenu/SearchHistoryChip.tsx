@@ -1,5 +1,6 @@
-import { Button } from "@/components/__legacy__/ui/button";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
 import { ArrowUpRight } from "lucide-react";
 import React, { ButtonHTMLAttributes } from "react";
@@ -19,17 +20,22 @@ export const SearchHistoryChip: SearchHistoryChipComponent = ({
 }) => {
   return (
     <Button
+      variant="legacy-default"
       className={cn(
-        "my-[1px] h-[2.25rem] space-x-1 rounded-[1.5rem] bg-zinc-50 p-[0.375rem] pr-[0.625rem] shadow-none",
-        "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300",
+        "my-[1px] h-[2.25rem] space-x-1 rounded-[1.5rem] bg-surface-muted p-[0.375rem] pr-[0.625rem] shadow-none",
+        // TODO(tokens): no fitting role for active:bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this is the pressed state (QUALITY 41); no fitting role for active:ring-zinc-300 #C5C5C9; #C5C5C9 is border-strong (a border colour) and foreground-disabled (a text colour), and this is a ring (QUALITY 41(b))
+        "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300",
         className,
       )}
       {...rest}
     >
-      <ArrowUpRight className="h-6 w-6 text-zinc-500" strokeWidth={1.25} />
-      <span className="font-sans text-sm font-normal leading-[1.375rem] text-zinc-800">
+      <ArrowUpRight
+        className="h-6 w-6 text-foreground-tertiary"
+        strokeWidth={1.25}
+      />
+      <Text variant="body" as="span" tone="emphasis">
         {content}
-      </span>
+      </Text>
     </Button>
   );
 };
@@ -39,7 +45,11 @@ const SearchHistoryChipSkeleton: React.FC<{ className?: string }> = ({
 }) => {
   return (
     <Skeleton
-      className={cn("h-[2.25rem] w-32 rounded-[1.5rem] bg-zinc-100", className)}
+      className={cn(
+        // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41)
+        "h-[2.25rem] w-32 rounded-[1.5rem] bg-zinc-100",
+        className,
+      )}
     />
   );
 };

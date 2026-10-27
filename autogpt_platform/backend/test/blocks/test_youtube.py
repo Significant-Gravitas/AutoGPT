@@ -19,35 +19,18 @@ class TestTranscribeYoutubeVideoBlock:
         self.youtube_block = TranscribeYoutubeVideoBlock()
         self.credentials = TEST_CREDENTIALS
 
-    def test_extract_video_id_standard_url(self):
-        """Test extracting video ID from standard YouTube URL."""
-        url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-        video_id = self.youtube_block.extract_video_id(url)
-        assert video_id == "dQw4w9WgXcQ"
-
-    def test_extract_video_id_short_url(self):
-        """Test extracting video ID from shortened youtu.be URL."""
-        url = "https://youtu.be/dQw4w9WgXcQ"
-        video_id = self.youtube_block.extract_video_id(url)
-        assert video_id == "dQw4w9WgXcQ"
-
-    def test_extract_video_id_embed_url(self):
-        """Test extracting video ID from embed URL."""
-        url = "https://www.youtube.com/embed/dQw4w9WgXcQ"
-        video_id = self.youtube_block.extract_video_id(url)
-        assert video_id == "dQw4w9WgXcQ"
-
-    def test_extract_video_id_shorts_url(self):
-        """Test extracting video ID from YouTube Shorts URL."""
-        url = "https://www.youtube.com/shorts/dtUqwMu3e-g"
-        video_id = self.youtube_block.extract_video_id(url)
-        assert video_id == "dtUqwMu3e-g"
-
-    def test_extract_video_id_shorts_url_with_params(self):
-        """Test extracting video ID from YouTube Shorts URL with query parameters."""
-        url = "https://www.youtube.com/shorts/dtUqwMu3e-g?feature=share"
-        video_id = self.youtube_block.extract_video_id(url)
-        assert video_id == "dtUqwMu3e-g"
+    @pytest.mark.parametrize(
+        "url, video_id",
+        [
+            ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+            ("https://youtu.be/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+            ("https://www.youtube.com/embed/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+            ("https://www.youtube.com/shorts/dtUqwMu3e-g", "dtUqwMu3e-g"),
+            ("https://www.youtube.com/shorts/dtUqwMu3e-g?feature=share", "dtUqwMu3e-g"),
+        ],
+    )
+    def test_extract_video_id(self, url, video_id):
+        assert self.youtube_block.extract_video_id(url) == video_id
 
     @patch("backend.blocks.youtube.YouTubeTranscriptApi")
     def test_get_transcript_english_available(self, mock_api_class):

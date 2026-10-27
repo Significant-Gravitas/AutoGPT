@@ -37,18 +37,18 @@ export function BotCardDmTile({
       : "Send the bot a direct message to start the link flow.";
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-large border border-zinc-200 px-4 py-3">
+    <div className="flex items-center justify-between gap-3 rounded-large border border-border-base px-4 py-3">
       <div className="flex min-w-0 items-center gap-3">
         <Icon
           icon={Chatting01Icon}
           size={20}
-          className="shrink-0 text-zinc-500"
+          className="shrink-0 text-foreground-tertiary"
         />
         <div className="flex min-w-0 flex-col">
           <Text variant="body-medium" as="span" className="text-textBlack">
             {title}
           </Text>
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" className="text-foreground-tertiary">
             {subtitle}
           </Text>
         </div>
@@ -65,7 +65,7 @@ export function BotCardDmTile({
           Unlink
         </Button>
       ) : (
-        <span className="inline-flex items-center gap-1 text-xs text-zinc-500">
+        <span className="inline-flex items-center gap-1 text-xs text-foreground-tertiary">
           <Icon icon={Link01Icon} size={14} /> Not linked
         </span>
       )}

@@ -1,20 +1,15 @@
 """The MailerLite trial group across a scheduled cancellation: each cancel or
 resume flip moves the group once, a pending cancellation that runs out leaves
-it as trial canceled, a trial ended by buying another plan still leaves the
-group without touching that plan's status, and no ending reminder goes out
-while it is pending."""
+it, a trial ended by buying another plan still leaves the group, and no ending
+reminder goes out while it is pending. The status itself is the lifecycle
+sync's (`lifecycle_audience.py`)."""
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.data.notifications import (
-    AudienceAction,
-    NotificationResult,
-    SubscriberField,
-    SubscriptionStatus,
-)
+from backend.data.notifications import AudienceAction, NotificationResult
 from backend.notifications import trial_audience_test
 from backend.notifications.trial_audience_test import _notify, _state
 
@@ -71,16 +66,14 @@ async def test_each_cancel_or_resume_flip_moves_the_group_once(trial):
     sent = [await _flip(trial, kind, rev, keys, audience) for kind, rev in flips]
     assert sent == [1, 0, 1, 0]
     events = [c.args[0] for c in audience.await_args_list]
-    assert [(e.action, e.fields[SubscriberField.STATUS]) for e in events] == [
-        (AudienceAction.REMOVE_TRIAL, SubscriptionStatus.TRIAL_CANCELED.value),
-        (AudienceAction.ADD_TRIAL, SubscriptionStatus.IN_TRIAL.value),
+    assert [e.action for e in events] == [
+        AudienceAction.REMOVE_TRIAL,
+        AudienceAction.ADD_TRIAL,
     ]
 
 
 @pytest.mark.asyncio
-async def test_a_cancel_pending_trial_that_runs_out_leaves_the_group_as_trial_canceled(
-    trial,
-):
+async def test_a_cancel_pending_trial_that_runs_out_leaves_the_group(trial):
     pending = trial.model_copy(
         update={"cancel_at_period_end": True, "status": "canceled"}
     )
@@ -89,8 +82,6 @@ async def test_a_cancel_pending_trial_that_runs_out_leaves_the_group_as_trial_ca
     audience = AsyncMock(return_value=NotificationResult(success=True))
     got, notice, _ = await _notify(pending, raw, "ended", audience=audience)
     assert got == [AudienceAction.REMOVE_TRIAL]
-    status = audience.await_args.args[0].fields[SubscriberField.STATUS]
-    assert status == SubscriptionStatus.TRIAL_CANCELED.value
     notice.assert_awaited_once()
 
 

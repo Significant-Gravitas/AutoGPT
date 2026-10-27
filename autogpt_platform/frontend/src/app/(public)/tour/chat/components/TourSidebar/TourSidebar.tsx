@@ -5,10 +5,10 @@ import {
   sidebarContainerVariants,
 } from "@/components/layout/AppSidebar/animations";
 import {
-  Collapsible,
+  CollapsibleRoot,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@/components/molecules/Collapsible/Collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -20,7 +20,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-} from "@/components/ui/sidebar";
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { useTourStore } from "../../tourStore";
@@ -37,6 +38,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 
 function DisabledMenuItem({
   icon,
@@ -50,7 +53,7 @@ function DisabledMenuItem({
       <SidebarMenuButton
         aria-disabled="true"
         tooltip={label}
-        className="cursor-not-allowed font-normal opacity-50 group-data-[collapsible=icon]:!p-1.5 hover:!bg-transparent [&>svg]:size-5"
+        className="cursor-not-allowed font-normal opacity-50 hover:!bg-transparent group-data-[collapsible=icon]:!p-1.5 [&>svg]:size-5"
       >
         <Icon icon={icon} className="size-5" />
         <span className="truncate">{label}</span>
@@ -63,12 +66,25 @@ interface Props {
   variant?: "tour" | "marketplace";
 }
 
+// Matches the mobile sidebar sheet's closing animation
+// (`data-[state=closed]:duration-200` in `@/components/molecules/Sidebar/Sidebar`).
+const SHEET_CLOSE_MS = 200;
+
 export function TourSidebar({ variant = "tour" }: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   // In the tour, the end card replaces the sidebar upsell after completion.
   // The marketplace always shows the sidebar card.
   const isDemoComplete = useTourStore((s) => s.isDemoComplete);
+  const { isMobile, openMobile, setOpenMobile } = useSidebar();
+
+  // On phones the sidebar is a modal sheet, which blocks clicks and focus
+  // outside itself, Cookiebot's dialog included: close it first.
+  const isSheetOpen = isMobile && openMobile;
+  async function closeMobileSheet() {
+    setOpenMobile(false);
+    await new Promise((resolve) => setTimeout(resolve, SHEET_CLOSE_MS));
+  }
 
   return (
     <Sidebar
@@ -92,7 +108,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
                     <SidebarMenuButton
                       aria-disabled="true"
                       tooltip="New Task"
-                      className="cursor-not-allowed justify-center rounded-lg bg-zinc-800 font-medium text-white opacity-50 group-data-[collapsible=icon]:justify-start hover:!bg-zinc-800 hover:!text-white"
+                      className="cursor-not-allowed justify-center rounded-lg bg-zinc-800 font-medium text-white opacity-50 hover:!bg-zinc-800 hover:!text-white group-data-[collapsible=icon]:justify-start"
                     >
                       <Icon icon={SparklesIcon} className="size-4" />
                       <span className="truncate">New Task</span>
@@ -108,12 +124,12 @@ export function TourSidebar({ variant = "tour" }: Props) {
               <SidebarGroupContent>
                 <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
                   <DisabledMenuItem icon={Search01Icon} label="Search" />
-                  <DisabledMenuItem icon={GridViewIcon} label="Agents" />
+                  <DisabledMenuItem icon={GridViewIcon} label="Workflows" />
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       asChild
                       tooltip="Marketplace"
-                      className="font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-200 [&>svg]:size-5"
+                      className="font-normal hover:!bg-zinc-200 group-data-[collapsible=icon]:!p-1.5 [&>svg]:size-5"
                     >
                       <Link href="/marketplace">
                         <Icon icon={Store01Icon} className="size-5" />
@@ -128,11 +144,22 @@ export function TourSidebar({ variant = "tour" }: Props) {
           </motion.div>
 
           <motion.div variants={itemVariants}>
-            <Collapsible defaultOpen className="group/collapsible">
+            <CollapsibleRoot defaultOpen className="group/collapsible">
               <SidebarGroup className="py-1">
-                <SidebarGroupLabel asChild className="text-[13px] font-medium">
+                <SidebarGroupLabel
+                  asChild
+                  // The copy's line box follows the parent's line height, as
+                  // before; the primitive's own size would make it 16px.
+                  className="leading-inherit"
+                >
                   <CollapsibleTrigger>
-                    Workspace
+                    <Text
+                      as="span"
+                      variant="body-sm-medium-inherit"
+                      tone="inherit"
+                    >
+                      Workspace
+                    </Text>
                     <Icon
                       icon={ArrowDown01Icon}
                       className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
@@ -147,16 +174,20 @@ export function TourSidebar({ variant = "tour" }: Props) {
                   </SidebarGroupContent>
                 </CollapsibleContent>
               </SidebarGroup>
-            </Collapsible>
+            </CollapsibleRoot>
           </motion.div>
         </motion.div>
       </SidebarContent>
 
-      {(variant === "marketplace" || !isDemoComplete) && (
-        <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
+      <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
+        {(variant === "marketplace" || !isDemoComplete) && (
           <TourUpsellCard surface={variant} />
-        </SidebarFooter>
-      )}
+        )}
+        <CookieSettingsLink
+          className="self-center"
+          beforeOpen={isSheetOpen ? closeMobileSheet : undefined}
+        />
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>

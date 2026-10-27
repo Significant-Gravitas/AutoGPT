@@ -21,7 +21,7 @@ export function TourEndCard() {
         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1">
           <Icon icon={Tick02Icon} className="size-3.5 text-emerald-700" />
           <Text variant="small-medium" className="!text-emerald-700">
-            Agent built &amp; first run complete — {TOUR_DEMO_CLAIM_SECONDS}{" "}
+            Workflow built &amp; first run complete — {TOUR_DEMO_CLAIM_SECONDS}{" "}
             seconds
           </Text>
         </span>
@@ -45,7 +45,7 @@ export function TourEndCard() {
           onClick={handlePricingClick}
           className="h-auto w-full flex-col gap-0 py-2.5 shadow-[0_0_20px_-6px_rgba(124,58,237,0.6)]"
         >
-          <span className="font-medium">Make this agent yours</span>
+          <span className="font-medium">Make this workflow yours</span>
           <span className="text-xs font-normal opacity-80">
             Start with Pro · $42.50/mo · cancel anytime
           </span>

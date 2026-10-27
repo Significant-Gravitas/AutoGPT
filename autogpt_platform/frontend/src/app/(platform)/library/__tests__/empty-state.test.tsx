@@ -75,17 +75,17 @@ describe("LibraryPage empty state", () => {
 
     expect(await screen.findByText("Your library is empty")).toBeDefined();
     expect(
-      screen.getByText(/build your own agent from scratch/i),
+      screen.getByText(/build your own workflow from scratch/i),
     ).toBeDefined();
   });
 
-  test("renders Build an agent CTA pointing to /build", async () => {
+  test("renders Build a workflow CTA pointing to /build", async () => {
     setupHandlers();
 
     render(<LibraryPage />);
 
     const buildLink = await screen.findByRole("link", {
-      name: /build an agent/i,
+      name: /build a workflow/i,
     });
     expect(buildLink.getAttribute("href")).toBe("/build");
   });

@@ -24,6 +24,8 @@ from pydantic import BaseModel
 # `country` is not stored on the person: it is the visitor's ISO country code,
 # passed per evaluation by callers that know it (the trial offer, from the
 # country token the proxy signs), so it is absent whenever a caller does not.
+# `environment` is left out on purpose: `_person_properties` adds it to PostHog
+# reads only, and it has no LaunchDarkly counterpart to map.
 PERSON_PROPERTIES = frozenset(
     {"email", "email_domain", "role", "created_at", "country"}
 )

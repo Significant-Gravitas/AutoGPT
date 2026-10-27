@@ -8,7 +8,7 @@
 {"id": "8-0", "data": {"type": "tool-input-start", "toolCallId": "bash-1", "toolName": "bash_exec"}}
 {"id": "9-0", "data": {"type": "tool-input-available", "toolCallId": "bash-1", "toolName": "bash_exec", "input": {"command": "ls"}}}
 {"id": "10-0", "data": {"type": "tool-output-available", "toolCallId": "bash-1", "output": "a.md b.py", "toolName": "bash_exec", "success": true}}
-{"id": "11-0", "data": {"type": "data-pending-drained", "drainedCount": 1, "messages": [{"id": "00000000-0000-4000-8000-000000000003", "content": "Only count markdown files."}]}}
+{"id": "11-0", "data": {"type": "data-pending-drained", "drainedCount": 1, "messages": [{"id": "00000000-0000-4000-8000-000000000003", "content": "Only count markdown files.", "metadata": null}]}}
 {"id": "12-0", "data": {"type": "finish-step"}}
 {"id": "13-0", "data": {"type": "data-status", "message": "Analyzing result…"}}
 {"id": "14-0", "data": {"type": "start-step"}}

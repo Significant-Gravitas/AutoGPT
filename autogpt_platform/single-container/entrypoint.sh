@@ -152,6 +152,8 @@ configure_environment() {
   export NOTIFICATIONMANAGER_HOST=127.0.0.1 PLATFORMLINKINGMANAGER_HOST=127.0.0.1
   export COPILOTEXECUTOR_HOST=127.0.0.1 COPILOTCHATBRIDGE_HOST=127.0.0.1
   export AGENT_API_HOST=127.0.0.1 WEBSOCKET_SERVER_HOST=127.0.0.1
+  # nginx sends the REST server one X-Forwarded-For entry: the client.
+  export TRUSTED_PROXY_COUNT=1
   # The persistent backend JSON contains user-tunable product settings, but it
   # must not be able to move or expose appliance services. Environment values
   # have higher Pydantic priority, so pin the fixed internal topology here.
@@ -165,6 +167,7 @@ configure_environment() {
   export PLATFORM_LINKING_SERVICE_PORT="${AUTOGPT_PLATFORM_LINKING_SERVICE_PORT}"
   export COPILOT_CHAT_BRIDGE_PORT="${AUTOGPT_COPILOT_CHAT_BRIDGE_PORT}"
   export BATCH_EXECUTOR_PORT="${AUTOGPT_BATCH_EXECUTOR_PORT}"
+  export SWAP_CREDENTIAL_SERVICE_PORT="${AUTOGPT_SWAP_CREDENTIAL_SERVICE_PORT}"
   # Keep self-hosted product behavior without enabling LOCAL-only API docs and
   # asyncio debug mode on the public REST process.
   # BEHAVE_AS defaults to local (self-hosted product behavior) but stays
@@ -178,7 +181,7 @@ configure_environment() {
   # transport) regardless of subscription tier. That is correct for a
   # single-tenant self-hosted install. Any multi-tenant or hosted deployment
   # MUST set BEHAVE_AS=cloud, or every user gets every gated capability.
-  export APP_ENV=dev BEHAVE_AS="${BEHAVE_AS:-local}" ENABLE_AUTH=true
+  export APP_ENV=dev BEHAVE_AS="${BEHAVE_AS:-local}"
 
   # AutoPilot's daily/weekly USD spend caps are tuned for AutoGPT Cloud
   # tiers. Without LaunchDarkly every account resolves to NO_TIER, which

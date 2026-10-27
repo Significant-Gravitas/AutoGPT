@@ -5,6 +5,7 @@ import {
   PopoverContent,
 } from "@/components/molecules/Popover/Popover";
 import { TopUpDialog } from "@/components/layout/TopUpPrompt/TopUpDialog/TopUpDialog";
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { cn } from "@/lib/utils";
 import { WalletCompactPanel } from "./components/WalletCompactPanel";
 import { WalletFullPanel } from "./components/WalletFullPanel";
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function Wallet({ compact = false }: Props) {
+  const isBillingEnabled = useIsBillingEnabled();
   const {
     state,
     groups,
@@ -34,7 +36,7 @@ export function Wallet({ compact = false }: Props) {
   } = useWallet();
 
   // Do not render until we have both credits and onboarding data
-  if (credits === null || !state) return null;
+  if (!isBillingEnabled || credits === null || !state) return null;
 
   return (
     <>
@@ -61,7 +63,7 @@ export function Wallet({ compact = false }: Props) {
           className={cn(
             "z-50",
             compact
-              ? "max-h-[var(--radix-popover-content-available-height)] w-[22rem] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain !rounded-2xlarge p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200"
+              ? "max-h-[var(--radix-popover-content-available-height)] w-[22rem] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain !rounded-2xlarge p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active"
               : "relative -top-12 w-[28.5rem] px-4 py-4",
           )}
         >
