@@ -84,17 +84,22 @@ def parse_mcp_content(
     - image items: kept as ``{type, data, mimeType}`` dict for frontend rendering
     - resource items: unwrapped to their resource payload dict
 
-    ``structured_content`` (any JSON value, even an empty one) takes the place
-    of the text items, which the spec has repeat it for older clients; image
-    and resource items still come through beside it.
+    ``structured_content`` (any JSON value, even an empty one) stands in for
+    the text when a tool sends structured content and no text, beside any
+    image and resource items.  Text wins when both are sent: FastMCP sends a
+    ``-> int`` tool's ``3`` as the text ``"3"`` with ``{"result": 3}`` as
+    structured content.
 
     Single-item responses are unwrapped from the list; multiple items are
     returned as a list; empty content returns ``None``.
     """
-    output_parts: list[Any] = [] if structured_content is None else [structured_content]
+    use_structured = structured_content is not None and not any(
+        item.get("type") == "text" and item.get("text") for item in content
+    )
+    output_parts: list[Any] = [structured_content] if use_structured else []
     for item in content:
         item_type = item.get("type")
-        if item_type == "text" and structured_content is None:
+        if item_type == "text" and not use_structured:
             text = item.get("text", "")
             try:
                 output_parts.append(json.loads(text))
