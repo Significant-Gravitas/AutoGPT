@@ -51,7 +51,7 @@ export function IntroStep({ slide }: Props) {
           variant="large"
           as="p"
           tone="muted"
-          className="max-w-md text-center"
+          className="max-w-md text-center md:max-w-full md:text-[1.125rem] md:leading-[1.2]"
         >
           {body}
         </Text>
@@ -61,7 +61,7 @@ export function IntroStep({ slide }: Props) {
         type="button"
         size="small"
         onClick={nextStep}
-        className="h-10 w-56 rounded-xl"
+        className="h-10 w-56"
       >
         Next
       </Button>

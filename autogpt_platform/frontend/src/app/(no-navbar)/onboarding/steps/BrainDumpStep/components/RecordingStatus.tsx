@@ -12,7 +12,7 @@ interface Props {
   isOffline: boolean;
 }
 
-const OFFLINE_COPY = "You're offline — we'll send this when you're back.";
+const OFFLINE_COPY = "You're offline. We'll send this when you're back.";
 
 export function RecordingStatus({
   elapsedSeconds,

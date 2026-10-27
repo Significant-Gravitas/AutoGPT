@@ -623,6 +623,7 @@ export const ChatContainer = ({
                           expertId={expertIdentity?.id ?? null}
                           modeSelector={modeSelector}
                           expertName={expertIdentity?.name ?? null}
+                          assistantName={expertIdentity?.name ?? null}
                           voiceMode={voiceMode}
                           voiceBar={voiceBar}
                         />

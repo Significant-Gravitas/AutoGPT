@@ -1,6 +1,7 @@
 "use client";
 
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormProvider } from "react-hook-form";
+import { FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
@@ -82,7 +83,7 @@ export default function SignupPage() {
         </Text>
       </div>
 
-      <Form {...form}>
+      <FormProvider {...form}>
         <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
           <FormField
             control={form.control}
@@ -163,7 +164,7 @@ export default function SignupPage() {
           isError={!!feedback}
           behaveAs={environment.getBehaveAs()}
         />
-      </Form>
+      </FormProvider>
 
       <MobileWarningBanner />
       <EmailNotAllowedModal

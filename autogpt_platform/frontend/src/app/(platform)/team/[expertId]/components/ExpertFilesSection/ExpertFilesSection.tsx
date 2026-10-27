@@ -41,12 +41,14 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
         </Text>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <ToolbarSearch
+            textSize="body-md"
             id="expert-files-search"
             label="Search files"
             value={files.query}
             onChange={files.setQuery}
           />
           <PillFilterMenu
+            textSize="body-md"
             label="Filter files"
             value={files.filter}
             defaultValue="all"
@@ -64,6 +66,7 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
         </div>
       ) : files.isError ? (
         <ErrorCard
+          textSize="body-md"
           context={`${expertName}'s files`}
           hint="We could not load the files."
           onRetry={() => files.refetch()}
@@ -97,7 +100,7 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
           description={`Files you share with ${expertName} and documents it creates show up here.`}
         />
       ) : files.visible.length === 0 ? (
-        <Text variant="body" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="pt-4">
           No files match.
         </Text>
       ) : (

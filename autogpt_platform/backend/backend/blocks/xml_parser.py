@@ -1,3 +1,5 @@
+import re
+
 from gravitasml.parser import Parser
 from gravitasml.token import Token, tokenize
 
@@ -13,6 +15,58 @@ from backend.data.model import SchemaField
 MAX_XML_SIZE = 10 * 1024 * 1024
 MAX_XML_TAG_LENGTH = 4_096
 MAX_XML_DEPTH = 256
+
+# gravitasml does not decode entities; decode the XML predefined ones and
+# numeric references once. Unknown entities and bare "&" stay as-is.
+_XML_ENTITY_RE = re.compile(
+    r"&(?:#x([0-9a-fA-F]{1,6})|#([0-9]{1,7})|(amp|lt|gt|quot|apos));"
+)
+_XML_NAMED_ENTITIES = {"amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'"}
+
+
+def _is_xml_char(codepoint: int) -> bool:
+    """XML 1.0 Char production."""
+    return (
+        codepoint in (0x9, 0xA, 0xD)
+        or 0x20 <= codepoint <= 0xD7FF
+        or 0xE000 <= codepoint <= 0xFFFD
+        or 0x10000 <= codepoint <= 0x10FFFF
+    )
+
+
+def _decode_xml_entity(match: re.Match[str]) -> str:
+    hex_code, dec_code, name = match.groups()
+    if name:
+        return _XML_NAMED_ENTITIES[name]
+    codepoint = int(hex_code, 16) if hex_code else int(dec_code)
+    if not _is_xml_char(codepoint):
+        return match.group(0)
+    return chr(codepoint)
+
+
+def _protect_backslashes(xml: str) -> tuple[str, str | None]:
+    """Swap backslashes for a private-use character absent from the input.
+
+    gravitasml tokenizes a backslash at the start of a text run plus the next
+    character as an ESCAPE token, which its parser drops. The caller restores
+    the backslashes in the tokens.
+    """
+    if "\\" not in xml:
+        return xml, None
+    used = set(xml)
+    sentinel = next(
+        (chr(cp) for cp in range(0xE000, 0xF900) if chr(cp) not in used), None
+    )
+    if sentinel is None:
+        raise ValueError("XML input uses every private-use character.")
+    return xml.replace("\\", sentinel), sentinel
+
+
+def _mixed_content_error(tag: str) -> str:
+    return (
+        f"Mixed text and child elements are not supported: <{tag}> has both. "
+        "Wrap the text in its own tag."
+    )
 
 
 class XMLParserBlock(Block):
@@ -44,15 +98,27 @@ class XMLParserBlock(Block):
 
         depth = 0
         root_seen = False
+        # (tag, has_text, has_child) per open element. gravitasml drops text on
+        # elements that have children, so reject the mix. Whitespace-only text
+        # never becomes a token, so indentation is unaffected.
+        open_elements: list[tuple[str, bool, bool]] = []
 
         for token in tokens:
             if token.type == "TAG_OPEN":
                 if depth == 0 and root_seen:
                     raise ValueError("XML must have a single root element.")
+                if open_elements:
+                    parent, has_text, _ = open_elements[-1]
+                    if has_text:
+                        raise ValueError(_mixed_content_error(parent))
+                    open_elements[-1] = (parent, has_text, True)
+                open_elements.append((token.value, False, False))
                 depth += 1
                 if depth == 1:
                     root_seen = True
             elif token.type == "TAG_CLOSE":
+                if open_elements:
+                    open_elements.pop()
                 depth -= 1
                 if depth < 0:
                     raise ValueError("Unexpected closing tag in XML input.")
@@ -62,6 +128,11 @@ class XMLParserBlock(Block):
                         "XML contains text outside the root element; "
                         "wrap content in a single root tag."
                     )
+                if open_elements and token.value:
+                    tag, _, has_child = open_elements[-1]
+                    if has_child:
+                        raise ValueError(_mixed_content_error(tag))
+                    open_elements[-1] = (tag, True, has_child)
 
         if depth != 0:
             raise ValueError("Unclosed tag detected in XML input.")
@@ -69,24 +140,32 @@ class XMLParserBlock(Block):
             raise ValueError("XML must include a root element.")
 
     @staticmethod
-    def _validate_tokenizer_input(xml: str) -> None:
-        """Reject malformed or deeply nested tags in one linear pass.
+    def _normalize_tokenizer_input(xml: str) -> str:
+        """Reject malformed or deeply nested tags in one linear pass and return
+        the input rewritten for gravitasml.
 
         gravitasml's tokenizer searches to the end of the remaining input for
         every unmatched ``<``. Ensuring every opener has one nearby closing
         ``>`` prevents that quadratic path before the tokenizer runs.
+
+        gravitasml has no self-closing tags or attributes: ``<x/>`` is turned
+        into text and attributes end up in the tag name. Self-closing tags are
+        rewritten to ``<x></x>``; attributes are rejected.
         """
+        pieces: list[str] = []
         position = 0
         depth = 0
         while True:
             tag_start = xml.find("<", position)
             if tag_start == -1:
-                return
+                pieces.append(xml[position:])
+                return "".join(pieces)
 
             if xml.startswith("<!--", tag_start):
                 comment_end = xml.find("-->", tag_start + 4)
                 if comment_end == -1:
                     raise ValueError("Unclosed XML comment.")
+                pieces.append(xml[position : comment_end + 3])
                 position = comment_end + 3
                 continue
 
@@ -105,17 +184,29 @@ class XMLParserBlock(Block):
                 )
             if tag.startswith(("!", "?")):
                 raise ValueError("XML declarations and directives are not supported.")
+            if "=" in tag or '"' in tag or "'" in tag:
+                raise ValueError(f"XML attributes are not supported: <{tag}>")
 
+            pieces.append(xml[position:tag_start])
             if tag.startswith("/"):
                 depth -= 1
                 if depth < 0:
                     raise ValueError("Unexpected closing tag in XML input.")
-            elif not tag.endswith("/"):
+                pieces.append(xml[tag_start : tag_end + 1])
+            elif tag.endswith("/"):
+                if depth + 1 > MAX_XML_DEPTH:
+                    raise ValueError(
+                        f"XML nesting exceeds the maximum depth of {MAX_XML_DEPTH}."
+                    )
+                name = tag[:-1].strip()
+                pieces.append(f"<{name}></{name}>")
+            else:
                 depth += 1
                 if depth > MAX_XML_DEPTH:
                     raise ValueError(
                         f"XML nesting exceeds the maximum depth of {MAX_XML_DEPTH}."
                     )
+                pieces.append(xml[tag_start : tag_end + 1])
 
             position = tag_end + 1
 
@@ -126,9 +217,17 @@ class XMLParserBlock(Block):
             )
 
         try:
-            self._validate_tokenizer_input(input_data.input_xml)
-            tokens = list(tokenize(input_data.input_xml))
+            xml = self._normalize_tokenizer_input(input_data.input_xml)
+            xml, sentinel = _protect_backslashes(xml)
+            tokens = list(tokenize(xml))
+            if sentinel:
+                # Restore before entity decoding: "&#xE000;" must not become "\\".
+                for token in tokens:
+                    token.value = token.value.replace(sentinel, "\\")
             self._validate_tokens(tokens)
+            for token in tokens:
+                if token.type == "TEXT":
+                    token.value = _XML_ENTITY_RE.sub(_decode_xml_entity, token.value)
 
             parser = Parser(tokens)
             parsed_result = parser.parse()
