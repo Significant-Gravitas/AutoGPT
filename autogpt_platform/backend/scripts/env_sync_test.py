@@ -56,6 +56,20 @@ def test_dry_run_refuses_a_target_apply_would_refuse(tmp_path, monkeypatch, caps
     assert "private, regular env file" in capsys.readouterr().err
 
 
+def test_dry_run_accepts_a_target_in_a_new_directory(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "source.env"
+    source.write_text("MICROSOFT_CLIENT_ID='id'\n")
+    target = tmp_path / "new" / ".env"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["env_sync", "--source", f"local:{source}", "--target", str(target)],
+    )
+    sync.main()
+    assert "MICROSOFT_CLIENT_ID: missing at target" in capsys.readouterr().out
+    assert not target.parent.exists()
+
+
 def test_value_written_after_the_report_still_needs_replace(
     tmp_path, monkeypatch, capsys
 ):

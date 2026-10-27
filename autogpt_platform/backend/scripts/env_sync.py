@@ -149,8 +149,8 @@ def apply_updates(target: Path, values: dict[str, str], replace: bool = False) -
     target as read under its lock, so a value another run wrote after this
     run's report still needs ``replace``.
     """
-    check_target(target)
     target.parent.mkdir(parents=True, exist_ok=True)
+    check_target(target)
     lock = target.with_name(target.name + ".sync-lock")
     try:
         lock_fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -172,13 +172,40 @@ def check_target(target: Path) -> None:
         (".default", ".example", ".template")
     ):
         raise ValueError("Target must be a private, regular env file.")
-    tracked = subprocess.run(
-        ["git", "-C", str(target.parent), "ls-files", "--error-unmatch", target.name],
+    # Only a dry run meets a missing directory; --apply creates it first.
+    if target.parent.is_dir() and _tracked(target):
+        raise ValueError("Refusing to write credentials to a tracked file.")
+
+
+def _tracked(target: Path) -> bool:
+    """Whether the repository around *target* tracks it.
+
+    Git's repository variables (``GIT_DIR``, ``GIT_INDEX_FILE`` and the rest)
+    are dropped so an inherited one cannot point the check at another
+    repository.  Any answer but tracked, untracked or "not a git repository"
+    stops the sync.
+    """
+    local = subprocess.run(
+        ["git", "rev-parse", "--local-env-vars"],
         capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    env = {name: value for name, value in os.environ.items() if name not in local}
+    ls_files = ["git", "-C", str(target.parent), "ls-files", "--error-unmatch"]
+    result = subprocess.run(
+        [*ls_files, "--", target.name],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        env={**env, "LC_ALL": "C"},
         check=False,
     )
-    if tracked.returncode == 0:
-        raise ValueError("Refusing to write credentials to a tracked file.")
+    if result.returncode in (0, 1):
+        return result.returncode == 0
+    if result.returncode == 128 and "not a git repository" in result.stderr:
+        return False
+    raise ValueError("Could not tell whether git tracks the target.")
 
 
 def _write_updates(target: Path, values: dict[str, str], replace: bool) -> int:

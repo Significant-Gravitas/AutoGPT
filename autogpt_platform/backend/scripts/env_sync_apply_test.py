@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -154,12 +155,44 @@ def test_symlinked_targets_are_refused(tmp_path):
     assert real.read_text() == "OTHER='stay'\n"
 
 
-def test_tracked_targets_are_refused(tmp_path):
-    repo = tmp_path / "repo"
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    target = repo / ".env"
-    target.write_text("OTHER='stay'\n")
-    subprocess.run(["git", "-C", str(repo), "add", "--force", ".env"], check=True)
+@pytest.mark.parametrize("name", [".env", "-secrets.env"])
+def test_tracked_targets_are_refused(tmp_path, name):
+    target = _tracked_file(tmp_path / "repo", name)
     with pytest.raises(ValueError, match="tracked file"):
         sync.apply_updates(target, {"MICROSOFT_CLIENT_SECRET": "new-value"})
     assert target.read_text() == "OTHER='stay'\n"
+
+
+def test_an_inherited_git_dir_cannot_hide_a_tracked_target(tmp_path, monkeypatch):
+    target = _tracked_file(tmp_path / "repo", ".env")
+    other = tmp_path / "other"
+    subprocess.run(["git", "init", "-q", str(other)], check=True)
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    with pytest.raises(ValueError, match="tracked file"):
+        sync.apply_updates(target, {"MICROSOFT_CLIENT_SECRET": "new-value"})
+    assert target.read_text() == "OTHER='stay'\n"
+
+
+def test_an_unexpected_git_failure_stops_the_sync(tmp_path, monkeypatch):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    git = bin_dir / "git"
+    git.write_text(
+        '#!/bin/sh\ncase "$*" in *--local-env-vars*) exit 0 ;; esac\n'
+        'echo "fatal: unexpected" >&2\nexit 2\n'
+    )
+    git.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    target = tmp_path / ".env"
+    target.write_text("OTHER='stay'\n")
+    with pytest.raises(ValueError, match="tracks the target"):
+        sync.apply_updates(target, {"MICROSOFT_CLIENT_SECRET": "new-value"})
+    assert target.read_text() == "OTHER='stay'\n"
+
+
+def _tracked_file(repo: Path, name: str) -> Path:
+    """A file called *name* holding ``OTHER='stay'``, tracked in a new repository."""
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / name).write_text("OTHER='stay'\n")
+    subprocess.run(["git", "-C", str(repo), "add", "--force", "--", name], check=True)
+    return repo / name
