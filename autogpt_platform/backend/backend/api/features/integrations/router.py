@@ -96,6 +96,7 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Settings
 
+from .airtable import router as airtable_router
 from .codex import (
     CODEX_LOGIN_STATE_KEY,
     build_device_login_cancel_url,
@@ -128,6 +129,7 @@ _THROTTLE_TIMEOUT_SECONDS = 1.0
 settings = Settings()
 router = APIRouter()
 router.include_router(codex_router, prefix="/codex")
+router.include_router(airtable_router, prefix="/airtable")
 
 creds_manager = IntegrationCredentialsManager()
 
@@ -1179,15 +1181,43 @@ async def delete_credentials(
         )
 
     try:
-        await remove_all_webhooks_for_credentials(user_id, creds, force)
+        tokens_revoked = await delete_credentials_and_dependents(
+            request, user_id, creds, provider, force
+        )
     except NeedConfirmation as e:
         return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
 
+    return CredentialsDeletionResponse(revoked=tokens_revoked)
+
+
+async def delete_credentials_and_dependents(
+    request: Request,
+    user_id: str,
+    creds: Credentials,
+    provider: ProviderName,
+    force: bool,
+) -> bool | None:
+    """Delete a user's credentials with what hangs off them.
+
+    Removes the webhooks registered with them first, then the credentials,
+    then revokes OAuth tokens at the provider. The External API's delete
+    calls this too, so neither surface can leave a live webhook or token
+    behind. Returns whether the provider revoked the tokens (None when there
+    were none to revoke).
+
+    Raises:
+        NeedConfirmation: a webhook is still in use and ``force`` is False;
+            nothing has been deleted.
+    """
+    await remove_all_webhooks_for_credentials(user_id, creds, force)
+
     tokens_revoked = None
     if provider == ProviderName.CODEX:
-        tokens_revoked = await revoke_codex_credentials(creds_manager, user_id, cred_id)
+        tokens_revoked = await revoke_codex_credentials(
+            creds_manager, user_id, creds.id
+        )
     else:
-        await creds_manager.delete(user_id, cred_id)
+        await creds_manager.delete(user_id, creds.id)
 
     if isinstance(creds, OAuth2Credentials) and provider != ProviderName.CODEX:
         if provider_matches(provider.value, ProviderName.MCP.value):
@@ -1206,7 +1236,7 @@ async def delete_credentials(
             handler = _get_provider_oauth_handler(request, provider)
         tokens_revoked = await handler.revoke_tokens(creds)
 
-    return CredentialsDeletionResponse(revoked=tokens_revoked)
+    return tokens_revoked
 
 
 # ------------------------- WEBHOOK STUFF -------------------------- #

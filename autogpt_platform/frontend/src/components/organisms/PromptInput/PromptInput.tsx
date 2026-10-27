@@ -23,13 +23,14 @@ import {
   InputGroup,
   InputGroupButton,
   InputGroupTextarea,
-} from "@/components/ui/input-group";
-import { Spinner } from "@/components/ui/spinner";
+} from "@/components/molecules/InputGroup/InputGroup";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import { Children, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
@@ -317,14 +318,16 @@ export function PromptInputButton({
   const side = typeof tooltip === "string" ? "top" : (tooltip.side ?? "top");
 
   return (
-    <Tooltip>
+    <Tooltip inheritDelay>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent side={side}>
-        {tooltipContent}
-        {shortcut && (
-          <span className="ml-2 text-muted-foreground">{shortcut}</span>
-        )}
-      </TooltipContent>
+      <TooltipPortal>
+        <TooltipContent side={side}>
+          {tooltipContent}
+          {shortcut && (
+            <span className="ml-2 text-muted-foreground">{shortcut}</span>
+          )}
+        </TooltipContent>
+      </TooltipPortal>
     </Tooltip>
   );
 }
@@ -356,7 +359,7 @@ export function PromptInputSubmit({
   let Icon = <UIIcon icon={ArrowUp02Icon} className="size-4" />;
 
   if (status === "submitted") {
-    Icon = <Spinner />;
+    Icon = <LoadingSpinner size="small" role="status" aria-label="Loading" />;
   } else if (status === "streaming") {
     Icon = <UIIcon icon={StopIcon} className="size-4" />;
   }

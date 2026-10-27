@@ -19,7 +19,7 @@ You specify which events to listen for using the event selector. The webhook pay
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| base_id | Airtable base ID | str | Yes |
+| base_id | The Airtable base to use: a set of tables, like a spreadsheet file with several sheets. | str (airtable-base-picker) | Yes |
 | table_id_or_name | Airtable table ID or name | str | Yes |
 | events | Airtable webhook event filter | AirtableEventSelector | Yes |
 

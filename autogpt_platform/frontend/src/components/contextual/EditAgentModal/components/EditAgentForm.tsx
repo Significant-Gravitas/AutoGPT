@@ -1,9 +1,10 @@
 "use client";
 
+import { FormProvider } from "react-hook-form";
 import * as React from "react";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
@@ -88,7 +89,7 @@ export function EditAgentForm({
 
   return (
     <div className="mx-auto flex w-full flex-col">
-      <Form {...form}>
+      <FormProvider {...form}>
         <form
           onSubmit={form.handleSubmit(handleFormSubmit)}
           className="flex flex-col gap-5 pb-5"
@@ -152,7 +153,11 @@ export function EditAgentForm({
           >
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  className="flex items-center gap-2 text-textBlack"
+                >
                   <Icon
                     icon={Store01Icon}
                     size={18}
@@ -173,7 +178,7 @@ export function EditAgentForm({
                       className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <div className="grid gap-x-4 sm:grid-cols-2">
@@ -241,7 +246,11 @@ export function EditAgentForm({
 
             <AccordionItem value="thumbnails" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  className="flex items-center gap-2 text-textBlack"
+                >
                   <Icon
                     icon={Album01Icon}
                     size={18}
@@ -262,7 +271,7 @@ export function EditAgentForm({
                       className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <ThumbnailImages
@@ -279,7 +288,11 @@ export function EditAgentForm({
 
             <AccordionItem value="experience" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
-                <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  className="flex items-center gap-2 text-textBlack"
+                >
                   <Icon
                     icon={SparklesIcon}
                     size={18}
@@ -300,7 +313,7 @@ export function EditAgentForm({
                       className="text-brand"
                     />
                   ) : null}
-                </span>
+                </Text>
               </AccordionTrigger>
               <AccordionContent className="px-1 pb-4 pt-0">
                 <FormField
@@ -386,7 +399,7 @@ export function EditAgentForm({
             </Button>
           </div>
         </form>
-      </Form>
+      </FormProvider>
     </div>
   );
 }

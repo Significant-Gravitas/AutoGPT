@@ -1,12 +1,16 @@
 "use client";
 
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
-import { SidebarHeader, useSidebar } from "@/components/ui/sidebar";
+import {
+  SidebarHeader,
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
@@ -18,7 +22,7 @@ export function AppSidebarHeader() {
   const isCollapsed = state === "collapsed";
 
   const toggleButton = (
-    <Tooltip>
+    <Tooltip inheritDelay>
       <TooltipTrigger asChild>
         <button
           type="button"
@@ -37,9 +41,11 @@ export function AppSidebarHeader() {
           />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="right">
-        {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-      </TooltipContent>
+      <TooltipPortal>
+        <TooltipContent side="right">
+          {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        </TooltipContent>
+      </TooltipPortal>
     </Tooltip>
   );
 

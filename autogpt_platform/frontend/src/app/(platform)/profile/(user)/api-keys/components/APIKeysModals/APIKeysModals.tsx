@@ -9,10 +9,10 @@ import {
   DialogTrigger,
 } from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { LuCopy } from "react-icons/lu";
-import { Label } from "@/components/__legacy__/ui/label";
+import { Label } from "@/components/atoms/Label/Label";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Text } from "@/components/atoms/Text/Text";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { Button } from "@/components/atoms/Button/Button";
 
 import { useAPIkeysModals } from "./useAPIkeysModals";
@@ -75,25 +75,29 @@ export const APIKeysModals = () => {
             </div>
             <div className="grid gap-2">
               <Label>Permissions</Label>
-              {Object.values(APIKeyPermission).map((permission) => (
-                <div className="flex items-center space-x-2" key={permission}>
-                  <Checkbox
-                    id={permission}
-                    checked={keyState.selectedPermissions.includes(permission)}
-                    onCheckedChange={(checked: boolean) => {
-                      setKeyState((prev) => ({
-                        ...prev,
-                        selectedPermissions: checked
-                          ? [...prev.selectedPermissions, permission]
-                          : prev.selectedPermissions.filter(
-                              (p) => p !== permission,
-                            ),
-                      }));
-                    }}
-                  />
-                  <Label htmlFor={permission}>{permission}</Label>
-                </div>
-              ))}
+              <div className="max-h-48 space-y-2 overflow-y-auto">
+                {Object.values(APIKeyPermission).map((permission) => (
+                  <div className="flex items-center space-x-2" key={permission}>
+                    <Checkbox
+                      id={permission}
+                      checked={keyState.selectedPermissions.includes(
+                        permission,
+                      )}
+                      onCheckedChange={(checked: boolean) => {
+                        setKeyState((prev) => ({
+                          ...prev,
+                          selectedPermissions: checked
+                            ? [...prev.selectedPermissions, permission]
+                            : prev.selectedPermissions.filter(
+                                (p) => p !== permission,
+                              ),
+                        }));
+                      }}
+                    />
+                    <Label htmlFor={permission}>{permission}</Label>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <DialogFooter>

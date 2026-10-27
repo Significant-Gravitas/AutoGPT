@@ -6,7 +6,11 @@ import {
 } from "@/components/organisms/PromptInput/PromptInput";
 import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
+import {
+  InputGroup,
+  InputGroupAddon,
+} from "@/components/molecules/InputGroup/InputGroup";
+import { containsLikelySecret } from "@/lib/secret-detection";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
@@ -43,6 +47,7 @@ import { ConnectionPickerDialog } from "./components/ConnectionPicker/Connection
 import { NoAIConnectionNotice } from "./components/NoAIConnectionNotice/NoAIConnectionNotice";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
+import { SecretPasteNotice } from "./components/SecretPasteNotice";
 import { StopButton } from "./components/StopButton";
 import { TranscriptionErrorBar } from "./components/TranscriptionErrorBar";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
@@ -129,6 +134,9 @@ interface Props {
   expertId?: string | null;
   /** Names that expert in the picker's filter row. */
   expertName?: string | null;
+  /** Who the message goes to, named in the secret warning: the expert, or
+   *  Otto when unset. */
+  assistantName?: string | null;
   /** Attachments stay open during a reply, and a message with attachments
    *  goes to `onSend`, which must hold it until the reply ends. */
   canAttachWhileStreaming?: boolean;
@@ -168,6 +176,7 @@ export const ChatInput = memo(function ChatInput({
   variant = "default",
   expertId = null,
   expertName = null,
+  assistantName = null,
   canAttachWhileStreaming = false,
   atReset,
 }: Props) {
@@ -492,6 +501,11 @@ export const ChatInput = memo(function ChatInput({
         {atReset && hasAttachments && (
           <AtResetFilesNotice className={stacked ? undefined : "mt-1.5"} />
         )}
+        <SecretPasteNotice
+          visible={containsLikelySecret(value)}
+          assistantName={assistantName ?? "Otto"}
+          className={stacked ? undefined : "mt-1.5"}
+        />
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
@@ -557,7 +571,7 @@ export const ChatInput = memo(function ChatInput({
               className={cn(
                 "max-md:max-h-32",
                 stacked && "px-0.5 py-1",
-                isCompact && "text-sm leading-5 md:text-sm",
+                isCompact && "text-body leading-5 md:text-body md:leading-5",
               )}
             />
             {isRecording && !value && (

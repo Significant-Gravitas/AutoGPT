@@ -13,8 +13,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/molecules/Dialog/components/DialogPrimitives";
-import { Label } from "@/components/__legacy__/ui/label";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
+import { Label } from "@/components/atoms/Label/Label";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { useRouter } from "next/navigation";
 import { addDollars } from "@/app/(platform)/admin/spending/actions";

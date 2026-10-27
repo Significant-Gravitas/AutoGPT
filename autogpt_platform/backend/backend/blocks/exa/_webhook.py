@@ -18,12 +18,6 @@ from backend.sdk import (
 )
 
 
-class ExaWebhookType(str, Enum):
-    """Available webhook types for Exa."""
-
-    WEBSET = "webset"
-
-
 class ExaEventType(str, Enum):
     """Available event types for Exa webhooks."""
 

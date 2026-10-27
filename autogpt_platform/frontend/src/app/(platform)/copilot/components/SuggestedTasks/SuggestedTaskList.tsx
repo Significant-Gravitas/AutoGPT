@@ -12,6 +12,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import NextLink from "next/link";
+import { tourStartingPoint, tourTarget } from "@/lib/tour-targets";
 import { getChatHref, getPromptIcon, getTaskState } from "./helpers";
 
 interface Props {
@@ -39,6 +40,7 @@ export function SuggestedTaskList({
 
   return (
     <ol
+      {...tourTarget("first-tasks")}
       className={cn(
         "divide-y divide-separator overflow-hidden rounded-lg border border-border-base bg-surface",
         className,
@@ -86,6 +88,7 @@ export function SuggestedTaskList({
               ) : (
                 <button
                   type="button"
+                  {...tourStartingPoint()}
                   disabled={isBusy}
                   onClick={() => onSend(task)}
                   className={cn(
@@ -129,7 +132,7 @@ export function SuggestedTaskList({
                 aria-label={`Hide: ${task.title}`}
                 disabled={sendingId !== null}
                 onClick={() => onHide(task)}
-                className="mr-2 shrink-0 text-foreground-subtle opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 hover:text-foreground-body focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                className="mr-2 shrink-0 text-foreground-subtle opacity-0 transition-opacity duration-150 hover:text-foreground-body focus-visible:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100"
               >
                 <Icon icon={Cancel01Icon} size={14} />
               </Button>

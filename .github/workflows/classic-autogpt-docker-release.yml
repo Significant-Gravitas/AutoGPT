@@ -2,7 +2,7 @@ name: Classic - AutoGPT Docker Release
 
 on:
   release:
-    types: [published, edited]
+    types: [published]
 
   workflow_dispatch:
     inputs:
@@ -10,13 +10,16 @@ on:
         type: boolean
         description: 'Build from scratch, without using cached layers'
 
+permissions:
+  contents: read
+
 env:
   IMAGE_NAME: auto-gpt
   DEPLOY_IMAGE_NAME: ${{ secrets.DOCKER_USER }}/auto-gpt
 
 jobs:
   build:
-    if: startsWith(github.ref, 'refs/tags/autogpt-')
+    if: startsWith(github.ref, 'refs/tags/autogpt-v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

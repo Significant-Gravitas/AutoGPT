@@ -37,16 +37,6 @@ class ResearchModel(str, Enum):
     PRO = "exa-research-pro"
 
 
-class ResearchStatus(str, Enum):
-    """Research task status."""
-
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    CANCELED = "canceled"
-    FAILED = "failed"
-
-
 class ResearchCostModel(BaseModel):
     """Cost breakdown for a research request."""
 
