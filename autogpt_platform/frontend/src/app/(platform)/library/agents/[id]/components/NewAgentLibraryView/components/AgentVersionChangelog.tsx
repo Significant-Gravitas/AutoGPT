@@ -2,7 +2,7 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useGetV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
@@ -66,16 +66,16 @@ export function AgentVersionChangelog({
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Text variant="body" className="font-semibold">
-              v{versionInfo.version}
-            </Text>
+            <Text variant="body-semibold">v{versionInfo.version}</Text>
             {versionInfo.isCurrentVersion && (
-              <span
+              <Text
+                variant="small-medium-tight"
+                as="span"
                 // TODO(tokens): no exact role for bg-blue-100 (#DBEAFE), text-blue-800 (#1E40AF); no dark roles yet for dark:bg-blue-900 (#1E3A8A), dark:text-blue-100 (#DBEAFE)
-                className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-100"
+                className="rounded-full bg-blue-100 px-2 py-1 text-blue-800 dark:bg-blue-900 dark:text-blue-100"
               >
                 Current
-              </span>
+              </Text>
             )}
           </div>
         </div>

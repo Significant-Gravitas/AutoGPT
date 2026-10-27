@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Separator } from "@/components/atoms/Separator/Separator";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import { useFilterSheet } from "./useFilterSheet";
 import { INITIAL_CREATORS_TO_SHOW } from "./constant";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";

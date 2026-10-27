@@ -8,7 +8,7 @@ from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
@@ -114,6 +114,7 @@ from .utils import (
     GRAPH_EXECUTION_QUEUE_NAME,
     GRAPH_EXECUTION_ROUTING_KEY,
     LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+    NODE_UNWIND_GRACE_SECONDS,
     CancelExecutionEvent,
     ExecutionOutputEntry,
     LogMetadata,
@@ -307,6 +308,24 @@ def execute_graph(
 
 
 T = TypeVar("T")
+
+
+async def _finish_despite_cancel(work: Awaitable[T]) -> T:
+    """Await ``work`` to its end even if the caller is cancelled meanwhile,
+    any number of times, then re-raise the cancel. A failure of ``work``
+    itself wins over the cancel, since it is the more useful error to
+    surface."""
+    task = asyncio.ensure_future(work)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+        task.result()
+        raise
 
 
 async def execute_node(
@@ -864,15 +883,22 @@ class ExecutionProcessor:
         transaction named after its block."""
         block = get_block(node_exec.block_id)
         with node_transaction(node_exec, block) as span:
-            return await self._run_node(
-                node_exec,
-                block,
-                node_exec_progress,
-                nodes_input_masks,
-                graph_stats_pair,
-                nodes_to_skip,
-                span,
+            # Its own task, even when a caller such as the Orchestrator runs a
+            # tool node inline from a longer-lived task: a stop's cleanup waits
+            # for this task (see wait_for_done), so it must end with the node.
+            node_run = asyncio.ensure_future(
+                self._run_node(
+                    node_exec,
+                    block,
+                    node_exec_progress,
+                    nodes_input_masks,
+                    graph_stats_pair,
+                    nodes_to_skip,
+                    span,
+                )
             )
+            node_exec_progress.track_unwinding(node_exec.node_exec_id, node_run)
+            return await node_run
 
     async def _run_node(
         self,
@@ -914,6 +940,35 @@ class ExecutionProcessor:
         execution_stats.cputime = timing_info.cpu_time
         record_node_result(span, status, execution_stats)
 
+        # A stop cancels this task, even after the block has finished. The
+        # block's charge, its final status and the run's totals must still be
+        # written, so a cancel arriving now waits for them before it is
+        # re-raised. The run's cleanup waits for them too (see wait_for_done):
+        # its terminal sweep would otherwise fail the node first.
+        settle = asyncio.ensure_future(
+            self._settle_node(
+                node=node,
+                node_exec=node_exec,
+                status=status,
+                execution_stats=execution_stats,
+                graph_stats_pair=graph_stats_pair,
+                db_client=db_client,
+                log_metadata=log_metadata,
+            )
+        )
+        node_exec_progress.track_settling(node_exec.node_exec_id, settle)
+        return await _finish_despite_cancel(settle)
+
+    async def _settle_node(
+        self,
+        node: Node,
+        node_exec: NodeExecutionEntry,
+        status: ExecutionStatus,
+        execution_stats: NodeExecutionStats,
+        graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
+        db_client: "DatabaseManagerAsyncClient",
+        log_metadata: LogMetadata,
+    ) -> NodeExecutionStats:
         # Log platform cost + reconcile dynamic billing BEFORE graph/node stats
         # are aggregated and persisted — otherwise the reconciled delta never
         # lands in `graph_stats.cost` or the persisted node stats. RUN-only
@@ -1097,10 +1152,21 @@ class ExecutionProcessor:
                 status = ExecutionStatus.TERMINATED
 
         finally:
+            # The block is done, so from here the node's own task (started in
+            # on_node_execution) is its bookkeeping, which the run's cleanup
+            # waits for in full rather than for the unwind grace.
+            if task := asyncio.current_task():
+                node_exec_progress.track_settling(node_exec.node_exec_id, task)
             if status == ExecutionStatus.FAILED and stats.error is not None:
-                await persist_output(
-                    "error", str(stats.error) or type(stats.error).__name__
-                )
+                try:
+                    await _finish_despite_cancel(
+                        persist_output(
+                            "error", str(stats.error) or type(stats.error).__name__
+                        )
+                    )
+                except asyncio.CancelledError:
+                    # The block has already failed: settle it, don't end here.
+                    pass
             tracing.set_data("executor.node.output_count", outputs)
         return status
 
@@ -1633,9 +1699,12 @@ class ExecutionProcessor:
             log_metadata.info(f"Stopping node execution {node_id}")
             inflight_exec.stop()
 
+        # One unwind grace for all nodes together, so several blocks that
+        # ignore the cancel can't add up past stop_graph_execution's wait.
+        unwind_until = time.time() + NODE_UNWIND_GRACE_SECONDS
         for node_id, inflight_exec in running_node_execution.items():
             try:
-                inflight_exec.wait_for_done(timeout=3600.0)
+                inflight_exec.wait_for_done(timeout=3600.0, unwind_until=unwind_until)
             except TimeoutError:
                 log_metadata.exception(
                     f"Node execution #{node_id} did not stop in time, "

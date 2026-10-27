@@ -4,7 +4,7 @@ import { Download01Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import type { SessionFile } from "../../ContextPanel/components/FilesTab/useSessionFiles";
 import { WorkspaceFileCard } from "./WorkspaceFileCard";
 import { WorkspaceFileRow } from "./WorkspaceFileRow";
@@ -102,8 +102,8 @@ function Body({
   if (isLoading) {
     return (
       <div className="grid gap-2.5 py-1">
-        <Skeleton className="h-5 w-full rounded-lg" />
-        <Skeleton className="h-5 w-2/3 rounded-lg" />
+        <Skeleton variant="translucent" className="h-5 w-full rounded-lg" />
+        <Skeleton variant="translucent" className="h-5 w-2/3 rounded-lg" />
       </div>
     );
   }

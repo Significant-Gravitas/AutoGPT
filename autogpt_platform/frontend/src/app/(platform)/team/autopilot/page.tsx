@@ -78,12 +78,7 @@ export default function AutopilotPage() {
         Built in, always on your team.
       </Text>
 
-      <TabsLine
-        data-profile-tabs
-        variant="compact"
-        value={activeTab}
-        onValueChange={onTabChange}
-      >
+      <TabsLine variant="compact" value={activeTab} onValueChange={onTabChange}>
         <TabsLineList
           flush={false}
           className={PROFILE_TABS_LIST_CLASS}
