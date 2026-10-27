@@ -140,7 +140,7 @@ export async function finishedChatStream(page: Page, method: "GET" | "POST") {
 }
 
 // A new chat's first answer waits on the chat, the turn's setup and the CLI;
-// slow CI runners have taken up to 19 s, past the 15 s expect default.
+// slow CI runners have taken about 20 s, past the 15 s expect default.
 const FIRST_ANSWER_TIMEOUT = 45_000;
 
 /** Waits for `answer` to start streaming into the chat just sent. */
