@@ -2,8 +2,13 @@ import { act, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { motionPreference } = vi.hoisted(() => ({
+const { motionPreference, device } = vi.hoisted(() => ({
   motionPreference: { reduced: false },
+  device: { isWide: true },
+}));
+
+vi.mock("../../useIsWideLayout", () => ({
+  useIsWideLayout: () => device.isWide,
 }));
 
 // Exit animations keep the outgoing card mounted until a frame that fake
@@ -39,6 +44,7 @@ function shownQuestions() {
 beforeEach(() => {
   vi.useFakeTimers();
   motionPreference.reduced = false;
+  device.isWide = true;
 });
 
 afterEach(() => {
@@ -118,6 +124,24 @@ describe("AmbientPrompts", () => {
       expect(layer().className).toContain("opacity-50");
     },
   );
+
+  it("holds its questions still while recording", async () => {
+    render(<AmbientPrompts role="Operations" screen="recording" />);
+    const before = shownQuestions();
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+
+    expect(shownQuestions()).toEqual(before);
+  });
+
+  it("runs no timer where the layer does not fit", () => {
+    device.isWide = false;
+    render(<AmbientPrompts role="Operations" screen="rest" />);
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
 
   it.each(["recovery", "failed", "insufficient"] as const)(
     "is gone on the %s screen",

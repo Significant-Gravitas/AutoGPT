@@ -16,6 +16,7 @@ interface Props {
   announcement: string;
   onAnotherQuestion: () => void;
   isMicBlocked: boolean;
+  isMicUnavailable: boolean;
   micPermission: MicrophonePermission;
   onRetryMicrophone: () => void;
 }
@@ -29,10 +30,12 @@ export function TypingComposer({
   announcement,
   onAnotherQuestion,
   isMicBlocked,
+  isMicUnavailable,
   micPermission,
   onRetryMicrophone,
 }: Props) {
   const isShortScreen = useIsShortScreen();
+  const hasNotice = isMicBlocked || isMicUnavailable;
 
   return (
     <div
@@ -40,6 +43,7 @@ export function TypingComposer({
     >
       <MicBlockedNotice
         isBlocked={isMicBlocked}
+        isUnavailable={isMicUnavailable}
         permission={micPermission}
         onRetry={onRetryMicrophone}
       />
@@ -57,7 +61,7 @@ export function TypingComposer({
         onChange={onChange}
         isTooLong={isTooLong}
         onSubmit={onSubmit}
-        rows={(isShortScreen ? 4 : 6) - (isMicBlocked ? 1 : 0)}
+        rows={(isShortScreen ? 4 : 6) - (hasNotice ? 1 : 0)}
       />
     </div>
   );

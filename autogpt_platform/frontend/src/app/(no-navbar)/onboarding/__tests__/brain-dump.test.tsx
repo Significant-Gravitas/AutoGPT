@@ -1528,6 +1528,26 @@ describe("onboarding brain dump — a refused microphone", () => {
     expect(screen.getByText(TYPING_HEADLINE)).toBeDefined();
   });
 
+  it("says so when the retry finds the microphone busy", async () => {
+    stubMicrophonePermission("denied");
+    getUserMedia.mockRejectedValueOnce(REFUSED);
+    getUserMedia.mockRejectedValueOnce(
+      new DOMException("", "NotReadableError"),
+    );
+    await pressTalkAndGetRefused();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "try the microphone again" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(
+        "We couldn't open your microphone, so write here instead.",
+      ),
+    );
+    expect(screen.getByText(TYPING_HEADLINE)).toBeDefined();
+  });
+
   it("clears the notice once the site is allowed from the address bar", async () => {
     const permission = stubMicrophonePermission("denied");
     getUserMedia.mockRejectedValue(REFUSED);

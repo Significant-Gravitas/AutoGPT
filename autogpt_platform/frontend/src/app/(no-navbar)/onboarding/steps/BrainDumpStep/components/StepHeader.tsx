@@ -58,8 +58,10 @@ export function StepHeader({
             </Text>{" "}
             A minute is plenty, and you can type instead.
           </Text>
-          {/* On wide screens the ambient cards carry these questions. */}
-          <OttoMightAsk question={question} compact className="xl:hidden" />
+          {/* On wide screens the ambient cards carry these questions, and
+              they are hidden from assistive tech, so this one stays in the
+              accessibility tree. */}
+          <OttoMightAsk question={question} compact className="xl:sr-only" />
         </RevealItem>
       )}
       {screen === "typing" && (

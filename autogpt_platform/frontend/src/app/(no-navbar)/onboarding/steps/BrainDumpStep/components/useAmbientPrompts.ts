@@ -7,13 +7,21 @@ const REDUCED_MOTION_SWAP_MS = 14_000;
 // Four cards carry questions; the two quotes never change.
 const QUESTION_CARDS = 4;
 
-export function useAmbientPrompts(role: string) {
+interface Args {
+  role: string;
+  // Off while recording, so nothing changes under someone mid-answer, and
+  // wherever the layer is not on screen.
+  isRotating: boolean;
+}
+
+export function useAmbientPrompts({ role, isRotating }: Args) {
   const promptSet = promptSetNameForRole(role);
   const reduceMotion = useReducedMotion() === true;
   const [rotation, setRotation] = useState({ promptSet, swaps: 0 });
   const swaps = rotation.promptSet === promptSet ? rotation.swaps : 0;
 
   useEffect(() => {
+    if (!isRotating) return;
     const timer = setInterval(
       () => {
         if (document.visibilityState !== "visible") return;
@@ -25,7 +33,7 @@ export function useAmbientPrompts(role: string) {
       reduceMotion ? REDUCED_MOTION_SWAP_MS : SWAP_MS,
     );
     return () => clearInterval(timer);
-  }, [promptSet, reduceMotion]);
+  }, [promptSet, reduceMotion, isRotating]);
 
   const { questions, examples } = BRAIN_DUMP_PROMPT_SETS[promptSet];
   return {

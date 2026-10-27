@@ -58,6 +58,21 @@ describe("MicBlockedNotice", () => {
     expect(alert.textContent).toBe(BLOCKED);
   });
 
+  it("explains a microphone that could not be opened", () => {
+    render(
+      <MicBlockedNotice
+        isBlocked={false}
+        isUnavailable
+        permission="granted"
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toBe(
+      "We couldn't open your microphone, so write here instead. To talk, check that it's connected and no other app is using it, then try the microphone again.",
+    );
+  });
+
   it("renders nothing while the microphone is not blocked", () => {
     const { container } = render(
       <MicBlockedNotice

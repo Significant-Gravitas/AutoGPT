@@ -95,6 +95,7 @@ export function BrainDumpStep() {
                     announcement={dump.prompt.announcement}
                     onAnotherQuestion={showAnotherQuestion}
                     isMicBlocked={dump.isMicBlocked}
+                    isMicUnavailable={dump.isMicUnavailable}
                     micPermission={dump.micPermission}
                     onRetryMicrophone={dump.handleRetryMicrophone}
                   />

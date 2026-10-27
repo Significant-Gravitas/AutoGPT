@@ -8,6 +8,9 @@ import type { MicrophonePermission } from "../useMicrophonePermission";
 
 interface Props {
   isBlocked: boolean;
+  // No microphone, or one another app holds: fixed on the device, not in
+  // the browser.
+  isUnavailable?: boolean;
   permission: MicrophonePermission;
   onRetry: () => void;
 }
@@ -25,6 +28,11 @@ const COPY = {
   },
   // The site is allowed but the operating system refused the browser, as
   // Chrome on a Mac without microphone access in System Settings does.
+  unavailable: {
+    reason: "We couldn't open your microphone, so write here instead.",
+    howTo:
+      "To talk, check that it's connected and no other app is using it, then",
+  },
   system: {
     reason: "Your computer blocked the microphone, so write here instead.",
     howTo:
@@ -32,9 +40,14 @@ const COPY = {
   },
 } as const;
 
-export function MicBlockedNotice({ isBlocked, permission, onRetry }: Props) {
-  if (!isBlocked) return null;
-  const copy = noticeCopy(permission);
+export function MicBlockedNotice({
+  isBlocked,
+  isUnavailable = false,
+  permission,
+  onRetry,
+}: Props) {
+  if (!isBlocked && !isUnavailable) return null;
+  const copy = isBlocked ? noticeCopy(permission) : COPY.unavailable;
 
   return (
     <div

@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ScreenState } from "../useBrainDumpStep";
+import { useIsWideLayout } from "../useIsWideLayout";
 import { useAmbientPrompts } from "./useAmbientPrompts";
 
 interface Props {
@@ -50,7 +51,11 @@ const HIDDEN_ON: ScreenState[] = ["recovery", "failed", "insufficient"];
 // border, shadow, hover or focus, and hidden from assistive tech, so that
 // nobody mistakes them for buttons. The live prompt is the accessible one.
 export function AmbientPrompts({ role, screen }: Props) {
-  const ambient = useAmbientPrompts(role);
+  const isShown = useIsWideLayout() && !HIDDEN_ON.includes(screen);
+  const ambient = useAmbientPrompts({
+    role,
+    isRotating: isShown && screen !== "recording",
+  });
   if (HIDDEN_ON.includes(screen)) return null;
   const isTyping = screen === "typing";
 
