@@ -388,7 +388,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // as the state machine driving that row's callbacks.
   useEffect(() => {
     if (!chainActions) return;
-    chainActions.register({
+    chainActions.register(actionId, {
       id: actionId,
       ready: connected,
       buildMessage: () => null,
