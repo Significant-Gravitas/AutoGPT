@@ -159,6 +159,113 @@ async function settleList() {
 }
 
 describe("Suggested first tasks — the greeting page", () => {
+  it("hides a greeting card and restores it with Undo", async () => {
+    withGreeting();
+    renderHome();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: `Hide: ${TASKS[1].title}` }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: TASKS[1].title })).toBeNull(),
+    );
+    await waitFor(() =>
+      expect(writes).toEqual([{ task_ids: ["1"], state: "dismissed" }]),
+    );
+    expect(events("home_suggestion_dismissed")).toEqual([
+      { position: 1, surface: "intro", remaining: 2, scope: "one" },
+    ]);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Undo" }));
+
+    expect(
+      await screen.findByRole("button", { name: TASKS[1].title }),
+    ).toBeDefined();
+    await waitFor(() =>
+      expect(writes.at(-1)).toEqual({ task_ids: ["1"], state: "open" }),
+    );
+  });
+
+  it("links a started greeting task to its chat", async () => {
+    withGreeting();
+    stored[0] = { ...stored[0], state: "sent", session_id: "chat /one?" };
+    renderHome();
+
+    const started = await screen.findByRole("link", {
+      name: `${TASKS[0].title} In progress`,
+    });
+
+    expect(started.getAttribute("href")).toBe(
+      "/copilot?sessionId=chat%20%2Fone%3F",
+    );
+    expect(within(started).getByText("In progress")).toBeDefined();
+    expect(screen.queryByRole("button", { name: TASKS[0].title })).toBeNull();
+  });
+
+  it("locks the cards while a task starts, then unlocks them after failure", async () => {
+    withGreeting();
+    let rejectStart = (_error: Error) => {};
+    const pending = new Promise<string>((_resolve, reject) => {
+      rejectStart = reject;
+    });
+    const onStartTask = vi.fn(() => pending);
+    renderHome({ onStartTask });
+    await userEvent.click(
+      await screen.findByRole("button", { name: TASKS[0].title }),
+    );
+
+    try {
+      expect(await screen.findByLabelText("Starting")).toBeDefined();
+      for (const card of screen.getAllByTestId("suggested-task")) {
+        for (const button of within(card).getAllByRole("button")) {
+          expect(button).toHaveProperty("disabled", true);
+        }
+      }
+      await userEvent.click(
+        screen.getByRole("button", { name: TASKS[1].title }),
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: `Hide: ${TASKS[1].title}` }),
+      );
+      expect(onStartTask).toHaveBeenCalledOnce();
+      expect(writes).toEqual([]);
+    } finally {
+      await act(async () => rejectStart(new Error("offline")));
+    }
+
+    await screen.findByText("Could not start that task");
+    for (const task of TASKS) {
+      expect(screen.getByRole("button", { name: task.title })).toHaveProperty(
+        "disabled",
+        false,
+      );
+      expect(
+        screen.getByRole("button", { name: `Hide: ${task.title}` }),
+      ).toHaveProperty("disabled", false);
+    }
+  });
+
+  it("shows the named tools in title order without changing the send label", async () => {
+    withGreeting();
+    stored[0] = {
+      ...stored[0],
+      title: "Summarize Slack, GitHub, and Linear updates in Notion",
+    };
+    renderHome();
+
+    const card = await screen.findByRole("button", { name: stored[0].title });
+    expect(
+      Array.from(card.querySelectorAll("img")).map((logo) =>
+        logo.getAttribute("src"),
+      ),
+    ).toEqual([
+      "/integrations/slack.png",
+      "/integrations/github.png",
+      "/integrations/linear.png",
+    ]);
+  });
+
   it("sends the full prompt and records which chat it started", async () => {
     withGreeting();
     const onStartTask = vi.fn(async () => "session-1");

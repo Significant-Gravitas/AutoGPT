@@ -71,11 +71,7 @@ export function SidebarUserActions() {
         ) : (
           accountMenu
         )}
-        {profile && (
-          <div className="group-data-[collapsible=icon]:hidden">
-            <Wallet key={profile.username} compact />
-          </div>
-        )}
+        {profile && <Wallet key={profile.username} compact />}
       </div>
     </SidebarFooter>
   );

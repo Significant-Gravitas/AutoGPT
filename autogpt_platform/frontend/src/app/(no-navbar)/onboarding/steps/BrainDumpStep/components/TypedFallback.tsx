@@ -64,7 +64,7 @@ export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
           size="small"
           onClick={onSubmit}
           disabled={!value.trim()}
-          className="h-10 w-56 rounded-xl"
+          className="h-10 w-56"
         >
           I&apos;m done
         </Button>
