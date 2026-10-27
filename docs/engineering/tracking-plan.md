@@ -333,18 +333,20 @@ merges the website pageviews into the new user:
 | --- | --- | --- | --- | --- |
 | `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab). The paywall step reports `paywall_viewed` instead. |
 | `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
-| `brain_dump_started` | browser | live | — | Recording starts. |
-| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
+| `brain_dump_started` | browser | live | `prompt_set` (the role's "Otto might ask" set) | Recording starts. |
+| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed), `prompt_set`, `prompts_seen` (distinct live prompts shown) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
 | `brain_dump_canceled` | browser | live | — | Recording is cancelled. |
-| `brain_dump_skipped` | browser | live | — | The step is skipped. |
+| `brain_dump_skipped` | browser | live | `prompt_set`, `prompts_seen` | The step is skipped. |
 | `brain_dump_recovery_shown` | browser | live | `parts` | A saved partial recording is offered back. |
 | `brain_dump_recovery_used` | browser | live | — | The saved recording is used. |
 | `brain_dump_retry` | browser | live | `attempt` | A failed finalize is retried. |
 | `brain_dump_restarted` | browser | live | — | Recording starts over. |
 | `brain_dump_download` | browser | live | — | The recording is downloaded after a failure. |
-| `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused. |
-| `brain_dump_mic_failed` | browser | live | `error_name` | The microphone fails to open, for any reason, a refused permission included. |
-| `brain_dump_typed_fallback` | browser | live | `reason` | The user types instead of speaking. |
+| `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused, on the first ask and again on each refused retry. |
+| `brain_dump_mic_failed` | browser | live | `error_name` | The microphone fails to open, for any reason, a refused permission included. Sent again on each failed retry, so count people, not events. |
+| `brain_dump_typed_fallback` | browser | live | `reason` (`chose_to_type`, `permission_denied`), `prompt_set` | The user types instead of speaking. `permission_denied` is sent once per visit, however many retries are refused. |
+| `brain_dump_prompt_advanced` | browser | live | `via` (`auto`, `click`), `screen` (`rest`, `typing`, `recording`), `prompt_index`, `prompt_set` | The "Otto might ask" question moves on, by its timer (12 s at rest on narrow screens, 20 s typing, 15 s recording; not while the ideas are paused) or "Another question". Not sent for the first question. |
+| `brain_dump_permission_retried` | browser | live | `result` (`granted`, `denied`, `unavailable`), `via` (`retry_link`, `record_instead`, `permission_change`), `permission_state` (`prompt`, `granted`, `denied`, `unknown`) | After a refused microphone, the user asks for it again, or allows the site in its settings (`permission_change`). Sent before `brain_dump_started`. `result` is the browser's answer, not the take: `granted` with no `brain_dump_started` after it means the user had already sent their text, or left the step, while the prompt was open. |
 | `transcription_failed` | browser | live | `error_code`, `finalize_latency_ms` | Finalize returns a failure. |
 | `welcome_dialog_closed` | browser | live | — | The first-landing intro ends (since SECRT-3149, the first-run walkthrough, finished or skipped). |
 | `first_run_tour_shown` | browser | live | `opened_from` (`auto` after onboarding, `menu` from "Show me around") | The guided first run over the real sidebar opens. |

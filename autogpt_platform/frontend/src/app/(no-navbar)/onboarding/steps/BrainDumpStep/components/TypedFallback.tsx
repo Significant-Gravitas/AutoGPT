@@ -15,11 +15,18 @@ interface Props {
   onChange: (value: string) => void;
   onSubmit: () => void;
   isTooLong: boolean;
+  rows?: number;
 }
 
 const LIMIT_HINT_ID = "brain-dump-text-limit";
 
-export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
+export function TypedFallback({
+  value,
+  onChange,
+  onSubmit,
+  isTooLong,
+  rows = 6,
+}: Props) {
   return (
     <FadeIn className="w-full">
       <div className="flex w-full flex-col items-center gap-3">
@@ -29,7 +36,7 @@ export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
             type="textarea"
             label="Your brain dump"
             hideLabel
-            rows={6}
+            rows={rows}
             className="rounded-xl border-border-base"
             placeholder="What repeats every week? What would you hand off first?"
             value={value}
