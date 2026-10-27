@@ -48,7 +48,11 @@ def microsoft_app() -> MicrosoftApp:
 
 
 def browser_sign_in_available() -> bool:
-    """Browser sign-in needs the app's secret; without one, sign-in codes remain."""
+    """Browser sign-in needs the app's secret and its redirect, which only the
+    deployment can vouch for (MICROSOFT_BROWSER_SIGN_IN). Otherwise sign-in
+    codes remain: the Teams bot's app has a secret long before the redirect."""
+    if not Settings().config.microsoft_browser_sign_in:
+        return False
     return microsoft_app().client_secret is not None
 
 

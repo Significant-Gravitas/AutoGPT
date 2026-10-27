@@ -23,6 +23,7 @@ from backend.integrations.oauth.microsoft_services import (
     is_microsoft_365_copilot_credential,
 )
 from backend.integrations.oauth.microsoft_tokens import (
+    browser_sign_in_available,
     microsoft_resource_token,
     refresh_microsoft_credentials,
 )
@@ -37,12 +38,15 @@ TOKENS = {
 }
 
 
-def _app(mocker, client_id: str = "", secret: str = "") -> None:
-    secrets = mocker.patch(
+def _app(
+    mocker, client_id: str = "", secret: str = "", browser: bool = True
+) -> None:
+    settings = mocker.patch(
         "backend.integrations.oauth.microsoft_tokens.Settings"
-    ).return_value.secrets
-    secrets.microsoft_client_id = client_id
-    secrets.microsoft_client_secret = secret
+    ).return_value
+    settings.secrets.microsoft_client_id = client_id
+    settings.secrets.microsoft_client_secret = secret
+    settings.config.microsoft_browser_sign_in = browser
 
 
 def _http(mocker, *payloads: dict, status: int = 200) -> AsyncMock:
@@ -92,6 +96,19 @@ def _connection(
             },
         },
     )
+
+
+def test_browser_sign_in_waits_until_the_deployment_turns_it_on(mocker) -> None:
+    # A secret alone isn't enough: the bot's app has one before its Entra app
+    # has the browser redirect.
+    _app(mocker, "deployment-app", "secret", browser=False)
+    assert not browser_sign_in_available()
+
+    _app(mocker, "deployment-app", "secret", browser=True)
+    assert browser_sign_in_available()
+
+    _app(mocker, browser=True)
+    assert not browser_sign_in_available()
 
 
 def test_browser_sign_in_asks_consent_for_every_requested_resource() -> None:

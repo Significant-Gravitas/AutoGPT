@@ -2017,6 +2017,15 @@ def _get_provider_oauth_handler(
             detail=f"Provider '{key}' does not support OAuth",
         )
 
+    if key in MICROSOFT_PROVIDERS and not browser_sign_in_available():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Microsoft connects with a sign-in code here, not a browser "
+                "sign-in. Use the Connect Microsoft button instead."
+            ),
+        )
+
     # Check if this provider has custom OAuth credentials
     oauth_credentials = CREDENTIALS_BY_PROVIDER.get(key)
 
