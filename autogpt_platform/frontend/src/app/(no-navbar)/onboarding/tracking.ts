@@ -3,6 +3,7 @@ import { OnboardingEvent } from "@/services/analytics/posthog-events";
 import type { StepLayout } from "./store";
 
 export type OnboardingStepKey =
+  | "access"
   | "team"
   | "autopilot"
   | "role"
@@ -25,6 +26,7 @@ export function onboardingStepKey(
   steps: StepLayout,
   step: number,
 ): OnboardingStepKey | null {
+  if (step === steps.access) return "access";
   if (step === steps.team) return "team";
   if (step === steps.autopilot) return "autopilot";
   if (step === steps.role) return "role";

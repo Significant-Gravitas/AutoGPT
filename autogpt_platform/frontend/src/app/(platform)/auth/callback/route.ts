@@ -44,7 +44,8 @@ function getPublicOrigin(requestOrigin: string) {
 }
 
 function getSignupMethod(searchParams: URLSearchParams): SignupMethod {
-  return searchParams.get("method") === "email" ? "email" : "google";
+  if (searchParams.get("method") === "email") return "email";
+  return searchParams.get("provider") === "microsoft" ? "microsoft" : "google";
 }
 
 // Better Auth redirects here without a session when the link is expired,

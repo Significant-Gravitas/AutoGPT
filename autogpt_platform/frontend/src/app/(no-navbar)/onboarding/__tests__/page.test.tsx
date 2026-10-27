@@ -1,4 +1,6 @@
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { server } from "@/mocks/mock-server";
 import {
   act,
   cleanup,
@@ -18,6 +20,16 @@ import { useOnboardingWizardStore } from "../store";
 import { progressStorageKey } from "../progress";
 import { makeProgress as makeBaseProgress } from "./progress-fixture";
 
+vi.mock("../steps/AccessStep/AccessStep", () => ({
+  AccessStep: () => (
+    <button
+      data-testid="step-access"
+      onClick={() => useOnboardingWizardStore.getState().nextStep()}
+    >
+      Continue
+    </button>
+  ),
+}));
 vi.mock("../steps/RoleStep", () => ({
   RoleStep: () => (
     <button
@@ -238,6 +250,17 @@ function atPaywall() {
 }
 
 describe("onboarding before payment", () => {
+  it("starts a Microsoft sign-up on its Microsoft 365 connection", async () => {
+    server.use(
+      http.get("*/api/auth/sign-in-providers", () =>
+        HttpResponse.json({ providers: ["microsoft"] }),
+      ),
+    );
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-access"));
+    expect(await screen.findByTestId("step-team")).toBeDefined();
+  });
+
   it("collects role and pain points before showing the card requirement", async () => {
     render(<OnboardingPage />);
     await completePersonalization();

@@ -57,6 +57,9 @@ class FrontendFlag(str, Enum):
     # The share of chat sessions whose stream is shadowed and checked, 0 to 1.
     COPILOT_STREAM_SHADOW = "copilot-stream-shadow"
     COPILOT_STREAM_RUNTIME = "copilot-stream-runtime"
+    # The onboarding steps in the order an experiment wants them: the named
+    # steps lead and the rest keep their default order (frontend `resolveStepOrder`).
+    ONBOARDING_STEP_ORDER = "onboarding-step-order"
 
     @classmethod
     def __get_pydantic_json_schema__(
@@ -74,6 +77,7 @@ PAYLOAD_FLAGS = frozenset(
         FrontendFlag.MARKETPLACE_SEARCH_TERMS,
         FrontendFlag.COPILOT_BOT_PLATFORMS,
         FrontendFlag.COPILOT_STREAM_SHADOW,
+        FrontendFlag.ONBOARDING_STEP_ORDER,
     }
 )
 

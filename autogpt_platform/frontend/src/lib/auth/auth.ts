@@ -43,6 +43,8 @@ import { RESET_LINK_EXPIRES_IN_SECONDS } from "./set-password-link";
 import { JWKS_ALG } from "./service-token";
 import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
+import { getMicrosoftLoginProvider } from "./microsoft-login";
+import { assertMicrosoftSignUpConfirmed } from "./microsoft-sign-up-policy";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
 
@@ -64,7 +66,8 @@ function getSocialProviders() {
     }
   }
 
-  return providers;
+  const microsoft = getMicrosoftLoginProvider();
+  return microsoft ? { ...providers, microsoft } : providers;
 }
 
 // Shared with the databaseHooks below so the verified-email mirror reuses the
@@ -106,6 +109,7 @@ function hasPlatformUser(userId: string) {
 // Better Auth hands database hooks the endpoint context, or null outside one.
 type HookContext = {
   path?: string;
+  params?: { id?: string };
   headers?: Headers;
   request?: Request;
   context?: { options: BetterAuthOptions };
@@ -189,8 +193,12 @@ export const auth = betterAuth({
         // a user row. Existing users and the SQL data-migration bypass it.
         // The thrown message is phrased so the frontend `isWaitlistError()`
         // maps it to the existing "not allowed" modal.
-        before: async (user: { email: string }, ctx: HookContext) => {
+        before: async (
+          user: { email: string; emailVerified?: boolean | null },
+          ctx: HookContext,
+        ) => {
           assertTeamEmailUsesGoogle(user.email, ctx);
+          assertMicrosoftSignUpConfirmed(user, ctx);
           const decision = isSignupAllowed(user.email, readSignupGateConfig());
           if (!decision.allowed) {
             throw new APIError("FORBIDDEN", {

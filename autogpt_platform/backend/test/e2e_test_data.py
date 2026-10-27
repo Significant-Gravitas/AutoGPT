@@ -111,6 +111,10 @@ SEEDED_TEST_EMAILS = [
     "e2e.qa.parallel.b@example.com",
 ]
 
+# Signed up with Microsoft, so its onboarding opens on the Microsoft 365 offer.
+# It also has a password, because Playwright cannot sign in to Microsoft.
+MICROSOFT_SIGN_IN_EMAIL = "e2e.qa.microsoft@example.com"
+
 
 def make_seed_credential(credential_id: str) -> APIKeyCredentials:
     return APIKeyCredentials(
@@ -300,6 +304,26 @@ class TestDataCreator:
             }
         )
         return user_id
+
+    async def create_microsoft_sign_in_user(self) -> None:
+        """A fresh account that signed up with Microsoft, left out of the
+        generated data so it starts like a new sign-up."""
+        password = "testpassword123"  # pragma: allowlist secret
+        password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        user_id = await self._ensure_auth_user(MICROSOFT_SIGN_IN_EMAIL, password_hash)
+        signed_in_with_microsoft = await prisma.authaccount.find_first(
+            where={"userId": user_id, "providerId": "microsoft"}
+        )
+        if not signed_in_with_microsoft:
+            await prisma.authaccount.create(
+                data={
+                    "id": str(faker.uuid4()),
+                    "accountId": "e2e-tenant:e2e-object",
+                    "providerId": "microsoft",
+                    "userId": user_id,
+                }
+            )
+        await get_or_create_user({"sub": user_id, "email": MICROSOFT_SIGN_IN_EMAIL})
 
     async def get_available_blocks(self) -> List[Dict[str, Any]]:
         """Get available agent blocks from database."""
@@ -1275,6 +1299,7 @@ class TestDataCreator:
 
         # Create users first
         await self.create_test_users()
+        await self.create_microsoft_sign_in_user()
 
         # Backfill personal orgs/teams for the users we just inserted.
         # The app's lifespan-context migration already ran at backend

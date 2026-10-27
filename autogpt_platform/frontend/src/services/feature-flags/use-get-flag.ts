@@ -36,6 +36,8 @@ const defaultFlags = {
   [Flag.COPILOT_AUTO_MODE]: false,
   [Flag.COPILOT_STREAM_SHADOW]: 0,
   [Flag.COPILOT_STREAM_RUNTIME]: false,
+  // Empty keeps the default onboarding order (`resolveStepOrder`).
+  [Flag.ONBOARDING_STEP_ORDER]: [] as string[],
 } satisfies Record<Flag, unknown>;
 
 type FlagValues = typeof defaultFlags;
@@ -89,6 +91,7 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_STREAM_RUNTIME;
     case Flag.COPILOT_BOT_PLATFORMS:
     case Flag.COPILOT_STREAM_SHADOW:
+    case Flag.ONBOARDING_STEP_ORDER:
       return undefined;
   }
 }
@@ -102,6 +105,7 @@ const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
   Flag.MARKETPLACE_SEARCH_TERMS,
   Flag.COPILOT_BOT_PLATFORMS,
   Flag.COPILOT_STREAM_SHADOW,
+  Flag.ONBOARDING_STEP_ORDER,
 ]);
 
 // Master local-dev switch: ``NEXT_PUBLIC_FORCE_ALL_FLAGS=true`` turns every

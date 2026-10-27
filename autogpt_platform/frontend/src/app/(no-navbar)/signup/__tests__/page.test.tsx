@@ -202,14 +202,23 @@ describe("SignupPage", () => {
     expect(previous?.lastElementChild?.textContent).toBe("Sign up");
   });
 
-  test("renders the legal line right after the Google button in cloud", () => {
+  test("renders the legal line right after the social sign-in buttons in cloud", () => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED", "true");
 
     render(<SignupPage />);
 
-    expect(getLegalLine().previousElementSibling).toBe(
-      screen.getByRole("button", { name: /continue with google/i }),
-    );
+    const buttons = getLegalLine().previousElementSibling;
+    expect(
+      buttons?.contains(
+        screen.getByRole("button", { name: /continue with google/i }),
+      ),
+    ).toBe(true);
+    expect(
+      buttons?.contains(
+        screen.getByRole("button", { name: /continue with microsoft/i }),
+      ),
+    ).toBe(true);
   });
 
   test("opting out swaps the sentence, keeps focus on the toggle and submits the opt-out", async () => {

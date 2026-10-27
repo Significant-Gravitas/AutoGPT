@@ -1,7 +1,8 @@
 import { environment } from "@/services/environment";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
-import { useRef } from "react";
-import { buildStepLayout, type Step } from "./store";
+import { useSignInProvider } from "./steps/AccessStep/useSignInProvider";
+import { buildStepLayout, resolveStepOrder, type Step } from "./store";
+import { useFrozenPerUser } from "./useFrozenPerUser";
 import { usePaidCheckoutStatus } from "./usePaidCheckoutStatus";
 
 export function useOnboardingLayout({
@@ -16,30 +17,38 @@ export function useOnboardingLayout({
   trialConfirmation: { ready: boolean; active: boolean | undefined };
 }) {
   const payment = useFlagStatus(Flag.ENABLE_PLATFORM_PAYMENT);
+  const stepOrder = useFlagStatus(Flag.ONBOARDING_STEP_ORDER);
+  const signIn = useSignInProvider(isLoggedIn);
 
   const flagsReady = payment.ready;
-  const snapshot = useRef<{
-    userID: string | null;
-    payment: boolean;
-  } | null>(null);
-  if (snapshot.current?.userID !== userID) snapshot.current = null;
-  // Resolve once per account: flag changes must not reorder an active wizard.
-  if (!snapshot.current && flagsReady && !isUserLoading) {
-    snapshot.current = {
-      userID,
-      payment: payment.enabled,
-    };
-  }
+  // Resolved once per account: flag changes must not reorder an active wizard.
+  // Payment and placement resolve apart, so a checkout return is confirmed
+  // without waiting on the sign-in lookup.
+  const hasPayment = useFrozenPerUser(
+    userID,
+    flagsReady && !isUserLoading,
+    () => payment.enabled,
+  );
+  const placement = useFrozenPerUser(
+    userID,
+    stepOrder.ready && signIn.isReady && !isUserLoading,
+    () => ({
+      order: resolveStepOrder(stepOrder.enabled),
+      hasAccess: signIn.provider !== null,
+    }),
+  );
   const paidConfirmation = usePaidCheckoutStatus(
     userID,
-    !!snapshot.current?.payment && !environment.isLocal(),
+    !!hasPayment && !environment.isLocal(),
   );
   const userHasActivePlan = trialConfirmation.active || paidConfirmation.active;
-  const isPaymentEnabled = !!snapshot.current?.payment && !userHasActivePlan;
+  const isPaymentEnabled = !!hasPayment && !userHasActivePlan;
   const isSelfHostConnectEnabled = !isPaymentEnabled && environment.isLocal();
   const steps = buildStepLayout({
     hasPaywall: isPaymentEnabled,
     hasConnect: isSelfHostConnectEnabled,
+    hasAccess: !!placement?.hasAccess,
+    order: placement?.order,
   });
   return {
     steps,
@@ -47,6 +56,7 @@ export function useOnboardingLayout({
     totalSteps: steps.preparing - 1,
     isReady:
       flagsReady &&
+      !!placement &&
       !isUserLoading &&
       (!isLoggedIn || !paidConfirmation.isLoading) &&
       trialConfirmation.ready &&

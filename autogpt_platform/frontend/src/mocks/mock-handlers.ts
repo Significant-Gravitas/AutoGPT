@@ -52,6 +52,11 @@ export const mockHandlers = [
   ),
   // No flag vendor unless a test provides one, so every flag serves its default.
   getGetFeatureFlagsMockHandler({ flags: {}, configured: false }),
+  // Signed up with email unless a test provides a sign-in provider, so
+  // onboarding has no access step.
+  http.get("*/api/auth/sign-in-providers", () =>
+    HttpResponse.json({ providers: ["credential"] }),
+  ),
   ...getAdminMock(),
   ...getAnalyticsMock(),
   ...getApiKeysMock(),

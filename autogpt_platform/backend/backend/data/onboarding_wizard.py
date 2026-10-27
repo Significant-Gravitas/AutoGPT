@@ -11,6 +11,7 @@ class OnboardingWizardConflict(RuntimeError):
 
 
 WizardStep = Literal[
+    "access",
     "team",
     "autopilot",
     "role",

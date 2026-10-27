@@ -1,6 +1,7 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import { providerCallbackPath } from "@/lib/auth/provider-callback";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { setMarketingOptOutFlag } from "@/services/analytics/marketing-opt-out-cookie";
 import { trackSignupMarketingOptOut } from "@/services/analytics/signup-analytics";
@@ -24,7 +25,9 @@ export function useSignupPage() {
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [isSigningUp, setIsSigningUp] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [loadingProvider, setLoadingProvider] = useState<LoginProvider | null>(
+    null,
+  );
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(
     null,
@@ -84,15 +87,12 @@ export function useSignupPage() {
   }
 
   async function handleProviderSignup(provider: LoginProvider) {
-    setIsGoogleLoading(true);
+    setLoadingProvider(provider);
     setIsSigningUp(true);
 
     try {
       // Include next URL in OAuth flow if present
-      const callbackUrl = nextUrl
-        ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
-        : `/auth/callback`;
-      const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
+      const fullCallbackUrl = `${window.location.origin}${providerCallbackPath(provider, nextUrl)}`;
 
       setMarketingOptOutFlag(form.getValues("marketingOptOut") ?? false);
 
@@ -117,7 +117,7 @@ export function useSignupPage() {
       const { url } = await response.json();
       if (url) window.location.href = url as string;
     } catch (error) {
-      setIsGoogleLoading(false);
+      setLoadingProvider(null);
       setIsSigningUp(false);
       toast({
         title:
@@ -223,7 +223,9 @@ export function useSignupPage() {
     isLoggedIn: !!user,
     hasInitializedAuth,
     isLoading,
-    isGoogleLoading,
+    isGoogleLoading: loadingProvider === "google",
+    isMicrosoftLoading: loadingProvider === "microsoft",
+    isMicrosoftEnabled: environment.isMicrosoftLoginEnabled(),
     isSigningUp,
     isCloudEnv,
     isUserLoading,
