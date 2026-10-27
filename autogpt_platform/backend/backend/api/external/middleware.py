@@ -143,6 +143,7 @@ async def require_auth(
 def _plaintext_api_key(
     api_key: str | None, bearer: HTTPAuthorizationCredentials | None
 ) -> str | None:
+    """Prefer an explicit API key while supporting Bearer-only MCP clients."""
     if api_key is not None:
         return api_key
     if bearer is not None and not is_access_token(bearer.credentials):

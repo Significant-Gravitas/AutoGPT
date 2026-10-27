@@ -107,7 +107,10 @@ async def test_missing_peer_does_not_create_global_bucket(stored_key, monkeypatc
     monkeypatch.setattr(rate_limit, "AUTH_VALIDATE_IP_MAX_REQUESTS", 1)
     request = Request({"type": "http", "headers": [], "client": None})
     for _ in range(3):
-        await rate_limit.enforce_api_key_validate_rate_limit(request, stored_key[1])
+        budget = await rate_limit.enforce_api_key_validate_rate_limit(
+            request, stored_key[1]
+        )
+        assert budget is None
 
 
 async def test_deadline_bounds_the_whole_check(monkeypatch):
@@ -116,12 +119,13 @@ async def test_deadline_bounds_the_whole_check(monkeypatch):
 
     monkeypatch.setattr(rate_limit, "get_redis_async", stalled_connection)
     request = Request({"type": "http", "headers": [], "client": ("192.0.2.1", 1234)})
-    await asyncio.wait_for(
+    budget = await asyncio.wait_for(
         rate_limit.enforce_api_key_validate_rate_limit(
             request, "agpt_abcMIDDLESAMETAIL"
         ),
         timeout=5,
     )
+    assert budget is None
 
 
 async def test_concurrent_invalid_burst_stops_real_scrypt(

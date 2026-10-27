@@ -138,6 +138,7 @@ async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
             return None
 
         head = plaintext_key[: APIKeySmith.HEAD_LENGTH]
+        # Generated and legacy keys store the final TAIL_LENGTH characters as tail.
         # All head+tail matches, including legacy keys, remain eligible so a
         # collision cannot make an otherwise valid key unauthenticatable.
         tail = plaintext_key[-APIKeySmith.TAIL_LENGTH :]
