@@ -1,6 +1,11 @@
 import type { ExpertFirstJob } from "@/app/api/__generated__/models/expertFirstJob";
 import { describe, expect, it } from "vitest";
-import { getFirstJobHref, getStatusLabel, shouldPoll } from "../helpers";
+import {
+  getFirstJobDetail,
+  getFirstJobHref,
+  getStatusLabel,
+  shouldPoll,
+} from "../helpers";
 
 function job(overrides: Partial<ExpertFirstJob> = {}): ExpertFirstJob {
   return {
@@ -57,7 +62,7 @@ describe("getStatusLabel", () => {
     ["needs_you", "Needs you"],
     ["working", "Working"],
     ["ready", "Ready for review"],
-    ["open", "Start"],
+    ["open", "Start a chat"],
   ] as const)("labels %s as %s", (status, label) => {
     expect(getStatusLabel(status)).toBe(label);
   });
@@ -81,5 +86,28 @@ describe("shouldPoll", () => {
       ]),
     ).toBe(false);
     expect(shouldPoll([])).toBe(false);
+  });
+});
+
+describe("getFirstJobDetail", () => {
+  it("names the tools a job needs set up", () => {
+    expect(
+      getFirstJobDetail(
+        job({
+          status: "needs_setup",
+          detail: "Needs google, notion",
+          providers: ["google", "notion", "mcp:linear"],
+        }),
+      ),
+    ).toBe("Needs Google, Notion, linear");
+  });
+
+  it("keeps the server's detail otherwise", () => {
+    expect(
+      getFirstJobDetail(
+        job({ status: "needs_setup", detail: "Setup failed", providers: [] }),
+      ),
+    ).toBe("Setup failed");
+    expect(getFirstJobDetail(job({ status: "open" }))).toBe("Not started yet");
   });
 });

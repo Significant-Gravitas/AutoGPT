@@ -204,7 +204,7 @@ describe("OnboardingIntroCard — your team", () => {
 
     const heading = await screen.findByRole("heading", { name: "Your team" });
     const card = screen.getByRole("link", {
-      name: "Ava: Sort this week's inbox, Start",
+      name: "Ava: Sort this week's inbox, Start a chat",
     });
     expect(card.getAttribute("href")).toBe(
       "/copilot?expertId=expert-ava&kickoff=1",

@@ -5,6 +5,7 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import NextLink from "next/link";
 import {
+  getFirstJobDetail,
   getFirstJobHref,
   getStatusConfig,
   getStatusLabel,
@@ -17,6 +18,7 @@ interface Props {
 
 export function FirstJobCard({ item }: Props) {
   const label = getStatusLabel(item.status);
+  const detail = getFirstJobDetail(item);
 
   return (
     <NextLink
@@ -46,9 +48,9 @@ export function FirstJobCard({ item }: Props) {
       </div>
       <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1">
         <StatusPill status={item.status} />
-        {item.detail && item.detail !== label ? (
+        {detail && detail !== label ? (
           <Text variant="small" as="span" tone="muted">
-            {item.detail}
+            {detail}
           </Text>
         ) : null}
       </div>

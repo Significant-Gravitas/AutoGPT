@@ -1,5 +1,6 @@
 import type { ExpertFirstJob } from "@/app/api/__generated__/models/expertFirstJob";
 import type { ExpertFirstJobStatus } from "@/app/api/__generated__/models/expertFirstJobStatus";
+import { serviceLabelFromIcon } from "@/components/contextual/IntegrationsPanel/helpers";
 import { trackFunnel } from "@/services/experts/experts-analytics";
 
 const STATUS_CONFIG: Record<
@@ -11,7 +12,7 @@ const STATUS_CONFIG: Record<
   needs_you: { label: "Needs you", dot: "bg-warning", pulse: false },
   working: { label: "Working", dot: "bg-primary", pulse: true },
   ready: { label: "Ready for review", dot: "bg-emerald-500", pulse: false },
-  open: { label: "Start", dot: "bg-zinc-300", pulse: false },
+  open: { label: "Start a chat", dot: "bg-zinc-300", pulse: false },
 };
 
 const CHAT_STATUSES: ExpertFirstJobStatus[] = ["working", "ready", "needs_you"];
@@ -33,6 +34,15 @@ export function getStatusLabel(status: ExpertFirstJobStatus) {
 
 export function getStatusConfig(status: ExpertFirstJobStatus) {
   return STATUS_CONFIG[status];
+}
+
+/** The server's detail names missing tools by slug; show their names. */
+export function getFirstJobDetail(item: ExpertFirstJob) {
+  const providers = item.providers ?? [];
+  if (item.status === "needs_setup" && providers.length > 0) {
+    return `Needs ${providers.map(serviceLabelFromIcon).join(", ")}`;
+  }
+  return item.detail;
 }
 
 /** Installing and working settle on their own; everything else waits on

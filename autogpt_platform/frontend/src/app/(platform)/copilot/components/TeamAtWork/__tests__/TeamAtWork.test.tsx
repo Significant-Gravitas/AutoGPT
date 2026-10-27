@@ -44,8 +44,8 @@ const CLEO: ExpertFirstJob = {
   title: "Tidy next week's calendar",
   description: "Move clashing meetings and protect focus time.",
   status: "needs_setup",
-  detail: "Needs google",
-  providers: ["google"],
+  detail: "Needs google, notion",
+  providers: ["google", "notion"],
   session_id: null,
 };
 
@@ -72,7 +72,9 @@ describe("TeamAtWork", () => {
       await screen.findByRole("heading", { name: "Your team" }),
     ).toBeDefined();
     expect(
-      screen.getByRole("link", { name: "Ava: Sort this week's inbox, Start" }),
+      screen.getByRole("link", {
+        name: "Ava: Sort this week's inbox, Start a chat",
+      }),
     ).toBeDefined();
     const ben = screen.getByRole("link", {
       name: "Ben: Map the top five competitors, Working",
@@ -82,7 +84,8 @@ describe("TeamAtWork", () => {
       name: "Cleo: Tidy next week's calendar, Needs setup",
     });
     expect(cleo.getAttribute("href")).toBe("/team/expert-cleo");
-    expect(screen.getByText("Needs google")).toBeDefined();
+    expect(screen.getByText("Needs Google, Notion")).toBeDefined();
+    expect(screen.queryByText("Needs google, notion")).toBeNull();
     expect(screen.getByText("Researcher")).toBeDefined();
     expect(
       screen.getByText("Pricing, positioning and recent launches for each."),
@@ -95,7 +98,7 @@ describe("TeamAtWork", () => {
     render(<TeamAtWork />);
 
     const card = await screen.findByRole("link", {
-      name: "Ava: Sort this week's inbox, Start",
+      name: "Ava: Sort this week's inbox, Start a chat",
     });
     expect(card.getAttribute("href")).toBe(
       "/copilot?expertId=expert-ava&kickoff=1",
