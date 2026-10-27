@@ -42,9 +42,6 @@ MAX_LEDGER_ROWS = 6
 MAX_ATTENTION_ITEMS = 6
 # Under this much activity the digest shrinks instead of padding.
 QUIET_RUN_THRESHOLD = 3
-# Roughly what a credit costs, used only for the parenthetical dollar estimate
-# under the ledger.
-CREDITS_PER_USD = 100
 
 
 def _db():
@@ -90,7 +87,6 @@ async def build_briefing(
         failed=failed,
         credits_used=credits_used,
         credits_balance=await _db().get_briefing_credit_balance(user_id),
-        usd_estimate=round(credits_used / CREDITS_PER_USD, 2) if credits_used else None,
     )
 
     quiet = _is_quiet(totals, attention)

@@ -175,10 +175,10 @@ async def wait_for_session_result(
 def _budget_refusal(pause: TurnPause) -> str:
     """What the caller's model is told about a turn refused for budget."""
     if pause.resets_at is None:
-        return f"{pause.summary} The AutoPilot budget doesn't reset on its own."
+        return f"{pause.summary} The account's budget doesn't reset on its own."
     resets_at = pause.resets_at.astimezone(UTC)
     return (
-        f"{pause.summary} The AutoPilot budget resets "
+        f"{pause.summary} The account's budget resets "
         f"{resets_at:%Y-%m-%d %H:%M} UTC."
     )
 

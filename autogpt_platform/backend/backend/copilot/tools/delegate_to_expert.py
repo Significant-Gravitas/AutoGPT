@@ -36,7 +36,7 @@ from backend.api.features.experts.models import Expert
 from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.context import get_current_permissions
-from backend.copilot.gate.policy import DEFAULT_MODE, child_autopilot_mode
+from backend.copilot.gate import child_autopilot_mode
 from backend.copilot.model import (
     ChatSession,
     child_session_origin,
@@ -309,9 +309,8 @@ class DelegateToExpertTool(BaseTool):
                 # Decided here, from the expert row already in hand, so the
                 # thread cannot pick up a looser default written in between.
                 inherited_autopilot_mode=child_autopilot_mode(
-                    session.metadata.autopilot_mode, target.autopilot_mode
-                )
-                or DEFAULT_MODE,
+                    session, target.autopilot_mode
+                ),
             )
             return new_session.session_id
 

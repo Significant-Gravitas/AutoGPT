@@ -13,7 +13,7 @@ import re
 import sys
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -30,7 +30,7 @@ from websockets.exceptions import InvalidStatus
 
 from backend.api import rest_api, ws_api
 from backend.api.conn_manager import ConnectionManager
-from backend.api.test_helpers import override_config
+from backend.api.features.integrations import router as integrations_router
 from backend.util import logging as service_logging
 from backend.util import metrics
 from backend.util.process import AppProcess
@@ -109,6 +109,11 @@ async def test_websocket_server_logs_no_session_token(
 async def test_rest_server_logs_no_credentials_from_request_urls(
     service_output: io.StringIO, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(
+        integrations_router,
+        "get_webhook",
+        AsyncMock(side_effect=RuntimeError("database unavailable")),
+    )
     async with (
         _serve(rest_api.AgentServer(), monkeypatch) as host,
         httpx.AsyncClient(base_url=f"http://{host}") as client,
@@ -118,10 +123,9 @@ async def test_rest_server_logs_no_credentials_from_request_urls(
             f"/api/public/shared/chats/{SHARE_TOKEN}/messages",
             params={"limit": "many", "token": SESSION_TOKEN},
         )
-        # No webhook manager handles this provider, so the request fails
-        # server-side and the 500 handler logs the request path.
+        # The webhook lookup fails server-side, so the 500 handler logs the path.
         ingress = await client.post(
-            f"/api/integrations/unregistered/webhooks/{WEBHOOK_ID}/ingress",
+            f"/api/integrations/github/webhooks/{WEBHOOK_ID}/ingress",
             params={"token": SESSION_TOKEN},
             json={},
         )
@@ -133,7 +137,7 @@ async def test_rest_server_logs_no_credentials_from_request_urls(
     shared_chat = f"/api/public/shared/chats/{REDACTED}/messages"
     assert f"GET {shared_chat}?limit={REDACTED}&token={REDACTED} HTTP/1.1" in logs
     assert f"Validation failed for GET {shared_chat}" in logs
-    webhook = f"/api/integrations/unregistered/webhooks/{REDACTED}/ingress"
+    webhook = f"/api/integrations/github/webhooks/{REDACTED}/ingress"
     assert f"POST {webhook}?token={REDACTED} HTTP/1.1" in logs
     assert f"POST {webhook} failed." in logs
 
@@ -282,9 +286,11 @@ async def _open_websockets(host: str) -> None:
     with pytest.raises(InvalidStatus):
         async with connect(url):
             pass
-    # ...and with auth off it is accepted, as a live session's is. A raw quote
-    # or # earlier in the query must not end the masking before the token.
-    with override_config(ws_api.settings, "enable_auth", False):
+    # ...and once it authenticates it is accepted, as a live session's is. A raw
+    # quote or # earlier in the query must not end the masking before the token.
+    with patch.object(
+        ws_api, "authenticate_websocket", AsyncMock(return_value="user-1")
+    ):
         async with connect(url):
             pass
         target = f"/ws?q=it's#&token={SESSION_TOKEN}"

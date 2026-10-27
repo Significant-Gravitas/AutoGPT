@@ -21,12 +21,11 @@
 {{ ui.page_open() }}
 {{ ui.masthead() }}
 {{ ui.hero('changelog') }}
-    <tr><td bgcolor="#ffffff" class="corner" style="border-radius:0 0 16px 16px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF">
+{{ ui.sheet_open() }}
 {% call ui.eyebrow(tone='brand') %}AUTOGPT UPDATE · {{ edition_label | upper }}{% endcall %}
 {% call ui.headline() %}What's new: {{ period_label }}{% endcall %}
 {% call ui.para() %}Hey {{ user_name }}, {{ intro }}{% endcall %}
-        <tr><td class="gutter" style="padding:20px 48px 0;">
+        <tr><td style="padding:20px 0 0;">
           {%- for e in entries %}
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f5f3fb" style="border-radius:10px;{{ ' margin-top:10px;' if not loop.first }}">
             <tr><td style="padding:14px 16px;">
@@ -39,10 +38,9 @@
         </td></tr>
 {{ ui.cta('See the full changelog', urls.changelog, 'Everything we ship lands there weekly. This email is just the monthly roundup.') }}
 {% call ui.para(color='#575072', size=13, lh=20, top=18) %}Something here you asked for? That's not a coincidence. Reply and tell me what should be in next month's edition.{% endcall %}
-{{ ui.signature('John Ababseh', 'Head of Product · AutoGPT', 'contact@agpt.co') }}
+{{ ui.signature('John Ababseh', 'I work on product at AutoGPT', 'contact@agpt.co') }}
 {{ ui.close_row('The monthly update lands the same week each month.', 'Choose which emails you get', urls.prefs) }}
-      </table>
-    </td></tr>
+{{ ui.sheet_close() }}
 {{ ui.page_close() }}
 {{ ui.legal_footer('You are receiving the monthly AutoGPT Update because you subscribe to the platform, at ' ~ user_email ~ '.', 'Unsubscribe', urls.unsubscribe, discord=true) }}
 

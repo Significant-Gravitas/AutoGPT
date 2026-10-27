@@ -18,21 +18,6 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ user: authUser.current }),
 }));
 
-const flags = vi.hoisted(() => ({ current: {} as Record<string, boolean> }));
-const flagsReady = vi.hoisted(() => ({ current: true }));
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
-    ONBOARDING_EXPERT_TEAM: "onboarding-expert-team",
-    HIRE_EXPERTS: "hire-experts",
-  },
-  useGetFlag: (flag: string) => flags.current[flag] ?? false,
-  useFlagStatus: (flag: string) => ({
-    enabled: flags.current[flag] ?? false,
-    ready: flagsReady.current,
-  }),
-}));
-
 import { useOnboardingIntroCard } from "../useOnboardingIntroCard";
 
 const INTRO_URL =
@@ -93,56 +78,14 @@ beforeEach(() => {
   window.localStorage.clear();
   capture.mockReset();
   authUser.current = { id: "user-1" };
-  flags.current = { "onboarding-brain-dump": true };
-  flagsReady.current = true;
 });
 
-describe("useOnboardingIntroCard — flag gating", () => {
-  it("never asks for an intro while the brain-dump flag is off", async () => {
-    flags.current = {};
-    const urls = countIntroRequests();
-
-    const { result } = renderIntro();
-    await waitFor(() => expect(result.current.isVisible).toBe(false));
-
-    expect(urls).toEqual([]);
-    expect(result.current.greeting).toBe("");
-  });
-
-  it("releases the composer once LaunchDarkly says the flag is off", async () => {
-    // The regression: with the flag off the intro query is disabled, so it
-    // never answers — and "no answer yet" was read as "still generating".
-    // isAwaitingGreeting stayed true forever and EmptySession hides the
-    // composer behind it, so the default
-    // flag-off copilot rendered a hero with no way to type.
-    flags.current = {};
-
-    const { result } = renderIntro();
-
-    await waitFor(() => expect(result.current.isAwaitingGreeting).toBe(false));
-    expect(result.current.isVisible).toBe(false);
-  });
-
-  it("renders the plain hero while LaunchDarkly has not answered for a user with no handoff", async () => {
-    // Holding on "no answer yet" alone hid the composer on every flag-off
-    // /copilot load until LaunchDarkly replied — the flag-off page has to
-    // render untouched.
-    flags.current = {};
-    flagsReady.current = false;
-
-    const { result } = renderIntro();
-
-    await waitFor(() => expect(result.current.isAwaitingGreeting).toBe(false));
-    expect(result.current.isVisible).toBe(false);
-  });
-
-  it("still holds the composer while LaunchDarkly has not answered for a user coming out of the wizard", async () => {
+describe("useOnboardingIntroCard — availability", () => {
+  it("holds the composer until the wizard welcome has been dismissed", async () => {
     // The hold exists to stop the regular hero flashing before the
     // greeting page takes over, and the pending overlay is seeded
-    // synchronously — so this user is held before the flag resolves.
+    // synchronously — so this user is held before the intro query resolves.
     window.sessionStorage.setItem(WELCOME_PENDING_KEY, "1");
-    flags.current = {};
-    flagsReady.current = false;
 
     const { result } = renderIntro();
 
@@ -161,7 +104,7 @@ describe("useOnboardingIntroCard — flag gating", () => {
     expect(result.current.isVisible).toBe(false);
   });
 
-  it("still asks when the cached flag belongs to a different account", async () => {
+  it("still asks when the cached completion belongs to a different account", async () => {
     window.localStorage.setItem(GREETING_DONE_KEY, "someone-else");
     const urls = countIntroRequests();
 
@@ -175,11 +118,13 @@ describe("useOnboardingIntroCard — flag gating", () => {
 describe("useOnboardingIntroCard — handoff from the wizard", () => {
   it("consumes the recorded path once, opens the welcome overlay and reports it", async () => {
     setIntroPath("A");
-    countIntroRequests();
+    const urls = countIntroRequests({ ...READY_INTRO, greeting_done: true });
 
     const { result } = renderIntro();
     await waitFor(() => expect(result.current.isWelcomeOpen).toBe(true));
 
+    await act(async () => {});
+    expect(urls).toEqual([]);
     expect(window.sessionStorage.getItem("autogpt:onboarding-intro-path")).toBe(
       null,
     );
@@ -204,43 +149,6 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     expect(capture).toHaveBeenCalledWith("intro_path", { path: "B" });
   });
 
-  it("drops the handoff instead of running it when the flag is off", async () => {
-    // The wizard wrote these while the flag was on; a rollback in between
-    // must not still buy the user the overlay and its 404-ing polls.
-    flags.current = {};
-    setIntroPath("B");
-    window.sessionStorage.setItem(WELCOME_PENDING_KEY, "1");
-    const urls = countIntroRequests();
-
-    const { result } = renderIntro();
-    await waitFor(() => expect(result.current.isAwaitingGreeting).toBe(false));
-
-    expect(result.current.isWelcomeOpen).toBe(false);
-    expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
-    expect(window.sessionStorage.getItem("autogpt:onboarding-intro-path")).toBe(
-      null,
-    );
-    expect(window.sessionStorage.getItem(MIC_GLOW_KEY)).toBeNull();
-    expect(window.sessionStorage.getItem(LATER_DUMP_KEY)).toBeNull();
-    expect(capture).not.toHaveBeenCalledWith("intro_path", expect.anything());
-    expect(urls).toEqual([]);
-  });
-
-  it("waits for LaunchDarkly before consuming the handoff", async () => {
-    flagsReady.current = false;
-    setIntroPath("A");
-    countIntroRequests();
-
-    const { result } = renderIntro();
-    await waitFor(() => expect(result.current).toBeDefined());
-
-    expect(result.current.isWelcomeOpen).toBe(false);
-    expect(window.sessionStorage.getItem("autogpt:onboarding-intro-path")).toBe(
-      "A",
-    );
-    expect(capture).not.toHaveBeenCalledWith("intro_path", expect.anything());
-  });
-
   it("shows no overlay for a user who did not just come out of onboarding", async () => {
     countIntroRequests();
 
@@ -261,6 +169,21 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     // The greeting is not fetched behind a modal the user has not dismissed.
     expect(urls).toEqual([]);
     expect(result.current.isAwaitingGreeting).toBe(true);
+  });
+
+  it("consumes a saved wizard path without reopening cards this user already saw", async () => {
+    setIntroPath("A");
+    window.localStorage.setItem(CAPABILITY_CARDS_KEY, "user-1");
+    const urls = countIntroRequests();
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isVisible).toBe(true));
+    expect(result.current.isWelcomeOpen).toBe(false);
+    expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
+    expect(
+      window.sessionStorage.getItem("autogpt:onboarding-intro-path"),
+    ).toBeNull();
+    expect(capture).toHaveBeenCalledWith("intro_path", { path: "A" });
+    expect(urls).toHaveLength(1);
   });
 
   it("drops a stale pending overlay for a user who already saw the cards", async () => {
@@ -300,14 +223,13 @@ describe("useOnboardingIntroCard — closing the welcome overlay", () => {
 });
 
 describe("useOnboardingIntroCard — the greeting itself", () => {
-  it("exposes the server's greeting, prompts, transcript and path", async () => {
+  it("exposes the server's greeting, transcript and path", async () => {
     server.use(getGetBrainDumpIntroMockHandler200(READY_INTRO));
 
     const { result } = renderIntro();
     await waitFor(() => expect(result.current.isVisible).toBe(true));
 
     expect(result.current.greeting).toBe(READY_INTRO.greeting);
-    expect(result.current.prompts).toEqual(READY_INTRO.prompts);
     expect(result.current.transcript).toBe(READY_INTRO.transcript);
     expect(result.current.path).toBe("A");
     expect(result.current.isAwaitingGreeting).toBe(false);
@@ -336,7 +258,6 @@ describe("useOnboardingIntroCard — the greeting itself", () => {
     await waitFor(() => expect(result.current.isVisible).toBe(true));
 
     expect(result.current.path).toBe("B");
-    expect(result.current.prompts).toEqual([]);
   });
 
   it("holds the composer back while the pipeline is still writing the greeting", async () => {
@@ -467,11 +388,6 @@ describe("useOnboardingIntroCard — team selection belongs to the wizard", () =
   it.each([false, true])(
     "does not poll for a team after the greeting settles (done=%s)",
     async (greetingDone) => {
-      flags.current = {
-        "onboarding-brain-dump": true,
-        "onboarding-expert-team": true,
-        "hire-experts": true,
-      };
       const requests = countIntroRequests({
         ...READY_INTRO,
         greeting_done: greetingDone,

@@ -2,7 +2,6 @@
 
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
@@ -10,42 +9,31 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import {
   AlertCircleIcon,
   ArrowDown01Icon,
   AiBrain01Icon,
-  CloudServerIcon,
   FlashIcon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { cn } from "@/lib/utils";
 
-import { ChoiceRow } from "./ChoiceRow";
-import { ConnectAccountRow } from "./ConnectAccountRow";
-import { MaxUpgradeCard } from "./MaxUpgradeCard";
+import { ConnectionPickerPanel } from "./ConnectionPickerPanel";
 import { Swap } from "./Swap";
 import {
   isLinkedAccount,
-  isSelectable,
-  offerSubtitle,
+  listedConnections,
   tierLabel,
-  tierModel,
-  tierName,
   tierLock,
-  tierSummary,
+  tierName,
 } from "./helpers";
-import { isComposingEvent } from "@/lib/keyboard";
-import { nextRovingValue, rovingTabIndex } from "./radioKeys";
-import { TierToggle } from "./TierToggle";
 import { useConnectionPicker } from "./useConnectionPicker";
-
-const TIERS = ["standard", "advanced"] as const;
 
 interface Props {
   /**
@@ -58,11 +46,6 @@ interface Props {
    */
   connectionLocked?: boolean;
   className?: string;
-  /** Opened from somewhere else (the composer's + menu): no chip of its
-   *  own, the sheet anchors to its parent box instead. */
-  anchorOnly?: boolean;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
 }
 
 /**
@@ -73,24 +56,17 @@ interface Props {
 export function ConnectionPicker({
   connectionLocked = false,
   className,
-  anchorOnly = false,
-  open,
-  onOpenChange,
 }: Props) {
+  const picker = useConnectionPicker();
   const {
     offers,
     active,
-    chooseConnection,
     tier,
-    setTier,
     showTiers,
     hasConnectionChoice,
-    connectChatGPT,
-    isConnecting,
-    canConnectChatGPT,
     isLoading,
     isError,
-  } = useConnectionPicker();
+  } = picker;
   const advancedLock = tierLock(active, "advanced");
   const showMaxUpgrade =
     active?.auth_method === "deployment" && Boolean(advancedLock);
@@ -99,16 +75,18 @@ export function ConnectionPicker({
 
   if (isError) {
     return (
-      <span
+      <Text
+        variant="small-medium-tight"
+        as="span"
         aria-label="AI connections unavailable"
         className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/20 bg-destructive/10 px-2.5 text-xs font-medium text-destructive",
+          "inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/20 bg-destructive/10 px-2.5 text-destructive",
           className,
         )}
       >
         <Icon icon={AlertCircleIcon} size={14} />
         <span className="hidden sm:inline">Connections unavailable</span>
-      </span>
+      </Text>
     );
   }
 
@@ -118,12 +96,19 @@ export function ConnectionPicker({
         href="/settings/integrations"
         aria-label="Set up an AI connection"
         className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/80",
+          "inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 text-foreground transition-colors hover:bg-muted/80",
           className,
         )}
       >
         <Icon icon={AlertCircleIcon} size={14} />
-        <span className="hidden sm:inline">Set up AI connection</span>
+        <Text
+          variant="small-medium-tight"
+          as="span"
+          tone="inherit"
+          className="hidden sm:inline"
+        >
+          Set up AI connection
+        </Text>
       </Link>
     );
   }
@@ -141,10 +126,6 @@ export function ConnectionPicker({
     return null;
   }
 
-  const connectionOptions = offers.map((offer) => ({
-    value: offer.offer_id,
-    disabled: !isSelectable(offer),
-  }));
   const runsOnOwnPlan = active ? isLinkedAccount(active) : false;
   // With no connection to choose between, naming it says nothing — a hosted
   // user would read "AutoGPT Platform" on every chat and learn only that there
@@ -165,12 +146,6 @@ export function ConnectionPicker({
   // so.
   const triggerLabel =
     runsOnOwnPlan && !showsTier ? `${label} · your plan` : label;
-  // One runnable row is nothing to choose between. A locked-only row is
-  // different: the explanation and unlock link are the entire reason the chip
-  // remains visible.
-  const showsConnections =
-    (!connectionLocked || onlyOfferIsLocked) &&
-    (offers.length > 1 || onlyOfferIsLocked);
 
   // Naming only the tier, the chip folds down to its glyph among the other
   // quiet icons on the composer's right; the tier and its model wait in the
@@ -182,7 +157,6 @@ export function ConnectionPicker({
         type="button"
         variant="ghost"
         size={showsTier ? "icon" : "small"}
-        unmask={false}
         aria-label={
           showsTier
             ? `Model tier ${label} — change`
@@ -190,8 +164,8 @@ export function ConnectionPicker({
         }
         className={cn(
           showsTier
-            ? "size-8 p-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
-            : "h-9 min-w-0 gap-1.5 px-2.5 py-1 text-sm",
+            ? "size-8 p-0 text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-body"
+            : "h-9 min-w-0 gap-1.5 px-2.5 py-1",
           className,
         )}
       >
@@ -221,164 +195,32 @@ export function ConnectionPicker({
   );
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      {anchorOnly ? (
-        <PopoverAnchor asChild>
-          <span aria-hidden className="pointer-events-none absolute inset-0" />
-        </PopoverAnchor>
-      ) : showsTier ? (
-        <Tooltip>
+    <Popover>
+      {showsTier ? (
+        <Tooltip inheritDelay>
           <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-          <TooltipContent side="top">{tierLabel(active, tier)}</TooltipContent>
+          <TooltipPortal>
+            <TooltipContent side="top">
+              {tierLabel(active, tier)}
+            </TooltipContent>
+          </TooltipPortal>
         </Tooltip>
       ) : (
         trigger
       )}
 
       <PopoverContent
-        align={anchorOnly ? "start" : "end"}
-        side={anchorOnly ? "top" : undefined}
+        align="end"
         className={cn(
-          "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-zinc-200 bg-[#F9F9FA] p-3 pt-4 text-zinc-900 shadow-lg",
-          showMaxUpgrade && "bg-white",
+          "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-border-base bg-surface-muted p-3 pt-4 text-foreground-strong shadow-lg",
+          showMaxUpgrade && "bg-surface",
         )}
       >
-        {showsConnections && (
-          <>
-            <SectionLabel>Runs on</SectionLabel>
-            <div
-              role="radiogroup"
-              aria-label="Connection this chat runs on"
-              // The connections read as plain rows on the sheet: a card around
-              // them would frame the choice twice, once here and once around
-              // the tiers below.
-              className="overflow-hidden rounded-xl"
-              onKeyDown={(event) => {
-                // `event.key` goes straight into the roving helper, so guard
-                // here instead.
-                if (isComposingEvent(event)) return;
-                const to = nextRovingValue(
-                  connectionOptions,
-                  active?.offer_id ?? "",
-                  event.key,
-                );
-                if (to === null) return;
-                event.preventDefault();
-                const target = offers.find((o) => o.offer_id === to);
-                if (target) chooseConnection(target);
-                event.currentTarget
-                  .querySelector<HTMLElement>(`[data-offer="${to}"]`)
-                  ?.focus();
-              }}
-            >
-              {offers.map((offer) => (
-                <ChoiceRow
-                  key={offer.offer_id}
-                  offerId={offer.offer_id}
-                  tabIndex={rovingTabIndex(
-                    connectionOptions,
-                    { value: offer.offer_id },
-                    active?.offer_id ?? "",
-                  )}
-                  leading={<OfferMark offer={offer} />}
-                  title={offer.display_name}
-                  subtitle={offerSubtitle(offer)}
-                  badge={isLinkedAccount(offer) ? "Connected" : undefined}
-                  // A selectable row's models are named by the tier toggle
-                  // right below it, so repeating them here only crowds the
-                  // choice. A locked row has no toggle, so it keeps them.
-                  notes={
-                    offer.lock_reason
-                      ? [tierSummary(offer), ...offer.limitations].filter(
-                          Boolean,
-                        )
-                      : offer.limitations
-                  }
-                  isSelected={offer.offer_id === active?.offer_id}
-                  onSelect={() => chooseConnection(offer)}
-                  lock={
-                    offer.lock_reason
-                      ? {
-                          reason: offer.lock_reason,
-                          href: offer.unlock_href ?? null,
-                        }
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
-          </>
-        )}
-
-        {showTiers && (
-          <>
-            <SectionLabel>Model tier</SectionLabel>
-            <div
-              className={cn(
-                "overflow-hidden rounded-xl border border-neutral-200 bg-white",
-                showMaxUpgrade && "border-0",
-              )}
-            >
-              <TierToggle
-                value={tier}
-                onSelect={setTier}
-                advancedUpgrade={
-                  showMaxUpgrade && advancedLock?.href ? (
-                    <MaxUpgradeCard
-                      label={tierLabel(active, "advanced")}
-                      name={tierName(active, "advanced")}
-                      model={tierModel(active, "advanced")}
-                      reason={advancedLock.reason}
-                      href={advancedLock.href}
-                    />
-                  ) : undefined
-                }
-                segments={TIERS.map((candidate) => ({
-                  tier: candidate,
-                  label: tierLabel(active, candidate),
-                  name: tierName(active, candidate),
-                  model: tierModel(active, candidate),
-                  lock: tierLock(active, candidate),
-                }))}
-              />
-            </div>
-          </>
-        )}
-
-        {canConnectChatGPT && (
-          <div
-            className={cn(
-              "mt-4",
-              showMaxUpgrade && "border-t border-zinc-200 pt-4",
-            )}
-          >
-            <SectionLabel>Add a connection</SectionLabel>
-            <ConnectAccountRow
-              onConnect={connectChatGPT}
-              isConnecting={isConnecting}
-            />
-          </div>
-        )}
+        <ConnectionPickerPanel
+          picker={picker}
+          rows={listedConnections(offers, connectionLocked)}
+        />
       </PopoverContent>
     </Popover>
-  );
-}
-
-/**
- * What a connection is, before its name is read: the provider's own logo where
- * there is one, and the machine it runs on where the route is this deployment.
- */
-function OfferMark({ offer }: { offer: AIConnectionOffer }) {
-  if (offer.auth_method === "deployment") {
-    return <Icon icon={CloudServerIcon} size={20} className="text-zinc-500" />;
-  }
-  return <IntegrationLogo provider={offer.provider_family} size={20} />;
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="px-3 pb-1.5 pt-3 text-[11px] font-medium uppercase tracking-[0.06em] text-zinc-500 first:pt-0">
-      {children}
-    </p>
   );
 }

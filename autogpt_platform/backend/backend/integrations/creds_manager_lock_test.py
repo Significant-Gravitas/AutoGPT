@@ -17,6 +17,11 @@ from backend.data.model import OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth.github import GitHubOAuthHandler
 
+# Each wait below only stops a hung test. A CI shard runs its tests one after
+# another on one event loop against a real Redis cluster, so work that is
+# instant on its own can take over a second there.
+_HANG_SECONDS = 10
+
 
 @pytest.fixture
 async def scenario(mocker):
@@ -54,8 +59,8 @@ async def test_copilot_times_out_without_releasing_the_lease_holder(
             sweep = asyncio.create_task(
                 scenario.manager.refresh_if_needed(scenario.user, scenario.credentials)
             )
-            await asyncio.wait_for(scenario.read_started.wait(), timeout=1)
-        token = await asyncio.wait_for(scenario.get_token(), timeout=1)
+            await asyncio.wait_for(scenario.read_started.wait(), timeout=_HANG_SECONDS)
+        token = await asyncio.wait_for(scenario.get_token(), timeout=_HANG_SECONDS)
         assert token is None
         await lease.validate()
         scenario.refresh.assert_not_awaited()
@@ -67,7 +72,10 @@ async def test_copilot_times_out_without_releasing_the_lease_holder(
         await lease.release()
 
     assert await scenario.redis.exists(*scenario.lock_keys) == 0
-    assert await asyncio.wait_for(scenario.get_token(), timeout=1) == "new-access"
+    assert (
+        await asyncio.wait_for(scenario.get_token(), timeout=_HANG_SECONDS)
+        == "new-access"
+    )
 
 
 async def test_default_refresh_still_waits_for_the_lease(scenario):
@@ -81,7 +89,7 @@ async def test_default_refresh_still_waits_for_the_lease(scenario):
         assert not refresh.done()
         await lease.validate()
         await lease.release()
-        fresh = await asyncio.wait_for(refresh, timeout=1)
+        fresh = await asyncio.wait_for(refresh, timeout=_HANG_SECONDS)
         assert fresh.access_token.get_secret_value() == "new-access"
     finally:
         refresh.cancel()
@@ -102,11 +110,11 @@ async def test_lock_wait_timeout_does_not_cancel_the_provider_refresh(scenario):
     scenario.refresh.side_effect = refresh
     lookup = asyncio.create_task(scenario.get_token())
     try:
-        await asyncio.wait_for(started.wait(), timeout=1)
+        await asyncio.wait_for(started.wait(), timeout=_HANG_SECONDS)
         await asyncio.sleep(0.1)
         assert not lookup.done()
         finish.set()
-        assert await asyncio.wait_for(lookup, timeout=1) == "new-access"
+        assert await asyncio.wait_for(lookup, timeout=_HANG_SECONDS) == "new-access"
     finally:
         finish.set()
         lookup.cancel()
@@ -128,7 +136,7 @@ async def test_cancelled_copilot_lookup_releases_only_its_own_locks(
     blocked = _pause_lookup(scenario, mocker, credential_lock_acquired)
     lookup = asyncio.create_task(scenario.get_token())
     try:
-        await asyncio.wait_for(blocked.wait(), timeout=1)
+        await asyncio.wait_for(blocked.wait(), timeout=_HANG_SECONDS)
         lookup.cancel()
         with pytest.raises(asyncio.CancelledError):
             await lookup

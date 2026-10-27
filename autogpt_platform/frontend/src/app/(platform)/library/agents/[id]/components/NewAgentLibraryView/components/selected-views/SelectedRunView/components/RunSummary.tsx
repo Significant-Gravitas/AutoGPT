@@ -1,7 +1,9 @@
 "use client";
 
-import type { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
-import { IconCircleAlert } from "@/components/__legacy__/ui/icons";
+import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import type { GraphExecutionWithNodes } from "@/app/api/__generated__/models/graphExecutionWithNodes";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { CircleAlertGlyph } from "@/components/atoms/Icon/drawnIcons";
 import {
   Tooltip,
   TooltipContent,
@@ -10,7 +12,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
 interface Props {
-  run: GetV1GetExecutionDetails200;
+  run: GraphExecution | GraphExecutionWithNodes;
 }
 
 export function RunSummary({ run }: Props) {
@@ -20,27 +22,39 @@ export function RunSummary({ run }: Props) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm leading-relaxed text-neutral-700">
+      <p
+        // TODO(tokens): no exact role for text-neutral-700 (#404040)
+        className="text-sm leading-relaxed text-neutral-700"
+      >
         {run.stats.activity_status}
       </p>
 
       {typeof correctnessScore === "number" && (
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-neutral-600">
+            <span
+              // TODO(tokens): no exact role for text-neutral-600 (#525252)
+              className="text-sm font-medium text-neutral-600"
+            >
               Success Estimate:
             </span>
             <div className="flex items-center gap-2">
-              <div className="relative h-2 w-16 overflow-hidden rounded-full bg-neutral-200">
+              <div
+                // TODO(tokens): no exact role for bg-neutral-200 (#E5E5E5)
+                className="relative h-2 w-16 overflow-hidden rounded-full bg-neutral-200"
+              >
                 <div
                   className={`h-full transition-all ${
                     correctnessScore >= 0.8
-                      ? "bg-green-500"
+                      ? // TODO(tokens): no exact role for bg-green-500 (#16A34A)
+                        "bg-green-500"
                       : correctnessScore >= 0.6
-                        ? "bg-yellow-500"
+                        ? // TODO(tokens): no exact role for bg-yellow-500 (#F5C000)
+                          "bg-yellow-500"
                         : correctnessScore >= 0.4
-                          ? "bg-orange-500"
-                          : "bg-red-500"
+                          ? // TODO(tokens): no exact role for bg-orange-500 (#FE8700)
+                            "bg-orange-500"
+                          : "bg-error"
                   }`}
                   style={{
                     width: `${Math.round(correctnessScore * 100)}%`,
@@ -55,7 +69,12 @@ export function RunSummary({ run }: Props) {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <IconCircleAlert className="size-4 cursor-help text-neutral-400 hover:text-neutral-600" />
+                <Icon
+                  icon={CircleAlertGlyph}
+                  aria-label="Icon"
+                  // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3), hover:text-neutral-600 (#525252)
+                  className="size-4 cursor-help text-neutral-400 hover:text-neutral-600"
+                />
               </TooltipTrigger>
               <TooltipContent>
                 <p className="max-w-xs">

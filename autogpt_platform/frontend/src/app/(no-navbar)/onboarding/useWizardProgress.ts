@@ -1,8 +1,17 @@
-import { patchV1UpdateOnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import {
+  getV1OnboardingState,
+  patchV1UpdateOnboardingState,
+} from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { clearLocalProgress, resumeStep, sameProgress } from "./progress";
+import {
+  clearLocalProgress,
+  readProgress,
+  resumeStep,
+  sameProgress,
+} from "./progress";
 import { loadWizardProgress } from "./loadWizardProgress";
+import { clearSkippedRecordings } from "./steps/BrainDumpStep/recordingStore";
 import { createProgressSaver } from "./progress-saver";
 import {
   snapshotProgress,
@@ -78,6 +87,7 @@ export function useWizardProgress({
       if (!isCurrent()) return;
       if (result.kind === "complete") {
         clearLocalProgress(userID!);
+        void clearSkippedRecordings(userID!).catch(() => undefined);
         router.replace("/home");
         return;
       }
@@ -123,6 +133,20 @@ export function useWizardProgress({
             });
           }
           return result.data.wizardRevision ?? wizardRevision + 1;
+        },
+        async load(signal) {
+          if (!isCurrent()) throw new Error("Your account changed.");
+          const result = await getV1OnboardingState({ signal });
+          if (result.status !== 200)
+            throw new Error("Could not load onboarding.");
+          if (result.data.userId !== userID) {
+            accountChanged.current = true;
+            return null;
+          }
+          return {
+            progress: readProgress(result.data.wizardProgress),
+            revision: result.data.wizardRevision ?? 0,
+          };
         },
         onError(error) {
           if (isCurrent()) setStatus((state) => ({ ...state, error }));
@@ -190,7 +214,9 @@ export function useWizardProgress({
 
   function finish() {
     saver.current?.dispose();
-    if (userID) clearLocalProgress(userID);
+    if (!userID) return;
+    clearLocalProgress(userID);
+    void clearSkippedRecordings(userID).catch(() => undefined);
   }
 
   return {

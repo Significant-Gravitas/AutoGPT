@@ -42,10 +42,16 @@ export function useAtResetJobs(sessionId: string | null) {
   return { jobs, writeJobs };
 }
 
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+
 function refetchEvery(jobs: AtResetTurn[]) {
   if (!jobs.length) return false;
   const untilDue =
     Math.min(...jobs.map((job) => new Date(job.run_at).getTime())) - Date.now();
   if (untilDue <= 0) return 10_000;
-  return Math.min(Math.max(untilDue, 1_000), 60_000);
+  // Changes made here update the list directly, and it's read again on
+  // focus, so a turn hours away only needs an occasional look.
+  const ceiling = untilDue > HOUR ? 15 * MINUTE : MINUTE;
+  return Math.min(Math.max(untilDue, 1_000), ceiling);
 }

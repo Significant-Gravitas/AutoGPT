@@ -23,6 +23,7 @@ from sentry_sdk.utils import event_from_exception, json_dumps
 # Imported at module scope on purpose: AppProcess calls sentry_init() in its
 # class body, so the guard has to hold at collection time, not just in a test.
 import backend.util.process
+from backend.api.utils.client_ip import CLIENT_IP_TOKEN_HEADER
 from backend.util import feature_flag, metrics, tracing
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
@@ -577,3 +578,142 @@ def test_sentry_settings_are_empty_for_blank_deployment_env_vars(monkeypatch) ->
     config = Config()
 
     assert (config.sentry_release, config.sentry_environment) == ("", "")
+
+
+# ---------- personal data ----------
+
+
+def _event_with_personal_user() -> dict:
+    return {
+        "level": "error",
+        "user": {
+            "id": "user-1",
+            "email": "ada@example.com",
+            "ip_address": "203.0.113.7",
+            "name": "Ada Lovelace",
+            "segment": "pro",
+        },
+    }
+
+
+def test_before_send_keeps_only_the_user_id() -> None:
+    event = _before_send(_event_with_personal_user(), hint={})
+
+    assert event is not None
+    assert event["user"] == {"id": "user-1"}
+
+
+def test_before_send_transaction_keeps_only_the_user_id() -> None:
+    event = metrics._before_send_transaction(_event_with_personal_user(), hint={})
+
+    assert event["user"] == {"id": "user-1"}
+
+
+def test_sentry_init_sends_no_default_pii(monkeypatch) -> None:
+    assert _sentry_init_options(monkeypatch)["send_default_pii"] is False
+
+
+def test_before_send_drops_a_user_left_with_no_id() -> None:
+    event = _before_send(
+        {"level": "error", "user": {"email": "ada@example.com"}}, hint={}
+    )
+
+    assert event is not None
+    assert "user" not in event
+
+
+def test_before_send_transaction_drops_a_user_left_with_no_id() -> None:
+    event = metrics._before_send_transaction(
+        {"user": {"ip_address": "203.0.113.7"}}, hint={}
+    )
+
+    assert "user" not in event
+
+
+def test_before_send_filters_emails_and_ips_from_extras_and_frame_vars() -> None:
+    def notify_user():
+        email = "ada@example.com"
+        user_email = "ada.lovelace@example.com"
+        recipient = "ada@example.org"
+        ip = "203.0.113.7"
+        ip_address = "198.51.100.4"
+        email_count = 1
+        if email and user_email and recipient and ip and ip_address and email_count:
+            raise RuntimeError("could not send the notification")
+
+    try:
+        notify_user()
+    except RuntimeError:
+        event, hint = event_from_exception(
+            sys.exc_info(), client_options=DEFAULT_OPTIONS
+        )
+    event["extra"] = {
+        "Email": "ada@example.com",
+        "context": {"user_email": "ada.lovelace@example.com", "ip": "203.0.113.7"},
+        "ip_address": "198.51.100.4",
+        "email_verified": True,
+        "ip_allowlist_enabled": True,
+    }
+
+    scrubbed = _before_send(serialize(event), hint)
+
+    assert scrubbed is not None
+    body = json.loads(json_dumps(scrubbed))
+    assert body["extra"]["Email"] == "[Filtered]"
+    assert body["extra"]["context"] == {
+        "user_email": "[Filtered]",
+        "ip": "[Filtered]",
+    }
+    assert body["extra"]["ip_address"] == "[Filtered]"
+    frame_vars = body["exception"]["values"][0]["stacktrace"]["frames"][-1]["vars"]
+    for name in ("email", "user_email", "recipient", "ip", "ip_address"):
+        assert frame_vars[name] == "[Filtered]", name
+    # Keys that only mention an email or IP stay readable for debugging.
+    assert frame_vars["email_count"] == "1"
+    assert body["extra"]["email_verified"] is True
+    assert body["extra"]["ip_allowlist_enabled"] is True
+
+
+def _event_with_ip_headers() -> dict:
+    return {
+        "level": "error",
+        "request": {
+            "url": "https://backend.agpt.co/api/library",
+            "headers": {
+                "User-Agent": "ua",
+                "Content-Type": "application/json",
+                "Cf-Connecting-Ip": "203.0.113.7",
+                "True-Client-Ip": "203.0.113.7",
+                "Forwarded": "for=203.0.113.7",
+                "X-Forwarded-For": "203.0.113.7, 10.0.0.1",
+                "X-Real-Ip": "203.0.113.7",
+                "Cf-Ipcountry": "PL",
+                "Cf-Ipcity": "Warsaw",
+                "Cf-Iplatitude": "52.2",
+                "X-Vercel-Ip-City": "Warsaw",
+                # The frontend's signed client-IP token carries the visitor's IP too.
+                CLIENT_IP_TOKEN_HEADER: "203.0.113.7",
+                "Cf-Ray": "8a1b2c3d4e5f6789-WAW",
+            },
+        },
+    }
+
+
+_KEPT_HEADERS = {
+    "User-Agent": "ua",
+    "Content-Type": "application/json",
+    "Cf-Ray": "8a1b2c3d4e5f6789-WAW",
+}
+
+
+def test_before_send_drops_the_visitors_ip_and_location_headers() -> None:
+    event = _before_send(_event_with_ip_headers(), hint={})
+
+    assert event is not None
+    assert event["request"]["headers"] == _KEPT_HEADERS
+
+
+def test_before_send_transaction_drops_the_visitors_ip_and_location_headers() -> None:
+    event = metrics._before_send_transaction(_event_with_ip_headers(), hint={})
+
+    assert event["request"]["headers"] == _KEPT_HEADERS

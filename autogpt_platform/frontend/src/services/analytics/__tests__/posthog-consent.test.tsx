@@ -8,7 +8,7 @@ import {
 } from "@/tests/integrations/cookiebot";
 import { act, render } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { PostHog } from "posthog-js";
+import { PostHog, type CaptureResult } from "posthog-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Runs the real posthog-js client against a stubbed PostHog host, so these
@@ -51,16 +51,24 @@ interface FlagsRequest {
 let requests: string[] = [];
 let flagsRequests: FlagsRequest[] = [];
 let captured: string[] = [];
+let capturedEvents: CaptureResult[] = [];
+let clients: PostHog[] = [];
 
 interface RenderOptions {
   user?: User | null;
+  // Whether the auth store has reported the session yet.
+  sessionKnown?: boolean;
 }
 
 // Each call is a fresh page load: a new client (init() is a no-op on one that
 // already ran) and fresh modules, so in-memory ids start over too.
-async function renderPostHog({ user = null }: RenderOptions = {}) {
+async function renderPostHog({
+  user = null,
+  sessionKnown = true,
+}: RenderOptions = {}) {
   vi.resetModules();
   const client = new PostHog();
+  clients.push(client);
   vi.doMock("posthog-js", () => ({
     default: client,
     posthog: client,
@@ -69,12 +77,21 @@ async function renderPostHog({ user = null }: RenderOptions = {}) {
   vi.doMock("@/lib/auth/hooks/useAuth", () => ({
     useAuth: () => ({ user, isUserLoading: false }),
   }));
-  const [provider, { trackTabIntro }, { resetAnalyticsIdentity }] =
-    await Promise.all([
-      import("@/providers/posthog/posthog-provider"),
-      import("@/services/onboarding/tab-intro-analytics"),
-      import("@/services/analytics/reset-identity"),
-    ]);
+  const [
+    provider,
+    { trackTabIntro },
+    { resetAnalyticsIdentity },
+    { setAnalyticsIdentitySignedIn },
+    { buildAttributionPayload },
+  ] = await Promise.all([
+    import("@/providers/posthog/posthog-provider"),
+    import("@/services/onboarding/tab-intro-analytics"),
+    import("@/services/analytics/reset-identity"),
+    import("@/services/analytics/anonymous-id"),
+    import("@/services/analytics/attribution-payload"),
+  ]);
+  // What the auth store reports once the session is known.
+  if (sessionKnown) setAnalyticsIdentitySignedIn(Boolean(user));
   const startSessionRecording = vi.spyOn(client, "startSessionRecording");
   const identify = vi.spyOn(client, "identify");
   const { PostHogProvider, PostHogPageViewTracker, PostHogUserTracker } =
@@ -87,8 +104,11 @@ async function renderPostHog({ user = null }: RenderOptions = {}) {
   );
   client.on("eventCaptured", (event) => {
     captured.push(event.event);
+    capturedEvents.push(event);
   });
   return {
+    buildAttributionPayload,
+    setAnalyticsIdentitySignedIn,
     posthog: client,
     trackTabIntro,
     startSessionRecording,
@@ -186,6 +206,7 @@ beforeEach(() => {
   requests = [];
   flagsRequests = [];
   captured = [];
+  capturedEvents = [];
   server.use(
     http.options(
       `${POSTHOG_HOST}/*`,
@@ -203,6 +224,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // A client from an earlier test would otherwise keep writing (and
+  // deleting) the next test's cookies when a late response arrives.
+  clients.forEach((client) => client.set_config({ persistence: "memory" }));
+  clients = [];
   removeCookiebot();
   window.localStorage.clear();
   window.sessionStorage.clear();
@@ -257,10 +282,20 @@ describe("PostHog before analytics consent", () => {
     expect(storedPostHogKeys()).toEqual([]);
   });
 
-  it("deletes what an earlier visit stored before PostHog starts", async () => {
+  it("leaves what an earlier visit stored while the answer is pending", async () => {
     seedEarlierVisit();
+    const stored = storedPostHogKeys().sort();
 
     await renderPostHog();
+
+    expect(storedPostHogKeys().sort()).toEqual(stored);
+  });
+
+  it("deletes what an earlier visit stored once the visitor declines", async () => {
+    seedEarlierVisit();
+    await renderPostHog();
+
+    act(() => answerCookiebot({}));
 
     expect(storedPostHogKeys()).toEqual([]);
   });
@@ -435,7 +470,7 @@ describe("PostHog storage on a parent domain", () => {
   it("deletes the host cookie and every parent-domain variant", async () => {
     setPageURL("https://platform.agpt.co/");
     configureCookiebot();
-    installCookiebot();
+    installCookiebot({});
     const { forgetPostHogStorageWithoutConsent } = await import(
       "@/providers/posthog/posthog-consent"
     );
@@ -455,6 +490,281 @@ describe("PostHog storage on a parent domain", () => {
       ]),
     );
     expect(cookieNames()).not.toContain(`ph_${POSTHOG_KEY}_posthog`);
+  });
+});
+
+// The marketing site (agpt.co) runs PostHog on the same project and keeps its
+// state in the ph_<key>_posthog cookie on .agpt.co. A visitor who comes over
+// keeps that identity, so their website visits join the account they create.
+describe("PostHog hand-over from the marketing site", () => {
+  const PERSISTENCE = `ph_${POSTHOG_KEY}_posthog`;
+  const WEBSITE_ID = "website-device";
+
+  function seedWebsiteCookie() {
+    const state = JSON.stringify({
+      distinct_id: WEBSITE_ID,
+      $device_id: WEBSITE_ID,
+    });
+    document.cookie = `${PERSISTENCE}=${encodeURIComponent(state)}; Path=/; Domain=.agpt.co`;
+  }
+
+  function sharedCookie(): Record<string, unknown> | null {
+    const entry = document.cookie
+      .split("; ")
+      .find((part) => part.startsWith(`${PERSISTENCE}=`));
+    if (!entry) return null;
+    return JSON.parse(decodeURIComponent(entry.slice(PERSISTENCE.length + 1)));
+  }
+
+  beforeEach(() => {
+    setPageURL("https://platform.agpt.co/");
+    configureCookiebot();
+    seedWebsiteCookie();
+  });
+
+  afterEach(() => {
+    document.cookie = `${PERSISTENCE}=; Path=/; Domain=.agpt.co; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+    setPageURL("http://localhost:3000/");
+  });
+
+  it("keeps the website's cookie while the visitor has not answered", async () => {
+    installCookiebot();
+
+    const { posthog } = await renderPostHog();
+    await vi.waitFor(() => expect(flagsRequests).toHaveLength(1));
+
+    expect(sharedCookie()).toEqual({
+      distinct_id: WEBSITE_ID,
+      $device_id: WEBSITE_ID,
+    });
+    expect(posthog.get_distinct_id()).not.toBe(WEBSITE_ID);
+    expect(flagsRequests[0].distinct_id).not.toBe(WEBSITE_ID);
+  });
+
+  it("deletes the website's cookie when the visitor declines", async () => {
+    installCookiebot();
+    await renderPostHog();
+
+    act(() => answerCookiebot({}));
+
+    expect(sharedCookie()).toBeNull();
+  });
+
+  it("moves onto the website's id when the visitor accepts", async () => {
+    installCookiebot();
+    const { posthog } = await renderPostHog();
+    await vi.waitFor(() => expect(flagsRequests).toHaveLength(1));
+
+    act(() => answerCookiebot({ statistics: true }));
+    posthog.capture("after_consent");
+
+    expect(posthog.get_distinct_id()).toBe(WEBSITE_ID);
+    expect(posthog.get_property("$device_id")).toBe(WEBSITE_ID);
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(WEBSITE_ID);
+    expect(sharedCookie()).toMatchObject({
+      distinct_id: WEBSITE_ID,
+      $device_id: WEBSITE_ID,
+    });
+    expect(captured).toEqual(["$pageview", "after_consent"]);
+    await vi.waitFor(() =>
+      expect(flagsRequests.map((body) => body.distinct_id)).toContain(
+        WEBSITE_ID,
+      ),
+    );
+  });
+
+  it("moves onto the website's id when Cookiebot grants after PostHog started", async () => {
+    // Regions with implied consent: no stored answer yet, and uc.js arrives
+    // after PostHog has started on an in-memory id.
+    const { posthog } = await renderPostHog();
+
+    act(() => {
+      installCookiebot({ statistics: true });
+      window.dispatchEvent(new Event("CookiebotOnConsentReady"));
+    });
+
+    expect(posthog.get_distinct_id()).toBe(WEBSITE_ID);
+    expect(sharedCookie()).toMatchObject({ $device_id: WEBSITE_ID });
+  });
+
+  it("starts on the website's id for a visitor who allowed analytics before", async () => {
+    installCookiebot({ statistics: true });
+
+    const { posthog } = await renderPostHog();
+
+    expect(posthog.get_distinct_id()).toBe(WEBSITE_ID);
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(WEBSITE_ID);
+  });
+
+  it("merges the website visits into an account created here", async () => {
+    document.cookie = "agpt_account_created=email; Path=/; Secure";
+    installCookiebot();
+    const { posthog, buildAttributionPayload } = await renderPostHog({
+      user: USER,
+    });
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    const identify = capturedEvents.find(
+      (event) => event.event === "$identify",
+    );
+    expect(identify?.properties.$anon_distinct_id).toBe(WEBSITE_ID);
+    expect(posthog.get_distinct_id()).toBe(USER.id);
+    expect(buildAttributionPayload()).toMatchObject({
+      anonymous_id: WEBSITE_ID,
+      signup_method: "email",
+    });
+    document.cookie = "agpt_account_created=; Path=/; Max-Age=0; Secure";
+  });
+
+  it("gives the backend the website's id once the visitor accepts", async () => {
+    installCookiebot();
+    const { buildAttributionPayload } = await renderPostHog();
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    expect(buildAttributionPayload()).toMatchObject({
+      anonymous_id: WEBSITE_ID,
+      posthog_distinct_id: WEBSITE_ID,
+    });
+  });
+
+  it("doesn't hand the website visits to an older account signed in here", async () => {
+    installCookiebot();
+    const { posthog } = await renderPostHog({ user: USER });
+    const pageID = posthog.get_distinct_id();
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    const identify = capturedEvents.find(
+      (event) => event.event === "$identify",
+    );
+    expect(identify?.properties.$anon_distinct_id).toBe(pageID);
+    expect(pageID).not.toBe(WEBSITE_ID);
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(pageID);
+    expect(sharedCookie()).not.toMatchObject({ $device_id: WEBSITE_ID });
+  });
+
+  it("forgets the website's id on logout while the answer is pending", async () => {
+    installCookiebot();
+    const { resetAnalyticsIdentity } = await renderPostHog({ user: USER });
+
+    resetAnalyticsIdentity();
+
+    expect(sharedCookie()).toBeNull();
+  });
+
+  it("keeps a returning visitor's own id", async () => {
+    window.localStorage.setItem("agpt_anonymous_id", "app-id");
+    installCookiebot();
+    const { posthog } = await renderPostHog();
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    expect(posthog.get_distinct_id()).toBe("app-id");
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe("app-id");
+  });
+
+  it("keeps the cookie and stops writing when Cookiebot asks again", async () => {
+    installCookiebot({ statistics: true });
+    const { posthog } = await renderPostHog();
+    posthog.capture("before_asking");
+    const writes = recordCookieWrites();
+
+    act(() => {
+      if (window.Cookiebot) window.Cookiebot.hasResponse = false;
+      window.dispatchEvent(new Event("CookiebotOnDialogInit"));
+      window.dispatchEvent(new Event("CookiebotOnLoad"));
+    });
+    const writesBeforeCapture = writes.length;
+    posthog.capture("while_asking");
+
+    expect(captured).toContain("before_asking");
+    expect(captured).not.toContain("while_asking");
+    expect(sharedCookie()).toMatchObject({
+      distinct_id: WEBSITE_ID,
+      $device_id: WEBSITE_ID,
+    });
+    expect(
+      writes.filter((value) => value.includes("Expires=Thu, 01 Jan 1970")),
+    ).toEqual([]);
+    expect(writes.length).toBe(writesBeforeCapture);
+    Reflect.deleteProperty(document, "cookie");
+
+    act(() => answerCookiebot({ statistics: true }));
+    posthog.capture("after_answer");
+
+    expect(posthog.get_distinct_id()).toBe(WEBSITE_ID);
+    expect(posthog.config.opt_out_persistence_by_default).toBe(true);
+    expect(captured).toContain("after_answer");
+    expect(sharedCookie()).toMatchObject({ $device_id: WEBSITE_ID });
+  });
+
+  it("deletes the cookie when the visitor declines after Cookiebot asks again", async () => {
+    installCookiebot({ statistics: true });
+    await renderPostHog();
+    act(() => {
+      if (window.Cookiebot) window.Cookiebot.hasResponse = false;
+      window.dispatchEvent(new Event("CookiebotOnLoad"));
+    });
+
+    act(() => answerCookiebot({}));
+
+    expect(sharedCookie()).toBeNull();
+    expect(storedPostHogKeys()).toEqual([]);
+  });
+
+  it("waits for the session before taking the website's id", async () => {
+    installCookiebot();
+    const { posthog, setAnalyticsIdentitySignedIn } = await renderPostHog({
+      sessionKnown: false,
+    });
+    const pageID = posthog.get_distinct_id();
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    // Nothing is sent or stored under the page's id meanwhile.
+    expect(posthog.get_distinct_id()).toBe(pageID);
+    expect(posthog.has_opted_out_capturing()).toBe(true);
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBeNull();
+    expect(sharedCookie()).toEqual({
+      distinct_id: WEBSITE_ID,
+      $device_id: WEBSITE_ID,
+    });
+    expect(captured).toEqual([]);
+
+    act(() => setAnalyticsIdentitySignedIn(false));
+
+    expect(posthog.get_distinct_id()).toBe(WEBSITE_ID);
+    expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(WEBSITE_ID);
+    expect(sharedCookie()).toMatchObject({ $device_id: WEBSITE_ID });
+    // The landing page view was held, and goes out under the website's id.
+    await vi.waitFor(() => expect(captured).toContain("$pageview"));
+    expect(
+      capturedEvents.find((event) => event.event === "$pageview")?.properties
+        .distinct_id,
+    ).toBe(WEBSITE_ID);
+  });
+
+  it("starts in memory on a stored grant until the session is known", async () => {
+    installCookiebot({ statistics: true });
+    window.localStorage.setItem("agpt_posthog_consent", "1");
+
+    const { posthog, setAnalyticsIdentitySignedIn } = await renderPostHog({
+      sessionKnown: false,
+    });
+
+    expect(posthog.config.persistence).toBe("memory");
+    expect(posthog.has_opted_out_capturing()).toBe(true);
+    expect(sharedCookie()).toEqual({
+      distinct_id: WEBSITE_ID,
+      $device_id: WEBSITE_ID,
+    });
+
+    act(() => setAnalyticsIdentitySignedIn(true));
+
+    expect(posthog.config.persistence).toBe("localStorage+cookie");
+    expect(posthog.get_distinct_id()).not.toBe(WEBSITE_ID);
   });
 });
 

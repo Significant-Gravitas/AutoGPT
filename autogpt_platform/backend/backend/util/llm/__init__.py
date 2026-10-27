@@ -2,7 +2,7 @@
 
 Owns the per-provider SDK call helper (``providers.call_provider``)
 so that multiple LLM call sites in the backend — the block-layer
-``_llm_call``, the dream-pass ``structured_completion``, the copilot
+``_llm_call``, background inference's ``structured_complete``, the copilot
 chat dispatch, future server-internal callers — route through one
 implementation. Adding a new provider, a new execution mode (batch,
 flex), or new structured-output handling lands once and every caller

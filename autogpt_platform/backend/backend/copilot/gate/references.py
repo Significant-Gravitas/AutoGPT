@@ -31,7 +31,6 @@ Entity = Literal[
     "chat_session",
     "expert",
     "expert_or_name",
-    "expert_template",
     "expert_workflow",
     "credential",
     "routine",
@@ -294,22 +293,6 @@ async def _expert_or_name(reference: str, call: _Call) -> _Found | None:
     return _teammate(expert) if expert else None
 
 
-async def _expert_template(template_id: str, call: _Call) -> _Found | None:
-    template = await _template(template_id, call.user_id)
-    if template is None:
-        return None
-    return _Found(
-        kind="Expert template",
-        name=template.name,
-        href=f"/marketplace/experts/{quote(template.id, safe='')}",
-        description=template.tagline or template.bio,
-        meta=[template.job_title or template.role, _area(template)],
-        avatar_url=template.avatar_url,
-        avatar_color=template.color,
-        skills=[skill.title for skill in template.bundled_skills],
-    )
-
-
 async def _expert_workflow(workflow_id: str, call: _Call) -> _Found | None:
     label = await experts_db().get_workflow_label(call.user_id, workflow_id)
     if label is None or label.name is None:
@@ -447,7 +430,6 @@ _RESOLVERS: dict[Entity, Callable[[str, _Call], Awaitable[_Found | None]]] = {
     "chat_session": _chat_session,
     "expert": _expert,
     "expert_or_name": _expert_or_name,
-    "expert_template": _expert_template,
     "expert_workflow": _expert_workflow,
     "credential": _credential,
     "routine": _routine,
@@ -509,8 +491,7 @@ def _teammate(expert: Expert) -> _Found:
 
 
 async def _template(template_id: str, user_id: str) -> ExpertTemplate | None:
-    templates = await experts_db().list_templates()
-    template = next((t for t in templates if t.id == template_id), None)
+    template = await experts_db().get_template(template_id)
     if template is None:
         return None
     [card] = await experts_db().with_bundled_skills([template], user_id)

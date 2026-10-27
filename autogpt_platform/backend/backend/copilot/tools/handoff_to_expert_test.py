@@ -35,6 +35,7 @@ def _session(
     session_id: str = "s1",
     expert_id: str | None = "expert-a",
     origin: str | None = "interactive",
+    source_platform: str | None = None,
 ) -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
@@ -48,6 +49,7 @@ def _session(
     sess.metadata.origin = origin
     sess.metadata.delegated_by_session_id = None
     sess.metadata.autopilot_mode = None
+    sess.metadata.source_platform = source_platform
     sess.expert_id = expert_id
     return sess
 
@@ -578,6 +580,23 @@ class TestHandedOffSessionMode:
             prompt="own it",
         )
         assert mock_sessions[0].metadata.autopilot_mode == "auto"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "expert_default, expected",
+        [(None, "auto"), ("unsupervised", "auto"), ("ask_first", "ask_first")],
+    )
+    async def test_a_linked_chat_hands_out_the_mode_its_gate_enforces(
+        self, roster, mock_turn, mock_sessions, expert_default, expected
+    ):
+        """A Slack chat runs on Auto whatever it has stored, so its thread does too."""
+        roster["expert-b"].autopilot_mode = expert_default
+        parent = _session(expert_id="expert-a", source_platform="slack")
+        parent.metadata.autopilot_mode = "unsupervised"
+        await HandoffToExpertTool()._execute(
+            user_id="alice", session=parent, expert_id="expert-b", prompt="own it"
+        )
+        assert mock_sessions[0].metadata.autopilot_mode == expected
 
 
 class TestTerminalResponse:

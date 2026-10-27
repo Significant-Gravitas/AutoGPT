@@ -56,7 +56,7 @@ export function getResetWait(budget?: UsageBudget | null): ResetWait | null {
 }
 
 export function budgetOutTitle(window: RecurringWindow) {
-  return `You’re out of AutoPilot budget for ${window === "weekly" ? "this week" : "today"}`;
+  return `You’re out of budget for ${window === "weekly" ? "this week" : "today"}`;
 }
 
 export function budgetResetSentence(wait: ResetWait, now = new Date()) {

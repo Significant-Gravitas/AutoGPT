@@ -14,11 +14,16 @@ import {
   logClientRequestFailure,
   resetClientRequestFailureLog,
 } from "@/app/api/mutators/request-failure-log";
+import { CLIENT_IP_TOKEN_HEADER_NAME } from "@/lib/constants";
 
 import {
   CLIENT_IGNORE_ERRORS,
   isFromBot,
   isNextRSCNavigationFallback,
+  stripLogUserPII,
+  stripSpanDataPII,
+  stripSpanPII,
+  stripUserPII,
 } from "../sentry-filters";
 
 // Drives a real Sentry client with the same console capture as
@@ -155,5 +160,111 @@ describe("Sentry filter for crawler noise", () => {
     "Mozilla/5.0 (Linux; Android 10; Cubot P40) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
   ])("treats %j as a person", (userAgent) => {
     expect(isFromBot(userAgent)).toBe(false);
+  });
+});
+
+describe("Sentry user privacy filters", () => {
+  it("drops a user left with no id or role instead of sending an empty one", () => {
+    const event = stripUserPII({
+      user: { email: "ada@example.com", ip_address: "203.0.113.7" },
+    });
+
+    expect(event).not.toHaveProperty("user");
+  });
+
+  it("keeps log attributes that only mention an address or a user", () => {
+    const log = stripLogUserPII({
+      level: "info",
+      message: "rendered",
+      attributes: {
+        "server.address": "platform.agpt.co",
+        "users.count": 3,
+        "ip.allowlist_enabled": true,
+      },
+    });
+
+    expect(log.attributes).toEqual({
+      "server.address": "platform.agpt.co",
+      "users.count": 3,
+      "ip.allowlist_enabled": true,
+    });
+  });
+
+  // Request headers reach span attributes as http.request.header.<name>, with
+  // the name lowercased and its dashes turned into underscores by the SDK, or
+  // left as sent by other instrumentation.
+  const IP_ATTRIBUTES = [
+    "http.request.header.x_forwarded_for",
+    "http.request.header.x-forwarded-for",
+    "http.request.header.forwarded",
+    "http.request.header.x_real_ip",
+    "http.request.header.x-real-ip",
+    "http.request.header.cf_connecting_ip",
+    "http.request.header.true_client_ip",
+    "http.request.header.x_client_ip",
+    // The frontend's signed client-IP token carries the visitor's IP too.
+    `http.request.header.${CLIENT_IP_TOKEN_HEADER_NAME.toLowerCase().replace(/-/g, "_")}`,
+    "http.request.header.x_vercel_forwarded_for",
+    "http.request.header.x_vercel_proxied_for",
+    "http.request.header.x_vercel_ip_city",
+    "http.request.header.X-Vercel-IP-Country",
+    "http.client_ip",
+    "net.peer.ip",
+    "net.host.ip",
+    "net.sock.peer.addr",
+    "network.peer.address",
+    "client.address",
+    "user.ip_address",
+    "ip",
+  ];
+  const KEPT_ATTRIBUTES = {
+    "server.address": "platform.agpt.co",
+    "http.route": "/library",
+    "http.request.header.user_agent": "Mozilla/5.0",
+    "http.request.header.accept_language": "en",
+    "ip.allowlist_enabled": true,
+    "users.count": 3,
+    "user.id": "user-1",
+  };
+
+  function withIPAttributes() {
+    return {
+      ...Object.fromEntries(IP_ATTRIBUTES.map((key) => [key, "203.0.113.7"])),
+      ...KEPT_ATTRIBUTES,
+    };
+  }
+
+  it("drops every IP attribute from logs, transactions and spans", () => {
+    const trace = { trace_id: "a".repeat(32), span_id: "b".repeat(16) };
+    const span = { ...trace, start_timestamp: 1 };
+
+    const log = stripLogUserPII({
+      level: "info",
+      message: "rendered",
+      attributes: withIPAttributes(),
+    });
+    const transaction = stripSpanPII({
+      type: "transaction",
+      contexts: { trace: { ...trace, data: withIPAttributes() } },
+      spans: [{ ...span, data: withIPAttributes() }],
+    });
+    const standalone = stripSpanDataPII({ ...span, data: withIPAttributes() });
+
+    expect(log.attributes).toEqual(KEPT_ATTRIBUTES);
+    expect(transaction.contexts?.trace?.data).toEqual(KEPT_ATTRIBUTES);
+    expect(transaction.spans?.[0].data).toEqual(KEPT_ATTRIBUTES);
+    expect(standalone.data).toEqual(KEPT_ATTRIBUTES);
+  });
+
+  it("leaves a transaction with no span data as it is", () => {
+    const trace = { trace_id: "a".repeat(32), span_id: "b".repeat(16) };
+    const event = { type: "transaction" as const, contexts: { trace } };
+
+    expect(stripSpanPII(event)).toEqual({
+      type: "transaction",
+      contexts: {
+        trace: { trace_id: "a".repeat(32), span_id: "b".repeat(16) },
+      },
+    });
   });
 });

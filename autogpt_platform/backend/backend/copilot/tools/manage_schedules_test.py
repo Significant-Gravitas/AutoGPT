@@ -66,6 +66,17 @@ def list_tool():
     return ListSchedulesTool()
 
 
+@pytest.fixture(autouse=True)
+def forget_streak(mocker):
+    """The failure-streak cleanup a delete does, which reaches the database."""
+    forget = AsyncMock()
+    mocker.patch(
+        f"{_SCHEDULES_PATH}.scheduled_chats_db",
+        return_value=MagicMock(forget_scheduled_chat=forget),
+    )
+    return forget
+
+
 @pytest.fixture
 def delete_tool():
     return DeleteScheduleTool()
@@ -268,7 +279,7 @@ async def test_delete_schedule_missing_id(delete_tool, session):
 
 
 @pytest.mark.asyncio
-async def test_delete_schedule_success(delete_tool, session):
+async def test_delete_schedule_success(delete_tool, session, forget_streak):
     mock_client = AsyncMock()
     mock_client.get_execution_schedules = AsyncMock(return_value=[_make_graph_info()])
     mock_client.delete_schedule = AsyncMock()
@@ -288,6 +299,25 @@ async def test_delete_schedule_success(delete_tool, session):
     mock_client.delete_schedule.assert_called_once_with(
         schedule_id="sched-1", user_id=_USER
     )
+    # As the delete route does: a paused follow-up leaves no paused ghost.
+    forget_streak.assert_awaited_once_with(_USER, "sched-1")
+
+
+@pytest.mark.asyncio
+async def test_a_delete_whose_streak_cleanup_fails_still_says_deleted(
+    delete_tool, session, forget_streak
+):
+    forget_streak.side_effect = RuntimeError("db blip")
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[_make_graph_info()])
+    mock_client.delete_schedule = AsyncMock()
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await delete_tool._execute(
+            user_id=_USER, session=session, schedule_id="sched-1"
+        )
+
+    assert isinstance(result, ScheduleDeletedResponse)
 
 
 @pytest.mark.asyncio

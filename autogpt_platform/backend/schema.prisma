@@ -34,6 +34,7 @@ model AuthUser {
 
   sessions AuthSession[]
   accounts AuthAccount[]
+  ipEvents AuthIPEvent[]
 
   @@map("UserAuthIdentity")
 }
@@ -98,6 +99,52 @@ model AuthJwks {
 
 // ============ End auth service (Better Auth) tables ============ //
 
+// Written and enforced by the frontend's Better Auth hooks over raw SQL (hence
+// the database-generated ids); read by the admin users page.
+
+// Where each sign-up and sign-in came from. Sessions can't answer that: a ban
+// deletes them and they expire. Kept `auth_ip_event_retention_days`.
+model AuthIPEvent {
+  id        String          @id @default(dbgenerated("gen_random_uuid()"))
+  userId    String
+  kind      AuthIPEventKind
+  // As Better Auth records a session's IP: an IPv6 address masked to its /64.
+  ipAddress String
+  userAgent String?
+  createdAt DateTime        @default(now())
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([ipAddress])
+  @@index([createdAt])
+  @@map("UserAuthIPEvent")
+}
+
+enum AuthIPEventKind {
+  SIGN_UP
+  SIGN_IN
+}
+
+// An IP refused at sign-up and sign-in, or an email domain refused at sign-up.
+model AuthAccessBlock {
+  id          String              @id @default(dbgenerated("gen_random_uuid()"))
+  kind        AuthAccessBlockKind
+  value       String
+  reason      String
+  createdById String?
+  createdAt   DateTime            @default(now())
+  expiresAt   DateTime?
+
+  @@unique([kind, value])
+  @@map("UserAuthAccessBlock")
+}
+
+enum AuthAccessBlockKind {
+  IP
+  EMAIL_DOMAIN
+}
+
 // User model to mirror Auth provider users
 model User {
   id               String   @id // This should match the Supabase user ID
@@ -150,6 +197,10 @@ model User {
   defaultChatCredentialId String?
 
   subscriptionTier  SubscriptionTier   @default(NO_TIER)
+  // When the tier last dropped from a plan or trial to NO_TIER, through
+  // set_subscription_tier or the trial reconcile, which clear it when they set
+  // a tier again. Product mail keeps reaching the account for 7 days.
+  subscriptionEndedAt DateTime?
   subscriptionTrial SubscriptionTrial?
   paidUsageActivation PaidUsageActivation?
   proActivationAttempt ProActivationAttempt?
@@ -180,6 +231,9 @@ model User {
 
 
   ExpertRoutines       ExpertRoutine[]
+  DreamPasses          DreamPass[]
+  ScheduledChatStreaks ScheduledChatStreak[]
+  MemoryScopeSchedules MemoryScopeSchedule[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -448,6 +502,8 @@ model OnboardingBrainDump {
   transcript     String?
   transcriptLang String?
   errorCode      String?
+  /// What decided a quality-gate rejection (`quality.QualityRejection.reason`).
+  errorReason    String?
 
   /// Written once when the dump is processed, read by the copilot home's
   /// greeting. Generated up-front rather than on page load so the greeting
@@ -535,6 +591,136 @@ model ActivityEvent {
   @@index([expertId, createdAt])
 }
 
+// The route a dream pass took: the chat transport's sync path, or Anthropic's
+// Message Batches API.
+enum DreamPassRoute {
+  SYNC
+  ANTHROPIC_BATCH
+}
+
+enum DreamPassTrigger {
+  CRON
+  ADMIN
+  EVAL
+}
+
+// The step a dream pass is at: gathering its input, running (or waiting on
+// the batch of) one of its three phases, applying what the last one returned,
+// or done. Declared in that order, and the order is load-bearing: an update
+// only moves a row's phase to a later value (data/dream_pass_update.py).
+enum DreamPassPhase {
+  GATHER
+  CONSOLIDATE
+  RECOMBINE
+  SANITIZE
+  APPLY
+  DONE
+}
+
+// Open statuses first, in the order a pass moves through them, then the
+// terminal ones. An update only moves a row's status to a later value.
+enum DreamPassStatus {
+  QUEUED
+  RUNNING
+  SUBMITTED
+  APPLYING
+  COMPLETE
+  ERRORED
+  CANCELLED
+  EXPIRED
+  SKIPPED
+}
+
+// One dream pass over one memory scope (the account's or an expert's), from
+// gather to apply, on either route. The sync orchestrator writes it as each
+// step runs; the batch path at submit and in each result callback. Redis still
+// holds the lock, the batch state and the admin job status: this row is the
+// durable record beside them, and a failed write never fails the pass.
+model DreamPass {
+  // The pass id the orchestrator mints, which every phase's cost row carries.
+  id String @id
+
+  userId   String
+  User     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  // MemoryScope.scope_key: what the scope's dream lock and markers key on.
+  scopeKey String
+
+  route            DreamPassRoute
+  trigger          DreamPassTrigger
+  phase            DreamPassPhase   @default(GATHER)
+  status           DreamPassStatus  @default(QUEUED)
+  skipReason       String?
+  // Bumped by a stop from outside the pass (a cancel, or an expiry by a newer
+  // pass's guard) in the statement that closes the row, so a step that started
+  // under an older generation knows to stop.
+  cancelGeneration Int              @default(0)
+
+  // The provider batch of the phase in flight (batch route only).
+  providerBatchId String?
+  // The dream lock's ownership token, and when the lock lapses unless renewed:
+  // written with the row, renewed at each step, emptied when the row closes,
+  // or, for a row closed with a cleanup pending, once that cleanup is done.
+  leaseToken      String?
+  leaseExpiresAt  DateTime?
+
+  // Set by a close that leaves a cleanup behind (a stop from outside, a batch
+  // pass's end, the reaper's) and cleared once every step of that cleanup has
+  // finished, so the reaper resumes whatever the pass left undone.
+  cleanupPendingAt DateTime?
+
+  // The pass's DreamInput, in the format the batch path already persists to
+  // Redis (batch route only), emptied when the row closes.
+  inputBundle  Json?
+  // Each phase's validated output, keyed by phase.
+  phaseOutputs Json?
+  // The clamped operations apply was handed, and what apply reported.
+  operations   Json?
+  // DreamPassUsage: tokens and cost, per phase and in total.
+  usage        Json?
+  // The usage attribution (TrialCostContext) the pass started under, which
+  // every charge of its phases goes by. A row without one is never charged.
+  costContext  Json?
+
+  // The episode window the pass gathered.
+  windowStart DateTime?
+  windowEnd   DateTime?
+  error       String?
+
+  // Set by a hard forget that may have reached the pass, and never cleared:
+  // the dream's text in the row is blanked, by the forget if the pass is
+  // closed, else by the transition that closes it, and its narrative is
+  // written blanked (backend/copilot/dream/forget_copies.py).
+  erasedAt  DateTime?
+  // Every fact and episode the pass gathered, recorded before its first
+  // model call and never cleared: a hard forget marks a pass that read what
+  // it reached however long ago the pass closed, and its narrative's session
+  // keeps a copy for once the row has aged out. A pass's create states it
+  // (empty until the pass gathers); a row whose writer did not (one from
+  // before this column, or written by a release without it during a rollout)
+  // holds "*": it may have read anything, and any hard forget in its scope
+  // reaches it (backend/data/dream_pass_models.UNKNOWN_READS).
+  readUuids String[]  @default(["*"])
+
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  submittedAt DateTime?
+  appliedAt   DateTime?
+  completedAt DateTime?
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  @@index([scopeKey, status])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  // Deleting an expert cascades here; without it that scans every pass.
+  @@index([expertId])
+  // The reaper's scans: open passes whose lease lapsed, oldest first, and
+  // closed passes whose cleanup has not finished.
+  @@index([status, leaseExpiresAt])
+  @@index([status, cleanupPendingAt])
+}
+
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
 ////////////////   USER WORKSPACE TABLES   /////////////////
@@ -578,6 +764,11 @@ model UserWorkspaceFile {
   deletedAt DateTime?
 
   metadata Json @default("{}")
+
+  // Otto's own working file (a parked tool output, its build scratchpad),
+  // kept out of the user's file lists. Decided once at write time; see
+  // backend/data/workspace_internal.py.
+  isInternal Boolean @default(false)
 
   // User-level organization. Null = root. The folder API soft-deletes
   // folders and reparents files to root; SetNull is a hard-delete safety net.
@@ -822,6 +1013,12 @@ model ChatMessage {
   // user/tool rows, on baseline turns (no turn-level trace) and on rows
   // predating this column.
   langfuseTraceId String?
+
+  // PostHog trace of the turn that wrote this assistant or reasoning row:
+  // the `$ai_trace_id` its generations and spans carry, so a rating of the
+  // reply can name the trace. Null on user/tool rows, on rows written
+  // outside an executor turn and on rows predating this column.
+  traceId String?
 
   // Per-row JSONB metadata bag.  Currently holds the dispatcher's
   // submit-time payload (file_ids, mode, model, permissions, context,
@@ -1100,7 +1297,9 @@ model PushSubscription {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  endpoint String
+  // An endpoint belongs to one browser profile, so to one account at a time:
+  // subscribing moves it to whoever signed in last.
+  endpoint String @unique
   p256dh   String
   auth     String
 
@@ -1108,6 +1307,10 @@ model PushSubscription {
   failCount    Int       @default(0)
   lastFailedAt DateTime?
 
+  // Implied by the unique endpoint and kept only so a backend release that
+  // still upserts on (userId, endpoint) keeps working through a rolling
+  // deploy; it also serves per-user lookups. Safe to drop once no deployed
+  // release upserts on it.
   @@unique([userId, endpoint])
 }
 
@@ -1192,7 +1395,11 @@ model LibraryFolder {
   visibility     ResourceVisibility @default(PRIVATE)
   Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
-  @@unique([userId, parentId, name]) // Name unique per parent per user
+  // Names are unique among LIVE siblings, which Prisma cannot express: both
+  // rules are partial unique indexes created in migration
+  // 20261008180000_library_folder_name_unique_partial
+  // ("LibraryFolder_userId_parentId_name_live_key" and
+  // "LibraryFolder_userId_name_root_live_key").
   @@index([organizationId])
 }
 
@@ -1280,6 +1487,8 @@ model Expert {
   PauseEvents     ExpertPauseEvent[]
   BundledSkills   ExpertSkillListing[]
   Routines        ExpertRoutine[]
+  DreamPasses     DreamPass[]
+  MemorySchedule  MemoryScopeSchedule?
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -1358,8 +1567,8 @@ enum ExpertRoutineSession {
   PINNED
   // One durable thread of its own, minted at the first fire and reused after.
   // Per routine, not per expert, so two routines on the same cadence never
-  // interleave into one conversation. With `graphiti-memory` off this thread
-  // IS the routine's memory, which is why it is the default.
+  // interleave into one conversation. Its conversation history preserves
+  // continuity between runs, which is why it is the default.
   THREAD
 }
 
@@ -1447,6 +1656,44 @@ model ExpertRoutine {
   @@unique([expertId, key])
   @@index([expertId, createdAt, id])
   @@index([userId, createdAt, id])
+}
+
+// The runs a scheduled chat (an Expert routine or a follow-up) has failed the
+// same way in a row. The third run that fails outright pauses it, and its
+// owner is told once, with the fix; a run that works removes the row.
+model ScheduledChatStreak {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // The routine's id, or the follow-up's schedule id: a routine with several
+  // fire times is one scheduled chat.
+  scheduleKey String
+  // The jobs its pause stopped, which Resume restarts. Never a job the
+  // owner had paused; empty until the streak pauses.
+  scheduleIds String[]
+  title       String
+  // The chat its latest run went to, where the owner is told.
+  sessionId   String?
+
+  // What the runs have in common: compared by key, explained by the rest.
+  failureKey  String
+  failureKind String
+  provider    String?
+  tool        String?
+  // Runs in a row that failed this way, and how many of the latest of those
+  // failed outright, in a row.
+  failures         Int @default(1)
+  wholeRunFailures Int @default(0)
+
+  notifiedAt DateTime?
+  pausedAt   DateTime?
+
+  @@unique([userId, scheduleKey])
+  @@index([userId, pausedAt])
 }
 
 // A Skills Hub listing a roster template comes with; hiring installs its
@@ -1769,6 +2016,56 @@ model ExpertPod {
 
   // Doubles as the userId lookup index for list_pods.
   @@unique([userId, name])
+}
+
+// One row per memory scope (the account, or one hired expert) that the
+// nightly dream and weekly community-rebuild crons serve. It is the source of
+// truth for "is this scope scheduled" (copilot/dream/registry.py): whether its
+// crons may run, the timezone they were registered in, and their APScheduler
+// job ids. Replaces the Redis registration markers.
+model MemoryScopeSchedule {
+  // MemoryScope.scope_key: the raw user id for the account, expert_<sha256>
+  // for an expert. Also the suffix of both job ids.
+  scopeKey String @id
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Null for the account scope, whose scopeKey equals userId (a CHECK in the
+  // migration holds that).
+  expertId String? @unique
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  // The IANA timezone the recorded jobs were registered in.
+  timezone String
+  state    MemoryScopeScheduleState @default(ACTIVE)
+
+  // Null while that cron is not registered: its flag is off, registration
+  // failed, or the scope is paused or wiped. Skill learning runs per account,
+  // so an expert's scope never records a learning job.
+  communityJobId String?
+  nightlyJobId   String?
+  learningJobId  String?
+
+  // When each job body last ran its pass without an error.
+  lastNightlyRunAt   DateTime?
+  lastCommunityRunAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([userId])
+  @@index([state])
+}
+
+// ACTIVE: the crons are registered and run. PAUSED: the expert is archived or
+// its schedules are paused; the crons are removed until it resumes. WIPED: the
+// scope's memory was erased; the crons are removed and no registry operation
+// reactivates the scope (the wipe work decides what brings one back).
+enum MemoryScopeScheduleState {
+  ACTIVE
+  PAUSED
+  WIPED
 }
 
 ////////////////////////////////////////////////////////////
@@ -2294,12 +2591,16 @@ model PlatformCostLog {
   trackingType        String? // e.g. "cost_usd", "tokens", "characters", "items", "per_run", "sandbox_seconds", "walltime_seconds"
   trackingAmount      Float? // Amount in the unit implied by trackingType
   metadata            Json?
+  // The expert a background LLM call ran for (a dream pass on an expert's
+  // memory, a consult from an expert's chat); null for the account's own.
+  expertId            String?
 
   @@index([userId, createdAt])
   @@index([provider, createdAt])
   @@index([createdAt])
   @@index([graphExecId])
   @@index([provider, trackingType])
+  @@index([expertId, createdAt])
 }
 
 ////////////////////////////////////////////////////////////
@@ -2844,18 +3145,34 @@ enum SubmissionStatus {
 }
 
 enum APIKeyPermission {
+  // Legacy v1 permissions (kept for backward compatibility)
   IDENTITY // Info about the authenticated user
-  EXECUTE_GRAPH // Can execute agent graphs
+  EXECUTE_GRAPH // Can execute agent graphs (v1 only)
   READ_GRAPH // Can get graph versions and details
   WRITE_GRAPH // Can create and update agent graphs
-  EXECUTE_BLOCK // Can execute individual blocks
+  EXECUTE_BLOCK // Can execute individual blocks (v1 only)
   READ_BLOCK // Can get block information
-  READ_STORE // Can read store agents and creators
   WRITE_LIBRARY // Can add agents to library
-  USE_TOOLS // Can use chat tools via external API
-  MANAGE_INTEGRATIONS // Can initiate OAuth flows and complete them
+  USE_TOOLS // Can use v1 chat tools, and v2 MCP tools that spend platform resources
+  MANAGE_INTEGRATIONS // Can initiate OAuth flows and create credentials
   READ_INTEGRATIONS // Can list credentials and providers
   DELETE_INTEGRATIONS // Can delete credentials
+
+  // V2 permissions
+  READ_SCHEDULE // Can list schedules
+  WRITE_SCHEDULE // Can create and delete schedules
+  READ_STORE // Can read marketplace submissions (listings are public and accessible without this permission)
+  WRITE_STORE // Can create, update, delete marketplace submissions
+  READ_LIBRARY // Can list library agents and runs
+  RUN_AGENT // Can run agents and presets from library
+  READ_RUN // Can list and get run details
+  WRITE_RUN // Can stop and delete runs
+  SHARE_RUN // Can share/unshare agent runs
+  READ_RUN_REVIEW // Can list pending human-in-the-loop reviews
+  WRITE_RUN_REVIEW // Can submit human-in-the-loop review responses
+  READ_CREDITS // Can get credit balance and transactions
+  READ_FILES // Can list and download workspace files
+  WRITE_FILES // Can upload and delete workspace files
 }
 
 model APIKey {

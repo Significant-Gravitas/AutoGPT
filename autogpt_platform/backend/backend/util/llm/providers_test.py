@@ -11,26 +11,36 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import socket
 from contextlib import contextmanager
 from types import SimpleNamespace
+from typing import Self
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
 import httpx
 import pytest
+from aiohttp import web
+from aiohttp.test_utils import TestServer
 from pydantic import ValidationError
 
+from backend.util import egress_proxy
 from backend.util.llm import providers as providers_mod
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     FAST_FAIL_TIMEOUT_SECONDS,
+    NO_REASONING_MAX_TOKENS,
     ProviderResponse,
     _anthropic_accepts_temperature,
     _is_temperature_deprecation_error,
+    anthropic_accepts_forced_tool_choice,
     call_provider,
     call_provider_openai_compat_sync,
+    is_forced_tool_choice_rejection,
     request_timeout,
+    small_call_reasoning,
 )
+from backend.util.request import parse_url
 from backend.util.settings import Config, Settings
 
 
@@ -216,6 +226,7 @@ class TestExecutionModeStubs:
                 msg.content = ""
                 choice = MagicMock()
                 choice.message = msg
+                choice.finish_reason = "stop"
                 resp = MagicMock()
                 resp.choices = [choice]
                 resp.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
@@ -469,6 +480,7 @@ class TestAnthropicMessages:
             )
         assert isinstance(result, ProviderResponse)
         assert result.content == expected
+        assert result.stop_reason == response.stop_reason
         assert result.reasoning == "reasoning"
         assert result.completion_tokens == 7
         if answer.type == "tool_use":
@@ -659,7 +671,12 @@ class TestGroq:
 
 
 def _fake_openai_chat_response(
-    content: str, prompt: int, completion: int, *, cost: float | None = None
+    content: str,
+    prompt: int,
+    completion: int,
+    *,
+    cost: float | None = None,
+    finish_reason: str = "stop",
 ) -> SimpleNamespace:
     usage = SimpleNamespace(
         prompt_tokens=prompt,
@@ -667,7 +684,7 @@ def _fake_openai_chat_response(
         model_extra={"cost": cost} if cost is not None else None,
     )
     message = SimpleNamespace(content=content, tool_calls=None)
-    choice = SimpleNamespace(message=message)
+    choice = SimpleNamespace(message=message, finish_reason=finish_reason)
     return SimpleNamespace(choices=[choice], usage=usage)
 
 
@@ -714,6 +731,135 @@ class TestOpenRouter:
         # carries cost data.
         assert kwargs["extra_body"] == {"usage": {"include": True}}
         assert "HTTP-Referer" in kwargs["extra_headers"]
+
+
+def _compat_client(create, base_url: str = "https://api.openai.com/v1/"):
+    return SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+        base_url=httpx.URL(base_url),
+    )
+
+
+class TestSmallCallReasoning:
+    """Claude 5 thinks adaptively on OpenRouter and the thinking counts against
+    ``max_tokens``, so a small call asks for none; bigger calls keep theirs."""
+
+    @pytest.mark.parametrize(
+        ("model", "max_tokens", "off"),
+        [
+            ("anthropic/claude-haiku-5.5", 16, True),
+            ("claude-haiku-5-5", NO_REASONING_MAX_TOKENS, True),
+            ("anthropic/claude-sonnet-5", 1024, False),
+            ("anthropic/claude-haiku-5.5", NO_REASONING_MAX_TOKENS + 1, False),
+            ("anthropic/claude-haiku-4-5", 200, False),
+            ("openai/gpt-4.1", 16, False),
+        ],
+    )
+    def test_only_a_small_claude_5_call_turns_reasoning_off(
+        self, model: str, max_tokens: int, off: bool
+    ):
+        expected = {"reasoning": {"enabled": False}} if off else {}
+        assert small_call_reasoning(model, max_tokens) == expected
+
+    @pytest.mark.asyncio
+    async def test_call_provider_sends_it_on_openrouter(self):
+        async_create = AsyncMock(
+            return_value=_fake_openai_chat_response("{}", prompt=1, completion=1)
+        )
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=_compat_client(async_create),
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning", return_value=None
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openrouter_cost", return_value=None
+            ),
+        ):
+            await call_provider(
+                provider="open_router",
+                model="anthropic/claude-haiku-5.5",
+                api_key="sk-or-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=200,
+            )
+
+        assert async_create.call_args.kwargs["extra_body"] == {
+            "usage": {"include": True},
+            "reasoning": {"enabled": False},
+        }
+
+    @pytest.mark.asyncio
+    async def test_an_answer_cut_off_at_the_cap_reports_max_tokens(self):
+        # ``structured_complete`` raises "truncated at max_tokens" on this; with
+        # no stop reason the cut-off JSON read as "non-JSON content" instead.
+        async_create = AsyncMock(
+            return_value=_fake_openai_chat_response(
+                '{"verdict": "ok", "rea',
+                prompt=1,
+                completion=400,
+                finish_reason="length",
+            )
+        )
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=_compat_client(async_create),
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning", return_value=None
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openrouter_cost", return_value=None
+            ),
+        ):
+            result = await call_provider(
+                provider="open_router",
+                model="anthropic/claude-haiku-5.5",
+                api_key="sk-or-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=400,
+            )
+
+        assert result.stop_reason == "max_tokens"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("base_url", "expected"),
+        [
+            (
+                "https://openrouter.ai/api/v1",
+                {"usage": {"include": True}, "reasoning": {"enabled": False}},
+            ),
+            # Anthropic's own OpenAI-compatible endpoint has no such field.
+            ("https://api.anthropic.com/v1/", {"usage": {"include": True}}),
+        ],
+    )
+    async def test_the_sync_helper_sends_it_only_to_openrouter(
+        self, base_url: str, expected: dict
+    ):
+        async_create = AsyncMock(
+            return_value=_fake_openai_chat_response("ok", prompt=1, completion=1)
+        )
+        await call_provider_openai_compat_sync(
+            model="anthropic/claude-haiku-5.5",
+            messages=[_msg("user", "hi")],
+            max_tokens=20,
+            client=_compat_client(async_create, base_url),
+            extra_body={"usage": {"include": True}},
+        )
+
+        assert async_create.call_args.kwargs["extra_body"] == expected
 
 
 class TestLlamaAPI:
@@ -831,6 +977,12 @@ def _fake_ollama_chat_client(
     return SimpleNamespace(chat=chat)
 
 
+async def _checked_as_trusted(url: str, trusted_hostnames=None):
+    """Stand-in for ``validate_url_host`` that skips DNS and reports the
+    host as trusted."""
+    return parse_url(url), True, []
+
+
 @contextmanager
 def _patched_ollama_dispatch(
     captured: dict,
@@ -838,11 +990,11 @@ def _patched_ollama_dispatch(
     content: str = "ok",
     chat_base_url: str | None = None,
 ):
-    """Patch set for an Ollama dispatch test: mocked SSRF validation, a
-    stubbed copilot ``ChatConfig`` (so no real settings load happens),
-    and a fake ``ollama.AsyncClient``. Yields ``(validate_mock,
-    client_ctor_mock)``."""
-    validate_mock = AsyncMock(return_value=None)
+    """Patch set for an Ollama dispatch test: mocked SSRF validation that
+    reports the host as trusted, a stubbed copilot ``ChatConfig`` (so no real
+    settings load happens), and a fake ``ollama.AsyncClient``. Yields
+    ``(validate_mock, client_ctor_mock)``."""
+    validate_mock = AsyncMock(side_effect=_checked_as_trusted)
     client_ctor = MagicMock(
         return_value=_fake_ollama_chat_client(captured, content=content)
     )
@@ -960,9 +1112,54 @@ class TestOllama:
         assert result.content == '{"facts": []}'
         assert result.prompt_tokens == 7
         assert result.completion_tokens == 9
-        ctor.assert_called_once_with(
-            host="http://gpu-box:11434", timeout=request_timeout(42.0)
-        )
+        ctor.assert_called_once()
+        assert ctor.call_args.kwargs["host"] == "http://gpu-box:11434"
+        assert ctor.call_args.kwargs["timeout"] == request_timeout(42.0)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "ollama_host, expected",
+        [
+            ("gpu-box", "http://gpu-box:11434"),
+            ("gpu-box:8080", "http://gpu-box:8080"),
+            ("http://gpu-box", "http://gpu-box:80"),
+            ("https://gpu-box/ollama", "https://gpu-box:443/ollama"),
+            ("http:\\\\gpu-box", "http://gpu-box:80"),
+        ],
+    )
+    async def test_the_checked_url_is_the_one_the_client_gets(
+        self, ollama_host, expected
+    ):
+        """The SSRF check and the client see one URL, with the port Ollama's
+        client would use spelled out: its own 11434 for a host with neither
+        scheme nor port, otherwise the scheme's."""
+        with _patched_ollama_dispatch({}) as (validate_mock, ctor):
+            await call_provider(
+                provider="ollama",
+                model="llama3",
+                api_key="",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                ollama_host=ollama_host,
+            )
+        assert validate_mock.call_args.args[0] == expected
+        assert ctor.call_args.kwargs["host"] == expected
+
+    @pytest.mark.asyncio
+    async def test_rejects_port_zero(self):
+        # Ollama's client would read it as no port and connect elsewhere.
+        with _patched_ollama_dispatch({}) as (_, ctor), pytest.raises(
+            ValueError, match="invalid port"
+        ):
+            await call_provider(
+                provider="ollama",
+                model="llama3",
+                api_key="",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                ollama_host="gpu-box:0",
+            )
+        ctor.assert_not_called()
 
 
 class TestOllamaTrustedHosts:
@@ -1008,7 +1205,7 @@ class TestOllamaTrustedHosts:
         from backend.util.llm.providers import settings
 
         captured: dict = {}
-        validate_mock = AsyncMock(return_value=None)
+        validate_mock = AsyncMock(side_effect=_checked_as_trusted)
         with (
             patch(
                 "backend.util.llm.providers.validate_url_host",
@@ -1075,7 +1272,7 @@ class TestOllamaTrustedHosts:
         The base_url read must be memoized after the first success while
         every dispatch still gets the cached value in its trust list."""
         captured: dict = {}
-        validate_mock = AsyncMock(return_value=None)
+        validate_mock = AsyncMock(side_effect=_checked_as_trusted)
         chat_config_ctor = MagicMock(
             return_value=SimpleNamespace(
                 base_url="http://host.docker.internal:11434/v1"
@@ -1114,7 +1311,7 @@ class TestOllamaTrustedHosts:
         from backend.util.llm.providers import settings
 
         captured: dict = {}
-        validate_mock = AsyncMock(return_value=None)
+        validate_mock = AsyncMock(side_effect=_checked_as_trusted)
         chat_config_ctor = MagicMock(
             side_effect=[
                 ValueError("transient misconfiguration"),
@@ -1167,6 +1364,323 @@ class TestOllamaTrustedHosts:
                     ollama_host="http://169.254.169.254:11434",
                 )
         client_ctor.assert_not_called()
+
+
+class _FakeOllama:
+    """A loopback Ollama that answers a chat on any path, counting its requests
+    and recording the last ``Authorization`` header, or redirects every request
+    to ``redirect_to``."""
+
+    def __init__(self, redirect_to: str | None = None) -> None:
+        self.requests = 0
+        self.authorization: str | None = None
+        self.redirect_to = redirect_to
+        app = web.Application()
+        app.router.add_post("/{path:.*}", self._chat)
+        self.server = TestServer(app, host="127.0.0.1")
+
+    async def __aenter__(self) -> Self:
+        await self.server.start_server()
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        await self.server.close()
+
+    @property
+    def port(self) -> int:
+        assert self.server.port is not None
+        return self.server.port
+
+    async def _chat(self, request: web.Request) -> web.Response:
+        self.requests += 1
+        self.authorization = request.headers.get("Authorization")
+        if self.redirect_to:
+            return web.Response(status=307, headers={"Location": self.redirect_to})
+        return web.json_response(
+            {"model": "llama3", "message": {"role": "assistant", "content": "hi"}}
+        )
+
+
+def _fake_dns(
+    monkeypatch: pytest.MonkeyPatch, answers: dict[str, list[str | None]]
+) -> None:
+    """Answer each name in *answers* with its next address in turn, the last
+    one repeating; None means the name does not resolve. Other names resolve
+    for real."""
+    real_getaddrinfo = socket.getaddrinfo
+
+    def getaddrinfo(host, port, *args, **kwargs):
+        name = host.decode() if isinstance(host, bytes) else host
+        if name not in answers:
+            return real_getaddrinfo(host, port, *args, **kwargs)
+        queue = answers[name]
+        address = queue.pop(0) if len(queue) > 1 else queue[0]
+        if address is None:
+            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, port or 0)),
+        ]
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+
+
+def _vet_as_public(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
+    """Let the egress proxy treat *name* as a public host that resolves to
+    loopback, so a test server can stand in for it. Every other target still
+    gets the proxy's real checks."""
+    real_public_addresses = egress_proxy.public_addresses
+
+    async def vetted(host: str) -> list[str]:
+        if host == name:
+            return ["127.0.0.1"]
+        return await real_public_addresses(host)
+
+    monkeypatch.setattr(egress_proxy, "public_addresses", vetted)
+
+
+async def _ollama_chat(
+    host: str, *, chat_base_url: str | None = None
+) -> ProviderResponse:
+    with patch(
+        "backend.copilot.config.ChatConfig",
+        return_value=SimpleNamespace(base_url=chat_base_url),
+    ):
+        result = await call_provider(
+            provider="ollama",
+            model="llama3",
+            api_key="",
+            messages=[_msg("user", "hi")],
+            max_tokens=10,
+            ollama_host=host,
+            timeout_seconds=10.0,
+        )
+    assert isinstance(result, ProviderResponse)
+    return result
+
+
+class TestOllamaEgress:
+    """A user-supplied Ollama host passes the address check once, but
+    ``ollama.AsyncClient`` resolves the name again when it connects and follows
+    redirects. So untrusted hosts connect through the egress proxy, which
+    checks every address it dials, and without the operator's API key;
+    operator-configured hosts connect without the proxy. These use the real
+    client, proxy and loopback servers: nothing between the check and the
+    socket is mocked."""
+
+    @pytest.mark.asyncio
+    async def test_a_host_that_rebinds_after_the_check_never_reaches_it(
+        self, monkeypatch
+    ):
+        async with _FakeOllama() as internal:
+            _fake_dns(monkeypatch, {"rebind.test": ["93.184.216.34", "127.0.0.1"]})
+            with pytest.raises(ConnectionError, match="Could not connect to Ollama"):
+                await _ollama_chat(f"http://rebind.test:{internal.port}")
+        assert internal.requests == 0
+
+    @pytest.mark.asyncio
+    async def test_a_redirect_to_an_internal_address_is_refused(self, monkeypatch):
+        async with _FakeOllama() as internal:
+            target = f"http://127.0.0.1:{internal.port}/api/chat"
+            async with _FakeOllama(redirect_to=target) as public:
+                _fake_dns(monkeypatch, {"public.test": ["93.184.216.34", "127.0.0.1"]})
+                _vet_as_public(monkeypatch, "public.test")
+                with pytest.raises(
+                    ConnectionError, match="Could not connect to Ollama"
+                ):
+                    await _ollama_chat(f"http://public.test:{public.port}")
+        assert public.requests == 1
+        assert internal.requests == 0
+
+    @pytest.mark.asyncio
+    async def test_environment_proxy_settings_cannot_route_around_the_proxy(
+        self, monkeypatch
+    ):
+        # A deployment's NO_PROXY usually exempts internal ranges; it must not
+        # exempt a user's Ollama host from the egress proxy. Both spellings,
+        # since a lowercase one wins where both are set.
+        monkeypatch.setenv("NO_PROXY", "*")
+        monkeypatch.setenv("no_proxy", "*")
+        async with _FakeOllama() as internal:
+            _fake_dns(monkeypatch, {"rebind.test": ["93.184.216.34", "127.0.0.1"]})
+            with pytest.raises(ConnectionError, match="Could not connect to Ollama"):
+                await _ollama_chat(f"http://rebind.test:{internal.port}")
+        assert internal.requests == 0
+
+    @pytest.mark.asyncio
+    async def test_a_backslash_cannot_name_a_different_host_than_the_one_checked(
+        self, monkeypatch
+    ):
+        # The check reads the backslash as a path separator and matches the
+        # trusted host; Ollama's own parser would read everything before "@" as
+        # a login and connect to the address after it.
+        async with _FakeOllama() as trusted, _FakeOllama() as internal:
+            monkeypatch.setattr(
+                providers_mod.settings.config,
+                "ollama_host",
+                f"127.0.0.1:{trusted.port}",
+            )
+            result = await _ollama_chat(
+                f"http://127.0.0.1:{trusted.port}\\@127.0.0.1:{internal.port}"
+            )
+        assert result.content == "hi"
+        assert trusted.requests == 1
+        assert internal.requests == 0
+
+    @pytest.mark.asyncio
+    async def test_an_untrusted_host_is_reached_through_the_proxy(self, monkeypatch):
+        # After the check the name stops resolving, so only a connection the
+        # proxy makes to the address it vetted can reach the server.
+        async with _FakeOllama() as server:
+            _fake_dns(monkeypatch, {"ollama.test": ["93.184.216.34", None]})
+            _vet_as_public(monkeypatch, "ollama.test")
+            result = await _ollama_chat(f"http://ollama.test:{server.port}")
+        assert result.content == "hi"
+        assert server.requests == 1
+
+    @pytest.mark.asyncio
+    async def test_the_operator_api_key_never_reaches_an_untrusted_host(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("OLLAMA_API_KEY", "operator-key")
+        async with _FakeOllama() as server:
+            _fake_dns(monkeypatch, {"ollama.test": ["93.184.216.34"]})
+            _vet_as_public(monkeypatch, "ollama.test")
+            await _ollama_chat(f"http://ollama.test:{server.port}")
+        assert server.requests == 1
+        assert server.authorization is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "configured_host, chat_base_url",
+        [
+            pytest.param("https://127.0.0.1:{port}", None, id="other-scheme"),
+            pytest.param("127.0.0.1", None, id="other-port"),
+            pytest.param(
+                "127.0.0.1:1", "http://127.0.0.1:{port}/api/v1", id="chat-endpoint"
+            ),
+        ],
+    )
+    async def test_a_trusted_host_that_is_not_the_configured_one_gets_no_key(
+        self, monkeypatch, configured_host, chat_base_url
+    ):
+        # Each host here is trusted, so it is reached without the proxy, but
+        # differs from the configured Ollama endpoint in scheme or port, or is
+        # the copilot's chat endpoint.
+        monkeypatch.setenv("OLLAMA_API_KEY", "operator-key")
+        async with _FakeOllama() as server:
+            monkeypatch.setattr(
+                providers_mod.settings.config,
+                "ollama_host",
+                configured_host.format(port=server.port),
+            )
+            await _ollama_chat(
+                f"http://127.0.0.1:{server.port}",
+                chat_base_url=chat_base_url and chat_base_url.format(port=server.port),
+            )
+        assert server.requests == 1
+        assert server.authorization is None
+
+    @pytest.mark.asyncio
+    async def test_a_trusted_host_is_reached_directly_with_the_operator_key(
+        self, monkeypatch
+    ):
+        # Operator-configured hosts are usually loopback, which the proxy
+        # refuses, so they must not be sent through it.
+        monkeypatch.setenv("OLLAMA_API_KEY", "operator-key")
+        async with _FakeOllama() as server:
+            host = f"http://127.0.0.1:{server.port}"
+            monkeypatch.setattr(providers_mod.settings.config, "ollama_host", host)
+            monkeypatch.setattr(
+                providers_mod,
+                "egress_proxy_url",
+                MagicMock(side_effect=AssertionError("trusted host was proxied")),
+            )
+            result = await _ollama_chat(host)
+        assert result.content == "hi"
+        assert server.requests == 1
+        assert server.authorization == "Bearer operator-key"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "configured_host, url, keeps_key",
+        [
+            ("http://ollama.example", "http://ollama.example/api/chat", True),
+            ("http://ollama.example", "http://OLLAMA.example:80/api/chat", True),
+            ("http://ollama.example", "https://ollama.example/api/chat", False),
+            ("http://ollama.example", "http://ollama.example:8080/api/chat", False),
+            ("http://ollama.example", "http://ollama.example:0/api/chat", False),
+            ("http://ollama.example", "http://other.example/api/chat", False),
+            ("http://bücher.example", "http://xn--bcher-kva.example/api/chat", True),
+            ("http://xn--bcher-kva.example", "http://bücher.example/api/chat", True),
+            ("localhost:abc", "http://localhost/api/chat", False),
+        ],
+    )
+    async def test_each_request_keeps_the_key_only_for_the_configured_origin(
+        self, monkeypatch, configured_host, url, keeps_key
+    ):
+        monkeypatch.setattr(
+            providers_mod.settings.config, "ollama_host", configured_host
+        )
+        request = httpx.Request(
+            "POST", url, headers={"Authorization": "Bearer operator-key"}
+        )
+        await providers_mod._scope_ollama_key(request)
+        assert ("authorization" in request.headers) is keeps_key
+
+    @pytest.mark.asyncio
+    async def test_a_redirect_from_the_configured_endpoint_does_not_carry_the_key(
+        self, monkeypatch
+    ):
+        # httpx itself keeps the header on this redirect, from http to https
+        # on the same host; only the request hook can drop it.
+        monkeypatch.setenv("OLLAMA_API_KEY", "operator-key")
+        monkeypatch.setattr(
+            providers_mod.settings.config, "ollama_host", "http://ollama.example"
+        )
+        seen: list[tuple[str, str | None]] = []
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            seen.append((str(request.url), request.headers.get("authorization")))
+            if request.url.scheme == "http":
+                return httpx.Response(
+                    307, headers={"Location": "https://ollama.example/api/chat"}
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "model": "llama3",
+                    "message": {"role": "assistant", "content": "hi"},
+                },
+            )
+
+        real_client = providers_mod.ollama.AsyncClient
+        monkeypatch.setattr(
+            providers_mod.ollama,
+            "AsyncClient",
+            lambda **kwargs: real_client(
+                **kwargs, transport=httpx.MockTransport(respond)
+            ),
+        )
+        await _ollama_chat("http://ollama.example")
+        assert seen == [
+            ("http://ollama.example/api/chat", "Bearer operator-key"),
+            ("https://ollama.example/api/chat", None),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_the_configured_endpoint_s_client_also_scopes_the_key(self):
+        with _patched_ollama_dispatch({}) as (_, ctor):
+            await call_provider(
+                provider="ollama",
+                model="llama3",
+                api_key="",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                ollama_host=providers_mod.settings.config.ollama_host,
+            )
+        assert ctor.call_args.kwargs["event_hooks"] == {
+            "request": [providers_mod._scope_ollama_key]
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -1599,9 +2113,7 @@ class TestTimeoutThreading:
             captured.update(kwargs)
             return _fake_openai_chat_response("ok", prompt=1, completion=1)
 
-        fake_client = SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=capture))
-        )
+        fake_client = _compat_client(capture)
         await call_provider_openai_compat_sync(
             model="gpt-4.1",
             messages=[_msg("user", "hi")],
@@ -1619,9 +2131,7 @@ class TestTimeoutThreading:
         async def hang(**kwargs):
             await asyncio.sleep(60)
 
-        fake_client = SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=hang))
-        )
+        fake_client = _compat_client(hang)
         with pytest.raises(TimeoutError):
             await call_provider_openai_compat_sync(
                 model="gpt-4.1",
@@ -1680,9 +2190,7 @@ class TestDefaults:
             captured.update(kwargs)
             return _fake_openai_chat_response("ok", prompt=1, completion=1)
 
-        fake_client = SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=capture))
-        )
+        fake_client = _compat_client(capture)
         await call_provider_openai_compat_sync(
             model="gpt-4.1",
             messages=[_msg("user", "hi")],
@@ -1893,6 +2401,7 @@ class TestDownloadBatchResults:
                     result=SimpleNamespace(
                         type="succeeded",
                         message=SimpleNamespace(
+                            stop_reason="end_turn",
                             content=[
                                 SimpleNamespace(type="text", text='{"facts": []}')
                             ],
@@ -1934,7 +2443,8 @@ class TestDownloadBatchResults:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("thinking_first", [False, True])
-    async def test_extracts_tool_use_input_as_json(self, thinking_first):
+    @pytest.mark.parametrize("stop_reason", ["tool_use", "max_tokens"])
+    async def test_extracts_tool_use_input_as_json(self, thinking_first, stop_reason):
         """Step 5 leans on this: when the dream pass uses
         ``tool_choice={"type":"tool","name":...}`` to force structured
         output, the result is one ``tool_use`` block whose ``input``
@@ -1957,6 +2467,7 @@ class TestDownloadBatchResults:
                     result=SimpleNamespace(
                         type="succeeded",
                         message=SimpleNamespace(
+                            stop_reason=stop_reason,
                             content=thinking
                             + [
                                 anthropic.types.ToolUseBlock(
@@ -1990,6 +2501,54 @@ class TestDownloadBatchResults:
                 api_key="x",
             )
         assert rows[0].content == '{"writes": [], "summary_for_user": "ok"}'
+        assert rows[0].error == ("max_tokens" if stop_reason == "max_tokens" else None)
+        assert rows[0].output_tokens == 1
+
+    @pytest.mark.asyncio
+    async def test_tool_use_after_a_text_block_is_still_the_result(self):
+        """Under ``tool_choice`` ``auto`` (a model that rejects a forced
+        tool) a short text block can come before the call. The tool input
+        is still the structured payload, not the text."""
+        results_iter = _fake_async_iter(
+            [
+                SimpleNamespace(
+                    custom_id="passid-1_recombine",
+                    result=SimpleNamespace(
+                        type="succeeded",
+                        message=SimpleNamespace(
+                            stop_reason="end_turn",
+                            content=[
+                                anthropic.types.TextBlock(
+                                    type="text", text="Recording the proposals."
+                                ),
+                                anthropic.types.ToolUseBlock(
+                                    type="tool_use",
+                                    id="tool-1",
+                                    name="emit_recombination",
+                                    input={"proposals": []},
+                                ),
+                            ],
+                            usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+                        ),
+                    ),
+                )
+            ]
+        )
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(
+                batches=SimpleNamespace(results=AsyncMock(return_value=results_iter))
+            ),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            rows = await download_batch_results(
+                provider="anthropic",
+                provider_batch_id="x",
+                api_key="x",
+            )
+        assert rows[0].content == '{"proposals": []}'
 
     @pytest.mark.asyncio
     async def test_errored_row_carries_error_string_with_zero_tokens(self):
@@ -2026,6 +2585,28 @@ class TestDownloadBatchResults:
         assert "content moderation" in rows[0].error
         assert rows[0].input_tokens == 0
         assert rows[0].output_tokens == 0
+
+
+def test_batch_result_row_with_content_keeps_every_other_field():
+    row = BatchResultRow(
+        custom_id="passid-1_consolidate",
+        content='Here are the facts: {"facts": []}',
+        input_tokens=10,
+        output_tokens=20,
+        cache_read_tokens=3,
+        cache_creation_tokens=2,
+        error="kept as is",
+        raw_result=object(),
+    )
+
+    swapped = row.with_content('{"facts": []}')
+
+    assert swapped.content == '{"facts": []}'
+    assert row.content == 'Here are the facts: {"facts": []}'
+    # Every field the row has, so a field added later can't be dropped.
+    for name in getattr(BatchResultRow, "__pydantic_fields__"):
+        if name != "content":
+            assert getattr(swapped, name) == getattr(row, name), name
 
 
 def _fake_async_iter(items):
@@ -2475,3 +3056,82 @@ class TestClaude5TemperatureRejection:
     )
     def test_self_heal_ignores_unrelated_errors(self, message: str):
         assert not _is_temperature_deprecation_error(self._err(message))
+
+
+class TestForcedToolChoiceCapability:
+    """Opus 5.5 and the Fable 5.1 / Mythos 5.1 line answer a forced
+    ``tool_choice`` with a 400. Exact slugs, not family prefixes: Sonnet 5
+    and Opus 5 still accept a forced tool."""
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-5-5",
+            "anthropic/claude-opus-5.5",
+            "anthropic.claude-opus-5-5",
+            "claude-opus-5-5-20261015",
+            "claude-sonnet-5-5",
+            "anthropic/claude-sonnet-5.5",
+            "anthropic.claude-sonnet-5-5",
+            "claude-sonnet-5-5-20260928",
+            "claude-fable-5-1",
+            "claude-mythos-5-1",
+        ],
+    )
+    def test_rejecting_models(self, model: str):
+        assert anthropic_accepts_forced_tool_choice(model) is False
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-5",
+            "anthropic/claude-opus-5",
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "claude-opus-4-8",
+            "claude-haiku-4-5-20251001",
+        ],
+    )
+    def test_accepting_models(self, model: str):
+        assert anthropic_accepts_forced_tool_choice(model) is True
+
+    @staticmethod
+    def _err(msg: str) -> anthropic.BadRequestError:
+        resp = httpx.Response(
+            400,
+            request=httpx.Request("POST", "https://api.anthropic.com"),
+            json={"error": {"message": msg}},
+        )
+        return anthropic.BadRequestError(msg, response=resp, body=None)
+
+    def test_rejection_matches_anthropics_400(self):
+        assert is_forced_tool_choice_rejection(
+            self._err(
+                'tool_choice: type "tool" and "any" are not supported for this model.'
+            )
+        )
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "temperature is not supported by this model",
+            "tool_choice.name: Field required",
+            "rate limited",
+        ],
+    )
+    def test_rejection_ignores_other_errors(self, message: str):
+        assert not is_forced_tool_choice_rejection(self._err(message))
+
+    def test_only_a_bad_request_counts_as_the_rejection(self):
+        """The documented text is not enough on its own: a 500 or an
+        exception of our own quoting it is not Anthropic's 400."""
+        text = 'tool_choice: type "tool" and "any" are not supported for this model.'
+        server_error = anthropic.InternalServerError(
+            text,
+            response=httpx.Response(
+                500, request=httpx.Request("POST", "https://api.anthropic.com")
+            ),
+            body=None,
+        )
+        assert not is_forced_tool_choice_rejection(server_error)
+        assert not is_forced_tool_choice_rejection(RuntimeError(text))

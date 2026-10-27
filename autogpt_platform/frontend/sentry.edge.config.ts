@@ -3,8 +3,15 @@
 // Note that this config is unrelated to the Vercel Edge Runtime and is also required when running locally.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
-import { stripRequestCredentials } from "@/lib/sentry-filters";
+import {
+  stripLogUserPII,
+  stripRequestCredentials,
+  stripSpanDataPII,
+  stripSpanPII,
+  stripUserPII,
+} from "@/lib/sentry-filters";
 import { isSentryTunnelTransaction } from "@/lib/sentry-tunnel";
+import { redactEventURLs, redactSpanURLs } from "@/lib/sentry-url-redaction";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
@@ -26,12 +33,22 @@ Sentry.init({
     /^https:\/\/.*\.agpt\.co\/api/,
   ],
 
-  beforeSend: stripRequestCredentials,
+  // No email or IP address reaches Sentry; the user id is enough.
+  sendDefaultPii: false,
+  beforeSend(event) {
+    return stripSpanPII(
+      stripUserPII(redactEventURLs(stripRequestCredentials(event))),
+    );
+  },
   beforeSendTransaction(event) {
     return isSentryTunnelTransaction(event)
       ? null
-      : stripRequestCredentials(event);
+      : stripSpanPII(
+          stripUserPII(redactEventURLs(stripRequestCredentials(event))),
+        );
   },
+  beforeSendSpan: (span) => redactSpanURLs(stripSpanDataPII(span)),
+  beforeSendLog: stripLogUserPII,
 
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,

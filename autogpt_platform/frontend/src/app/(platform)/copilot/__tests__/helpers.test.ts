@@ -1,12 +1,18 @@
 import type { UIMessage } from "ai";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import {
   COPILOT_COMPLETION_NOTIFICATION,
-  ORIGINAL_TITLE,
   deduplicateMessages,
   extractSendMessageText,
-  formatNotificationTitle,
   getCopilotAuthHeaders,
   extractSendMessageAttachments,
   getSendSuppressionReason,
@@ -26,37 +32,16 @@ vi.mock("@/lib/impersonation", () => ({
   getSystemHeaders: vi.fn(),
 }));
 
+vi.mock("@/services/analytics/posthog-request-context", () => ({
+  getPostHogSessionHeader: vi.fn(() => ({})),
+}));
+
 import { getWebSocketToken } from "@/lib/auth/actions";
 import { getSystemHeaders } from "@/lib/impersonation";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 
 const mockGetWebSocketToken = vi.mocked(getWebSocketToken);
 const mockGetSystemHeaders = vi.mocked(getSystemHeaders);
-
-describe("formatNotificationTitle", () => {
-  it("returns base title when count is 0", () => {
-    expect(formatNotificationTitle(0)).toBe(ORIGINAL_TITLE);
-  });
-
-  it("returns formatted title with count", () => {
-    expect(formatNotificationTitle(3)).toBe(
-      `(3) New activity - ${ORIGINAL_TITLE}`,
-    );
-  });
-
-  it("returns base title for negative count", () => {
-    expect(formatNotificationTitle(-1)).toBe(ORIGINAL_TITLE);
-  });
-
-  it("returns base title for NaN", () => {
-    expect(formatNotificationTitle(NaN)).toBe(ORIGINAL_TITLE);
-  });
-
-  it("returns formatted title for count of 1", () => {
-    expect(formatNotificationTitle(1)).toBe(
-      `(1) New activity - ${ORIGINAL_TITLE}`,
-    );
-  });
-});
 
 describe("hasVisibleAssistantContent", () => {
   function assistant(parts: UIMessage["parts"]): UIMessage[] {
@@ -194,8 +179,8 @@ describe("shouldSuppressDuplicateSend", () => {
     ).toBe(false);
   });
 
-  it("suppresses when text matches last submitted AND last user message", () => {
-    const messages = [makeMsg("user", "hello"), makeMsg("assistant", "hi")];
+  it("suppresses when text matches an unanswered last user message", () => {
+    const messages = [makeMsg("user", "hello")];
     expect(
       shouldSuppressDuplicateSend({
         text: "hello",
@@ -354,7 +339,20 @@ describe("getSendSuppressionReason", () => {
     ).toBe("reconnecting");
   });
 
-  it("returns 'duplicate' when text matches last submitted AND last user message", () => {
+  it("returns 'duplicate' while the echoed send is still unanswered", () => {
+    const messages = [makeMsg("user", "hello")];
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages,
+        status: "ready",
+      }),
+    ).toBe("duplicate");
+  });
+
+  it("sends the same text again once it has been answered", () => {
     const messages = [makeMsg("user", "hello"), makeMsg("assistant", "hi")];
     expect(
       getSendSuppressionReason({
@@ -362,15 +360,29 @@ describe("getSendSuppressionReason", () => {
         isReconnectScheduled: false,
         lastSubmittedText: "hello",
         messages,
+        status: "ready",
       }),
-    ).toBe("duplicate");
+    ).toBeNull();
+  });
+
+  it("sends the same text again after the previous turn was stopped", () => {
+    const messages = [
+      makeMsg("user", "hello"),
+      makeMsg("assistant", "[__COPILOT_ERROR_f7a1__] Operation cancelled"),
+    ];
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages,
+        status: "ready",
+      }),
+    ).toBeNull();
   });
 
   it("lets the same caption through when it carries other attachments", () => {
-    const messages = [
-      makeMsg("user", "summarize this"),
-      makeMsg("assistant", "ok"),
-    ];
+    const messages = [makeMsg("user", "summarize this")];
     expect(
       getSendSuppressionReason({
         text: "summarize this",
@@ -649,6 +661,95 @@ describe("deduplicateMessages", () => {
     expect(result).toHaveLength(3);
     expect(result.map((m) => m.id)).toEqual(["u1", "a1", "a2"]);
   });
+
+  it("returns the input array itself when nothing is a duplicate", () => {
+    const msgs = [
+      makeMsgWithId("u1", "user", "question 1"),
+      makeMsgWithId("a1", "assistant", "answer 1"),
+      makeMsgWithId("u2", "user", "question 2"),
+      makeMsgWithId("a2", "assistant", "answer 2"),
+    ];
+    expect(deduplicateMessages(msgs)).toBe(msgs);
+    expect(deduplicateMessages([])).toEqual([]);
+  });
+
+  it("returns a new array when it removes a duplicate", () => {
+    const msgs = [
+      makeMsgWithId("u1", "user", "hello"),
+      makeMsgWithId("a1", "assistant", "hi there"),
+      makeMsgWithId("a2", "assistant", "hi there"),
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).not.toBe(msgs);
+    expect(result.map((m) => m.id)).toEqual(["u1", "a1"]);
+  });
+
+  describe("fingerprint cache", () => {
+    let stringify: MockInstance<typeof JSON.stringify>;
+    beforeEach(() => {
+      stringify = vi.spyOn(JSON, "stringify");
+    });
+    afterEach(() => {
+      stringify.mockRestore();
+    });
+
+    it("fingerprints an unchanged assistant message once, and the newest one on every call", () => {
+      const older = makeMsgWithId("a1", "assistant", "answer 1");
+      const msgs = [
+        makeMsgWithId("u1", "user", "question 1"),
+        older,
+        makeMsgWithId("u2", "user", "question 2"),
+        makeMsgWithId("a2", "assistant", "answer 2"),
+      ];
+
+      deduplicateMessages(msgs);
+      expect(stringify).toHaveBeenCalledTimes(2);
+
+      stringify.mockClear();
+      const streamed = {
+        ...msgs[3],
+        parts: [{ type: "text" as const, text: "answer 2, longer" }],
+      };
+      deduplicateMessages([...msgs.slice(0, 3), streamed]);
+      expect(stringify).toHaveBeenCalledTimes(1);
+      expect(stringify.mock.calls[0][0]).toEqual(["answer 2, longer"]);
+    });
+
+    it("fingerprints a message again once it gets new parts", () => {
+      const msgs: UIMessage[] = [
+        makeMsgWithId("u1", "user", "question"),
+        makeMsgWithId("a1", "assistant", "same"),
+        makeMsgWithId("a2", "assistant", "other"),
+        makeMsgWithId("u2", "user", "next"),
+      ];
+      expect(deduplicateMessages(msgs)).toBe(msgs);
+
+      msgs[2] = { ...msgs[2], parts: [{ type: "text", text: "same" }] };
+      expect(deduplicateMessages(msgs).map((m) => m.id)).toEqual([
+        "u1",
+        "a1",
+        "u2",
+      ]);
+    });
+
+    it("fingerprints a message again when parts are added to it in place", () => {
+      const growing: UIMessage = { id: "a2", role: "assistant", parts: [] };
+      const msgs = [
+        makeMsgWithId("u1", "user", "question"),
+        makeMsgWithId("a1", "assistant", "same"),
+        growing,
+        makeMsgWithId("u2", "user", "next"),
+      ];
+      expect(deduplicateMessages(msgs)).toBe(msgs);
+
+      growing.parts.push({ type: "text", text: "same" });
+      expect(deduplicateMessages(msgs).map((m) => m.id)).toEqual([
+        "u1",
+        "a1",
+        "u2",
+      ]);
+    });
+  });
 });
 
 describe("shouldDebounceReconnect", () => {
@@ -787,6 +888,23 @@ describe("getCopilotAuthHeaders", () => {
     const headers = await getCopilotAuthHeaders();
 
     expect(headers).toEqual({ Authorization: "Bearer test-jwt-token" });
+  });
+
+  it("names the browser's PostHog session so the chat's events join it", async () => {
+    mockGetWebSocketToken.mockResolvedValue({
+      token: "test-jwt-token",
+      error: undefined,
+    });
+    vi.mocked(getPostHogSessionHeader).mockReturnValueOnce({
+      "X-PostHog-Session-Id": "posthog-session-1",
+    });
+
+    const headers = await getCopilotAuthHeaders();
+
+    expect(headers).toEqual({
+      Authorization: "Bearer test-jwt-token",
+      "X-PostHog-Session-Id": "posthog-session-1",
+    });
   });
 
   it("includes X-Act-As-User-Id header when impersonation is active", async () => {

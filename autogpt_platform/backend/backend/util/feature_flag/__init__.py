@@ -50,9 +50,11 @@ MAX_CONCURRENT_SHADOW_EVALUATIONS = 100
 _unanswered_flags_reported: set[str] = set()
 
 
-# Flags that run a PostHog experiment. Only a read of one of these sends the
-# billed `$feature_flag_called` event, which is how an experiment counts exposure.
-EXPERIMENT_FLAGS = frozenset({"subscription-pricing-page-initial-state"})
+# Flags that run a PostHog experiment read only here. Only a read of one of these
+# sends the billed `$feature_flag_called` event, which is how an experiment counts
+# exposure. A server-assigned arm (`data/experiments.py`) is not listed: the
+# browser reports its exposure, consent-gated.
+EXPERIMENT_FLAGS: frozenset[str] = frozenset()
 
 
 class Flag(str, Enum):
@@ -63,7 +65,6 @@ class Flag(str, Enum):
     """
 
     AUTOMOD = "AutoMod"
-    AI_ACTIVITY_STATUS = "ai-agent-execution-summary"
     ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
     CHAT_MODE_OPTION = "chat-mode-option"
     COPILOT_SDK = "copilot-sdk"
@@ -73,6 +74,14 @@ class Flag(str, Enum):
     # ungated behaviour, which is why it defaults False rather than
     # fail-closed. Failures *inside* an enabled gate fail to ASK.
     COPILOT_AUTO_MODE = "copilot-auto-mode"
+    # The prompt-injection check on outside reads (``copilot/gate/reads.py``):
+    # true or "enforce" holds a flagged read for the user; "shadow" judges every
+    # read and records the verdict, holding nothing. Off when missing.
+    COPILOT_READ_SCREEN = "copilot-read-screen"
+    # The gate answers the review pauses of workflows AutoPilot started, and
+    # its yes satisfies a direct block call's own review. A rollout control
+    # that defaults ON by decision; off restores the two approval layers.
+    COPILOT_UNIFIED_APPROVALS = "copilot-unified-approvals"
     # Self-distilled skills registry (store_skill / read_skill /
     # delete_skill / list_skills + the per-turn <available_skills>
     # context block).  Default-on — flip off in LaunchDarkly to disable
@@ -87,27 +96,10 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
-    GRAPHITI_MEMORY = "graphiti-memory"
 
     # Gates Otto voice mode end-to-end. The speech endpoint 404s when
     # off so a stale frontend cannot spend TTS budget. Fail-closed.
     COPILOT_VOICE_MODE = "copilot-voice-mode"
-
-    # Gates the onboarding voice "brain dump" end-to-end.  The upload /
-    # finalize / status / download endpoints 404 when off so a stale
-    # frontend can't start writing recordings, and the wizard keeps
-    # rendering the pillbox step.  Fail-closed (default False).
-    ONBOARDING_BRAIN_DUMP = "onboarding-brain-dump"
-
-    # Gates the per-user weekly community rebuild registered by
-    # ``add_community_rebuild_schedule``. Off by default; opt-in canary
-    # so the Leiden + LLM-summarization cost doesn't ramp before
-    # retrieval-relevance benefit is measured.
-    GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled"
-
-    # Parks expert work for the user's approval once her credit spend in the
-    # window reaches the approval threshold (SECRT-2599). Off by default.
-    EXPERT_SPEND_APPROVAL = "expert-spend-approval"
 
     # --- Dream-system gates (P0) ---
     #
@@ -124,26 +116,6 @@ class Flag(str, Enum):
     # consumer pickup, no ratification loop. Defaults False; opt-in
     # only.
     DREAM_PASS_ENABLED = "dream-pass-enabled"
-
-    # Mirror of the frontend `hire-experts` flag (same LaunchDarkly key,
-    # so both sides evaluate one cohort switch). Gates the experts
-    # surface, including the scheduled morning-briefing job end-to-end:
-    # schedule registration, generation, and delivery. Deliberately no
-    # independent briefing kill switch — briefings ship to exactly the
-    # experts cohort.
-    HIRE_EXPERTS = "hire-experts"
-
-    # Child of ``HIRE_EXPERTS``: onboarding ends with a team. The brain
-    # dump also produces expert recommendations, the copilot greeting
-    # grows a team section, and Otto's empty-roster context tells
-    # it that it is the Head of AI. Effective only when both are on;
-    # fail-closed (default False).
-    ONBOARDING_EXPERT_TEAM = "onboarding-expert-team"
-
-    # Mirror of the frontend `skills-hub` flag. Gates marketplace skill
-    # browse and install end-to-end: the routes 404 when off, so the dark
-    # launch is not reachable by URL with the shelf hidden. Fail-closed.
-    SKILLS_HUB = "skills-hub"
 
     # Per-feature gate for the cascading-expiry helper
     # ``invalidate_entity_direct_neighbors`` (P0.3b). When on, the
@@ -473,6 +445,21 @@ async def get_feature_flag_value(
         flag_key, user_id, default, attributes=attributes
     )
     return value
+
+
+async def evaluate_experiment_variant(flag_key: str, user_id: str) -> str | None:
+    """The arm PostHog buckets *user_id* into for an experiment, or None.
+
+    Experiments live in PostHog whichever vendor answers feature flags. None
+    too when the user lookup failed: the first arm is stored for good, and one
+    read without the user's properties can be the wrong one.
+    """
+    user_context, resolved = await _fetch_user_context_status(user_id)
+    if not resolved:
+        return None
+    return await posthog.evaluate_variant(
+        flag_key, user_id, _person_properties(user_context)
+    )
 
 
 def evaluate_flags_in_memory(flag_keys: list[str], key: str) -> dict[str, Any]:
@@ -955,6 +942,16 @@ async def _evaluate_boolean_flag(
     return default, False
 
 
+async def get_flag_variant(flag_key: Flag, user_id: str, default: Any = False) -> Any:
+    """For a flag served as true/false or as a variant key: its env override when
+    one is set, as ``is_feature_enabled`` honours it, else the vendor's answer."""
+    override = _env_flag_override(flag_key)
+    if override is not None:
+        return override
+    value, _ = await _evaluate_flag_value(flag_key.value, user_id, default)
+    return value
+
+
 def feature_flag(
     flag_key: str,
     default: bool = False,
@@ -1051,7 +1048,7 @@ def create_feature_flag_dependency(
 
     Example:
         router = APIRouter(
-            dependencies=[Depends(create_feature_flag_dependency(Flag.SKILLS_HUB))]
+            dependencies=[Depends(create_feature_flag_dependency(Flag.COPILOT_VOICE_MODE))]
         )
     """
 

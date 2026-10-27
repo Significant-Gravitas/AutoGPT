@@ -1,7 +1,19 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-gray-100 #F3F4F6, bg-purple-50 #F1EBFE, bg-red-700 #AA3030,
+// text-gray-400 #9CA3AF, text-gray-500 #6B7280, text-gray-600 #4B5563,
+// text-gray-700 #374151, text-purple-600 #6C2EDF.
+// Same value as a role with another meaning, so not swapped:
+// text-purple-600 = brand-hover (a hover fill).
+
 import { Button } from "@/components/atoms/Button/Button";
-import { Card } from "@/components/atoms/Card/Card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/atoms/Card/Card";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +21,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import React, { useState } from "react";
 import {
@@ -19,13 +31,8 @@ import {
   TableHead,
   TableRow,
   TableCell,
-} from "@/components/__legacy__/ui/table";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import {
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/__legacy__/ui/card";
+} from "@/components/molecules/Table/components/TablePrimitives";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import {
   useGetV2ListAllUserSchedules,
   useGetV2ListOrphanedSchedules,
@@ -43,6 +50,7 @@ import {
   Refresh01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface ScheduleDetail {
   schedule_id: string;
@@ -316,9 +324,13 @@ export function SchedulesTable({
                             <TableCell>{schedule.schedule_name}</TableCell>
                             <TableCell>
                               <div>{schedule.graph_name || "Unknown"}</div>
-                              <div className="font-mono text-xs text-gray-500">
+                              <Text
+                                variant="small-mono-tight"
+                                as="div"
+                                className="text-gray-500"
+                              >
                                 v{schedule.graph_version}
-                              </div>
+                              </Text>
                             </TableCell>
                             <TableCell>
                               <div>
@@ -326,8 +338,10 @@ export function SchedulesTable({
                                   <span className="text-gray-400">Unknown</span>
                                 )}
                               </div>
-                              <div
-                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
+                              <Text
+                                variant="small-mono-tight"
+                                as="div"
+                                className="group flex cursor-pointer items-center gap-1 text-gray-500 hover:text-gray-700"
                                 onClick={() => {
                                   navigator.clipboard.writeText(
                                     schedule.user_id,
@@ -344,17 +358,26 @@ export function SchedulesTable({
                                   icon={Copy01Icon}
                                   className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100"
                                 />
-                              </div>
+                              </Text>
                             </TableCell>
                             <TableCell>
                               {schedule.cron ? (
                                 <>
-                                  <code className="rounded bg-gray-100 px-2 py-1 text-xs">
+                                  <Text
+                                    variant="small-mono-tight"
+                                    as="code"
+                                    tone="inherit"
+                                    className="rounded bg-gray-100 px-2 py-1"
+                                  >
                                     {schedule.cron}
-                                  </code>
-                                  <div className="text-xs text-gray-500">
+                                  </Text>
+                                  <Text
+                                    variant="small-tight"
+                                    as="div"
+                                    className="text-gray-500"
+                                  >
                                     {schedule.timezone}
-                                  </div>
+                                  </Text>
                                 </>
                               ) : (
                                 <span className="text-gray-400">N/A</span>
@@ -369,12 +392,16 @@ export function SchedulesTable({
                             </TableCell>
                             {activeTab === "orphaned" && (
                               <TableCell>
-                                <span className="text-xs text-purple-600">
+                                <Text
+                                  variant="small-tight"
+                                  as="span"
+                                  className="text-purple-600"
+                                >
                                   {(
                                     schedule as OrphanedScheduleDetail
                                   ).orphan_reason?.replace(/_/g, " ") ||
                                     "unknown"}
-                                </span>
+                                </Text>
                               </TableCell>
                             )}
                           </TableRow>
@@ -387,11 +414,11 @@ export function SchedulesTable({
 
               {totalPages > 1 && activeTab === "all" && (
                 <div className="mt-4 flex items-center justify-between">
-                  <div className="text-sm text-gray-600">
+                  <Text variant="body-tight" as="div" className="text-gray-600">
                     Showing {(currentPage - 1) * pageSize + 1} to{" "}
                     {Math.min(currentPage * pageSize, total)} of {total}{" "}
                     schedules
-                  </div>
+                  </Text>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
@@ -455,7 +482,7 @@ export function SchedulesTable({
             <Button
               variant="destructive"
               onClick={handleDelete}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-error-hover hover:bg-red-700"
             >
               Delete Schedules
             </Button>

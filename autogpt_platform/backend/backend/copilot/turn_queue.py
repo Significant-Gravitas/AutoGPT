@@ -31,6 +31,7 @@ cancels manually.
 
 import logging
 import uuid
+from datetime import datetime
 from typing import Any, Literal, Mapping
 
 from prisma.errors import UniqueViolationError
@@ -73,6 +74,7 @@ from backend.copilot.trial_cost_context import (
     restore_cost_context,
 )
 from backend.data.db_accessors import chat_db
+from backend.data.user import is_user_banned
 from backend.integrations.codex.access import has_codex_access
 
 logger = logging.getLogger(__name__)
@@ -337,7 +339,12 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
                 user_id=user_id,
             ):
                 return False
-            if pending is not None and _is_spawned(pending):
+            spawned = pending is not None and _is_spawned(pending)
+            logger.info(
+                f"cancel_queued_turn: session={session_id} user={user_id} "
+                f"cancelled before it started, spawned={spawned}"
+            )
+            if spawned and pending is not None:
                 child = _child_node(pending.metadata or {})
                 await _note_cancel(db, session_id)
             await invalidate_session_cache(session_id)
@@ -574,6 +581,11 @@ async def _promote_head(user_id: str) -> bool | None:
             )
         raise
 
+    logger.info(
+        f"dispatch_next_for_user: started queued session={head.session_id} "
+        f"user={user_id} turn={turn_id} sub_work={sub_work[head.session_id]}"
+    )
+
     if pending.role == "user" and pending.content and not spawned:
         try:
             track_user_message(
@@ -796,10 +808,21 @@ def _promotion_permissions(
     )
 
 
+TurnRefusalKind = Literal["banned", "codex_access", "no_plan", "usage", "outage"]
+
+
 class TurnRefusal(BaseModel):
     reason: str
+    # What the owner could do about it, for callers that tell them: reconnect
+    # the Codex route, choose a plan, wait for the usage window, or nothing
+    # (a banned account, or an outage on our side).
+    kind: TurnRefusalKind
     # The usage store was unreadable: an outage, not the user's state.
     transient: bool = False
+    # Usage refusals only: the window that ran out ("daily", "weekly" or
+    # "trial") and when it resets.
+    window: str | None = None
+    resets_at: datetime | None = None
 
 
 async def turn_refusal(
@@ -807,18 +830,21 @@ async def turn_refusal(
 ) -> TurnRefusal | None:
     """Why a turn billed to this route may not start for this user, if so.
 
-    Access first (Codex entitlement, the platform paywall), then the platform
-    route's usage: its daily and weekly windows and a trial's total budget.
-    Lookup errors propagate, so each caller decides what an unknown means.
+    A ban first, on every route; then access (Codex entitlement, the platform
+    paywall), then the platform route's usage: its daily and weekly windows and
+    a trial's total budget. Lookup errors propagate, so each caller decides what
+    an unknown means.
     """
+    if await is_user_banned(user_id):
+        return TurnRefusal(reason="is banned", kind="banned")
     if llm_auth_provider == "codex":
         if await has_codex_access(user_id):
             return None
-        return TurnRefusal(reason="lacks Codex entitlement")
+        return TurnRefusal(reason="lacks Codex entitlement", kind="codex_access")
     if llm_auth_provider != "platform":
         return None
     if await is_user_paywalled(user_id):
-        return TurnRefusal(reason="paywalled")
+        return TurnRefusal(reason="paywalled", kind="no_plan")
     cfg = ChatConfig()
     try:
         daily_limit, weekly_limit, usage_tier = await get_global_rate_limits(
@@ -833,7 +859,14 @@ async def turn_refusal(
             expected_tier=usage_tier,
         )
     except RateLimitExceeded as exc:
-        return TurnRefusal(reason=f"rate-limited ({exc})")
+        return TurnRefusal(
+            reason=f"rate-limited ({exc})",
+            kind="usage",
+            window=exc.window,
+            resets_at=exc.resets_at,
+        )
     except RateLimitUnavailable:
-        return TurnRefusal(reason="has unreadable usage limits", transient=True)
+        return TurnRefusal(
+            reason="has unreadable usage limits", kind="outage", transient=True
+        )
     return None

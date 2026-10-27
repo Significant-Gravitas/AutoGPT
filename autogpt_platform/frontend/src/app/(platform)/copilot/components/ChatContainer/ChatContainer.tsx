@@ -9,15 +9,16 @@ import {
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import type { FloatingControls } from "../ChatMessagesContainer/components/ThreadHeader";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
-import { NewChatOnboarding } from "../ExpertOnboardingCard/NewChatOnboarding";
 import { EmptySession } from "../EmptySession/EmptySession";
+import { getPendingOnboardingCallId } from "../ExpertOnboardingCard/helpers";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import type { UsageNoticeContext } from "../UsageLimits/UsageLimitReachedCard/useUsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
@@ -37,6 +38,7 @@ import { useIsMobile } from "../../useIsMobile";
 import { ComposerPanelTab } from "./components/ComposerPanelTab";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
+import { useOpenPendingOnboarding } from "./useOpenPendingOnboarding";
 import { VoiceModeBar } from "../../voice/components/VoiceModeBar";
 import { VoiceModeButton } from "../../voice/components/VoiceModeButton";
 import { useVoiceMode } from "../../voice/useVoiceMode";
@@ -106,6 +108,8 @@ export interface ChatContainerProps {
     workspaceFiles?: WorkspaceAttachment[],
     metadata?: ExpertKickoffMetadata,
   ) => void | Promise<void>;
+  /** Sends a suggested task, resolving to the chat it started. */
+  onStartTask?: (message: string) => Promise<string | undefined>;
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
   onEnqueue?: (message: string) => void | Promise<void>;
@@ -166,6 +170,7 @@ export const ChatContainer = ({
   isUserStopping,
   onCreateSession,
   onSend,
+  onStartTask,
   onStop,
   onEnqueue,
   queuedMessages,
@@ -264,9 +269,32 @@ export const ChatContainer = ({
   const initialMode = sessionId
     ? sessionAutopilotMode
     : (expertIdentity?.autopilotMode ?? null);
-  const modeSelector = isAutoModeEnabled ? (
-    <AutopilotModeSelector sessionId={sessionId} persistedMode={initialMode} />
-  ) : undefined;
+  // ChatInput is memoised, and this container renders on every streamed
+  // flush: each element and callback it gets keeps its identity until its
+  // own inputs change, so a flush leaves the composer alone. Approvals
+  // stay locked until the chat knows its session and its expert: the mode
+  // shown is the session's, and the Unsupervised confirm names the expert.
+  // A background roster refetch keeps the expert it already knows.
+  const modeSelector = useMemo(
+    () =>
+      isAutoModeEnabled ? (
+        <AutopilotModeSelector
+          sessionId={sessionId}
+          persistedMode={initialMode}
+          disabled={
+            isLoadingSession || (!!isResolvingExpertIdentity && !expertIdentity)
+          }
+        />
+      ) : undefined,
+    [
+      isAutoModeEnabled,
+      sessionId,
+      initialMode,
+      isLoadingSession,
+      isResolvingExpertIdentity,
+      expertIdentity,
+    ],
+  );
   const silenceTimeoutMs = useVoiceSilenceTimeout();
   const voice = useVoiceMode({
     enabled: isVoiceModeEnabled,
@@ -278,6 +306,70 @@ export const ChatContainer = ({
     silenceTimeoutMs,
     onSend: guardedOnSend,
   });
+  useOpenPendingOnboarding({
+    expertId: expertIdentity?.id ?? null,
+    sessionId,
+    enabled:
+      messages.length === 0 &&
+      !isInputDisabled &&
+      !isLimitReached &&
+      !isStreaming &&
+      !isCreatingSession &&
+      !isUploadingFiles &&
+      !pendingSend &&
+      !isExpertArchived &&
+      !voice.isActive &&
+      !voice.isStarting,
+  });
+  const toggleVoice = useStableCallback(voice.toggle);
+  const retryVoiceUtterance = useStableCallback(voice.retryFailedUtterance);
+  const downloadVoiceUtterance = useStableCallback(
+    voice.downloadFailedUtterance,
+  );
+  const isVoiceModeDisabled =
+    isInputDisabled || isSendLocked || voice.isStarting;
+  const voiceMode = useMemo(
+    () =>
+      isVoiceModeEnabled
+        ? { onStart: toggleVoice, disabled: isVoiceModeDisabled }
+        : undefined,
+    [isVoiceModeEnabled, toggleVoice, isVoiceModeDisabled],
+  );
+  const voiceBar = useMemo(
+    () =>
+      voice.isActive ? (
+        <VoiceModeBar
+          state={voice.state}
+          statusLabel={voice.statusLabel}
+          failure={voice.failure}
+          onRetry={retryVoiceUtterance}
+          onDownload={downloadVoiceUtterance}
+          leaveButton={
+            <VoiceModeButton
+              isActive
+              speaking={voice.state === "speaking"}
+              onClick={toggleVoice}
+            />
+          }
+        />
+      ) : undefined,
+    [
+      voice.isActive,
+      voice.state,
+      voice.statusLabel,
+      voice.failure,
+      retryVoiceUtterance,
+      downloadVoiceUtterance,
+      toggleVoice,
+    ],
+  );
+  const handleStop = useStableCallback(onStop);
+  const handleEnqueue = useStableCallback((message: string) =>
+    onEnqueue?.(message),
+  );
+  const handleDroppedFilesConsumed = useStableCallback(() =>
+    onDroppedFilesConsumed?.(),
+  );
 
   // Measure the usage-limit overlay so the messages scroll area can pad its
   // bottom — otherwise the last message would sit permanently behind the
@@ -337,11 +429,12 @@ export const ChatContainer = ({
   }
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
+  // Stable, and reads `messages` when clicked rather than when created.
   const isRetryingRef = useRef(false);
-  const handleRetry = useCallback(async () => {
+  const handleRetry = useStableCallback(async () => {
     if (isRetryingRef.current) return;
     isRetryingRef.current = true;
-    try {
+    async function resend() {
       const lastRow = [...messages].reverse().find((m) => m.role === "user");
       // A turn an answered card started failed after the call ran: resuming it
       // must not re-send the request that led to the call.
@@ -378,16 +471,19 @@ export const ChatContainer = ({
             : undefined,
         );
       }
-    } catch (error) {
-      toastSendFailure({
-        title: "Couldn't retry message",
-        error,
-        recovery: "your previous message is still in the chat",
-      });
-    } finally {
-      isRetryingRef.current = false;
     }
-  }, [guardedOnSend, messages]);
+    await resend()
+      .catch((error) => {
+        toastSendFailure({
+          title: "Couldn't retry message",
+          error,
+          recovery: "your previous message is still in the chat",
+        });
+      })
+      .finally(() => {
+        isRetryingRef.current = false;
+      });
+  });
 
   return (
     <CopilotChatActionsProvider
@@ -397,14 +493,21 @@ export const ChatContainer = ({
       assistantName={expertIdentity?.name ?? "Otto"}
     >
       <LayoutGroup id="copilot-2-chat-layout">
-        <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
+        <div
+          className={cn(
+            "flex h-full min-h-0 w-full flex-col lg:px-0",
+            // An open chat runs edge to edge on a phone, like the rest of
+            // the thread; the new-chat screen keeps its margin.
+            sessionId ? "md:px-2" : "px-2",
+          )}
+        >
           {/* The chat column runs full width: the max-w-3xl cap lives on the
                 message list and the input instead, so the expert thread header
                 can span edge to edge while staying aligned with the messages. */}
           {sessionId && isSessionNotFound ? (
             <SessionNotFound />
           ) : sessionId ? (
-            <div className="relative flex h-full min-h-0 w-full flex-col bg-white">
+            <div className="relative flex h-full min-h-0 w-full flex-col bg-surface">
               <div className="absolute right-0 top-0 z-30">
                 <ContextPanelToggle
                   sessionId={sessionId}
@@ -412,41 +515,29 @@ export const ChatContainer = ({
                   hideIntegrationsOnMobile={floatingControls === "newLayout"}
                 />
               </div>
-              <NewChatOnboarding
-                expertId={expertIdentity?.id ?? null}
-                enabled={
-                  messages.length === 0 &&
-                  !isInputDisabled &&
-                  !isLimitReached &&
-                  !isStreaming &&
-                  !isCreatingSession &&
-                  !isExpertArchived
-                }
-              >
-                <ChatMessagesContainer
-                  messages={messages}
-                  status={status}
-                  error={error}
-                  isLoading={isLoadingSession}
-                  isRestoringActiveSession={isRestoringActiveSession}
-                  restoreStatusMessage={restoreStatusMessage}
-                  activeStreamStartedAt={activeStreamStartedAt}
-                  sessionID={sessionId}
-                  sessionChatStatus={sessionChatStatus}
-                  sessionSentFrom={sessionSentFrom}
-                  hasMoreMessages={hasMoreMessages}
-                  isLoadingMore={isLoadingMore}
-                  onLoadMore={onLoadMore}
-                  onRetry={handleRetry}
-                  turnStats={turnStats}
-                  queuedMessages={queuedMessages}
-                  pendingSend={pendingSend}
-                  bottomContentPadding={usageCardHeight + composerTabInset}
-                  expertIdentity={expertIdentity}
-                  isResolvingExpertIdentity={isResolvingExpertIdentity}
-                  floatingControls={floatingControls}
-                />
-              </NewChatOnboarding>
+              <ChatMessagesContainer
+                messages={messages}
+                status={status}
+                error={error}
+                isLoading={isLoadingSession}
+                isRestoringActiveSession={isRestoringActiveSession}
+                restoreStatusMessage={restoreStatusMessage}
+                activeStreamStartedAt={activeStreamStartedAt}
+                sessionID={sessionId}
+                sessionChatStatus={sessionChatStatus}
+                sessionSentFrom={sessionSentFrom}
+                hasMoreMessages={hasMoreMessages}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={onLoadMore}
+                onRetry={handleRetry}
+                turnStats={turnStats}
+                queuedMessages={queuedMessages}
+                pendingSend={pendingSend}
+                bottomContentPadding={usageCardHeight + composerTabInset}
+                expertIdentity={expertIdentity}
+                isResolvingExpertIdentity={isResolvingExpertIdentity}
+                floatingControls={floatingControls}
+              />
               {archivedExpertIdentity ? (
                 <>
                   {hasComposerTab && (
@@ -480,7 +571,7 @@ export const ChatContainer = ({
                   {isTaskBarEnabled && (
                     <div className="relative z-10">
                       <TaskProgressBar
-                        todos={getLatestTaskList(messages) ?? []}
+                        todos={getLatestTaskList(messages)}
                         isStreaming={isStreaming}
                       />
                     </div>
@@ -504,6 +595,10 @@ export const ChatContainer = ({
                         <ChatInput
                           inputId={SESSION_COMPOSER_ID}
                           draftKey={sessionDraftKey(sessionId)}
+                          // An unanswered card takes the keys for its shortcuts.
+                          autoFocus={
+                            getPendingOnboardingCallId(messages) === null
+                          }
                           onSend={guardedOnSend}
                           disabled={isInputDisabled}
                           sendDisabled={isLimitReached && !atReset}
@@ -511,50 +606,25 @@ export const ChatContainer = ({
                           isStreaming={isStreaming}
                           isTurnStarting={status === "submitted"}
                           isUploadingFiles={isUploadingFiles}
-                          onStop={onStop}
-                          onEnqueue={onEnqueue}
+                          onStop={handleStop}
+                          onEnqueue={onEnqueue ? handleEnqueue : undefined}
                           placeholder={
                             (atReset && composer.placeholder) ||
                             "What else can I help with?"
                           }
                           droppedFiles={droppedFiles}
-                          onDroppedFilesConsumed={onDroppedFilesConsumed}
+                          onDroppedFilesConsumed={
+                            onDroppedFilesConsumed
+                              ? handleDroppedFilesConsumed
+                              : undefined
+                          }
                           hasSession={!!sessionId}
                           sessionId={sessionId}
                           expertId={expertIdentity?.id ?? null}
                           modeSelector={modeSelector}
                           expertName={expertIdentity?.name ?? null}
-                          voiceToggle={
-                            isVoiceModeEnabled ? (
-                              <VoiceModeButton
-                                isActive={voice.isActive}
-                                disabled={
-                                  isInputDisabled ||
-                                  isSendLocked ||
-                                  voice.isStarting
-                                }
-                                onClick={voice.toggle}
-                              />
-                            ) : undefined
-                          }
-                          voiceBar={
-                            voice.isActive ? (
-                              <VoiceModeBar
-                                state={voice.state}
-                                statusLabel={voice.statusLabel}
-                                failure={voice.failure}
-                                onRetry={voice.retryFailedUtterance}
-                                onDownload={voice.downloadFailedUtterance}
-                                leaveButton={
-                                  <VoiceModeButton
-                                    isActive
-                                    speaking={voice.state === "speaking"}
-                                    onClick={voice.toggle}
-                                  />
-                                }
-                              />
-                            ) : undefined
-                          }
+                          voiceMode={voiceMode}
+                          voiceBar={voiceBar}
                         />
                       </div>
                     </TooltipTrigger>
@@ -574,17 +644,16 @@ export const ChatContainer = ({
               isCreatingSession={isCreatingSession}
               onCreateSession={onCreateSession}
               onSend={guardedOnSend}
+              onStartTask={isTurnLocked ? undefined : onStartTask}
               modeSelector={modeSelector}
-              voiceToggle={
-                isVoiceModeEnabled ? (
-                  <VoiceModeButton
-                    isActive={false}
-                    disabled={
-                      isInputDisabled || isSendLocked || isCreatingSession
+              voiceMode={
+                isVoiceModeEnabled
+                  ? {
+                      onStart: handleStartVoiceInNewChat,
+                      disabled:
+                        isInputDisabled || isSendLocked || isCreatingSession,
                     }
-                    onClick={handleStartVoiceInNewChat}
-                  />
-                ) : undefined
+                  : undefined
               }
               isUploadingFiles={isUploadingFiles}
               droppedFiles={droppedFiles}

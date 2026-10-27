@@ -32,7 +32,7 @@ describe("AccountLogoutOption", () => {
     render(<AccountLogoutOption />);
     const button = screen.getByRole("button", { name: /log out/i });
     expect(button.tagName).toBe("BUTTON");
-    expect(button.className).toContain("hover:bg-red-50");
+    expect(button.className).toContain("hover:bg-error-surface");
   });
 
   test("calls router.replace('/logout') when clicked", () => {
