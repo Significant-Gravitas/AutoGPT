@@ -18,23 +18,22 @@ export function ChecklistMark({ state }: Props) {
         className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-action-foreground"
       >
         <Icon icon={Tick02Icon} size={14} aria-hidden />
+        <span className="sr-only">Completed</span>
       </motion.span>
     );
   }
 
   if (state === "active") {
     return (
-      <span
-        aria-hidden
-        className="size-6 shrink-0 animate-spin rounded-full border-2 border-brand/20 border-t-brand"
-      />
+      <span className="size-6 shrink-0 animate-spin rounded-full border-2 border-brand/20 border-t-brand">
+        <span className="sr-only">In progress</span>
+      </span>
     );
   }
 
   return (
-    <span
-      aria-hidden
-      className="size-6 shrink-0 rounded-full border-2 border-border-base"
-    />
+    <span className="size-6 shrink-0 rounded-full border-2 border-border-base">
+      <span className="sr-only">Pending</span>
+    </span>
   );
 }
