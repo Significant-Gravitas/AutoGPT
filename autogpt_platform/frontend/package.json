@@ -38,7 +38,7 @@
     "defaults"
   ],
   "dependencies": {
-    "@ai-sdk/react": "3.0.61",
+    "@ai-sdk/react": "4.0.147",
     "@better-auth/core": "1.6.33",
     "@faker-js/faker": "10.6.0",
     "@ferrucc-io/emoji-picker": "0.1.2",
