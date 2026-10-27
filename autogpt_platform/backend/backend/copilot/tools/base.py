@@ -9,7 +9,7 @@ from openai.types.chat import ChatCompletionToolParam
 from prisma.enums import APIKeyPermission
 
 from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
-from backend.copilot.context import get_current_envelope
+from backend.copilot.context import args_already_bound, get_current_envelope
 from backend.copilot.google_data_redaction import (
     GOOGLE_DATA_METADATA_KEY,
     is_google_call,
@@ -341,6 +341,10 @@ GATE_APPROVED = "_gate_approved"
 # Passed beside it when an active gate reached any verdict on the call: a card,
 # a rule, the mode or the supervisor. Stripped the same way.
 GATE_DECIDED = "_gate_decided"
+# Passed when ``bind_args`` already resolved the call's arguments, so the tool
+# runs them as reviewed rather than resolving them a second time. Stripped the
+# same way.
+ARGS_BOUND = "_args_bound"
 
 
 def parameters_without(parameters: dict[str, Any], *names: str) -> dict[str, Any]:
@@ -489,6 +493,14 @@ class BaseTool:
         """
         return None
 
+    async def bind_args(
+        self, user_id: str | None, session: ChatSession, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """The call's arguments as they will run. A tool that resolves part of
+        its input at run time (a file reference) resolves it here, once, so the
+        approval binds what runs and a changed file asks again."""
+        return args
+
     async def gate_context(self, args: dict[str, Any]) -> dict[str, str | None] | None:
         """The content of files this call runs, by path, for the supervisor; None
         for one that could not be read, which holds the call."""
@@ -555,6 +567,7 @@ class BaseTool:
     ) -> StreamToolOutputAvailable:
         kwargs.pop(GATE_APPROVED, None)
         kwargs.pop(GATE_DECIDED, None)
+        kwargs.pop(ARGS_BOUND, None)
         if self.requires_auth and not user_id:
             logger.warning(
                 "Attempted tool call for %s but user not authenticated",
@@ -620,11 +633,23 @@ class BaseTool:
         # The gate's model calls quote the call's arguments and result in
         # prompts of their own, so for a Google call their traces are redacted.
         google_call = is_google_call(kwargs)
+        # What the call will run, resolved once: the gate reviews, the card
+        # shows and the approval binds these values, and the tool runs them.
+        # An approved held call replays the arguments it was resolved to.
+        replayed = self.has_gate_subject and args_already_bound()
+        bound = (
+            await self.bind_args(user_id, session, kwargs)
+            if self.has_gate_subject and not replayed
+            else kwargs
+        )
+        args_bound = replayed or bound is not kwargs
         with tracing_google_data(google_call):
-            gated, decision = await self._gate(user_id, session, tool_call_id, kwargs)
+            gated, decision = await self._gate(
+                user_id, session, tool_call_id, bound, args_bound
+            )
         if gated is not None:
             return gated
-        run_kwargs = kwargs
+        run_kwargs = {**bound, ARGS_BOUND: True} if args_bound else kwargs
         if decision is not None and self.has_gate_subject:
             if decision.approved:
                 run_kwargs = {**run_kwargs, GATE_APPROVED: True}
@@ -703,6 +728,7 @@ class BaseTool:
         session: ChatSession,
         tool_call_id: str,
         kwargs: dict[str, Any],
+        args_bound: bool = False,
     ) -> tuple[StreamToolOutputAvailable | None, "Decision | None"]:
         """A refusal to return instead of running (or None to proceed), and
         the gate's decision on a call that proceeds.
@@ -724,6 +750,7 @@ class BaseTool:
                 tool_call_id,
                 subject_of=subject_of if self.has_gate_subject else None,
                 context_of=lambda: self.gate_context(kwargs),
+                args_bound=args_bound,
             )
         except Exception:
             logger.warning(f"Action gate failed for {self.name}", exc_info=True)

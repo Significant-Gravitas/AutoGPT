@@ -44,6 +44,7 @@ vi.mock("@/services/usageExperience/useUsageExperience", () => ({
 
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import type { User } from "@/lib/auth/types";
+import { SuggestedTaskCards } from "@/app/(platform)/copilot/components/SuggestedTasks/SuggestedTaskCards";
 import { SuggestedTaskList } from "@/app/(platform)/copilot/components/SuggestedTasks/SuggestedTaskList";
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
 import {
@@ -725,73 +726,87 @@ describe("first-run walkthrough", () => {
     act(() => useFirstRunTourStore.getState().setConnectToolsOpen(false));
   });
 
-  it("starts on a task's own button, never its Hide button", async () => {
-    // A task already sent is a link, and a busy row keeps Hide enabled, so
-    // the first enabled button in the list can be "Hide: …".
-    const tasks: SuggestedTask[] = [
-      {
-        id: "0",
-        title: "Chase unpaid Shopify invoices",
-        prompt: "Chase every unpaid invoice.",
-        icon: "bell",
-        state: "sent",
-        session_id: "session-1",
-      },
-      {
-        id: "1",
-        title: "Turn sales calls into CRM updates",
-        prompt: "Update the CRM after each call.",
-        icon: "users",
-        state: "open",
-      },
-    ];
-    function renderWithTasks(disabled: boolean) {
-      return render(
-        <SidebarProvider defaultOpen={false}>
-          <Targets only={["chats", "team", "files", "wallet", "composer"]} />
-          <SuggestedTaskList
-            tasks={tasks}
-            sendingId={null}
-            disabled={disabled}
-            onSend={vi.fn()}
-            onHide={vi.fn()}
-          />
-          <FirstRunTour />
-        </SidebarProvider>,
+  // Home shows the tasks as a list, and the greeting fresh out of onboarding
+  // shows them as cards: the walkthrough points at either.
+  it.each([
+    ["list", SuggestedTaskList],
+    ["cards", SuggestedTaskCards],
+  ])(
+    "starts on a task's own button, never its Hide button (%s)",
+    async (_, Tasks) => {
+      // A task already sent is a link, and a busy row keeps Hide enabled, so
+      // the first enabled button in the list can be "Hide: …".
+      const tasks: SuggestedTask[] = [
+        {
+          id: "0",
+          title: "Chase unpaid Shopify invoices",
+          prompt: "Chase every unpaid invoice.",
+          icon: "bell",
+          state: "sent",
+          session_id: "session-1",
+        },
+        {
+          id: "1",
+          title: "Turn sales calls into CRM updates",
+          prompt: "Update the CRM after each call.",
+          icon: "users",
+          state: "open",
+        },
+      ];
+      function renderWithTasks(disabled: boolean) {
+        return render(
+          <SidebarProvider defaultOpen={false}>
+            <Targets only={["chats", "team", "files", "wallet", "composer"]} />
+            <Tasks
+              tasks={tasks}
+              sendingId={null}
+              disabled={disabled}
+              onSend={vi.fn()}
+              onHide={vi.fn()}
+            />
+            <FirstRunTour />
+          </SidebarProvider>,
+        );
+      }
+
+      const { unmount } = renderWithTasks(false);
+      openTour();
+      act(() => useFirstRunTourStore.getState().goTo("start"));
+      // It points at the tasks themselves, not the composer beside them.
+      expect(
+        await screen.findByText(
+          "Pick a suggestion and Otto gets going. Or describe your own in the box below.",
+        ),
+      ).toBeDefined();
+      await userEvent.click(
+        await screen.findByRole("button", {
+          name: /Start with one task|Start here/,
+        }),
       );
-    }
+      await waitFor(() =>
+        expect(document.activeElement?.textContent).toContain(
+          "Turn sales calls into CRM updates",
+        ),
+      );
+      expect(document.activeElement?.getAttribute("aria-label")).toBeNull();
+      unmount();
 
-    const { unmount } = renderWithTasks(false);
-    openTour();
-    act(() => useFirstRunTourStore.getState().goTo("start"));
-    await userEvent.click(
-      await screen.findByRole("button", {
-        name: /Start with one task|Start here/,
-      }),
-    );
-    await waitFor(() =>
-      expect(document.activeElement?.textContent).toContain(
-        "Turn sales calls into CRM updates",
-      ),
-    );
-    expect(document.activeElement?.getAttribute("aria-label")).toBeNull();
-    unmount();
-
-    // Every row busy: no task to start, so the composer.
-    renderWithTasks(true);
-    openTour();
-    act(() => useFirstRunTourStore.getState().goTo("start"));
-    await userEvent.click(
-      await screen.findByRole("button", {
-        name: /Start with one task|Start here/,
-      }),
-    );
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        screen.getByRole("textbox", { name: "Message Otto" }),
-      ),
-    );
-  });
+      // Every row busy: no task to start, so the composer.
+      renderWithTasks(true);
+      openTour();
+      act(() => useFirstRunTourStore.getState().goTo("start"));
+      await userEvent.click(
+        await screen.findByRole("button", {
+          name: /Start with one task|Start here/,
+        }),
+      );
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole("textbox", { name: "Message Otto" }),
+        ),
+      );
+    },
+  );
 
   it("hands focus to the composer when Connect your tools closes", async () => {
     // The button that opened it went with the walkthrough, so there is

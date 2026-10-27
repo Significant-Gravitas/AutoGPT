@@ -88,7 +88,7 @@ export function BrainDumpStep() {
               {isRecording ? (
                 <ElapsedTime seconds={dump.elapsedSeconds} />
               ) : (
-                <Text variant="h4">
+                <Text variant="h3">
                   {stateHeadline(
                     dump.screen,
                     dump.headline,
@@ -100,7 +100,11 @@ export function BrainDumpStep() {
           </RevealItem>
           {dump.screen === "rest" && (
             <RevealItem>
-              <Text variant="body" tone="muted" className="max-w-lg">
+              <Text
+                variant="large"
+                tone="muted"
+                className="max-w-xl md:text-lead"
+              >
                 Tell me what you do and what eats up your week. Two or three
                 minutes is plenty. You can type instead if you prefer.
               </Text>

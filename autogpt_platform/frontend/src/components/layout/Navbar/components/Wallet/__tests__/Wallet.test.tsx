@@ -7,9 +7,20 @@ import userEvent from "@testing-library/user-event";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getGetTrialsGetTrialStatusMockHandler200 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
+import { server } from "@/mocks/mock-server";
+import {
+  setTrialUser,
+  trialResponse,
+} from "@/tests/integrations/trial-fixtures";
+
 import { Wallet } from "../Wallet";
 import { TaskGroups } from "../components/WalletTaskGroups";
 import { getTaskGroups } from "../helpers";
+
+// Noon on Sep 17 in the runner's own time zone: the trial date is shown in the
+// viewer's time zone, so a fixed UTC instant lands on Sep 18 east of UTC+9.
+const SEP_17_LOCAL_NOON = new Date(2030, 8, 17, 12);
 
 const confettiMock = vi.hoisted(() => vi.fn());
 const fetchCreditsMock = vi.hoisted(() => vi.fn());
@@ -323,5 +334,116 @@ describe("Wallet onboarding notifications", () => {
     unmount();
 
     expect(detachMessageMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// SECRT-3133: a trial user saw chat usage, automation credits and earn credits
+// with nothing saying which one an image comes out of, or whether the card
+// they had just entered would be charged.
+describe("Wallet trial line and explainer", () => {
+  afterEach(() => setTrialUser(null));
+
+  function mockTrial(overrides: Parameters<typeof trialResponse>[0] = {}) {
+    setTrialUser();
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(trialResponse(overrides)),
+    );
+  }
+
+  async function openWallet() {
+    render(<Wallet compact />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Usage and credits" }),
+    );
+    return screen.findByRole("dialog", { name: "Usage and credits" });
+  }
+
+  it("names the day the plan starts in one line during a trial", async () => {
+    mockTrial({ ends_at: SEP_17_LOCAL_NOON });
+    const dialog = await openWallet();
+
+    const line = await screen.findByText("Your plan starts Sep 17");
+    // Focus lands on the first button, so the line is the dialog's
+    // description: a screen reader announces it as the wallet opens.
+    const description = document.getElementById(
+      dialog.getAttribute("aria-describedby") ?? "",
+    );
+    expect(description?.contains(line)).toBe(true);
+    expect(screen.queryByText(/charged/)).toBeNull();
+  });
+
+  it("explains usage and credits in a dialog opened from the wallet", async () => {
+    mockTrial();
+    await openWallet();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "How it works" }),
+    );
+
+    expect(
+      await screen.findByRole("dialog", { name: "How usage and credits work" }),
+    ).toBeDefined();
+    expect(screen.getByText("What does chat usage cover?")).toBeDefined();
+    expect(screen.getByText("When is my card charged?")).toBeDefined();
+    expect(
+      screen.queryByRole("dialog", { name: "Usage and credits" }),
+    ).toBeNull();
+  });
+
+  // Sentry: the explainer opens from inside the popover, which unmounts, so
+  // closing it left focus on <body> instead of the wallet button.
+  it("returns focus to the wallet button when the explainer closes", async () => {
+    mockTrial();
+    await openWallet();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "How it works" }),
+    );
+    await screen.findByRole("dialog", { name: "How usage and credits work" });
+    await userEvent.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "How usage and credits work" }),
+      ).toBeNull();
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Usage and credits" }),
+      );
+    });
+  });
+
+  it("names the trial's end instead of a plan once the trial is canceled", async () => {
+    mockTrial({
+      cancel_at_period_end: true,
+      ends_at: SEP_17_LOCAL_NOON,
+    });
+    await openWallet();
+
+    expect(await screen.findByText("Your trial ends Sep 17")).toBeDefined();
+    expect(screen.queryByText(/Your plan starts/)).toBeNull();
+  });
+
+  it("shows no trial line once the trial is over", async () => {
+    mockTrial({ active: false });
+    await openWallet();
+
+    expect(await screen.findByText("Automation credits")).toBeDefined();
+    await waitFor(() => {
+      expect(screen.queryByText(/Your plan starts|Your trial ends/)).toBeNull();
+    });
+  });
+
+  it("marks the wallet until it has been opened once", () => {
+    const { container, rerender } = render(<Wallet compact />);
+    expect(
+      container.querySelector('[data-testid="wallet-unseen-dot"]'),
+    ).not.toBeNull();
+
+    onboardingState.state = buildOnboarding({ walletShown: true });
+    rerender(<Wallet compact />);
+
+    expect(
+      container.querySelector('[data-testid="wallet-unseen-dot"]'),
+    ).toBeNull();
   });
 });

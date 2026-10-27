@@ -72,10 +72,10 @@ describe("SidebarUserActions", () => {
     expect(screen.queryByTestId("usage-indicator")).toBeNull();
   });
 
-  it("keeps the wallet in the collapsed rail, where new accounts start", async () => {
-    // A new account's sidebar starts collapsed to icons. The walkthrough and
-    // the cost tip point at the wallet, and people need to find it, so the
-    // rail shows it as an icon instead of hiding it.
+  // A new account's sidebar starts collapsed to its icon rail. The wallet
+  // used to be hidden there, so on day one nobody could find it (SECRT-3133),
+  // and the walkthrough and the cost tip point at it.
+  it("keeps the wallet reachable when the sidebar is collapsed to its rail", async () => {
     sidebar.state = "collapsed";
     mockUseAuth.mockReturnValue({
       user: { id: "u1", email: "alice@example.com", role: "user" },
@@ -85,8 +85,7 @@ describe("SidebarUserActions", () => {
     render(<SidebarUserActions />);
 
     const wallet = await screen.findByTestId("wallet");
-    const holder = wallet.closest('[data-tour-target="wallet"]');
-    expect(holder).not.toBeNull();
-    expect(holder?.className ?? "").not.toContain("collapsible=icon]:hidden");
+    expect(wallet.closest('[class*="collapsible=icon]:hidden"]')).toBeNull();
+    expect(wallet.closest('[data-tour-target="wallet"]')).not.toBeNull();
   });
 });
