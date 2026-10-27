@@ -92,3 +92,13 @@ async def test_sign_in_code_upgrade_refreshes_with_the_app_that_issued_it(mocker
         await routes.creds_manager._get_oauth_handler(merged),
         MicrosoftDeviceAuthHandler,
     )
+
+
+def test_browser_sign_in_is_refused_until_the_deployment_turns_it_on(mocker):
+    mocker.patch.object(routes, "browser_sign_in_available", return_value=False)
+
+    with pytest.raises(HTTPException) as refused:
+        routes._get_provider_oauth_handler(mocker.Mock(), ProviderName.MICROSOFT)
+
+    assert refused.value.status_code == 400
+    assert "sign-in code" in refused.value.detail
