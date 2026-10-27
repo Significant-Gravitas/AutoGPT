@@ -85,9 +85,10 @@ at logout; a Vercel preview reports `environment: preview`, while the dev
 deployment, which is Vercel's `staging` custom environment rather than a
 preview, reports `environment: dev`.
 
-`source` is reserved for the emitter. The three events that used it for
+`source` is reserved for the emitter. The events that used it for
 something else now use `hire_started.surface`,
-`expert_recommended.team_source` and `workflow_installed_on_expert.workflow_source`.
+`expert_recommended.team_source`, `workflow_installed_on_expert.workflow_source`
+and, for the four `first_run_tour_*` events, `opened_from`.
 
 ### Identity
 
@@ -332,22 +333,28 @@ merges the website pageviews into the new user:
 | --- | --- | --- | --- | --- |
 | `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab). The paywall step reports `paywall_viewed` instead. |
 | `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
-| `brain_dump_started` | browser | live | — | Recording starts. |
-| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
+| `brain_dump_started` | browser | live | `prompt_set` (the role's "Otto might ask" set) | Recording starts. |
+| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed), `prompt_set`, `prompts_seen` (distinct live prompts shown) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
 | `brain_dump_canceled` | browser | live | — | Recording is cancelled. |
-| `brain_dump_skipped` | browser | live | — | The step is skipped. |
+| `brain_dump_skipped` | browser | live | `prompt_set`, `prompts_seen` | The step is skipped. |
 | `brain_dump_recovery_shown` | browser | live | `parts` | A saved partial recording is offered back. |
 | `brain_dump_recovery_used` | browser | live | — | The saved recording is used. |
 | `brain_dump_retry` | browser | live | `attempt` | A failed finalize is retried. |
 | `brain_dump_restarted` | browser | live | — | Recording starts over. |
 | `brain_dump_download` | browser | live | — | The recording is downloaded after a failure. |
-| `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused. |
-| `brain_dump_typed_fallback` | browser | live | `reason` | The user types instead of speaking. |
+| `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused, on the first ask and again on each refused retry. |
+| `brain_dump_mic_failed` | browser | live | `error_name` | The microphone fails to open, for any reason, a refused permission included. Sent again on each failed retry, so count people, not events. |
+| `brain_dump_typed_fallback` | browser | live | `reason` (`chose_to_type`, `permission_denied`), `prompt_set` | The user types instead of speaking. `permission_denied` is sent once per visit, however many retries are refused. |
+| `brain_dump_prompt_advanced` | browser | live | `via` (`auto`, `click`), `screen` (`rest`, `typing`, `recording`), `prompt_index`, `prompt_set` | The "Otto might ask" question moves on, by its timer (12 s at rest on narrow screens, 20 s typing, 15 s recording; not while the ideas are paused) or "Another question". Not sent for the first question. |
+| `brain_dump_permission_retried` | browser | live | `result` (`granted`, `denied`, `unavailable`), `via` (`retry_link`, `record_instead`, `permission_change`), `permission_state` (`prompt`, `granted`, `denied`, `unknown`) | After a refused microphone, the user asks for it again, or allows the site in its settings (`permission_change`). Sent before `brain_dump_started`. `result` is the browser's answer, not the take: `granted` with no `brain_dump_started` after it means the user had already sent their text, or left the step, while the prompt was open. |
 | `transcription_failed` | browser | live | `error_code`, `finalize_latency_ms` | Finalize returns a failure. |
-| `welcome_dialog_closed` | browser | live | — | The first-landing welcome dialog closes. |
-| `capability_card_viewed` | browser | live | `card_index`, `deck` | A capability card is shown. |
-| `capability_cards_completed` | browser | live | `card_index`, `deck` | The deck is finished. |
-| `capability_cards_skipped` | browser | live | `card_index`, `deck` | The deck is skipped. |
+| `welcome_dialog_closed` | browser | live | — | The first-landing intro ends (since SECRT-3149, the first-run walkthrough, finished or skipped). |
+| `first_run_tour_shown` | browser | live | `opened_from` (`auto` after onboarding, `menu` from "Show me around") | The guided first run over the real sidebar opens. |
+| `first_run_tour_step_viewed` | browser | live | `opened_from`, `step_id`, `step_index`, `target` (what it pointed at once that settled, about half a second: the sidebar item, also inside a phone's opened sidebar sheet; `menu` only where the item is not on screen; or null while the first tasks load) | A walkthrough step is shown, once per step per walkthrough (going Back and Next again does not repeat it). |
+| `first_run_tour_completed` | browser | live | `opened_from`, `step_id`, `step_index`, `via` (`start_here`, `connect_tools`) | The last step's "Start here", or its "connect your tools first". |
+| `first_run_tour_skipped` | browser | live | `opened_from`, `step_id`, `step_index`, `via` (null) | Skip tour, Close or Escape, at `step_id`. |
+| `contextual_tip_shown` | browser | live | `tip` (`second-chat`, `first-cost`, `first-expert`) | A one-time tip appears the first time its surface matters. |
+| `contextual_tip_dismissed` | browser | live | `tip` | The tip is put away ("Got it" or Escape); it never shows again. |
 | `intro_path` | browser | live | `path` | The intro path (A/B) is chosen. |
 | `intro_followup_sent` | browser | live | `chars` | First message after the intro card. |
 | `later_dump_completed` | browser | live | — | A brain dump sent later from the composer. |
@@ -378,6 +385,7 @@ merges the website pageviews into the new user:
 | `chat_tool_called` | backend | live | `chat_session_id`, `tool_name`, `tool_call_id` | The copilot calls a tool. |
 | `chat_outcome` | backend | live | `outcome_type` (`agent_run_success`, `schedule_created`), `chat_session_id`; `agent_run_success`: `graph_id`, `execution_id`, `library_agent_id`; `schedule_created`: `target` (`agent`: `graph_id`, `schedule_id`, `cron`, `library_agent_id`; `followup`: `schedule_id`, `target_chat_session_id`, `is_recurring`) | A moment of value in a chat: the copilot started a (non-dry) run or created a schedule for the user. `agent_run_started` / `schedule_created` still count the run or schedule itself. |
 | `chat_library_check_outcome` | backend | live | `chat_session_id`, `outcome`, `matches_count`, `top_score` | The create-agent library check ends. |
+| `chat_read_screen_shadow_decision` | backend | live | `tool_name`, `tool_call_id`, `source_kind` (`web`, `file`, `shell`, `mcp`, `block`, `workflow`, `chat`, `skill`, …), `chat_session_id`, `trace_id` (the reply's trace, the `$ai_trace_id` of its generations and spans, shared by the subtasks it spawns; the tool call's `$ai_span` with the same `tool_call_id` names the turn), `expert_id`, `verdict` (`allow`, `hold`, `judge_error`), `reason_code`, `judge` (`jev`, `content`; null when the shadow itself failed), `llm_model`, `jev_model`, `rubric_version`, `latency_ms`, `impersonated`, `judgement_id`, `sample_rate` | With `copilot-read-screen` serving `shadow`, the prompt-injection check judges an outside read in a sampled interactive chat (`backend/copilot/gate/shadow.py`). Nothing is held. No content, URL or judge wording is sent. |
 | `voice_mode_started` | browser | live | `entry` | Voice mode is switched on. |
 | `voice_mode_stopped` | browser | live | `turns`, `state` | Switched off by the user. |
 | `voice_mode_timed_out` | browser | live | `turns`, `state` | Closed by the silence timeout. |
@@ -521,9 +529,9 @@ they can hold Gmail or Drive content (Google Limited Use).
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `$ai_generation` | OpenRouter Broadcast | live | set by OpenRouter from the request (`backend/copilot/llm_attribution.py`): `distinct_id` = the request's `user` (the platform user id), `$ai_session_id` = its `session_id` (the chat session id), `$ai_span_name` = `trace.generation_name` (`copilot-title`, `copilot-sdk`, `copilot-baseline`), `$ai_trace_id` = `trace.trace_id` (the reply's trace: the id of the executor turn that made the call, or for a subtask the trace of the turn that spawned it, so all calls behind one reply share it; absent for a call made outside a turn), `metadata_environment` (`local`, `dev`, `prod`), `metadata_impersonated`; `metadata_revision` (the deployed build's git sha, `config.sentry_release`) when it is set; model, tokens, cost and latency from OpenRouter | An AutoPilot LLM call goes through OpenRouter: a session title, an SDK turn (main agent, sub-agents and the CLI's compaction, via `CLAUDE_CODE_EXTRA_BODY`) or a baseline turn. |
+| `$ai_generation` | OpenRouter Broadcast | live | set by OpenRouter from the request (`backend/copilot/llm_attribution.py`): `distinct_id` = the request's `user` (the platform user id), `$ai_session_id` = its `session_id` (the chat session id), `$ai_span_name` = `trace.generation_name` (`copilot-title`, `copilot-sdk`, `copilot-baseline`), `$ai_trace_id` = `trace.trace_id` (the reply's trace: the id of the executor turn that made the call, or for a subtask the trace of the turn that spawned it, so all calls behind one reply share it; absent for a call made outside a turn), `metadata_environment` (`local`, `dev`, `prod`), `metadata_impersonated`, `metadata_turn_origin` (what started the turn that made the call: `chat`, `scheduled`, `spawned`, `automation` (a workflow's AutoPilot block) or `system`; a reply's own calls match its `$ai_trace` `turn_origin`, a subtask's calls carry the subtask's, as on its `$ai_span`; absent for a call made outside a turn); `metadata_revision` (the deployed build's git sha, `config.sentry_release`) when it is set; model, tokens, cost and latency from OpenRouter | An AutoPilot LLM call goes through OpenRouter: a session title, an SDK turn (main agent, sub-agents and the CLI's compaction, via `CLAUDE_CODE_EXTRA_BODY`) or a baseline turn. |
 | `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating, shared with its Langfuse score), `impersonated`; `$ai_trace_id` when the reply row records its trace (`ChatMessage.traceId`, replies written since SECRT-2979); `$ai_feedback_text` when a thumbs-down has a comment | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
-| `$ai_trace` | backend | live | `$ai_trace_id` (the turn id), `$ai_span_name` = `copilot-turn`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `$ai_error` (the error code, when failed), `turn_id`, `outcome` (`completed`, `cancelled`, `failed`), `engine` (`sdk`, `baseline`, ...), `turn_origin` (`chat`, `scheduled`, `system`; `spawned` on a subtask's span), `tool_call_count`, `impersonated` | A reply's turn ends, if it reached its engine (`copilot/turn_tracing.py`, `copilot/ai_spans.py`). A redelivered turn sends it again under the same event uuid (dedup key = the turn id), so PostHog keeps one; likewise a subtask's span. |
+| `$ai_trace` | backend | live | `$ai_trace_id` (the turn id), `$ai_span_name` = `copilot-turn`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `$ai_error` (the error code, when failed), `turn_id`, `outcome` (`completed`, `cancelled`, `failed`), `engine` (`sdk`, `baseline`, ...), `turn_origin` (`chat`, `scheduled`, `automation` for a turn a workflow's AutoPilot block started, `system`; `spawned` on a subtask's span), `tool_call_count`, `impersonated` | A reply's turn ends, if it reached its engine (`copilot/turn_tracing.py`, `copilot/ai_spans.py`). A redelivered turn sends it again under the same event uuid (dedup key = the turn id), so PostHog keeps one; likewise a subtask's span. |
 | `$ai_span` | backend | live | `$ai_trace_id`, `$ai_span_id`, `$ai_parent_id`, `$ai_span_name`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `impersonated`. A **tool call**: `$ai_span_name` = the tool's name, `tool_call_id`, `cancelled` (platform tools) or `builtin` (the SDK CLI's own tools, sub-agents' calls included; the high-volume lookups `TodoWrite`, `Read`, `Glob`, `Grep`, `LS` and `NotebookRead` get no span, and no built-in gets one with `CHAT_POSTHOG_BUILTIN_TOOL_SPANS=false`), `$ai_is_error` true when it raised, a gate refused it or it answered with an error, but not when it stopped for an approval card or a sign-in, `$ai_error` = the exception's type name when a platform tool raised (never its message); its parent is the turn (the trace root, or the subtask's span) or the tool that called it. A built-in tool's span is parented to the turn, not to the `Task` span of the sub-agent that called it. A **subtask**: `$ai_span_name` = `copilot-subtask`, `$ai_span_id` = its turn id, parent = the spawning tool's span, which its envelope keeps, so a child that waited in the turn queue or a subtask woken by an approval stays in the trace and under the span its spawner gave it (the trace root for one queued or held before this was recorded), `depth`, plus the `$ai_trace` turn properties, with `turn_origin` = `spawned` (or `scheduled` when the subtask's own turn runs unattended) | A platform tool call ends (`BaseTool.execute`, both engines), an SDK built-in tool call ends (Pre/PostToolUse hooks), or a spawned turn ends. |
 
 What joins them:
@@ -713,6 +721,7 @@ history PostHog already holds.
 | `experiment_exposed` | browser | Nothing: `useLaunchDarklyExperiment` had no caller and was deleted. PostHog-bucketed experiments use `$feature_flag_called`. |
 | `copilot_trigger_setup` | backend | Nothing: never sent (no caller). |
 | `intro_card_dismissed`, `raise_door_clicked`, `intro_start_with_autopilot` | browser | Nothing: declared, never sent. |
+| `capability_card_viewed`, `capability_cards_completed`, `capability_cards_skipped` | browser | `first_run_tour_step_viewed`, `first_run_tour_completed` and `first_run_tour_skipped` (SECRT-3149): the four concept cards were replaced by the walkthrough over the real UI. |
 
 ## Renamed
 
