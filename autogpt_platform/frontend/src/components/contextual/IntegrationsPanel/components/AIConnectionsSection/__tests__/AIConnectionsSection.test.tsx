@@ -482,7 +482,10 @@ describe("AIConnectionsSection", () => {
   });
 
   it("asks before force-removing an in-use Microsoft connection", async () => {
-    mockTransports([platform(false), microsoft(true)]);
+    mockTransports(
+      [platform(false), microsoft(true)],
+      [{ id: "cred-msft", provider: "microsoft_365_copilot" }],
+    );
     server.use(
       getDeleteV1DeleteCredentialsMockHandler200(({ request }) =>
         new URL(request.url).searchParams.get("force") === "true"
@@ -509,6 +512,63 @@ describe("AIConnectionsSection", () => {
 
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull(),
+    );
+  });
+
+  it("disconnects a Microsoft account only once it knows which one", async () => {
+    mockTransports([platform(false), microsoft(true)]);
+    let listFails = true;
+    const removed: string[] = [];
+    server.use(
+      http.get("/api/proxy/api/integrations/credentials", () =>
+        listFails
+          ? HttpResponse.json({ detail: "unavailable" }, { status: 500 })
+          : HttpResponse.json([
+              {
+                id: "cred-msft",
+                provider: "microsoft",
+                type: "oauth2",
+                title: "Nick Example",
+                scopes: ["User.Read"],
+                username: "nick@example.com",
+              },
+            ]),
+      ),
+      getDeleteV1DeleteCredentialsMockHandler200(({ request }) => {
+        removed.push(new URL(request.url).pathname);
+        return { deleted: true, revoked: true };
+      }),
+    );
+
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage" }),
+    );
+
+    // Copilot may run on the account's whole Microsoft connection, and only
+    // the account says which connection a disconnect removes.
+    expect(
+      (await screen.findByRole("button", { name: "Disconnect" })).hasAttribute(
+        "disabled",
+      ),
+    ).toBe(true);
+    listFails = false;
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Try again" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Disconnect" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    await waitFor(() =>
+      expect(removed).toEqual([
+        "/api/proxy/api/integrations/microsoft/credentials/cred-msft",
+      ]),
     );
   });
 

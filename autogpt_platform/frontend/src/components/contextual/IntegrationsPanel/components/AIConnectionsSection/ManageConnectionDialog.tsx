@@ -16,6 +16,8 @@ import { microsoftAccessLabels } from "./helpers";
 interface Props {
   connection: AIConnectionOffer | null;
   credential?: CredentialsMetaResponse;
+  credentialsFailed?: boolean;
+  onRetryCredentials?: () => void;
   onOpenChange: (open: boolean) => void;
 }
 
@@ -28,6 +30,8 @@ interface Props {
 export function ManageConnectionDialog({
   connection,
   credential,
+  credentialsFailed,
+  onRetryCredentials,
   onOpenChange,
 }: Props) {
   if (connection?.auth_provider === "microsoft_365_copilot") {
@@ -35,6 +39,8 @@ export function ManageConnectionDialog({
       <Microsoft365CopilotConnectionDialog
         connection={connection}
         credential={credential}
+        credentialsFailed={credentialsFailed}
+        onRetryCredentials={onRetryCredentials}
         onOpenChange={onOpenChange}
       />
     );
@@ -239,12 +245,16 @@ function ChatGPTConnectionDialog({
 interface MicrosoftProps {
   connection: AIConnectionOffer;
   credential?: CredentialsMetaResponse;
+  credentialsFailed?: boolean;
+  onRetryCredentials?: () => void;
   onOpenChange: (open: boolean) => void;
 }
 
 function Microsoft365CopilotConnectionDialog({
   connection,
   credential,
+  credentialsFailed,
+  onRetryCredentials,
   onOpenChange,
 }: MicrosoftProps) {
   const [forceMessage, setForceMessage] = useState<string | null>(null);
@@ -268,10 +278,12 @@ function Microsoft365CopilotConnectionDialog({
   }
 
   async function disconnect(force = false) {
-    if (!credentialId) return;
+    // Copilot may run on the account's whole Microsoft connection, and only
+    // the account says which connection a disconnect removes.
+    if (!credentialId || !credential) return;
     const target = {
       id: credentialId,
-      provider: credential?.provider ?? "microsoft_365_copilot",
+      provider: credential.provider,
       name: accountName,
     };
     const result = await remove([target], force);
@@ -362,10 +374,26 @@ function Microsoft365CopilotConnectionDialog({
               can already access in Microsoft 365.
             </Text>
 
+            {!credential && credentialsFailed && (
+              <div className="flex items-center justify-between gap-2">
+                <Text variant="small" className="text-foreground-body">
+                  Couldn&apos;t load this account.
+                </Text>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  onClick={onRetryCredentials}
+                >
+                  Try again
+                </Button>
+              </div>
+            )}
+
             <div className="flex justify-end pt-1">
               <Button
                 variant="destructive"
                 size="small"
+                disabled={!credential}
                 onClick={() => void disconnect()}
                 loading={isDisconnecting}
               >
