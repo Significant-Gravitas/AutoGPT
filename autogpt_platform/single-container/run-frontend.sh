@@ -53,6 +53,8 @@ build_frontend_environment() {
     NEXT_TELEMETRY_DISABLED=1
     PORT=3001
     HOSTNAME=127.0.0.1
+    # Only nginx reaches 127.0.0.1:3001, and it overwrites X-Forwarded-For.
+    TRUST_X_FORWARDED_FOR=true
   )
 
   for name in "${REQUIRED_FRONTEND_ENV[@]}"; do

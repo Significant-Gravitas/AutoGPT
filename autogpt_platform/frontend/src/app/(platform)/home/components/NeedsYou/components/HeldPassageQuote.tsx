@@ -11,7 +11,8 @@ export function HeldPassageQuote({ passage, clamp = true }: Props) {
     <blockquote
       aria-label="What it says"
       className={cn(
-        "mt-1 border-l-2 border-amber-400 pl-2 text-sm text-zinc-600 [overflow-wrap:anywhere]",
+        // TODO(tokens): no exact role (border-amber-400 #FBBF24)
+        "mt-1 border-l-2 border-amber-400 pl-2 text-sm text-foreground-secondary [overflow-wrap:anywhere]",
         clamp && "line-clamp-2",
       )}
     >

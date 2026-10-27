@@ -9,14 +9,14 @@ from prisma.enums import ReviewStatus
 
 from backend.blocks.google.gmail import GmailSendBlock
 from backend.copilot.gate.headline import gated_tools, headline_for
-from backend.copilot.gate.policy import Effect, classified_tools, effect_for
+from backend.copilot.gate.policy import PARKABLE, Effect, classified_tools, effect_for
 from backend.copilot.gate.review import (
     find_decision,
     node_id_for,
     review_id_for,
     review_payload,
 )
-from backend.copilot.gate.subject import block_subject, mcp_subject
+from backend.copilot.gate.subject import Subject, block_subject, mcp_subject
 
 
 def test_the_same_call_is_the_same_approval():
@@ -102,9 +102,7 @@ def test_the_headline_names_the_action_and_its_object():
         "object": "Q3 reports",
         "object_key": "name",
     }
-    assert headline_for("raise_expert", {"name": "Ada"}).text == (
-        "Create teammate “Ada”"
-    )
+    assert headline_for("delete_skill", {"name": "Ada"}).text == ("Delete skill “Ada”")
     assert headline_for("delete_folder", {"folder_id": "f1"}).text == (
         "Delete library folder"
     )
@@ -112,11 +110,7 @@ def test_the_headline_names_the_action_and_its_object():
 
 
 def test_every_tool_the_gate_can_hold_has_its_own_words():
-    held = {
-        tool
-        for tool in classified_tools()
-        if effect_for(tool) in (Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL)
-    }
+    held = {tool for tool in classified_tools() if effect_for(tool) in PARKABLE}
     assert gated_tools() == held
 
 
@@ -182,7 +176,7 @@ def test_a_bare_tool_is_its_own_subject():
         "kind": "tool",
         "key": "post_to_chat_platform",
         "name": "Post a message",
-        "effect": "external",
+        "effect": "external_judged",
         "irreversible": False,
         "block_id": None,
     }
@@ -206,6 +200,15 @@ def test_a_bare_tool_is_its_own_subject():
 def test_a_parked_card_offers_both_rules(tool, subject, kind):
     payload = review_payload(tool, {}, subject, reason_kind=kind)
     assert payload["chat_rules_allowed"] == ["allow", "judge"]
+
+
+def test_a_schedule_card_offers_no_judge_rule():
+    """The gate ignores a judge rule on a schedule, so its card must not offer one."""
+    schedule = Subject(
+        key="workflow:g", name="Digest", effect=Effect.EXTERNAL, schedules=True
+    )
+    payload = review_payload("run_agent", {}, schedule, reason_kind="subject")
+    assert payload["chat_rules_allowed"] == ["allow"]
 
 
 def test_a_held_read_offers_no_rule():

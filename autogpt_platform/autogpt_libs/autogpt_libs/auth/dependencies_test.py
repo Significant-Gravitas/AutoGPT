@@ -1283,3 +1283,97 @@ class TestEnsurePlatformUserOutcome:
             )
             is False
         )
+
+
+class TestBannedAccount:
+    """The ban states themselves are covered against the real lookup in the
+    backend's ``api/banned_account_test.py``."""
+
+    @staticmethod
+    def _client(mocker: MockerFixture, *, banned: bool) -> tuple[TestClient, AsyncMock]:
+        import sys
+        import types
+
+        from autogpt_libs.auth.jwt_utils import get_jwt_payload
+
+        db_mod = types.ModuleType("backend.data.db")
+        mocker.patch.object(
+            db_mod, "is_connected", Mock(return_value=True), create=True
+        )
+        # The self-heal reads ``prisma`` directly; keep it out of the way.
+        mocker.patch.object(db_mod, "prisma", Mock(), create=True)
+        db_mod.prisma.is_connected = Mock(return_value=False)
+        user_mod = types.ModuleType("backend.data.user")
+        is_user_banned = AsyncMock(return_value=banned)
+        mocker.patch.object(user_mod, "is_user_banned", is_user_banned, create=True)
+        backend_data = types.ModuleType("backend.data")
+        mocker.patch.object(backend_data, "db", db_mod, create=True)
+        mocker.patch.dict(
+            sys.modules,
+            {
+                "backend": types.ModuleType("backend"),
+                "backend.data": backend_data,
+                "backend.data.db": db_mod,
+                "backend.data.user": user_mod,
+            },
+        )
+
+        app = FastAPI()
+
+        @app.get("/me", dependencies=[Security(requires_user)])
+        def me(user_id: str = Security(get_user_id)):
+            return {"user_id": user_id}
+
+        app.dependency_overrides[get_jwt_payload] = lambda: {
+            "sub": "user-1",
+            "role": "user",
+        }
+        return TestClient(app), is_user_banned
+
+    def test_a_banned_subject_gets_the_banned_detail(self, mocker: MockerFixture):
+        client, _ = self._client(mocker, banned=True)
+
+        response = client.get("/me")
+
+        assert response.status_code == 403
+        assert response.json() == {
+            "detail": {
+                "code": "account_banned",
+                "message": "This account has been banned.",
+            }
+        }
+
+    def test_two_resolvers_on_one_route_check_once(self, mocker: MockerFixture):
+        client, is_user_banned = self._client(mocker, banned=False)
+
+        response = client.get("/me")
+
+        assert response.status_code == 200
+        is_user_banned.assert_awaited_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_optional_user_id_parses_the_token_off_the_event_loop(
+    mocker: MockerFixture,
+):
+    """A JWKS cache miss is a blocking fetch; on the loop it stalls every request."""
+    import threading
+
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from autogpt_libs.auth.dependencies import get_optional_user_id
+
+    parsed_on = []
+
+    def parse(token, audience="authenticated"):
+        parsed_on.append(threading.get_ident())
+        return {"sub": "user-1"}
+
+    mocker.patch("autogpt_libs.auth.jwt_utils.parse_jwt_token", side_effect=parse)
+
+    user_id = await get_optional_user_id(
+        HTTPAuthorizationCredentials(scheme="Bearer", credentials="t")
+    )
+
+    assert user_id == "user-1"
+    assert parsed_on and parsed_on[0] != threading.get_ident()

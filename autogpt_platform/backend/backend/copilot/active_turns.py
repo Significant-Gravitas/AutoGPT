@@ -29,6 +29,7 @@ the dispatcher works from both the HTTP server (Prisma directly) and
 the copilot_executor process (RPC via DatabaseManager).
 """
 
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -39,6 +40,8 @@ from backend.copilot.model import (
 )
 from backend.data.db_accessors import chat_db
 from backend.util.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 # Upper bound on a single Otto turn's wall-clock duration.  Re-exported
 # for callers (e.g. ``backend.blocks.autopilot``) that need a sensible
@@ -132,12 +135,16 @@ async def release_turn_slot(user_id: str, session_id: str) -> None:
     changed (e.g. a parallel cancel)."""
     if not user_id:
         return
-    await chat_db().update_chat_session_status(
+    if await chat_db().update_chat_session_status(
         session_id=session_id,
         expect_status=CHAT_STATUS_RUNNING,
         status=CHAT_STATUS_IDLE,
         user_id=user_id,
-    )
+    ):
+        logger.info(
+            f"release_turn_slot: session={session_id} user={user_id} "
+            "gave its running slot back"
+        )
 
 
 class TurnSlot:

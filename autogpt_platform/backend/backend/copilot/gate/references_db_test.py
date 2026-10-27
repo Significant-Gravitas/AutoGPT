@@ -41,8 +41,8 @@ async def test_a_held_delete_names_the_folder_in_the_stored_card(
             name=name,
             href=f"/library?folder={folder.id}",
             kind="Library folder",
-            meta=[Fact(text="0 agents"), Fact(text="0 subfolders")],
-            summary="0 agents · 0 subfolders",
+            meta=[Fact(text="0 workflows"), Fact(text="0 subfolders")],
+            summary="0 workflows · 0 subfolders",
         )
     ]
 

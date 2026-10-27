@@ -5,6 +5,7 @@ import {
 import {
   getGetV1ListExecutionSchedulesForAUserMockHandler,
   getListCopilotFollowupSchedulesMockHandler,
+  getListPausedScheduledChatsMockHandler,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { getListCopilotSkillsMockHandler } from "@/app/api/__generated__/endpoints/skills/skills.msw";
 import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
@@ -148,6 +149,7 @@ describe("CopilotModals", () => {
       getListCopilotSkillsMockHandler([]),
       getListCopilotFollowupSchedulesMockHandler([]),
       getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+      getListPausedScheduledChatsMockHandler([]),
       getGetV1ListCredentialsMockHandler([]),
     );
   });

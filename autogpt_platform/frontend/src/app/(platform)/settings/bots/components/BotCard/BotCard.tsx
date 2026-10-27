@@ -97,7 +97,7 @@ export function BotCard({ platform }: Props) {
         <Text
           variant="small-medium"
           as="span"
-          className="uppercase tracking-wide text-zinc-500"
+          className="uppercase tracking-wide text-foreground-tertiary"
         >
           Direct messages
         </Text>
@@ -115,7 +115,7 @@ export function BotCard({ platform }: Props) {
         <Text
           variant="small-medium"
           as="span"
-          className="uppercase tracking-wide text-zinc-500"
+          className="uppercase tracking-wide text-foreground-tertiary"
         >
           Linked {serverNoun}s
         </Text>

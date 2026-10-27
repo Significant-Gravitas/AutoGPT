@@ -1,5 +1,6 @@
 "use client";
 
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -191,6 +192,10 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
     } catch (error) {
       if (isUnmountedRef.current || runId !== runIdRef.current) return;
       setPhase("error");
+      if (
+        toastIfPlanRequired(error, "Connecting a service needs an active plan")
+      )
+        return;
       toast({
         title: "Device auth initiation failed",
         description:

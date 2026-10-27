@@ -1,14 +1,32 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-blue-100 #DBEAFE, bg-green-100 #B7E2C7, bg-green-500 #16A34A,
+// bg-orange-50 #FFF3E6, bg-pink-50 #FDEDF5, bg-purple-100 #EFE8FE,
+// bg-purple-50 #F1EBFE, bg-red-100 #FDECEC, bg-yellow-100 #FCEBB0,
+// bg-yellow-50 #FEF9E6, bg-yellow-500 #F5C000, border-orange-300 #FEAF54,
+// border-pink-300 #F284BB, border-purple-300 #A476F8, border-red-300 #F69999,
+// border-yellow-300 #F8D554, text-blue-700 #1D4ED8, text-gray-400 #9CA3AF,
+// text-gray-500 #6B7280, text-gray-600 #4B5563, text-orange-600 #E77B00,
+// text-orange-700 #B46000, text-orange-800 #8C4A00, text-orange-900 #6B3900,
+// text-pink-600 #D7428B, text-pink-700 #A8336D, text-pink-800 #822854,
+// text-pink-900 #631E40, text-purple-600 #6C2EDF, text-purple-700 #5424AE,
+// text-purple-800 #411C87, text-purple-900 #321567, text-red-600 #D93636,
+// text-red-800 #832525, text-red-900 #641D1D, text-yellow-600 #DFAF00,
+// text-yellow-700 #AE8800, text-yellow-800 #876A00, text-yellow-900 #675100.
+// Same value as a role with another meaning, so not swapped:
+// text-red-600 = error-hover (a hover fill),
+// text-purple-600 = brand-hover (a hover fill).
+
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import { Card } from "@/components/atoms/Card/Card";
 import {
+  Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/__legacy__/ui/card";
+} from "@/components/atoms/Card/Card";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useDiagnosticsContent } from "./useDiagnosticsContent";
 import { ExecutionsTable } from "./ExecutionsTable";
@@ -118,7 +136,7 @@ export function DiagnosticsContent() {
                 className="cursor-pointer transition-all hover:scale-105"
                 onClick={() => setActiveTab("failed")}
               >
-                <Card className="border-red-300 bg-red-50">
+                <Card className="border-red-300 bg-error-surface">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-red-800">
                       Failed Executions (24h)
@@ -128,7 +146,7 @@ export function DiagnosticsContent() {
                     <p className="text-3xl font-bold text-red-900">
                       {executionData.failed_count_24h}
                     </p>
-                    <p className="text-sm text-red-700">
+                    <p className="text-sm text-error-foreground">
                       {executionData.failed_count_1h} in last hour (
                       {executionData.failure_rate_24h.toFixed(1)}/hr rate)
                     </p>
@@ -273,7 +291,7 @@ export function DiagnosticsContent() {
                     )}
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                    <div className="h-6 w-6 rounded-full bg-blue-500"></div>
+                    <div className="h-6 w-6 rounded-full bg-info"></div>
                   </div>
                 </div>
 
@@ -284,7 +302,7 @@ export function DiagnosticsContent() {
                     </p>
                     <p className="text-3xl font-bold">
                       {executionData.queued_executions_rabbitmq === -1 ? (
-                        <span className="text-xl text-red-500">Error</span>
+                        <span className="text-xl text-error">Error</span>
                       ) : (
                         executionData.queued_executions_rabbitmq
                       )}
@@ -300,7 +318,7 @@ export function DiagnosticsContent() {
                     <div
                       className={`h-6 w-6 rounded-full ${
                         executionData.queued_executions_rabbitmq === -1
-                          ? "bg-red-500"
+                          ? "bg-error"
                           : "bg-yellow-500"
                       }`}
                     ></div>
@@ -358,7 +376,7 @@ export function DiagnosticsContent() {
                     </p>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                    <div className="h-6 w-6 rounded-full bg-blue-500"></div>
+                    <div className="h-6 w-6 rounded-full bg-info"></div>
                   </div>
                 </div>
 
@@ -369,14 +387,14 @@ export function DiagnosticsContent() {
                     </p>
                     <p className="text-3xl font-bold">
                       {executionData.cancel_queue_depth === -1 ? (
-                        <span className="text-xl text-red-500">Error</span>
+                        <span className="text-xl text-error">Error</span>
                       ) : (
                         executionData.cancel_queue_depth
                       )}
                     </p>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
-                    <div className="h-6 w-6 rounded-full bg-purple-500"></div>
+                    <div className="h-6 w-6 rounded-full bg-brand"></div>
                   </div>
                 </div>
 
@@ -416,7 +434,7 @@ export function DiagnosticsContent() {
                     )}
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
-                    <div className="h-6 w-6 rounded-full bg-purple-500"></div>
+                    <div className="h-6 w-6 rounded-full bg-brand"></div>
                   </div>
                 </div>
 
@@ -434,7 +452,7 @@ export function DiagnosticsContent() {
                     </p>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                    <div className="h-6 w-6 rounded-full bg-blue-500"></div>
+                    <div className="h-6 w-6 rounded-full bg-info"></div>
                   </div>
                 </div>
 
@@ -507,7 +525,7 @@ export function DiagnosticsContent() {
               </p>
             </div>
             <div>
-              <p className="font-semibold text-red-700">
+              <p className="font-semibold text-error-foreground">
                 🔴 Failed Executions:
               </p>
               <p className="text-gray-600">

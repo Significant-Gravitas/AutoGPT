@@ -3,15 +3,13 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import Image from "next/image";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { useEffect, useState } from "react";
-import {
-  getYouTubeVideoId,
-  isValidVideoFile,
-  isValidVideoUrl,
-} from "./helpers";
+import { isValidVideoFile, isValidVideoUrl } from "./helpers";
 import { useAgentImageItem } from "./useAgentImageItem";
 import { ImageNotFound01Icon, PlayIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useImageFallback } from "@/hooks/useImageFallback";
+import { YouTubeEmbed } from "@/components/molecules/YouTubeEmbed/YouTubeEmbed";
+import { isYouTubeUrl } from "@/components/molecules/YouTubeEmbed/helpers";
 
 interface AgentImageItemProps {
   image: string;
@@ -39,17 +37,13 @@ export function AgentImageItem({
 
   return (
     <div className="relative">
-      <div className="h-[15rem] overflow-hidden rounded-xl border border-neutral-100 bg-[#a8a8a8] sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
+      <div
+        // TODO(tokens): no exact role: border-neutral-100 #F5F5F5, bg-[#a8a8a8] #A8A8A8
+        className="h-[15rem] overflow-hidden rounded-xl border border-neutral-100 bg-[#a8a8a8] sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]"
+      >
         {isValidVideoUrl(image) ? (
-          getYouTubeVideoId(image) ? (
-            <iframe
-              width="100%"
-              height="100%"
-              src={`https://www.youtube.com/embed/${getYouTubeVideoId(image)}`}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              title="YouTube video player"
-            ></iframe>
+          isYouTubeUrl(image) ? (
+            <YouTubeEmbed url={image} />
           ) : (
             <div className="relative h-full w-full overflow-hidden">
               <video
@@ -88,10 +82,10 @@ export function AgentImageItem({
                 />
               </>
             ) : (
-              <div className="flex h-full w-full items-center justify-center rounded-xl bg-zinc-100">
+              <div className="flex h-full w-full items-center justify-center rounded-xl bg-surface-hover">
                 <Icon
                   icon={ImageNotFound01Icon}
-                  className="h-10 w-10 text-zinc-400"
+                  className="h-10 w-10 text-foreground-subtle"
                 />
               </div>
             )}
@@ -112,7 +106,7 @@ export function AgentImageItem({
               <Icon
                 icon={PlayIcon}
                 size={20}
-                className="text-black dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7"
+                className="text-foreground-base sm:h-6 sm:w-6 md:h-7 md:w-7"
               />
             }
           >

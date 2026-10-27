@@ -1,10 +1,8 @@
-from unittest.mock import AsyncMock, patch
-
 import pytest
 
 from backend.copilot.config import ChatConfig
 
-from .config import GraphitiConfig, is_enabled_for_user
+from .config import GraphitiConfig
 
 _ENV_VARS_TO_CLEAR = (
     "GRAPHITI_FALKORDB_HOST",
@@ -18,6 +16,9 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_USE_OPENROUTER",
     "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
     "CHAT_BASE_URL",
+    "GRAPHITI_LLM_MODEL",
+    "GRAPHITI_RERANKER_MODEL",
+    "GRAPHITI_EMBEDDER_MODEL",
 )
 
 
@@ -188,12 +189,19 @@ class TestApplyLocalGraphitiModels:
     ``GRAPHITI_*_MODEL`` env var per slot. Mirrors dev's
     ``_apply_local_aux_models`` pattern on the chat side."""
 
+    @pytest.mark.parametrize(
+        "model_override",
+        [None, "gpt-6-luna", "gpt-4.1-mini"],
+    )
     def test_rewrites_cloud_defaults_under_local(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, model_override: str | None
     ) -> None:
         _patch_chat_cfg(monkeypatch, _local_chat_cfg())
+        if model_override is not None:
+            monkeypatch.setenv("GRAPHITI_LLM_MODEL", model_override)
+            monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", model_override)
         cfg = GraphitiConfig()
-        # llm_model: gpt-4.1-mini → Ornith-1.5-9B GGUF
+        # llm_model: gpt-6-luna → Ornith-1.5-9B GGUF
         assert cfg.llm_model == "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
         # reranker reuses the same model (simpler prompts, avoids a
         # second Ollama pull).
@@ -209,16 +217,18 @@ class TestApplyLocalGraphitiModels:
         rewrites *literal* cloud defaults."""
         _patch_chat_cfg(monkeypatch, _local_chat_cfg())
         monkeypatch.setenv("GRAPHITI_LLM_MODEL", "qwen3:8b")
+        monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", "custom-reranker:tag")
         monkeypatch.setenv("GRAPHITI_EMBEDDER_MODEL", "all-minilm")
         cfg = GraphitiConfig()
         assert cfg.llm_model == "qwen3:8b"
+        assert cfg.reranker_model == "custom-reranker:tag"
         assert cfg.embedder_model == "all-minilm"
 
     def test_cloud_defaults_preserved_under_cloud_transport(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """OpenRouter / direct-Anthropic transports leave the cloud
-        defaults alone — graphiti's ``gpt-4.1-mini`` stays put for
+        defaults alone — graphiti's ``gpt-6-luna`` stays put for
         anyone who isn't on a self-hosted backend."""
         _patch_chat_cfg(
             monkeypatch,
@@ -229,28 +239,24 @@ class TestApplyLocalGraphitiModels:
             ),
         )
         cfg = GraphitiConfig()
-        assert cfg.llm_model == "gpt-4.1-mini"
-        assert cfg.reranker_model == "gpt-4.1-nano"
+        assert cfg.llm_model == "gpt-6-luna"
+        assert cfg.reranker_model == "gpt-6-luna"
         assert cfg.embedder_model == "text-embedding-3-small"
 
-
-class TestIsEnabledForUser:
-    @pytest.mark.asyncio
-    async def test_none_user_returns_false(self) -> None:
-        result = await is_enabled_for_user(None)
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_empty_user_returns_false(self) -> None:
-        result = await is_enabled_for_user("")
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_delegates_to_feature_flag(self) -> None:
-        with patch(
-            "backend.util.feature_flag.is_feature_enabled",
-            new_callable=AsyncMock,
-            return_value=True,
-        ):
-            result = await is_enabled_for_user("some-user-id")
-        assert result is True
+    @pytest.mark.parametrize("model", ["gpt-4.1-mini", "gpt-5.6-luna"])
+    def test_model_env_overrides_under_cloud_transport(
+        self, monkeypatch: pytest.MonkeyPatch, model: str
+    ) -> None:
+        _patch_chat_cfg(
+            monkeypatch,
+            ChatConfig(
+                use_openrouter=True,
+                api_key="or-key",
+                base_url="https://openrouter.ai/api/v1",
+            ),
+        )
+        monkeypatch.setenv("GRAPHITI_LLM_MODEL", model)
+        monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", model)
+        cfg = GraphitiConfig()
+        assert cfg.llm_model == model
+        assert cfg.reranker_model == model

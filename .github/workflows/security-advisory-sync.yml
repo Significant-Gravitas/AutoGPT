@@ -1,0 +1,152 @@
+name: Security - Public advisory sync
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        default: true
+        description: "Check public data without opening a PR or editing release notes"
+
+permissions: {}
+
+concurrency:
+  group: public-security-advisory-sync
+  cancel-in-progress: false
+
+jobs:
+  public-data:
+    if: github.repository == 'Significant-Gravitas/AutoGPT' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      digest: ${{ steps.public.outputs.digest }}
+      source: ${{ steps.public.outputs.source }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: master
+          persist-credentials: false
+      - name: Read public data anonymously
+        id: public
+        run: |
+          digest=$(python .github/workflows/scripts/security_public_sync.py digest)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "source=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: dev
+          path: content
+          persist-credentials: false
+      - name: Compare current public records with the committed public snapshot
+        env:
+          EXPECTED_DIGEST: ${{ steps.public.outputs.digest }}
+        run: python .github/workflows/scripts/security_public_sync.py credits --root content --expected-digest "$EXPECTED_DIGEST"
+      - name: Preview public release-note sections without writing
+        env:
+          EXPECTED_DIGEST: ${{ steps.public.outputs.digest }}
+        run: python .github/workflows/scripts/security_public_publish.py --expected-digest "$EXPECTED_DIGEST" --preview >> "$GITHUB_STEP_SUMMARY"
+
+  credits-pr:
+    needs: public-data
+    if: vars.PUBLIC_SECURITY_CREDITS_ENABLED == 'true' && (github.event_name == 'schedule' || !inputs.dry_run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The PR is opened with a batch-bot App token, not GITHUB_TOKEN: a PR opened with
+    # GITHUB_TOKEN gets its CI parked until a maintainer approves the runs.
+    permissions: {}
+    steps:
+      - name: Check out public code and content without credentials
+        env:
+          TRUSTED_SOURCE: ${{ needs.public-data.outputs.source }}
+          GIT_CONFIG_NOSYSTEM: "1"
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          [[ "$TRUSTED_SOURCE" =~ ^[0-9a-f]{40}$ ]]
+          git init trusted
+          git -C trusted remote add origin https://github.com/Significant-Gravitas/AutoGPT.git
+          git -C trusted fetch --no-tags --depth=1 origin "$TRUSTED_SOURCE"
+          git -C trusted checkout --detach "$TRUSTED_SOURCE"
+          git init content
+          git -C content remote add origin https://github.com/Significant-Gravitas/AutoGPT.git
+          git -C content fetch --no-tags --depth=1 origin refs/heads/dev
+          git -C content checkout -b dev FETCH_HEAD
+      - name: Re-fetch public data and generate only approved files
+        id: credits
+        env:
+          EXPECTED_DIGEST: ${{ needs.public-data.outputs.digest }}
+        run: |
+          result=$(python trusted/.github/workflows/scripts/security_public_sync.py credits --root content --expected-digest "$EXPECTED_DIGEST")
+          echo "$result"
+          echo "unlinked=$(jq -r 'if (.unlinked | length) == 0 then "none" else (.unlinked | join(", ")) end' <<<"$result")" >> "$GITHUB_OUTPUT"
+      # Minted after the files are generated, and handed only to the PR step.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ vars.BATCH_BOT_APP_ID }}
+          private-key: ${{ secrets.BATCH_BOT_PRIVATE_KEY }}
+          permission-contents: write # push the credits branch
+          permission-pull-requests: write # open or update the credits PR
+      - name: Update the public credits PR
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6.1.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          path: content
+          base: dev
+          branch: automation/public-security-credits
+          title: "dx(platform): refresh public security acknowledgments"
+          commit-message: "dx(platform): refresh public security acknowledgments"
+          add-paths: |
+            SECURITY.md
+            .github/security-advisories.public.json
+          body: |
+            ### Why / What / How
+
+            Reconcile the public advisory snapshot and accepted researcher credits using anonymous GitHub reads. Preserve the historical acknowledgments and all other SECURITY.md sections.
+
+            ### Changes 🏗️
+
+            - Update the four-field public snapshot and generated acknowledgments.
+            - No report text, pending credits, or private advisory inventory is used.
+            - Published advisories that no published release lists: ${{ steps.credits.outputs.unlinked }}
+
+            ### Agents and large language models used
+
+            None. Generated by the public advisory sync workflow.
+
+            ### Checklist 📋
+
+            - [x] Changes and test plan described
+            - [x] Strict schema and publication/consent validation passed
+            - [ ] Maintainer reviewed the diff
+
+  release-notes:
+    needs: public-data
+    if: vars.PUBLIC_SECURITY_RELEASE_NOTES_ENABLED == 'true' && (github.event_name == 'schedule' || !inputs.dry_run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out trusted public code without credentials
+        env:
+          TRUSTED_SOURCE: ${{ needs.public-data.outputs.source }}
+          GIT_CONFIG_NOSYSTEM: "1"
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          [[ "$TRUSTED_SOURCE" =~ ^[0-9a-f]{40}$ ]]
+          git init .
+          git remote add origin https://github.com/Significant-Gravitas/AutoGPT.git
+          git fetch --no-tags --depth=1 origin "$TRUSTED_SOURCE"
+          git checkout --detach "$TRUSTED_SOURCE"
+      - name: Revalidate public records and update managed release sections
+        env:
+          EXPECTED_DIGEST: ${{ needs.public-data.outputs.digest }}
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/workflows/scripts/security_public_publish.py --expected-digest "$EXPECTED_DIGEST" --apply

@@ -83,10 +83,11 @@ export function parseProviderFailurePart(dataPart: {
 export const PROVIDER_FAILURE_KEY = "provider_failure";
 
 // Server-written prefixes that mark a row as a failure card rather than a
-// reply. Kept in step with COPILOT_ERROR_PREFIX in the backend's constants.
+// reply. Kept in step with COPILOT_ERROR_PREFIX and
+// COPILOT_RETRYABLE_ERROR_PREFIX in the backend's constants.
 const ERROR_MARKER_PREFIXES = [
   "[__COPILOT_ERROR_f7a1__]",
-  "[__COPILOT_RETRYABLE_ERROR_f7a1__]",
+  "[__COPILOT_RETRYABLE_ERROR_a9c2__]",
 ];
 
 function isErrorMarker(row: { role?: unknown; content?: unknown }): boolean {
