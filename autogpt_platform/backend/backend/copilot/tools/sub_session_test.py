@@ -1176,6 +1176,37 @@ class TestHollowResponseRepro:
         # isn't mistaken for an empty run.
         assert "workspace file" in (r.message or "")
 
+    def test_manifest_from_the_tool_log_leaves_out_working_files(self):
+        """The fallback reads the tool log, which carries no mark; the sub's
+        build scratchpad must still stay out, as it does from the listing."""
+        res = self._hollow_completed_result()
+        scratchpad = res.tool_calls[0].model_copy(
+            update={
+                "tool_call_id": "tc-state",
+                "output": json.dumps(
+                    {
+                        "file_id": "file-state",
+                        "name": "build_state.json",
+                        "path": "/sessions/inner-1/build_state.json",
+                        "size_bytes": 43,
+                    }
+                ),
+            }
+        )
+        res.tool_calls = [*res.tool_calls, scratchpad]
+
+        r = response_from_outcome(
+            outcome="completed",
+            result=res,
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=12.3,
+        )
+
+        names = {f.name for f in r.sub_workspace_files or []}
+        assert "build_state.json" not in names
+        assert "EXACT_CODE_SNIPPETS.md" in names
+
     def test_no_manifest_when_sub_returned_inline(self):
         """A sub that answered inline (no file writes) must not grow an empty
         or noisy manifest — sub_workspace_files stays None."""

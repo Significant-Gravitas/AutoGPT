@@ -41,12 +41,14 @@ export function ExpertIdentityDetails({
 
   return (
     <Container
+      data-slot="expert-identity"
       className={cn(
         "flex min-w-0 flex-col text-left",
         compact ? "gap-0" : "gap-1",
       )}
     >
       <Container
+        data-slot="expert-identity-name-line"
         className={cn(
           "flex min-w-0 gap-2",
           size === "page" && "flex-wrap gap-y-0",
@@ -57,6 +59,7 @@ export function ExpertIdentityDetails({
           as={size === "page" ? "h1" : "span"}
           variant={compact ? "body-medium" : "lead-semibold"}
           tone="primary"
+          data-slot="expert-identity-name"
           className={cn(
             "min-w-0",
             size === "page" ? "max-w-full break-words" : "truncate",
@@ -72,6 +75,7 @@ export function ExpertIdentityDetails({
             as="span"
             variant="body"
             tone="secondary"
+            data-slot="expert-identity-title"
             className={cn(
               "min-w-0",
               size === "page" ? "max-w-full break-words" : "truncate",
@@ -84,6 +88,7 @@ export function ExpertIdentityDetails({
               <>
                 {"• "}
                 <span
+                  data-slot="expert-identity-title-text"
                   className={cn(
                     "bg-clip-text font-medium text-transparent",
                     size === "card" && "text-body-md leading-inherit",
@@ -108,7 +113,12 @@ export function ExpertIdentityDetails({
         {nameAccessory}
       </Container>
       {!area ? (
-        <Text as="span" variant="small" tone="muted">
+        <Text
+          as="span"
+          variant="small"
+          tone="muted"
+          data-slot="expert-identity-subtitle"
+        >
           {isOtto ? "Your personal Head of AI" : "AI Expert"}
         </Text>
       ) : null}
@@ -117,6 +127,7 @@ export function ExpertIdentityDetails({
           as="span"
           variant="small"
           tone="secondary"
+          data-slot="expert-identity-area"
           className={cn("truncate leading-4", areaClassName)}
           title={area}
         >

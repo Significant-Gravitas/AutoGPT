@@ -7,11 +7,15 @@ interface Props {
 
 export function PlanFooter({ onCompare }: Props) {
   return (
-    <footer className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+    <footer
+      data-slot="plan-footer"
+      className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-2"
+    >
       <Text variant="small" tone="muted">
         Need something custom?{" "}
         <a
           href="mailto:sales@agpt.co"
+          data-slot="plan-footer-sales-link"
           className="font-medium text-brand no-underline hover:text-brand-hover"
         >
           Talk to sales.

@@ -987,10 +987,11 @@ describe("ToolResult", () => {
       expect(screen.getByText("Please connect")).toBeDefined();
     });
 
-    it("falls back to key/value output for empty web search results", () => {
+    it("says an empty web search found nothing", () => {
       render(<ToolResult row={row({ results: [] }, "web_search")} />);
 
-      expect(screen.getByText("Results")).toBeDefined();
+      expect(screen.getByText("Nothing found.")).toBeDefined();
+      expect(document.body.textContent).not.toContain("[]");
     });
 
     it("falls back to key/value pairs for multi-field outputs", () => {

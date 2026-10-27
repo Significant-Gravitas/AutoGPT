@@ -12,6 +12,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Play, Plus } from "lucide-react";
 import { TooltipProvider } from "../Tooltip/BaseTooltip";
+import { Icon } from "../Icon/Icon";
+import { Text } from "../Text/Text";
 import { Button } from "./Button";
 
 const meta: Meta<typeof Button> = {
@@ -268,7 +270,113 @@ export const AllVariants: Story = {
   render: renderAllVariants,
 };
 
+// Every variant at every size, at rest, disabled and loading.
+export const VariantMatrix: Story = {
+  render: renderVariantMatrix,
+};
+
+// The pre-design-system looks, kept at today's pixels for the screens that
+// still use them.
+export const LegacyVariants: Story = {
+  render: renderLegacyVariants,
+};
+
 // Render functions as function declarations
+const LEGACY_VARIANTS = [
+  "legacy-default",
+  "legacy-destructive",
+  "legacy-outline",
+  "legacy-ghost",
+  "legacy-link",
+] as const;
+
+const LEGACY_SIZES = ["legacy-default", "legacy-sm", "legacy-icon"] as const;
+
+function renderLegacyVariants() {
+  return (
+    <div className="space-y-6 p-8">
+      {LEGACY_VARIANTS.map((variant) => (
+        <div key={variant} className="space-y-2">
+          <Text variant="small-medium" tone="muted">
+            {variant}
+          </Text>
+          <div className="flex flex-wrap items-center gap-3">
+            {LEGACY_SIZES.map((size) => (
+              <Button key={size} variant={variant} size={size}>
+                {size === "legacy-icon" ? (
+                  <Icon icon={PlusSignIcon} size={16} />
+                ) : (
+                  size
+                )}
+              </Button>
+            ))}
+            <Button variant={variant} disabled>
+              Disabled
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const MATRIX_VARIANTS = [
+  "primary",
+  "secondary",
+  "destructive",
+  "outline",
+  "ghost",
+  "icon",
+  "toggle",
+  "floating",
+  "link",
+] as const;
+
+const MATRIX_SIZES = [
+  "small",
+  "large",
+  "icon",
+  "xs",
+  "icon-xs",
+  "icon-sm",
+] as const;
+
+function renderVariantMatrix() {
+  return (
+    <div className="space-y-6 p-8">
+      {MATRIX_VARIANTS.map((variant) => (
+        <div key={variant} className="space-y-2">
+          <Text variant="small-medium" tone="muted">
+            {variant}
+          </Text>
+          <div className="flex flex-wrap items-center gap-3">
+            {MATRIX_SIZES.map((size) => (
+              <Button
+                key={size}
+                variant={variant}
+                size={size}
+                leadingIcon={PlusSignIcon}
+                aria-label={`${variant} ${size}`}
+              >
+                {size.startsWith("icon") ? null : size}
+              </Button>
+            ))}
+            <Button variant={variant} disabled>
+              Disabled
+            </Button>
+            <Button variant={variant} loading>
+              Loading
+            </Button>
+            <Button variant={variant} aria-pressed>
+              Pressed
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function renderActionButtons() {
   return (
     <div className="space-y-6">

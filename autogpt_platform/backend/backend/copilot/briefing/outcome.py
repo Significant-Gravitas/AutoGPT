@@ -65,6 +65,7 @@ def compose_run_outcome(
         link=run_link(library_agent_id, execution.id),
         schedule_id=execution.schedule_id,
         webhook_id=execution.webhook_id,
+        trigger_source=execution.trigger_source,
     )
 
 

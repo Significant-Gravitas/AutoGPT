@@ -1,4 +1,4 @@
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { ChatInput } from "../ChatInput/ChatInput";
 import { TaskProgressBar } from "./TaskProgressBar";

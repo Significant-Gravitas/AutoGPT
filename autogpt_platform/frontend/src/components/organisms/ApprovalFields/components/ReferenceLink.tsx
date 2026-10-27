@@ -24,6 +24,7 @@ export function ReferenceLink({ reference, children }: Props) {
       href={reference.href}
       translate="no"
       title={hasCard ? undefined : reference.id}
+      data-slot="reference-link"
       className="underline decoration-border-strong underline-offset-2 hover:decoration-foreground-tertiary focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
     >
       {children}
@@ -34,6 +35,7 @@ export function ReferenceLink({ reference, children }: Props) {
       // Focusable only when it opens a card, so the keyboard reaches it too.
       tabIndex={hasCard ? 0 : undefined}
       title={hasCard ? undefined : reference.id}
+      data-slot="reference-link"
       className={
         hasCard
           ? "underline decoration-foreground-subtle decoration-dotted underline-offset-2 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"

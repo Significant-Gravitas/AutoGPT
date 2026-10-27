@@ -29,6 +29,7 @@ from backend.util.llm import providers as providers_mod
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     FAST_FAIL_TIMEOUT_SECONDS,
+    NO_REASONING_MAX_TOKENS,
     ProviderResponse,
     _anthropic_accepts_temperature,
     _is_temperature_deprecation_error,
@@ -37,6 +38,7 @@ from backend.util.llm.providers import (
     call_provider_openai_compat_sync,
     is_forced_tool_choice_rejection,
     request_timeout,
+    small_call_reasoning,
 )
 from backend.util.request import parse_url
 from backend.util.settings import Config, Settings
@@ -224,6 +226,7 @@ class TestExecutionModeStubs:
                 msg.content = ""
                 choice = MagicMock()
                 choice.message = msg
+                choice.finish_reason = "stop"
                 resp = MagicMock()
                 resp.choices = [choice]
                 resp.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
@@ -668,7 +671,12 @@ class TestGroq:
 
 
 def _fake_openai_chat_response(
-    content: str, prompt: int, completion: int, *, cost: float | None = None
+    content: str,
+    prompt: int,
+    completion: int,
+    *,
+    cost: float | None = None,
+    finish_reason: str = "stop",
 ) -> SimpleNamespace:
     usage = SimpleNamespace(
         prompt_tokens=prompt,
@@ -676,7 +684,7 @@ def _fake_openai_chat_response(
         model_extra={"cost": cost} if cost is not None else None,
     )
     message = SimpleNamespace(content=content, tool_calls=None)
-    choice = SimpleNamespace(message=message)
+    choice = SimpleNamespace(message=message, finish_reason=finish_reason)
     return SimpleNamespace(choices=[choice], usage=usage)
 
 
@@ -723,6 +731,135 @@ class TestOpenRouter:
         # carries cost data.
         assert kwargs["extra_body"] == {"usage": {"include": True}}
         assert "HTTP-Referer" in kwargs["extra_headers"]
+
+
+def _compat_client(create, base_url: str = "https://api.openai.com/v1/"):
+    return SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+        base_url=httpx.URL(base_url),
+    )
+
+
+class TestSmallCallReasoning:
+    """Claude 5 thinks adaptively on OpenRouter and the thinking counts against
+    ``max_tokens``, so a small call asks for none; bigger calls keep theirs."""
+
+    @pytest.mark.parametrize(
+        ("model", "max_tokens", "off"),
+        [
+            ("anthropic/claude-haiku-5.5", 16, True),
+            ("claude-haiku-5-5", NO_REASONING_MAX_TOKENS, True),
+            ("anthropic/claude-sonnet-5", 1024, False),
+            ("anthropic/claude-haiku-5.5", NO_REASONING_MAX_TOKENS + 1, False),
+            ("anthropic/claude-haiku-4-5", 200, False),
+            ("openai/gpt-4.1", 16, False),
+        ],
+    )
+    def test_only_a_small_claude_5_call_turns_reasoning_off(
+        self, model: str, max_tokens: int, off: bool
+    ):
+        expected = {"reasoning": {"enabled": False}} if off else {}
+        assert small_call_reasoning(model, max_tokens) == expected
+
+    @pytest.mark.asyncio
+    async def test_call_provider_sends_it_on_openrouter(self):
+        async_create = AsyncMock(
+            return_value=_fake_openai_chat_response("{}", prompt=1, completion=1)
+        )
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=_compat_client(async_create),
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning", return_value=None
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openrouter_cost", return_value=None
+            ),
+        ):
+            await call_provider(
+                provider="open_router",
+                model="anthropic/claude-haiku-5.5",
+                api_key="sk-or-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=200,
+            )
+
+        assert async_create.call_args.kwargs["extra_body"] == {
+            "usage": {"include": True},
+            "reasoning": {"enabled": False},
+        }
+
+    @pytest.mark.asyncio
+    async def test_an_answer_cut_off_at_the_cap_reports_max_tokens(self):
+        # ``structured_complete`` raises "truncated at max_tokens" on this; with
+        # no stop reason the cut-off JSON read as "non-JSON content" instead.
+        async_create = AsyncMock(
+            return_value=_fake_openai_chat_response(
+                '{"verdict": "ok", "rea',
+                prompt=1,
+                completion=400,
+                finish_reason="length",
+            )
+        )
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=_compat_client(async_create),
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning", return_value=None
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openrouter_cost", return_value=None
+            ),
+        ):
+            result = await call_provider(
+                provider="open_router",
+                model="anthropic/claude-haiku-5.5",
+                api_key="sk-or-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=400,
+            )
+
+        assert result.stop_reason == "max_tokens"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("base_url", "expected"),
+        [
+            (
+                "https://openrouter.ai/api/v1",
+                {"usage": {"include": True}, "reasoning": {"enabled": False}},
+            ),
+            # Anthropic's own OpenAI-compatible endpoint has no such field.
+            ("https://api.anthropic.com/v1/", {"usage": {"include": True}}),
+        ],
+    )
+    async def test_the_sync_helper_sends_it_only_to_openrouter(
+        self, base_url: str, expected: dict
+    ):
+        async_create = AsyncMock(
+            return_value=_fake_openai_chat_response("ok", prompt=1, completion=1)
+        )
+        await call_provider_openai_compat_sync(
+            model="anthropic/claude-haiku-5.5",
+            messages=[_msg("user", "hi")],
+            max_tokens=20,
+            client=_compat_client(async_create, base_url),
+            extra_body={"usage": {"include": True}},
+        )
+
+        assert async_create.call_args.kwargs["extra_body"] == expected
 
 
 class TestLlamaAPI:
@@ -1976,9 +2113,7 @@ class TestTimeoutThreading:
             captured.update(kwargs)
             return _fake_openai_chat_response("ok", prompt=1, completion=1)
 
-        fake_client = SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=capture))
-        )
+        fake_client = _compat_client(capture)
         await call_provider_openai_compat_sync(
             model="gpt-4.1",
             messages=[_msg("user", "hi")],
@@ -1996,9 +2131,7 @@ class TestTimeoutThreading:
         async def hang(**kwargs):
             await asyncio.sleep(60)
 
-        fake_client = SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=hang))
-        )
+        fake_client = _compat_client(hang)
         with pytest.raises(TimeoutError):
             await call_provider_openai_compat_sync(
                 model="gpt-4.1",
@@ -2057,9 +2190,7 @@ class TestDefaults:
             captured.update(kwargs)
             return _fake_openai_chat_response("ok", prompt=1, completion=1)
 
-        fake_client = SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=capture))
-        )
+        fake_client = _compat_client(capture)
         await call_provider_openai_compat_sync(
             model="gpt-4.1",
             messages=[_msg("user", "hi")],

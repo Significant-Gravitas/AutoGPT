@@ -335,7 +335,10 @@ export function SetupRequirementsCard({
           below it; standalone the card keeps the full credentials picker. */}
       {needsCredentials && !chainActions && (
         <div className="rounded-2xl border bg-background p-3">
-          <Text variant="small" className="w-fit border-b text-zinc-500">
+          <Text
+            variant="small"
+            className="w-fit border-b text-foreground-tertiary"
+          >
             {credentialsLabel ??
               (isEditMode ? "Credentials" : "Workflow credentials")}
           </Text>
@@ -355,7 +358,10 @@ export function SetupRequirementsCard({
           renders in the card below it, not inside the accordion. */}
       {isEditMode && !chainActions && (inputSchema || hasAdvancedFields) && (
         <div className="rounded-2xl border bg-background p-3 pt-4">
-          <Text variant="small" className="w-fit border-b text-zinc-500">
+          <Text
+            variant="small"
+            className="w-fit border-b text-foreground-tertiary"
+          >
             Inputs
           </Text>
           {inputSchema && (

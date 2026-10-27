@@ -1,8 +1,9 @@
-import scrollbar from "tailwind-scrollbar";
 import type { Config } from "tailwindcss";
 import plugin from "tailwindcss/plugin";
 import tailwindcssAnimate from "tailwindcss-animate";
 import { colors } from "./src/components/styles/colors";
+import scrollbar from "./tailwind.scrollbar";
+import tailwind3Preset from "./tailwind.v3-preset";
 
 const SMOOTH_SHADOW_SM =
   "0 18px 47px 0 color-mix(in srgb, var(--smooth-shadow-color) 3%, transparent), 0 7.5px 19px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 4px 10.5px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 2.3px 5.8px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 1.2px 3.1px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 0.5px 1.3px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent)";
@@ -108,6 +109,13 @@ const COLOR_ROLES = [
   "info",
   "info-foreground",
   "info-surface",
+  "builder-canvas",
+  "builder-grid",
+  "node-surface",
+  "node-border",
+  "node-selected",
+  "edge",
+  "handle",
 ] as const;
 
 const roleColors = Object.fromEntries(
@@ -157,7 +165,36 @@ const letterSpacing = {
   eyebrow: "0.06em",
 };
 
+// Classes Tailwind 3 generated nothing for, which Tailwind 4 would now turn
+// into CSS: bare numbers it accepts without a theme step (`z-12`, `flex-2`,
+// `opacity-1`), an `ease-[...]` arbitrary value Tailwind 3 rejected as
+// ambiguous, and streamdown's Tailwind 4 syntax (`content-(--x)`, a trailing
+// `!`, `wrap-anywhere`). Listing them keeps every element looking as it did;
+// the owning components can drop or fix them on their own.
+const TAILWIND_3_DEAD_CLASSES = [
+  "z-12",
+  "flex-2",
+  "disabled:opacity-1",
+  "ease-[cubic-bezier(0.16,1,0.3,1)]",
+  "ease-[cubic-bezier(0.33,1,0.68,1)]",
+  "data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)]",
+  "data-[state=closed]:ease-[cubic-bezier(0.4,0,1,1)]",
+  "wrap-anywhere",
+  "*:last:after:content-(--streamdown-caret)",
+  // Streamdown's classes below stack variants in Tailwind 4's order, which
+  // reads them the other way round from Tailwind 3; globals.css keeps the
+  // rules Tailwind 3 generated for them.
+  "*:first:mt-0",
+  "*:last:mb-0",
+  "*:last:after:inline",
+  "*:last:after:align-baseline",
+  "dark:bg-(--shiki-dark-bg)!",
+  "dark:text-(--shiki-dark)!",
+];
+
 const config = {
+  presets: [tailwind3Preset],
+  blocklist: TAILWIND_3_DEAD_CLASSES,
   darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
   content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
   prefix: "",
@@ -445,7 +482,7 @@ const config = {
   },
   plugins: [
     tailwindcssAnimate,
-    scrollbar({ nocompatible: true }),
+    scrollbar,
     smoothShadowRing,
     grainTexture,
     textShadow,

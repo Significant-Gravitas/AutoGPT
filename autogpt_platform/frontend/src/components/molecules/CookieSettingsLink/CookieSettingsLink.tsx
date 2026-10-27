@@ -30,6 +30,7 @@ export function CookieSettingsLink({ className, beforeOpen }: Props) {
       type="button"
       disabled={status !== "ready"}
       onClick={handleClick}
+      data-slot="cookie-settings-link"
       className={cn(
         "group inline-flex items-center rounded-md px-2 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info disabled:cursor-default disabled:opacity-60 sm:py-1",
         className,
@@ -39,6 +40,7 @@ export function CookieSettingsLink({ className, beforeOpen }: Props) {
         variant="small"
         as="span"
         tone="secondary"
+        data-slot="cookie-settings-link-label"
         className="underline-offset-2 group-hover:text-foreground-strong group-hover:underline group-disabled:no-underline"
       >
         Cookie settings

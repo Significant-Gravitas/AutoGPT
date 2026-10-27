@@ -623,7 +623,7 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
     - DOCUMENTATION: Removes embeddings for deleted doc files
     - LIBRARY_AGENT: Removes embeddings for soft-deleted/hidden library agents
       (matches the LibraryAgentHandler.get_missing_items filter)
-    - WORKSPACE_FILE: Removes embeddings for soft-deleted workspace files
+    - WORKSPACE_FILE: Removes embeddings for soft-deleted and internal workspace files
     - CHAT_SESSION: Removes embeddings for deleted/untitled chat sessions
 
     Returns:

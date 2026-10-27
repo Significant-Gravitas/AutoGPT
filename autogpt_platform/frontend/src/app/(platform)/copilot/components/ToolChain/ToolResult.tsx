@@ -56,7 +56,10 @@ import {
   asObject,
   dictToOutputItems,
   humanizeKey,
+  isBlankOutput,
+  isEmptyResult,
   isWebhookIngressUrl,
+  NOTHING_FOUND,
   str,
   stripBaseFields,
 } from "./resultHelpers";
@@ -98,7 +101,7 @@ function shapeCard(obj: Record<string, unknown>) {
   if (key === "status" && typeof value === "string")
     return (
       <div className={`${CARD} ${HALF} flex items-center gap-2 p-2.5`}>
-        <span className="text-xs text-zinc-400">Status</span>
+        <span className="text-xs text-foreground-subtle">Status</span>
         <span className="ml-auto">
           <StatusPill status={value} />
         </span>
@@ -606,6 +609,11 @@ function ToolOutput({ row, readOnly }: Required<Props>) {
     (target === row ? null : toolCard(row, output, readOnly));
   if (card) return card;
 
+  if (isBlankOutput(row.output)) return <KeyValueList value={NOTHING_FOUND} />;
+  // An empty list can be the point of a change (the last grant revoked), so
+  // what the tool said comes first.
+  if (output && isEmptyResult(output))
+    return <KeyValueList value={str(output, "message") ?? NOTHING_FOUND} />;
   if (!output) return <KeyValueList value={row.output} />;
 
   const data = stripBaseFields(output);

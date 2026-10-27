@@ -20,6 +20,7 @@ export function PaymentDueAction({
   const stacked = layout === "stacked";
   return (
     <div
+      data-slot="payment-due-action"
       className={cn(
         stacked ? "space-y-2.5" : "flex flex-wrap items-center gap-x-4 gap-y-2",
       )}

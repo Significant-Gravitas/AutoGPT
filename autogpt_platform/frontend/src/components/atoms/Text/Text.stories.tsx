@@ -1,5 +1,6 @@
 import { StoryCode } from "@/components/tokens/helpers/StoryCode";
 import type { Meta, StoryObj } from "@storybook/nextjs";
+import { tones } from "./helpers";
 import { Text, textTones, textVariants } from "./Text";
 
 const meta: Meta<typeof Text> = {
@@ -218,6 +219,58 @@ export function Tones() {
 <Text variant="body" tone="muted">Muted</Text>
 <Text variant="body" tone="danger">Danger</Text>`}
       />
+    </div>
+  );
+}
+
+//=============================================================================
+// All tones, each on every variant
+//=============================================================================
+export function AllTones() {
+  return (
+    <div className="space-y-8 p-8">
+      <Text variant="body">Default (foreground-base)</Text>
+      {textTones.map((tone) => (
+        <div key={tone} className="space-y-1">
+          <Text variant="small-medium" tone="muted">
+            {tone} · {tones[tone]}
+          </Text>
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+            {textVariants.map((variant) => (
+              <Text key={variant} variant={variant} tone={tone}>
+                {variant}
+              </Text>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+//=============================================================================
+// Pinned line heights: a size role with its line height fixed (the -tight,
+// -loose, -relaxed, -inherit and -lh-* variants), for copy that keeps the
+// line height of the raw size it replaced. The parent's 30px line height
+// shows what the -inherit variants pick up.
+//=============================================================================
+export function PinnedLineHeights() {
+  const pinned = textVariants.filter((variant) =>
+    // `-tracking-tight` pins letter-spacing, not line height.
+    /(?<!-tracking)-(tight|loose|relaxed|inherit|lh-[a-z0-9]+)(-tracking)?$/.test(
+      variant,
+    ),
+  );
+  return (
+    <div className="space-y-3 p-8 leading-[30px]">
+      {pinned.map((variant) => (
+        <div key={variant} className="flex items-baseline gap-6">
+          <Text variant="small" tone="muted" className="w-56 shrink-0">
+            {variant}
+          </Text>
+          <Text variant={variant}>Find decision-makers at any company</Text>
+        </div>
+      ))}
     </div>
   );
 }

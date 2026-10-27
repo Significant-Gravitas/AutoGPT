@@ -35,7 +35,7 @@ export function AccountMenuHeader({
         <button
           type="button"
           // TODO(tokens): no exact role for data-[state=open]:bg-neutral-100 (#F5F5F5), hover:bg-neutral-100 (#F5F5F5), focus-visible:bg-neutral-100 (#F5F5F5)
-          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-none transition-colors data-[state=open]:bg-neutral-100 hover:bg-neutral-100 focus-visible:bg-neutral-100"
+          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-none transition-colors hover:bg-neutral-100 focus-visible:bg-neutral-100 data-[state=open]:bg-neutral-100"
           aria-controls={popupId}
           aria-haspopup="true"
           data-testid="account-menu-org-trigger"

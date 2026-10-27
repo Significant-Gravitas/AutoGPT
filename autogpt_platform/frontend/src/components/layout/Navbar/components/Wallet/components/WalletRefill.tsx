@@ -1,12 +1,13 @@
-import { Form, FormField } from "@/components/__legacy__/ui/form";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/__legacy__/ui/tabs";
+import { FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
+import {
+  TabsLine,
+  TabsLineContent,
+  TabsLineList,
+  TabsLineTrigger,
+} from "@/components/molecules/TabsLine/TabsLine";
 import {
   useToast,
   useToastOnFail,
@@ -16,7 +17,7 @@ import useCredits from "@/hooks/useCredits";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, FormProvider } from "react-hook-form";
 import { z } from "zod";
 
 const autoRefillSchema = z
@@ -83,39 +84,64 @@ export function WalletRefill() {
 
   return (
     <div className="mx-1 border-b border-border-strong">
-      <p className="mx-0 mt-4 font-sans text-xs font-medium text-accent-strong">
+      <Text
+        variant="small-medium-tight"
+        as="p"
+        className="mx-0 mt-4 text-accent-strong"
+      >
         Add credits to your balance
-      </p>
-      <p className="mx-0 my-1 font-sans text-xs font-normal text-foreground-tertiary">
+      </Text>
+      <Text variant="small-tight" as="p" tone="muted" className="mx-0 my-1">
         Choose a one-time top-up or set up automatic refills
-      </p>
-      <Tabs
+      </Text>
+      <TabsLine
+        variant="pill"
         defaultValue="top-up"
         className="mb-6 mt-4 flex w-full flex-col items-center"
       >
-        <TabsList className="mx-auto">
-          <TabsTrigger value="top-up">One-time top up</TabsTrigger>
-          <TabsTrigger value="auto-refill">Auto-refill</TabsTrigger>
-        </TabsList>
+        <TabsLineList className="mx-auto">
+          <TabsLineTrigger value="top-up">One-time top up</TabsLineTrigger>
+          <TabsLineTrigger value="auto-refill">Auto-refill</TabsLineTrigger>
+        </TabsLineList>
         <div className="mt-4 w-full rounded-lg px-5 outline outline-1 outline-offset-2 outline-border-base">
-          <TabsContent value="top-up" className="flex flex-col">
-            <div className="mt-2 justify-start font-sans text-sm font-medium leading-snug text-foreground-strong">
+          <TabsLineContent value="top-up" className="flex flex-col">
+            <Text
+              variant="body-medium-lh-snug"
+              as="div"
+              tone="primary"
+              className="mt-2 justify-start"
+            >
               One-time top-up
-            </div>
-            <div className="mt-1 justify-start font-sans text-xs font-normal leading-tight text-foreground-tertiary">
+            </Text>
+            <Text
+              variant="small-lh-tight"
+              as="div"
+              tone="muted"
+              className="mt-1 justify-start"
+            >
               Enter an amount (min. $5) and add credits instantly.
-            </div>
+            </Text>
             <TopUpForm submitLabel="Top up" size="small" />
-          </TabsContent>
-          <TabsContent value="auto-refill" className="flex flex-col">
-            <div className="justify-start font-sans text-sm font-medium leading-snug text-foreground-strong">
+          </TabsLineContent>
+          <TabsLineContent value="auto-refill" className="flex flex-col">
+            <Text
+              variant="body-medium-lh-snug"
+              as="div"
+              tone="primary"
+              className="justify-start"
+            >
               Auto-refill
-            </div>
-            <div className="mt-1 justify-start font-sans text-xs font-normal leading-tight text-foreground-tertiary">
+            </Text>
+            <Text
+              variant="small-lh-tight"
+              as="div"
+              tone="muted"
+              className="mt-1 justify-start"
+            >
               Choose a one-time top-up or set up automatic refills.
-            </div>
+            </Text>
 
-            <Form {...autoRefillForm}>
+            <FormProvider {...autoRefillForm}>
               <form
                 onSubmit={autoRefillForm.handleSubmit(submitAutoTopUpConfig)}
                 className="my-6"
@@ -163,9 +189,14 @@ export function WalletRefill() {
                   Enable Auto-refill
                 </Button>
               </form>
-            </Form>
-          </TabsContent>
-          <div className="mb-3 justify-start font-sans text-xs font-normal leading-tight">
+            </FormProvider>
+          </TabsLineContent>
+          <Text
+            variant="small-lh-tight"
+            as="div"
+            tone="inherit"
+            className="mb-3 justify-start"
+          >
             <span className="text-foreground-tertiary">
               To update your billing details, head to{" "}
             </span>
@@ -175,9 +206,9 @@ export function WalletRefill() {
             >
               Billing settings
             </Link>
-          </div>
+          </Text>
         </div>
-      </Tabs>
+      </TabsLine>
     </div>
   );
 }

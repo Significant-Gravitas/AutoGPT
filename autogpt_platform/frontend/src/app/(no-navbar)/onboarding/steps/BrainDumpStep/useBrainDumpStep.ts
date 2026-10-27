@@ -214,6 +214,7 @@ export function useBrainDumpStep() {
     }
 
     await pendingSkip;
+    await saveWizardAnswers();
     const startedAt = performance.now();
     let finalizeLatencyMs: number;
     try {
@@ -329,6 +330,7 @@ export function useBrainDumpStep() {
     setScreen("processing");
     const recordingId = recorder.recordingId ?? crypto.randomUUID();
     await pendingSkip;
+    await saveWizardAnswers();
     try {
       const response = await finalizeBrainDump({
         recording_id: recordingId,
@@ -375,12 +377,22 @@ export function useBrainDumpStep() {
     const recordedId = recorder.recordingId;
     recorder.resetQueue();
     setIntroPath("B");
+    await saveWizardAnswers();
     // Nothing below can change where a skip goes, so the user is not kept
     // waiting on it.
     nextStep();
     const skip = recordSkip(recordedId);
     pendingSkip = skip;
     await skip;
+  }
+
+  // The server builds the team from the role in the saved progress, and a
+  // change reaches it only 200 ms later unless flushed.
+  async function saveWizardAnswers() {
+    await useOnboardingWizardStore
+      .getState()
+      .flushProgress?.()
+      .catch(() => undefined);
   }
 
   async function recordSkip(recordedId: string | null) {
@@ -555,5 +567,6 @@ export function useBrainDumpStep() {
     // Going back to the orb is a dead end when the browser already refused
     // the microphone, so the way back is offered only when it can work.
     isMicBlocked: recorder.permissionDenied,
+    isMicUnavailable: recorder.micUnavailable,
   };
 }

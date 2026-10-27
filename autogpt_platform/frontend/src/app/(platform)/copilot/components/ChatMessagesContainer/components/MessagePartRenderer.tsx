@@ -37,10 +37,13 @@ import {
 } from "../../CompactionCard/helpers";
 import { COMPACTION_PART_TYPE } from "../../ToolChain/helpers";
 import {
+  defaultWorkspaceFileUrl,
   extractWorkspaceArtifacts,
   isRetiredCompactionRow,
   resolveWorkspaceUrls,
+  workspaceLinkFileID,
 } from "../helpers";
+import { WorkspaceLink, WorkspaceLinksContext } from "./WorkspaceLink";
 import { ReasoningCollapse } from "./ReasoningCollapse";
 
 /**
@@ -53,12 +56,16 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 
   if (!src) return null;
 
+  const linkedFileID =
+    typeof src === "string" ? workspaceLinkFileID(src) : null;
+  if (linkedFileID) return <WorkspaceLink fileID={linkedFileID} label={alt} />;
+
   if (alt?.startsWith("video:") && typeof src === "string") {
     return (
       <span className="my-2 inline-block">
         <video
           controls
-          className="h-auto max-w-full rounded-md border border-zinc-200"
+          className="h-auto max-w-full rounded-md border border-border-base"
           preload="metadata"
         >
           <source src={src} />
@@ -73,7 +80,7 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
     <img
       src={src}
       alt={alt || "Image"}
-      className="h-auto max-w-full rounded-md border border-zinc-200"
+      className="h-auto max-w-full rounded-md border border-border-base"
       loading="lazy"
       {...rest}
     />
@@ -106,12 +113,20 @@ function TextWithArtifactCards({
   // Text reads first, with the artifact cards trailing.
   return (
     <>
-      <CredentialMentionMarkdown
-        components={STREAMDOWN_COMPONENTS}
-        className="[&_li]:py-0"
+      <WorkspaceLinksContext
+        value={{
+          artifacts,
+          readOnly,
+          fileURL: fileUrlBuilder ?? defaultWorkspaceFileUrl,
+        }}
       >
-        {resolved}
-      </CredentialMentionMarkdown>
+        <CredentialMentionMarkdown
+          components={STREAMDOWN_COMPONENTS}
+          className="[&_li]:py-0"
+        >
+          {resolved}
+        </CredentialMentionMarkdown>
+      </WorkspaceLinksContext>
       {artifacts.length > 0 && (
         <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
           {artifacts.map((artifact) => (
@@ -185,7 +200,7 @@ export function MessagePartRenderer({
       const isActive = reasoningState === "streaming";
       return (
         <ReasoningCollapse key={key} isActive={isActive}>
-          <pre className="whitespace-pre-wrap text-sm text-zinc-700">
+          <pre className="whitespace-pre-wrap text-sm text-foreground-body">
             {reasoningText}
           </pre>
         </ReasoningCollapse>
@@ -218,6 +233,7 @@ export function MessagePartRenderer({
         return (
           <div
             key={key}
+            // TODO(tokens): no exact role for bg-neutral-100, text-neutral-600
             className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm italic text-neutral-600"
           >
             {markerText}
