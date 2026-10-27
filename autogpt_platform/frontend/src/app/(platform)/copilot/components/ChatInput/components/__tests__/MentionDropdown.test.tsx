@@ -165,6 +165,36 @@ describe("MentionDropdown", () => {
     expect(option.textContent).not.toMatch(/mcp:|\bMcp\b|\bMCP\b/);
   });
 
+  it("offers to connect an integration after the empty state, searching for what was typed", () => {
+    const connect: MentionOption = { kind: "connect", query: "linear" };
+    const { onSelect } = renderDropdown({
+      options: [connect],
+      hasIntegrations: true,
+    });
+    expect(screen.getByText("No matching files or integrations.")).toBeTruthy();
+    const option = screen.getByRole("option", {
+      name: /Connect an integration/,
+    });
+    expect(option.getAttribute("aria-selected")).toBe("true");
+    expect(option.textContent).toContain("Search services for “linear”");
+    fireEvent.mouseDown(option);
+    expect(onSelect).toHaveBeenCalledWith(connect);
+  });
+
+  it("keeps connecting an integration as the last row below results", () => {
+    const { onHighlight } = renderDropdown({
+      options: [GOOGLE_ITEM, FILE_ITEM, { kind: "connect", query: "" }],
+      hasIntegrations: true,
+      highlightedIndex: 0,
+    });
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(3);
+    expect(options[2].textContent).toBe("Connect an integration");
+    expect(screen.queryByText(/No matching/)).toBeNull();
+    fireEvent.mouseEnter(options[2]);
+    expect(onHighlight).toHaveBeenCalledWith(2);
+  });
+
   it("drops the headings when files are not part of the picker", () => {
     renderDropdown({
       options: [GOOGLE_ITEM],

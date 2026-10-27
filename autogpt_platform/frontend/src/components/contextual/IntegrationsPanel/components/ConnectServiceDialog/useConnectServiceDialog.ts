@@ -17,6 +17,8 @@ interface Args {
   onOpenChange: (open: boolean) => void;
   onConnected?: (credential: CredentialsMetaResponse) => void;
   initialProviderId?: string | null;
+  /** Opens with the service search already filled in. */
+  initialQuery?: string;
 }
 
 export function useConnectServiceDialog({
@@ -24,6 +26,7 @@ export function useConnectServiceDialog({
   onOpenChange,
   onConnected,
   initialProviderId,
+  initialQuery,
 }: Args) {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
@@ -40,15 +43,20 @@ export function useConnectServiceDialog({
   useEffect(() => {
     if (open) {
       setSelectedId(initialProviderId ?? null);
+      setQuery(initialQuery ?? "");
     } else {
       setQuery("");
       setSelectedId(null);
       setDirection(1);
     }
-  }, [open, initialProviderId]);
+  }, [open, initialProviderId, initialQuery]);
 
+  // The search it opens with filters at once; only typing waits on the
+  // debounce, so the full list never flashes before the filtered one.
+  const filterQuery =
+    initialQuery && query === initialQuery ? query : debouncedQuery;
   const allProviders = toConnectableProviders(providersQuery.data ?? []);
-  const providers = filterConnectableProviders(allProviders, debouncedQuery);
+  const providers = filterConnectableProviders(allProviders, filterQuery);
 
   const selectedProvider: ConnectableProvider | null = selectedId
     ? (allProviders.find((p) => p.id === selectedId) ?? null)

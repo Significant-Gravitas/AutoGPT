@@ -97,7 +97,7 @@ describe("useChatMentions", () => {
     act(() => result.current.detect(fakeTextarea("hi @al")));
     expect(result.current.isOpen).toBe(true);
 
-    await waitFor(() => expect(result.current.options).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(2));
     await waitFor(() =>
       expect(mockListWorkspaceFiles).toHaveBeenCalledWith({
         limit: 8,
@@ -161,7 +161,7 @@ describe("useChatMentions", () => {
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.options).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(2));
 
     let handled = false;
     act(() => {
@@ -194,7 +194,7 @@ describe("useChatMentions", () => {
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.options).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(2));
 
     act(() => {
       result.current.onKeyDown(keyEvent("Escape"));
@@ -226,7 +226,7 @@ describe("useChatMentions", () => {
     );
 
     act(() => result.current.detect(fakeTextarea("hi @")));
-    await waitFor(() => expect(result.current.options).toHaveLength(2));
+    await waitFor(() => expect(result.current.options).toHaveLength(3));
 
     act(() => {
       expect(result.current.onKeyDown(keyEvent("ArrowDown"))).toBe(true);
@@ -265,7 +265,7 @@ describe("useChatMentions", () => {
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.options).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(2));
 
     for (const event of [
       keyEvent("Enter", true),
@@ -304,7 +304,7 @@ describe("useChatMentions", () => {
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.options).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(2));
 
     // A shrinking result list can leave the highlighted index pointing past
     // the end before the clamp effect runs — accepting that must be a no-op,
@@ -339,10 +339,12 @@ describe("useChatMentions", () => {
     expect(result.current.options).toEqual([
       { kind: "integration", integration: GITHUB },
       { kind: "integration", integration: GOOGLE },
+      { kind: "connect", query: "g" },
     ]);
 
-    await waitFor(() => expect(result.current.options).toHaveLength(3));
+    await waitFor(() => expect(result.current.options).toHaveLength(4));
     expect(result.current.options[2]).toEqual({ kind: "file", file: FILE });
+    expect(result.current.options[3]).toEqual({ kind: "connect", query: "g" });
   });
 
   it("narrows integrations by the typed query without waiting on the debounce", () => {
@@ -367,6 +369,7 @@ describe("useChatMentions", () => {
     act(() => result.current.detect(fakeTextarea("hi @goo")));
     expect(result.current.options).toEqual([
       { kind: "integration", integration: GOOGLE },
+      { kind: "connect", query: "goo" },
     ]);
   });
 
@@ -480,7 +483,7 @@ describe("useChatMentions", () => {
     );
   });
 
-  it("never opens when workspace files are off and nothing is connected", () => {
+  it("offers only the way to connect one when workspace files are off and nothing is connected", () => {
     const { result } = renderHook(
       () =>
         useChatMentions({
@@ -496,8 +499,8 @@ describe("useChatMentions", () => {
     );
 
     act(() => result.current.detect(fakeTextarea("hi @")));
-    expect(result.current.isOpen).toBe(false);
-    expect(result.current.options).toEqual([]);
+    expect(result.current.isOpen).toBe(true);
+    expect(result.current.options).toEqual([{ kind: "connect", query: "" }]);
     expect(mockListWorkspaceFiles).not.toHaveBeenCalled();
   });
 
@@ -522,7 +525,68 @@ describe("useChatMentions", () => {
     expect(result.current.isLoading).toBe(false);
     expect(result.current.options).toEqual([
       { kind: "integration", integration: GOOGLE },
+      { kind: "connect", query: "" },
     ]);
     expect(mockListWorkspaceFiles).not.toHaveBeenCalled();
+  });
+
+  it("hands the @query to the connect dialog and reopens it once connected", () => {
+    const setValue = vi.fn();
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "ask @linear",
+          setValue,
+          addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
+          includeWorkspaceFiles: false,
+          integrations: [GOOGLE],
+        }),
+      { wrapper: Wrapper },
+    );
+
+    const textarea = {
+      value: "ask @linear",
+      selectionStart: 11,
+      setSelectionRange: vi.fn(),
+    };
+    act(() => result.current.detect(textarea));
+    expect(result.current.options).toEqual([
+      { kind: "connect", query: "linear" },
+    ]);
+
+    act(() => {
+      expect(result.current.onKeyDown(keyEvent("Enter"))).toBe(true);
+    });
+    const request = { query: "linear", start: 4, end: 11 };
+    expect(result.current.connectRequest).toEqual(request);
+    expect(result.current.isOpen).toBe(false);
+    expect(setValue).not.toHaveBeenCalled();
+
+    act(() => result.current.resumeAfterConnect(request));
+    expect(result.current.connectRequest).toBeNull();
+    expect(result.current.isOpen).toBe(true);
+    expect(textarea.setSelectionRange).toHaveBeenCalledWith(11, 11);
+  });
+
+  it("does not reopen when the @query is no longer where it was", () => {
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "ask @lin",
+          setValue: vi.fn(),
+          addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
+          includeWorkspaceFiles: false,
+        }),
+      { wrapper: Wrapper },
+    );
+
+    act(() =>
+      result.current.resumeAfterConnect({ query: "linear", start: 4, end: 11 }),
+    );
+    expect(result.current.isOpen).toBe(false);
   });
 });

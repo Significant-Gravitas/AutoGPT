@@ -33,7 +33,8 @@ export interface MentionInput {
   setSelectionRange: (start: number, end: number) => void;
 }
 
-interface ActiveMention {
+/** The `@query` under the caret and where it sits in the message. */
+export interface ActiveMention {
   query: string;
   start: number;
   end: number;
@@ -42,7 +43,8 @@ interface ActiveMention {
 export type MentionOption =
   | { kind: "file"; file: WorkspaceFileItem }
   | { kind: "folder"; folder: WorkspaceFolder; subfolderCount: number }
-  | { kind: "integration"; integration: IntegrationMention };
+  | { kind: "integration"; integration: IntegrationMention }
+  | { kind: "connect"; query: string };
 
 interface Args {
   enabled: boolean;
@@ -66,6 +68,11 @@ interface Args {
  * adds it as an attachment chip; selecting an integration replaces the
  * `@query` with a credential reference rendered as an inline badge. Keyboard nav stays in the textarea (focus never leaves), so
  * this owns the highlight cursor and the key handler.
+ *
+ * The list always ends with "Connect an integration". Choosing it sets
+ * `connectRequest`, which the host turns into the connect dialog; once an
+ * account is connected, `resumeAfterConnect` reopens the same `@query` so
+ * the new account can be picked without retyping it.
  */
 export function useChatMentions({
   enabled,
@@ -81,6 +88,9 @@ export function useChatMentions({
   const isOpen = enabled && active !== null;
   const textareaRef = useRef<MentionInput | null>(null);
   const [pendingCaret, setPendingCaret] = useState<number | null>(null);
+  const [connectRequest, setConnectRequest] = useState<ActiveMention | null>(
+    null,
+  );
 
   const query = active?.query ?? "";
   const debouncedQuery = useDebouncedValue(query, QUERY_DEBOUNCE_MS);
@@ -127,8 +137,8 @@ export function useChatMentions({
     query,
   ).slice(0, INTEGRATION_RESULT_LIMIT);
 
-  // Integrations, then folders, then files: the keyboard cursor spans all
-  // three groups as one list.
+  // Integrations, then folders, then files, then the way to connect another
+  // integration: the keyboard cursor spans them all as one list.
   const options: MentionOption[] = [
     ...matchedIntegrations.map(
       (integration): MentionOption => ({ kind: "integration", integration }),
@@ -141,6 +151,7 @@ export function useChatMentions({
       }),
     ),
     ...files.map((file): MentionOption => ({ kind: "file", file })),
+    { kind: "connect", query },
   ];
 
   const {
@@ -162,17 +173,9 @@ export function useChatMentions({
     setPendingCaret(null);
   }, [pendingCaret, value]);
 
-  // With workspace files off and nothing connected there is nothing to pick,
-  // so a typed `@` must not open an empty dropdown.
-  const hasOptions = includeWorkspaceFiles || integrations.length > 0;
-
   function detect(textarea: MentionInput) {
     if (!enabled) return;
     textareaRef.current = textarea;
-    if (!hasOptions) {
-      setActive(null);
-      return;
-    }
     const caret = textarea.selectionStart ?? textarea.value.length;
     const beforeCaret = textarea.value.slice(0, caret);
     // A single-word token is always a query; a multi-word one is only kept
@@ -201,7 +204,9 @@ export function useChatMentions({
     // list can momentarily leave it pointing past the end — guard against the
     // out-of-bounds `undefined` before touching the option.
     if (!active || !option) return;
-    if (option.kind === "integration") {
+    if (option.kind === "connect") {
+      setConnectRequest(active);
+    } else if (option.kind === "integration") {
       const next = insertIntegrationMention(value, active, option.integration);
       setValue(next.value);
       setPendingCaret(next.caret);
@@ -214,6 +219,19 @@ export function useChatMentions({
     setActive(null);
   }
 
+  function cancelConnect() {
+    setConnectRequest(null);
+  }
+
+  function resumeAfterConnect(request: ActiveMention) {
+    setConnectRequest(null);
+    // The message can't change behind the dialog, but only reopen when the
+    // `@query` is still exactly where it was.
+    if (value.slice(request.start, request.end) !== `@${request.query}`) return;
+    setActive(request);
+    setPendingCaret(request.end);
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLElement>): boolean {
     if (!isOpen) return false;
     if (isKey(e, "Escape")) {
@@ -221,7 +239,6 @@ export function useChatMentions({
       close();
       return true;
     }
-    if (options.length === 0) return false;
     if (isKey(e, "ArrowDown")) {
       e.preventDefault();
       moveHighlight(1);
@@ -257,6 +274,9 @@ export function useChatMentions({
     close,
     accept,
     onKeyDown,
+    connectRequest,
+    cancelConnect,
+    resumeAfterConnect,
   };
 }
 
