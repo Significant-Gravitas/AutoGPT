@@ -138,7 +138,7 @@ class MCPCallResult(BaseModel):
     """Result from calling an MCP tool."""
 
     content: list[dict[str, Any]] = Field(default_factory=list)
-    structured_content: dict[str, Any] | None = None
+    structured_content: Any = None
     is_error: bool = False
 
 

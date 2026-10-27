@@ -9,8 +9,10 @@ from backend.copilot.tools.run_mcp_tool import RunMCPToolTool
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_copilot_receives_structured_only_result():
-    payload = {"base64Content": "SGVsbG8="}
+@pytest.mark.parametrize(
+    "payload", [{"base64Content": "SGVsbG8="}, [{"id": "1", "name": "Alice"}]]
+)
+async def test_copilot_receives_structured_only_result(payload):
     client = AsyncMock()
     client.call_tool.return_value = MCPCallResult(structured_content=payload)
     session = make_session("test-user")
