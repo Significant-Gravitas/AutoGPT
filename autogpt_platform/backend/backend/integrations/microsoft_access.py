@@ -36,6 +36,8 @@ from backend.util.settings import Settings
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 WORK_IQ_URL = "https://workiq.svc.cloud.microsoft/mcp"
+# The whole check waits on its slowest service; Graph's probes get the same.
+WORK_IQ_TIMEOUT_SECONDS = 20
 
 MicrosoftCapabilityStatus = Literal[
     "available",
@@ -145,7 +147,10 @@ async def _check_work_iq(credential: OAuth2Credentials) -> MicrosoftCapability:
         return _capability("work_iq", "unavailable")
     client = MCPClient(WORK_IQ_URL, authorization=f"Bearer {token}")
     try:
-        tools = await client.list_tools()
+        tools = await asyncio.wait_for(client.list_tools(), WORK_IQ_TIMEOUT_SECONDS)
+    except TimeoutError:
+        # A slow answer says nothing about the organization's setup.
+        return _capability("work_iq", "unavailable")
     except Exception:
         # Signed in and approved, so what remains is the organization's
         # Work IQ enablement or its usage billing.

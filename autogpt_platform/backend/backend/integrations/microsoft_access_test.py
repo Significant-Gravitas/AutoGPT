@@ -1,9 +1,11 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
+from backend.integrations import microsoft_access
 from backend.integrations.microsoft_access import check_microsoft_access
 from backend.integrations.oauth.microsoft_recovery import (
     MicrosoftAuthError,
@@ -221,3 +223,24 @@ async def test_organization_approval_only_for_this_deployments_app(mocker) -> No
     # Approving the deployment's app would grant nothing to a connection
     # another app issued.
     assert result.admin_consent_url is None
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_work_iq_doesnt_hold_up_the_check(mocker) -> None:
+    _work_iq(mocker)
+    stalled = asyncio.Event()
+
+    async def list_tools():
+        await stalled.wait()
+
+    client = microsoft_access.MCPClient.return_value
+    client.list_tools = list_tools
+    mocker.patch.object(microsoft_access, "WORK_IQ_TIMEOUT_SECONDS", 0.01)
+
+    result = await asyncio.wait_for(
+        check_microsoft_access(_connection("company", BASE)), timeout=5
+    )
+
+    # A slow answer says nothing about the organization's setup.
+    assert _statuses(result)["work_iq"] == "unavailable"
+    client.close.assert_awaited_once()
