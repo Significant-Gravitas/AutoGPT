@@ -13031,7 +13031,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Hire Brain Dump Plan",
-        "description": "Hire the plan's team, after the trial is confirmed.\n\nIdempotent: anyone already on the team is reported, not hired again.\nA hire that fails is reported in ``failed`` rather than failing the\nrequest, and the active expert limit stops the hiring where it is hit.",
+        "description": "Hire the plan's team, after the trial is confirmed.\n\nBehind the paywall, so a user who left Stripe without paying hires\nnobody, whatever the client does; with no paywall it is open.\n\nIdempotent: anyone already on the team is reported, not hired again.\nA hire that fails is reported in ``failed`` rather than failing the\nrequest, and the active expert limit stops the hiring where it is hit.",
         "operationId": "hire_brain_dump_plan",
         "responses": {
           "200": {

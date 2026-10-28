@@ -41,6 +41,7 @@ from backend.api.features.onboarding_dump.models import (
 from backend.api.features.onboarding_dump.role_task_sets import ROLE_FALLBACK_TASKS
 from backend.api.features.store.exceptions import VirusDetectedError
 from backend.blocks.typesafe._client import JevCallResult
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.understanding import BusinessUnderstandingInput
 from backend.util.exceptions import ExpertLimitExceededError
 from backend.util.gcs_utils_test import _gcs_http_error
@@ -252,6 +253,8 @@ class DumpStore:
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    # A paid-up user, unless a test says otherwise.
+    app.dependency_overrides[enforce_payment_paywall] = lambda: None
     yield
     app.dependency_overrides.clear()
 
@@ -1128,6 +1131,24 @@ def test_a_failed_hire_is_reported_and_the_rest_still_join(
         ],
         "failed": [{"template_id": "tpl-max", "name": "Max"}],
     }
+
+
+def test_a_user_still_behind_the_paywall_hires_nobody(
+    dumps: DumpStore,
+    plan_world: dict[str, AsyncMock],
+    lenient_client: fastapi.testclient.TestClient,
+):
+    # Left Stripe without paying: the plan was shown, the hire is refused.
+    finalize(input_mode="skipped")
+
+    def paywalled() -> None:
+        raise fastapi.HTTPException(status_code=402)
+
+    app.dependency_overrides[enforce_payment_paywall] = paywalled
+
+    assert lenient_client.get(PLAN_URL).status_code == 200
+    assert lenient_client.post(PLAN_HIRE_URL).status_code == 402
+    plan_world["hire_expert"].assert_not_awaited()
 
 
 def test_a_plan_with_nobody_on_its_team_hires_nobody(

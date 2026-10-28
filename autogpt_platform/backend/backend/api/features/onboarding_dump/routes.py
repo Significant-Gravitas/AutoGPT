@@ -38,6 +38,7 @@ from backend.api.features.onboarding_dump.plan_models import (
     PlanResponse,
 )
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.rate_limit import enforce_payment_paywall
 
 logger = logging.getLogger(__name__)
 
@@ -255,11 +256,18 @@ async def get_brain_dump_plan(
     return await plan_service.get_plan(user_id)
 
 
-@router.post("/plan/hire", operation_id="hire_brain_dump_plan")
+@router.post(
+    "/plan/hire",
+    operation_id="hire_brain_dump_plan",
+    dependencies=[fastapi.Depends(enforce_payment_paywall)],
+)
 async def hire_brain_dump_plan(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> PlanHireResponse:
     """Hire the plan's team, after the trial is confirmed.
+
+    Behind the paywall, so a user who left Stripe without paying hires
+    nobody, whatever the client does; with no paywall it is open.
 
     Idempotent: anyone already on the team is reported, not hired again.
     A hire that fails is reported in ``failed`` rather than failing the
