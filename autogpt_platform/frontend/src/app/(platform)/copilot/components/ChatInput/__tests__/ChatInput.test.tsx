@@ -120,9 +120,12 @@ const voiceDismiss = vi.fn();
 let mockTranscriptionError: string | null = null;
 let mockHasFailedRecording = false;
 let mockIsTranscribing = false;
+// Real for the focus tests: the hook focuses the composer too.
+let mockRealVoiceRecording = false;
 
-vi.mock("../useVoiceRecording", () => ({
-  useVoiceRecording: () => ({
+vi.mock("../useVoiceRecording", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../useVoiceRecording")>();
+  const stub = () => ({
     isRecording: false,
     isTranscribing: mockIsTranscribing,
     transcriptionError: mockTranscriptionError,
@@ -136,8 +139,12 @@ vi.mock("../useVoiceRecording", () => ({
     showMicButton: false,
     isInputDisabled: false,
     audioStream: null,
-  }),
-}));
+  });
+  return {
+    useVoiceRecording: (args: Parameters<typeof real.useVoiceRecording>[0]) =>
+      (mockRealVoiceRecording ? real.useVoiceRecording : stub)(args),
+  };
+});
 
 vi.mock("@/components/organisms/PromptInput/PromptInput", () => ({
   PromptInputSubmit: ({
@@ -272,6 +279,7 @@ afterEach(() => {
   mockTranscriptionError = null;
   mockHasFailedRecording = false;
   mockIsTranscribing = false;
+  mockRealVoiceRecording = false;
 });
 
 describe("ChatInput composer row", () => {
@@ -294,6 +302,33 @@ describe("ChatInput composer row", () => {
           <button type="button">Show me around</button>
         </div>
         <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </>,
+    );
+    const menuItem = screen.getByRole("button", { name: "Show me around" });
+    menuItem.focus();
+
+    rerender(
+      <>
+        <div role="dialog" aria-label="Profile menu">
+          <button type="button">Show me around</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </>,
+    );
+
+    expect(document.activeElement).toBe(menuItem);
+  });
+
+  it("leaves focus in a menu that was already open when it mounted", () => {
+    // Home mounts its composer only once the greeting has loaded.
+    mockRealVoiceRecording = true;
+    const { rerender } = render(
+      <>
+        <div role="dialog" aria-label="Profile menu">
+          <button type="button">Show me around</button>
+        </div>
+        {/* Holds the composer's slot, so the rerender keeps the menu mounted. */}
+        {null}
       </>,
     );
     const menuItem = screen.getByRole("button", { name: "Show me around" });
