@@ -62,6 +62,7 @@ Formulas render as LaTeX in replies and `.md` files: `$…$` inline, `$$…$$` f
 
 ### Files
 - What the user uploaded (in chat or on the Files page) and what `write_workspace_file` saved lives in workspace storage, which only `list_workspace_files`, `read_workspace_file` and `workspace://` links reach. It is not a folder on disk, not even `~/workspace`, so `ls`, Glob and Grep never find it. When the user or a routine mentions such a file, or one "in the workspace", look with `list_workspace_files(include_all_sessions=true)`: without it you see only this chat's files. Never call a file missing until that listing lacks it. In expert chats, this covers only the expert's own and delegated chats and the Files page, not unrelated chats. If the file is in an unrelated chat, ask the user to open it in Otto or put it on the Files page.
+- `read_workspace_file` text reads with `offset`/`length` may return less than requested. Continue from the end offset in its message with the remaining length until the section is complete. Use `save_to_path` to copy the whole file for `bash_exec`.
 - Share a file by embedding the `download_url` from `write_workspace_file`: `[report.csv](workspace://file_id#text/csv)`, `![chart](workspace://file_id#image/png)`, `![recording](workspace://file_id#video/mp4)`.
 - If a tool returns base64 data (image, PDF), don't put it in your reply. Save it with `write_workspace_file` (pass the data URI as content) and link it.
 - Pass large content between tools by reference, not by pasting it: `@@agptfile:<uri>[<start>-<end>]`. `<uri>` is `workspace://<file_id>`, `workspace:///<path>` or an absolute sandbox path. The 1-indexed line range is optional, and one argument can hold several refs. Example: `@@agptfile:workspace://abc123[10-50]`.
@@ -117,7 +118,7 @@ When you need the user's input to continue, ask with `ask_question` (`options` w
 # Not shown in local (bubblewrap) mode: --unshare-net blocks all network.
 _E2B_TOOL_NOTES = """
 ### SDK tool-result files in E2B
-When you use `read_tool_result` on an SDK tool-result file, E2B can copy it into the sandbox for `bash_exec`; if the response has a `[Sandbox copy available at ...]` note, use that exact path.
+When `read_tool_result` reads an SDK tool-result file from the first line, with the default `limit` and no `char_offset`/`char_limit`, it also copies the whole result into the sandbox for `bash_exec`. If the response starts with a `[Sandbox copy available at ...]` note, use that exact path.
 
 ### GitHub (`gh` and git)
 - Run `gh auth status` before calling `run_capability(id="tool:connect_integration", input={"provider": "github"})`, which asks the user to connect even if they already have. If it shows `Logged in`, `gh` and git over HTTPS already work.
@@ -174,7 +175,7 @@ def _build_storage_supplement(
 - {file_move_name_1_to_2}: `write_workspace_file(filename="output.json", source_path="/path/to/local/file")`
 - {file_move_name_2_to_1}: `read_workspace_file(path="tool-outputs/data.json", save_to_path="{working_dir}/data.json")`
 - Large SDK tool outputs are saved under `~/.claude/projects/.../tool-results/` (or `tool-outputs/`); read them with `read_tool_result` (full path as `file_path`).
-- `<tool-output-truncated workspace_path="...">` means the full output is in the workspace, not on local disk. Read sections with `read_workspace_file(path="...", offset=..., length=50000)`, or copy it with `save_to_path="{working_dir}/file.json"` to process with `bash_exec`. {SHARED_TOOL_NOTES}{extra_notes}"""
+- `<tool-output-truncated workspace_path="...">` means the full output is in the workspace, not on local disk. Read sections with `read_workspace_file(path="...", offset=..., length=50000)`; if a read returns less, continue from its returned end offset with the remaining length. Or copy it with `save_to_path="{working_dir}/file.json"` to process with `bash_exec`. {SHARED_TOOL_NOTES}{extra_notes}"""
 
 
 # Pre-built supplements for common environments
