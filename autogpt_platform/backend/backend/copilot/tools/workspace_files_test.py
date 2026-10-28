@@ -1286,6 +1286,7 @@ async def test_workspace_windows_stay_readable_without_another_saved_preview(
         patch(
             "backend.copilot.tools.base._persist_and_summarize", AsyncMock()
         ) as persist,
+        patch("backend.copilot.gate.reads.screen_read", AsyncMock(return_value=None)),
     ):
         while offset < len(content):
             result = await ReadWorkspaceFileTool().execute(
