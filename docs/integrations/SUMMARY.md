@@ -156,6 +156,7 @@
 * [Parallel Choice](block-integrations/parallel/choice.md)
 * [Parallel Score](block-integrations/parallel/score.md)
 * [Parallel Yes No](block-integrations/parallel/yes_no.md)
+* [Perplexity Search Search](block-integrations/perplexity_search/search.md)
 * [Replicate Flux Advanced](block-integrations/replicate/flux_advanced.md)
 * [Replicate Replicate Block](block-integrations/replicate/replicate_block.md)
 * [Rmfg Carts](block-integrations/rmfg/carts.md)
