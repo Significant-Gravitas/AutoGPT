@@ -57,3 +57,21 @@ async def test_threshold_without_a_user_does_not_read_the_flag(
     assert source == "default"
     assert threshold == cost_estimation.config.copilot_cost_confirmation_threshold_usd
     read_flag.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("served", [float("nan"), float("inf"), float("-inf")])
+async def test_non_finite_served_threshold_uses_the_configured_fallback(
+    mocker: pytest_mock.MockerFixture, served: float
+):
+    mocker.patch(
+        "backend.copilot.cost_estimation.evaluate_feature_flag_value",
+        new=AsyncMock(return_value=(served, True)),
+    )
+
+    threshold, source = await cost_estimation.resolve_cost_confirmation_threshold(
+        "user-1"
+    )
+
+    assert threshold == cost_estimation.config.copilot_cost_confirmation_threshold_usd
+    assert source == "default"

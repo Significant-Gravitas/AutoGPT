@@ -1,11 +1,19 @@
 """Tests for CoPilot cost-approval tokens."""
 
 import hashlib
-import logging
 
 import pytest
 
 from backend.copilot import cost_approval
+
+
+@pytest.fixture(autouse=True)
+def cost_approval_signing_key(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        cost_approval.settings.secrets,
+        "cost_approval_signing_key",
+        "test-cost-approval-signing-key",
+    )
 
 
 @pytest.mark.asyncio
@@ -169,17 +177,9 @@ def test_missing_dedicated_key_derives_a_stable_secret_from_encryption_key(
     assert cost_approval._approval_secret() == expected
 
 
-def test_missing_signing_material_warns_and_stays_stable(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-):
+def test_missing_signing_material_refuses_to_sign(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(cost_approval.settings.secrets, "cost_approval_signing_key", "")
     monkeypatch.setattr(cost_approval.settings.secrets, "encryption_key", "")
-    monkeypatch.setattr(cost_approval, "_warned_missing_signing_key", False)
 
-    with caplog.at_level(logging.WARNING, logger="backend.copilot.cost_approval"):
-        first = cost_approval._approval_secret()
-        second = cost_approval._approval_secret()
-
-    assert first == second == cost_approval._DEV_FALLBACK_SECRET
-    assert "[SECURITY]" in caplog.text
-    assert caplog.text.count("[SECURITY]") == 1
+    with pytest.raises(cost_approval.CostApprovalSigningUnavailable):
+        cost_approval._approval_secret()

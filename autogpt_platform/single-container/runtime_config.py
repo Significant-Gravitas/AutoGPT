@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
-CONFIG_VERSION = "2"
+CONFIG_VERSION = "3"
 SAFE_SECRET = re.compile(r"^[A-Za-z0-9._~-]+={0,2}$")
 SAFE_USERNAME = re.compile(r"^[A-Za-z0-9._-]+$")
 SAFE_DNS_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
@@ -154,16 +154,21 @@ def main() -> int:
 def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[str, str]:
     """Return the existing secrets or atomically create them on first boot.
 
-    A version 1 config, written before INTERNAL_API_KEY existed, gets one. It
-    is saved as the current version once it passes every check, so a boot that
-    fails them leaves the file as it was."""
+    A version 1 config, written before INTERNAL_API_KEY existed, gets one.
+    A version 2 config, written before COST_APPROVAL_SIGNING_KEY existed,
+    gets one. It is saved as the current version once it passes every check,
+    so a boot that fails them leaves the file as it was."""
     if path.is_symlink():
         raise ValueError(f"refusing symlink at {path}")
     if path.exists():
         values = _read_config(path)
-        upgrade = values.get("AUTOGPT_RUNTIME_CONFIG_VERSION") == "1"
-        if upgrade:
+        upgrade = False
+        if values.get("AUTOGPT_RUNTIME_CONFIG_VERSION") == "1":
             values = _upgraded_from_version_1(values, environment)
+            upgrade = True
+        if values.get("AUTOGPT_RUNTIME_CONFIG_VERSION") == "2":
+            values = _upgraded_from_version_2(values, environment)
+            upgrade = True
         _validate_values(values)
         _verify_environment_matches(values, environment)
         if upgrade:
@@ -730,6 +735,23 @@ def _upgraded_from_version_1(
     }
 
 
+def _upgraded_from_version_2(
+    values: dict[str, str], environment: Mapping[str, str]
+) -> dict[str, str]:
+    """A version 2 config is a version 3 config without COST_APPROVAL_SIGNING_KEY."""
+    if "COST_APPROVAL_SIGNING_KEY" in values:
+        raise ValueError("runtime configuration has missing or unknown keys")
+    return {
+        **values,
+        "AUTOGPT_RUNTIME_CONFIG_VERSION": "3",
+        "COST_APPROVAL_SIGNING_KEY": _configured_or_generated(
+            environment,
+            "COST_APPROVAL_SIGNING_KEY",
+            SECRET_GENERATORS["COST_APPROVAL_SIGNING_KEY"],
+        ),
+    }
+
+
 def _configured_or_generated_vapid(
     environment: Mapping[str, str],
 ) -> tuple[str, str]:
@@ -848,6 +870,7 @@ def _validate_values(values: dict[str, str]) -> None:
         "BETTER_AUTH_SECRET",
         "ENCRYPTION_KEY",
         "UNSUBSCRIBE_SECRET_KEY",
+        "COST_APPROVAL_SIGNING_KEY",
         "GRAPHITI_FALKORDB_PASSWORD",
         "INTERNAL_API_KEY",
         "VAPID_PRIVATE_KEY",

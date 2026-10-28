@@ -5,13 +5,10 @@ import binascii
 import hashlib
 import hmac
 import json
-import logging
 import time
 from typing import Literal
 
 from backend.util.settings import Settings
-
-logger = logging.getLogger(__name__)
 
 CopilotMode = Literal["fast", "extended_thinking"]
 CopilotLlmModel = Literal["standard", "advanced"]
@@ -22,8 +19,10 @@ CopilotLlmModel = Literal["standard", "advanced"]
 HISTORY_MESSAGE_WINDOW = 30
 
 settings = Settings()
-_warned_missing_signing_key = False
-_DEV_FALLBACK_SECRET = b"autogpt-cost-approval-dev-fallback"
+
+
+class CostApprovalSigningUnavailable(RuntimeError):
+    """No deployment key is configured, so a token must not be signed."""
 
 
 async def generate_cost_approval_token(
@@ -140,7 +139,8 @@ def _approval_secret() -> bytes:
     """Return a signing key shared by every worker in the deployment.
 
     A dedicated key is preferred. When it is unset, the key is derived from
-    ``encryption_key`` so workers do not each invent a secret at import time.
+    ``encryption_key``. With neither set, signing is refused: a committed
+    fallback would let a client forge a valid approval token.
     """
     dedicated = settings.secrets.cost_approval_signing_key
     if dedicated:
@@ -150,15 +150,10 @@ def _approval_secret() -> bytes:
         return hashlib.sha256(
             b"autogpt-cost-approval-v1:" + encryption_key.encode("utf-8")
         ).digest()
-    global _warned_missing_signing_key
-    if not _warned_missing_signing_key:
-        logger.warning(
-            "[SECURITY] No cost_approval_signing_key or encryption_key configured: "
-            "cost-approval tokens will use a shared development fallback. "
-            "Set COST_APPROVAL_SIGNING_KEY for production deployments."
-        )
-        _warned_missing_signing_key = True
-    return _DEV_FALLBACK_SECRET
+    raise CostApprovalSigningUnavailable(
+        "Set COST_APPROVAL_SIGNING_KEY or ENCRYPTION_KEY before signing "
+        "cost-approval tokens"
+    )
 
 
 def _sign_payload(encoded_payload: str) -> str:

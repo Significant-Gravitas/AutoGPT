@@ -6,6 +6,7 @@ estimate and confirmation forces a new estimate.
 """
 
 import logging
+import math
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -124,10 +125,12 @@ async def resolve_cost_confirmation_threshold(
     if not evaluated:
         return fallback, "default"
     try:
-        threshold = max(0.0, float(raw_value))
+        threshold = float(raw_value)
     except (TypeError, ValueError):
         return fallback, "default"
-    return threshold, "launchdarkly"
+    if not math.isfinite(threshold):
+        return fallback, "default"
+    return max(0.0, threshold), "launchdarkly"
 
 
 async def _resolve_path_and_model(
