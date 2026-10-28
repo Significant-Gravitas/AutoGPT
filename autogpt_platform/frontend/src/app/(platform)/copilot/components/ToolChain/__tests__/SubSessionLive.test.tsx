@@ -431,6 +431,17 @@ describe("SubSessionLive", () => {
     expect(screen.queryByText("Looking for the right agent now.")).toBeNull();
   });
 
+  it("shows a queued delegation as running once its session runs", async () => {
+    server.use(subSession([], { chat_status: "running", active_stream: null }));
+
+    render(
+      <SubSessionCard output={{ status: "queued", sub_session_id: "sub-1" }} />,
+    );
+
+    expect(await screen.findByText("running")).toBeDefined();
+    expect(screen.queryByText("queued")).toBeNull();
+  });
+
   it("says live updates failed instead of spinning on running forever", async () => {
     server.use(failingSubSession());
 

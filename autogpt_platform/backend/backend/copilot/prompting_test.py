@@ -207,6 +207,29 @@ class TestTeamBuildingSupplement:
         assert "One proposal at a time" in result
         assert "Never hire silently" in result
 
+    def test_a_hire_for_a_known_task_hands_it_off_on_the_card(self):
+        """SECRT-3138: the approval is the hand-off, never a question in text."""
+        result = prompting.get_team_building_supplement(
+            experts_enabled=True, expert_id=None
+        )
+
+        assert "handoff_title" in result
+        assert "handoff_task" in result
+        assert (
+            "Never ask in text whether to hand a task to a new hire from "
+            "`tool:hire_expert`." in result
+        )
+
+    def test_a_raised_expert_is_not_barred_from_being_asked_about_a_task(self):
+        """A raise_expert hire has no hand-off card, so Otto may still ask
+        before delegating to it ("Never delegate silently"). The rule that
+        forbids asking in text names only tool:hire_expert hires (#16101)."""
+        result = prompting.get_team_building_supplement(
+            experts_enabled=True, expert_id=None
+        )
+
+        assert "Never ask in text whether to hand a task to a new hire." not in result
+
     def test_an_expert_session_is_not_told_to_hire(self):
         result = prompting.get_team_building_supplement(
             experts_enabled=True, expert_id="expert-a"
