@@ -10,7 +10,12 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockType,
 )
-from backend.data.execution import ExecutionContext, ExecutionStatus, NodesInputMasks
+from backend.data.execution import (
+    ExecutionContext,
+    ExecutionStatus,
+    ExecutionTrigger,
+    NodesInputMasks,
+)
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.json import validate_with_jsonschema
 from backend.util.retry import func_retry
@@ -102,6 +107,8 @@ class AgentExecutorBlock(Block):
             dry_run=execution_context.dry_run,
             organization_id=execution_context.organization_id,
             team_id=execution_context.team_id,
+            trigger=ExecutionTrigger.SUBGRAPH,
+            trigger_ref=graph_exec_id,
         )
 
         logger = execution_utils.LogMetadata(

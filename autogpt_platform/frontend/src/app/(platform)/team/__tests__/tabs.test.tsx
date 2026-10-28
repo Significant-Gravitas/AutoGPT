@@ -13,20 +13,6 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? { enabled: true, ready: true }
-        : actual.useFlagStatus(flag as never),
-  };
-});
-
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -81,19 +67,18 @@ beforeEach(() => {
   );
 });
 
-describe("TeamPage tabs", () => {
-  test("opens on Team Overview and offers Pod board", async () => {
+describe("TeamPage layout", () => {
+  test("shows the roster under a plain header, with no tabs", async () => {
     server.use(getListExpertsMockHandler([maria]));
 
     render(<TeamPage />);
 
-    const overview = await screen.findByRole("tab", { name: "Team Overview" });
-    expect(overview.getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByRole("tab", { name: "Pod board" })).toBeDefined();
-    expect(screen.queryByRole("tab", { name: "All tasks" })).toBeNull();
+    expect(await screen.findByText("Maria")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Team" })).toBeDefined();
+    expect(screen.queryByRole("tab")).toBeNull();
   });
 
-  test("Team Overview lists every expert without pod sections", async () => {
+  test("lists every expert without pod sections", async () => {
     const growth: ExpertPod = {
       id: "pod-growth",
       name: "Growth",
@@ -108,32 +93,7 @@ describe("TeamPage tabs", () => {
 
     expect(await screen.findByText("Maria")).toBeDefined();
     expect(screen.getByText("Lee")).toBeDefined();
-    // Pod grouping belongs to the Pod board tab, not the overview grid.
     expect(screen.queryByRole("heading", { name: "Growth" })).toBeNull();
-  });
-
-  test("Pod board tells you how to start when there are no pods and no experts", async () => {
-    const user = userEvent.setup();
-    server.use(getListExpertsMockHandler([]));
-
-    render(<TeamPage />);
-    await user.click(await screen.findByRole("tab", { name: "Pod board" }));
-
-    expect(await screen.findByText("No pods yet")).toBeDefined();
-  });
-
-  test("Pod board lists only pods, never an ungrouped bucket", async () => {
-    const user = userEvent.setup();
-    server.use(getListExpertsMockHandler([maria]));
-
-    render(<TeamPage />);
-    await user.click(await screen.findByRole("tab", { name: "Pod board" }));
-
-    const board = await screen.findByRole("region", { name: "Pods" });
-    expect(within(board).getByRole("heading", { name: "Pods" })).toBeDefined();
-    expect(within(board).getByText("No pods yet")).toBeDefined();
-    expect(screen.queryByRole("heading", { name: "Ungrouped" })).toBeNull();
-    expect(within(board).queryByText("Maria")).toBeNull();
   });
 });
 
@@ -146,15 +106,15 @@ describe("TeamRoster toolbar", () => {
     expect(await screen.findByText("Maria")).toBeDefined();
 
     await user.type(
-      screen.getByRole("searchbox", { name: "Search experts" }),
+      screen.getByRole("textbox", { name: "Search experts" }),
       "resear",
     );
 
     // Matches Lee on role, not name.
     expect(screen.getByText("Lee")).toBeDefined();
     expect(screen.queryByText("Maria")).toBeNull();
-    // Autopilot is pinned, but steps aside once the roster is narrowed.
-    expect(screen.queryByText("Autopilot")).toBeNull();
+    // Otto is pinned, but steps aside once the roster is narrowed.
+    expect(screen.queryByText("Otto")).toBeNull();
   });
 
   test("says so when nothing matches the search", async () => {
@@ -165,7 +125,7 @@ describe("TeamRoster toolbar", () => {
     expect(await screen.findByText("Maria")).toBeDefined();
 
     await user.type(
-      screen.getByRole("searchbox", { name: "Search experts" }),
+      screen.getByRole("textbox", { name: "Search experts" }),
       "nobody",
     );
 
@@ -175,7 +135,6 @@ describe("TeamRoster toolbar", () => {
   });
 
   test("the paused filter keeps only experts with paused schedules", async () => {
-    const user = userEvent.setup();
     const pausedLee = makeExpert({
       id: "expert-lee",
       name: "Lee",
@@ -183,11 +142,14 @@ describe("TeamRoster toolbar", () => {
     });
     server.use(getListExpertsMockHandler([maria, pausedLee]));
 
+    const user = userEvent.setup();
     render(<TeamPage />);
     expect(await screen.findByText("Maria")).toBeDefined();
 
-    await user.click(screen.getByRole("combobox", { name: /filter/i }));
-    await user.click(await screen.findByRole("option", { name: "Paused" }));
+    await user.click(screen.getByRole("button", { name: /^Filter experts/ }));
+    await user.click(
+      await screen.findByRole("menuitemradio", { name: "Paused" }),
+    );
 
     expect(screen.getByText("Lee")).toBeDefined();
     expect(screen.queryByText("Maria")).toBeNull();
@@ -237,23 +199,24 @@ describe("AutopilotCard", () => {
     render(<TeamPage />);
     expect(await screen.findByText("Lee")).toBeDefined();
 
-    const autopilot = screen.getByRole("region", { name: "Autopilot" });
+    const autopilot = screen.getByRole("region", { name: "Otto" });
     expect(getStatValue(autopilot, "Skills")).toBe("3");
     expect(getStatValue(autopilot, "Schedules")).toBe("1");
     expect(getStatValue(autopilot, "Workflows")).toBe("1");
   });
 
-  test("zeroes out the totals for a team with nothing set up", async () => {
+  test("leaves out the totals for a team with nothing set up", async () => {
     server.use(getListExpertsMockHandler([maria]));
 
     render(<TeamPage />);
     expect(await screen.findByText("Maria")).toBeDefined();
 
-    const autopilot = screen.getByRole("region", { name: "Autopilot" });
-    expect(getStatValue(autopilot, "Skills")).toBe("0");
-    expect(getStatValue(autopilot, "Schedules")).toBe("0");
-    expect(getStatValue(autopilot, "Workflows")).toBe("0");
-    expect(within(autopilot).getByText("Built in")).toBeDefined();
+    const autopilot = screen.getByRole("region", { name: "Otto" });
+    // A zero total is left out of the meta line rather than shown as "0".
+    expect(within(autopilot).queryByText("Skills")).toBeNull();
+    expect(within(autopilot).queryByText("Schedules")).toBeNull();
+    expect(within(autopilot).queryByText("Workflows")).toBeNull();
+    expect(within(autopilot).queryByText("Built in")).toBeNull();
     expect(within(autopilot).queryByText("Budget")).toBeNull();
     expect(
       within(autopilot).getByRole("button", { name: "Chat" }),
@@ -261,16 +224,16 @@ describe("AutopilotCard", () => {
     expect(within(autopilot).queryByRole("link", { name: "Edit" })).toBeNull();
   });
 
-  test("links its body to the Autopilot page", async () => {
+  test("links its body to the Otto page", async () => {
     server.use(getListExpertsMockHandler([maria]));
 
     render(<TeamPage />);
     expect(await screen.findByText("Maria")).toBeDefined();
 
-    const autopilot = screen.getByRole("region", { name: "Autopilot" });
+    const autopilot = screen.getByRole("region", { name: "Otto" });
     expect(
       within(autopilot)
-        .getByRole("link", { name: "View Autopilot" })
+        .getByRole("link", { name: "View Otto" })
         .getAttribute("href"),
     ).toBe("/team/autopilot");
   });

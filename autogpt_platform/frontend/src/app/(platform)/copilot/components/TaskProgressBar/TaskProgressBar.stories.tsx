@@ -1,4 +1,4 @@
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { ChatInput } from "../ChatInput/ChatInput";
 import { TaskProgressBar } from "./TaskProgressBar";
@@ -155,7 +155,7 @@ export const Empty: Story = {
     docs: {
       description: {
         story:
-          "With no tasks the component returns null so the above-input area stays clean until Autopilot populates a list.",
+          "With no tasks the component returns null so the above-input area stays clean until a task list is created.",
       },
     },
   },

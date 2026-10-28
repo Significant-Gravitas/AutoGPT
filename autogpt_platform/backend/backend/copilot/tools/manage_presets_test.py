@@ -147,6 +147,7 @@ async def test_list_second_page_is_exactly_scoped_to_current_expert():
         graph_id=None,
         expert_id="expert-a",
         filter_by_expert=True,
+        organization_id=None,
     )
 
 

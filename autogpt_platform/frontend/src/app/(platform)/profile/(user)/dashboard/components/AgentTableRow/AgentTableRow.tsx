@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { Text } from "@/components/atoms/Text/Text";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -18,6 +19,7 @@ import {
   StarIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useImageFallback } from "@/hooks/useImageFallback";
 
 export type AgentTableRowProps = {
   storeAgentSubmission: StoreSubmission;
@@ -57,6 +59,7 @@ export const AgentTableRow = ({
     review_avg_rating,
   } = storeAgentSubmission;
 
+  const { showImage, handleImageError } = useImageFallback(image_urls?.[0]);
   const canModify = status === SubmissionStatus.PENDING;
 
   return (
@@ -64,25 +67,28 @@ export const AgentTableRow = ({
       data-testid="agent-table-row"
       data-agent-id={graph_id}
       data-submission-id={listing_version_id}
-      className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex"
+      // TODO(tokens): no exact role (border-neutral-300 #D4D4D4, dark:border-neutral-700, dark:hover:bg-neutral-800)
+      className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-background dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex"
     >
-      <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
+      <div className="grid w-full grid-cols-[minmax(400px,1fr)_180px_140px_100px_100px_40px] items-center gap-4">
         {/* Agent info column */}
         <div className="flex items-center gap-4">
-          {image_urls?.[0] ? (
-            <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-[10px] bg-zinc-100">
+          {showImage && image_urls?.[0] ? (
+            <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-[10px] bg-surface-hover">
               <Image
-                src={image_urls?.[0] ?? ""}
+                src={image_urls[0]}
+                unoptimized={isLocalStoreMediaUrl(image_urls[0])}
                 alt={agentName}
                 fill
                 style={{ objectFit: "cover" }}
+                onError={handleImageError}
               />
             </div>
           ) : (
-            <div className="flex aspect-video w-32 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-zinc-100">
+            <div className="flex aspect-video w-32 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-surface-hover">
               <Icon
                 icon={ImageNotFound01Icon}
-                className="h-8 w-8 text-zinc-800"
+                className="h-8 w-8 text-foreground-emphasis"
               />
             </div>
           )}
@@ -90,6 +96,7 @@ export const AgentTableRow = ({
             <div className="flex items-center gap-2">
               <Text
                 variant="h3"
+                // TODO(tokens): no exact role (text-neutral-800 #262626, dark:text-neutral-200)
                 className="line-clamp-1 text-ellipsis text-neutral-800 dark:text-neutral-200"
                 size="large-medium"
               >
@@ -98,6 +105,7 @@ export const AgentTableRow = ({
               <Text
                 variant="body"
                 size="small"
+                // TODO(tokens): no exact role (text-neutral-500 #737373, dark:text-neutral-400)
                 className="text-neutral-500 dark:text-neutral-400"
               >
                 v{graph_version}
@@ -105,6 +113,7 @@ export const AgentTableRow = ({
             </div>
             <Text
               variant="body"
+              // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
               className="line-clamp-1 text-ellipsis text-neutral-600 dark:text-neutral-400"
             >
               {description}
@@ -113,7 +122,10 @@ export const AgentTableRow = ({
         </div>
 
         {/* Date column */}
-        <div className="text-sm text-neutral-600 dark:text-neutral-400">
+        <div
+          // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
+          className="text-sm text-neutral-600 dark:text-neutral-400"
+        >
           {submitted_at && submitted_at.toLocaleDateString()}
         </div>
 
@@ -123,7 +135,10 @@ export const AgentTableRow = ({
         </div>
 
         {/* Runs column */}
-        <div className="text-right text-sm text-neutral-600 dark:text-neutral-400">
+        <div
+          // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
+          className="text-right text-sm text-neutral-600 dark:text-neutral-400"
+        >
           {run_count?.toLocaleString() ?? "0"}
         </div>
 
@@ -137,7 +152,10 @@ export const AgentTableRow = ({
               <Icon icon={StarIcon} className="h-2 w-2" />
             </div>
           ) : (
-            <span className="text-sm text-neutral-600 dark:text-neutral-400">
+            <span
+              // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
+              className="text-sm text-neutral-600 dark:text-neutral-400"
+            >
               No reviews
             </span>
           )}
@@ -149,45 +167,73 @@ export const AgentTableRow = ({
             <DropdownMenu.Trigger data-testid="agent-table-row-actions">
               <Icon
                 icon={MoreVerticalIcon}
+                // TODO(tokens): no exact role (text-neutral-800 #262626)
                 className="h-5 w-5 text-neutral-800"
               />
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
+            <DropdownMenu.Content
+              // TODO(tokens): no exact role (dark:bg-gray-800)
+              className="z-10 rounded-xl border bg-surface p-1 shadow-md dark:bg-gray-800"
+            >
               {canModify ? (
                 <DropdownMenu.Item
                   onSelect={handleEdit}
+                  // TODO(tokens): no exact role (hover:bg-gray-100 #F3F4F6, dark:hover:bg-gray-700)
                   className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   <Icon
                     icon={PencilIcon}
+                    // TODO(tokens): no exact role (dark:text-gray-100)
                     className="mr-2 h-4 w-4 dark:text-gray-100"
                   />
-                  <span className="dark:text-gray-100">Edit</span>
+                  <span
+                    // TODO(tokens): no exact role (dark:text-gray-100)
+                    className="dark:text-gray-100"
+                  >
+                    Edit
+                  </span>
                 </DropdownMenu.Item>
               ) : (
                 <DropdownMenu.Item
                   onSelect={handleView}
+                  // TODO(tokens): no exact role (hover:bg-gray-100 #F3F4F6, dark:hover:bg-gray-700)
                   className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   <Icon
                     icon={EyeIcon}
+                    // TODO(tokens): no exact role (dark:text-gray-100)
                     className="mr-2 h-4 w-4 dark:text-gray-100"
                   />
-                  <span className="dark:text-gray-100">View</span>
+                  <span
+                    // TODO(tokens): no exact role (dark:text-gray-100)
+                    className="dark:text-gray-100"
+                  >
+                    View
+                  </span>
                 </DropdownMenu.Item>
               )}
               {canModify && (
                 <>
-                  <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
+                  <DropdownMenu.Separator
+                    // TODO(tokens): no exact role (bg-gray-300 #D1D5DB, dark:bg-gray-600)
+                    className="my-1 h-px bg-gray-300 dark:bg-gray-600"
+                  />
                   <DropdownMenu.Item
                     onSelect={handleDelete}
-                    className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    // TODO(tokens): no exact role (hover:bg-gray-100 #F3F4F6, dark:hover:bg-gray-700)
+                    className="flex cursor-pointer items-center rounded-md px-3 py-2 text-error hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     <Icon
                       icon={Delete02Icon}
-                      className="mr-2 h-4 w-4 text-red-500 dark:text-red-400"
+                      // TODO(tokens): no exact role (dark:text-red-400)
+                      className="mr-2 h-4 w-4 text-error dark:text-red-400"
                     />
-                    <span className="dark:text-red-400">Delete</span>
+                    <span
+                      // TODO(tokens): no exact role (dark:text-red-400)
+                      className="dark:text-red-400"
+                    >
+                      Delete
+                    </span>
                   </DropdownMenu.Item>
                 </>
               )}

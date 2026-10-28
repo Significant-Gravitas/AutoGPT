@@ -1,37 +1,55 @@
 """The brain-dump pipeline: parts → audio → transcript → understanding.
 
 Every step advances ``OnboardingBrainDump.status`` so the loading screen
-can narrate honestly, and no failure ever deletes the audio — a failed
-dump stays downloadable and retryable.
+can narrate honestly. Only the transcript is kept: the recording is deleted
+as soon as the transcript is stored. Until then no failure deletes it, so a
+failed take stays downloadable and retryable until the retention sweep
+takes it (``storage.AUDIO_RETENTION``).
 """
 
 import asyncio
 import logging
 import time
 
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, HTTPException
 from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
+from pydantic import ValidationError
 
+from backend.api.features.experts.experts_db import list_templates
+from backend.api.features.experts.models import Expert
 from backend.api.features.onboarding_dump import (
     db,
     intro,
     prompts,
     quality,
     recommend,
+    recommend_experts,
     storage,
     transcription,
 )
 from backend.api.features.onboarding_dump.models import (
+    AUDIO_FILE_EXTENSIONS,
+    RECORDING_FILENAME_PREFIX,
+    ExpertRecommendations,
     FinalizeResponse,
     IntroCardResponse,
+    RecommendedExpertsResponse,
     RecommendedProvider,
     RecommendedProvidersResponse,
     SuggestedPrompt,
 )
+from backend.api.features.onboarding_dump.rate_limit import (
+    enforce_personalization_budget,
+)
 from backend.copilot.db import user_has_any_session
-from backend.data.onboarding import format_brain_dump_for_extraction
+from backend.data.onboarding import (
+    format_brain_dump_for_extraction,
+    get_user_onboarding,
+)
+from backend.data.onboarding_role import OTHER
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -118,6 +136,14 @@ async def finalize_voice_dump(
             current.status, current.transcript, BrainDumpInputMode.voice
         )
 
+    # A retry of a failed take stores the recording again, so the copy the
+    # failed attempt stored has to go too once this one is transcribed.
+    earlier_audio_path = (
+        existing.audioPath
+        if existing is not None and existing.recordingId == recording_id
+        else None
+    )
+    await _admit_processing(user_id, recording_id)
     audio = await storage.assemble_parts(user_id, recording_id)
     if not audio:
         # Nothing buffered server-side. The browser still holds every part
@@ -178,20 +204,26 @@ async def finalize_voice_dump(
         time.monotonic() - started_at,
         len(result.text),
     )
-    await db.update_dump(
+    # The row forgets the recording in the same write that stores the
+    # transcript, so it never points at a file that is about to go.
+    transcript_saved = await db.update_dump(
         user_id,
         recording_id,
         status=BrainDumpStatus.transcribed,
         transcript=result.text,
         transcriptLang=result.language,
+        audioPath=None,
     )
+    if transcript_saved:
+        await _delete_recordings([audio_path, earlier_audio_path])
     # The transcript is stored *before* the gate so a rejected dump keeps
-    # its text (and audio) for recovery and debugging — the gate only
-    # decides whether the personalized pipeline below may run on it.
-    quality_error = await quality.check_transcript_quality(result.text)
-    if quality_error is not None:
+    # its text for debugging — the gate only decides whether the
+    # personalized pipeline below may run on it. The recording is not kept
+    # for a rejected take either: the user re-records from the browser.
+    rejection = await quality.check_transcript_quality(result.text)
+    if rejection is not None:
         return await _quality_rejection(
-            user_id, recording_id, quality_error, BrainDumpInputMode.voice
+            user_id, recording_id, rejection, result.text, BrainDumpInputMode.voice
         )
     # Finalize only does the audio work. Extraction and the Sonnet
     # greeting are LLM calls that can outlive the frontend proxy's 30s
@@ -263,14 +295,15 @@ async def finalize_typed_dump(
             )
         return _pipeline_response(current.status, current.transcript, current.inputMode)
 
+    await _admit_processing(user_id, recording_id)
     # Typed dumps skip transcription but not the gate: a keyboard can
     # produce "asdf asdf asdf" just as easily as a silent mic produces a
     # hallucinated transcript. Only the claim winner reaches this point,
     # so concurrent retries never run duplicate quality checks.
-    quality_error = await quality.check_transcript_quality(text)
-    if quality_error is not None:
+    rejection = await quality.check_transcript_quality(text)
+    if rejection is not None:
         return await _quality_rejection(
-            user_id, recording_id, quality_error, BrainDumpInputMode.typed
+            user_id, recording_id, rejection, text, BrainDumpInputMode.typed
         )
 
     background_tasks.add_task(
@@ -285,26 +318,60 @@ async def finalize_typed_dump(
     )
 
 
+async def _delete_recordings(audio_paths: list[str | None]) -> None:
+    """Delete a transcribed take's recordings, best effort.
+
+    The transcript is already stored, so a failed delete must not fail the
+    take. The row no longer points at the files, and the retention sweep
+    deletes them within ``storage.AUDIO_RETENTION``. The log carries no
+    paths: they carry user IDs.
+    """
+    paths = [path for path in audio_paths if path]
+    outcomes = await asyncio.gather(
+        *(storage.delete_audio(path) for path in paths), return_exceptions=True
+    )
+    errors = [type(o).__name__ for o in outcomes if isinstance(o, BaseException)]
+    if errors:
+        logger.warning(
+            f"Brain dump recordings not deleted after transcription ({len(errors)} "
+            f"of {len(paths)}), left to the retention sweep: {', '.join(errors)}"
+        )
+
+
+async def _admit_processing(user_id: str, recording_id: str) -> None:
+    try:
+        await enforce_personalization_budget(user_id)
+    except HTTPException as exc:
+        code = (
+            "rate_limited" if exc.status_code == 429 else "personalization_unavailable"
+        )
+        await db.mark_failed(user_id, recording_id, code)
+        raise
+
+
 async def _quality_rejection(
     user_id: str,
     recording_id: str,
-    error_code: str,
+    rejection: quality.QualityRejection,
+    transcript: str,
     input_mode: BrainDumpInputMode,
 ) -> FinalizeResponse:
     """Mark the row failed with the gate's verdict and build the response.
 
     Shared by the voice and typed paths so the reject contract (log, mark
-    failed, surface the error code) cannot drift between them.
+    failed, surface the error code and reason) cannot drift between them.
     """
     logger.info(
-        f"Brain dump ({input_mode}) rejected by quality gate "
-        f"for user {user_id} ({error_code})"
+        f"Brain dump ({input_mode}) rejected by quality gate for user "
+        f"{user_id} ({rejection.error_code}, {rejection.reason})"
     )
-    await db.mark_failed(user_id, recording_id, error_code)
+    await db.mark_failed(user_id, recording_id, rejection.error_code, rejection.reason)
     return FinalizeResponse(
         status=BrainDumpStatus.failed,
         input_mode=input_mode,
-        error_code=error_code,
+        error_code=rejection.error_code,
+        error_reason=rejection.reason,
+        transcript_words=quality.count_words(transcript),
     )
 
 
@@ -327,19 +394,33 @@ async def _run_background_jobs(
     transcript: str,
     input_mode: BrainDumpInputMode,
 ) -> None:
-    """Run the greeting pipeline and the recommendation job side by side.
+    """Run the greeting pipeline and the recommendation jobs side by side.
 
-    One background task, not two: ``BackgroundTasks`` awaits what it is
+    Snapshot the signup context before extraction updates it; recommendations
+    read the current transcript directly. Keep the dump pending until all
+    jobs settle so readers do not replace an in-flight team with a fallback.
+
+    One background task, not three: ``BackgroundTasks`` awaits what it is
     given strictly in order, so a second entry would not start until the
     greeting's LLM calls had finished — and would never start at all if
     something escaped the first one. Gathered here they are genuinely
-    concurrent, and neither can take the other down.
+    concurrent, and none can take the others down.
     """
-    await asyncio.gather(
+    wizard_context = await _safe_understanding(user_id)
+    results = await asyncio.gather(
         _run_completion(user_id, recording_id, transcript, input_mode),
         _run_provider_recommendations(user_id, recording_id, transcript),
+        _run_expert_recommendations(user_id, recording_id, transcript, wizard_context),
         return_exceptions=True,
     )
+    if results[0] is True:
+        try:
+            await db.update_dump(
+                user_id, recording_id, status=BrainDumpStatus.completed
+            )
+        except Exception as e:
+            logger.error("Brain dump completion failed for user %s: %s", user_id, e)
+            await db.mark_failed(user_id, recording_id, "understanding_failed")
 
 
 async def _run_completion(
@@ -347,7 +428,7 @@ async def _run_completion(
     recording_id: str,
     transcript: str,
     input_mode: BrainDumpInputMode,
-) -> None:
+) -> bool:
     """Background half of the pipeline, run after the response is sent.
 
     Anything that escapes here has no request to report to, so it marks
@@ -355,10 +436,14 @@ async def _run_completion(
     /status) instead of leaving it to hang until its ceiling.
     """
     try:
-        await _extract_and_complete(user_id, recording_id, transcript, input_mode)
+        result = await _extract_and_complete(
+            user_id, recording_id, transcript, input_mode
+        )
+        return result.status == BrainDumpStatus.completed
     except Exception as e:  # background task, nowhere to raise
         logger.error("Brain dump completion failed for user %s: %s", user_id, e)
         await db.mark_failed(user_id, recording_id, "understanding_failed")
+        return False
 
 
 async def _run_provider_recommendations(
@@ -416,6 +501,139 @@ def _stored_recommendations(raw: object) -> list[RecommendedProvider]:
     ]
 
 
+async def _run_expert_recommendations(
+    user_id: str,
+    recording_id: str,
+    transcript: str,
+    wizard_context: tuple[str | None, list[str]],
+) -> None:
+    """The team job, third leg of the background gather.
+
+    Like the provider job it writes one column and never the dump status,
+    so it cannot strand the loading screen. It always writes *something*:
+    a row left with a null column is "still running" to the reader, and
+    the client would poll it until its own ceiling.
+    """
+    user_role, pain_points = wizard_context
+    team = await recommend_experts.generate_expert_recommendations(
+        transcript,
+        user_role=user_role,
+        pain_points=pain_points,
+        templates=await _safe_templates(),
+    )
+    await _store_team(user_id, recording_id, team)
+
+
+async def _store_team(
+    user_id: str, recording_id: str, team: ExpertRecommendations
+) -> None:
+    try:
+        await db.update_dump(
+            user_id, recording_id, recommendedExperts=Json(team.model_dump())
+        )
+    except Exception as e:  # background task, nowhere to raise
+        logger.warning(
+            "Brain dump expert recommendations not stored for user %s: %s", user_id, e
+        )
+
+
+async def _safe_understanding(user_id: str) -> tuple[str | None, list[str]]:
+    """``(user_role, pain_points)`` from the signup wizard's answers.
+
+    The wizard's saved progress holds them from the role step on. The
+    understanding gets its copy only at the wizard's last step, after the
+    hire step, so it answers only for an account with no saved answers.
+    A read that fails costs the recommendation its wizard context, not
+    the recommendation.
+    """
+    saved = await _saved_wizard_answers(user_id)
+    if saved is not None:
+        return saved
+    try:
+        understanding = await get_business_understanding(user_id)
+    except Exception as e:
+        logger.warning("Brain dump team: understanding read failed: %s", e)
+        return None, []
+    if understanding is None:
+        return None, []
+    return understanding.user_role, understanding.pain_points
+
+
+async def _saved_wizard_answers(user_id: str) -> tuple[str, list[str]] | None:
+    try:
+        stored = (await get_user_onboarding(user_id)).wizardProgress
+        progress = OnboardingWizardProgress.model_validate(stored) if stored else None
+    except Exception as e:
+        logger.warning(f"Brain dump team: wizard progress read failed: {e}")
+        return None
+    if progress is None:
+        return None
+    # The profile the wizard submits sends Other's typed text as the role.
+    role = progress.otherRole.strip() if progress.role == OTHER else progress.role
+    if not role:
+        return None
+    return role, list(progress.painPoints)
+
+
+async def _safe_templates() -> list[Expert]:
+    try:
+        return await list_templates()
+    except Exception as e:
+        logger.warning("Brain dump team: roster read failed: %s", e)
+        return []
+
+
+async def get_recommended_experts(user_id: str) -> RecommendedExpertsResponse:
+    """The team section's content, polled by the onboarding loading screen.
+
+    ``ready=false`` only while the job is still running; every other
+    state — no dump, a dump the job never got to — resolves to
+    a final answer here rather than leaving the client polling.
+    """
+    dump = await db.get_dump(user_id)
+    team, pending = await _team_for_intro(user_id, dump)
+    return RecommendedExpertsResponse(ready=not pending, team=team)
+
+
+async def _team_for_intro(
+    user_id: str, dump: OnboardingBrainDump | None
+) -> tuple[ExpertRecommendations | None, bool]:
+    """``(team, pending)`` for one user, shared by /intro and this reader.
+
+    The invariant both surfaces rely on: a team that is
+    not pending is always an object — possibly with no experts — so the
+    "raise your own" door is always there to render.
+    """
+    if dump is None or _nothing_to_reflect(dump):
+        # Path B and every other take with nothing to read: the job never
+        # ran, and the wizard's answers are the whole basis for a team.
+        return await _fallback_team(user_id), False
+
+    stored = dump.recommendedExperts
+    if stored is None:
+        if dump.status not in (BrainDumpStatus.completed, BrainDumpStatus.failed):
+            return None, True
+        # Terminal with nothing written: the job died with the process.
+        return await _fallback_team(user_id), False
+
+    try:
+        team = ExpertRecommendations.model_validate(stored)
+    except ValidationError as e:
+        logger.warning("Brain dump team: stored value unusable: %s", e)
+        return await _fallback_team(user_id), False
+    if team.source == "disabled":
+        # Legacy rows written before team recommendations were available.
+        return await _fallback_team(user_id), False
+    return team, False
+
+
+async def _fallback_team(user_id: str) -> ExpertRecommendations:
+    user_role, pain_points = await _safe_understanding(user_id)
+    return recommend_experts.fallback_expert_recommendations(
+        user_role, pain_points, await _safe_templates()
+    )
+
+
 async def _extract_and_complete(
     user_id: str,
     recording_id: str,
@@ -454,7 +672,6 @@ async def _extract_and_complete(
     await db.update_dump(
         user_id,
         recording_id,
-        status=BrainDumpStatus.completed,
         errorCode=None,
         greeting=greeting,
         suggestedPrompts=Json([p.model_dump() for p in suggested_prompts]),
@@ -526,15 +743,8 @@ def _pipeline_response(
 
 
 def _audio_filename(recording_id: str, mime_type: str | None) -> str:
-    extensions = {
-        "audio/webm": "webm",
-        "audio/mp4": "m4a",
-        "audio/mpeg": "mp3",
-        "audio/wav": "wav",
-        "audio/x-wav": "wav",
-        "audio/ogg": "ogg",
-    }
-    return f"brain-dump-{recording_id}.{extensions.get(mime_type or '', 'webm')}"
+    extension = AUDIO_FILE_EXTENSIONS.get(mime_type or "", "webm")
+    return f"{RECORDING_FILENAME_PREFIX}{recording_id}.{extension}"
 
 
 async def get_intro_card(user_id: str) -> IntroCardResponse:
@@ -558,16 +768,24 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
         # the personalised one that is seconds away. Answered before the
         # session lookup below so that poll does not re-run it every
         # cycle: someone whose dump is mid-pipeline just recorded it.
-        return IntroCardResponse(path="A", greeting="", greeting_pending=True)
+        return IntroCardResponse(
+            path="A",
+            greeting="",
+            greeting_pending=True,
+            team_pending=True,
+        )
 
     if await _retire_greeting_if_chatted(user_id):
         return IntroCardResponse(path="A", greeting="", greeting_done=True)
 
+    team, team_pending = await _team_for_intro(user_id, dump)
     if dump is None or _nothing_to_reflect(dump):
         return IntroCardResponse(
             path="B",
             greeting=prompts.PATH_B_GREETING,
             prompts=intro.fallback_prompts(),
+            team=team,
+            team_pending=team_pending,
         )
 
     greeting = (dump.greeting or "").strip()
@@ -580,6 +798,8 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
         greeting=greeting,
         prompts=_stored_prompts(dump.suggestedPrompts),
         transcript=dump.transcript,
+        team=team,
+        team_pending=team_pending,
     )
 
 

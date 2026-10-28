@@ -10,6 +10,8 @@ interface Props {
   icon: IconSvgElement;
   count?: number;
   action?: ReactNode;
+  /** Drop the card so the content sits on the panel, like the Files page. */
+  plain?: boolean;
   children: ReactNode;
 }
 
@@ -18,22 +20,38 @@ interface Props {
  * card, mirroring the home briefing tiles (``HomeTile``). Keeping the title
  * out of the card is what separates one section from the next.
  */
-export function StackSection({ title, icon, count, action, children }: Props) {
+export function StackSection({
+  title,
+  icon,
+  count,
+  action,
+  plain = false,
+  children,
+}: Props) {
   return (
     <section className="flex min-w-0 flex-col">
       {/* px-3 matches the card's own padding, so the title starts exactly
           where the row content inside does. */}
       <div className="mb-1.5 flex items-center gap-1.5 px-3">
-        <Icon icon={icon} size={14} className="text-zinc-500" aria-hidden />
-        <Text variant="small-medium" className="!text-zinc-700">
+        <Icon
+          icon={icon}
+          size={14}
+          className="text-foreground-tertiary"
+          aria-hidden
+        />
+        <Text variant="small-medium" className="!text-foreground-body">
           {title}
           {count === undefined ? "" : ` (${count})`}
         </Text>
         {action && <div className="ml-auto flex items-center">{action}</div>}
       </div>
-      <div className="rounded-lg bg-white/90 px-3 py-1 backdrop-blur smooth-shadow-ring-sm">
-        {children}
-      </div>
+      {plain ? (
+        <div className="px-3">{children}</div>
+      ) : (
+        <div className="rounded-lg bg-surface/90 px-3 py-1 backdrop-blur smooth-shadow-ring-sm">
+          {children}
+        </div>
+      )}
     </section>
   );
 }

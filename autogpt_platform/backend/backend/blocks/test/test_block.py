@@ -3,8 +3,10 @@ from typing import Any, Type
 import pytest
 
 from backend.blocks import get_blocks
-from backend.blocks._base import Block, BlockSchemaInput
+from backend.blocks._base import Block, BlockEffect, BlockSchemaInput, BlockType
 from backend.blocks.io import AgentDropdownInputBlock, AgentInputBlock
+from backend.copilot.gate.effects import STRUCTURAL_TYPES, UNREADABLE_BLOCKS
+from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionContext
 from backend.data.graph import BaseGraph
 from backend.data.model import SchemaField
@@ -49,8 +51,54 @@ async def test_available_blocks(block: Type[Block]):
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-def test_sensitive_action_blocks_have_no_data_input(block: Type[Block]):
-    """A sensitive-action block's whole input dict becomes the review payload.
+def test_block_declares_an_effect(block: Type[Block]):
+    instance = block()
+    name = block.__name__
+    if instance.effect is not None:
+        assert name not in UNREADABLE_BLOCKS, (
+            f"{name} is unreadable by construction; a declaration would let it "
+            f"run without asking."
+        )
+        return
+    assert instance.block_type in STRUCTURAL_TYPES or name in UNREADABLE_BLOCKS, (
+        f"{name} declares no effect. Pass effect=BlockEffect.NONE, READ, "
+        f"WORKSPACE, PLATFORM, EXTERNAL_JUDGED or EXTERNAL (see BlockEffect)."
+    )
+
+
+@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
+def test_effect_none_blocks_have_no_io_surface(block: Type[Block]):
+    """NONE claims pure computation, and a mock exists only to stub I/O out."""
+    instance = block()
+    if instance.effect is not BlockEffect.NONE:
+        return
+    name = instance.name
+    assert not instance.test_mock, f"{name} is effect=NONE but mocks I/O in tests."
+    assert (
+        not instance.input_schema.get_credentials_fields()
+    ), f"{name} is effect=NONE but takes credentials."
+    assert instance.webhook_config is None, f"{name} is effect=NONE but has a webhook."
+    assert (
+        instance.block_type is BlockType.STANDARD
+    ), f"{name} is effect=NONE but is a {instance.block_type.name} block."
+    assert instance.id not in BLOCK_COSTS, f"{name} is effect=NONE but costs money."
+
+
+@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
+def test_irreversible_blocks_are_external(block: Type[Block]):
+    instance = block()
+    if not instance.is_irreversible_action:
+        return
+    assert instance.effect in (BlockEffect.EXTERNAL_JUDGED, BlockEffect.EXTERNAL), (
+        f"{instance.name} is irreversible, so its effect must be EXTERNAL_JUDGED "
+        f"or EXTERNAL, not "
+        f"{instance.effect.name if instance.effect else 'undeclared'}."
+    )
+
+
+@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
+def test_irreversible_action_blocks_have_no_data_input(block: Type[Block]):
+    """An irreversible-action block's whole input dict becomes the review payload.
 
     `data` is the key the approval card historically unwrapped to, rendering
     that one field in place of the arguments the block goes on to execute.
@@ -59,11 +107,11 @@ def test_sensitive_action_blocks_have_no_data_input(block: Type[Block]):
     delete this case once the render path is re-checked.
     """
     block_instance = block()
-    if not block_instance.is_sensitive_action:
+    if not block_instance.is_irreversible_action:
         return
 
     assert "data" not in block_instance.input_schema.model_fields, (
-        f"{block_instance.name} is a sensitive action with a top-level 'data' "
+        f"{block_instance.name} is an irreversible action with a top-level 'data' "
         f"input; rename it so the approval card cannot be read as showing only "
         f"that field."
     )

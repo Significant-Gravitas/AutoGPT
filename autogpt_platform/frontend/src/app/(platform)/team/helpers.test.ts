@@ -7,6 +7,7 @@ import {
   filterExpertSchedules,
   filterExpertWorkflows,
   getAssignToastTitle,
+  getExpertCover,
   getExpertRosterStatus,
   groupExpertsByPods,
 } from "./helpers";
@@ -105,7 +106,7 @@ describe("getExpertRosterStatus", () => {
     expert.last_run_status = "RUNNING";
     expert.schedules_paused_at = new Date("2026-09-03T10:00:00Z");
 
-    expect(getExpertRosterStatus(expert, 1)).toBe("working");
+    expect(getExpertRosterStatus(expert)).toBe("working");
   });
 
   test.each(["FAILED", "TERMINATED", "REVIEW"])(
@@ -114,7 +115,7 @@ describe("getExpertRosterStatus", () => {
       const expert = makeExpert("attention");
       expert.last_run_status = lastRunStatus;
 
-      expect(getExpertRosterStatus(expert, 0)).toBe("needs-you");
+      expect(getExpertRosterStatus(expert)).toBe("needs-you");
     },
   );
 
@@ -122,15 +123,15 @@ describe("getExpertRosterStatus", () => {
     const paused = makeExpert("paused");
     paused.schedules_paused_at = new Date("2026-09-03T10:00:00Z");
 
-    expect(getExpertRosterStatus(paused, 0)).toBe("needs-you");
-    expect(getExpertRosterStatus(makeExpert("setup"), 1)).toBe("needs-you");
+    expect(getExpertRosterStatus(paused)).toBe("needs-you");
+    expect(getExpertRosterStatus(makeExpert("setup"))).toBe("idle");
   });
 
   test("reports an expert with no active issue as idle", () => {
     const expert = makeExpert("idle");
     expert.last_run_status = "COMPLETED";
 
-    expect(getExpertRosterStatus(expert, 0)).toBe("idle");
+    expect(getExpertRosterStatus(expert)).toBe("idle");
   });
 });
 
@@ -256,5 +257,46 @@ describe("filterExpertSchedules", () => {
     expect(
       filterExpertSchedules(all, "", "later", now).map((s) => s.id),
     ).toEqual(["s3", "s4"]);
+  });
+});
+
+describe("getExpertCover", () => {
+  test("covers take the identity's own family, and General for a custom upload without a category", () => {
+    expect(
+      getExpertCover({
+        role: "Marketing",
+        color: "",
+        avatar_url: "/experts/maria.svg",
+        categories: ["marketing", "content"],
+        id: "expert-1",
+      }),
+    ).toEqual({ art: null, color: "#C47F5C" });
+    expect(
+      getExpertCover({
+        role: "Marketing",
+        color: "",
+        avatar_url: "/experts/clay/v2/jules.png",
+        categories: ["content", "marketing"],
+        id: "expert-2",
+      }),
+    ).toEqual({ art: null, color: "#C47F5C" });
+    expect(
+      getExpertCover({
+        role: "Marketing writer",
+        color: "",
+        avatar_url: "/uploads/custom.png",
+        categories: [],
+        id: "expert-3",
+      }),
+    ).toEqual({ art: null, color: "#B5ADA0" });
+    expect(
+      getExpertCover({
+        role: "Anything",
+        color: "",
+        avatar_url: "/uploads/custom.png",
+        categories: ["finance"],
+        id: "expert-4",
+      }),
+    ).toEqual({ art: null, color: "#A5B09A" });
   });
 });

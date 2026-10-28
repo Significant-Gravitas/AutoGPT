@@ -75,7 +75,7 @@ export function useRemoveTriggerAgent({
     >
       <Dialog.Content>
         <Text variant="large">
-          Are you sure you want to remove this trigger? The trigger agent and
+          Are you sure you want to remove this trigger? The trigger workflow and
           its schedule will be deleted. This action cannot be undone.
         </Text>
         <Dialog.Footer>

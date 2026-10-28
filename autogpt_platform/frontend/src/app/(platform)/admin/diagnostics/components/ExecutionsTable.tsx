@@ -1,7 +1,25 @@
 "use client";
 
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// bg-blue-600 #2563EB, bg-blue-700 #1D4ED8, bg-green-100 #B7E2C7,
+// bg-orange-100 #FFDAB0, bg-orange-50 #FFF3E6, bg-orange-600 #E77B00,
+// bg-orange-700 #B46000, bg-pink-50 #FDEDF5, bg-red-700 #AA3030,
+// bg-yellow-100 #FCEBB0, border-orange-500 #FE8700, text-blue-700 #1D4ED8,
+// text-gray-400 #9CA3AF, text-gray-500 #6B7280, text-gray-600 #4B5563,
+// text-gray-700 #374151, text-green-800 #0C5A29, text-orange-200 #FFC88A,
+// text-orange-600 #E77B00, text-orange-700 #B46000, text-pink-700 #A8336D,
+// text-red-600 #D93636, text-yellow-800 #876A00.
+// Same value as a role with another meaning, so not swapped:
+// text-red-600 = error-hover (a hover fill),
+// bg-blue-600 = info-foreground (a text colour).
+
 import { Button } from "@/components/atoms/Button/Button";
-import { Card } from "@/components/atoms/Card/Card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/atoms/Card/Card";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import {
   Dialog,
@@ -10,7 +28,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import React, { useState } from "react";
 import {
@@ -20,13 +38,8 @@ import {
   TableHead,
   TableRow,
   TableCell,
-} from "@/components/__legacy__/ui/table";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import {
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/__legacy__/ui/card";
+} from "@/components/molecules/Table/components/TablePrimitives";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import {
   useGetV2ListRunningExecutions,
   useGetV2ListOrphanedExecutions,
@@ -59,6 +72,7 @@ import {
   StopIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface RunningExecutionDetail {
   execution_id: string;
@@ -551,7 +565,7 @@ export function ExecutionsTable({
                       size="small"
                       onClick={() => confirmStop("all", "requeue")}
                       disabled={isStopping}
-                      className="border-blue-500 text-blue-700 hover:bg-blue-50"
+                      className="border-info text-blue-700 hover:bg-info-surface"
                     >
                       <Icon icon={Refresh01Icon} className="mr-2 h-4 w-4" />
                       Requeue All ({total})
@@ -570,9 +584,13 @@ export function ExecutionsTable({
                       <Icon icon={StopCircleIcon} className="mr-2 h-4 w-4" />
                       Stop Selected ({selectedIds.size})
                       {hasOrphanedSelected && (
-                        <span className="ml-1 text-xs text-orange-200">
+                        <Text
+                          variant="small-medium-tight"
+                          as="span"
+                          className="ml-1 text-orange-200"
+                        >
                           ({selectedOrphanedIds.length} orphaned)
-                        </span>
+                        </Text>
                       )}
                     </Button>
                   )}
@@ -589,14 +607,22 @@ export function ExecutionsTable({
                   </Button>
                 )}
                 {activeTab === "failed" && selectedIds.size === 0 && (
-                  <div className="px-3 text-sm text-gray-500">
+                  <Text
+                    variant="body-tight"
+                    as="div"
+                    className="px-3 text-gray-500"
+                  >
                     View-only (select to delete)
-                  </div>
+                  </Text>
                 )}
                 {activeTab === "invalid" && (
-                  <div className="rounded-md bg-pink-50 px-3 py-2 text-sm text-pink-700">
+                  <Text
+                    variant="body-tight"
+                    as="div"
+                    className="rounded-md bg-pink-50 px-3 py-2 text-pink-700"
+                  >
                     ⚠️ Read-only: Invalid states require manual investigation
-                  </div>
+                  </Text>
                 )}
                 <Button
                   variant="outline"
@@ -723,8 +749,11 @@ export function ExecutionsTable({
                                 disabled={activeTab === "invalid"}
                               />
                             </TableCell>
-                            <TableCell className="font-mono text-xs">
-                              <div
+                            <TableCell>
+                              <Text
+                                variant="small-mono-tight"
+                                as="div"
+                                tone="inherit"
                                 className="group flex cursor-pointer items-center gap-1 hover:text-gray-700"
                                 onClick={() => {
                                   navigator.clipboard.writeText(
@@ -743,7 +772,7 @@ export function ExecutionsTable({
                                   icon={Copy01Icon}
                                   className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100"
                                 />
-                              </div>
+                              </Text>
                             </TableCell>
                             <TableCell>{execution.graph_name}</TableCell>
                             <TableCell>{execution.graph_version}</TableCell>
@@ -753,8 +782,10 @@ export function ExecutionsTable({
                                   <span className="text-gray-400">Unknown</span>
                                 )}
                               </div>
-                              <div
-                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
+                              <Text
+                                variant="small-mono-tight"
+                                as="div"
+                                className="group flex cursor-pointer items-center gap-1 text-gray-500 hover:text-gray-700"
                                 onClick={() => {
                                   navigator.clipboard.writeText(
                                     execution.user_id,
@@ -771,18 +802,20 @@ export function ExecutionsTable({
                                   icon={Copy01Icon}
                                   className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100"
                                 />
-                              </div>
+                              </Text>
                             </TableCell>
                             <TableCell>
-                              <span
-                                className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                              <Text
+                                variant="small-semibold-tight"
+                                as="span"
+                                className={`inline-flex rounded-full px-2 py-1 ${
                                   execution.status === "RUNNING"
                                     ? "bg-green-100 text-green-800"
                                     : "bg-yellow-100 text-yellow-800"
                                 }`}
                               >
                                 {execution.status}
-                              </span>
+                              </Text>
                             </TableCell>
                             <TableCell>
                               {(() => {
@@ -829,13 +862,15 @@ export function ExecutionsTable({
                             </TableCell>
                             {activeTab === "failed" && (
                               <TableCell className="max-w-xs truncate">
-                                <span
-                                  className="text-xs text-red-600"
+                                <Text
+                                  variant="small-tight"
+                                  as="span"
+                                  className="text-red-600"
                                   title={execution.error_message || ""}
                                 >
                                   {execution.error_message ||
                                     "No error message"}
-                                </span>
+                                </Text>
                               </TableCell>
                             )}
                             <TableCell>
@@ -872,7 +907,7 @@ export function ExecutionsTable({
                                         )
                                       }
                                       disabled={isStopping}
-                                      className="text-blue-600 hover:bg-blue-50"
+                                      className="text-info-foreground hover:bg-info-surface"
                                       title="Requeue (send to RabbitMQ)"
                                     >
                                       <Icon
@@ -915,11 +950,15 @@ export function ExecutionsTable({
 
                   {totalPages > 1 && (
                     <div className="mt-4 flex items-center justify-between">
-                      <div className="text-sm text-gray-600">
+                      <Text
+                        variant="body-tight"
+                        as="div"
+                        className="text-gray-600"
+                      >
                         Showing {(currentPage - 1) * pageSize + 1} to{" "}
                         {Math.min(currentPage * pageSize, total)} of {total}{" "}
                         executions
-                      </div>
+                      </Text>
                       <div className="flex gap-2">
                         <Button
                           variant="outline"
@@ -1056,7 +1095,7 @@ export function ExecutionsTable({
                   <br />
                   <br />
                   This will automatically:
-                  <ul className="mt-2 list-disc pl-5 text-sm">
+                  <ul className="mt-2 list-disc pl-5">
                     <li>Send cancel signals for active executions</li>
                     <li>
                       Clean up orphaned executions ({">"}24h old) directly in DB
@@ -1079,7 +1118,7 @@ export function ExecutionsTable({
                   ? "bg-orange-600 hover:bg-orange-700"
                   : stopMode === "requeue"
                     ? "bg-blue-600 hover:bg-blue-700"
-                    : "bg-red-600 hover:bg-red-700"
+                    : "bg-error-hover hover:bg-red-700"
               }
             >
               {stopMode === "cleanup"

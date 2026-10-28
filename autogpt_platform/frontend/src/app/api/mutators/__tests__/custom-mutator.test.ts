@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/impersonation", () => ({
   getSystemHeaders: vi.fn(),
@@ -26,8 +26,14 @@ vi.mock("@/lib/autogpt-server-api/helpers", () => ({
   getServerAuthToken: vi.fn(),
 }));
 
+vi.mock("@/services/analytics/posthog-request-context", () => ({
+  getPostHogSessionHeader: vi.fn(() => ({})),
+}));
+
 vi.mock("@sentry/nextjs", () => ({
   getTraceData: vi.fn(() => ({})),
+  captureMessage: vi.fn(),
+  addBreadcrumb: vi.fn(),
 }));
 
 import { customMutator } from "../custom-mutator";
@@ -35,6 +41,7 @@ import { getSystemHeaders } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import * as Sentry from "@sentry/nextjs";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 
 const mockIsClientSide = vi.mocked(environment.isClientSide);
 const mockGetSystemHeaders = vi.mocked(getSystemHeaders);
@@ -66,6 +73,20 @@ describe("customMutator — impersonation header", () => {
     const fetchCall = vi.mocked(fetch).mock.calls[0];
     const headers = fetchCall[1]?.headers as Record<string, string>;
     expect(headers[IMPERSONATION_HEADER_NAME]).toBe("impersonated-user-abc");
+  });
+
+  it("names the browser's PostHog session", async () => {
+    vi.mocked(getPostHogSessionHeader).mockReturnValueOnce({
+      "X-PostHog-Session-Id": "posthog-session-1",
+    });
+
+    await customMutator("/test", { method: "GET" });
+
+    const headers = vi.mocked(fetch).mock.calls[0][1]?.headers as Record<
+      string,
+      string
+    >;
+    expect(headers["X-PostHog-Session-Id"]).toBe("posthog-session-1");
   });
 
   it("does not add impersonation header when no impersonation active", async () => {
@@ -190,7 +211,7 @@ describe("customMutator — Sentry trace propagation", () => {
   });
 });
 
-describe("customMutator — empty body handling", () => {
+describe("customMutator — response body handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsClientSide.mockReturnValue(true);
@@ -267,5 +288,197 @@ describe("customMutator — empty body handling", () => {
     }>("/api/foo", { method: "GET" });
 
     expect(result.data).toEqual({ ok: true });
+  });
+
+  it.each([
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "video/mp4",
+    "video/webm",
+    "application/pdf",
+  ])("preserves %s bytes as a Blob", async (contentType) => {
+    const bytes = new Uint8Array([0, 255, 128, 10, 42]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(bytes, {
+          headers: { "content-type": contentType },
+        }),
+      ),
+    );
+
+    const result = await customMutator<{
+      data: Blob;
+      status: number;
+      headers: Headers;
+    }>("/api/store/media/user/images/image.png", { method: "GET" });
+
+    expect(result.data).toBeInstanceOf(Blob);
+    expect(new Uint8Array(await result.data.arrayBuffer())).toEqual(bytes);
+    expect(result.data.type).toBe(contentType);
+  });
+});
+
+describe("customMutator validation errors", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(true);
+    mockGetSystemHeaders.mockReturnValue({});
+    mockGetTraceData.mockReturnValue({});
+  });
+
+  it.each([
+    [
+      {
+        detail: [
+          { msg: "Field required", loc: ["body", "name"] },
+          { msg: "Invalid value" },
+        ],
+      },
+      "Field required; Invalid value",
+    ],
+    [{ detail: "Not allowed" }, "Not allowed"],
+    [{ detail: { reason: "Invalid input" } }, '{"reason":"Invalid input"}'],
+    [
+      {
+        detail: {
+          type: "validation_error",
+          message: "Agent Output › Name: This field is required",
+          node_errors: { "node-1": { name: "This field is required" } },
+        },
+      },
+      "Agent Output › Name: This field is required",
+    ],
+    [
+      { detail: [{ reason: "Invalid input" }, null] },
+      '{"reason":"Invalid input"}; null',
+    ],
+    [{ detail: null, message: "Fallback message" }, "Fallback message"],
+    [{ detail: [], message: "Fallback message" }, "Fallback message"],
+    [{ message: "Missing detail" }, "Missing detail"],
+  ])("formats response %j as a readable message", async (body, message) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 422,
+        statusText: "Unprocessable Entity",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => body,
+      }),
+    );
+
+    await expect(
+      customMutator("/test", { method: "POST" }),
+    ).rejects.toMatchObject({
+      message,
+      status: 422,
+    });
+  });
+});
+
+describe("customMutator — response dates", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(true);
+    mockGetSystemHeaders.mockReturnValue({});
+  });
+
+  it("returns server timestamps as Dates and user inputs verbatim", async () => {
+    const execution = {
+      id: "exec-1",
+      started_at: "2024-03-10T09:30:00Z",
+      inputs: { when: "2024-03-10T09:30:00", at: "2024-03-10T09:30:00Z" },
+      nodes: [{ input_default: { when: "2024-03-10T09:30:00Z" } }],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () => Promise.resolve(execution),
+      }),
+    );
+
+    const res = await customMutator<{
+      data: typeof execution;
+      status: number;
+      headers: Headers;
+    }>("/test", {
+      method: "GET",
+    });
+
+    expect(res.data.started_at).toBeInstanceOf(Date);
+    expect(res.data.inputs).toEqual(execution.inputs);
+    expect(res.data.nodes[0].input_default).toEqual(
+      execution.nodes[0].input_default,
+    );
+    expect(JSON.parse(JSON.stringify(res.data.inputs))).toEqual(
+      execution.inputs,
+    );
+  });
+});
+
+describe("customMutator — banned account", () => {
+  let replace: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(true);
+    mockGetSystemHeaders.mockReturnValue({});
+    mockGetTraceData.mockReturnValue({});
+    replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    replace.mockRestore();
+  });
+
+  function respondWith(status: number, body: unknown) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status,
+        statusText: "",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () => Promise.resolve(body),
+      }),
+    );
+  }
+
+  it("signs the user out on the banned 403", async () => {
+    respondWith(403, {
+      detail: {
+        code: "account_banned",
+        message: "This account has been banned.",
+      },
+    });
+
+    await expect(customMutator("/api/foo", { method: "GET" })).rejects.toThrow(
+      "This account has been banned.",
+    );
+    expect(replace).toHaveBeenCalledWith("/logout?reason=banned");
+  });
+
+  it.each([
+    ["another 403", 403, { detail: "Admin access required" }],
+    [
+      "the banned code on another status",
+      401,
+      { detail: { code: "account_banned" } },
+    ],
+  ])("leaves the user signed in on %s", async (_, status, body) => {
+    respondWith(status, body);
+
+    await expect(
+      customMutator("/api/foo", { method: "GET" }),
+    ).rejects.toBeDefined();
+    expect(replace).not.toHaveBeenCalled();
   });
 });

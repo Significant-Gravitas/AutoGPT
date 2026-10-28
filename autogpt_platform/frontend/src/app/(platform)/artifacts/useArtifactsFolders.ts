@@ -8,6 +8,7 @@ import {
   useUpdateWorkspaceFolder,
 } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { okData } from "@/app/api/helpers";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { ARTIFACTS_LIST_QUERY_KEY } from "./useArtifactsPage";
 
@@ -57,6 +58,17 @@ export function useArtifactsFolders() {
     },
   });
 
+  // Its own instance of the same endpoint: a move reports differently from a
+  // rename, and the 409/400 the destination can raise have no rename analogue.
+  const moveFolderMutation = useUpdateWorkspaceFolder({
+    mutation: {
+      onSuccess: () => {
+        invalidate();
+        toast({ title: "Folder moved" });
+      },
+    },
+  });
+
   const deleteMutation = useDeleteWorkspaceFolder({
     mutation: {
       onSuccess: () => {
@@ -74,12 +86,17 @@ export function useArtifactsFolders() {
 
   const moveMutation = useBulkMoveWorkspaceFiles({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (_, variables) => {
         invalidate();
-        toast({ title: "File moved" });
+        const count = variables.data.file_ids.length;
+        toast({ title: count === 1 ? "File moved" : `${count} files moved` });
       },
-      onError: () => {
-        toast({ title: "Failed to move file", variant: "destructive" });
+      onError: (_, variables) => {
+        const count = variables.data.file_ids.length;
+        toast({
+          title: count === 1 ? "Failed to move file" : "Failed to move files",
+          variant: "destructive",
+        });
       },
     },
   });
@@ -89,8 +106,10 @@ export function useArtifactsFolders() {
     isLoading: foldersQuery.isLoading,
     isError: foldersQuery.isError,
     error: foldersQuery.error,
-    createFolder: (args: { name: string }) =>
-      createMutation.mutateAsync({ data: { name: args.name } }),
+    createFolder: (args: { name: string; parentId?: string | null }) =>
+      createMutation.mutateAsync({
+        data: { name: args.name, parent_id: args.parentId ?? null },
+      }),
     isCreating: createMutation.isPending,
     updateFolder: (args: { folderId: string; name?: string }) =>
       updateMutation.mutateAsync({
@@ -98,12 +117,41 @@ export function useArtifactsFolders() {
         data: { name: args.name },
       }),
     isUpdating: updateMutation.isPending,
+    // `parent_id` is sent explicitly on every move, `null` meaning the root;
+    // the backend reads `model_fields_set`, so omitting it would mean "stay".
+    moveFolder: (args: {
+      folderId: string;
+      parentId: string | null;
+      name: string;
+    }) =>
+      moveFolderMutation
+        .mutateAsync({
+          folderId: args.folderId,
+          data: { parent_id: args.parentId },
+        })
+        .catch((error: unknown) => {
+          // The name the 409 message needs is not in the request body —
+          // sending it would rename the folder — so the toast lives here.
+          toast({
+            title: describeFolderMoveError(error, args.name),
+            variant: "destructive",
+          });
+          throw error;
+        }),
+    isMovingFolder: moveFolderMutation.isPending,
     deleteFolder: (folderId: string) =>
       deleteMutation.mutateAsync({ folderId }),
     isDeleting: deleteMutation.isPending,
-    moveFileToFolder: (args: { fileId: string; folderId: string | null }) =>
+    moveFilesToFolder: (args: { fileIds: string[]; folderId: string | null }) =>
       moveMutation.mutateAsync({
-        data: { file_ids: [args.fileId], folder_id: args.folderId },
+        data: { file_ids: args.fileIds, folder_id: args.folderId },
       }),
   };
+}
+
+export function describeFolderMoveError(error: unknown, name: string): string {
+  const status = error instanceof ApiError ? error.status : null;
+  if (status === 409) return `A folder named “${name}” is already there`;
+  if (status === 400) return "A folder can't be moved into itself";
+  return "Failed to move folder";
 }

@@ -1,13 +1,17 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+from pydantic import ValidationError
+
 from backend.api.features.experts.models import Expert
 from backend.copilot.briefing.generate import AgentInfo
 from backend.copilot.briefing.generate import compose_briefing as compose_job_briefing
 from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 
-from .briefing import compose_briefing, without_summaries
+from .briefing import compose_briefing
 from .helpers import AgentRef
+from .models import AUTOPILOT_BRIEFING_AUTHOR, HomeBriefingAuthor
 
 NOW = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
 TRIAGE = {"graph": AgentRef(name="Inbox triage", library_agent_id="library-agent")}
@@ -450,34 +454,6 @@ def test_a_row_written_before_the_composer_was_unified_falls_back_to_the_agent()
     assert outcome.expert is None
 
 
-def test_without_summaries_drops_the_ai_written_text() -> None:
-    stripped = without_summaries(_stored(_stored_item("stored-run")))
-
-    item = stripped.run_items[0]
-    assert (item.summary, item.title, item.detail) == (None, "", "")
-    assert item.agent_name == "Inbox triage"
-
-
-def test_without_summaries_keeps_an_error_the_ai_never_wrote() -> None:
-    """The live gate drops only `activity_status`/`correctness_score`, so a
-    failure with no summary keeps showing its real error. The persisted path
-    must not downgrade that same failure to the generic retry line."""
-    failure = _stored_item("broke", status="FAILED").model_copy(
-        update={
-            "summary": None,
-            "title": "Inbox triage needs a retry",
-            "detail": "SMTP connection refused",
-        }
-    )
-
-    item = without_summaries(_stored(failure)).run_items[0]
-
-    assert (item.title, item.detail) == (
-        "Inbox triage needs a retry",
-        "SMTP connection refused",
-    )
-
-
 def test_persisted_briefing_counts_runs_the_job_did_not_list() -> None:
     """`run_items` is capped at 10 by the job. A 12-completion night must
     still report 12 completed, with the unlisted ones falling into routine."""
@@ -608,10 +584,55 @@ def test_live_briefing_has_no_narrative() -> None:
     assert briefing.narrative is None
 
 
-def test_without_summaries_drops_the_narrative() -> None:
-    """The narrative is written from the summaries, so the same gate hides it."""
-    stored = _stored(_stored_item("stored-run")).model_copy(
-        update={"narrative": "I read all 12 of your emails."}
+def test_the_brief_is_authored_by_autopilot_whoever_did_the_work() -> None:
+    """Every run here is Ana's, and the brief still is not hers: Otto
+    authors it, and `kind` has no expert value to switch to."""
+    briefing = compose_briefing(
+        now=NOW,
+        executions=[],
+        expert_by_id={"expert-1": _expert()},
+        agent_by_graph=TRIAGE,
+        persisted=_stored(_stored_item("stored-run"), completed_total=1),
     )
 
-    assert without_summaries(stored).narrative is None
+    assert briefing.outcomes[0].expert is not None
+    assert briefing.outcomes[0].expert.name == "Ana"
+    assert briefing.author == AUTOPILOT_BRIEFING_AUTHOR
+    assert briefing.author.name == "Otto"
+    assert briefing.author.role == "Head of AI"
+    with pytest.raises(ValidationError):
+        HomeBriefingAuthor(kind="expert", name="Ana", role="Researcher")
+
+
+def test_the_live_brief_is_authored_by_autopilot_too() -> None:
+    """No stored row, so nothing was written — the byline is still Otto's."""
+    briefing = compose_briefing(
+        now=NOW,
+        executions=[],
+        expert_by_id={},
+        agent_by_graph=TRIAGE,
+    )
+
+    assert briefing.author.kind == "autopilot"
+
+
+@pytest.mark.parametrize(
+    "trigger_source, expected",
+    [("schedule", "schedule"), ("webhook", "webhook"), ("manual", "manual")],
+)
+def test_a_run_whose_job_carried_no_schedule_id_still_says_what_started_it(
+    trigger_source: str, expected: str
+) -> None:
+    # Schedules created before their job stored a schedule_id fire runs with
+    # none; the execution's own trigger_source still records the scheduler.
+    run = _execution(
+        exec_id="run",
+        status=ExecutionStatus.FAILED,
+        ended_at=NOW - timedelta(hours=1),
+    ).model_copy(update={"trigger_source": trigger_source})
+
+    briefing = compose_briefing(
+        now=NOW, executions=[run], expert_by_id={}, agent_by_graph=NO_LINK
+    )
+
+    assert [outcome.trigger for outcome in briefing.outcomes] == [expected]

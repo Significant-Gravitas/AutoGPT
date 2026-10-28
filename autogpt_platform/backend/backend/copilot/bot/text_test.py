@@ -2,13 +2,7 @@
 
 from backend.data.sharing.workspace_refs import extract_artifact_links
 
-from .text import (
-    _balance_code_fences,
-    format_batch,
-    iter_chunks,
-    resolve_mentions,
-    split_at_boundary,
-)
+from .text import _balance_code_fences, iter_chunks, resolve_mentions, split_at_boundary
 
 
 def _token(_name: str, uid: str) -> str:
@@ -92,6 +86,50 @@ class TestResolveMentions:
         assert rendered == "hi @Bently"
         assert pinged == []
 
+    def test_a_raw_id_the_model_wrote_pings_the_allowlisted_person(self):
+        """Live repro: every turn gives the model the sender's user id, so it
+        wrote "Hi <@353922987235213313>!" and that pinged nobody."""
+        rendered, pinged = resolve_mentions(
+            "Hi <@353922987235213313>!", (("Bently", "353922987235213313"),), _token
+        )
+        assert rendered == "Hi <@353922987235213313>!"
+        assert pinged == ["353922987235213313"]
+
+    def test_the_nickname_id_form_pings_too(self):
+        rendered, pinged = resolve_mentions("Hi <@!U1>", (("Bently", "U1"),), _token)
+        assert rendered == "Hi <@U1>"
+        assert pinged == ["U1"]
+
+    def test_an_id_that_is_not_allowlisted_stays_as_written(self):
+        rendered, pinged = resolve_mentions(
+            "Hi <@U999> and <@!U998>", (("Bently", "U1"),), _token
+        )
+        assert rendered == "Hi <@U999> and <@!U998>"
+        assert pinged == []
+
+    def test_name_and_id_for_the_same_person_ping_once(self):
+        rendered, pinged = resolve_mentions(
+            "@Bently and <@U1>", (("Bently", "U1"),), _token
+        )
+        assert rendered == "<@U1> and <@U1>"
+        assert pinged == ["U1"]
+
+    def test_one_person_listed_under_a_name_twice_is_not_a_clash(self):
+        """The same member reached twice (author and a member lookup, in two
+        casings) is one person, so the name still pings."""
+        rendered, pinged = resolve_mentions(
+            "hi @bently", (("Bently", "U1"), ("bently", "U1")), _token
+        )
+        assert rendered == "hi <@U1>"
+        assert pinged == ["U1"]
+
+    def test_an_ambiguous_name_does_not_block_that_persons_id(self):
+        rendered, pinged = resolve_mentions(
+            "@John or <@U2>", (("John", "U1"), ("John", "U2")), _token
+        )
+        assert rendered == "@John or <@U2>"
+        assert pinged == ["U2"]
+
 
 class TestIterChunks:
     def test_short_text_is_one_chunk(self):
@@ -109,28 +147,6 @@ class TestIterChunks:
 
     def test_blank_text_yields_nothing(self):
         assert list(iter_chunks("   ", 100)) == []
-
-
-class TestFormatBatch:
-    def test_single_message_has_header(self):
-        result = format_batch([("Bently", "123", "hello")], "discord")
-        assert result == "[Message sent by Bently (Discord user ID: 123)]\nhello"
-
-    def test_multi_message_labels_each_sender(self):
-        result = format_batch(
-            [
-                ("Alice", "a1", "first"),
-                ("Bob", "b2", "second"),
-            ],
-            "discord",
-        )
-        assert "[Multiple messages" in result
-        assert "[From Alice (Discord user ID: a1)]\nfirst" in result
-        assert "[From Bob (Discord user ID: b2)]\nsecond" in result
-
-    def test_platform_name_is_capitalized(self):
-        result = format_batch([("u", "1", "x")], "telegram")
-        assert "Telegram user ID" in result
 
 
 class TestSplitAtBoundary:

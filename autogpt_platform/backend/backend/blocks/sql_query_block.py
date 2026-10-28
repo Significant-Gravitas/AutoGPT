@@ -135,6 +135,7 @@ class SQLQueryBlock(Block):
     def __init__(self):
         super().__init__(
             id="4dc35c0f-4fd8-465e-9616-5a216f1ba2bc",
+            capability_kind="primitive",
             description=(
                 "Execute a SQL query. Read-only by default for safety "
                 "-- disable to allow write operations. "

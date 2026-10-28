@@ -132,7 +132,20 @@ class RaisedExpertLifetimeLimitExceededError(Exception):
         return f"Raised expert lifetime limit of {self.limit} reached"
 
 
-class GraphNotFoundError(ValueError):
+class RoutineNotFoundError(NotFoundError):
+    """No such routine on this owner."""
+
+
+class RoutineUnansweredAsksError(ValueError):
+    """The routine still has questions nobody answered.
+
+    A seeded proposal names what it needs to know — which repo, which inbox,
+    what hour. Scheduling it before those are answered would run it against
+    guesses on somebody's account, every day, unattended.
+    """
+
+
+class GraphNotFoundError(NotFoundError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
 
@@ -142,6 +155,11 @@ class NeedConfirmation(Exception):
 
 class NotAuthorizedError(ValueError):
     """The user is not authorized to perform the requested operation"""
+
+
+class UserBannedError(NotAuthorizedError):
+    """The owner's account is banned. Raised where new work would start for it;
+    background callers skip the run."""
 
 
 class GraphNotAccessibleError(NotAuthorizedError):
@@ -337,9 +355,9 @@ class WebhookSetupUnavailableError(Exception):
 
 
 class ExpertRunPausedError(ValueError):
-    """An expert-attributed scheduled/triggered run was refused because the
-    expert's schedules are paused (weekly credit budget reached or archive).
-    Chat-initiated runs are never gated by this."""
+    """An expert-attributed run (schedule, trigger, or ``run_agent`` from her
+    chat) was refused because the expert's schedules are paused (weekly credit
+    budget reached or archive)."""
 
     def __init__(self, message: str, expert_id: str):
         super().__init__(message)
@@ -351,3 +369,13 @@ class ExpertRunPausedError(ValueError):
 
     def __str__(self):
         return self.message
+
+
+class ConflictError(Exception):
+    """The request conflicts with the resource's current state (HTTP 409): a name
+    already taken, or a lost race with a concurrent change, which a retry may win."""
+
+
+class EmailUndeliverableError(ValueError):
+    """The mail provider won't deliver to this address (an earlier hard bounce,
+    spam complaint or suppression), so retrying the send can't succeed."""

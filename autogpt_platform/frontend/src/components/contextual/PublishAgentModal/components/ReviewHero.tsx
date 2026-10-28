@@ -95,7 +95,7 @@ export function ReviewHero({
         >
           <span
             aria-hidden
-            className="absolute inset-1 rounded-full bg-white/10"
+            className="absolute inset-1 rounded-full bg-surface/10"
           />
           <motion.span
             initial={
@@ -112,7 +112,7 @@ export function ReviewHero({
                     delay: 0.18,
                   }
             }
-            className="text-white"
+            className="text-action-foreground"
           >
             <Icon icon={hero.Icon} size={36} />
           </motion.span>
@@ -133,7 +133,7 @@ export function ReviewHero({
         >
           {hero.title}
         </Text>
-        <Text variant="body" className="text-zinc-600">
+        <Text variant="body" className="text-foreground-secondary">
           {hero.description}
         </Text>
       </motion.div>

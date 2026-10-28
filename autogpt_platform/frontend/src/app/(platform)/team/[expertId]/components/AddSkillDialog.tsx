@@ -1,7 +1,7 @@
 "use client";
 
 import { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
-import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
+import { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -31,11 +31,11 @@ interface Props {
   isLoading: boolean;
   marketQuery: string;
   onMarketQueryChange: (query: string) => void;
-  marketplaceSkills: StoreAgent[];
+  marketplaceSkills: MarketplaceSkill[];
   isMarketplaceLoading: boolean;
   isSaving: boolean;
   onAdd: (name: string) => void;
-  onAddMarketplace: (agent: StoreAgent) => void;
+  onAddMarketplace: (skill: MarketplaceSkill) => void;
   onClose: () => void;
 }
 
@@ -167,14 +167,14 @@ export function AddSkillDialog({
                   className="flex flex-col gap-2 overflow-y-auto pr-1"
                   aria-label="Marketplace skills"
                 >
-                  {marketplaceSkills.map((agent) => (
+                  {marketplaceSkills.map((skill) => (
                     <SkillOption
-                      key={`${agent.creator}/${agent.slug}`}
-                      name={agent.agent_name}
-                      description={agent.sub_heading || agent.description}
+                      key={skill.slug}
+                      name={skill.title}
+                      description={skill.description}
                       icon={Store01Icon}
                       disabled={isSaving}
-                      onAdd={() => onAddMarketplace(agent)}
+                      onAdd={() => onAddMarketplace(skill)}
                     />
                   ))}
                 </ul>
@@ -182,7 +182,7 @@ export function AddSkillDialog({
             </>
           )}
           <div className="flex justify-end pt-1">
-            <Button variant="secondary" size="xs" onClick={onClose}>
+            <Button variant="secondary" size="small" onClick={onClose}>
               Cancel
             </Button>
           </div>
@@ -208,8 +208,12 @@ function SkillOption({
   onAdd,
 }: OptionProps) {
   return (
-    <li className="flex items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2.5">
-      <Icon icon={icon} size={18} className="shrink-0 text-zinc-500" />
+    <li className="flex items-center gap-3 rounded-lg border border-border-base px-3 py-2.5">
+      <Icon
+        icon={icon}
+        size={18}
+        className="shrink-0 text-foreground-tertiary"
+      />
       <span className="min-w-0 flex-1">
         <Text
           variant="body-medium"
@@ -225,7 +229,7 @@ function SkillOption({
       </span>
       <Button
         variant="secondary"
-        size="xs"
+        size="small"
         disabled={disabled}
         onClick={onAdd}
         leadingIcon={PlusSignIcon}

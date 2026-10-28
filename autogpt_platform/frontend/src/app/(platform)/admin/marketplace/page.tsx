@@ -1,7 +1,11 @@
+// TODO(tokens): no role for these colours yet, so they stay raw:
+// text-gray-500 #6B7280.
+
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { Suspense } from "react";
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { AdminAgentsDataTable } from "./components/AdminAgentsDataTable";
+import { AdminSkillSubmissions } from "./components/AdminSkillSubmissions";
 
 type MarketplaceAdminPageSearchParams = {
   page?: string;
@@ -41,6 +45,11 @@ async function AdminMarketplaceDashboard({
             initialSearch={search}
           />
         </Suspense>
+
+        <div className="mt-6 flex flex-col gap-3">
+          <h2 className="text-xl font-semibold">Skill submissions</h2>
+          <AdminSkillSubmissions />
+        </div>
       </div>
     </div>
   );

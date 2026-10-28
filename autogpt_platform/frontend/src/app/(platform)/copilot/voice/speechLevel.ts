@@ -1,5 +1,5 @@
 /**
- * How loud AutoPilot is at this instant, read off the element that is
+ * How loud Otto is at this instant, read off the element that is
  * playing it, so the meter moves with the words rather than pretending to.
  */
 

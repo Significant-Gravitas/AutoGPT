@@ -9,7 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
-import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import { PencilEdit02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
@@ -35,6 +35,10 @@ interface Props {
   onOpen: (file: WorkspaceFileItem) => void;
   /** Position in the list; drives the small entrance stagger. */
   index?: number;
+  isSelected: boolean;
+  /** Every selected file id; a drag from a selected row carries all of them. */
+  selectedIds: string[];
+  onToggleSelect: (file: WorkspaceFileItem) => void;
 }
 
 // Long enough that skimming down the list doesn't flash previews; short
@@ -42,9 +46,18 @@ interface Props {
 // provider's skip delay opens the next preview immediately.
 const PREVIEW_DELAY_MS = 450;
 
-export function FileRow({ file, onOpen, index = 0 }: Props) {
+export function FileRow({
+  file,
+  onOpen,
+  index = 0,
+  isSelected,
+  selectedIds,
+  onToggleSelect,
+}: Props) {
   const reduceMotion = useReducedMotion();
-  const { handleDragStart, handleDragEnd } = useFileDrag(file.id, file.name);
+  const dragIds = isSelected ? selectedIds : [file.id];
+  const dragLabel = dragIds.length > 1 ? `${dragIds.length} files` : file.name;
+  const { handleDragStart, handleDragEnd } = useFileDrag(dragIds, dragLabel);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
 
   return (
@@ -55,19 +68,46 @@ export function FileRow({ file, onOpen, index = 0 }: Props) {
       animate="show"
       className={cn(
         ROW_GRID_CLASS,
-        "group cursor-pointer px-2 transition-colors has-[[data-state=open]]:bg-zinc-50 hover:bg-zinc-50",
+        "group cursor-pointer px-2 transition-colors hover:bg-surface-muted has-[[data-state=open]]:bg-surface-muted",
+        isSelected && "bg-surface-hover hover:bg-surface-hover",
       )}
       data-testid="artifacts-list-item"
+      data-selected={isSelected || undefined}
       draggable
       onClick={() => onOpen(file)}
       onDragStartCapture={handleDragStart}
       onDragEndCapture={handleDragEnd}
     >
-      {/* The name is the row's accessible control: it takes focus, Enter
-          bubbles a click up to the row, and hovering (or focusing) it opens
-          the large preview. The rename pencil sits beside it, outside the
-          preview trigger. */}
+      {/* The thumbnail toggles the row's selection; the name is the row's
+          accessible open control: it takes focus, Enter bubbles a click up to
+          the row, and hovering (or focusing) it opens the large preview. The
+          rename pencil sits beside it, outside the preview trigger. */}
       <div className="flex min-w-0 items-center gap-1 justify-self-start">
+        <button
+          type="button"
+          aria-label={`Select ${file.name}`}
+          aria-pressed={isSelected}
+          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle, a text colour
+          className="group/select relative my-2.5 mr-3 shrink-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect(file);
+          }}
+          data-testid="artifacts-select"
+        >
+          <FileThumbnail file={file} />
+          <span
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl text-action-foreground transition-opacity",
+              isSelected
+                ? "bg-action-hover/80 opacity-100"
+                : "bg-action-hover/60 opacity-0 group-hover/select:opacity-100 group-focus-visible/select:opacity-100",
+            )}
+          >
+            <Icon icon={Tick02Icon} size={20} />
+          </span>
+        </button>
         <Tooltip delayDuration={PREVIEW_DELAY_MS}>
           <TooltipTrigger asChild>
             <button
@@ -75,11 +115,10 @@ export function FileRow({ file, onOpen, index = 0 }: Props) {
               className={NAME_BUTTON_CLASS}
               data-testid="artifacts-card-open"
             >
-              <FileThumbnail file={file} />
               <Text
                 variant="body-medium"
                 as="span"
-                className="truncate text-zinc-900"
+                className="truncate text-foreground-strong"
               >
                 {file.name}
               </Text>
@@ -95,7 +134,7 @@ export function FileRow({ file, onOpen, index = 0 }: Props) {
               align="center"
               sideOffset={16}
               collisionPadding={16}
-              className="max-w-none rounded-2xl border border-zinc-200 bg-white p-0 text-sm shadow-xl shadow-black/10 outline-none"
+              className="max-w-none rounded-2xl border border-border-base bg-surface p-0 text-sm text-foreground-strong shadow-xl shadow-black/10 outline-none"
             >
               <FilePreviewCard file={file} />
             </TooltipContent>
@@ -104,7 +143,7 @@ export function FileRow({ file, onOpen, index = 0 }: Props) {
         <button
           type="button"
           aria-label={`Rename ${file.name}`}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:opacity-100"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-foreground-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground-strong focus-visible:opacity-100 group-hover:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
             setIsRenameOpen(true);
@@ -117,7 +156,7 @@ export function FileRow({ file, onOpen, index = 0 }: Props) {
       <Text
         variant="body"
         as="span"
-        className={cn(DATE_CELL_CLASS, "text-zinc-500")}
+        className={cn(DATE_CELL_CLASS, "text-foreground-tertiary")}
         title={formatFullDate(file.created_at)}
       >
         {formatDayLabel(file.created_at)}
@@ -125,7 +164,7 @@ export function FileRow({ file, onOpen, index = 0 }: Props) {
       <Text
         variant="body"
         as="span"
-        className={cn(SIZE_CELL_CLASS, "text-zinc-500")}
+        className={cn(SIZE_CELL_CLASS, "text-foreground-tertiary")}
       >
         {formatFileSize(file.size_bytes)}
       </Text>

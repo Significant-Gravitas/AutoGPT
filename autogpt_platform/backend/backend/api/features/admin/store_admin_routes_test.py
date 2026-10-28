@@ -145,6 +145,16 @@ def test_add_to_library_requires_admin(mock_jwt_user) -> None:
     assert response.status_code == 403
 
 
+def test_skill_submission_file_requires_admin(mock_jwt_user) -> None:
+    """This route reads a package nobody has approved, addressed by version id
+    with no ownership check of its own — the admin gate is the whole check."""
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+
+    response = client.get(f"/admin/skills/submissions/{SLV_ID}/files/scripts/run.sh")
+
+    assert response.status_code == 403
+
+
 def test_preview_nonexistent_submission(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

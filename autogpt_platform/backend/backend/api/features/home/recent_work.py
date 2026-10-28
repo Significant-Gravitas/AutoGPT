@@ -2,7 +2,7 @@
 
 The card answers "who did what this week". Every run that finished and
 every durable thing produced — files written, integration actions taken,
-schedules set up — is attributed to the expert, workflow, or Autopilot
+schedules set up — is attributed to the expert, workflow, or Otto
 that did it, so the two feeds land in the same block instead of describing
 the same day from different angles.
 """
@@ -11,9 +11,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from backend.api.features.experts.models import Expert
+from backend.blocks import get_blocks
 from backend.blocks.llm import LLM_PROVIDER_NAMES
 from backend.copilot.briefing.models import BriefingRunItem
 from backend.copilot.briefing.outcome import as_utc
+from backend.copilot.constants import AUTOPILOT_NAME
 from backend.data.activity_event import ActivityEvent
 from backend.data.execution import GraphExecutionMeta
 
@@ -174,12 +176,21 @@ def _actor(
                 else None
             ),
         )
-    return HomeWorkActor(kind="autopilot", name="Autopilot", link="/copilot")
+    return HomeWorkActor(kind="autopilot", name=AUTOPILOT_NAME, link="/copilot")
 
 
 def _is_model_call(event: ActivityEvent) -> bool:
     """Rows written before LLM credential use stopped being recorded."""
     return event.category == "INTEGRATION" and event.provider in LLM_PROVIDER_NAMES
+
+
+def _integration_title(event: ActivityEvent) -> str:
+    """Rows written before the block's display name was recorded carry its
+    class name; the block registry still knows what to call it."""
+    block_class = get_blocks().get(event.object_id) if event.object_id else None
+    if block_class is None or block_class.__name__ != event.title:
+        return event.title
+    return block_class().display_name
 
 
 def _compose_item(
@@ -191,7 +202,11 @@ def _compose_item(
         id=event.id,
         category=_ITEM_CATEGORIES[event.category],
         event_type=event.event_type,
-        title=event.title,
+        title=(
+            _integration_title(event)
+            if event.category == "INTEGRATION"
+            else event.title
+        ),
         occurred_at=event.created_at,
         provider=event.provider,
         file_id=event.object_id if event.category == "FILE" else None,

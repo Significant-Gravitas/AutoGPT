@@ -2,9 +2,15 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockListExpertTemplates = vi.hoisted(() => vi.fn());
 
-vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
-  listExpertTemplates: mockListExpertTemplates,
-}));
+vi.mock(
+  "@/app/api/__generated__/endpoints/experts/experts",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@/app/api/__generated__/endpoints/experts/experts")
+    >()),
+    listExpertTemplates: mockListExpertTemplates,
+  }),
+);
 
 vi.mock("../[expertId]/components/ExpertPage", () => ({
   ExpertPage: () => null,
@@ -33,9 +39,11 @@ describe("generateMetadata", () => {
       params: Promise.resolve({ expertId: "template-maria" }),
     });
 
-    expect(metadata.title).toBe("Maria, Marketing - AutoGPT Marketplace");
+    expect(metadata.title).toBe(
+      "Maria, Marketing · AI Expert - AutoGPT Marketplace",
+    );
     expect(metadata.openGraph).toMatchObject({
-      title: "Maria, Marketing - AutoGPT Marketplace",
+      title: "Maria, Marketing · AI Expert - AutoGPT Marketplace",
       description: "Turns your product story into campaigns that land.",
       type: "profile",
     });

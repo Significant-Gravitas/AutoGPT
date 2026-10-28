@@ -10,7 +10,7 @@ from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.cluster import ClusterNode as AsyncClusterNode
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.asyncio.retry import Retry as AsyncRetry
-from redis.backoff import ExponentialBackoff
+from redis.backoff import ExponentialBackoff, NoBackoff
 from redis.cluster import ClusterNode, RedisCluster
 from redis.exceptions import ClusterDownError
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -43,6 +43,12 @@ USE_ANNOUNCED_ADDRESS = os.getenv("REDIS_USE_ANNOUNCED_ADDRESS", "").lower() in 
     "true",
     "yes",
 )
+
+# Per-node pool cap. redis-py 8.x lowered the default from 2**31 to 100 and
+# raises MaxConnectionsError instead of waiting, so one wide graph fan-out on
+# an executor's shared loop failed lock and publish calls. 10000 matches the
+# server's default `maxclients`, so the server limit is the one that binds.
+REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "10000"))
 
 # Retry transient cluster errors internally so a rotation blip never surfaces
 # as a graph-exec 500.
@@ -103,11 +109,37 @@ def connect() -> RedisClient:
         socket_connect_timeout=SOCKET_CONNECT_TIMEOUT,
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
+        max_connections=REDIS_MAX_CONNECTIONS,
         address_remap=_address_remap,
         # Drives both per-command retries and the cluster-level retry counter.
         retry=_build_retry(),
     )
     # Close on PING failure so retries don't leak ClusterNodes (AUTOGPT-SERVER-8T1).
+    try:
+        c.ping()
+    except Exception:
+        try:
+            c.close()
+        except Exception:
+            pass
+        raise
+    return c
+
+
+def connect_once(timeout: float) -> RedisClient:
+    """One attempt, short timeouts, no retries: for callers with a fallback of their own."""
+    c = RedisCluster(
+        startup_nodes=[ClusterNode(HOST, PORT)],
+        password=PASSWORD,
+        decode_responses=True,
+        socket_timeout=timeout,
+        socket_connect_timeout=timeout,
+        socket_keepalive=True,
+        health_check_interval=HEALTH_CHECK_INTERVAL,
+        max_connections=REDIS_MAX_CONNECTIONS,
+        address_remap=_address_remap,
+        retry=Retry(NoBackoff(), 0),
+    )
     try:
         c.ping()
     except Exception:
@@ -140,6 +172,7 @@ async def connect_async() -> AsyncRedisClient:
         socket_connect_timeout=SOCKET_CONNECT_TIMEOUT,
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
+        max_connections=REDIS_MAX_CONNECTIONS,
         address_remap=_address_remap,
         # redis-py 6.x AsyncRedisCluster ignores `retry_on_error` — the cluster
         # retry path uses a hardcoded {Timeout, Connection, ClusterDown} set.

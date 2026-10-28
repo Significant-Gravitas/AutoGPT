@@ -197,6 +197,22 @@ export type CredentialsType =
   | "host_scoped"
   | "device_code";
 
+/**
+ * Every credential type the platform can store, as a runtime list.
+ *
+ * Built from a total `Record<CredentialsType, true>` so that extending
+ * `CredentialsType` without updating this list fails the build. Use it
+ * wherever a list of credential types acts as a filter: an omission there
+ * silently removes a connection method rather than mis-ordering it.
+ */
+export const CREDENTIALS_TYPES: readonly CredentialsType[] = Object.keys({
+  api_key: true,
+  oauth2: true,
+  user_password: true,
+  host_scoped: true,
+  device_code: true,
+} satisfies Record<CredentialsType, true>) as CredentialsType[];
+
 export type Credentials =
   | APIKeyCredentials
   | OAuth2Credentials
@@ -223,6 +239,7 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   discriminator_mapping?: Record<string, CredentialsProviderName>;
   discriminator_type_mapping?: Record<string, CredentialsType[]>;
   discriminator_values?: any[];
+  credential_free_discriminator_values?: unknown[];
   secret?: boolean;
 };
 
@@ -762,18 +779,6 @@ export enum SpecialBlockID {
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
-export type AnalyticsMetrics = {
-  metric_name: string;
-  metric_value: number;
-  data_string: string;
-};
-
-export type AnalyticsDetails = {
-  type: string;
-  data: Record<string, any>;
-  index: string;
-};
-
 export type Pagination = {
   total_items: number;
   total_pages: number;
@@ -904,12 +909,21 @@ export type OnboardingStep =
   // No longer used but tracked
   | "BUILDER_OPEN"
   | "BUILDER_RUN_AGENT"
-  // Copilot home first-run: capability-cards modal completed or skipped
+  // Copilot home first-run: capability-cards modal completed or skipped.
+  // Replaced by FIRST_RUN_TOUR.
   | "CAPABILITY_CARDS"
+  // The guided first run over the real sidebar, finished or skipped
+  | "FIRST_RUN_TOUR"
+  // One-time contextual tips: a second chat, a cost, an expert proposal
+  | "CHATS_TIP"
+  | "COST_TIP"
+  | "EXPERT_TIP"
   // First-visit intro card for a tab, dismissed however the user chose
   | "AGENTS_TAB_INTRO"
   | "MARKETPLACE_TAB_INTRO"
-  | "BUILD_TAB_INTRO";
+  | "BUILD_TAB_INTRO"
+  // Agents-to-workflows migration notice, dismissed or followed to Otto
+  | "WORKFLOWS_MOVED";
 
 export interface UserOnboarding {
   // Plain string[] so legacy step names from existing rows pass through.
@@ -1038,7 +1052,7 @@ function _handleSingleTypeSchema(subSchema: BlockIOSubSchema): DataType {
   if (subSchema.type === "object") {
     if (
       ("additionalProperties" in subSchema && subSchema.additionalProperties) ||
-      !("properties" in subSchema)
+      !("properties" in subSchema && subSchema.properties)
     ) {
       return DataType.KEY_VALUE; // if additionalProperties / no properties => key-value
     }
@@ -1055,6 +1069,20 @@ function _handleSingleTypeSchema(subSchema: BlockIOSubSchema): DataType {
 }
 
 export function determineDataType(schema: BlockIOSubSchema): DataType {
+  return resolveDataType(schema).type;
+}
+
+/**
+ * The data type a value's schema calls for, and the schema that holds what its
+ * control needs: the non-null member of an optional field's `anyOf`, or the
+ * schema an `allOf` wraps. A select's options and a multi-select's keys live
+ * there, not on the wrapper, so read them from here (BUILDER-93V). A table is
+ * the exception: its columns are on the field itself.
+ */
+export function resolveDataType(schema: BlockIOSubSchema): {
+  type: DataType;
+  schema: BlockIOSubSchema;
+} {
   if ("allOf" in schema) {
     // If this happens, that is because Pydantic wraps $refs in an allOf if the
     // $ref has sibling schema properties (which isn't technically allowed),
@@ -1068,19 +1096,19 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
 
   // Credentials override
   if ("credentials_provider" in schema) {
-    return DataType.CREDENTIALS;
+    return { type: DataType.CREDENTIALS, schema };
   }
 
   if (
     "google_drive_picker_config" in schema ||
     ("format" in schema && schema.format === "google-drive-picker")
   ) {
-    return DataType.GOOGLE_DRIVE_PICKER;
+    return { type: DataType.GOOGLE_DRIVE_PICKER, schema };
   }
 
   // enum == SELECT
   if ("enum" in schema) {
-    return DataType.SELECT;
+    return { type: DataType.SELECT, schema };
   }
 
   // Handle anyOf => optional types (string|null, number|null, etc.)
@@ -1095,56 +1123,45 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
       const strSchema = schema.anyOf.find(
         (s) => s.type === "string",
       ) as BlockIOStringSubSchema;
-      return _handleStringSchema(strSchema);
+      return { type: _handleStringSchema(strSchema), schema: strSchema };
     }
 
-    // (number|integer) & null
-    if (
-      (types.includes("number") || types.includes("integer")) &&
-      types.includes("null")
-    ) {
-      // Just reuse our single-type logic for whichever is not null
-      const numSchema = schema.anyOf.find(
-        (s) => s.type === "number" || s.type === "integer",
-      );
-      if (numSchema) {
-        return _handleSingleTypeSchema(numSchema);
-      }
-      return DataType.NUMBER; // fallback
+    // (number|integer) & null: reuse the single-type logic for the number
+    const numSchema = schema.anyOf.find(
+      (s) => s.type === "number" || s.type === "integer",
+    );
+    if (numSchema && types.includes("null")) {
+      return { type: _handleSingleTypeSchema(numSchema), schema: numSchema };
     }
 
     // (array | null)
-    if (types.includes("array") && types.includes("null")) {
-      // Check for table format on the parent schema (where anyOf is)
+    const arrSchema = schema.anyOf.find((s) => s.type === "array");
+    if (arrSchema && types.includes("null")) {
+      // AgentTableInputBlock writes the table format and its columns (`items`)
+      // on the field itself, beside an anyOf member that has neither.
       if ("format" in schema && schema.format === "table") {
-        return DataType.TABLE;
+        return { type: DataType.TABLE, schema };
       }
-
-      const arrSchema = schema.anyOf.find((s) => s.type === "array");
-      if (arrSchema) return _handleSingleTypeSchema(arrSchema);
-      return DataType.ARRAY;
+      return { type: _handleSingleTypeSchema(arrSchema), schema: arrSchema };
     }
 
     // (object | null)
-    if (types.includes("object") && types.includes("null")) {
-      const objSchema = schema.anyOf.find(
-        (s) => s.type === "object",
-      ) as BlockIOObjectSubSchema;
-      if (objSchema) return _handleSingleTypeSchema(objSchema);
-      return DataType.OBJECT;
+    const objSchema = schema.anyOf.find((s) => s.type === "object");
+    if (objSchema && types.includes("null")) {
+      return { type: _handleSingleTypeSchema(objSchema), schema: objSchema };
     }
   }
 
   // oneOf + discriminator => user picks which variant => SELECT
   if ("oneOf" in schema && "discriminator" in schema && schema.discriminator) {
-    return DataType.SELECT;
+    return { type: DataType.SELECT, schema };
   }
 
   // Direct type
   if ("type" in schema) {
-    return _handleSingleTypeSchema(schema);
+    return { type: _handleSingleTypeSchema(schema), schema };
   }
 
   // Fallback
-  return DataType.SHORT_TEXT;
+  return { type: DataType.SHORT_TEXT, schema };
 }

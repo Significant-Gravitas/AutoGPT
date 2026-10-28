@@ -1,4 +1,4 @@
-"""Text-to-speech for AutoPilot voice mode, metered like a chat turn.
+"""Text-to-speech for Otto voice mode, metered like a chat turn.
 
 A spoken reply debits the same per-user microdollar counter and writes the
 same ``PlatformCostLog`` row as the LLM turn that produced it, so voice is
@@ -12,6 +12,7 @@ from openai import AsyncOpenAI
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.token_tracking import persist_and_record_usage
+from backend.copilot.trial_cost_context import attributed_usage
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ class SpeechUnavailable(Exception):
     """No OpenAI key is configured, so voice mode cannot synthesise."""
 
 
+@attributed_usage
 async def synthesize_speech(
     *,
     user_id: str,
@@ -116,7 +118,7 @@ async def _meter_speech(
         model=config.voice_tts_model,
         provider="openai",
         block_name_override=TTS_BLOCK_NAME,
-        graph_exec_id_override=session_id,
+        chat_session_id_override=session_id,
         extra_metadata={
             "surface": "voice_mode",
             "characters": characters,

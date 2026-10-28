@@ -53,6 +53,23 @@ def build_workflow_chain(
     ]
 
 
+def integration_providers(
+    nodes: Sequence[prisma.models.AgentNode],
+) -> list[str]:
+    """Every integration the graph needs credentials for, sorted, untruncated.
+
+    The chain is a three-item display summary, so a caller that reads providers
+    off it loses whichever one the node counts rank fourth — fine for an icon
+    row, wrong for telling someone what they have to connect.
+    """
+    providers = set()
+    for node in nodes:
+        key = _classify_node(node)
+        if key is not None and key[0] == "integration" and key[1]:
+            providers.add(key[1])
+    return sorted(providers)
+
+
 def _rank(item: tuple[ChainKey, int]) -> tuple[int, str, str]:
     (kind, provider), count = item
     score = count + (_PROVIDER_PRIORITY if provider else 0)

@@ -11,5 +11,6 @@ export function integrationIconSrc(provider: string): string | null {
     .toLowerCase()
     .replace(/[\s-]+/g, "_")
     .replace(/[^a-z0-9_]/g, "");
+  if (slug === "microsoft_365_copilot") return "/integrations/microsoft.webp";
   return slug ? `/integrations/${slug}.png` : null;
 }

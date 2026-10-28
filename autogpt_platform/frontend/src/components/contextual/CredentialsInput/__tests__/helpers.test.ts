@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { deriveAuthMethods } from "@/hooks/useCredentials";
 import {
   countSupportedTypes,
   getSupportedTypes,
@@ -508,6 +509,25 @@ describe("resolveActionTarget", () => {
     expect(resolveActionTarget(false, false, false, false, true)).toBe(
       "host_scoped",
     );
+  });
+
+  // A device-code provider advertises both types: the grant yields an
+  // oauth2-shaped credential, so `oauth2` must stay in the schema for saved
+  // credentials to match. `resolveActionTarget` checks OAuth first, so the
+  // device-code route depends on `deriveAuthMethods` shadowing `oauth2` out.
+  it("routes a provider advertising both types to device auth, not oauth", () => {
+    const methods = deriveAuthMethods(["oauth2", "device_code"]);
+
+    expect(
+      resolveActionTarget(
+        false,
+        methods.supportsOAuth2,
+        methods.supportsApiKey,
+        methods.supportsUserPassword,
+        methods.supportsHostScoped,
+        methods.supportsDeviceCode,
+      ),
+    ).toBe("device_code");
   });
 
   it("returns null when nothing is supported", () => {

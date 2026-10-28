@@ -1,6 +1,7 @@
 """Tests for credentials API security: no secret leakage, SDK defaults filtered."""
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
@@ -8,13 +9,17 @@ import fastapi.testclient
 import pytest
 from pydantic import SecretStr
 
-from backend.api.features.integrations.router import router
+from backend.api.features.integrations.router import _get_provider_oauth_handler, router
 from backend.data.integrations import Webhook
 from backend.data.model import (
     APIKeyCredentials,
     HostScopedCredentials,
     OAuth2Credentials,
     UserPasswordCredentials,
+)
+from backend.integrations.managed_providers.ayrshare import (
+    AyrshareNotConfiguredError,
+    AyrshareProvisioningError,
 )
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
@@ -361,6 +366,35 @@ class TestManagedCredentials:
         regular_cred = next(c for c in data if c["id"] == "regular-1")
         assert managed_cred["is_managed"] is True
         assert regular_cred["is_managed"] is False
+
+    def test_list_credentials_carries_the_service_identity(self):
+        from backend.integrations.mcp_catalog import get_mcp_catalog
+
+        linear = next(e for e in get_mcp_catalog() if e.name == "mcp_linear")
+        api_key = APIKeyCredentials(
+            id="key-1", provider="openai", title="My Key", api_key=SecretStr("sk")
+        )
+        mcp = OAuth2Credentials(
+            id="mcp-1",
+            provider="mcp",
+            title="MCP: mcp.linear.app",
+            access_token=SecretStr("t"),
+            scopes=[],
+            metadata={"mcp_server_url": linear.mcp_server.server_url},
+        )
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.store.get_all_creds = AsyncMock(return_value=[api_key, mcp])
+            resp = client.get("/credentials")
+
+        assert resp.status_code == 200
+        by_id = {c["id"]: c for c in resp.json()}
+        assert by_id["key-1"]["service"] == "openai"
+        assert by_id["key-1"]["service_icon"] == "openai"
+        assert by_id["mcp-1"]["service"] == "linear"
+        assert by_id["mcp-1"]["service_name"] == "Linear"
+        assert by_id["mcp-1"]["service_icon"] == linear.mcp_server.icon_id
 
 
 # ---------------------------------------------------------------------------
@@ -856,6 +890,65 @@ class TestWebhookPingOwnership:
         webhook_manager.trigger_ping.assert_awaited_once()
 
 
+class TestOAuthHandlerResolutionForDeviceProviders:
+    """A device-code provider has no OAuth handler, but it is not unknown.
+
+    `_get_provider_oauth_handler` must point the caller at the device-auth
+    endpoint (400) rather than reporting "does not support OAuth" (404).
+    """
+
+    # Synthetic keys so both patches are load-bearing. `HANDLERS_BY_NAME` is an
+    # `SDKAwareHandlersDict` whose `__contains__` reads the module-level
+    # `_handlers_dict` and the SDK registry, never its own storage, so
+    # `patch.dict` on the facade is inert: patch the backing dict instead.
+    DEVICE_ONLY_PROVIDER = "test_device_only_provider"
+    UNREGISTERED_PROVIDER = "test_unregistered_provider"
+
+    def test_a_device_code_provider_is_pointed_at_the_device_endpoint(self):
+        with (
+            patch.dict(
+                "backend.integrations.oauth._handlers_dict",
+                {},
+                clear=True,
+            ),
+            patch.dict(
+                "backend.api.features.integrations.router.DEVICE_HANDLERS_BY_NAME",
+                {self.DEVICE_ONLY_PROVIDER: MagicMock()},
+                clear=True,
+            ),
+            pytest.raises(fastapi.HTTPException) as exc,
+        ):
+            _get_provider_oauth_handler(MagicMock(), self.DEVICE_ONLY_PROVIDER)
+
+        assert exc.value.status_code == 400
+        assert "device code" in exc.value.detail
+        # The detail reaches the user verbatim, so the path must be the mounted
+        # one: the router lives under /api/integrations.
+        assert (
+            f"/api/integrations/{self.DEVICE_ONLY_PROVIDER}/device-auth/initiate"
+            in exc.value.detail
+        )
+
+    def test_an_unknown_provider_still_reports_no_oauth_support(self):
+        with (
+            patch.dict(
+                "backend.integrations.oauth._handlers_dict",
+                {},
+                clear=True,
+            ),
+            patch.dict(
+                "backend.api.features.integrations.router.DEVICE_HANDLERS_BY_NAME",
+                {},
+                clear=True,
+            ),
+            pytest.raises(fastapi.HTTPException) as exc,
+        ):
+            _get_provider_oauth_handler(MagicMock(), self.UNREGISTERED_PROVIDER)
+
+        assert exc.value.status_code == 404
+        assert "does not support OAuth" in exc.value.detail
+
+
 class TestDeviceAuthEndpoints:
     """POST /{provider}/device-auth/{initiate,poll}.
 
@@ -1032,7 +1125,9 @@ class TestDeviceAuthEndpoints:
 
         mock_mgr.store.consume_state_token.assert_not_awaited()
 
-    def test_poll_race_loser_does_not_create_a_second_credential(self):
+    def test_poll_race_loser_does_not_create_a_second_credential(
+        self, resume_after_reconnect: MagicMock
+    ):
         """Two polls can both see an approval; only the one that consumes wins.
 
         `consume_state_token` returning None means another poll already handled
@@ -1091,6 +1186,7 @@ class TestDeviceAuthEndpoints:
         assert response.json()["status"] == "approved"
         assert response.json()["credentials"] is None
         mock_merge.assert_not_awaited()
+        resume_after_reconnect.assert_not_called()
 
     def test_poll_does_not_leak_upstream_error_text(self):
         handler = MagicMock()
@@ -1111,7 +1207,9 @@ class TestDeviceAuthEndpoints:
         assert response.status_code == 502
         assert "internal-host-1" not in response.text
 
-    def test_poll_stores_the_credential_on_the_winning_approval(self):
+    def test_poll_stores_the_credential_on_the_winning_approval(
+        self, resume_after_reconnect: MagicMock
+    ):
         """The primary success path: consume wins, credential is stored.
 
         Every other approved-status test here makes `consume_state_token`
@@ -1171,6 +1269,8 @@ class TestDeviceAuthEndpoints:
         assert stored.scopes == ["userinfo:read", "payment_methods.agentic"]
         # And no secret rides along in the response.
         assert "do-not-leak" not in response.text
+        # Only the winner resumes the scheduled chats this connect fixes.
+        resume_after_reconnect.assert_called_once_with(JWT_USER_ID, "stripe_link")
 
     def test_poll_maps_a_missing_user_row_to_an_invalid_token(self):
         """A caller with no backend User row raises a Prisma RecordNotFound in
@@ -1431,3 +1531,38 @@ class TestDeviceAuthEndpoints:
         )
         # And never the "newest for this provider" shortcut.
         mock_mgr.store.get_creds_by_provider.assert_not_called()
+
+
+class TestAyrshareSSOURL:
+    """The builder's connect button, now on the shared provisioning path."""
+
+    def test_returns_the_link(self):
+        link = MagicMock(url="https://sso", expires_at=datetime.now(timezone.utc))
+        with patch(
+            "backend.api.features.integrations.router.get_ayrshare_sso_link",
+            AsyncMock(return_value=link),
+        ) as get_link:
+            response = client.get("/ayrshare/sso_url")
+
+        assert response.status_code == 200
+        assert response.json()["sso_url"] == "https://sso"
+        assert get_link.await_args.args[0] == JWT_USER_ID
+
+    def test_not_configured_is_500(self):
+        with patch(
+            "backend.api.features.integrations.router.get_ayrshare_sso_link",
+            AsyncMock(side_effect=AyrshareNotConfiguredError("not configured")),
+        ):
+            response = client.get("/ayrshare/sso_url")
+
+        assert response.status_code == 500
+
+    def test_failed_provisioning_is_502(self):
+        with patch(
+            "backend.api.features.integrations.router.get_ayrshare_sso_link",
+            AsyncMock(side_effect=AyrshareProvisioningError("Failed to generate JWT")),
+        ):
+            response = client.get("/ayrshare/sso_url")
+
+        assert response.status_code == 502
+        assert response.json()["detail"] == "Failed to generate JWT"

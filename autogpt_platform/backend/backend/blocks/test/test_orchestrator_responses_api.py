@@ -1037,7 +1037,7 @@ async def test_agent_mode_conversation_valid_for_responses_api():
     ep.execution_stats_lock = threading.Lock()
     ns = MagicMock(error=None)
     ep.on_node_execution = AsyncMock(return_value=ns)
-    # Mock charge_node_usage (called after successful tool execution).
+    # Mock charge_node_usage (called before the tool executes).
     # Must be AsyncMock because it is async and is awaited in
     # _execute_single_tool_with_manager — a plain MagicMock would return a
     # non-awaitable tuple and TypeError out, then be silently swallowed by

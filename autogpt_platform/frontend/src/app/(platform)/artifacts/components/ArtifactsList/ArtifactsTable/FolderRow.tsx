@@ -3,15 +3,13 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import {
-  Delete02Icon,
-  Folder01Icon,
-  PencilIcon,
-} from "@hugeicons/core-free-icons";
+import { Folder01Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import type { DragEvent } from "react";
-import { FILE_DRAG_MIME } from "../../WorkspaceFolders/drag";
+import { FILE_DRAG_MIME, readFileDragIds } from "../../WorkspaceFolders/drag";
+import { FolderActionsMenu } from "../../WorkspaceFolders/FolderActionsMenu";
+import { folderSummary } from "../../WorkspaceFolders/folderTree";
 import { FOLDER_STYLE } from "../../WorkspaceFolders/folder-constants";
 import { formatDayLabel, formatFullDate } from "../helpers";
 import {
@@ -28,25 +26,29 @@ interface Props {
   id: string;
   name: string;
   fileCount: number;
+  subfolderCount: number;
   updatedAt: string | Date;
   onOpen: () => void;
   onEdit: () => void;
+  onMove: () => void;
   onDelete: () => void;
-  onFileDrop: (fileId: string) => void;
+  onFileDrop: (fileIds: string[]) => void;
+  /** Position in the list; drives the small entrance stagger. */
+  index?: number;
 }
-
-const ACTION_BUTTON_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100";
 
 export function FolderRow({
   id,
   name,
   fileCount,
+  subfolderCount,
   updatedAt,
   onOpen,
   onEdit,
+  onMove,
   onDelete,
   onFileDrop,
+  index = 0,
 }: Props) {
   const reduceMotion = useReducedMotion();
   const [isDragOver, setIsDragOver] = useState(false);
@@ -69,16 +71,21 @@ export function FolderRow({
   function handleDrop(e: DragEvent<HTMLLIElement>) {
     e.preventDefault();
     setIsDragOver(false);
-    const fileId = e.dataTransfer.getData(FILE_DRAG_MIME);
-    if (fileId) onFileDrop(fileId);
+    const fileIds = readFileDragIds(e.dataTransfer);
+    if (fileIds.length > 0) onFileDrop(fileIds);
   }
 
   return (
+    // Animates on its own mount (see row-layout.ts) so a folder created
+    // while the list is already showing doesn't stay in the hidden state.
     <motion.li
       variants={reduceMotion ? REDUCED_ROW_VARIANTS : ROW_VARIANTS}
+      custom={index}
+      initial={reduceMotion ? false : "hidden"}
+      animate="show"
       className={cn(
         ROW_GRID_CLASS,
-        "group cursor-pointer px-2 transition-colors hover:bg-zinc-50",
+        "group cursor-pointer px-2 transition-colors hover:bg-surface-muted",
         isDragOver && `${FOLDER_STYLE.surface} ring-2 ${FOLDER_STYLE.ring}`,
       )}
       data-folder-id={id}
@@ -94,7 +101,7 @@ export function FolderRow({
       >
         <div
           className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200",
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-base",
             FOLDER_STYLE.surface,
           )}
         >
@@ -103,7 +110,7 @@ export function FolderRow({
         <Text
           variant="body-medium"
           as="span"
-          className="truncate text-zinc-900"
+          className="truncate text-foreground-strong"
           data-testid="workspace-folder-name"
         >
           {name}
@@ -112,7 +119,7 @@ export function FolderRow({
       <Text
         variant="body"
         as="span"
-        className={cn(DATE_CELL_CLASS, "text-zinc-500")}
+        className={cn(DATE_CELL_CLASS, "text-foreground-tertiary")}
         title={formatFullDate(updatedAt)}
       >
         {formatDayLabel(updatedAt)}
@@ -120,9 +127,9 @@ export function FolderRow({
       <Text
         variant="body"
         as="span"
-        className={cn(SIZE_CELL_CLASS, "text-zinc-500")}
+        className={cn(SIZE_CELL_CLASS, "text-foreground-tertiary")}
       >
-        {fileCount} {fileCount === 1 ? "file" : "files"}
+        {folderSummary(fileCount, subfolderCount)}
       </Text>
       <div
         className={cn(
@@ -131,22 +138,12 @@ export function FolderRow({
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          type="button"
-          aria-label="Rename folder"
-          onClick={onEdit}
-          className={cn(ACTION_BUTTON_CLASS, "hover:text-zinc-900")}
-        >
-          <Icon icon={PencilIcon} size={16} />
-        </button>
-        <button
-          type="button"
-          aria-label="Delete folder"
-          onClick={onDelete}
-          className={cn(ACTION_BUTTON_CLASS, "hover:text-red-600")}
-        >
-          <Icon icon={Delete02Icon} size={16} />
-        </button>
+        <FolderActionsMenu
+          folderName={name}
+          onRename={onEdit}
+          onMove={onMove}
+          onDelete={onDelete}
+        />
       </div>
     </motion.li>
   );

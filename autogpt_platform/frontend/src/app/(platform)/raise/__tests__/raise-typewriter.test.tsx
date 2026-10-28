@@ -4,30 +4,12 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { saveDraft } from "../helpers";
 import RaisePage from "../page";
 
-const { setFlagStatusMock } = vi.hoisted(() => ({
-  setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
-}));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
-  const actual =
-    await importActual<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? setFlagStatusMock()
-        : actual.useFlagStatus(flag as never),
-  };
-});
-
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isLoggedIn: true, user: { id: "user-1" } }),
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/raise",
   useSearchParams: () => new URLSearchParams(),
   useParams: () => ({}),
@@ -46,7 +28,7 @@ function renderRaise() {
 }
 
 function visibleBubbleText() {
-  const log = screen.getByRole("log", { name: "Raise expert conversation" });
+  const log = screen.getByRole("log", { name: "Expert creation conversation" });
   return Array.from(log.querySelectorAll("span[aria-hidden]")).map(
     (node) => node.textContent ?? "",
   );
@@ -54,7 +36,6 @@ function visibleBubbleText() {
 
 beforeEach(() => {
   window.sessionStorage.clear();
-  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
 });
 
 afterEach(() => {
@@ -63,11 +44,12 @@ afterEach(() => {
 
 test("renders restored conversation messages instantly after reload", async () => {
   saveDraft({
-    step: "color",
+    step: "name",
     hasStarted: true,
-    role: "marketer",
-    name: "Nova",
-    color: null,
+    category: "marketing",
+    color: "rose-300",
+    jobTitle: "Marketing Manager",
+    name: "",
     avatarUrl: null,
     about: null,
     voicePreferences: "",
@@ -82,7 +64,7 @@ test("renders restored conversation messages instantly after reload", async () =
   expect(
     await screen.findByRole(
       "log",
-      { name: "Raise expert conversation" },
+      { name: "Expert creation conversation" },
       { timeout: 5000 },
     ),
   ).toBeDefined();
@@ -91,13 +73,13 @@ test("renders restored conversation messages instantly after reload", async () =
   expect(
     visible.some((text) =>
       text.includes(
-        "Hello, I'm Autopilot. I'll help you raise your own expert.",
+        "Hello, I'm Otto. I'll help you create your own AI Expert.",
       ),
     ),
   ).toBe(true);
   expect(
     visible.some((text) =>
-      text.includes("First — what should your expert do for you?"),
+      text.includes("First — which area should your expert work in?"),
     ),
   ).toBe(true);
   expect(
@@ -106,6 +88,6 @@ test("renders restored conversation messages instantly after reload", async () =
     ),
   ).toBe(true);
   expect(
-    visible.some((text) => text.includes("Nice. Now choose a color for them.")),
+    visible.some((text) => text.includes("And what's their job title?")),
   ).toBe(true);
 });

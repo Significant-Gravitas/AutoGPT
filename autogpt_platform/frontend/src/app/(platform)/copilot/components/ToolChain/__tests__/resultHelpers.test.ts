@@ -8,6 +8,7 @@ import {
   humanizeKey,
   inline,
   integrationIconSrc,
+  isWebhookIngressUrl,
   resultItemKey,
   safeHostname,
   str,
@@ -66,6 +67,33 @@ describe("stripBaseFields", () => {
         result: 5,
       }),
     ).toEqual({ result: 5 });
+  });
+
+  it("drops a name that only echoes the discriminator", () => {
+    // no_results repeats its own type in `name`. Left in, it renders as a
+    // "Name no_results" row and makes the object two-keyed, so the card that
+    // handles a lone string array never runs and the suggestions come out raw.
+    expect(
+      stripBaseFields({
+        type: "no_results",
+        message: "Nothing found",
+        suggestions: ["Try broader keywords"],
+        name: "no_results",
+      }),
+    ).toEqual({ suggestions: ["Try broader keywords"] });
+  });
+
+  it("keeps a name that is real payload", () => {
+    // A folder, file, or block is named, and that name is the answer. It is
+    // only envelope when it repeats the type.
+    expect(
+      stripBaseFields({
+        type: "folder_created",
+        message: "Created",
+        name: "Testing",
+        id: "f1",
+      }),
+    ).toEqual({ name: "Testing", id: "f1" });
   });
 });
 
@@ -154,5 +182,24 @@ describe("result formatting", () => {
     expect(inline("text")).toBe("text");
     expect(inline(3)).toBe("3");
     expect(inline(false)).toBe("false");
+  });
+});
+
+describe("isWebhookIngressUrl", () => {
+  it("matches backend webhook ingress URLs", () => {
+    expect(
+      isWebhookIngressUrl(
+        "https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress",
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores ordinary links", () => {
+    expect(isWebhookIngressUrl("https://example.com/webhooks/docs")).toBe(
+      false,
+    );
+    expect(
+      isWebhookIngressUrl("https://example.com/webhooks/wh-1/ingress-guide"),
+    ).toBe(false);
   });
 });

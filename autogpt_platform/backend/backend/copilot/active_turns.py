@@ -1,4 +1,4 @@
-"""Per-user concurrent AutoPilot turn tracking, backed entirely by Postgres.
+"""Per-user concurrent Otto turn tracking, backed entirely by Postgres.
 
 Each :class:`prisma.models.ChatSession` carries a ``chatStatus`` text
 enum: ``"idle"`` (no turn in flight, the 99% case), ``"queued"``
@@ -20,17 +20,16 @@ Public API
   used by the queue layer (in-flight = running + queued) and the
   dispatcher's busy-session check.
 
-Cap admission is a *non-locked* count-then-update. Two concurrent
-submits from the same user can both pass the count and both update,
-leaving the user briefly one or two over the cap. This is the same
-trade-off the graph-execution credit rate-limit accepts on its
-``INCRBY`` path: the cap is a safeguard, not a budget.
+Cap admission counts and flips under one per-user database lock
+(``admit_chat_session_turn``), so concurrent submits fill exactly the free
+slots: none over the cap, and none refused while a slot is free.
 
 DB access goes through :func:`backend.data.db_accessors.chat_db` so
 the dispatcher works from both the HTTP server (Prisma directly) and
 the copilot_executor process (RPC via DatabaseManager).
 """
 
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -42,7 +41,9 @@ from backend.copilot.model import (
 from backend.data.db_accessors import chat_db
 from backend.util.settings import Settings
 
-# Upper bound on a single AutoPilot turn's wall-clock duration.  Re-exported
+logger = logging.getLogger(__name__)
+
+# Upper bound on a single Otto turn's wall-clock duration.  Re-exported
 # for callers (e.g. ``backend.blocks.autopilot``) that need a sensible
 # upper-wait timeout.  Stale running sessions older than this are an
 # operational concern surfaced via metrics + manual recovery, not
@@ -58,6 +59,12 @@ def get_running_turn_limit() -> int:
 def get_inflight_turn_limit() -> int:
     """Configured hard cap on in-flight (running + queued) turns per user."""
     return Settings().config.max_inflight_copilot_turns_per_user
+
+
+def get_delegated_turn_limit() -> int:
+    """Running cap for a turn another session started: one below the user's, so
+    sub-work never takes the last slot (at a cap of 1 there is none to keep)."""
+    return max(get_running_turn_limit() - 1, 1)
 
 
 def inflight_turn_limit_message(limit: int | None = None) -> str:
@@ -77,8 +84,17 @@ def running_turn_limit_message(limit: int | None = None) -> str:
     inflight one."""
     resolved = get_running_turn_limit() if limit is None else limit
     return (
-        f"You have {resolved} AutoPilot tasks already running. "
+        f"You have {resolved} tasks already running. "
         "Please wait for one of them to finish before starting a new one."
+    )
+
+
+def spawn_limit_message() -> str:
+    """What a spawn tool tells the model when its turn could not even queue."""
+    return (
+        f"The user already has {get_inflight_turn_limit()} tasks running or "
+        "waiting to start, the most they may have. Wait for one to finish "
+        "before starting another."
     )
 
 
@@ -92,7 +108,7 @@ def queued_turn_message() -> str:
 
 
 class ConcurrentTurnLimitError(Exception):
-    """User has reached the configured running AutoPilot turn cap."""
+    """User has reached the configured running Otto turn cap."""
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message or running_turn_limit_message())
@@ -119,12 +135,16 @@ async def release_turn_slot(user_id: str, session_id: str) -> None:
     changed (e.g. a parallel cancel)."""
     if not user_id:
         return
-    await chat_db().update_chat_session_status(
+    if await chat_db().update_chat_session_status(
         session_id=session_id,
         expect_status=CHAT_STATUS_RUNNING,
         status=CHAT_STATUS_IDLE,
         user_id=user_id,
-    )
+    ):
+        logger.info(
+            f"release_turn_slot: session={session_id} user={user_id} "
+            "gave its running slot back"
+        )
 
 
 class TurnSlot:
@@ -177,23 +197,15 @@ async def acquire_turn_slot(
     resolved_capacity = capacity if capacity is not None else get_running_turn_limit()
     db = chat_db()
 
-    # Try fresh admit: promote idle → running in one CAS-gated update.
-    if await db.update_chat_session_status(
+    admit = await db.admit_chat_session_turn(
         session_id=session_id,
-        expect_status=CHAT_STATUS_IDLE,
-        status=CHAT_STATUS_RUNNING,
         user_id=user_id,
-    ):
-        # Fresh admit: enforce the cap by counting AFTER the flip.
-        # Reading after-write is OK because over-admit just briefly
-        # exceeds the cap — the user gets one extra slot at most under
-        # burst, same trade-off as the prior count-then-update path.
-        if await count_running_turns(user_id) > resolved_capacity:
-            # Roll back our flip; the caller falls through to the queue.
-            await release_turn_slot(user_id, session_id)
-            raise ConcurrentTurnLimitError(
-                running_turn_limit_message(resolved_capacity)
-            )
+        expect_status=CHAT_STATUS_IDLE,
+        capacity=resolved_capacity,
+    )
+    if admit == "full":
+        raise ConcurrentTurnLimitError(running_turn_limit_message(resolved_capacity))
+    if admit == "admitted":
         handle.admitted = True
     else:
         # CAS failed: session was not idle.  Disambiguate by reading
@@ -213,6 +225,17 @@ async def acquire_turn_slot(
 
     try:
         yield handle
-    finally:
+    except BaseException:
+        # Cleanup on a failure path: a release that fails too must not replace
+        # the error the caller acts on (a publish that may have reached the
+        # broker would otherwise read as a turn that was never sent).
         if handle.admitted and not handle._kept:
-            await release_turn_slot(user_id, session_id)
+            try:
+                await release_turn_slot(user_id, session_id)
+            except Exception:
+                logger.exception(
+                    f"acquire_turn_slot: release failed for session={session_id}"
+                )
+        raise
+    if handle.admitted and not handle._kept:
+        await release_turn_slot(user_id, session_id)

@@ -5,17 +5,12 @@ import type { RecipientOption } from "../ChatInput/components/RecipientChip";
 
 const AUTOPILOT_RECIPIENT: RecipientOption = {
   id: null,
-  name: "Autopilot",
+  name: "Otto",
   avatarUrl: null,
 };
 
 export function useRecipientPicker() {
-  const {
-    activeExperts,
-    activeExpertIds,
-    isExpertsEnabled,
-    hasExpertsSettled,
-  } = useExpertMap();
+  const { activeExperts, activeExpertIds, hasExpertsSettled } = useExpertMap();
   const [expertIdParam, setExpertIdParam] = useQueryState(
     "expertId",
     parseAsString,
@@ -23,8 +18,8 @@ export function useRecipientPicker() {
 
   // An ?expertId= pointing at an expert the user can no longer address
   // (archived, deleted, or simply wrong) would leave the chip reading
-  // "Autopilot" while `createSession` still sent the id — which the backend
-  // rejects with a 404 on every send. Drop it so both agree on Autopilot.
+  // "Otto" while `createSession` still sent the id — which the backend
+  // rejects with a 404 on every send. Drop it so both agree on Otto.
   useEffect(
     function clearUnknownExpertParam() {
       if (!hasExpertsSettled || !expertIdParam) return;
@@ -43,6 +38,7 @@ export function useRecipientPicker() {
       id: expert.id,
       name: expert.name,
       avatarUrl: expert.avatarUrl,
+      color: expert.color,
     })),
   ];
 
@@ -52,14 +48,12 @@ export function useRecipientPicker() {
       options.find((option) => option.id === expertIdParam) ??
       AUTOPILOT_RECIPIENT,
     selectedExpert,
-    // Only a pending param can be mis-rendered as "Autopilot"; without one the
+    // Only a pending param can be mis-rendered as "Otto"; without one the
     // fallback is already the right answer. Keyed on "not settled yet" rather
     // than "fetching": an initial query that is pending but paused (offline)
     // reports `isFetching: false` while it still has no roster to resolve
-    // against. Gated on the flag because with experts off the roster never
-    // settles and the Autopilot fallback is the only correct answer.
-    isLoadingRecipient:
-      isExpertsEnabled && !hasExpertsSettled && !!expertIdParam,
+    // against.
+    isLoadingRecipient: !hasExpertsSettled && !!expertIdParam,
     selectRecipient(id: string | null) {
       void setExpertIdParam(id);
     },

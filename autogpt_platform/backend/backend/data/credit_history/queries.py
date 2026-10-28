@@ -6,17 +6,30 @@ WITH wallet AS (
     WHERE __OWNER__ = $1 AND "isActive" = TRUE
       AND "createdAt" <= ($2::timestamptz AT TIME ZONE 'UTC')
       AND ($3::text IS NULL OR type::text = $3::text)
+), scoped AS (
+    -- Chat usage names its session; rows written before that carried it as a
+    -- "copilot-session-<id>" graph execution id.
+    SELECT *,
+        CASE WHEN metadata->>'graph_exec_id' LIKE 'copilot-session-%' THEN NULL
+             ELSE NULLIF(metadata->>'graph_exec_id', '') END AS execution_id,
+        COALESCE(
+            NULLIF(metadata->>'chat_session_id', ''),
+            CASE WHEN metadata->>'graph_exec_id' LIKE 'copilot-session-%'
+                 THEN substr(metadata->>'graph_exec_id', length('copilot-session-') + 1)
+            END) AS chat_session_id
+    FROM wallet
 ), classified AS MATERIALIZED (
     SELECT *,
-        CASE WHEN transaction_type = 'USAGE'
-                  AND NULLIF(metadata->>'graph_exec_id', '') IS NOT NULL
-             THEN 'execution:' || (metadata->>'graph_exec_id')
+        CASE WHEN transaction_type = 'USAGE' AND execution_id IS NOT NULL
+             THEN 'execution:' || execution_id
+             WHEN transaction_type = 'USAGE' AND chat_session_id IS NOT NULL
+             THEN 'chat:' || chat_session_id
              ELSE 'transaction:' || "transactionKey" END AS group_id,
         CASE WHEN transaction_type != 'USAGE' THEN 'transaction'
              WHEN metadata->'input' ? 'reconciled_delta' THEN 'adjustment'
              WHEN metadata->'input'->>'charge' = 'Execution Cost' THEN 'execution_fee'
              ELSE 'usage' END AS charge_type
-    FROM wallet
+    FROM scoped
 ), heads AS (
     SELECT group_id AS id, MAX("createdAt") AS transaction_time
     FROM classified
@@ -34,16 +47,18 @@ WITH wallet AS (
     FROM classified INNER JOIN page ON page.id = classified.group_id
 ), grouped AS (
     SELECT group_id AS id,
-        CASE WHEN group_id LIKE 'execution:%' THEN group_id
-             ELSE MAX("transactionKey") END AS transaction_key,
+        CASE WHEN group_id LIKE 'transaction:%' THEN MAX("transactionKey")
+             ELSE group_id END AS transaction_key,
         MAX("createdAt") AS transaction_time,
         MIN("createdAt") AS usage_start_time,
         MAX(transaction_type) AS transaction_type,
         SUM(amount)::bigint AS amount,
-        MAX(CASE WHEN transaction_type = 'USAGE'
+        MAX(CASE WHEN transaction_type = 'USAGE' AND chat_session_id IS NULL
                  THEN NULLIF(metadata->>'graph_id', '') END) AS usage_graph_id,
         MAX(CASE WHEN transaction_type = 'USAGE'
-                 THEN NULLIF(metadata->>'graph_exec_id', '') END) AS usage_execution_id,
+                 THEN execution_id END) AS usage_execution_id,
+        MAX(CASE WHEN transaction_type = 'USAGE'
+                 THEN chat_session_id END) AS usage_chat_session_id,
         COUNT(DISTINCT CASE WHEN transaction_type = 'USAGE'
                            THEN NULLIF(metadata->>'node_exec_id', '') END)::int
             AS usage_node_count,

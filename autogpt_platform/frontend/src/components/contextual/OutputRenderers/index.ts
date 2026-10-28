@@ -10,8 +10,10 @@ import { jsonRenderer } from "./renderers/JSONRenderer";
 import { markdownRenderer } from "./renderers/MarkdownRenderer";
 import { workspaceFileRenderer } from "./renderers/WorkspaceFileRenderer";
 import { linkRenderer } from "./renderers/LinkRenderer";
+import { desktopStreamRenderer } from "./renderers/DesktopStreamRenderer";
 
 // Register all renderers in priority order
+globalRegistry.register(desktopStreamRenderer);
 globalRegistry.register(workspaceFileRenderer);
 globalRegistry.register(videoRenderer);
 globalRegistry.register(audioRenderer);

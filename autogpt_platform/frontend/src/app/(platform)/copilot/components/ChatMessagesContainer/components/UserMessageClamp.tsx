@@ -2,9 +2,10 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 interface Props {
   children: React.ReactNode;
+  trailing?: React.ReactNode;
 }
 
-export function UserMessageClamp({ children }: Props) {
+export function UserMessageClamp({ children, trailing }: Props) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -15,19 +16,27 @@ export function UserMessageClamp({ children }: Props) {
     setIsOverflowing(el.scrollHeight > el.clientHeight + 1);
   }, [expanded, children]);
 
+  const showToggle = isOverflowing || expanded;
+
   return (
     <div>
       <div ref={contentRef} className={expanded ? undefined : "line-clamp-6"}>
         {children}
       </div>
-      {(isOverflowing || expanded) && (
-        <button
-          type="button"
-          className="mt-1 text-xs font-medium text-purple-700 hover:underline"
-          onClick={() => setExpanded(!expanded)}
-        >
-          {expanded ? "Show less" : "Read more"}
-        </button>
+      {(showToggle || trailing) && (
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          {showToggle && (
+            <button
+              type="button"
+              // TODO(tokens): no fitting role for hover:text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a fill)
+              className="text-xs font-medium text-foreground-disabled hover:text-zinc-50 hover:underline"
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? "Show less" : "Read more"}
+            </button>
+          )}
+          {trailing}
+        </div>
       )}
     </div>
   );

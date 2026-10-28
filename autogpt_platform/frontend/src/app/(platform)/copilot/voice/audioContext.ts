@@ -1,6 +1,6 @@
 /**
  * One Web Audio context for the tab, shared by the click and by the analyser
- * that watches AutoPilot's own speech.
+ * that watches Otto's own speech.
  *
  * Shared deliberately: a context created outside a user gesture starts
  * suspended, and a suspended context that has an `<audio>` element routed

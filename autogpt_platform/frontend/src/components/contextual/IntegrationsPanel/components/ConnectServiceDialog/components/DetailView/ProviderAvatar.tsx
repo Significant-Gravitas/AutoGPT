@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
 
 interface Props {
   id: string;
@@ -9,13 +10,13 @@ interface Props {
 }
 
 export function ProviderAvatar({ id, name }: Props) {
-  const src = `/integrations/${id}.png`;
+  const src = integrationIconSrc(id);
   const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
-  if (brokenSrc === src) {
+  if (!src || brokenSrc === src) {
     return (
       <div
         aria-hidden
-        className="flex size-10 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-[16px] font-semibold uppercase text-zinc-600"
+        className="flex size-10 shrink-0 items-center justify-center rounded-md bg-surface-hover text-body-lg font-semibold uppercase leading-inherit text-foreground-secondary"
       >
         {name?.charAt(0) ?? id.charAt(0)}
       </div>

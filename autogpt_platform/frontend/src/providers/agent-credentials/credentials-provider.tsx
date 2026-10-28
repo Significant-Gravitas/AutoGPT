@@ -1,4 +1,5 @@
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
+import type { CredentialsMetaResponse as GeneratedCredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import {
   APIKeyCredentials,
   CredentialsDeleteNeedConfirmationResponse,
@@ -17,7 +18,15 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useEffect, useState } from "react";
+import isEqual from "lodash/isEqual";
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+} from "react";
 
 type APIKeyCredentialsCreatable = Omit<
   APIKeyCredentials,
@@ -110,6 +119,21 @@ export function upsertProviderCredentials(
 }
 
 /**
+ * Append credentials a freshly-loaded list does not carry yet: a
+ * `listCredentials()` request already in flight when one is created predates
+ * it, and publishing that response unmodified drops it. An id the list does
+ * carry needs no pending copy: the caller retires it in the same pass.
+ */
+export function mergePendingCredentials(
+  loaded: CredentialsMetaResponse[],
+  pending: CredentialsMetaResponse[] | undefined,
+): CredentialsMetaResponse[] {
+  if (!pending?.length) return loaded;
+  const loadedIds = new Set(loaded.map((c) => c.id));
+  return [...loaded, ...pending.filter((c) => !loadedIds.has(c.id))];
+}
+
+/**
  * Imperative actions on the credentials context.  Split out so the data
  * context can stay read-only for consumers that only render the list —
  * components that need to re-fetch after a side effect (e.g. Ayrshare
@@ -117,6 +141,15 @@ export function upsertProviderCredentials(
  */
 export const CredentialsActionsContext = createContext<{
   reload: () => void;
+  /**
+   * Add a just-created credential without waiting for a re-fetch. A flow that
+   * mints one outside this provider (device auth polls the backend directly)
+   * must call this, or `useCredentialsInput` reports it as *removed*.
+   */
+  upsert: (
+    provider: CredentialsProviderName,
+    credentials: GeneratedCredentialsMetaResponse,
+  ) => void;
 } | null>(null);
 
 export default function CredentialsProvider({
@@ -135,16 +168,56 @@ export default function CredentialsProvider({
   const onFailToast = useToastOnFail();
   const queryClient = useQueryClient();
 
+  // Held until a load returns them: the store can still be null when the upsert
+  // lands, and an in-flight list can resolve with a list that predates it.
+  const pendingUpsertsRef = useRef<
+    Partial<Record<CredentialsProviderName, CredentialsMetaResponse[]>>
+  >({});
+  // Only the newest list request may publish or retire; an older one can
+  // resolve last with a response that predates an upsert.
+  const loadGenerationRef = useRef(0);
+  // The handlers the published provider entries close over. A load may keep an
+  // entry whose credentials did not change only while these are the same, so
+  // a reused entry never calls a stale handler.
+  const entryHandlersRef = useRef<unknown[]>([]);
+
   const upsertCredentials = useCallback(
     (
       provider: CredentialsProviderName,
       credentials: CredentialsMetaResponse,
     ) => {
+      const pending = pendingUpsertsRef.current[provider] ?? [];
+      pendingUpsertsRef.current[provider] = [
+        ...pending.filter(
+          (c: CredentialsMetaResponse) => c.id !== credentials.id,
+        ),
+        credentials,
+      ];
       setProviders((prev) =>
         upsertProviderCredentials(prev, provider, credentials),
       );
     },
     [setProviders],
+  );
+
+  /**
+   * Upsert a credential straight off the API. The generated model marks several
+   * fields nullable where the store's model uses `undefined`.
+   */
+  const upsertFromApi = useCallback(
+    (
+      provider: CredentialsProviderName,
+      credentials: GeneratedCredentialsMetaResponse,
+    ) => {
+      upsertCredentials(provider, {
+        ...credentials,
+        title: credentials.title ?? undefined,
+        scopes: credentials.scopes ?? undefined,
+        username: credentials.username ?? undefined,
+        host: credentials.host ?? undefined,
+      } as CredentialsMetaResponse);
+    },
+    [upsertCredentials],
   );
 
   /** Wraps `BackendAPI.oAuthCallback`, and adds the result to the internal credentials store. */
@@ -298,6 +371,22 @@ export default function CredentialsProvider({
         if (!result.deleted) {
           return result;
         }
+        // A list request that started before the delete would otherwise
+        // resolve afterwards with the deleted credential and republish it.
+        loadGenerationRef.current += 1;
+        // A credential deleted while still pending would otherwise be merged
+        // straight back into the picker by the next load.
+        const pendingForProvider = pendingUpsertsRef.current[provider];
+        if (pendingForProvider?.length) {
+          const kept = pendingForProvider.filter(
+            (c: CredentialsMetaResponse) => c.id !== id,
+          );
+          if (kept.length) {
+            pendingUpsertsRef.current[provider] = kept;
+          } else {
+            delete pendingUpsertsRef.current[provider];
+          }
+        }
         setProviders((prev) => {
           if (!prev || !prev[provider]) return prev;
 
@@ -321,6 +410,14 @@ export default function CredentialsProvider({
   );
 
   const loadCredentials = useCallback(() => {
+    if (!isLoggedIn) {
+      // Left in place these would be merged into the *next* user's list,
+      // exposing the previous account's credential metadata.
+      pendingUpsertsRef.current = {};
+      // Retire any in-flight request so its response cannot publish over the
+      // logged-out state.
+      loadGenerationRef.current += 1;
+    }
     if (!isLoggedIn || providerNames.length === 0) {
       // null is the sole "still loading" sentinel; an empty object means
       // "loaded, and this user has no providers". Keeping those distinct
@@ -341,9 +438,14 @@ export default function CredentialsProvider({
       return;
     }
 
+    const generation = ++loadGenerationRef.current;
+
     api
       .listCredentials()
       .then((response) => {
+        // Stale: publishing would overwrite fresher state, and retiring from
+        // it would strand credentials the newer response has not returned.
+        if (generation !== loadGenerationRef.current) return;
         const credentialsByProvider = response.reduce(
           (acc, cred) => {
             if (!acc[cred.provider]) {
@@ -355,11 +457,59 @@ export default function CredentialsProvider({
           {} as Record<CredentialsProviderName, CredentialsMetaResponse[]>,
         );
 
-        setProviders((prev) => ({
-          ...prev,
-          ...Object.fromEntries(
+        const entryHandlers = [
+          oAuthCallback,
+          mcpOAuthCallback,
+          mcpStoreToken,
+          createAPIKeyCredentials,
+          createUserPasswordCredentials,
+          createHostScopedCredentials,
+          deleteCredentials,
+        ];
+        const canReuseEntries = isEqual(
+          entryHandlersRef.current,
+          entryHandlers,
+        );
+        entryHandlersRef.current = entryHandlers;
+
+        setProviders((prev) => {
+          const loadedEntries = Object.fromEntries(
             providerNames.map((provider) => {
-              const providerCredentials = credentialsByProvider[provider] ?? [];
+              const loaded = credentialsByProvider[provider] ?? [];
+              const pending = pendingUpsertsRef.current[provider];
+              // One predicate drives both the merge and the retirement: an id
+              // the server returned is caught up, so its pending copy is
+              // neither merged in nor kept.
+              const loadedIds = new Set(
+                loaded.map((c: CredentialsMetaResponse) => c.id),
+              );
+              const stillPending = pending?.filter(
+                (c: CredentialsMetaResponse) => !loadedIds.has(c.id),
+              );
+              const providerCredentials = mergePendingCredentials(
+                loaded,
+                stillPending,
+              );
+              if (pending?.length) {
+                if (stillPending?.length) {
+                  pendingUpsertsRef.current[provider] = stillPending;
+                } else {
+                  delete pendingUpsertsRef.current[provider];
+                }
+              }
+
+              // Every invalidate/success refetch lands here; an entry that did
+              // not change keeps its identity so consumers skip a re-render.
+              const isSystemProvider = systemProviders.has(provider);
+              const existing = prev?.[provider];
+              if (
+                canReuseEntries &&
+                existing &&
+                existing.isSystemProvider === isSystemProvider &&
+                isEqual(existing.savedCredentials, providerCredentials)
+              ) {
+                return [provider, existing];
+              }
 
               return [
                 provider,
@@ -367,7 +517,7 @@ export default function CredentialsProvider({
                   provider,
                   providerName: toDisplayName(provider),
                   savedCredentials: providerCredentials,
-                  isSystemProvider: systemProviders.has(provider),
+                  isSystemProvider,
                   oAuthCallback: (code: string, state_token: string) =>
                     oAuthCallback(provider, code, state_token),
                   mcpOAuthCallback,
@@ -386,8 +536,15 @@ export default function CredentialsProvider({
                 } satisfies CredentialsProviderData,
               ];
             }),
-          ),
-        }));
+          );
+          const unchanged =
+            prev !== null &&
+            Object.entries(loadedEntries).every(
+              ([provider, entry]) =>
+                prev[provider as CredentialsProviderName] === entry,
+            );
+          return unchanged ? prev : { ...prev, ...loadedEntries };
+        });
       })
       .catch(onFailToast("load credentials"));
   }, [
@@ -459,8 +616,13 @@ export default function CredentialsProvider({
     return unsubscribe;
   }, [queryClient, loadCredentials]);
 
+  const actions = useMemo(
+    () => ({ reload: loadCredentials, upsert: upsertFromApi }),
+    [loadCredentials, upsertFromApi],
+  );
+
   return (
-    <CredentialsActionsContext.Provider value={{ reload: loadCredentials }}>
+    <CredentialsActionsContext.Provider value={actions}>
       <CredentialsProvidersContext.Provider value={providers}>
         {children}
       </CredentialsProvidersContext.Provider>

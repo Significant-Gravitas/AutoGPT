@@ -2,24 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   encouragementAt,
   formatElapsed,
-  headline,
   isInsufficientDump,
-  isPermissionDenied,
   pickMimeType,
   recordingFeedbackAt,
-  RING_TARGET_SECONDS,
-  ringProgress,
 } from "../helpers";
-
-describe("headline", () => {
-  it("greets by name and trims the stored value", () => {
-    expect(headline("  Ada  ")).toBe("What keeps stealing your week, Ada?");
-  });
-
-  it("drops the name when the wizard never collected one", () => {
-    expect(headline("   ")).toBe("What keeps stealing your week?");
-  });
-});
 
 describe("encouragementAt", () => {
   it("shows nothing before the first line is due", () => {
@@ -59,10 +45,20 @@ describe("encouragementAt", () => {
 describe("recordingFeedbackAt", () => {
   it("shows duration guidance only after recording has settled in", () => {
     expect(recordingFeedbackAt(3.9)).toBeNull();
-    expect(recordingFeedbackAt(4)).toBe("Most people talk for 2 to 3 minutes.");
-    expect(recordingFeedbackAt(9.9)).toBe(
-      "Most people talk for 2 to 3 minutes.",
+    expect(recordingFeedbackAt(4)).toBe(
+      "Even a minute helps. Keep going if you have more.",
     );
+    expect(recordingFeedbackAt(9.9)).toBe(
+      "Even a minute helps. Keep going if you have more.",
+    );
+  });
+
+  it("keeps em dashes out of every line it shows", () => {
+    const lines = Array.from({ length: 400 }, (_, second) =>
+      recordingFeedbackAt(second),
+    );
+
+    expect(lines.filter((line) => line?.includes("—"))).toEqual([]);
   });
 
   it("shows the first encouragement at twenty seconds", () => {
@@ -77,17 +73,6 @@ describe("formatElapsed", () => {
     expect(formatElapsed(9.9)).toBe("0:09");
     expect(formatElapsed(95)).toBe("1:35");
     expect(formatElapsed(3600)).toBe("60:00");
-  });
-});
-
-describe("ringProgress", () => {
-  // A depth meter, not a limit: the ring holds at full and recording
-  // carries on past it.
-  it("fills toward the target and then holds", () => {
-    expect(ringProgress(0)).toBe(0);
-    expect(ringProgress(RING_TARGET_SECONDS / 2)).toBeCloseTo(0.5, 5);
-    expect(ringProgress(RING_TARGET_SECONDS)).toBe(1);
-    expect(ringProgress(RING_TARGET_SECONDS * 10)).toBe(1);
   });
 });
 
@@ -111,24 +96,6 @@ describe("pickMimeType", () => {
       isTypeSupported: (type: string) => type !== "audio/webm",
     });
     expect(pickMimeType()).toBe("audio/mp4");
-  });
-});
-
-describe("isPermissionDenied", () => {
-  it("recognises the browser's refusal", () => {
-    expect(isPermissionDenied(new DOMException("no", "NotAllowedError"))).toBe(
-      true,
-    );
-  });
-
-  // A missing microphone or a generic failure is not a denial — treating
-  // it as one would send the user to the typed fallback for good.
-  it("does not treat other failures as a denial", () => {
-    expect(isPermissionDenied(new DOMException("gone", "NotFoundError"))).toBe(
-      false,
-    );
-    expect(isPermissionDenied(new Error("NotAllowedError"))).toBe(false);
-    expect(isPermissionDenied(null)).toBe(false);
   });
 });
 

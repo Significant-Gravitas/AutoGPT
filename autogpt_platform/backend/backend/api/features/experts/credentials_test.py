@@ -11,8 +11,13 @@ from backend.api.features.experts.credentials import (
     _derive_from_workflows,
     _to_refs,
     filter_credentials_for_expert,
+    settle_credential_seed,
 )
-from backend.data.model import APIKeyCredentials, CredentialsMetaInput
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsMetaInput,
+    OAuth2Credentials,
+)
 from backend.executor.utils import _enforce_expert_credential_scope
 
 
@@ -201,3 +206,150 @@ async def test_a_run_with_no_credentials_skips_the_lookup_entirely(
     await _enforce_expert_credential_scope("user-1", "expert-1", None)
 
     accessor.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_derivation_includes_picker_credentials_the_user_owns(
+    mocker: pytest_mock.MockFixture,
+):
+    """A ``_credentials_id`` embedded in a picker field is enforced at run time,
+    so the seed must offer it or every Drive-backed expert workflow fails."""
+    node = SimpleNamespace(
+        block=SimpleNamespace(
+            input_schema=SimpleNamespace(
+                get_auto_credentials_fields=lambda: {
+                    "credentials": {
+                        "field_name": "spreadsheet",
+                        "config": {"provider": "google", "type": "oauth2"},
+                    }
+                }
+            )
+        ),
+        input_default={
+            "spreadsheet": {"_credentials_id": "cred-drive", "name": "sheet"},
+            "other": {"_credentials_id": "cred-foreign", "name": "not mine"},
+        },
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph",
+        return_value=SimpleNamespace(
+            nodes=[], sub_graphs=[SimpleNamespace(nodes=[node])]
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.tools.utils.match_user_credentials_to_graph",
+        AsyncMock(return_value=({}, {})),
+    )
+    mocker.patch(
+        "backend.api.features.experts.credentials._user_credentials",
+        AsyncMock(return_value=[_api_key_credential("cred-drive", "google")]),
+    )
+    expert = SimpleNamespace(
+        id="expert-1",
+        Workflows=[
+            SimpleNamespace(
+                id="wf-1",
+                LibraryAgent=SimpleNamespace(agentGraphId="g1", agentGraphVersion=1),
+            )
+        ],
+    )
+
+    derived, is_complete = await _derive_from_workflows("user-1", expert)  # type: ignore[arg-type]
+
+    assert derived == {"cred-drive": "google"}
+    assert is_complete is True
+
+
+@pytest.mark.asyncio
+async def test_a_failed_credential_read_leaves_the_seed_pending(
+    mocker: pytest_mock.MockFixture,
+):
+    node = SimpleNamespace(
+        block=SimpleNamespace(
+            input_schema=SimpleNamespace(
+                get_auto_credentials_fields=lambda: {
+                    "credentials": {
+                        "field_name": "sheet",
+                        "config": {"provider": "google"},
+                    }
+                }
+            )
+        ),
+        input_default={"sheet": {"_credentials_id": "cred-drive"}},
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph",
+        return_value=SimpleNamespace(nodes=[node], sub_graphs=[]),
+    )
+    mocker.patch(
+        "backend.copilot.tools.utils.match_user_credentials_to_graph",
+        AsyncMock(return_value=({}, {})),
+    )
+    mocker.patch(
+        "backend.api.features.experts.credentials._user_credentials",
+        AsyncMock(side_effect=RuntimeError("redis is down")),
+    )
+    expert = SimpleNamespace(
+        id="expert-1",
+        Workflows=[
+            SimpleNamespace(
+                id="wf-1",
+                LibraryAgent=SimpleNamespace(agentGraphId="g1", agentGraphVersion=1),
+            )
+        ],
+    )
+
+    derived, is_complete = await _derive_from_workflows("user-1", expert)  # type: ignore[arg-type]
+
+    assert derived == {}
+    assert is_complete is False
+
+
+@pytest.mark.asyncio
+async def test_settling_the_seed_stamps_even_when_derivation_was_incomplete(
+    mocker: pytest_mock.MockFixture,
+):
+    expert = SimpleNamespace(id="expert-1", Workflows=[], credentialsSeededAt=None)
+    mocker.patch(
+        "backend.api.features.experts.credentials._owned_expert",
+        AsyncMock(return_value=expert),
+    )
+    seed = mocker.patch(
+        "backend.api.features.experts.credentials._seed_if_needed", AsyncMock()
+    )
+    stamp = mocker.patch(
+        "backend.api.features.experts.credentials._stamp_seeded", AsyncMock()
+    )
+
+    await settle_credential_seed("user-1", "expert-1")
+
+    seed.assert_awaited_once_with("user-1", expert)
+    stamp.assert_awaited_once_with("expert-1")
+
+
+def test_refs_carry_the_service_behind_an_mcp_credential():
+    from backend.integrations.mcp_catalog import get_mcp_catalog
+
+    linear = next(e for e in get_mcp_catalog() if e.name == "mcp_linear")
+    credential = OAuth2Credentials(
+        id="cred-mcp",
+        provider="mcp",
+        title="MCP: mcp.linear.app",
+        access_token=SecretStr("t"),
+        scopes=[],
+        metadata={"mcp_server_url": linear.mcp_server.server_url},
+    )
+
+    refs = _to_refs([_Grant("cred-mcp", "mcp")], [credential])  # type: ignore[arg-type]
+
+    assert refs[0].service == "linear"
+    assert refs[0].service_name == "Linear"
+    assert refs[0].service_icon == linear.mcp_server.icon_id
+
+
+def test_refs_carry_the_provider_as_service_for_a_block_credential():
+    refs = _to_refs(  # type: ignore[arg-type]
+        [_Grant("cred-1", "notion")], [_api_key_credential("cred-1", "notion")]
+    )
+    assert refs[0].service == "notion"
+    assert refs[0].service_icon == "notion"

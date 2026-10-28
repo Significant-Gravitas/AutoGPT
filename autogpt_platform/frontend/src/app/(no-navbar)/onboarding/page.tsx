@@ -1,24 +1,21 @@
 "use client";
-import Link from "next/link";
-import { ProgressBar } from "./components/ProgressBar";
-import { StepIndicator } from "./components/StepIndicator";
-import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
-import { PainPointsStep } from "./steps/PainPointsStep";
-import { PreparingStep } from "./steps/PreparingStep";
-import { RoleStep } from "./steps/RoleStep";
-import { ConnectStep } from "./steps/ConnectStep/ConnectStep";
-import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
-import { WelcomeStep } from "./steps/WelcomeStep";
-import {
-  PAYWALL_FIRST_STEPS,
-  SELF_HOST_STEPS,
-  useOnboardingWizardStore,
-} from "./store";
-import { useOnboardingPage } from "./useOnboardingPage";
-import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { cn } from "@/lib/utils";
+import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
+import { ProgressBar } from "./components/ProgressBar";
+import { ProgressError } from "./components/ProgressError";
+import { StepIndicator } from "./components/StepIndicator";
+import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
+import { ConnectStep } from "./steps/ConnectStep/ConnectStep";
+import { HireStep } from "./steps/HireStep/HireStep";
+import { IntroStep } from "./steps/IntroStep/IntroStep";
+import { PreparingStep } from "./steps/PreparingStep";
+import { RoleStep } from "./steps/RoleStep";
+import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
+import { useOnboardingWizardStore } from "./store";
+import { useOnboardingPage } from "./useOnboardingPage";
 
 export default function OnboardingPage() {
   const {
@@ -27,37 +24,79 @@ export default function OnboardingPage() {
     handlePreparingComplete,
     isPaymentEnabled,
     isSelfHostConnectEnabled,
-    isBrainDumpEnabled,
     steps,
     preparingStep,
     totalSteps,
     trialConfirmation,
+    paidConfirmation,
+    progressError,
+    progressConflict,
+    retryProgress,
+    completionError,
   } = useOnboardingPage();
   const prevStep = useOnboardingWizardStore((s) => s.prevStep);
   const isStepBusy = useOnboardingWizardStore((s) => s.isStepBusy);
 
+  if (isLoading && paidConfirmation.error)
+    return (
+      <ErrorCard
+        context="your payment"
+        responseError={{ message: paidConfirmation.error }}
+        onRetry={paidConfirmation.retry}
+      />
+    );
+  if (isLoading && paidConfirmation.pending)
+    return (
+      <Text variant="body" role="status">
+        Confirming your subscription…
+      </Text>
+    );
   if (isLoading)
     return !trialConfirmation.ready ? (
       <Text variant="body" role="status">
         Confirming your trial and card setup…
       </Text>
-    ) : null;
+    ) : progressError ? (
+      <ProgressError
+        message={progressError}
+        conflict={progressConflict}
+        retry={retryProgress}
+      />
+    ) : (
+      <Text variant="body" role="status">
+        Loading your setup…
+      </Text>
+    );
 
   // ProgressBar + StepIndicator track only the user-interactive steps.
   // PreparingStep is a transition view that hides both indicators.
   const showDots = currentStep <= totalSteps;
-  // Back is hidden on Welcome (the first profile step): going back from there
-  // when payments are on would return the user to the paywall they already
-  // paid through and let them re-trigger checkout. Also hidden while the
-  // current step is mid-flight (brain dump processing) — there is nothing
-  // coherent to go back to.
+  // Back is hidden on the first content step
+  // and while the current step is mid-flight (brain dump processing) — there
+  // is nothing coherent to go back to. Read from the layout so it tracks
+  // buildStepLayout rather than a hardcoded position.
+  const firstContentStep = steps.team ?? steps.role;
   const showBack =
-    currentStep > steps.welcome && currentStep <= totalSteps && !isStepBusy;
+    currentStep > firstContentStep && currentStep <= totalSteps && !isStepBusy;
   const showProgressBar = currentStep <= totalSteps;
   const showLogout = currentStep <= totalSteps;
 
   return (
     <div className="flex min-h-screen w-full flex-col items-center">
+      {progressError && (
+        <ProgressError
+          message={progressError}
+          conflict={progressConflict}
+          retry={retryProgress}
+        />
+      )}
+      {completionError && (
+        <ErrorCard
+          context="your account setup"
+          responseError={{ message: completionError }}
+          onRetry={handlePreparingComplete}
+        />
+      )}
       {trialConfirmation.error ? (
         <ErrorCard
           context="your trial"
@@ -70,49 +109,63 @@ export default function OnboardingPage() {
       )}
 
       {showBack && (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="xs"
           onClick={prevStep}
-          className="text-md absolute left-6 top-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
+          leadingIcon={ArrowLeft01Icon}
+          className="absolute left-6 top-6 text-foreground-tertiary hover:text-foreground-strong"
         >
-          <Icon icon={ArrowLeft01Icon} size={16} />
           Back
-        </button>
+        </Button>
       )}
 
-      <div className="flex flex-1 items-center pb-8 pt-16">
-        {isPaymentEnabled &&
-          currentStep === PAYWALL_FIRST_STEPS.subscription && (
-            <SubscriptionStep />
-          )}
-        {isSelfHostConnectEnabled &&
-          currentStep === SELF_HOST_STEPS.connect && <ConnectStep />}
-        {currentStep === steps.welcome && <WelcomeStep />}
+      <div
+        className={cn(
+          "flex w-full min-w-0 flex-1 items-center justify-center",
+          currentStep === steps.subscription
+            ? "pb-8 pt-3 lg:pb-2"
+            : "pb-8 pt-16",
+        )}
+      >
+        {currentStep === steps.team && <IntroStep slide="team" />}
+        {currentStep === steps.autopilot && <IntroStep slide="autopilot" />}
         {currentStep === steps.role && <RoleStep />}
-        {currentStep === steps.painPoints &&
-          (isBrainDumpEnabled ? <BrainDumpStep /> : <PainPointsStep />)}
+        {currentStep === steps.painPoints && <BrainDumpStep />}
+        {currentStep === steps.hire && <HireStep />}
+        {isSelfHostConnectEnabled && currentStep === steps.connect && (
+          <ConnectStep />
+        )}
+        {isPaymentEnabled && currentStep === steps.subscription && (
+          <SubscriptionStep />
+        )}
         {currentStep === preparingStep && (
-          <PreparingStep
-            onComplete={handlePreparingComplete}
-            isBrainDumpEnabled={isBrainDumpEnabled}
-          />
+          <PreparingStep onComplete={handlePreparingComplete} />
         )}
       </div>
 
       {showDots && (
-        <div className="pb-8">
+        <div
+          className={
+            currentStep === steps.subscription ? "pb-8 lg:pb-4" : "pb-8"
+          }
+        >
           <StepIndicator totalSteps={totalSteps} currentStep={currentStep} />
         </div>
       )}
 
       {showLogout && (
-        <Link
+        <Button
+          as="NextLink"
           href="/logout"
-          className="text-md absolute bottom-6 left-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
+          variant="ghost"
+          size="xs"
+          leadingIcon={Logout03Icon}
+          className="absolute bottom-6 left-6 text-foreground-tertiary hover:text-foreground-strong"
         >
-          <Icon icon={Logout03Icon} size={16} />
           Log out
-        </Link>
+        </Button>
       )}
     </div>
   );

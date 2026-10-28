@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from backend.copilot.tool_image import ImageCarrier
 from backend.util.json import dumps as json_dumps
 from backend.util.truncate import truncate
 
@@ -62,12 +63,19 @@ class ResponseType(str, Enum):
     # buffer at a tool boundary. Lets the client promote queued chips to
     # bubbles immediately instead of waiting for its backstop poll.
     PENDING_DRAINED = "data-pending-drained"
+    # Written by the stream route when a send joins a running turn's pending
+    # queue, so the client can tell it from a turn that never started.
+    FOLLOW_UP_QUEUED = "data-follow-up-queued"
     MODE_CHANGED = "data-mode-changed"
     # Live context-compaction progress — phase transitions plus token/message
     # deltas.  Transient (never persisted); the durable record is the
     # ``context_compaction`` tool row's JSON output.
     COMPACTION = "data-compaction"
     PROVIDER_FAILURE = "data-provider-failure"
+    # The turn stopped on purpose at a budget or step limit; the client shows
+    # a Paused card with ways to pick the task back up.
+    TURN_PAUSED = "data-turn-paused"
+    CHECKPOINT = "data-checkpoint"
 
 
 class StreamBaseResponse(BaseModel):
@@ -217,7 +225,7 @@ class StreamToolDisplayAvailable(StreamBaseResponse):
 _MAX_TOOL_OUTPUT_SIZE = 100_000  # ~100 KB; truncate to avoid bloating SSE/DB
 
 
-class StreamToolOutputAvailable(StreamBaseResponse):
+class StreamToolOutputAvailable(StreamBaseResponse, ImageCarrier):
     """Tool execution result."""
 
     type: ResponseType = ResponseType.TOOL_OUTPUT_AVAILABLE
@@ -400,15 +408,32 @@ class StreamProviderFailure(StreamBaseResponse):
         return f"data: {json_dumps(data)}\n\n"
 
 
+class StreamTurnPaused(StreamBaseResponse):
+    """The turn landed at a budget or step limit instead of failing.
+
+    Sent in place of the error frame those limits used to produce, just
+    before ``StreamFinish``. The same payload is stored on a marker row so
+    the card survives the stream (see ``backend.copilot.turn_pause``).
+    """
+
+    type: ResponseType = ResponseType.TURN_PAUSED
+    pause: dict[str, Any] = Field(..., description="TurnPause.as_part() payload")
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part."""
+        data = {"type": self.type.value, "data": self.pause}
+        return f"data: {json_dumps(data)}\n\n"
+
+
 class StreamStatus(StreamBaseResponse):
     """Transient status notification shown to the user during long operations.
 
     Emitted when the backend is about to enter a phase that would otherwise
     leave the user staring at a silent "Thinking…" bubble — e.g. the first
     LLM call, the continuation after a tool result, compacting conversation
-    context on retry, or activating a fallback model. The frontend reads
-    the latest `data-status` part on the current assistant message and uses
-    its `message` in place of the generic "Thinking…" copy.
+    context on retry, or activating a fallback model. The copilot UI does
+    not show `message` (it describes plumbing, not anything the user needs);
+    it shows a plain "Thinking…" instead.
     """
 
     type: ResponseType = ResponseType.STATUS
@@ -473,6 +498,16 @@ class StreamCompactionProgress(StreamBaseResponse):
         return f"data: {json.dumps({'type': self.type.value, 'data': data})}\n\n"
 
 
+class StreamPendingDrainedMessage(BaseModel):
+    """One user follow-up carried by a ``data-pending-drained`` hint."""
+
+    id: str = Field(description="Stable id of the drained pending message")
+    content: str = Field(description="Raw text the user typed mid-turn")
+    metadata: dict[str, Any] | None = Field(
+        default=None, description="The metadata persisted on the row's user message"
+    )
+
+
 class StreamPendingDrained(StreamBaseResponse):
     """Hint that the pending-message buffer was drained mid-turn.
 
@@ -483,11 +518,22 @@ class StreamPendingDrained(StreamBaseResponse):
     for its slower backstop poll. ``drainedCount`` is informational only —
     correctness comes from the client's re-read, so a dropped hint just
     delays the chip→bubble swap until the next poll.
+
+    ``messages`` carries the drained text (with a stable id per message) so
+    the client can render the follow-up bubble at the exact point in the
+    stream where the backend injected it — between the tool chain that ran
+    before the drain and the work that follows it. Older clients ignore the
+    field; older backends omit it and the client falls back to its buffer
+    re-read.
     """
 
     type: ResponseType = ResponseType.PENDING_DRAINED
     drainedCount: int = Field(
         default=0, description="How many messages were drained in this batch"
+    )
+    messages: list[StreamPendingDrainedMessage] = Field(
+        default_factory=list,
+        description="The drained messages, in enqueue order (oldest first)",
     )
 
     def to_sse(self) -> str:
@@ -496,6 +542,49 @@ class StreamPendingDrained(StreamBaseResponse):
         it as an unknown chunk type."""
         data = {
             "type": self.type.value,
-            "data": {"drainedCount": self.drainedCount},
+            "data": {
+                "drainedCount": self.drainedCount,
+                "messages": [m.model_dump(exclude_none=True) for m in self.messages],
+            },
         }
+        return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamCheckpoint(StreamBaseResponse):
+    """The turn's first ``rows`` rows are persisted, starting at DB ``sequence``.
+
+    Published only after a successful persist with no block open and no tool
+    call pending, so the stream after it is self-contained. ``digest`` is
+    ``stream_checkpoint.rows_digest`` over those rows. Transient: the AI SDK
+    hands it to ``onData`` and stores nothing.
+    """
+
+    type: ResponseType = ResponseType.CHECKPOINT
+    rows: int
+    sequence: int
+    digest: str
+
+    def to_sse(self) -> str:
+        data = {
+            "type": self.type.value,
+            "data": {
+                "rows": self.rows,
+                "sequence": self.sequence,
+                "digest": self.digest,
+            },
+            "transient": True,
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamFollowUpQueued(StreamBaseResponse):
+    """The send was queued as a follow-up to the session's running turn.
+
+    Transient: the AI SDK hands it to ``onData`` and stores nothing.
+    """
+
+    type: ResponseType = ResponseType.FOLLOW_UP_QUEUED
+
+    def to_sse(self) -> str:
+        data = {"type": self.type.value, "data": {}, "transient": True}
         return f"data: {json.dumps(data)}\n\n"

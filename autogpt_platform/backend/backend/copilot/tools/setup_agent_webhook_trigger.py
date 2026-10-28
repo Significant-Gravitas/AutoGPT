@@ -1,6 +1,6 @@
 """Tool for setting up a webhook-triggered preset for a library agent.
 
-Wraps the same logic as the ``POST /presets/setup-trigger`` route so AutoPilot
+Wraps the same logic as the ``POST /presets/setup-trigger`` route so Otto
 can set up a webhook trigger end-to-end and hand the user the correct ingress
 URL for manual-setup webhooks.
 
@@ -16,6 +16,8 @@ Credential handling splits into two classes:
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.blocks._base import BlockType
 from backend.copilot.model import ChatSession
@@ -30,6 +32,8 @@ from backend.util.exceptions import (
 )
 
 from .base import BaseTool
+from .expert_scope import annotate_expert_grants, require_installed_workflow
+from .external_scope import external_tenancy
 from .models import (
     ErrorResponse,
     ResponseType,
@@ -98,6 +102,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         return "setup_agent_webhook_trigger"
 
     @property
+    def allow_external_use(self):
+        # A trigger fires runs, so it needs run permission on top of the write
+        return True, [APIKeyPermission.WRITE_LIBRARY, APIKeyPermission.RUN_AGENT]
+
+    @property
     def description(self) -> str:
         return (
             "Set up a webhook trigger for an agent with a webhook trigger block. "
@@ -121,14 +130,18 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 "library_agent_id": {
                     "type": "string",
                     "description": "Library agent ID (preferred identifier).",
+                    "entity": "library_agent",
                 },
                 "graph_id": {
                     "type": "string",
                     "description": "Agent graph ID (alt to library_agent_id).",
+                    "title": "Workflow",
+                    "entity": "graph",
                 },
                 "graph_version": {
                     "type": "integer",
                     "description": "Graph version (used with graph_id).",
+                    "title": "Workflow version",
                 },
                 "name": {
                     "type": "string",
@@ -147,6 +160,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                         "the trigger node. Usually empty for generic webhooks."
                     ),
                     "additionalProperties": True,
+                    "title": "Trigger settings",
                 },
                 "credentials": {
                     "type": "object",
@@ -187,11 +201,20 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         if error:
             return error
         assert graph is not None
+        scope_error = await require_installed_workflow(
+            user_id,
+            session,
+            graph_id=graph.id,
+            library_agent_id=(kwargs.get("library_agent_id") or "").strip() or None,
+            name=graph.name,
+        )
+        if scope_error is not None:
+            return scope_error
 
         if not (trigger_node := graph.webhook_input_node):
             return ErrorResponse(
                 message=(
-                    f"Agent '{graph.name}' has no webhook trigger block, so it "
+                    f"Workflow '{graph.name}' has no webhook trigger block, so it "
                     "can't have a webhook trigger. Run or schedule it instead."
                 ),
                 error="no_webhook_trigger",
@@ -215,7 +238,9 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         if card:
             return card
 
-        library_agent = await get_or_create_library_agent(graph, user_id)
+        library_agent = await get_or_create_library_agent(
+            graph, user_id, *external_tenancy(session)
+        )
         try:
             preset = await triggers_db().setup_triggered_preset(
                 user_id=user_id,
@@ -273,7 +298,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 )
             except NotFoundError:
                 return None, ErrorResponse(
-                    message=f"Library agent '{library_agent_id}' not found.",
+                    message=f"Library workflow '{library_agent_id}' not found.",
                     error="library_agent_not_found",
                     session_id=session_id,
                 )
@@ -286,7 +311,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         )
         if not graph:
             return None, ErrorResponse(
-                message=f"Agent graph '{graph_id}' not found.",
+                message=f"Workflow '{graph_id}' not found.",
                 error="graph_not_found",
                 session_id=session_id,
             )
@@ -320,7 +345,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 "configuration and pass it as `trigger_config` — do NOT guess "
                 "values (e.g. don't invent a repository name). The required "
                 "fields and their schema are below; once you have the user's "
-                "answers, call setup_agent_webhook_trigger again with "
+                "answers, call tool:setup_agent_webhook_trigger again with "
                 "`trigger_config` filled in."
             ),
             session_id=session_id,
@@ -349,7 +374,9 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         Returns ``(agent_credentials, None)`` when ready to proceed, or
         ``({}, SetupRequirementsResponse)`` when the user must act first.
         """
-        matched, _ = await match_user_credentials_to_graph(user_id, graph, expert_id)
+        matched, _ = await match_user_credentials_to_graph(
+            user_id, graph, expert_id, session_id=session_id
+        )
         trigger_cred_key = self._trigger_cred_key(graph, trigger_node)
 
         effective = dict(matched)
@@ -364,7 +391,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             for key, cred in effective.items()
             if not (key == trigger_cred_key and trigger_cred_key not in selection)
         }
-        card_missing = build_missing_credentials_from_graph(graph, matched_for_card)
+        card_missing = await annotate_expert_grants(
+            user_id,
+            expert_id,
+            build_missing_credentials_from_graph(graph, matched_for_card),
+        )
         if card_missing:
             return {}, self._build_card(graph, card_missing, session_id)
 

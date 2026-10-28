@@ -1,5 +1,6 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
 import {
   ArrowDown01Icon,
   SentIcon,
@@ -23,16 +24,28 @@ import {
 } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
+import { AnsweredQuestions } from "../AnsweredQuestions/AnsweredQuestions";
 import { ChainActionCard } from "../ChainActionCard/ChainActionCard";
+import { AnsweredQuestionsContext } from "../QuestionDock/AnsweredQuestionsContext";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
-import { ChainActionsContext, type ChainActionEntry } from "./chainActions";
+import {
+  buildChainReply,
+  ChainActionsContext,
+  type ChainActionEntry,
+  uniqueChainEntries,
+} from "./chainActions";
+import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
+import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import { ChainRowView } from "./ChainRowView";
+import { applyHeldOutcome } from "./heldRow";
+import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
 import {
   type ChainRow,
+  getAskedQuestions,
   getChainHeading,
   isLiftedSetupRow,
   isToolCallPending,
@@ -44,12 +57,29 @@ import { ToolResult } from "./ToolResult";
 
 const COLLAPSED_WINDOW = 2;
 
+async function sendOnce(
+  sending: { current: boolean },
+  entries: ChainActionEntry[],
+  message: string,
+  sendReply: (message: string) => void,
+) {
+  if (sending.current) return;
+  sending.current = true;
+  try {
+    await Promise.all(entries.map((entry) => entry.beforeSend?.()));
+    entries.forEach((entry) => entry.onSent?.());
+    sendReply(message);
+  } finally {
+    sending.current = false;
+  }
+}
+
 interface Props {
   parts: MessagePart[];
   isStreaming: boolean;
   /** Public share viewer: the chain renders as the owner saw it, but setup
-   *  cards and the Proceed draft are the owner's work — a reader gets no
-   *  Connect prompt and no write into the composer store. */
+   *  cards and Proceed are the owner's work — a reader gets no Connect
+   *  prompt and no way to send a follow-up turn. */
   readOnly?: boolean;
 }
 
@@ -59,35 +89,36 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const reducedMotion = useReducedMotion();
 
   const pendingQuestions = useContext(PendingQuestionsContext);
-  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  const answeredQuestions = useContext(AnsweredQuestionsContext);
+  const heldOutcomes = useContext(HeldOutcomesContext);
+  const heldAnswers = useHeldAnswersStore((state) => state.answers);
   const { onSend } = useCopilotChatActions();
-  const sentMessageCount = useCopilotUIStore((s) => s.sentMessageCount);
-  // Ids drafted by the last Proceed, plus the send count at that moment.
-  // Proceed only fills the composer, so the cards' onSent callbacks fire
-  // when the user actually sends — not when the draft is written.
-  const draftedRef = useRef<{ ids: string[]; sentAt: number } | null>(null);
   // The ref latches against a double effect run; the state re-renders Proceed.
   const autoSentRef = useRef(false);
+  const sendingRef = useRef(false);
   const [autoSent, setAutoSent] = useState(false);
 
   // Action cards (credential setup, clarifying questions) register here
   // instead of rendering their own Proceed/Answer buttons — the chain
-  // renders one Proceed that drafts everything into the chat input at once.
-  const [actionEntries, setActionEntries] = useState<
+  // renders one Proceed that sends everything as a single message.
+  // Keyed by the registering component, not the card id (see ChainActions).
+  const [registrations, setRegistrations] = useState<
     ReadonlyMap<string, ChainActionEntry>
   >(new Map());
-  const register = useCallback((entry: ChainActionEntry) => {
-    setActionEntries((prev) => {
+  // Kept as memos with the compiler on: the cards' register effects depend on
+  // this context value, and re-running them would re-register every card.
+  const register = useCallback((owner: string, entry: ChainActionEntry) => {
+    setRegistrations((prev) => {
       const next = new Map(prev);
-      next.set(entry.id, entry);
+      next.set(owner, entry);
       return next;
     });
   }, []);
-  const unregister = useCallback((id: string) => {
-    setActionEntries((prev) => {
-      if (!prev.has(id)) return prev;
+  const unregister = useCallback((owner: string) => {
+    setRegistrations((prev) => {
+      if (!prev.has(owner)) return prev;
       const next = new Map(prev);
-      next.delete(id);
+      next.delete(owner);
       return next;
     });
   }, []);
@@ -96,17 +127,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     [register, unregister],
   );
 
-  useEffect(
-    function notifyDraftedCardsOnSend() {
-      const drafted = draftedRef.current;
-      if (!drafted || sentMessageCount <= drafted.sentAt) return;
-      draftedRef.current = null;
-      drafted.ids.forEach((id) => actionEntries.get(id)?.onSent?.());
-    },
-    [sentMessageCount, actionEntries],
-  );
-
-  const pendingActions = [...actionEntries.values()];
+  const pendingActions = uniqueChainEntries(registrations);
   const connectorRequests = pendingActions
     .map((entry) => entry.connectors)
     .filter((request) => request !== undefined);
@@ -155,29 +176,58 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     allActionsReady &&
     (connectorRequests.length > 0 || inputRequests.length > 0);
 
+  // The cards are already gone by the time a send can fail — the user's
+  // message is appended optimistically and the chat's error banner offers
+  // Retry — so the failure only needs to be said out loud, and the toast
+  // points at the thread rather than the composer.
+  function sendReply(message: string) {
+    void Promise.resolve(onSend(message)).catch((error: unknown) =>
+      toastSendFailure({
+        title: "Couldn't send message",
+        error,
+        recovery: "it is still in the thread, use Retry to send it again",
+        paywallRecovery:
+          "it is still in the thread, use Retry once you have a plan",
+      }),
+    );
+  }
+
+  // Proceed stays clickable while beforeSend runs, and a second click would
+  // send the same reply again. The ref is set before the first await, so the
+  // second click sees it in time.
+  function sendAfter(entries: ChainActionEntry[], message: string) {
+    return sendOnce(sendingRef, entries, message, sendReply);
+  }
+
+  const autoSendOnce = useStableCallback(() => {
+    if (!canAutoSend || autoSentRef.current) return;
+    autoSentRef.current = true;
+    setAutoSent(true);
+    const message = buildChainReply(pendingActions);
+    if (!message) return;
+    void sendAfter(pendingActions, message);
+  });
+  // pendingActions is rebuilt every render; the ref makes this once-per-chain.
   useEffect(
     function sendOnceEveryCardIsSatisfied() {
-      if (!canAutoSend || autoSentRef.current) return;
-      autoSentRef.current = true;
-      setAutoSent(true);
-      const message = pendingActions
-        .map((entry) => entry.buildMessage())
-        .filter(Boolean)
-        .join("\n\n");
-      if (!message) return;
-      pendingActions.forEach((entry) => entry.onSent?.());
-      void onSend(message);
+      autoSendOnce();
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- pendingActions is rebuilt every render; the ref makes this once-per-chain
     [canAutoSend],
   );
 
+  useCredentialFailureCounters({ entries: registrations });
+
+  // Kept as a memo: the compiler folds this into the scope of everything
+  // rendered below the early return, so without it the rows would be rebuilt
+  // whenever the chain expands, starts or stops streaming, or a card
+  // registers.
   const rows = useMemo(
     () =>
       markSupersededSubSessionRows(
         parts
           .map((part, i) => toChainRow(part, i))
           .filter((row): row is ChainRow => row !== null)
+          .map((row) => applyHeldOutcome(row, heldOutcomes, heldAnswers))
           // Unanswered clarifying questions and setup cards render their work
           // in the card below the chain — their rows are lifted out of view.
           .map((row) =>
@@ -188,11 +238,29 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                 : row,
           ),
       ),
-    [parts, pendingQuestions],
+    [parts, pendingQuestions, heldOutcomes, heldAnswers],
   );
   if (rows.length === 0) return null;
 
-  const shownRows = rows.filter((row) => !row.lifted);
+  const askedRecords = rows.flatMap((row) => {
+    const questions = getAskedQuestions(row);
+    if (questions.length === 0) return [];
+    const answers = answeredQuestions.get(row.key);
+    return [
+      {
+        key: row.key,
+        items: questions.map((q) => ({
+          key: q.keyword,
+          question: q.question,
+          answer: answers?.get(q.keyword),
+        })),
+      },
+    ];
+  });
+  const shownRows = rows.filter(
+    (row) =>
+      !row.lifted && !askedRecords.some((record) => record.key === row.key),
+  );
   const liftedRows = rows.filter((row) => row.lifted);
 
   const expanded = manualExpanded === true;
@@ -224,23 +292,14 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // still-running chain has no such ending.
   const showDone = !isStreaming && !hasError && !windowMode && panelOpen;
 
-  // Proceed never sends: it drafts the combined reply of every READY card
-  // into the chat input so the user reviews/edits and presses send
-  // themselves. Unready cards (e.g. an unconnected MCP server) are left
-  // out instead of blocking the ready ones. Cards stay registered until
-  // the message actually goes out, at which point their onSent fires.
+  // Proceed sends the combined reply of every READY card as one message,
+  // and their onSent callbacks fire at that moment. Unready cards (e.g. an
+  // unconnected MCP server) are left out instead of blocking the ready ones.
   function handleProceed() {
     const readyActions = pendingActions.filter((entry) => entry.ready);
-    const message = readyActions
-      .map((entry) => entry.buildMessage())
-      .filter(Boolean)
-      .join("\n\n");
+    const message = buildChainReply(readyActions);
     if (!message) return;
-    draftedRef.current = {
-      ids: readyActions.map((entry) => entry.id),
-      sentAt: sentMessageCount,
-    };
-    setInitialPrompt(message);
+    void sendAfter(readyActions, message);
   }
 
   return (
@@ -253,21 +312,23 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               onClick={() => setManualExpanded(!open)}
               aria-expanded={panelOpen}
               aria-controls={panelId}
-              className="group/chain -mx-2 flex w-fit max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors duration-100 hover:bg-zinc-100"
+              className="group/chain -mx-2 flex w-fit max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors duration-100 hover:bg-surface-hover"
             >
               <SwapText
                 text={heading}
                 shimmer={isStreaming && !expanded}
                 className={
                   "min-w-0 text-sm font-normal " +
-                  (hasError && !isStreaming ? "text-red-500" : "text-zinc-700")
+                  (hasError && !isStreaming
+                    ? "text-error"
+                    : "text-foreground-body")
                 }
               />
               <Icon
                 icon={ArrowDown01Icon}
                 size={12}
                 className={
-                  "shrink-0 text-zinc-400 transition-transform duration-300 ease-out-quint " +
+                  "shrink-0 text-foreground-subtle transition-transform duration-300 ease-out-quint " +
                   (open ? "rotate-180" : "")
                 }
               />
@@ -346,6 +407,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                             <ChainRowView
                               row={row}
                               isLast={i === visible.length - 1 && !showDone}
+                              readOnly={readOnly}
                             />
                           </ChainActionsContext.Provider>
                         </m.div>
@@ -354,14 +416,14 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                   </AnimatePresence>
                   {showDone && (
                     <div className="flex items-stretch gap-2.5">
-                      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+                      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
                         <Icon
                           icon={Tick02Icon}
                           size={14}
-                          className="text-zinc-600"
+                          className="text-foreground-secondary"
                         />
                       </div>
-                      <div className="flex h-7 items-center text-sm text-zinc-600">
+                      <div className="flex h-7 items-center text-sm text-foreground-secondary">
                         Done
                       </div>
                     </div>
@@ -370,6 +432,16 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               </div>
             </div>
           </>
+        )}
+
+        {/* Questions the user has moved past stay where their card was,
+            with the answers given, instead of folding away with the chain. */}
+        {askedRecords.length > 0 && (
+          <div className="mt-1 flex flex-col gap-2">
+            {askedRecords.map((record) => (
+              <AnsweredQuestions key={record.key} items={record.items} />
+            ))}
+          </div>
         )}
 
         {/* Lifted rows render off-screen: their cards must stay mounted so
@@ -404,11 +476,15 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             still need somewhere to send from. */}
         {!readOnly && pendingActions.length > 0 && !hasCardWork && (
           <div className="mt-1 flex flex-col items-start gap-2">
-            <span className="flex items-center gap-1.5 text-sm text-zinc-600">
-              <Icon icon={SentIcon} size={16} className="text-zinc-400" />
+            <span className="flex items-center gap-1.5 text-sm text-foreground-secondary">
+              <Icon
+                icon={SentIcon}
+                size={16}
+                className="text-foreground-subtle"
+              />
               {allActionsReady
-                ? "Everything's filled in — send it to continue"
-                : "Complete the steps above, then send to continue"}
+                ? "Everything's filled in"
+                : "Complete the steps above to continue"}
             </span>
             <Button
               variant="primary"

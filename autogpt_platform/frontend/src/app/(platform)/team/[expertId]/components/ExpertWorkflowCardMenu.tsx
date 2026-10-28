@@ -101,6 +101,7 @@ export function ExpertWorkflowCardMenu({
           {libraryHref && expertId ? <DropdownMenuSeparator /> : null}
           {expertId ? (
             <DropdownMenuItem
+              // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a hover fill); no fitting role for focus:text-red-600 #D93636; #D93636 is error-hover (a hover fill)
               className="flex items-center gap-2 text-red-600 focus:text-red-600"
               onSelect={() => setIsRemoveOpen(true)}
             >
@@ -133,7 +134,7 @@ export function ExpertWorkflowCardMenu({
               <Button
                 type="button"
                 variant="ghost"
-                size="xs"
+                size="small"
                 disabled={isRemoving}
                 onClick={() => setIsRemoveOpen(false)}
               >
@@ -142,7 +143,7 @@ export function ExpertWorkflowCardMenu({
               <Button
                 type="button"
                 variant="destructive"
-                size="xs"
+                size="small"
                 loading={isRemoving}
                 onClick={handleRemove}
               >

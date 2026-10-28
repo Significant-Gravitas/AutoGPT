@@ -1,12 +1,17 @@
 "use client";
 
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { cn } from "@/lib/utils";
 import { Activity01Icon } from "@hugeicons/core-free-icons";
+import { isRenderableImageUrl } from "@/lib/next-image";
+import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import NextLink from "next/link";
+import { useState } from "react";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
 import { ExpertWorkflowActions } from "./ExpertWorkflowActions";
 import { ExpertWorkflowRunButton } from "./ExpertWorkflowRunButton";
@@ -16,6 +21,7 @@ import { WorkflowCredentialStack } from "./WorkflowCredentialStack";
 
 interface Props {
   workflow: ExpertWorkflowRef;
+  libraryAgent: LibraryAgent | undefined;
   expertId?: string;
   coverColor: string | undefined;
   onAsk?: (prompt: string) => void;
@@ -23,13 +29,13 @@ interface Props {
 
 export function ExpertWorkflowCard({
   workflow,
+  libraryAgent,
   expertId,
   coverColor,
   onAsk,
 }: Props) {
   const {
     name,
-    libraryAgent,
     runCount,
     isTriggerWorkflow,
     status,
@@ -40,12 +46,17 @@ export function ExpertWorkflowCard({
     chatPrompt,
     openRun,
     openTriggers,
-  } = useExpertWorkflowCard({ workflow, expertId });
+  } = useExpertWorkflowCard({
+    workflow,
+    libraryAgent,
+    expertId,
+  });
+  const [hasImageError, setHasImageError] = useState(false);
 
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex w-full flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
+      className="group relative flex w-full flex-col overflow-hidden rounded-2xl bg-surface transition-colors smooth-shadow-ring-sm hover:bg-surface-muted"
     >
       {libraryHref ? (
         <NextLink
@@ -55,14 +66,28 @@ export function ExpertWorkflowCard({
         />
       ) : null}
 
-      <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-zinc-100">
-        <ExpertCover
-          className="absolute inset-0 h-full w-full rounded-none"
-          color={coverColor}
-        />
-        <div className="relative">
-          <WorkflowChain chain={workflow.chain ?? []} size="sm" />
-        </div>
+      <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-surface-hover">
+        {isRenderableImageUrl(libraryAgent?.image_url) && !hasImageError ? (
+          <Image
+            src={libraryAgent.image_url}
+            unoptimized={isLocalStoreMediaUrl(libraryAgent.image_url)}
+            alt=""
+            fill
+            sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+            onError={() => setHasImageError(true)}
+            className="object-cover"
+          />
+        ) : (
+          <>
+            <ExpertCover
+              className="absolute inset-0 h-full w-full rounded-none"
+              color={coverColor}
+            />
+            <div className="relative">
+              <WorkflowChain chain={workflow.chain ?? []} size="sm" />
+            </div>
+          </>
+        )}
         <div className="pointer-events-auto absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100">
           <ExpertWorkflowActions
             workflow={workflow}
@@ -90,20 +115,16 @@ export function ExpertWorkflowCard({
           </Text>
         ) : null}
         {workflow.description ? (
-          <Text
-            variant="body"
-            tone="muted"
-            className="mt-1.5 line-clamp-2 leading-5"
-          >
+          <Text variant="body-md" tone="muted" className="mt-1.5 line-clamp-2">
             {workflow.description}
           </Text>
         ) : null}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {runCount !== undefined ? (
             <Text
-              variant="body"
+              variant="body-md"
               tone="muted"
-              className="flex items-center gap-1.5 leading-5"
+              className="flex items-center gap-1.5"
             >
               <Icon icon={Activity01Icon} size={14} className="shrink-0" />
               {runCount} {runCount === 1 ? "run" : "runs"}
@@ -113,7 +134,7 @@ export function ExpertWorkflowCard({
             variant="small-medium"
             as="span"
             className={cn(
-              "rounded-md px-2 py-0.5 ring-1 ring-inset ring-zinc-200/80",
+              "rounded-md px-2 py-0.5 ring-1 ring-inset ring-border-base/80",
               status.className,
             )}
           >

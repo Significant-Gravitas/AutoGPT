@@ -1,4 +1,14 @@
+import {
+  Alert01Icon,
+  Calendar03Icon,
+  Calendar04Icon,
+  Clock01Icon,
+  PlayIcon,
+  Time04Icon,
+  WorkflowSquare01Icon,
+} from "@hugeicons/core-free-icons";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
@@ -22,13 +32,26 @@ interface PodGroup {
 
 export const AUTOPILOT_ROLE = "Head of AI";
 
+export function getExpertCover(
+  expert: Pick<Expert, "id" | "avatar_url" | "color" | "role" | "categories">,
+) {
+  return {
+    art: null,
+    color: getExpertTopicHex({
+      avatarUrl: expert.avatar_url,
+      categories: expert.categories,
+      role: expert.role,
+    }),
+  };
+}
+
 export const AUTOPILOT_BLURB =
   "Your built-in generalist. It answers questions, runs workflows, and delegates work across your hired experts.";
 
 export const AUTOPILOT_PILL_CLASS =
-  "border border-zinc-200 bg-zinc-50 text-zinc-700";
+  "border border-border-base bg-surface-muted text-foreground-body";
 
-/** Autopilot owns whatever no hired expert does: every library workflow that
+/** Otto owns whatever no hired expert does: every library workflow that
  *  is not installed on an expert, shaped like an expert workflow so the expert
  *  page's cards can render it. A schedule on the same graph gives it its cron. */
 export function getAutopilotWorkflows(
@@ -63,7 +86,7 @@ export function getAutopilotWorkflows(
     });
 }
 
-/** Library skills no hired expert has claimed; Autopilot falls back to these. */
+/** Library skills no hired expert has claimed; Otto falls back to these. */
 export function getAutopilotSkills(
   experts: Expert[],
   librarySkills: CopilotSkillInfo[],
@@ -137,17 +160,6 @@ export function getLastRunLabel(expert: Expert) {
   return `Last run ${when}`;
 }
 
-/** The line under an expert's name on their card: their tagline, falling back
- *  to the opening of their identity when they have none. */
-export function getExpertBlurb(expert: Expert) {
-  if (expert.tagline?.trim()) return expert.tagline;
-  const lines = expert.identity
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  return lines.slice(0, 2).join(" ") || null;
-}
-
 export function getWeeklySpend(expert: Expert) {
   if (expert.weekly_budget == null || expert.weekly_budget <= 0) return null;
   return { spent: expert.weekly_spend ?? 0, budget: expert.weekly_budget };
@@ -155,16 +167,14 @@ export function getWeeklySpend(expert: Expert) {
 
 export type ExpertRosterStatus = "idle" | "working" | "needs-you";
 
-export function getExpertRosterStatus(
-  expert: Expert,
-  needsSetupCount: number,
-): ExpertRosterStatus {
+// Missing setup is not a card status: the Setup needed card above the
+// roster names it and offers the fix.
+export function getExpertRosterStatus(expert: Expert): ExpertRosterStatus {
   const runStatus = expert.last_run_status?.toUpperCase();
 
   if (runStatus === "RUNNING" || runStatus === "QUEUED") return "working";
   if (
     expert.schedules_paused_at ||
-    needsSetupCount > 0 ||
     runStatus === "FAILED" ||
     runStatus === "TERMINATED" ||
     runStatus === "REVIEW"
@@ -306,7 +316,7 @@ interface AutopilotSummaryArgs {
   schedulesForExpert: (expert: Expert) => GraphExecutionJobInfo[];
 }
 
-/** Autopilot works across the whole team, so its card counts the team's
+/** Otto works across the whole team, so its card counts the team's
  *  totals. Skills are de-duplicated — two experts who can both write copy is
  *  one skill on the team, not two. */
 export function getAutopilotSummary({
@@ -326,10 +336,10 @@ export function getAutopilotSummary({
 }
 
 export const WORKFLOW_FILTERS = [
-  { value: "all", label: "All workflows" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "manual", label: "Manual" },
-  { value: "needs-setup", label: "Needs setup" },
+  { value: "all", label: "All workflows", icon: WorkflowSquare01Icon },
+  { value: "scheduled", label: "Scheduled", icon: Calendar03Icon },
+  { value: "manual", label: "Manual", icon: PlayIcon },
+  { value: "needs-setup", label: "Needs setup", icon: Alert01Icon },
 ] as const;
 
 export type WorkflowFilter = (typeof WORKFLOW_FILTERS)[number]["value"];
@@ -355,10 +365,10 @@ export function filterExpertWorkflows(
 }
 
 export const SCHEDULE_FILTERS = [
-  { value: "all", label: "All schedules" },
-  { value: "today", label: "Next 24 hours" },
-  { value: "week", label: "Next 7 days" },
-  { value: "later", label: "Later" },
+  { value: "all", label: "All schedules", icon: Calendar03Icon },
+  { value: "today", label: "Next 24 hours", icon: Clock01Icon },
+  { value: "week", label: "Next 7 days", icon: Calendar04Icon },
+  { value: "later", label: "Later", icon: Time04Icon },
 ] as const;
 
 export type ScheduleFilter = (typeof SCHEDULE_FILTERS)[number]["value"];
@@ -386,3 +396,39 @@ export function filterExpertSchedules(
     return untilNext > 7 * DAY_MS;
   });
 }
+
+export const SETUP_POLL_MS = 2_000;
+
+export function isSettingUp(experts: Expert[]) {
+  return experts.some((expert) => expert.setup_status === "installing");
+}
+
+/** Matches the backend's per-request cap on `GET /library/agents/batch`. */
+const LIBRARY_AGENT_BATCH_SIZE = 50;
+
+/** Sorted so filtering or re-ordering the grid reuses the cached batches. */
+export function chunkLibraryAgentIDs(workflows: ExpertWorkflowRef[]) {
+  const ids = [
+    ...new Set(
+      workflows
+        .map((workflow) => workflow.library_agent_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ].sort();
+  const chunks: string[][] = [];
+  for (let start = 0; start < ids.length; start += LIBRARY_AGENT_BATCH_SIZE) {
+    chunks.push(ids.slice(start, start + LIBRARY_AGENT_BATCH_SIZE));
+  }
+  return chunks;
+}
+
+// The expert and Otto pages' tabs: a segmented control with a white pill
+// that slides to the active tab (TabsLine's indicator, restyled). The list
+// sets no z-index, so its grey track paints first, the pill (z-10) over it
+// and the labels (z-20) on top.
+export const PROFILE_TABS_LIST_CLASS =
+  "relative w-full gap-0.5 overflow-x-auto rounded-full border-b-0 bg-surface-hover/80 p-1 [&>button]:flex-1";
+export const PROFILE_TABS_INDICATOR_CLASS =
+  "pointer-events-none z-10 bottom-1 top-1 h-auto rounded-full bg-surface shadow-sm ring-1 ring-border-base/70";
+export const PROFILE_TABS_TRIGGER_CLASS =
+  "z-20 rounded-full px-3.5 py-1.5 text-body-md leading-inherit max-sm:px-2 text-foreground-tertiary transition-colors hover:text-foreground-strong data-[state=active]:text-foreground-strong [&_svg]:!size-4";

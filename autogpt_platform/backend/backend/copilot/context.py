@@ -7,6 +7,8 @@ without creating circular dependencies.
 
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
@@ -19,6 +21,7 @@ if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
 
 
 # Allowed base directory for the Read tool.  Public so service.py can use it
@@ -47,10 +50,118 @@ _current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
 )
 _current_sdk_cwd: ContextVar[str] = ContextVar("_current_sdk_cwd", default="")
 
+# How many teammate consults one turn may spend. A consult is a single
+# tool-less LLM call, so it cannot recurse — but nothing else stops a model
+# re-asking the same question until the turn's round budget runs out, and a
+# check re-run on unchanged work is a loop, not diligence.
+MAX_CONSULTS_PER_TURN = 3
+
+# How many teammates one turn may message. Sending does not block the turn,
+# so without a cap a single turn can wake every session the user owns.
+MAX_SESSION_MESSAGES_PER_TURN = 3
+
+# Both counters live in one dict, mutated in place, like the tool-adapter's
+# _consecutive_tool_failures: the SDK CLI runs each tool call in its own task,
+# which copies the context, so an int re-``set()`` per call never reaches the
+# next one and the budget counts nothing.
+_turn_budget: ContextVar[dict[str, int] | None] = ContextVar(
+    "_turn_budget", default=None
+)
+
+
+def reset_consult_budget() -> None:
+    """Give the turn a fresh consult and message allowance. Called by both
+    engines' setters."""
+    _turn_budget.set({})
+
+
+def take_session_message_slot() -> str | None:
+    """Claim one outbound session message, or return the refusal to hand the
+    model. Per turn, for the same reason the consult budget is."""
+    used = _claim_slot("session_messages", MAX_SESSION_MESSAGES_PER_TURN)
+    if used is None:
+        return None
+    return (
+        f"You have already messaged {used} sessions this turn. Wait for a "
+        "reply before sending more — a message costs the receiver a turn."
+    )
+
+
+def take_consult_slot() -> str | None:
+    """Claim one consult, or return the refusal to hand the model.
+
+    Counting here rather than in the tool keeps the budget per *turn*: the
+    budget is created once per turn by ``set_execution_context`` and shared by
+    every tool call inside it.
+    """
+    used = _claim_slot("consults", MAX_CONSULTS_PER_TURN)
+    if used is None:
+        return None
+    return (
+        f"You have already asked teammates to check work "
+        f"{used} times this turn. Act on the verdicts you have — "
+        "re-asking about work that has not changed is a loop, not a "
+        "second opinion."
+    )
+
+
+def _claim_slot(key: str, limit: int) -> int | None:
+    """Take one slot: None when it was granted, the spent count when it was
+    not. Nothing awaits between the read and the write, so the claim is atomic
+    against the parallel tool dispatch the SDK CLI does."""
+    budget = _turn_budget.get()
+    if budget is None:
+        budget = {}
+        _turn_budget.set(budget)
+    used = budget.get(key, 0)
+    if used >= limit:
+        return used
+    budget[key] = used + 1
+    return None
+
+
 # Current execution's capability filter.  None means "no restrictions".
 # Set by set_execution_context(); read by run_block and service.py.
 _current_permissions: "ContextVar[CopilotPermissions | None]" = ContextVar(
     "_current_permissions", default=None
+)
+
+# The running turn's tree envelope. Spawn tools derive a child's envelope
+# from this — never from a session row — so a child can only ever narrow it.
+_current_envelope: "ContextVar[TurnEnvelope | None]" = ContextVar(
+    "_current_envelope", default=None
+)
+# Short tool names this turn hid from the model (permission-denied, group-
+# disabled, kickoff-narrowed).  ``run_capability`` refuses to reach them, so
+# hiding stays an enforcement boundary once tools are reachable by id.
+_current_hidden_tools: ContextVar[frozenset[str]] = ContextVar(
+    "_current_hidden_tools", default=frozenset()
+)
+# Set while an approved held call replays with the arguments it was stored with;
+# see ``replaying_bound_args``. Never from the model's arguments.
+_replaying_bound_args: ContextVar[bool] = ContextVar(
+    "_replaying_bound_args", default=False
+)
+
+
+@contextmanager
+def replaying_bound_args(bound: bool) -> Iterator[None]:
+    """Replay a held call whose arguments were already resolved when it was
+    held, so the tool runs them as approved instead of resolving them again."""
+    token = _replaying_bound_args.set(bound)
+    try:
+        yield
+    finally:
+        _replaying_bound_args.reset(token)
+
+
+def args_already_bound() -> bool:
+    return _replaying_bound_args.get()
+
+
+# Whether anyone is watching the running turn; see ``set_turn_unattended``.
+_current_turn_unattended: ContextVar[bool] = ContextVar(
+    "_current_turn_unattended", default=False
 )
 
 
@@ -74,6 +185,8 @@ def set_execution_context(
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
+    hidden_tools: frozenset[str] = frozenset(),
 ) -> None:
     """Set per-turn context variables used by file-resolution tool handlers."""
     _current_user_id.set(user_id)
@@ -82,6 +195,9 @@ def set_execution_context(
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
+    _current_envelope.set(envelope)
+    _current_hidden_tools.set(hidden_tools)
+    reset_consult_budget()
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
@@ -92,6 +208,33 @@ def get_execution_context() -> tuple[str | None, ChatSession | None]:
 def get_current_permissions() -> "CopilotPermissions | None":
     """Return the capability filter for the current execution, or None if unrestricted."""
     return _current_permissions.get()
+
+
+def get_current_envelope() -> "TurnEnvelope | None":
+    """The running turn's tree envelope; None outside an executor turn."""
+    return _current_envelope.get()
+
+
+def get_current_hidden_tools() -> frozenset[str]:
+    """Short tool names hidden from the model this turn."""
+    return _current_hidden_tools.get()
+
+
+def set_turn_unattended(session: ChatSession, *, scheduled: bool) -> None:
+    """Record whether anyone is watching the running turn. The executor sets
+    it for every turn, so a value never carries over to the next one.
+
+    Nobody is when the scheduler fired the turn, even into the user's own
+    chat, or when an automation opened the chat: a scheduled run's own chat, a
+    sub-session, a graph's AutoPilot block. A legacy chat without an origin
+    counts as watched, the way ``pauses_irreversible_actions`` reads it.
+    """
+    _current_turn_unattended.set(scheduled or session.metadata.origin == "automation")
+
+
+def is_unattended_turn() -> bool:
+    """Whether nobody can answer a question this turn puts to the user."""
+    return _current_turn_unattended.get()
 
 
 def get_current_sandbox() -> "AsyncSandbox | None":
@@ -277,7 +420,7 @@ async def current_workspace_scope(
 
     The scope derives from the server-resolved session the executor placed
     in the execution context — never from a session or expert ID a tool
-    argument names. Personal AutoPilot turns are unrestricted: the account
+    argument names. Personal Otto turns are unrestricted: the account
     owner is acting. Without an executing session nobody can be attributed,
     so access fails closed to ``session_id`` alone.
     """

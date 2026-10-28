@@ -1,6 +1,7 @@
 """Tests for the dynamic-pricing branches of block_usage_cost."""
 
 import math
+from unittest.mock import patch
 
 import pytest
 
@@ -30,6 +31,15 @@ from backend.integrations.credentials_store import (
     fal_credentials,
     openai_credentials,
 )
+from backend.sdk.cost_integration import register_provider_costs_for_block
+
+
+@pytest.fixture
+def registered_exa_costs():
+    with patch.dict(BLOCK_COSTS):
+        BLOCK_COSTS.pop(ExaSearchBlock, None)
+        register_provider_costs_for_block(ExaSearchBlock)
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -233,6 +243,18 @@ def test_tokens_falls_back_to_flat_model_cost_when_rate_missing(
     assert cost == expected
 
 
+def test_ollama_zero_cost_entry_matches_without_credentials():
+    ollama_model = LLMModel.OLLAMA_LLAMA3_2
+
+    cost, matching_filter = block_usage_cost(
+        AITextGeneratorBlock(),
+        {"model": ollama_model.value},
+    )
+
+    assert cost == 0
+    assert matching_filter == {"model": ollama_model}
+
+
 def test_e2b_sandbox_blocks_bill_one_credit_per_ten_seconds():
     """End-to-end: E2B blocks use the real SECOND/divisor=10 BlockCost entry."""
     creds = {
@@ -273,7 +295,7 @@ def test_fal_video_block_bills_fifteen_credits_per_second():
     assert cost == 0
 
 
-def test_exa_blocks_bill_cost_usd_via_sdk_config():
+def test_exa_blocks_bill_cost_usd_via_sdk_config(registered_exa_costs):
     """End-to-end: Exa's ProviderBuilder.with_base_cost(100, COST_USD) is live."""
     block = ExaSearchBlock()
     creds = {

@@ -23,9 +23,11 @@ from typing import Any, Optional
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import PlainTextResponse
 
+from backend.copilot.bot import choices
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     MessageCallback,
     MessageContext,
@@ -37,23 +39,31 @@ from backend.copilot.bot.adapters.base import (
 )
 from backend.copilot.bot.adapters.shared import InboundFile, collect_attachments
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
-from . import commands, config
-from .api_client import TelegramClient
+from . import choice_ui, commands, config
+from .api_client import TelegramAPIError, TelegramClient
 from .targets import decode_target as _decode_target
 from .targets import encode_target as _encode_target
 from .text import to_html
 
 logger = logging.getLogger(__name__)
 
+# A resolved mention, held behind private-use markers while the text is
+# HTML-escaped.
+_MENTION_OPEN = "\ue000"
+_MENTION_CLOSE = "\ue001"
+_MENTION_STASH_RE = re.compile("\ue000([^\ue000\ue001]+)\ue001")
+
 UPDATES_PATH = "/api/copilot-webhooks/telegram/updates"
 
 # Telegram chat IDs are integers of any length; groups/supergroups are
 # negative (supergroups start with -100). Used to tell a raw proactive chat
 # ref from a name (names are never purely numeric).
-_CHAT_ID_RE = re.compile(r"^-?\d+$")
+# A chat id, optionally pinned to a forum topic (``chat_id|topic_id``).
+_CHAT_ID_RE = re.compile(r"^-?\d+(\|\d+)?$")
 
 # Message fields that carry a downloadable file, with a fallback filename for
 # the kinds Telegram doesn't name.
@@ -140,6 +150,10 @@ class TelegramAdapter(WebhookAdapter):
         if membership:
             self._track_membership_change(membership)
             return
+        callback_query = update.get("callback_query")
+        if callback_query:
+            await self._dispatch_callback_query(callback_query)
+            return
         message = update.get("message")
         if not message:
             return  # Edits, reactions, other member updates — not conversation input.
@@ -152,7 +166,9 @@ class TelegramAdapter(WebhookAdapter):
             # This runs as a fire-and-forget task — an unhandled error would
             # only surface as asyncio's deferred "exception never retrieved".
             try:
-                await commands.handle(self._api, self._client, message, command)
+                await commands.handle(
+                    self._api, self._client, message, command, self.send_link
+                )
             except Exception:
                 logger.exception("Telegram command handler failed")
             return
@@ -180,6 +196,58 @@ class TelegramAdapter(WebhookAdapter):
         except Exception:
             logger.debug("Telegram reaction ack failed", exc_info=True)
 
+    async def _dispatch_callback_query(self, callback_query: dict[str, Any]) -> None:
+        """Resolve a clicked choice or card button and feed the answer back
+        through the normal message pipeline, exactly like a typed reply."""
+        query_id = callback_query.get("id")
+        parsed = choice_ui.parse_callback_data(callback_query.get("data") or "")
+        ctx = _context_from_callback_query(callback_query, "")
+        if parsed is None or ctx is None:
+            if query_id:
+                await self._answer_callback_query(query_id)
+            return
+        kind, token, index = parsed
+        answer = await choices.answer_button(
+            self._api, "telegram", kind, token, index, ctx.user_id, ctx.server_id
+        )
+        if not answer.answered:
+            if query_id:
+                await self._answer_callback_query(
+                    query_id, text=answer.text, show_alert=True
+                )
+            return
+        if query_id:
+            await self._answer_callback_query(query_id)
+        message = callback_query.get("message") or {}
+        chat_id = str((message.get("chat") or {}).get("id", ""))
+        message_id = message.get("message_id")
+        if chat_id and message_id is not None:
+            try:
+                await self._client.call(
+                    "editMessageText",
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=answer.text,
+                )
+            except Exception:
+                logger.debug(
+                    "Telegram editMessageText after choice click failed",
+                    exc_info=True,
+                )
+        if self._on_message_callback is None:
+            return
+        ctx.text = answer.reply or ""
+        ctx.follow = answer.follow
+        await self._on_message_callback(ctx, self)
+
+    async def _answer_callback_query(self, query_id: str, **kwargs: Any) -> None:
+        try:
+            await self._client.call(
+                "answerCallbackQuery", callback_query_id=query_id, **kwargs
+            )
+        except Exception:
+            logger.debug("Telegram answerCallbackQuery failed", exc_info=True)
+
     def _track_membership_change(self, membership: dict[str, Any]) -> None:
         """Keep the admin server roster current: the bot being added to /
         removed from a group arrives as a my_chat_member update."""
@@ -205,6 +273,7 @@ class TelegramAdapter(WebhookAdapter):
         is_private = chat.get("type") == "private"
         text = message.get("text") or message.get("caption") or ""
 
+        replied_to_bot = False
         if is_private:
             channel_type: ChannelType = "dm"
             bot_mentioned = True
@@ -221,13 +290,14 @@ class TelegramAdapter(WebhookAdapter):
             if not mentioned and not replied_to_bot:
                 return None
             channel_type = "channel"
-            bot_mentioned = True
+            bot_mentioned = mentioned
             if bot_username:
                 text = re.sub(
                     rf"@{re.escape(bot_username)}\b", "", text, flags=re.IGNORECASE
                 ).strip()
 
         target_id = _encode_target(chat_id, message.get("message_thread_id"))
+        topic_id = _topic_id(message)
         attachments, skipped = await self._extract_attachments(message)
         return MessageContext(
             platform="telegram",
@@ -240,6 +310,11 @@ class TelegramAdapter(WebhookAdapter):
             username=sender.get("username") or sender.get("first_name") or "unknown",
             text=text,
             bot_mentioned=bot_mentioned,
+            replied_to_bot=replied_to_bot,
+            channel_name=None if is_private else chat.get("title"),
+            public_channel_id=None if is_private else chat_id,
+            public_thread_id=None if is_private else topic_id,
+            post_channel_id=None if is_private else target_id,
             mentionable_users=_collect_mentionable_users(message),
             attachments=attachments,
             skipped_attachments=skipped,
@@ -290,15 +365,25 @@ class TelegramAdapter(WebhookAdapter):
     # -- Outbound --
 
     def _render(self, text: str, mentionable_users: tuple[tuple[str, str], ...]) -> str:
-        # Localize (which HTML-escapes) FIRST, then inject mention anchors —
-        # the anchors are HTML and must survive escaping. The allowlist IS the
-        # ping safety: non-allowlisted names stay plain text.
-        rendered, _pinged = resolve_mentions(
-            self.localize_markup(text),
+        # Resolve on the raw text, where names and "<@id>" look as the model
+        # wrote them, and hold each hit behind private-use markers that survive
+        # the HTML escaping (to_html strips NUL, so NUL can't be the marker).
+        # Then localize, then swap in the mention anchors, which are HTML and
+        # must not be escaped. The allowlist IS the ping safety: anything not
+        # on it stays plain, escaped text.
+        names = {uid: name for name, uid in mentionable_users}
+        resolved, _pinged = resolve_mentions(
+            text.replace(_MENTION_OPEN, "").replace(_MENTION_CLOSE, ""),
             mentionable_users,
-            lambda name, uid: f'<a href="tg://user?id={uid}">@{html.escape(name)}</a>',
+            lambda _name, uid: f"{_MENTION_OPEN}{uid}{_MENTION_CLOSE}",
         )
-        return rendered
+        return _MENTION_STASH_RE.sub(
+            lambda m: (
+                f'<a href="tg://user?id={m.group(1)}">'
+                f"@{html.escape(names.get(m.group(1), m.group(1)))}</a>"
+            ),
+            self.localize_markup(resolved),
+        )
 
     async def send_message(
         self,
@@ -381,6 +466,34 @@ class TelegramAdapter(WebhookAdapter):
             # would read as a malformed entity and kill the fallback too.
             params["text"] += html.escape(f"\n\n{link_label}: {link_url}")
             await self._client.call("sendMessage", **params)
+
+    @property
+    def max_choice_label_length(self) -> int:
+        return 64
+
+    @property
+    def supports_choice_buttons(self) -> bool:
+        return True
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+        kind: ButtonKind = QUESTION_KIND,
+    ) -> bool:
+        chat_id, thread_id = _decode_target(channel_id)
+        await self._client.call(
+            "sendMessage",
+            chat_id=chat_id,
+            text=self.localize_markup(text),
+            parse_mode="HTML",
+            message_thread_id=thread_id,
+            reply_markup=choice_ui.choice_keyboard(token, options, kind),
+        )
+        return True
 
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         chat_id, thread_id = _decode_target(channel_id)
@@ -498,6 +611,7 @@ class TelegramAdapter(WebhookAdapter):
         # caller's retry would repost the chunks already delivered (mirrors
         # Discord's ``_send_chunked``).
         posted = False
+        sent = 0
         for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
             try:
                 result = await self._client.call(
@@ -515,11 +629,12 @@ class TelegramAdapter(WebhookAdapter):
                 logger.exception("Dropping trailing Telegram chunk after partial send")
                 break
             posted = True
+            sent += 1
             if first_id is None:
                 first_id = str(result.get("message_id", ""))
         if first_id is None:
             return None
-        return PostedRef(id=first_id, url=None)
+        return PostedRef(id=first_id, url=None, chunk_count=sent)
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
@@ -529,7 +644,49 @@ class TelegramAdapter(WebhookAdapter):
         posted = await self.post_channel_message(channel_id, f"**{name}**\n\n{text}")
         if posted is None:
             return None
-        return PostedRef(id=channel_id, url=posted.url)
+        # `id` stays the posted message so it can be edited; `channel_id`
+        # carries the chat/topic target that keeps follow-up sends in place.
+        return PostedRef(
+            id=posted.id,
+            url=posted.url,
+            channel_id=channel_id,
+            chunk_count=posted.chunk_count,
+        )
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        chat_id, _ = _decode_target(channel_id)
+        try:
+            message_id = int(ref_id)
+        except ValueError:
+            return EditOutcome.NOT_FOUND
+        try:
+            await self._client.call(
+                "editMessageText",
+                chat_id=chat_id,
+                message_id=message_id,
+                text=self.localize_markup(text),
+                parse_mode="HTML",
+            )
+        except TelegramAPIError as e:
+            detail = str(e).lower()
+            # Telegram answers "message is not modified" when the new text is
+            # byte-identical. The edit is already in the requested state, so
+            # reporting failure only makes the model retry forever.
+            if "not modified" in detail:
+                return EditOutcome.OK
+            # "message to edit not found" and "message can't be edited" (past
+            # the 48h window) are both NOT_FOUND's documented meaning: gone or
+            # too old to touch.
+            if "not found" in detail or "can't be edited" in detail:
+                return EditOutcome.NOT_FOUND
+            logger.warning("Telegram editMessageText rejected edit: %s", e)
+            return EditOutcome.FAILED
+        except Exception:
+            logger.exception("Failed to edit Telegram message %s", ref_id)
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     # -- Helpers --
 
@@ -554,11 +711,59 @@ def _verify_secret(request: Request, _body: bytes) -> bool:
     return bool(expected) and hmac.compare_digest(provided, expected)
 
 
+def _context_from_callback_query(
+    callback_query: dict[str, Any], option: str
+) -> Optional[MessageContext]:
+    message = callback_query.get("message") or {}
+    chat = message.get("chat") or {}
+    chat_id = str(chat.get("id", ""))
+    sender = callback_query.get("from") or {}
+    user_id = sender.get("id")
+    if not chat_id or user_id is None:
+        return None
+    is_private = chat.get("type") == "private"
+    target_id = _encode_target(chat_id, message.get("message_thread_id"))
+    topic_id = _topic_id(message)
+    return MessageContext(
+        platform="telegram",
+        channel_type="dm" if is_private else "channel",
+        server_id=None if is_private else chat_id,
+        channel_id=target_id,
+        message_id=str(message.get("message_id", "")),
+        user_id=str(user_id),
+        username=sender.get("username") or sender.get("first_name") or "unknown",
+        text=option,
+        bot_mentioned=True,
+        channel_name=None if is_private else chat.get("title"),
+        public_channel_id=None if is_private else chat_id,
+        public_thread_id=None if is_private else topic_id,
+        post_channel_id=None if is_private else target_id,
+    )
+
+
+def _topic_id(message: dict[str, Any]) -> str | None:
+    """The forum topic the message was posted in, if any.
+
+    ``message_thread_id`` alone also marks reply threads outside forums, so
+    only ``is_topic_message`` makes it a topic.
+    """
+    thread_id = message.get("message_thread_id")
+    if not message.get("is_topic_message") or thread_id is None:
+        return None
+    return str(thread_id)
+
+
 def _collect_mentionable_users(message: dict[str, Any]) -> tuple[tuple[str, str], ...]:
-    # text_mention entities carry full user objects (users without a public
-    # @username); those are the only inbound mentions with a numeric id we
-    # can ping safely on the way back out.
+    # The author, under their @username and first name, since either is what
+    # a reply to them would write. Then text_mention entities: they carry full
+    # user objects (users without a public @username), the only other inbound
+    # mentions with a numeric id we can ping safely on the way back out.
     pairs: list[tuple[str, str]] = []
+    sender = message.get("from") or {}
+    if sender.get("id") and not sender.get("is_bot"):
+        for name in (sender.get("username"), sender.get("first_name")):
+            if name and (name, str(sender["id"])) not in pairs:
+                pairs.append((name, str(sender["id"])))
     for entity in message.get("entities") or []:
         user = entity.get("user")
         if entity.get("type") == "text_mention" and user and not user.get("is_bot"):

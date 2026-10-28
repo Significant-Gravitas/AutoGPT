@@ -1,6 +1,7 @@
 "use client";
 
 import { useGetV1ListAvailableBlocks } from "@/app/api/__generated__/endpoints/blocks/blocks";
+import { HIDDEN_FROM_REPLAY } from "@/lib/replay-privacy";
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -93,14 +94,14 @@ export function RunBlockTool({ part }: Props) {
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={isCorrupted ? "Block result could not be displayed" : text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 
       {isCorrupted && (
-        <p className="mt-1 text-sm text-red-500">
+        <p className="mt-1 text-sm text-error">
           The result data arrived corrupted, so any sign-in or setup card it
-          contained can&apos;t be shown. Ask AutoPilot to retry this step.
+          contained can&apos;t be shown. Ask your expert to retry this step.
         </p>
       )}
 
@@ -111,7 +112,10 @@ export function RunBlockTool({ part }: Props) {
       )}
 
       {hasExpandableContent && output && (
-        <ToolAccordion {...getAccordionMeta(output)}>
+        <ToolAccordion
+          {...getAccordionMeta(output)}
+          className={HIDDEN_FROM_REPLAY}
+        >
           {hasInputData && <BlockInputCard inputData={inputData} />}
 
           {isRunBlockBlockOutput(output) && <BlockOutputCard output={output} />}

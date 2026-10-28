@@ -10,15 +10,17 @@ signature checks to each manager's `verify_signature`. This file pins:
   base64-decoded `config["mac_secret"]`).
 * Generic webhook honors an optional `secret_token` on the triggered block:
   passes through when unset, enforces when set.
-* Providers without a signing scheme (Compass, Slant3D) pass through.
+* Unsigned Compass and legacy Slant3D subscriptions pass through; Slant3D v2 verifies signatures.
 * A webhook registered under one provider can't be processed via a different
   provider's ingress path (the manager is selected from the URL provider).
-* `verify_signature` runs before `validate_payload` (call ordering).
+* `verify_signature` runs before `validate_payload` and before the owner's
+  credentials are loaded (call ordering).
 """
 
 import base64
 import hashlib
 import hmac
+import time
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -29,6 +31,7 @@ import pytest
 from backend.api.features.integrations.router import router
 from backend.data.integrations import WebhookWithRelations
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import NotFoundError
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -149,12 +152,7 @@ def _manager(provider: ProviderName):
 
 def _run(webhook, provider_path: str, **kwargs):
     """Boilerplate: patch the router's deps, set the right manager, fire request."""
-    patches = _patch_ingress(webhook) + [
-        patch(
-            "backend.api.features.integrations.router.get_webhook_manager",
-            return_value=_manager(webhook.provider),
-        )
-    ]
+    patches = _patch_ingress(webhook) + _stub_registry(_manager(webhook.provider))
     # ExitStack guarantees previously started patchers are stopped even if
     # a later one's __enter__ raises.
     with ExitStack() as stack:
@@ -163,23 +161,35 @@ def _run(webhook, provider_path: str, **kwargs):
         return _post(provider_path, **kwargs)
 
 
+def _stub_registry(manager):
+    # SDK providers register their managers only at app startup, which these
+    # tests skip; the real registry is also case-sensitive.
+    return [
+        patch(
+            "backend.api.features.integrations.router.supports_webhooks",
+            return_value=True,
+        ),
+        patch(
+            "backend.api.features.integrations.router.get_webhook_manager",
+            return_value=manager,
+        ),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Unsigned providers: default no-op verify, ingress passes through.
 # ---------------------------------------------------------------------------
 
 
 class TestUnsignedProvidersPassThrough:
-    """Compass and Slant3D have no upstream signing scheme. The router must
-    not 403 their deliveries — the default no-op `verify_signature` covers
-    them, and 403'ing here would break every legitimate delivery from those
-    devices/services."""
+    """Compass and legacy Slant3D subscriptions accept unsigned deliveries."""
 
     def test_compass_accepts_unsigned_request(self):
         webhook = _make_webhook(ProviderName.COMPASS)
         resp = _run(webhook, "compass")
         assert resp.status_code != 403, resp.text
 
-    def test_slant3d_accepts_unsigned_request(self):
+    def test_legacy_slant3d_accepts_unsigned_request(self):
         webhook = _make_webhook(ProviderName.SLANT3D)
         # Use a Slant3D-shaped payload so the provider's own payload check
         # doesn't 500; the assertion is about signature, not schema.
@@ -188,6 +198,32 @@ class TestUnsignedProvidersPassThrough:
         )
         resp = _run(webhook, "slant3d", body=body)
         assert resp.status_code != 403, resp.text
+
+
+class TestSlant3DV2Signatures:
+    def test_missing_signature_is_rejected(self):
+        webhook = _make_webhook(ProviderName.SLANT3D, config={"api_version": 2})
+        response = _run(webhook, "slant3d")
+        assert response.status_code == 403
+
+    def test_signed_delivery_passes_ingress(self):
+        webhook = _make_webhook(ProviderName.SLANT3D, config={"api_version": 2})
+        webhook.resource = "platform-1"
+        body = b'{"platform_id":"platform-1","event_type":"order.shipped","data":{"order":{"public_id":"SLANT_123","status":"SHIPPED","tracking_number":"track-1"}}}'
+        timestamp = str(int(time.time() * 1000))
+        digest = hmac.new(
+            WEBHOOK_SECRET.encode(), timestamp.encode() + b"." + body, hashlib.sha256
+        ).hexdigest()
+        response = _run(
+            webhook,
+            "slant3d",
+            body=body,
+            headers={
+                "X-Webhook-Timestamp": timestamp,
+                "X-Webhook-Signature-256": f"sha256={digest}",
+            },
+        )
+        assert response.status_code == 200, response.text
 
 
 # ---------------------------------------------------------------------------
@@ -473,12 +509,9 @@ class TestProviderPathConfusion:
         # Unlike `_run`, the manager comes from the URL path provider (what the
         # real router does) rather than the stored webhook's provider — that
         # divergence is the whole point of the attack being reproduced.
-        patches = _patch_ingress(webhook) + [
-            patch(
-                "backend.api.features.integrations.router.get_webhook_manager",
-                return_value=_manager(url_manager_provider),
-            )
-        ]
+        patches = _patch_ingress(webhook) + _stub_registry(
+            _manager(url_manager_provider)
+        )
         with ExitStack() as stack:
             for p in patches:
                 stack.enter_context(p)
@@ -556,6 +589,65 @@ class TestVerificationOrder:
         assert resp.status_code == 403
         mock_manager.verify_signature.assert_awaited_once()
         mock_manager.validate_payload.assert_not_called()
+
+    @pytest.mark.parametrize("signature_ok", [False, True])
+    def test_credentials_load_only_after_the_signature_passes(self, signature_ok: bool):
+        """Loading can refresh the owner's OAuth token, so an unsigned delivery
+        must not get that far; a signed one still gets them for its payload."""
+        webhook = _make_webhook(ProviderName.GITHUB)
+        webhook.credentials_id = "creds-1"
+        credentials = MagicMock()
+
+        mock_manager = MagicMock()
+        mock_manager.verify_signature = AsyncMock(
+            side_effect=(
+                None
+                if signature_ok
+                else fastapi.HTTPException(status_code=403, detail="nope")
+            )
+        )
+        mock_manager.validate_payload = AsyncMock(return_value=({}, "evt"))
+
+        with ExitStack() as stack:
+            _, creds_manager, *_ = [
+                stack.enter_context(p) for p in _patch_ingress(webhook)
+            ]
+            creds_manager.get = AsyncMock(return_value=credentials)
+            stack.enter_context(
+                patch(
+                    "backend.api.features.integrations.router.get_webhook_manager",
+                    return_value=mock_manager,
+                )
+            )
+            resp = _post("github")
+
+        if not signature_ok:
+            assert resp.status_code == 403
+            creds_manager.get.assert_not_called()
+            return
+        assert resp.status_code == 200, resp.text
+        creds_manager.get.assert_awaited_once_with(USER_ID, "creds-1")
+        assert mock_manager.validate_payload.await_args.args[2] is credentials
+
+    def test_a_banned_owners_credentials_are_not_loaded(self):
+        webhook = _make_webhook(ProviderName.COMPASS)
+        webhook.credentials_id = "creds-1"
+        with ExitStack() as stack:
+            _, creds_manager, *_ = [
+                stack.enter_context(p) for p in _patch_ingress(webhook)
+            ]
+            creds_manager.get = AsyncMock(return_value=MagicMock())
+            for p in _stub_registry(_manager(ProviderName.COMPASS)) + [
+                patch(
+                    "backend.api.features.integrations.router.is_user_banned",
+                    AsyncMock(return_value=True),
+                )
+            ]:
+                stack.enter_context(p)
+            resp = _post("compass")
+
+        assert resp.status_code == 200
+        creds_manager.get.assert_not_called()
 
 
 async def test_preset_trigger_refuses_foreign_owner(mocker):
@@ -758,3 +850,74 @@ async def test_expert_preset_trigger_fails_closed_when_tenancy_lookup_fails(mock
 
     get_graph.assert_not_awaited()
     add_exec.assert_not_awaited()
+
+
+@pytest.mark.parametrize("paywalled", [True, False])
+def test_a_webhook_runs_only_for_an_owner_with_a_plan(paywalled: bool, request):
+    if paywalled:
+        request.getfixturevalue("paywalled_user")
+    node = MagicMock()
+    node.input_default = {}
+    webhook = _make_webhook(ProviderName("generic_webhook"), triggered_nodes=[node])
+    patches = _patch_ingress(webhook) + [
+        patch(
+            "backend.api.features.integrations.router.get_webhook_manager",
+            return_value=_manager(webhook.provider),
+        )
+    ]
+    with ExitStack() as stack:
+        _, _, publish, reward, run_node, _, _ = [
+            stack.enter_context(p) for p in patches
+        ]
+        resp = _post("generic_webhook")
+
+    assert resp.status_code == 200, resp.text
+    expected = 0 if paywalled else 1
+    assert publish.await_count == reward.await_count == run_node.await_count
+    assert run_node.await_count == expected
+
+
+def test_a_banned_owners_delivery_is_acknowledged_and_dropped():
+    """200, so the provider doesn't retry; nothing is published or run."""
+    from backend.api.features.integrations import router as ingress_router
+
+    webhook = _make_webhook(ProviderName.COMPASS, triggered_nodes=[MagicMock()])
+    publish, onboarding, node_trigger = AsyncMock(), AsyncMock(), AsyncMock()
+    with ExitStack() as stack:
+        for p in _patch_ingress(webhook) + [
+            patch.object(
+                ingress_router,
+                "get_webhook_manager",
+                return_value=_manager(ProviderName.COMPASS),
+            ),
+            patch.object(
+                ingress_router, "is_user_banned", AsyncMock(return_value=True)
+            ),
+            patch.object(ingress_router, "publish_webhook_event", publish),
+            patch.object(ingress_router, "complete_onboarding_step", onboarding),
+            patch.object(ingress_router, "_execute_webhook_node_trigger", node_trigger),
+        ]:
+            stack.enter_context(p)
+        resp = _post("compass")
+
+    assert resp.status_code == 200
+    publish.assert_not_awaited()
+    onboarding.assert_not_awaited()
+    node_trigger.assert_not_called()
+
+
+@pytest.mark.parametrize("provider", ["someotherprovider", "slack"])
+def test_a_provider_without_webhooks_is_answered_like_an_unknown_webhook(provider):
+    """Even if a row names that provider: no manager exists to verify it."""
+    with patch(
+        "backend.api.features.integrations.router.get_webhook",
+        AsyncMock(side_effect=NotFoundError(f"Webhook #{WEBHOOK_ID} not found")),
+    ):
+        unknown_webhook = _post("github")
+    with ExitStack() as stack:
+        for p in _patch_ingress(_make_webhook(ProviderName(provider))):
+            stack.enter_context(p)
+        no_webhooks = _post(provider)
+
+    assert unknown_webhook.status_code == no_webhooks.status_code == 404
+    assert no_webhooks.json() == unknown_webhook.json()

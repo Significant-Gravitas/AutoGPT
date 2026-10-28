@@ -1,6 +1,6 @@
 import { getListExpertsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
-  getGetV2GetLibraryAgentMockHandler200,
+  getGetV2GetLibraryAgentsByIdsMockHandler200,
   getGetV2ListLibraryAgentsMockHandler200,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
@@ -15,24 +15,6 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import AutopilotPage from "../page";
-
-const { setFlagStatusMock } = vi.hoisted(() => ({
-  setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
-}));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? setFlagStatusMock()
-        : actual.useFlagStatus(flag as never),
-  };
-});
 
 const { notFoundMock } = vi.hoisted(() => ({ notFoundMock: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -128,7 +110,7 @@ const mariaSchedule: GraphExecutionJobInfo = {
   expert_id: "expert-maria",
 };
 
-/** A schedule nobody on the team owns, which Autopilot must not claim. */
+/** A schedule nobody on the team owns, which Otto must not claim. */
 const straySchedule: GraphExecutionJobInfo = {
   ...mariaSchedule,
   id: "sched-stray",
@@ -153,7 +135,7 @@ function makeLibraryAgent(over: Partial<LibraryAgent>): LibraryAgent {
   } as unknown as LibraryAgent;
 }
 
-/** Maria owns this one, so it is hers and not Autopilot's. */
+/** Maria owns this one, so it is hers and not Otto's. */
 const mariasAgent = makeLibraryAgent({
   id: "lib-1",
   graph_id: "graph-1",
@@ -198,13 +180,12 @@ beforeEach(() => {
     getGetV2ListLibraryAgentsMockHandler200(
       libraryResponse([mariasAgent, freeAgent, strayAgent]),
     ),
-    getGetV2GetLibraryAgentMockHandler200(freeAgent),
+    getGetV2GetLibraryAgentsByIdsMockHandler200([freeAgent, strayAgent]),
     getListCopilotSkillsMockHandler200(librarySkills),
   );
 });
 
 afterEach(() => {
-  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
   notFoundMock.mockReset();
 });
 
@@ -213,12 +194,10 @@ async function openTab(name: string) {
 }
 
 describe("AutopilotPage", () => {
-  test("renders the Autopilot profile with a chat link and a way back", async () => {
+  test("renders the Otto profile with a chat link and a way back", async () => {
     render(<AutopilotPage />);
 
-    expect(
-      await screen.findByRole("heading", { name: "Autopilot" }),
-    ).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Otto" })).toBeDefined();
     expect(screen.getByText("Head of AI")).toBeDefined();
     expect(screen.getByText("Built in")).toBeDefined();
     expect(screen.getByText("Identity")).toBeDefined();
@@ -234,7 +213,7 @@ describe("AutopilotPage", () => {
 
   test("lists the team's schedules", async () => {
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
 
     await openTab("Schedules");
 
@@ -244,20 +223,20 @@ describe("AutopilotPage", () => {
     expect(within(list).queryByText("Nobody's Job")).toBeNull();
   });
 
-  test("lists the library workflows no expert owns as Autopilot's", async () => {
+  test("lists the library workflows no expert owns as Otto's", async () => {
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
 
     await openTab("Workflows");
 
-    expect(screen.getByText("Autopilot's Workflows")).toBeDefined();
+    expect(screen.getByText("Otto's Workflows")).toBeDefined();
     const rows = await screen.findAllByTestId("expert-workflow-row");
     expect(
       rows.map((row) => within(row).getByText(/Job|Triage/).textContent),
     ).toEqual(["Inbox Triage", "Nobody's Job"]);
     // The stray schedule's graph gives its workflow a cadence.
     expect(within(rows[1]).getByText(/Every day at 07:40/)).toBeDefined();
-    // Maria's Content Calendar is hers, not Autopilot's.
+    // Maria's Content Calendar is hers, not Otto's.
     expect(screen.queryByText("Content Calendar")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Install workflow" }),
@@ -266,10 +245,10 @@ describe("AutopilotPage", () => {
       within(rows[0])
         .getByRole("link", { name: "Ask about this workflow" })
         .getAttribute("href"),
-    ).toContain("/copilot?autosubmit=true");
+    ).toContain("/home?autosubmit=true");
   });
 
-  test("keeps loading library pages so a second-page workflow still counts as Autopilot's", async () => {
+  test("keeps loading library pages so a second-page workflow still counts as Otto's", async () => {
     const pagesRequested: string[] = [];
     server.use(
       getGetV2ListLibraryAgentsMockHandler200(({ request }) => {
@@ -289,21 +268,77 @@ describe("AutopilotPage", () => {
     );
 
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
     await openTab("Workflows");
 
     expect(await screen.findByText("Nobody's Job")).toBeDefined();
     expect(pagesRequested).toEqual(["1", "2"]);
   });
 
-  test("lists the library skills no expert has claimed as Autopilot's", async () => {
+  test("loads every workflow card's details in a few batched requests, not one per card", async () => {
+    // A user with a big library: one request per card sent 205 at once.
+    const agents = Array.from({ length: 120 }, (_, i) =>
+      makeLibraryAgent({
+        id: `lib-${String(i).padStart(3, "0")}`,
+        graph_id: `graph-many-${i}`,
+        name: `Workflow ${i}`,
+        execution_count: i,
+      }),
+    );
+    const singleReads: string[] = [];
+    const batchSizes: number[] = [];
+    function countLibraryReads({ request }: { request: Request }) {
+      const url = new URL(request.url);
+      if (url.pathname.endsWith("/api/library/agents/batch")) {
+        batchSizes.push(url.searchParams.getAll("ids").length);
+      } else if (/\/api\/library\/agents\/lib-[^/]+$/.test(url.pathname)) {
+        singleReads.push(url.pathname);
+      }
+    }
+    server.use(
+      getGetV2ListLibraryAgentsMockHandler200({
+        ...libraryResponse(agents),
+        pagination: {
+          total_items: agents.length,
+          total_pages: 1,
+          current_page: 1,
+          page_size: agents.length,
+        },
+      } as LibraryAgentResponse),
+      getGetV2GetLibraryAgentsByIdsMockHandler200(({ request }) => {
+        const ids = new URL(request.url).searchParams.getAll("ids");
+        return agents.filter((agent) => ids.includes(agent.id));
+      }),
+    );
+    server.events.on("request:start", countLibraryReads);
+
+    try {
+      render(<AutopilotPage />);
+      await screen.findByRole("heading", { name: "Otto" });
+      await openTab("Workflows");
+
+      expect(await screen.findAllByTestId("expert-workflow-row")).toHaveLength(
+        120,
+      );
+      const lastCard = (await screen.findByText("Workflow 119")).closest(
+        "[data-testid='expert-workflow-row']",
+      ) as HTMLElement;
+      expect(await within(lastCard).findByText(/119 runs/)).toBeDefined();
+      expect(batchSizes.sort((a, b) => a - b)).toEqual([20, 50, 50]);
+      expect(singleReads).toEqual([]);
+    } finally {
+      server.events.removeListener("request:start", countLibraryReads);
+    }
+  }, 30_000);
+
+  test("lists the library skills no expert has claimed as Otto's", async () => {
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
 
     await openTab("Skills");
 
-    expect(screen.getByText("Autopilot's Skills")).toBeDefined();
-    const list = screen.getByRole("list", { name: "Autopilot skills" });
+    expect(screen.getByText("Otto's Skills")).toBeDefined();
+    const list = screen.getByRole("list", { name: "Otto skills" });
     const rows = within(list).getAllByTestId("expert-skill-row");
     expect(
       rows.map(
@@ -323,7 +358,7 @@ describe("AutopilotPage", () => {
     );
 
     render(<AutopilotPage />);
-    await screen.findByRole("heading", { name: "Autopilot" });
+    await screen.findByRole("heading", { name: "Otto" });
 
     await openTab("Workflows");
     expect(screen.getByText(/No workflows yet/)).toBeDefined();
@@ -354,16 +389,13 @@ describe("AutopilotPage", () => {
     ).toBeDefined();
     await user.click(screen.getByRole("button", { name: /try again/i }));
 
-    expect(
-      await screen.findByRole("heading", { name: "Autopilot" }),
-    ).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Otto" })).toBeDefined();
     expect(failures).toBe(2);
   });
 
-  test("404s when experts are switched off", () => {
-    setFlagStatusMock.mockReturnValue({ enabled: false, ready: true });
-
-    expect(() => render(<AutopilotPage />)).toThrow("NEXT_NOT_FOUND");
-    expect(notFoundMock).toHaveBeenCalled();
+  test("loads Otto without a rollout flag", async () => {
+    render(<AutopilotPage />);
+    expect(await screen.findByRole("heading", { name: "Otto" })).toBeDefined();
+    expect(notFoundMock).not.toHaveBeenCalled();
   });
 });

@@ -1,3 +1,4 @@
+import { getFieldDomId } from "../../../field-accessibility";
 import {
   FormContextType,
   IconButtonProps,
@@ -26,7 +27,9 @@ export default function IconButton(props: AutogptIconButtonProps) {
     icon,
     className,
     uiSchema: _uiSchema,
-    registry: _registry,
+    registry,
+    id,
+    title,
     iconType: _iconType,
     ...otherProps
   } = props;
@@ -35,14 +38,16 @@ export default function IconButton(props: AutogptIconButtonProps) {
     <Button
       size="icon"
       variant="secondary"
-      className={cn(className, "w-fit border border-zinc-200 p-1.5 px-4")}
+      className={cn(className, "w-fit border border-border-base p-1.5 px-4")}
       {...otherProps}
+      id={id ? getFieldDomId(id, registry.formContext) : undefined}
+      title={title}
+      aria-label={title}
       type="button"
     >
       {icon}
       <Text variant="body" className="ml-2">
-        {" "}
-        Remove Item{" "}
+        {title}
       </Text>
     </Button>
   );
@@ -96,7 +101,13 @@ export function RemoveButton(props: AutogptIconButtonProps) {
       title={translateString(TranslatableString.RemoveButton)}
       {...props}
       className={"border-destructive"}
-      icon={<Icon icon={Delete02Icon} size={16} className="!text-zinc-800" />}
+      icon={
+        <Icon
+          icon={Delete02Icon}
+          size={16}
+          className="!text-foreground-emphasis"
+        />
+      }
     />
   );
 }

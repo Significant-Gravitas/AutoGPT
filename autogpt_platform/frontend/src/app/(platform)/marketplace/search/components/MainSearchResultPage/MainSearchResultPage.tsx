@@ -2,14 +2,17 @@ import { GetV2ListStoreAgentsParams } from "@/app/api/__generated__/models/getV2
 import { SearchFilterChips } from "@/components/__legacy__/SearchFilterChips";
 import { SortDropdown } from "@/components/__legacy__/SortDropdown";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { AgentsSection } from "../../../components/AgentsSection/AgentsSection";
+import { ExpertCard } from "../../../components/ExpertsSection/components/ExpertCard";
 import { FeaturedCreators } from "../../../components/FeaturedCreators/FeaturedCreators";
 import { MainSearchResultPageLoading } from "../../../components/MainSearchResultPageLoading";
 import { SearchBar } from "../../../components/SearchBar/SearchBar";
+import { SectionHeader } from "../../../components/SectionHeader";
+import { SkillCard } from "../../../components/SkillsSection/components/SkillCard";
 import { useMainSearchResultPage } from "./useMainSearchResultPage";
-import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 
 type MarketplaceSearchSort = GetV2ListStoreAgentsParams["sorted_by"];
 
@@ -23,20 +26,32 @@ export const MainSearchResultPage = ({
   const {
     agents,
     creators,
+    skills,
+    experts,
+    hiredTemplateIds,
     totalCount,
     agentsCount,
     creatorsCount,
+    skillsCount,
+    expertsCount,
     handleFilterChange,
     handleSortChange,
     showAgents,
     showCreators,
+    showSkills,
+    showExperts,
+    isExpertsVisible,
     isAgentsLoading,
     isCreatorsLoading,
+    isExpertsLoading,
     isAgentsError,
     isCreatorsError,
   } = useMainSearchResultPage({ searchTerm, sort });
 
-  const isLoading = isAgentsLoading || isCreatorsLoading;
+  // Experts gate the skeleton too: without it a roster still in flight reads
+  // as zero results, and a search matching only an expert says "No results
+  // found" before the card arrives.
+  const isLoading = isAgentsLoading || isCreatorsLoading || isExpertsLoading;
   const hasError = isAgentsError || isCreatorsError;
 
   if (isLoading) {
@@ -71,10 +86,16 @@ export const MainSearchResultPage = ({
         </div>
         <div className="flex flex-col gap-4 md:flex-row md:items-center">
           <div className="flex-1">
-            <h2 className="text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+            <h2
+              // TODO(tokens): no exact role: text-neutral-800 #262626
+              className="text-base font-medium leading-normal text-neutral-800"
+            >
               Showing results for:
             </h2>
-            <h1 className="font-poppins text-2xl font-semibold leading-[32px] text-neutral-800 dark:text-neutral-100">
+            <h1
+              // TODO(tokens): no exact role: text-neutral-800 #262626
+              className="font-poppins text-2xl font-semibold leading-8 text-neutral-800"
+            >
               &quot;{searchTerm}&quot;
             </h1>
           </div>
@@ -90,6 +111,8 @@ export const MainSearchResultPage = ({
                 totalCount={totalCount}
                 agentsCount={agentsCount}
                 creatorsCount={creatorsCount}
+                skillsCount={skillsCount}
+                expertsCount={isExpertsVisible ? expertsCount : undefined}
                 onFilterChange={handleFilterChange}
               />
               <div className="mt-4 md:!mt-0">
@@ -98,24 +121,61 @@ export const MainSearchResultPage = ({
             </div>
             {/* Content section */}
             <div className="min-h-[500px] max-w-[1440px] space-y-8 py-8">
+              {showExperts && expertsCount > 0 ? (
+                <section aria-labelledby="search-experts-heading">
+                  <SectionHeader
+                    title="Experts"
+                    titleId="search-experts-heading"
+                  />
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+                    {experts.map((expert) => (
+                      <ExpertCard
+                        key={expert.id}
+                        expert={expert}
+                        isHired={hiredTemplateIds.has(expert.id)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : null}
               {showAgents && agentsCount > 0 && agents && (
                 <AgentsSection agents={agents} />
               )}
+              {showSkills && skillsCount > 0 ? (
+                <section aria-labelledby="search-skills-heading">
+                  <SectionHeader
+                    title="Skills"
+                    titleId="search-skills-heading"
+                  />
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    {skills.map((skill) => (
+                      <SkillCard
+                        key={skill.slug}
+                        skill={skill}
+                        isInstalled={false}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : null}
               <div className="h-[1rem] w-full" />
               {showCreators && creatorsCount > 0 && creators && (
-                <FeaturedCreators
-                  featuredCreators={creators}
-                  title="Creators"
-                />
+                <FeaturedCreators featuredCreators={creators} />
               )}
             </div>
           </>
         ) : (
           <div className="flex min-h-[60vh] flex-col items-center justify-center">
-            <h3 className="mb-2 text-xl font-medium text-neutral-600 dark:text-neutral-300">
+            <h3
+              // TODO(tokens): no exact role: text-neutral-600 #525252
+              className="mb-2 text-xl font-medium text-neutral-600"
+            >
               No results found
             </h3>
-            <p className="text-neutral-500 dark:text-neutral-400">
+            <p
+              // TODO(tokens): no exact role: text-neutral-500 #737373
+              className="text-neutral-500"
+            >
               Try adjusting your search terms or filters
             </p>
           </div>
