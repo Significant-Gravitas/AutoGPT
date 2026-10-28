@@ -2,6 +2,7 @@ import itertools
 import logging
 import math
 import re
+import sys
 from collections import OrderedDict
 from copy import deepcopy
 from enum import Enum
@@ -12,7 +13,7 @@ import jsonschema
 import jsonschema.exceptions
 import jsonschema.validators
 import orjson
-from fastapi.encoders import jsonable_encoder as to_dict
+from fastapi.encoders import jsonable_encoder
 from prisma import Json
 
 from .truncate import truncate
@@ -76,6 +77,17 @@ def dumps(
     return orjson.dumps(serializable_data, option=option, **orjson_kwargs).decode(
         "utf-8"
     )
+
+
+def to_dict(data: Any, **kwargs: Any) -> Any:
+    """`jsonable_encoder` that also turns numpy scalars into plain Python values."""
+    # A numpy value can only exist once numpy is imported, so this never imports it.
+    if numpy := sys.modules.get("numpy"):
+        kwargs["custom_encoder"] = {
+            **(kwargs.get("custom_encoder") or {}),
+            numpy.generic: numpy.generic.item,
+        }
+    return jsonable_encoder(data, **kwargs)
 
 
 T = TypeVar("T")
