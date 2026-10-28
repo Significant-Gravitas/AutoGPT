@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 import httpx
 from pydantic import BaseModel
 
-from backend.blocks.mcp.client import MCPClient
+from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth.microsoft_identity import microsoft_identity
 from backend.integrations.oauth.microsoft_recovery import MicrosoftAuthError
@@ -32,10 +32,13 @@ from backend.integrations.oauth.microsoft_tokens import (
     microsoft_app,
     microsoft_resource_token,
 )
+from backend.util.request import HTTPClientError
 from backend.util.settings import Settings
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 WORK_IQ_URL = "https://workiq.svc.cloud.microsoft/mcp"
+# The whole check waits on its slowest service; Graph's probes get the same.
+WORK_IQ_TIMEOUT_SECONDS = 20
 
 MicrosoftCapabilityStatus = Literal[
     "available",
@@ -145,11 +148,20 @@ async def _check_work_iq(credential: OAuth2Credentials) -> MicrosoftCapability:
         return _capability("work_iq", "unavailable")
     client = MCPClient(WORK_IQ_URL, authorization=f"Bearer {token}")
     try:
-        tools = await client.list_tools()
-    except Exception:
-        # Signed in and approved, so what remains is the organization's
-        # Work IQ enablement or its usage billing.
+        tools = await asyncio.wait_for(client.list_tools(), WORK_IQ_TIMEOUT_SECONDS)
+    except HTTPClientError as error:
+        # Signed in and approved, so Work IQ refusing is the organization's
+        # Work IQ enablement or its usage billing. Throttling is only busy.
+        status: MicrosoftCapabilityStatus = (
+            "unavailable" if error.status_code == 429 else "setup_required"
+        )
+        return _capability("work_iq", status)
+    except MCPClientError:
         return _capability("work_iq", "setup_required")
+    except Exception:
+        # A timeout, a network failure or a server error says nothing about
+        # the organization's setup.
+        return _capability("work_iq", "unavailable")
     finally:
         await client.close()
     return _capability("work_iq", "available" if tools else "setup_required")
