@@ -9,6 +9,9 @@ export function useLoginWhatsNew() {
     select: (entries) => entries.slice(0, RELEASE_COUNT).map(toRelease),
     staleTime: 5 * 60 * 1000,
     retry: false,
+    // Offline, the default "online" mode pauses the query before the timeout
+    // starts, leaving the placeholder up. "always" fails fast to the fallback.
+    networkMode: "always",
     refetchOnWindowFocus: false,
   });
 

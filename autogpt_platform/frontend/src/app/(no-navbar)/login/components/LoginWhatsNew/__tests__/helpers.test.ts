@@ -9,6 +9,9 @@ describe("toPlainText", () => {
     ["line<br/>break <em>tag</em>", "line break tag"],
     ["cut off <script", "cut off"],
     ["Clay <3 Rock", "Clay <3 Rock"],
+    ["kept <!-- hidden, note --> text", "kept text"],
+    ["cut <!-- never closed", "cut"],
+    ["[wiki](https://x.org/a_(b)) page", "wiki page"],
     ["Clay &amp; Rock &lt;3", "Clay & Rock <3"],
     ["keeps snake_case_names", "keeps snake_case_names"],
     ["  spaced \n  out  ", "spaced out"],
@@ -43,6 +46,33 @@ describe("toRelease", () => {
       headline: "Meet your Experts",
       details: "Routines, Skills marketplace",
     });
+  });
+
+  test("keeps a comma in link text and drops HTML comments", () => {
+    const release = toRelease({
+      slug: "s",
+      dateRange: "May 1",
+      highlights:
+        "[Clay, Rock](https://agpt.co/x) avatars <!-- internal, unpublished -->, faster runs",
+      url: "u",
+    });
+    expect(release.headline).toBe("Clay, Rock avatars");
+    expect(release.details).toBe("Faster runs");
+  });
+
+  test.each([
+    ["iOS deep links", "iOS deep links"],
+    ["macOS app", "macOS app"],
+    ["e-mail digests", "e-mail digests"],
+    ["new models", "New models"],
+  ])("capitalises %j as %j", (highlights, headline) => {
+    const release = toRelease({
+      slug: "s",
+      dateRange: "",
+      highlights,
+      url: "u",
+    });
+    expect(release.headline).toBe(headline);
   });
 
   test("names a release with no readable highlights", () => {

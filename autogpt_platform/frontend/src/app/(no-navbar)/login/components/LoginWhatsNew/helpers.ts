@@ -14,9 +14,12 @@ export interface Release {
 }
 
 // A release's highlights are one comma-separated markdown cell: the first
-// heads the release and the rest are its details.
+// heads the release and the rest are its details. It's split before the
+// markdown goes, so a comma in link text ("[Clay, Rock](…)") stays put.
 export function toRelease(entry: ChangelogEntry): Release {
-  const [first = "", ...rest] = splitHighlights(toPlainText(entry.highlights));
+  const [first = "", ...rest] = splitHighlights(stripComments(entry.highlights))
+    .map(toPlainText)
+    .filter(Boolean);
   return {
     slug: entry.slug,
     url: entry.url,
@@ -33,8 +36,9 @@ export function getReleaseLabel(release: Release, isLatest: boolean) {
 
 export function toPlainText(markdown: string): string {
   return (
-    markdown
-      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    stripComments(markdown)
+      // Link URLs may hold one level of brackets: (https://x.org/a_(b)).
+      .replace(/!?\[([^\]]*)\]\((?:[^()]|\([^()]*\))*\)/g, "$1")
       .replace(/<br\s*\/?>/gi, " ")
       // An unclosed tag ("<script" at the end) goes too, not just "<b>…</b>".
       .replace(/<\/?[a-z][^>]*(?:>|$)/gi, "")
@@ -78,6 +82,14 @@ function decodeEntity(_match: string, name: string) {
   return ENTITIES[name];
 }
 
+// An HTML comment, closed or cut off, never reaches the page.
+function stripComments(text: string) {
+  return text.replace(/<!--[\s\S]*?(?:-->|$)/g, "");
+}
+
+// Only an all-lowercase first word is capitalised, so "iOS" and "macOS"
+// keep their casing.
 function capitalize(text: string) {
+  if (!/^[a-z]+(?![\w-])/.test(text)) return text;
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
