@@ -490,6 +490,43 @@ describe("copilot Connect card, upgrade-target selection", () => {
     expect(upgradedCredentialID).toBeNull();
   });
 
+  it.each([true, false])(
+    "switches from a selected account to the new account (reported: %s)",
+    async (reported) => {
+      savedCredentials = [oauthCredential("cred-existing", [REQUIRED_SCOPE])];
+      const selections: Record<string, string>[] = [];
+      server.use(
+        http.put(
+          "*/api/chat/sessions/*/credential-selection",
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              selections: Record<string, string>;
+            };
+            selections.push(body.selections);
+            return HttpResponse.json({ status: "ok" });
+          },
+        ),
+        http.post("*/api/integrations/github/callback", () => {
+          const added = oauthCredential("cred-new", [REQUIRED_SCOPE]);
+          savedCredentials = [...savedCredentials, added];
+          return HttpResponse.json(reported ? added : {});
+        }),
+      );
+      const { onSend } = renderChain();
+      const user = userEvent.setup();
+      await user.click(
+        await screen.findByRole("button", { name: "Change account" }),
+      );
+      await user.click(await screen.findByRole("button", { name: "Add new" }));
+      await user.click(
+        await screen.findByRole("button", { name: "Continue with GitHub" }),
+      );
+      await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+      expect(selections).toEqual([{ github: "cred-new" }]);
+      expect(upgradedCredentialID).toBeNull();
+    },
+  );
+
   it("surfaces the backend's refusal when the sign-in is a different user", async () => {
     savedCredentials = [
       oauthCredential("cred-a", ["notifications"]),
@@ -1154,7 +1191,18 @@ describe("named HTTP connections", () => {
 
   it("saves Linear and GitHub keys for their own hosts and continues only after both are ready", async () => {
     const created: Record<string, unknown>[] = [];
+    const selections: Record<string, string>[] = [];
     server.use(
+      http.put(
+        "*/api/chat/sessions/*/credential-selection",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            selections: Record<string, string>;
+          };
+          selections.push(body.selections);
+          return HttpResponse.json({ status: "ok" });
+        },
+      ),
       http.post("*/api/integrations/http/credentials", async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         created.push(body);
@@ -1212,6 +1260,10 @@ describe("named HTTP connections", () => {
       host: "api.github.com",
       headers: { Authorization: "Bearer github-test-key" },
     });
+    expect(selections).toEqual([
+      { "http:api.linear.app": "http-1" },
+      { "http:api.github.com": "http-2" },
+    ]);
   });
 
   it("keeps the key form open after a failed save and lets the user retry", async () => {

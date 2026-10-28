@@ -40,6 +40,9 @@ export function ConnectorRow({ row }: Props) {
   // A sign-in finished without reporting its credential, so the account it
   // added is found by diffing the provider list against `knownIds`.
   const [awaitingNewAccount, setAwaitingNewAccount] = useState(false);
+  const [pendingCredentialId, setPendingCredentialId] = useState<string | null>(
+    null,
+  );
   const [grantError, setGrantError] = useState<string | null>(null);
   // A credential connected from this row while an expert is asking. It stays
   // here until its grant succeeds, so a failed grant is retried from the
@@ -167,8 +170,23 @@ export function ConnectorRow({ row }: Props) {
       if (fresh) {
         setAwaitingNewAccount(false);
         setRenewedIds((ids) => [...ids, fresh.grantable.id]);
+        setPendingCredentialId(fresh.grantable.id);
         return;
       }
+      return;
+    }
+    if (pendingCredentialId) {
+      const signedIn = pickable.find((c) => c.id === pendingCredentialId);
+      if (!signedIn) return;
+      row.select({
+        id: signedIn.id,
+        provider: row.provider,
+        type: signedIn.type as CredentialsMetaInput["type"],
+        title: signedIn.title,
+      });
+      setPendingCredentialId(null);
+      row.onConnected(signedIn.id);
+      return;
     }
     // Cards stream in one commit at a time, so a row's schema can widen after
     // it auto-selected: a selection that no longer satisfies it must go, or
@@ -213,6 +231,7 @@ export function ConnectorRow({ row }: Props) {
     row.selected,
     allProviders,
     awaitingNewAccount,
+    pendingCredentialId,
     expertGrant?.expertId,
     rejectedKey,
     renewedKey,
@@ -279,6 +298,7 @@ export function ConnectorRow({ row }: Props) {
       : null;
     setGrantError(null);
     setAwaitingNewAccount(false);
+    setPendingCredentialId(null);
     setDialogOpen(true);
   }
 
@@ -406,9 +426,15 @@ export function ConnectorRow({ row }: Props) {
             // Without a reported credential nothing is known to be renewed,
             // so every refused account stays refused until the diff finds
             // the one this sign-in added.
-            if (credential) setRenewedIds((ids) => [...ids, credential.id]);
-            else setAwaitingNewAccount(true);
-            row.onConnected(credential?.id);
+            row.select(undefined);
+            if (credential?.id) {
+              if (!grantableAmong(row, [toSavedCredential(credential)])) {
+                setGrantError(UNUSABLE_ACCOUNT_ERROR);
+                return;
+              }
+              setRenewedIds((ids) => [...ids, credential.id]);
+              setPendingCredentialId(credential.id);
+            } else setAwaitingNewAccount(true);
             return;
           }
           // A flow that does not report its credential leaves the refresh to
