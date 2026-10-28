@@ -50,6 +50,7 @@ from backend.api.external.v2.mcp_calls import (
 )
 from backend.api.external.v2.mcp_tenancy import check_ids_in_tenant
 from backend.api.external.v2.tenancy import resolve_credential_tenancy
+from backend.api.features.oauth_metadata import oauth_issuer
 from backend.copilot.context import set_turn_unattended
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.tool_adapter import _execute_tool_sync
@@ -196,7 +197,7 @@ def create_mcp_server() -> FastMCP:
         ),
         token_verifier=ExternalAPITokenVerifier(),
         auth=AuthSettings(
-            issuer_url=AnyHttpUrl(base_url),
+            issuer_url=oauth_issuer(),
             resource_server_url=AnyHttpUrl(f"{base_url}{MCP_RESOURCE_PATH}"),
         ),
         tools=tools,
@@ -227,12 +228,19 @@ def protected_resource_metadata() -> ProtectedResourceMetadata:
     `WWW-Authenticate` — asks the origin root for it and gets a 404. The root
     app serves this instead; see `WELL_KNOWN_PROTECTED_RESOURCE_PATH`.
     """
-    base_url = _platform_base_url()
     return ProtectedResourceMetadata(
-        resource=AnyHttpUrl(f"{base_url}{MCP_RESOURCE_PATH}"),
-        authorization_servers=[AnyHttpUrl(base_url)],
+        resource=AnyHttpUrl(f"{_platform_base_url()}{MCP_RESOURCE_PATH}"),
+        authorization_servers=[oauth_issuer()],
+        # MCP clients request these; without them a client asks for no scope.
+        scopes_supported=mcp_scopes(),
         resource_name="AutoGPT Platform MCP Server",
     )
+
+
+def mcp_scopes() -> list[str]:
+    """Every permission an exposed tool can require."""
+    uses = [tool.allow_external_use for tool in TOOL_REGISTRY.values()]
+    return sorted({p.value for allowed, perms in uses if allowed for p in perms or []})
 
 
 def _platform_base_url() -> str:

@@ -12717,17 +12717,150 @@
       "post": {
         "tags": ["oauth"],
         "summary": "Token",
-        "description": "OAuth 2.0 Token Endpoint\n\nExchanges authorization code or refresh token for access token.\n\nGrant Types:\n1. authorization_code: Exchange authorization code for tokens\n   - Required: grant_type, code, redirect_uri, client_id, client_secret\n   - Optional: code_verifier (required if PKCE was used)\n\n2. refresh_token: Exchange refresh token for new access token\n   - Required: grant_type, refresh_token, client_id, client_secret\n\nReturns:\n- access_token: Bearer token for API access (1 hour TTL)\n- token_type: \"Bearer\"\n- expires_in: Seconds until access token expires\n- refresh_token: Token for refreshing access (30 days TTL)\n- scopes: List of scopes",
+        "description": "OAuth 2.0 Token Endpoint\n\nExchanges authorization code or refresh token for access token.\n\nTakes a form-encoded body, as RFC 6749 specifies, or a JSON body. The client\nauthenticates with `client_id` and `client_secret` in the body, or with HTTP\nBasic.\n\nGrant Types:\n1. authorization_code: Exchange authorization code for tokens\n   - Required: grant_type, code, redirect_uri, client_id, client_secret\n   - Optional: code_verifier (required if PKCE was used)\n\n2. refresh_token: Exchange refresh token for new access token\n   - Required: grant_type, refresh_token, client_id, client_secret\n\nReturns:\n- access_token: Bearer token for API access (1 hour TTL)\n- token_type: \"Bearer\"\n- expires_in: Seconds until access token expires\n- refresh_token: Token for refreshing access (30 days TTL)\n- scope: The granted scopes, space-separated\n- scopes: The same scopes, as a list",
         "operationId": "postOauthToken",
         "requestBody": {
           "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "properties": {
+                      "grant_type": {
+                        "type": "string",
+                        "const": "authorization_code",
+                        "title": "Grant Type"
+                      },
+                      "code": {
+                        "type": "string",
+                        "title": "Code",
+                        "description": "Authorization code"
+                      },
+                      "redirect_uri": {
+                        "type": "string",
+                        "title": "Redirect Uri",
+                        "description": "Redirect URI (must match authorization request)"
+                      },
+                      "client_id": { "type": "string", "title": "Client Id" },
+                      "client_secret": {
+                        "type": "string",
+                        "title": "Client Secret"
+                      },
+                      "code_verifier": {
+                        "type": "string",
+                        "title": "Code Verifier",
+                        "description": "PKCE code verifier"
+                      }
+                    },
+                    "type": "object",
+                    "required": [
+                      "grant_type",
+                      "code",
+                      "redirect_uri",
+                      "client_id",
+                      "client_secret",
+                      "code_verifier"
+                    ],
+                    "title": "TokenRequestByCode"
+                  },
+                  {
+                    "properties": {
+                      "grant_type": {
+                        "type": "string",
+                        "const": "refresh_token",
+                        "title": "Grant Type"
+                      },
+                      "refresh_token": {
+                        "type": "string",
+                        "title": "Refresh Token"
+                      },
+                      "client_id": { "type": "string", "title": "Client Id" },
+                      "client_secret": {
+                        "type": "string",
+                        "title": "Client Secret"
+                      }
+                    },
+                    "type": "object",
+                    "required": [
+                      "grant_type",
+                      "refresh_token",
+                      "client_id",
+                      "client_secret"
+                    ],
+                    "title": "TokenRequestByRefreshToken"
+                  }
+                ]
+              }
+            },
             "application/json": {
               "schema": {
-                "anyOf": [
-                  { "$ref": "#/components/schemas/TokenRequestByCode" },
-                  { "$ref": "#/components/schemas/TokenRequestByRefreshToken" }
-                ],
-                "title": "Request"
+                "oneOf": [
+                  {
+                    "properties": {
+                      "grant_type": {
+                        "type": "string",
+                        "const": "authorization_code",
+                        "title": "Grant Type"
+                      },
+                      "code": {
+                        "type": "string",
+                        "title": "Code",
+                        "description": "Authorization code"
+                      },
+                      "redirect_uri": {
+                        "type": "string",
+                        "title": "Redirect Uri",
+                        "description": "Redirect URI (must match authorization request)"
+                      },
+                      "client_id": { "type": "string", "title": "Client Id" },
+                      "client_secret": {
+                        "type": "string",
+                        "title": "Client Secret"
+                      },
+                      "code_verifier": {
+                        "type": "string",
+                        "title": "Code Verifier",
+                        "description": "PKCE code verifier"
+                      }
+                    },
+                    "type": "object",
+                    "required": [
+                      "grant_type",
+                      "code",
+                      "redirect_uri",
+                      "client_id",
+                      "client_secret",
+                      "code_verifier"
+                    ],
+                    "title": "TokenRequestByCode"
+                  },
+                  {
+                    "properties": {
+                      "grant_type": {
+                        "type": "string",
+                        "const": "refresh_token",
+                        "title": "Grant Type"
+                      },
+                      "refresh_token": {
+                        "type": "string",
+                        "title": "Refresh Token"
+                      },
+                      "client_id": { "type": "string", "title": "Client Id" },
+                      "client_secret": {
+                        "type": "string",
+                        "title": "Client Secret"
+                      }
+                    },
+                    "type": "object",
+                    "required": [
+                      "grant_type",
+                      "refresh_token",
+                      "client_id",
+                      "client_secret"
+                    ],
+                    "title": "TokenRequestByRefreshToken"
+                  }
+                ]
               }
             }
           },
@@ -12739,14 +12872,6 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/TokenResponse" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
           }
@@ -36933,62 +37058,6 @@
         "title": "TokenRateDisplay",
         "description": "Public per-1M-token USD rates surfaced to the builder UI.\n\nPopulated only on LLM block costs whose model has a TOKEN_COST rate.\ncache_* fields are set only when the provider publishes a distinct\ncached-token rate (Anthropic). Display-only — billing always uses the\ninternal credit math in `BlockCost.cost_amount`."
       },
-      "TokenRequestByCode": {
-        "properties": {
-          "grant_type": {
-            "type": "string",
-            "const": "authorization_code",
-            "title": "Grant Type"
-          },
-          "code": {
-            "type": "string",
-            "title": "Code",
-            "description": "Authorization code"
-          },
-          "redirect_uri": {
-            "type": "string",
-            "title": "Redirect Uri",
-            "description": "Redirect URI (must match authorization request)"
-          },
-          "client_id": { "type": "string", "title": "Client Id" },
-          "client_secret": { "type": "string", "title": "Client Secret" },
-          "code_verifier": {
-            "type": "string",
-            "title": "Code Verifier",
-            "description": "PKCE code verifier"
-          }
-        },
-        "type": "object",
-        "required": [
-          "grant_type",
-          "code",
-          "redirect_uri",
-          "client_id",
-          "client_secret",
-          "code_verifier"
-        ],
-        "title": "TokenRequestByCode"
-      },
-      "TokenRequestByRefreshToken": {
-        "properties": {
-          "grant_type": {
-            "type": "string",
-            "const": "refresh_token",
-            "title": "Grant Type"
-          },
-          "refresh_token": { "type": "string", "title": "Refresh Token" },
-          "client_id": { "type": "string", "title": "Client Id" },
-          "client_secret": { "type": "string", "title": "Client Secret" }
-        },
-        "type": "object",
-        "required": [
-          "grant_type",
-          "refresh_token",
-          "client_id",
-          "client_secret"
-        ],
-        "title": "TokenRequestByRefreshToken"
-      },
       "TokenResponse": {
         "properties": {
           "token_type": {
@@ -37003,11 +37072,21 @@
             "format": "date-time",
             "title": "Access Token Expires At"
           },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In",
+            "description": "Seconds until the access token expires"
+          },
           "refresh_token": { "type": "string", "title": "Refresh Token" },
           "refresh_token_expires_at": {
             "type": "string",
             "format": "date-time",
             "title": "Refresh Token Expires At"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "description": "The granted scopes, space-separated"
           },
           "scopes": {
             "items": { "type": "string" },
@@ -37019,8 +37098,10 @@
         "required": [
           "access_token",
           "access_token_expires_at",
+          "expires_in",
           "refresh_token",
           "refresh_token_expires_at",
+          "scope",
           "scopes"
         ],
         "title": "TokenResponse",

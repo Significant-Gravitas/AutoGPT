@@ -12,7 +12,7 @@ from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
-from mcp.shared.auth import ProtectedResourceMetadata
+from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 
 import backend.api.features.admin.access_block_admin_routes
 import backend.api.features.admin.block_cost_admin_routes
@@ -110,6 +110,10 @@ from .external.v2.mcp_server import (
 )
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
+from .features.oauth_metadata import (
+    WELL_KNOWN_AUTHORIZATION_SERVER_PATH,
+    authorization_server_metadata,
+)
 from .middleware.analytics import AnalyticsContextMiddleware
 from .middleware.security import SecurityHeadersMiddleware
 from .utils.auth_before_body import check_token_before_body
@@ -600,12 +604,30 @@ app.mount("/api/v2", v2_app)
     tags=["mcp"],
     dependencies=[],
     include_in_schema=False,
+    # Absent members are left out: Claude Code rejects a null URL.
+    response_model_exclude_none=True,
 )
 async def mcp_protected_resource_metadata() -> ProtectedResourceMetadata:
     """RFC 9728 discovery for the MCP server, which must answer at the origin
     root — FastMCP serves its copy inside the `/mcp` mount, where no client
     looks."""
     return protected_resource_metadata()
+
+
+@app.get(
+    path=WELL_KNOWN_AUTHORIZATION_SERVER_PATH,
+    tags=["oauth"],
+    dependencies=[],
+    include_in_schema=False,
+    # Absent members are left out: Claude Code rejects a null URL.
+    response_model_exclude_none=True,
+)
+async def oauth_authorization_server_metadata() -> OAuthMetadata:
+    """RFC 8414 discovery for the OAuth provider, at the issuer the MCP
+    server's resource metadata names."""
+    return authorization_server_metadata(
+        token_path=app.url_path_for(backend.api.features.oauth.token.__name__)
+    )
 
 
 @app.get(path="/health", tags=["health"], dependencies=[])
