@@ -223,7 +223,9 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* Google Drive Picker: ensure picker appears above dialogs and can receive clicks */
+/* Google Drive Picker: ensure picker appears above dialogs and can receive
+   clicks. The picker is Google's own markup, so it has no slot; !important
+   beats the z-index and pointer-events Google's script writes inline. */
 [class*="picker-dialog"] {
   z-index: 10000 !important;
   pointer-events: auto !important;
@@ -296,17 +298,6 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   font-size: 1.1em;
 }
 
-/* Expert and Otto profile tabs: body copy inside a tab panel reads at the
-   Overview intro's 15px instead of the default 14px. Scoped to the panels so
-   the tab labels, cards' small captions and the rest of the app keep their
-   sizes. */
-[data-profile-tabs] [role="tabpanel"] .text-sm,
-[data-profile-tabs] [role="tabpanel"] .text-body,
-[data-profile-tabs] [role="tabpanel"] [class*="text-[0.875rem]"] {
-  font-size: 15px;
-  line-height: 1.5rem;
-}
-
 /* DS2b keyframes */
 
 /* GlassOrb (molecules/GlassOrb): each blob turns on its own spinner and
@@ -366,8 +357,8 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
 }
 
 /* DS5g keyframes */
-/* Copilot loaders, moved unchanged from the OrbitLoader, PixelGridLoader and
-   ScaleLoader CSS modules. The modules scoped the names, so they are prefixed
+/* Copilot loaders, moved unchanged from the OrbitLoader and ScaleLoader CSS
+   modules. The modules scoped the names, so they are prefixed
    here. */
 @keyframes orbit-loader-rotate {
   0% {
@@ -408,16 +399,6 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   100% {
     box-shadow: calc(var(--spacing)) 0 0 #a1a1aa;
     margin-top: 0;
-  }
-}
-
-@keyframes pixel-grid-loader-on {
-  0%,
-  100% {
-    opacity: 0.15;
-  }
-  50% {
-    opacity: 1;
   }
 }
 

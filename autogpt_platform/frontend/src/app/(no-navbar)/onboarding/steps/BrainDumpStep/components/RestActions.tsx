@@ -20,7 +20,7 @@ export function RestActions({ onTalk, onWrite, writeFirst = false }: Props) {
         size="small"
         onClick={onTalk}
         leadingIcon={Mic01Icon}
-        className="h-10 w-36 rounded-xl"
+        className="h-10 w-36"
       >
         Talk
       </Button>
@@ -30,7 +30,7 @@ export function RestActions({ onTalk, onWrite, writeFirst = false }: Props) {
         size="small"
         onClick={onWrite}
         leadingIcon={PencilEdit01Icon}
-        className="h-10 w-36 rounded-xl"
+        className="h-10 w-36"
       >
         Write
       </Button>

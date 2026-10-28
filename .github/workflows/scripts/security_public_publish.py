@@ -16,24 +16,13 @@ from security_public_api import (
 from security_public_sync import (
     END,
     START,
-    TAG_PATTERN,
+    UNLINKED_HINT,
     current_snapshot,
-    matches,
     public_release_notes,
+    published_release,
+    published_release_tags,
+    unlinked_advisories,
 )
-
-
-def published_release(release):
-    return (
-        isinstance(release, dict)
-        and type(release.get("id")) is int
-        and release["id"] > 0
-        and release.get("draft") is False
-        and bool(release.get("published_at"))
-        and matches(TAG_PATTERN, release.get("tag_name"))
-        # GitHub returns null for a release with no notes.
-        and (release.get("body") is None or isinstance(release["body"], str))
-    )
 
 
 def latest_release_id():
@@ -75,7 +64,8 @@ def patch_release(release_id, body, *, latest):
 def update_releases(expected_digest, *, apply=False, preview=False):
     snapshot = current_snapshot(expected_digest)
     candidates = []
-    for release in public_pages("releases"):
+    releases = public_pages("releases")
+    for release in releases:
         if not published_release(release):
             continue
         notes = public_release_notes(
@@ -116,9 +106,13 @@ def update_releases(expected_digest, *, apply=False, preview=False):
         raise PublicDataError(PublicErrorCode.LATEST_CHANGED)
     result = {"changed_releases": updated}
     if preview:
+        unlinked = unlinked_advisories(snapshot, published_release_tags(releases))
         result["preview"] = (
             "## Proposed public security sections\n\n"
             f"Releases to update: {updated}\n\n"
+            "Published advisories that no published release lists: "
+            + (", ".join(unlinked) + ". " + UNLINKED_HINT if unlinked else "none.")
+            + "\n\n"
             "Each section below replaces the managed security section or is appended "
             "if none exists. Other release text is preserved. "
             "Existing release text and raw advisory content are not included "

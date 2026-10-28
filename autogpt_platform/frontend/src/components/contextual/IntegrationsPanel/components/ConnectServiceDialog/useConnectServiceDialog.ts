@@ -8,7 +8,10 @@ import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/cre
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   filterConnectableProviders,
+  popularProviders,
+  sortByPopularity,
   toConnectableProviders,
+  withoutProviders,
   type ConnectableProvider,
 } from "./helpers";
 
@@ -56,7 +59,11 @@ export function useConnectServiceDialog({
   const filterQuery =
     initialQuery && query === initialQuery ? query : debouncedQuery;
   const allProviders = toConnectableProviders(providersQuery.data ?? []);
-  const providers = filterConnectableProviders(allProviders, filterQuery);
+  const isSearching = filterQuery.trim().length > 0;
+  const popular = isSearching ? [] : popularProviders(allProviders);
+  const providers = isSearching
+    ? sortByPopularity(filterConnectableProviders(allProviders, filterQuery))
+    : sortByPopularity(withoutProviders(allProviders, popular));
 
   const selectedProvider: ConnectableProvider | null = selectedId
     ? (allProviders.find((p) => p.id === selectedId) ?? null)
@@ -85,6 +92,7 @@ export function useConnectServiceDialog({
     query,
     setQuery,
     providers,
+    popular,
     isLoading: providersQuery.isLoading,
     isError: providersQuery.isError,
     error: providersQuery.error,

@@ -71,8 +71,8 @@ vi.mock("../components/MessagePartRenderer", () => ({
 vi.mock("../../ToolChain/SwapText", () => ({
   SwapText: ({ text }: { text: string }) => <span>{text}</span>,
 }));
-vi.mock("../../PixelGridLoader/PixelGridLoader", () => ({
-  PixelGridLoader: () => null,
+vi.mock("../../DrawnLineLoader/DrawnLineLoader", () => ({
+  DrawnLineLoader: () => null,
 }));
 vi.mock("../../JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: ({ elapsedSeconds }: { elapsedSeconds?: number }) => (
