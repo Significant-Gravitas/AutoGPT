@@ -169,9 +169,10 @@ async def test_sends_nothing_when_nothing_crosses_a_threshold(account, clock, al
 
 async def _requests(user_id: str, internal: int = 0, external: int = 0) -> None:
     for _ in range(internal):
-        await api_activity.record_api_request(user_id, "internal")
+        api_activity.record_api_request(user_id, "internal")
     for _ in range(external):
-        await api_activity.record_api_request(user_id, "external")
+        api_activity.record_api_request(user_id, "external")
+    await api_activity.flush()
 
 
 async def _ip_event(user_id: str, ip: str, at: datetime) -> None:

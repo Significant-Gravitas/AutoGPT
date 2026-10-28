@@ -140,7 +140,7 @@ async def _admit(auth: APIAuthorizationInfo) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail=ACCOUNT_BANNED_DETAIL
         )
-    await record_api_request(auth.user_id, "external")
+    record_api_request(auth.user_id, "external")
 
 
 async def owner_is_banned(auth: APIAuthorizationInfo) -> bool:
