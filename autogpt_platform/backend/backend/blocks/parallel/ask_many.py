@@ -112,10 +112,12 @@ class ParallelAskManyDecisionsBlock(ParallelDecisionBase):
             input_data,
             {name: q.to_api() for name, q in input_data.questions.items()},
         )
-        for output in self.evidence(result):
-            yield output
+        # Check the answer before any output, so a malformed response
+        # fails without first sending partial outputs downstream.
         for name, question in input_data.questions.items():
             result.answer(name, *ANSWER_FIELDS[question.type])
+        for output in self.evidence(result):
+            yield output
         yield "answers", result.answers
         yield "refused_questions", [
             name for name, answer in result.answers.items() if is_refusal(answer)

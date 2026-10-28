@@ -85,9 +85,11 @@ class ParallelScoreDecisionBlock(ParallelDecisionBase):
         result = await self.decide(
             credentials, input_data, {SINGLE_QUESTION: question.to_api()}
         )
+        # Check the answer before any output, so a malformed response
+        # fails without first sending partial outputs downstream.
+        answer = result.answer(SINGLE_QUESTION, "score", "legend", "probabilities")
         for output in self.evidence(result):
             yield output
-        answer = result.answer(SINGLE_QUESTION, "score", "legend", "probabilities")
         if is_refusal(answer):
             yield "refused", True
             return

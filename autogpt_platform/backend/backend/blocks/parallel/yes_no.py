@@ -84,9 +84,11 @@ class ParallelYesNoDecisionBlock(ParallelDecisionBase):
         result = await self.decide(
             credentials, input_data, {SINGLE_QUESTION: question.to_api()}
         )
+        # Check the answer before any output, so a malformed response
+        # fails without first sending partial outputs downstream.
+        answer = result.answer(SINGLE_QUESTION, "noul")
         for output in self.evidence(result):
             yield output
-        answer = result.answer(SINGLE_QUESTION, "noul")
         if is_refusal(answer):
             yield "refused", True
             yield "unsure", input_data.data

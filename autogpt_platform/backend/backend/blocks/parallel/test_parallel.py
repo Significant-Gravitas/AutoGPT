@@ -62,6 +62,18 @@ async def run_block(block, fake: FakeDecisions, **inputs) -> dict[str, Any]:
     }
 
 
+async def collect_until_error(block, fake: FakeDecisions, **inputs) -> None:
+    """Run the block and assert it emitted nothing before raising."""
+    emitted: list[str] = []
+    block.call_decisions = fake
+    input_data = block.Input(credentials=TEST_CREDENTIALS_INPUT, **inputs)
+    try:
+        async for name, _ in block.run(input_data, credentials=TEST_CREDENTIALS):
+            emitted.append(name)
+    finally:
+        assert emitted == [], f"emitted {emitted} before failing"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "probability, min_probability, pin",
@@ -195,7 +207,7 @@ def test_ask_many_good_names_pass_the_pre_run_schema_check():
 @pytest.mark.asyncio
 async def test_ask_many_rejects_a_malformed_answer():
     with pytest.raises(ValueError, match="'b' is missing probabilities"):
-        await run_block(
+        await collect_until_error(
             ParallelAskManyDecisionsBlock(),
             FakeDecisions(
                 {"a": REFUSAL_ANSWER, "b": {"type": "choice", "choice": "x"}}
@@ -324,7 +336,7 @@ async def test_malformed_response_is_a_handled_error(answers, message):
     # ValueError reaches the error output as an expected failure; a KeyError
     # would be logged as an unexpected crash.
     with pytest.raises(ValueError, match=message):
-        await run_block(
+        await collect_until_error(
             ParallelYesNoDecisionBlock(), FakeDecisions(answers), question="?"
         )
 
