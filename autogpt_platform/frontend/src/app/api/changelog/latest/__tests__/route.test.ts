@@ -67,6 +67,17 @@ describe("GET /api/changelog/latest", () => {
     );
   });
 
+  it("bounds the index fetch below the login page's timeout", async () => {
+    const fetchSpy = serve({ [`${BASE}.md`]: new Response("") });
+
+    await GET();
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `${BASE}.md`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
   it("leaves out only the title of a release page that can't be read", async () => {
     serve({
       [`${BASE}.md`]: new Response(
