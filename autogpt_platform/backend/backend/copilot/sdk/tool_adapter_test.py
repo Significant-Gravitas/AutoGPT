@@ -833,7 +833,9 @@ class TestReadFileHandlerBridge:
         try:
             bridge_calls: list[tuple] = []
 
-            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+            async def fake_bridge_and_annotate(
+                sandbox, file_path, offset, limit, content=None
+            ):
                 bridge_calls.append((sandbox, file_path, offset, limit))
                 return "\n[Sandbox copy available at /tmp/abc-data.json]"
 
@@ -854,21 +856,17 @@ class TestReadFileHandlerBridge:
             _current_sandbox.reset(token)
 
     @pytest.mark.asyncio
-    async def test_bridge_skipped_when_envelope_pretty_printed(
+    async def test_bridge_copies_the_unwrapped_payload_of_an_envelope(
         self, tmp_path, monkeypatch
     ):
-        """Pretty-printing the MCP envelope transforms the content the
-        model reads. The on-disk bytes are the raw envelope, so bridging
-        them to the sandbox would point the model at content that
-        doesn't match what ``read_tool_result`` just returned. Skip the
-        bridge in that case — the model can re-read or pipe via
-        ``@@agptfile:`` if it needs bash access."""
+        """The CLI saves every spilled result as an MCP envelope, and the
+        model reads it pretty-printed. The sandbox copy has to hold that
+        same text, not the raw envelope, so bash sees the lines the model
+        just read (SECRT-3181)."""
         from backend.copilot.context import _current_sandbox
 
         from .tool_adapter import _read_file_handler
 
-        # MCP envelope with JSON inner payload — _navigable_tool_result_text
-        # will pretty-print this, so navigable != raw.
         test_file = tmp_path / "tool-results" / "envelope.json"
         test_file.parent.mkdir(parents=True, exist_ok=True)
         payload = {"execution": {"node_executions": [{"status": "OK"}]}}
@@ -883,10 +881,12 @@ class TestReadFileHandlerBridge:
         fake_sandbox: Any = object()
         token = _current_sandbox.set(fake_sandbox)
         try:
-            bridge_calls: list[tuple] = []
+            bridged: list[str | None] = []
 
-            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
-                bridge_calls.append((sandbox, file_path, offset, limit))
+            async def fake_bridge_and_annotate(
+                sandbox, file_path, offset, limit, content=None
+            ):
+                bridged.append(content)
                 return "\n[Sandbox copy available at /tmp/abc-envelope.json]"
 
             monkeypatch.setattr(
@@ -899,10 +899,8 @@ class TestReadFileHandlerBridge:
             )
 
             assert result["isError"] is False
-            # The bridge MUST NOT be called: model sees pretty-printed
-            # JSON but the on-disk file holds the raw envelope.
-            assert bridge_calls == []
-            assert "Sandbox copy" not in result["content"][0]["text"]
+            assert bridged == [json.dumps(payload, indent=2)]
+            assert "/tmp/abc-envelope.json" in result["content"][0]["text"]
             # And the returned text is the pretty-printed payload, not
             # the envelope wrapper, so the slicing is useful.
             assert '"status": "OK"' in result["content"][0]["text"]
@@ -937,7 +935,9 @@ class TestReadFileHandlerBridge:
         try:
             bridge_calls: list[tuple] = []
 
-            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+            async def fake_bridge_and_annotate(
+                sandbox, file_path, offset, limit, content=None
+            ):
                 bridge_calls.append((sandbox, file_path, offset, limit))
                 return "\n[Sandbox copy available at /tmp/abc-plain.txt]"
 
@@ -976,7 +976,9 @@ class TestReadFileHandlerBridge:
 
         bridge_calls: list[tuple] = []
 
-        async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+        async def fake_bridge_and_annotate(
+            sandbox, file_path, offset, limit, content=None
+        ):
             bridge_calls.append((sandbox, file_path, offset, limit))
             return "\n[Sandbox copy available at /tmp/abc-data.json]"
 

@@ -322,8 +322,8 @@ async def test_a_workspace_text_file_is_judged_decoded(rows, mime):
 
 
 async def test_sdk_registry_tool_is_judged_on_the_text_the_model_receives(rows):
-    """Between the 70K MCP cap and the 80K persist threshold, only the cap
-    separates what ``execute`` built from what the model reads."""
+    """When the workspace copy fails, the output goes on whole and only the
+    70K MCP cap separates what ``execute`` built from what the model reads."""
     tool = _Fetch("x" * 75_000)
     session = _session()
     set_execution_context("user-1", session)
@@ -331,6 +331,10 @@ async def test_sdk_registry_tool_is_judged_on_the_text_the_model_receives(rows):
     judge = _judge(_CLEAN)
     with (
         patch(f"{_READS}.judge_content", judge),
+        patch(
+            "backend.copilot.tools.base._persist_and_summarize",
+            AsyncMock(side_effect=lambda raw, *_, **__: raw),
+        ),
         patch(
             "backend.copilot.sdk.tool_adapter.resolve_tool_dispatch", lambda *_: None
         ),

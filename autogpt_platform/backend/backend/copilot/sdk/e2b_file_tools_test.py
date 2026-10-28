@@ -553,6 +553,23 @@ class TestBridgeToSandbox:
         sandbox.commands.run.assert_not_called()
         sandbox.files.write.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_content_is_written_instead_of_the_file(self, tmp_path):
+        """A caller that showed the model the unwrapped payload hands it to
+        bash too, under the file's sandbox path."""
+        f = tmp_path / "toolu_1.json"
+        f.write_text('[{"type": "text", "text": "envelope"}]')
+        payload = "page line\n" * 6_000
+        sandbox = _make_bridge_sandbox()
+
+        result = await bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT, content=payload
+        )
+
+        expected = _expected_bridge_path(str(f), prefix="/home/user")
+        assert result == expected
+        sandbox.files.write.assert_called_once_with(expected, payload)
+
 
 # ---------------------------------------------------------------------------
 # bridge_and_annotate — shared helper wrapping bridge_to_sandbox + annotation

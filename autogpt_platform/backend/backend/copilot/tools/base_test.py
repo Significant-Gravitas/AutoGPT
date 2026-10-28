@@ -192,6 +192,26 @@ class TestBaseToolExecuteLargeOutput:
         mock_manager.write_file.assert_awaited_once()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("size", [55_000, 75_000, 200_000])
+    async def test_output_the_cli_would_spill_reaches_the_workspace(self, size):
+        """The Claude CLI moves any result over 50,000 chars to a host folder
+        bash_exec can't open (SECRT-3181). The workspace copy has to come
+        first, and the preview the model gets has to stay under that line."""
+        tool = _HugeOutputTool(output_size=size)
+        session = MagicMock()
+        session.session_id = "s-1"
+        session.external_caller = False
+        manager = AsyncMock()
+        db_patch, mgr_patch = _workspace_patches(manager)
+
+        with db_patch, mgr_patch:
+            result = await tool.execute("user-1", session, "tc-spill")
+
+        manager.write_file.assert_awaited_once()
+        assert "save_to_path" in str(result.output)
+        assert len(str(result.output)) < 50_000
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("size", [_LARGE_OUTPUT_THRESHOLD + 10_000, 200_000])
     async def test_an_external_callers_large_output_is_not_persisted(self, size):
         """An MCP client can't follow a preview to its copy; each one was a
