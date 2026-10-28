@@ -1410,10 +1410,12 @@ class TestFollowUpWarmContextCallSite:
         assert len(queries) == 1 and "Alice works on Atlas" in queries[0]
 
     @staticmethod
-    def _graph(search, ready_at: list[float]) -> list[tuple[str, dict]]:
-        """The real refresh over a stubbed graph read, a 300 ms join grace,
-        and a clock on the moment the query is ready (the last step before
-        the join)."""
+    def _graph(
+        search, ready_at: list[float], grace_ms: int = 300
+    ) -> list[tuple[str, dict]]:
+        """The real refresh over a stubbed graph read, a ``grace_ms`` join
+        grace, and a clock on the moment the query is ready (the last step
+        before the join)."""
 
         async def _ready(*args, **kwargs):
             query = await _maybe_prepend_skills_update(*args, **kwargs)
@@ -1425,7 +1427,7 @@ class TestFollowUpWarmContextCallSite:
             (
                 "backend.copilot.graphiti.context_refresh.graphiti_config"
                 ".warm_context_refresh_join_grace_ms",
-                dict(new=300),
+                dict(new=grace_ms),
             ),
             (f"{ctx}.search_facts", dict(new=search)),
             (f"{ctx}.recent_episodes", dict(new=AsyncMock(return_value=[]))),
@@ -1496,10 +1498,14 @@ class TestFollowUpWarmContextCallSite:
             self._session("restart the executor"),
             context_refresh.refresh_warm_context,
             self._clients(queries, sent_at=sent_at),
-            extra=self._graph(AsyncMock(return_value=[edge]), ready_at),
+            extra=self._graph(
+                AsyncMock(return_value=[edge]), ready_at, grace_ms=60_000
+            ),
         )
 
-        assert sent_at[0] - ready_at[0] < 0.3
+        # A finished refresh is joined at once, so only a join that waits out
+        # the 60 s grace fails this; 20 s leaves room for a CI runner stalling.
+        assert sent_at[0] - ready_at[0] < 20
         assert len(queries) == 1 and "the executor runs on k3s" in queries[0]
         assert INJECTED_MEMORY_MARKER in queries[0]
         assert "refresh late" not in caplog.text
