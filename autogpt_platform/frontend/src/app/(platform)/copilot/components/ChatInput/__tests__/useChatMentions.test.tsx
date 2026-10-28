@@ -54,6 +54,25 @@ function keyEvent(key: string, composing: boolean | "keyCode229" = false) {
   } as unknown as React.KeyboardEvent<HTMLTextAreaElement>;
 }
 
+/** Opens Connect from the mention in `textarea` and returns its request. */
+function chooseConnect(
+  result: { current: ReturnType<typeof useChatMentions> },
+  textarea: {
+    value: string;
+    selectionStart: number;
+    setSelectionRange: () => void;
+  },
+) {
+  act(() => result.current.detect(textarea));
+  act(() => {
+    result.current.onKeyDown(keyEvent("ArrowDown"));
+  });
+  act(() => {
+    result.current.onKeyDown(keyEvent("Enter"));
+  });
+  return result.current.connectRequest!;
+}
+
 const GOOGLE = {
   credentialId: "google-1",
   providerName: "Google",
@@ -564,8 +583,8 @@ describe("useChatMentions", () => {
     act(() => {
       expect(result.current.onKeyDown(keyEvent("Enter"))).toBe(true);
     });
-    const request = { query: "linear", start: 4, end: 11 };
-    expect(result.current.connectRequest).toEqual(request);
+    const request = result.current.connectRequest!;
+    expect(request).toEqual({ query: "linear", start: 4, end: 11 });
     expect(result.current.isOpen).toBe(false);
     expect(setValue).not.toHaveBeenCalled();
 
@@ -613,25 +632,50 @@ describe("useChatMentions", () => {
       { wrapper: Wrapper },
     );
     const textarea = {
-      value: "ask @sentry2",
-      selectionStart: 12,
+      value: "ask @sentry",
+      selectionStart: 11,
       setSelectionRange: vi.fn(),
     };
-    act(() => result.current.bindInput(textarea));
+    const request = chooseConnect(result, textarea);
 
-    act(() =>
-      result.current.resumeAfterConnect({ query: "sentry", start: 4, end: 11 }),
-    );
+    textarea.value = "ask @sentry2";
+    act(() => result.current.resumeAfterConnect(request));
     expect(result.current.isOpen).toBe(false);
     expect(textarea.setSelectionRange).not.toHaveBeenCalled();
   });
 
   it("does not reopen when the @query is no longer where it was", () => {
+    const { result, rerender } = renderHook(
+      ({ value }) =>
+        useChatMentions({
+          enabled: true,
+          value,
+          setValue: vi.fn(),
+          addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
+          includeWorkspaceFiles: false,
+        }),
+      { wrapper: Wrapper, initialProps: { value: "ask @linear" } },
+    );
+    const textarea = {
+      value: "ask @linear",
+      selectionStart: 11,
+      setSelectionRange: vi.fn(),
+    };
+    const request = chooseConnect(result, textarea);
+
+    textarea.value = "ask @lin";
+    rerender({ value: "ask @lin" });
+    act(() => result.current.resumeAfterConnect(request));
+    expect(result.current.isOpen).toBe(false);
+  });
+
+  it("an earlier connect finishing late leaves a newer Connect dialog open", () => {
     const { result } = renderHook(
       () =>
         useChatMentions({
           enabled: true,
-          value: "ask @lin",
+          value: "ask @sentry",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
           addWorkspaceFolder: vi.fn(),
@@ -639,11 +683,49 @@ describe("useChatMentions", () => {
         }),
       { wrapper: Wrapper },
     );
+    const textarea = {
+      value: "ask @sentry",
+      selectionStart: 11,
+      setSelectionRange: vi.fn(),
+    };
+    const first = chooseConnect(result, textarea);
+    // The dialog closes on success while the expert grant is still running.
+    act(() => result.current.cancelConnect());
+    const second = chooseConnect(result, textarea);
 
-    act(() =>
-      result.current.resumeAfterConnect({ query: "linear", start: 4, end: 11 }),
-    );
+    act(() => result.current.resumeAfterConnect(first));
+    expect(result.current.connectRequest).toBe(second);
     expect(result.current.isOpen).toBe(false);
+  });
+
+  it("forgets a Connect highlight once the mention ends", () => {
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "ask @john",
+          setValue: vi.fn(),
+          addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
+          includeWorkspaceFiles: false,
+          integrations: [GOOGLE],
+        }),
+      { wrapper: Wrapper },
+    );
+
+    act(() => result.current.detect(fakeTextarea("ask @john")));
+    act(() => {
+      result.current.onKeyDown(keyEvent("ArrowDown"));
+    });
+    expect(result.current.highlightedIndex).toBe(0);
+
+    act(() => result.current.close());
+    act(() => result.current.detect(fakeTextarea("ask @john")));
+    expect(result.current.highlightedIndex).toBe(-1);
+    act(() => {
+      expect(result.current.onKeyDown(keyEvent("Enter"))).toBe(false);
+    });
+    expect(result.current.connectRequest).toBeNull();
   });
 
   describe("Connect row always ends the mention list", () => {

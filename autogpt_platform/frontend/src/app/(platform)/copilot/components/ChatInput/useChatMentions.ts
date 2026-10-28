@@ -92,6 +92,10 @@ export function useChatMentions({
   const [connectRequest, setConnectRequest] = useState<ActiveMention | null>(
     null,
   );
+  // The request whose connect finishes last may not be the latest one: in an
+  // expert chat the grant lands after the dialog closed, and by then the user
+  // may have opened Connect again.
+  const latestConnectRef = useRef<ActiveMention | null>(null);
 
   const query = active?.query ?? "";
   const debouncedQuery = useDebouncedValue(query, QUERY_DEBOUNCE_MS);
@@ -189,6 +193,13 @@ export function useChatMentions({
     setPendingCaret(null);
   }, [pendingCaret, value]);
 
+  // Choosing Connect lasts only for the mention it was made in; a later one
+  // with the same text starts with nothing highlighted again.
+  function endMention() {
+    setActive(null);
+    setPointedAtQuery(null);
+  }
+
   function detect(textarea: MentionInput) {
     if (!enabled) return;
     textareaRef.current = textarea;
@@ -204,7 +215,7 @@ export function useChatMentions({
         ? accountMatch
         : null);
     if (!match) {
-      setActive(null);
+      endMention();
       return;
     }
     const token = match[1];
@@ -212,7 +223,7 @@ export function useChatMentions({
   }
 
   function close() {
-    setActive(null);
+    endMention();
   }
 
   function accept(option: MentionOption | undefined) {
@@ -221,6 +232,7 @@ export function useChatMentions({
     // out-of-bounds `undefined` before touching the option.
     if (!active || !option) return;
     if (option.kind === "connect") {
+      latestConnectRef.current = active;
       setConnectRequest(active);
     } else if (option.kind === "integration") {
       const next = insertIntegrationMention(value, active, option.integration);
@@ -232,7 +244,7 @@ export function useChatMentions({
         addWorkspaceFolder(option.folder, option.subfolderCount);
       else addWorkspaceFile(option.file);
     }
-    setActive(null);
+    endMention();
   }
 
   // Puts the caret back after the `@query` the dialog was opened from, but
@@ -254,6 +266,8 @@ export function useChatMentions({
   }
 
   function resumeAfterConnect(request: ActiveMention) {
+    if (latestConnectRef.current !== request) return;
+    latestConnectRef.current = null;
     setConnectRequest(null);
     if (returnToMention(request)) setActive(request);
   }
