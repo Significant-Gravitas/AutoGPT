@@ -4,6 +4,12 @@ import { cn } from "@/lib/utils";
 import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { useId } from "react";
 import { getReleaseLabel, Release } from "../helpers";
+import {
+  RELEASE_DETAILS_GAP_CLASS,
+  RELEASE_DOT_COLUMN_CLASS,
+  RELEASE_HEADLINE_GAP_CLASS,
+  RELEASE_ROW_CLASS,
+} from "./releaseRowLayout";
 
 // Text past this many characters may hit the line clamp, so it also gets a
 // tooltip with the whole of it.
@@ -33,9 +39,12 @@ export function ReleaseItem({ release, isLatest, isLast }: Props) {
         rel="noopener noreferrer"
         aria-label={getReleaseLabel(release, isLatest)}
         aria-describedby={details ? detailsID : undefined}
-        className="group flex gap-3 rounded-xl px-3.5 py-2.5 transition-colors duration-150 hover:bg-surface-hover/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info motion-reduce:transition-none"
+        className={cn(
+          RELEASE_ROW_CLASS,
+          "group rounded-xl transition-colors duration-150 hover:bg-surface-hover/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info motion-reduce:transition-none",
+        )}
       >
-        <span aria-hidden className="flex w-2.5 shrink-0 justify-center pt-1">
+        <span aria-hidden className={RELEASE_DOT_COLUMN_CLASS}>
           <span
             className={cn(
               "size-2 rounded-full",
@@ -67,7 +76,10 @@ export function ReleaseItem({ release, isLatest, isLast }: Props) {
             variant="body-medium"
             tone="primary"
             title={headline.length > CLAMP_HINT_CHARS ? headline : undefined}
-            className="mt-1 line-clamp-3 [overflow-wrap:anywhere]"
+            className={cn(
+              RELEASE_HEADLINE_GAP_CLASS,
+              "line-clamp-3 [overflow-wrap:anywhere]",
+            )}
           >
             {headline}
           </Text>
@@ -78,7 +90,10 @@ export function ReleaseItem({ release, isLatest, isLast }: Props) {
               variant="body-tight"
               tone="secondary"
               title={details.length > CLAMP_HINT_CHARS ? details : undefined}
-              className="mt-0.5 line-clamp-3 [overflow-wrap:anywhere]"
+              className={cn(
+                RELEASE_DETAILS_GAP_CLASS,
+                "line-clamp-3 [overflow-wrap:anywhere]",
+              )}
             >
               {details}
             </Text>

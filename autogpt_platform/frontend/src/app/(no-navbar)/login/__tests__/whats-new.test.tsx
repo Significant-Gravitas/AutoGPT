@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { act, render, screen, within } from "@/tests/integrations/test-utils";
+import { CHANGELOG_TIMEOUT_MS } from "../components/LoginWhatsNew/helpers";
 import LoginPage from "../page";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
@@ -175,7 +176,7 @@ describe("LoginPage What's new", () => {
     const panel = await findWhatsNew();
     expect(panel.getByTestId("whats-new-skeleton")).toBeDefined();
 
-    await act(() => vi.advanceTimersByTimeAsync(5000));
+    await act(() => vi.advanceTimersByTimeAsync(CHANGELOG_TIMEOUT_MS));
 
     expect(
       await panel.findByRole("link", {

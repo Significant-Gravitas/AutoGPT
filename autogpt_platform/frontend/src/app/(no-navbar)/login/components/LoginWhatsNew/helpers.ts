@@ -2,8 +2,10 @@ import type { LatestRelease } from "@/app/api/changelog/helpers";
 
 const LATEST_RELEASES_URL = "/api/changelog/latest";
 
-// Past this the panel links to the changelog instead of waiting on it.
-export const CHANGELOG_TIMEOUT_MS = 5000;
+// Past this the panel links to the changelog instead of waiting on it. The
+// route's own upstream budget is at most half of this, leaving the rest for
+// the trip from a slow connection to the route and back.
+export const CHANGELOG_TIMEOUT_MS = 8000;
 
 export interface Release {
   slug: string;

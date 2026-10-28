@@ -1,5 +1,6 @@
 import { Release } from "../helpers";
 import { ReleaseItem } from "./ReleaseItem";
+import { RELEASE_LIST_CLASS } from "./releaseRowLayout";
 
 interface Props {
   releases: Release[];
@@ -7,7 +8,7 @@ interface Props {
 
 export function ReleaseList({ releases }: Props) {
   return (
-    <ul className="flex flex-col gap-1 rounded-2xl bg-surface p-1.5 smooth-shadow-ring-sm">
+    <ul className={RELEASE_LIST_CLASS}>
       {releases.map((release, index) => (
         <ReleaseItem
           key={release.slug}
