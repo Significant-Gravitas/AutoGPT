@@ -618,6 +618,39 @@ class TestEnvelopeEnforcement:
         assert tool.ran is True
 
 
+class TestRefusalStatus:
+    """Chat's engines hand the model a refusal as the tool's result, while an
+    MCP client reads it from the call's status."""
+
+    @pytest.mark.parametrize("external_caller", [False, True])
+    @pytest.mark.asyncio
+    async def test_a_refusal_fails_the_call_only_for_an_external_caller(
+        self, external_caller: bool
+    ):
+        class _Refuses(BaseTool):
+            @property
+            def name(self) -> str:
+                return "refusing_tool"
+
+            @property
+            def description(self) -> str:
+                return "refuses"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                return ErrorResponse(message="No", session_id=session.session_id)
+
+        session = ChatSession.new("u1", dry_run=False, origin="automation")
+        session.external_caller = external_caller
+
+        output = await _Refuses().execute("u1", session, "call-1")
+
+        assert output.success is not external_caller
+
+
 class TestGateEnforcement:
     """`BaseTool.execute` must consult the auto-mode gate, and must consult it
     AFTER the envelope check.
