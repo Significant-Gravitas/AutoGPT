@@ -15,7 +15,8 @@ Layered on purpose so the common cases stay free:
 3. Everything in between gets one cheap LLM judgement: "is there enough
    concrete information here to personalize from?". Length alone cannot
    make this call — "Automate my Shopify refund emails" is six words and
-   must pass, "uh hello hello testing" must not.
+   must pass, "uh hello hello testing" must not. Typed text cannot carry
+   an STT failure, so its judge asks only whether there is a real answer.
 
 The gate never judges grammar, accent, fluency or language: a coherent
 dump in any language passes. And it never deletes anything — the caller
@@ -28,6 +29,7 @@ import os
 import zlib
 from typing import Literal
 
+from prisma.enums import BrainDumpInputMode
 from pydantic import BaseModel
 
 from backend.api.features.onboarding_dump.structured import request_json
@@ -75,7 +77,7 @@ MIN_UNIQUE_WORD_RATIO = 0.3
 COMPRESSION_MIN_CHARS = 80
 MAX_COMPRESSION_RATIO = 2.4
 
-_PROMPT = """A new user of an automation platform was asked to describe \
+_VOICE_PROMPT = """A new user of an automation platform was asked to describe \
 their work and what they'd like automated. Below is the raw transcript \
 (spoken or typed). Decide whether it contains enough concrete information \
 to personalize a greeting or propose work for them — anything about who \
@@ -95,6 +97,23 @@ Transcript:
 {transcript}
 """
 
+_TYPED_PROMPT = """A new user of an automation platform was asked to describe \
+their work and what they'd like automated. They typed the reply below.
+
+"usable": true — any real statement about their business, role, customers, \
+tools or a task they want handled, however short, vague or misspelled, in \
+any language.
+
+"usable": false — only a reply with no answer in it, such as keyboard \
+mashing, placeholders ("test", "asdf", "hello") or non-answers ("no", \
+"skip", "idk").
+
+Return ONLY valid JSON: {{"usable": true}} or {{"usable": false}}.
+
+Reply:
+{transcript}
+"""
+
 
 class QualityRejection(BaseModel):
     """Why the gate refused a transcript.
@@ -110,7 +129,9 @@ class QualityRejection(BaseModel):
     reason: str
 
 
-async def check_transcript_quality(transcript: str) -> QualityRejection | None:
+async def check_transcript_quality(
+    transcript: str, *, input_mode: BrainDumpInputMode = BrainDumpInputMode.voice
+) -> QualityRejection | None:
     """Return why ``transcript`` can't support personalization, if it can't.
 
     ``None`` means the dump is usable and the personalized pipeline may
@@ -123,7 +144,7 @@ async def check_transcript_quality(transcript: str) -> QualityRejection | None:
         return QualityRejection(error_code=NO_USABLE_SPEECH, reason="deterministic")
     if verdict == "pass":
         return None
-    return await _semantic_verdict(text)
+    return await _semantic_verdict(text, input_mode)
 
 
 def count_words(transcript: str) -> int:
@@ -167,7 +188,9 @@ def _compression_ratio(text: str) -> float:
     return len(raw) / len(zlib.compress(raw))
 
 
-async def _semantic_verdict(text: str) -> QualityRejection | None:
+async def _semantic_verdict(
+    text: str, input_mode: BrainDumpInputMode
+) -> QualityRejection | None:
     """One cheap LLM call for the short-but-nonempty middle band.
 
     Every failure path here — no client, timeout, error, malformed output —
@@ -181,11 +204,14 @@ async def _semantic_verdict(text: str) -> QualityRejection | None:
     if client is None:
         return _judge_unavailable("judge_unconfigured")
 
+    template = (
+        _TYPED_PROMPT if input_mode == BrainDumpInputMode.typed else _VOICE_PROMPT
+    )
     try:
         reply = await request_json(
             client,
             model=_MODEL,
-            prompt=_PROMPT.format(transcript=text),
+            prompt=template.format(transcript=text),
             temperature=0,
             max_tokens=100,
             timeout=_TIMEOUT_SECONDS,
