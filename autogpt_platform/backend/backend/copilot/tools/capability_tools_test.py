@@ -137,6 +137,16 @@ def test_start_desktop_stays_eager_because_the_prompt_names_it():
     assert "start_desktop" not in DEFERRED_TOOL_NAMES
 
 
+def test_list_workspace_files_stays_eager_because_the_model_calls_it_by_name():
+    """Asked where their files are, the model calls ``list_workspace_files``
+    directly; deferred, that call was refused and the model listed the
+    sandbox instead, a different store, and reported the files missing."""
+    assert "list_workspace_files" in EAGER_CORE
+    assert "list_workspace_files" not in DEFERRED_TOOL_NAMES
+    shown = {t["function"]["name"] for t in get_available_tools()}
+    assert "list_workspace_files" in shown
+
+
 def test_prompt_names_only_registry_tools():
     for legacy in (
         "find_block",
