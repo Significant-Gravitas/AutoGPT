@@ -9,7 +9,7 @@ from backend.notifications.template_env import create_body_environment
 from backend.util.settings import Settings
 
 AuthEmailType = Literal[
-    "reset_password", "verify_email", "change_email", "set_password"
+    "reset_password", "verify_email", "verify_new_email", "change_email", "set_password"
 ]
 settings = Settings()
 _html_env = create_body_environment(autoescape=True)
@@ -87,6 +87,21 @@ _CONTENT: dict[AuthEmailType, AuthEmailContent] = {
                 "Describe a task in plain language and Otto takes it from there.",
             ),
         ],
+    ),
+    # Sent to the new address when someone changes their account's email, so
+    # it must not read like a sign-up.
+    "verify_new_email": AuthEmailContent(
+        subject="Verify your new AutoGPT Platform email",
+        eyebrow="ACCOUNT · VERIFY NEW EMAIL",
+        headline="Verify your new email address",
+        intro=(
+            "You asked to change the email address on your AutoGPT account "
+            "to this one."
+        ),
+        preheader="Use the button below to finish changing your email address.",
+        action="Verify new email",
+        reason="This link was requested from your AutoGPT account settings.",
+        expiry="24 hours",
     ),
     "change_email": AuthEmailContent(
         subject="Confirm your new AutoGPT Platform email",

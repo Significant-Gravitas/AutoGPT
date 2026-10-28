@@ -224,6 +224,13 @@ function lastVerifyLink(to: string) {
   return email.at(-1)?.url;
 }
 
+function lastNewAddressLink(to: string) {
+  const email = sentEmails.filter(
+    (sent) => sent.to === to && sent.type === "verify_new_email",
+  );
+  return email.at(-1)?.url;
+}
+
 beforeEach(() => {
   sentEmails.length = 0;
   refusedAtSend.clear();
@@ -975,7 +982,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION off", () => {
     await emailsSent();
 
     const toB = sentEmails.filter(
-      (sent) => sent.to === "b@example.com" && sent.type === "verify_email",
+      (sent) => sent.to === "b@example.com" && sent.type === "verify_new_email",
     );
     expect(toB).toHaveLength(2);
   });
@@ -1147,7 +1154,7 @@ describe("password reset links", () => {
     await handler(new Request(confirm?.url ?? "", { headers: session }));
     await emailsSent();
     await handler(
-      new Request(lastVerifyLink("new@example.com") ?? "", {
+      new Request(lastNewAddressLink("new@example.com") ?? "", {
         headers: session,
       }),
     );
@@ -1279,10 +1286,34 @@ describe("change-email verification emails", () => {
         const confirm = sentEmails.find((sent) => sent.type === "change_email");
         await handler(new Request(confirm?.url ?? ""));
         await emailsSent();
-        expect(lastVerifyLink("new@example.com")).toContain("/verify-email");
+        expect(lastNewAddressLink("new@example.com")).toContain(
+          "/verify-email",
+        );
       }
     },
   );
+
+  it("send the new address its own email, not the sign-up one", async () => {
+    const { api: signUpAPI, db } = await createAuthHandler(false);
+    const session = await signUpSignedIn(signUpAPI, "old@example.com");
+    db.UserAuthIdentity[0].emailVerified = true;
+    const { handler, api } = await createAuthHandler(true, db);
+    sentEmails.length = 0;
+
+    await api.changeEmail({
+      body: { newEmail: "new@example.com", callbackURL: "/" },
+      headers: session,
+    });
+    await emailsSent();
+    const confirm = sentEmails.find((sent) => sent.type === "change_email");
+    await handler(new Request(confirm?.url ?? ""));
+    await emailsSent();
+
+    expect(sentEmails.map(({ to, type }) => ({ to, type }))).toEqual([
+      { to: "old@example.com", type: "change_email" },
+      { to: "new@example.com", type: "verify_new_email" },
+    ]);
+  });
 
   it("still caps sign-in's own sends", async () => {
     const { handler } = await createAuthHandler(true);

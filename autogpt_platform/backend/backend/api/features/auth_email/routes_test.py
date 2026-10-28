@@ -173,6 +173,18 @@ def test_verify_email_shows_where_the_user_is_in_sign_up(send_mock):
         assert "Start working." in part
 
 
+def test_verify_new_email_is_about_the_change_not_a_sign_up(send_mock):
+    _post({**VALID_BODY, "type": "verify_new_email"})
+
+    _, _, body, text = send_mock.call_args.args
+    for part in (body, text):
+        assert "change the email address on your AutoGPT account" in part
+        assert "requested from your AutoGPT account settings" in part
+        assert "expires in 24 hours" in part
+        assert "sign-up" not in part
+        assert "Create your account" not in part
+
+
 def test_rejects_link_on_untrusted_host(send_mock):
     res = _post({**VALID_BODY, "url": "https://evil.example.com/reset"})
     assert res.status_code == 400
@@ -325,6 +337,11 @@ def test_rejects_malformed_trusted_origin_regex_at_startup():
     [
         ("reset_password", "Reset your AutoGPT Platform password", "Reset password"),
         ("verify_email", "Verify your AutoGPT Platform email", "Confirm email address"),
+        (
+            "verify_new_email",
+            "Verify your new AutoGPT Platform email",
+            "Verify new email",
+        ),
         ("change_email", "Confirm your new AutoGPT Platform email", "Confirm email"),
         ("set_password", "Set your AutoGPT Platform password", "Set password"),
     ],

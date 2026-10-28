@@ -46,7 +46,8 @@ export async function sendVerificationLink(args: Args) {
       });
     if (!claimed) return;
   }
-  await sendAuthEmail({ to: user.email, type: "verify_email", url });
+  const type = (await isEmailChange()) ? "verify_new_email" : "verify_email";
+  await sendAuthEmail({ to: user.email, type, url });
 }
 
 async function sendsSetPasswordLink(args: Args) {
@@ -70,6 +71,14 @@ async function sendsSetPasswordLink(args: Args) {
 async function isSignUpOrSignIn() {
   const { path } = await currentAuthEndpoint();
   return path === "/sign-up/email" || path === "/sign-in/email";
+}
+
+// A change of address sends the new address its link from /change-email for
+// an unverified account, and from /verify-email, once the current address has
+// approved the change, for a verified one. Sign-up wording would be wrong there.
+async function isEmailChange() {
+  const { path } = await currentAuthEndpoint();
+  return path === "/change-email" || path === "/verify-email";
 }
 
 function isResendRequest(request: Request | undefined) {
