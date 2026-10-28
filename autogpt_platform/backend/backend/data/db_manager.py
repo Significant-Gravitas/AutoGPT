@@ -80,6 +80,7 @@ from backend.data import skill_publication as skill_publication_data
 from backend.data import skill_reviews as skill_reviews_data
 from backend.data import skill_use as skill_use_data
 from backend.data import skill_versions as skill_versions_data
+from backend.data.account_deletion import is_account_closed
 from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
     count_alerts_sent_since,
@@ -435,6 +436,8 @@ class DatabaseManager(AppService):
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
     # Background work skips a banned owner in Prisma-less workers too.
     is_auth_user_banned = _(is_auth_user_banned)
+    # The websocket server has no Prisma of its own.
+    is_account_closed = _(is_account_closed)
     # Exposed for the scheduler's auth-identity invariant monitor.
     heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
     get_user_integrations = _(get_user_integrations)
@@ -989,6 +992,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
     is_auth_user_banned = d.is_auth_user_banned
+    is_account_closed = d.is_account_closed
     heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations

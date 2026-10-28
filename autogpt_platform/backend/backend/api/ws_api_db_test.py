@@ -10,6 +10,7 @@ from pathlib import Path
 
 import prisma.models
 import pytest
+from prisma.enums import AccountDeletionSource
 
 from backend.api.conn_manager import graph_exec_channel_key
 from backend.api.model import WSMethod
@@ -30,7 +31,7 @@ from starlette.websockets import WebSocketDisconnect
 from backend.api import ws_api
 from backend.api.model import WSMessage, WSMethod
 
-user_id, banned_user_id, graph_exec_id = sys.argv[1:4]
+user_id, banned_user_id, closed_user_id, graph_exec_id = sys.argv[1:5]
 
 
 async def token_subject(token):
@@ -52,7 +53,16 @@ with (
             banned_close = None
     except WebSocketDisconnect as refusal:
         banned_close = refusal.code
-print(json.dumps({"reply": reply, "banned_close": banned_close}))
+    try:
+        with client.websocket_connect(f"/ws?token={closed_user_id}"):
+            closed_close = None
+    except WebSocketDisconnect as refusal:
+        closed_close = refusal.code
+print(
+    json.dumps(
+        {"reply": reply, "banned_close": banned_close, "closed_close": closed_close}
+    )
+)
 """
 
 
@@ -62,14 +72,20 @@ async def test_the_server_answers_sockets_with_no_database_of_its_own(
 ):
     user_id, graph_id, graph_exec_id = await _seed_execution()
     banned_user_id = await _seed_banned_user()
+    closed_user_id = await _seed_closed_account()
     # The probe's reads land here; a cold server is not what is measured.
     await get_database_manager_async_client().health_check_async()
     try:
-        outcome = await _run_probe(user_id, banned_user_id, graph_exec_id)
+        outcome = await _run_probe(
+            user_id, banned_user_id, closed_user_id, graph_exec_id
+        )
     finally:
         await prisma.models.AgentGraph.prisma().delete_many(where={"id": graph_id})
         await prisma.models.User.prisma().delete_many(where={"id": user_id})
         await prisma.models.AuthUser.prisma().delete_many(where={"id": banned_user_id})
+        await prisma.models.AccountDeletionRequest.prisma().delete_many(
+            where={"userId": closed_user_id}
+        )
 
     assert outcome["reply"] == {
         "method": WSMethod.SUBSCRIBE_GRAPH_EXEC.value,
@@ -79,6 +95,7 @@ async def test_the_server_answers_sockets_with_no_database_of_its_own(
         "error": None,
     }
     assert outcome["banned_close"] == 4004
+    assert outcome["closed_close"] == 4003
 
 
 async def _seed_execution() -> tuple[str, str, str]:
@@ -109,13 +126,24 @@ async def _seed_banned_user() -> str:
     return user_id
 
 
-async def _run_probe(user_id: str, banned_user_id: str, graph_exec_id: str) -> dict:
+async def _seed_closed_account() -> str:
+    user_id = str(uuid.uuid4())
+    await prisma.models.AccountDeletionRequest.prisma().create(
+        data={"userId": user_id, "source": AccountDeletionSource.SETTINGS}
+    )
+    return user_id
+
+
+async def _run_probe(
+    user_id: str, banned_user_id: str, closed_user_id: str, graph_exec_id: str
+) -> dict:
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "-c",
         _PROBE,
         user_id,
         banned_user_id,
+        closed_user_id,
         graph_exec_id,
         cwd=Path(__file__).parents[2],
         env={

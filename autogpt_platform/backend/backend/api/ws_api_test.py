@@ -3,7 +3,6 @@ from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
-from autogpt_libs.auth import forget_account_state, remember_account_closed
 from fastapi import WebSocket, WebSocketDisconnect
 from pytest_snapshot.plugin import Snapshot
 
@@ -18,6 +17,15 @@ from backend.api.ws_api import (
     websocket_router,
 )
 from backend.data.user import DEFAULT_USER_ID
+
+
+@pytest.fixture(autouse=True)
+def account_db(mocker):
+    """The closed-account lookup goes through the DatabaseManager, which these
+    tests don't run; an account is open unless a test closes it."""
+    db = mocker.patch("backend.api.ws_api.user_db").return_value
+    db.is_account_closed = AsyncMock(return_value=False)
+    return db
 
 
 @pytest.fixture
@@ -507,7 +515,9 @@ async def test_authenticate_websocket_happy_path_returns_sub(mocker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_authenticate_websocket_closed_account_closes_4003(mocker) -> None:
+async def test_authenticate_websocket_closed_account_closes_4003(
+    mocker, account_db
+) -> None:
     """A token minted before the account closed still verifies for an hour."""
     from backend.api.ws_api import authenticate_websocket
 
@@ -515,15 +525,36 @@ async def test_authenticate_websocket_closed_account_closes_4003(mocker) -> None
         "backend.api.ws_api.parse_jwt_token_async",
         new=AsyncMock(return_value={"sub": "user-closed"}),
     )
+    account_db.is_account_closed.return_value = True
     ws = AsyncMock(spec=WebSocket)
     ws.query_params = {"token": "abc"}
-    remember_account_closed("user-closed")
-    try:
-        user_id = await authenticate_websocket(ws)
-    finally:
-        forget_account_state("user-closed")
+
+    user_id = await authenticate_websocket(ws)
 
     ws.close.assert_awaited_once_with(code=4003, reason="This account is closed.")
+    assert user_id == ""
+    account_db.is_account_closed.assert_awaited_once_with("user-closed")
+
+
+@pytest.mark.asyncio
+async def test_authenticate_websocket_closed_lookup_failure_falls_to_ban_check(
+    mocker, account_db
+) -> None:
+    """Closing an account also bans it, so the ban check still has the say."""
+    from backend.api.ws_api import authenticate_websocket
+
+    mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(return_value={"sub": "user-X"}),
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=True))
+    account_db.is_account_closed.side_effect = ConnectionError("db manager down")
+    ws = AsyncMock(spec=WebSocket)
+    ws.query_params = {"token": "abc"}
+
+    user_id = await authenticate_websocket(ws)
+
+    ws.close.assert_awaited_once_with(code=4004, reason="Banned")
     assert user_id == ""
 
 

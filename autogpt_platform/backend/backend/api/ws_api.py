@@ -4,11 +4,7 @@ from typing import Protocol
 
 import pydantic
 import uvicorn
-from autogpt_libs.auth.closed_accounts import (
-    ACCOUNT_CLOSED_DETAIL,
-    AccountState,
-    get_account_state,
-)
+from autogpt_libs.auth.closed_accounts import ACCOUNT_CLOSED_DETAIL
 from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
@@ -22,6 +18,7 @@ from backend.api.model import (
 )
 from backend.api.utils.cors import build_cors_params
 from backend.data import redis_client
+from backend.data.db_accessors import user_db
 from backend.data.user import is_user_banned
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
@@ -84,7 +81,7 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
         await websocket.close(code=4002, reason="Invalid token")
         return ""
     # A token minted before the account closed still verifies.
-    if await get_account_state(user_id) is AccountState.CLOSED:
+    if await _account_closed(user_id):
         await websocket.close(code=4003, reason=ACCOUNT_CLOSED_DETAIL)
         return ""
 
@@ -353,6 +350,17 @@ async def websocket_router(
         # the loop exited — otherwise non-WebSocketDisconnect failures leak both.
         await manager.disconnect_socket(websocket, user_id=user_id)
         update_websocket_connections(user_id, -1)
+
+
+async def _account_closed(user_id: str) -> bool:
+    """Read through the DatabaseManager, as this server has no Prisma. A lookup
+    that fails refuses nothing: closing an account also bans it, and the ban
+    check runs next."""
+    try:
+        return await user_db().is_account_closed(user_id)
+    except Exception:
+        logger.warning(f"Closed-account lookup failed for user #{user_id}")
+        return False
 
 
 async def _banned_now(user_id: str) -> bool:
