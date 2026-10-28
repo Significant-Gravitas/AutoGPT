@@ -169,7 +169,9 @@ async def _persist_and_summarize(
             f"output, not a literal prefix of it. Each `@offset+length` is that "
             f"node's exact window in the file: "
             f'read_workspace_file(path="{file_path}", offset=<offset>, '
-            f"length=<length>) returns it and nothing else."
+            f"length=<length>) starts that window. Reads may return less than "
+            f"requested; continue from the returned end offset with the "
+            f"remaining length until the node's window is complete."
             f"\n{sandbox}"
         )
     else:

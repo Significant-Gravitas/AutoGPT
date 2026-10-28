@@ -400,6 +400,7 @@ class TestDigestThreshold:
         # And the way back names the tool and its arguments.
         assert 'read_workspace_file(path="tool-outputs/tc-digest.json"' in output
         assert "offset=<offset>, length=<length>" in output
+        assert "continue from the returned end offset" in output
         # Without this the model reads the outline as a prefix of the output.
         assert "not a literal prefix" in output
         # A flat length= wider than the file turns one "narrow" read into a

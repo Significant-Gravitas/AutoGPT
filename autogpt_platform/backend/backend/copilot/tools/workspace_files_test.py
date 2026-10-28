@@ -1256,7 +1256,10 @@ class TestReadingASpilledGoogleOutput:
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("character", ["x", "é"])
-async def test_workspace_windows_stay_readable_without_another_saved_preview(character):
+@pytest.mark.parametrize("source", ["workspace", "local"])
+async def test_workspace_windows_stay_readable_without_another_saved_preview(
+    character, source, tmp_path
+):
     content = character * 35_000
     raw = content.encode()
     manager = AsyncMock()
@@ -1264,10 +1267,18 @@ async def test_workspace_windows_stay_readable_without_another_saved_preview(cha
     manager.read_file_head_by_id.side_effect = lambda _file_id, max_bytes: raw[
         :max_bytes
     ]
+    local = tmp_path / "result.txt"
+    local.write_bytes(raw)
+    manager.get_file_info_by_path.return_value = None
+    reference = {"file_id": "f-1"} if source == "workspace" else {"path": str(local)}
     session = make_session("user-1")
     chunks = []
     offset = 0
     with (
+        patch(
+            "backend.copilot.tools.workspace_files.get_sdk_cwd",
+            return_value=str(tmp_path),
+        ),
         patch(
             "backend.copilot.tools.workspace_files.get_workspace_manager",
             AsyncMock(return_value=manager),
@@ -1281,9 +1292,9 @@ async def test_workspace_windows_stay_readable_without_another_saved_preview(cha
                 "user-1",
                 session,
                 "tc-window",
-                file_id="f-1",
                 offset=offset,
                 length=50_000,
+                **reference,
             )
             persist.assert_not_awaited()
             payload = json.loads(result.output)

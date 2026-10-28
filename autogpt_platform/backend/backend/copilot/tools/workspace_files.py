@@ -308,7 +308,7 @@ def _read_local_tool_result(
         end = (
             char_offset + char_length if char_length is not None else len(text_content)
         )
-        slice_text = text_content[char_offset:end]
+        slice_text = _fit_utf8(text_content[char_offset:end], _MAX_INTERNAL_RANGE_BYTES)
     except FileNotFoundError:
         return ErrorResponse(
             message=f"File not found: {os.path.basename(path)}", session_id=session_id
