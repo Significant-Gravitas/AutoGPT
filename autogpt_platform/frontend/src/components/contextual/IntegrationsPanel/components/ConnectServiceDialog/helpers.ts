@@ -2,6 +2,7 @@ import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMe
 import { ProviderMetadataSupportedAuthTypesItem as AuthType } from "@/app/api/__generated__/models/providerMetadataSupportedAuthTypesItem";
 
 import { serviceIcon, serviceKey, serviceName } from "../../helpers";
+import { POPULAR_SERVICE_IDS } from "./popularity";
 
 export type AuthMethod = (typeof AuthType)[keyof typeof AuthType];
 
@@ -133,6 +134,48 @@ export function toConnectableProviders(
   const result = Array.from(byService.values());
   result.sort((a, b) => a.name.localeCompare(b.name));
   return result;
+}
+
+const POPULAR_COUNT = 8;
+
+// A service only ranks once it opens straight onto a way to connect, never
+// onto "No connection method available" or a server that needs setting up.
+function popularityRank(provider: ConnectableProvider): number {
+  const rank = POPULAR_SERVICE_IDS.indexOf(provider.serviceId);
+  if (rank === -1 || !connectsInOneStep(provider)) {
+    return POPULAR_SERVICE_IDS.length;
+  }
+  return rank;
+}
+
+export function sortByPopularity(
+  providers: ConnectableProvider[],
+): ConnectableProvider[] {
+  return [...providers].sort(
+    (a, b) =>
+      popularityRank(a) - popularityRank(b) || a.name.localeCompare(b.name),
+  );
+}
+
+function connectsInOneStep(provider: ConnectableProvider): boolean {
+  if (provider.supportedAuthTypes.length > 0) return true;
+  return provider.mcpServer?.connection_mode === "hosted";
+}
+
+export function popularProviders(
+  providers: ConnectableProvider[],
+): ConnectableProvider[] {
+  return sortByPopularity(providers)
+    .filter((provider) => popularityRank(provider) < POPULAR_SERVICE_IDS.length)
+    .slice(0, POPULAR_COUNT);
+}
+
+export function withoutProviders(
+  providers: ConnectableProvider[],
+  excluded: ConnectableProvider[],
+): ConnectableProvider[] {
+  const excludedIds = new Set(excluded.map((provider) => provider.id));
+  return providers.filter((provider) => !excludedIds.has(provider.id));
 }
 
 function normalize(text: string): string {
