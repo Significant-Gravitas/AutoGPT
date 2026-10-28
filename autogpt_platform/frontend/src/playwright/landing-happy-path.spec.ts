@@ -48,11 +48,10 @@ async function expectHomeLanding(page: Page, copilotRequests: string[]) {
 // Otto's first ask sits in a column with a narrow gutter below md; a card
 // that bleeds past it is clipped at the screen edge.
 async function expectAskWithinPhoneWidth(page: Page) {
-  // A user fresh out of onboarding meets the welcome cards before the greeting.
-  await page
-    .getByRole("dialog", { name: "Welcome to AutoGPT" })
-    .getByRole("button", { name: "Skip" })
-    .click();
+  // A user fresh out of onboarding meets the first-run walkthrough first.
+  const tour = page.getByTestId("first-run-tour");
+  await tour.getByRole("button", { name: "Skip tour" }).click();
+  await expect(tour).toHaveCount(0);
   const width = 390;
   await page.setViewportSize({ width, height: 844 });
   const ask = page.getByRole("region", { name: "One thing I need from you" });
