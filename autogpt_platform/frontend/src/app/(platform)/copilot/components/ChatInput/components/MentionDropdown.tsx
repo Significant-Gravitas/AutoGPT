@@ -11,14 +11,15 @@ import {
   AlertCircleIcon,
   Folder01Icon,
   Loading03Icon,
+  PlugSocketIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import type { IntegrationMention } from "../helpers";
 import type { MentionOption } from "../useChatMentions";
 
 interface Props {
-  /** Integrations first, then folders and files — indices match the
-   *  highlight cursor. */
+  /** Integrations first, then folders and files, then "Connect an
+   *  integration" — indices match the highlight cursor. */
   options: MentionOption[];
   /** Whether workspace files are part of this picker; drives the file
    *  loading/error/empty copy. */
@@ -44,11 +45,14 @@ export function MentionDropdown({
   onSelect,
   onHighlight,
 }: Props) {
-  const showEmpty = !isLoading && !isError && options.length === 0;
+  const resultCount = options.filter(
+    (option) => option.kind !== "connect",
+  ).length;
+  const showEmpty = !isLoading && !isError && resultCount === 0;
   const integrationCount = options.filter(
     (option) => option.kind === "integration",
   ).length;
-  const workspaceCount = options.length - integrationCount;
+  const workspaceCount = resultCount - integrationCount;
   // Headings only earn their space when both kinds can appear together.
   const showHeadings = showFiles && integrationCount > 0;
   const showFilesHeading =
@@ -96,60 +100,101 @@ export function MentionDropdown({
       // non-interactive areas (padding, empty/loading/error states) so the
       // textarea's onBlur doesn't close the dropdown before a selection.
       onMouseDown={(e) => e.preventDefault()}
-      className="absolute bottom-full left-0 z-50 mb-2 max-h-80 w-80 max-w-full overflow-y-auto rounded-2xl border border-border-base bg-surface p-1.5 shadow-md"
+      className="absolute bottom-full left-0 z-50 mb-2 flex max-h-96 w-80 max-w-full flex-col overflow-hidden rounded-2xl border border-border-base bg-surface shadow-md"
     >
-      {showHeadings && <SectionHeading label="Integrations" />}
-      {options.map((option, index) =>
-        option.kind === "integration"
-          ? renderOption(
+      <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+        {showHeadings && <SectionHeading label="Integrations" />}
+        {options.map((option, index) =>
+          option.kind === "integration"
+            ? renderOption(
+                option,
+                index,
+                <IntegrationOption integration={option.integration} />,
+              )
+            : null,
+        )}
+        {showFilesHeading && <SectionHeading label="Files" />}
+        {options.map((option, index) => {
+          if (option.kind === "folder") {
+            const count = folderSummary(
+              option.folder.file_count ?? 0,
+              option.subfolderCount,
+            );
+            return renderOption(
               option,
               index,
-              <IntegrationOption integration={option.integration} />,
-            )
-          : null,
-      )}
-      {showFilesHeading && <SectionHeading label="Files" />}
-      {options.map((option, index) => {
-        if (option.kind === "folder") {
-          const count = folderSummary(
-            option.folder.file_count ?? 0,
-            option.subfolderCount,
-          );
-          return renderOption(
-            option,
-            index,
-            <FolderOption folder={option.folder} count={count} />,
-            `Folder ${option.folder.name}, ${count}`,
-          );
-        }
-        if (option.kind === "file") {
-          return renderOption(option, index, <FileOption file={option.file} />);
-        }
-        return null;
-      })}
-      {isError ? (
-        <p
-          // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
-          className="flex items-center gap-2 px-3 py-2 text-sm text-red-600"
-        >
-          <Icon icon={AlertCircleIcon} className="h-4 w-4 shrink-0" />
-          Couldn&apos;t load files. Try again.
-        </p>
-      ) : isLoading ? (
-        <p className="flex items-center gap-2 px-3 py-2 text-sm text-foreground-tertiary">
-          <Icon
-            icon={Loading03Icon}
-            className="h-4 w-4 shrink-0 animate-spin"
-          />
-          Searching files…
-        </p>
-      ) : null}
-      {showEmpty && (
-        <p className="px-3 py-2 text-sm text-foreground-tertiary">
-          {emptyMessage(showFiles, hasIntegrations)}
-        </p>
+              <FolderOption folder={option.folder} count={count} />,
+              `Folder ${option.folder.name}, ${count}`,
+            );
+          }
+          if (option.kind === "file") {
+            return renderOption(
+              option,
+              index,
+              <FileOption file={option.file} />,
+            );
+          }
+          return null;
+        })}
+        {isError ? (
+          <p
+            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
+            className="flex items-center gap-2 px-3 py-2 text-sm text-red-600"
+          >
+            <Icon icon={AlertCircleIcon} className="h-4 w-4 shrink-0" />
+            Couldn&apos;t load files. Try again.
+          </p>
+        ) : isLoading ? (
+          <p className="flex items-center gap-2 px-3 py-2 text-sm text-foreground-tertiary">
+            <Icon
+              icon={Loading03Icon}
+              className="h-4 w-4 shrink-0 animate-spin"
+            />
+            Searching files…
+          </p>
+        ) : null}
+        {showEmpty && (
+          <p className="px-3 py-2 text-sm text-foreground-tertiary">
+            {emptyMessage(showFiles, hasIntegrations)}
+          </p>
+        )}
+      </div>
+      {/* Pinned below the scrolling results, so connecting another
+          integration is always one step away however long the list. */}
+      {options.map((option, index) =>
+        option.kind === "connect" ? (
+          <div key="connect" className="border-t border-border-base p-1.5">
+            {renderOption(
+              option,
+              index,
+              <ConnectOption query={option.query} />,
+            )}
+          </div>
+        ) : null,
       )}
     </div>
+  );
+}
+
+function ConnectOption({ query }: { query: string }) {
+  const search = query.trim();
+  return (
+    <>
+      <Icon
+        icon={PlugSocketIcon}
+        className="h-4 w-4 shrink-0 text-foreground-strong"
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium">
+          Connect an integration
+        </span>
+        {search && (
+          <span className="block truncate text-xs text-foreground-tertiary">
+            Search services for “{search}”
+          </span>
+        )}
+      </span>
+    </>
   );
 }
 
@@ -226,6 +271,7 @@ function SectionHeading({ label }: { label: string }) {
 function mentionOptionKey(option: MentionOption): string {
   if (option.kind === "file") return `file:${option.file.id}`;
   if (option.kind === "folder") return `folder:${option.folder.id}`;
+  if (option.kind === "connect") return "connect";
   return `integration:${option.integration.credentialId}`;
 }
 

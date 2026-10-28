@@ -15,6 +15,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
+import { SpendApprovalCard } from "./components/SpendApprovalCard/SpendApprovalCard";
+import { spendSummary } from "./components/SpendApprovalCard/helpers";
 
 interface PendingReviewsListProps {
   reviews: PendingHumanReviewModel[];
@@ -251,186 +253,215 @@ export function PendingReviewsList({
     );
   }
 
+  const groups = Object.entries(groupedReviews);
+  const spendCards = groups.flatMap(([nodeId, nodeReviews]) => {
+    const summary = isSpendReview(nodeId) ? spendSummary(nodeReviews) : null;
+    return summary ? [{ nodeId, summary }] : [];
+  });
+  const reviewGroups = groups.filter(
+    ([nodeId]) => !spendCards.some((card) => card.nodeId === nodeId),
+  );
+
   return (
-    <AttentionCard.Root
-      variant="caution"
-      density="spacious"
-      data-slot="pending-reviews-list"
-    >
-      <div data-slot="pending-reviews-list-header" className="space-y-6">
-        <AttentionCard.Row align="start" data-slot="pending-reviews-list-title">
-          <AttentionCard.Icon>
-            <Icon icon={Alert01Icon} size={28} />
-          </AttentionCard.Icon>
-          <Text
-            variant="large-semibold"
-            className="overflow-hidden text-ellipsis text-textBlack"
-          >
-            Your review is needed
-          </Text>
-        </AttentionCard.Row>
-        <Text variant="large" className="text-textGrey">
-          {reviews.every((review) => isGateReview(review.node_id))
-            ? "Otto is waiting for your approval before the action below."
-            : "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed."}
-        </Text>
-      </div>
-
-      <div data-slot="pending-reviews-list-groups" className="space-y-7">
-        {Object.entries(groupedReviews).map(([nodeId, nodeReviews]) => {
-          const isCollapsed = collapsedGroups[nodeId] ?? false;
-          const reviewCount = nodeReviews.length;
-          const groupAction =
-            pendingAction?.nodeId === nodeId ? pendingAction.action : null;
-
-          const firstReview = nodeReviews[0];
-          const reviewTitle =
-            firstReview?.action ?? firstReview?.instructions ?? "Review";
-          const workflowName = firstReview?.agent_name;
-
-          const getShortenedNodeId = (id: string) => {
-            if (id.length <= 8) return id;
-            return `${id.slice(0, 4)}...${id.slice(-4)}`;
-          };
-
-          return (
-            <div
-              key={nodeId}
-              data-slot="pending-reviews-list-group"
-              className="space-y-4"
+    <div data-slot="pending-reviews-list-stack" className="flex flex-col gap-3">
+      {spendCards.map(({ nodeId, summary }) => (
+        <SpendApprovalCard
+          key={nodeId}
+          summary={summary}
+          pendingAction={
+            pendingAction?.nodeId === nodeId ? pendingAction.action : null
+          }
+          disabled={isBusy}
+          onDecide={(approved) => processGroup(nodeId, approved)}
+        />
+      ))}
+      {reviewGroups.length > 0 && (
+        <AttentionCard.Root
+          variant="caution"
+          density="spacious"
+          data-slot="pending-reviews-list"
+        >
+          <div data-slot="pending-reviews-list-header" className="space-y-6">
+            <AttentionCard.Row
+              align="start"
+              data-slot="pending-reviews-list-title"
             >
-              <AttentionCard.Row asChild align="center">
-                <button
-                  onClick={() => toggleGroupCollapse(nodeId)}
-                  data-slot="pending-reviews-list-group-toggle"
-                  className="w-full text-left"
-                >
-                  {isCollapsed ? (
-                    <Icon
-                      icon={ArrowRight01Icon}
-                      size={20}
-                      // TODO(tokens): no role for Tailwind's default gray-600;
-                      // the zinc roles are a different grey.
-                      className="text-gray-600"
-                    />
-                  ) : (
-                    <Icon
-                      icon={ArrowDown01Icon}
-                      size={20}
-                      // TODO(tokens): no role for Tailwind's default gray-600;
-                      // the zinc roles are a different grey.
-                      className="text-gray-600"
-                    />
-                  )}
-                  <div
-                    data-slot="pending-reviews-list-group-heading"
-                    className="flex-1"
-                  >
-                    <Text
-                      // TODO(tokens): no role for Tailwind's default gray-900; the
-                      // zinc roles are a different grey.
-                      variant="body"
-                      className="font-semibold text-gray-900"
-                    >
-                      {reviewTitle}
-                    </Text>
-                    {(workflowName ||
-                      (!firstReview?.action && !isGateReview(nodeId))) && (
-                      <Text
-                        // TODO(tokens): no role for Tailwind's default gray-500;
-                        // the zinc roles are a different grey.
-                        variant="small"
-                        className="text-gray-500"
-                      >
-                        {workflowName
-                          ? `In workflow “${workflowName}”`
-                          : `Node #${getShortenedNodeId(nodeId)}`}
-                      </Text>
-                    )}
-                  </div>
-                  <AttentionCard.Count data-slot="pending-reviews-list-group-count">
-                    {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
-                  </AttentionCard.Count>
-                </button>
-              </AttentionCard.Row>
+              <AttentionCard.Icon>
+                <Icon icon={Alert01Icon} size={28} />
+              </AttentionCard.Icon>
+              <Text
+                variant="large-semibold"
+                className="overflow-hidden text-ellipsis text-textBlack"
+              >
+                Your review is needed
+              </Text>
+            </AttentionCard.Row>
+            <Text variant="large" className="text-textGrey">
+              {reviewGroups.every(([nodeId]) => isGateReview(nodeId))
+                ? "Otto is waiting for your approval before the action below."
+                : "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed."}
+            </Text>
+          </div>
 
-              {!isCollapsed && (
+          <div data-slot="pending-reviews-list-groups" className="space-y-7">
+            {reviewGroups.map(([nodeId, nodeReviews]) => {
+              const isCollapsed = collapsedGroups[nodeId] ?? false;
+              const reviewCount = nodeReviews.length;
+              const groupAction =
+                pendingAction?.nodeId === nodeId ? pendingAction.action : null;
+
+              const firstReview = nodeReviews[0];
+              const reviewTitle =
+                firstReview?.action ?? firstReview?.instructions ?? "Review";
+              const workflowName = firstReview?.agent_name;
+
+              const getShortenedNodeId = (id: string) => {
+                if (id.length <= 8) return id;
+                return `${id.slice(0, 4)}...${id.slice(-4)}`;
+              };
+
+              return (
                 <div
-                  data-slot="pending-reviews-list-group-body"
+                  key={nodeId}
+                  data-slot="pending-reviews-list-group"
                   className="space-y-4"
                 >
-                  {nodeReviews.map((review) => (
-                    <PendingReviewCard
-                      key={review.node_exec_id}
-                      review={review}
-                      onReviewDataChange={handleReviewDataChange}
-                      autoApproveFuture={autoApproveFutureMap[nodeId] || false}
-                      externalDataValue={reviewDataMap[review.node_exec_id]}
-                      showAutoApprove={false}
-                    />
-                  ))}
-
-                  {!isGateReview(nodeId) && !isSpendReview(nodeId) && (
-                    <div
-                      data-slot="pending-reviews-list-auto-approve"
-                      className="flex items-center gap-3 pt-2"
+                  <AttentionCard.Row asChild align="center">
+                    <button
+                      onClick={() => toggleGroupCollapse(nodeId)}
+                      data-slot="pending-reviews-list-group-toggle"
+                      className="w-full text-left"
                     >
-                      <Switch
-                        checked={autoApproveFutureMap[nodeId] || false}
-                        onCheckedChange={(enabled: boolean) =>
-                          handleAutoApproveFutureToggle(nodeId, enabled)
-                        }
-                      />
-                      <Text
-                        // TODO(tokens): no role for Tailwind's default gray-700;
-                        // the zinc roles are a different grey.
-                        variant="small"
-                        className="text-gray-700"
+                      {isCollapsed ? (
+                        <Icon
+                          icon={ArrowRight01Icon}
+                          size={20}
+                          // TODO(tokens): no role for Tailwind's default gray-600;
+                          // the zinc roles are a different grey.
+                          className="text-gray-600"
+                        />
+                      ) : (
+                        <Icon
+                          icon={ArrowDown01Icon}
+                          size={20}
+                          // TODO(tokens): no role for Tailwind's default gray-600;
+                          // the zinc roles are a different grey.
+                          className="text-gray-600"
+                        />
+                      )}
+                      <div
+                        data-slot="pending-reviews-list-group-heading"
+                        className="flex-1"
                       >
-                        Auto-approve future executions of this node
-                      </Text>
+                        <Text
+                          // TODO(tokens): no role for Tailwind's default gray-900; the
+                          // zinc roles are a different grey.
+                          variant="body"
+                          className="font-semibold text-gray-900"
+                        >
+                          {reviewTitle}
+                        </Text>
+                        {(workflowName ||
+                          (!firstReview?.action && !isGateReview(nodeId))) && (
+                          <Text
+                            // TODO(tokens): no role for Tailwind's default gray-500;
+                            // the zinc roles are a different grey.
+                            variant="small"
+                            className="text-gray-500"
+                          >
+                            {workflowName
+                              ? `In workflow “${workflowName}”`
+                              : `Node #${getShortenedNodeId(nodeId)}`}
+                          </Text>
+                        )}
+                      </div>
+                      <AttentionCard.Count data-slot="pending-reviews-list-group-count">
+                        {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
+                      </AttentionCard.Count>
+                    </button>
+                  </AttentionCard.Row>
+
+                  {!isCollapsed && (
+                    <div
+                      data-slot="pending-reviews-list-group-body"
+                      className="space-y-4"
+                    >
+                      {nodeReviews.map((review) => (
+                        <PendingReviewCard
+                          key={review.node_exec_id}
+                          review={review}
+                          onReviewDataChange={handleReviewDataChange}
+                          autoApproveFuture={
+                            autoApproveFutureMap[nodeId] || false
+                          }
+                          externalDataValue={reviewDataMap[review.node_exec_id]}
+                          showAutoApprove={false}
+                        />
+                      ))}
+
+                      {!isGateReview(nodeId) && !isSpendReview(nodeId) && (
+                        <div
+                          data-slot="pending-reviews-list-auto-approve"
+                          className="flex items-center gap-3 pt-2"
+                        >
+                          <Switch
+                            checked={autoApproveFutureMap[nodeId] || false}
+                            onCheckedChange={(enabled: boolean) =>
+                              handleAutoApproveFutureToggle(nodeId, enabled)
+                            }
+                          />
+                          <Text
+                            // TODO(tokens): no role for Tailwind's default gray-700;
+                            // the zinc roles are a different grey.
+                            variant="small"
+                            className="text-gray-700"
+                          >
+                            Auto-approve future executions of this node
+                          </Text>
+                        </div>
+                      )}
+
+                      <AttentionCard.Actions
+                        placement="footer"
+                        data-slot="pending-reviews-list-actions"
+                      >
+                        <Button
+                          onClick={() => processGroup(nodeId, true)}
+                          disabled={isBusy}
+                          variant="primary"
+                          className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
+                          loading={groupAction === "approve"}
+                        >
+                          {reviewCount === 1
+                            ? "Approve"
+                            : `Approve ${reviewCount} reviews`}
+                        </Button>
+                        <Button
+                          onClick={() => processGroup(nodeId, false)}
+                          disabled={isBusy}
+                          variant="destructive"
+                          className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-error-hover px-4 py-3"
+                          loading={groupAction === "reject"}
+                        >
+                          {reviewCount === 1
+                            ? "Reject"
+                            : `Reject ${reviewCount} reviews`}
+                        </Button>
+                      </AttentionCard.Actions>
                     </div>
                   )}
-
-                  <AttentionCard.Actions
-                    placement="footer"
-                    data-slot="pending-reviews-list-actions"
-                  >
-                    <Button
-                      onClick={() => processGroup(nodeId, true)}
-                      disabled={isBusy}
-                      variant="primary"
-                      className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
-                      loading={groupAction === "approve"}
-                    >
-                      {reviewCount === 1
-                        ? "Approve"
-                        : `Approve ${reviewCount} reviews`}
-                    </Button>
-                    <Button
-                      onClick={() => processGroup(nodeId, false)}
-                      disabled={isBusy}
-                      variant="destructive"
-                      className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-error-hover px-4 py-3"
-                      loading={groupAction === "reject"}
-                    >
-                      {reviewCount === 1
-                        ? "Reject"
-                        : `Reject ${reviewCount} reviews`}
-                    </Button>
-                  </AttentionCard.Actions>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
 
-      <Text variant="small" className="text-textGrey">
-        Each decision applies only to the reviews shown above it. You can turn
-        auto-approval on or off using the toggle for each node.
-      </Text>
-    </AttentionCard.Root>
+          <Text variant="small" className="text-textGrey">
+            Each decision applies only to the reviews shown above it. You can
+            turn auto-approval on or off using the toggle for each node.
+          </Text>
+        </AttentionCard.Root>
+      )}
+    </div>
   );
 }
 

@@ -39,7 +39,10 @@ from backend.copilot.computer import (
     open_desktop,
 )
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
-from backend.copilot.credential_selection import remember_selection
+from backend.copilot.credential_selection import (
+    credential_matches_selection,
+    remember_selection,
+)
 from backend.copilot.db import (
     chat_message_has_assistant_reply,
     get_chat_messages_paginated,
@@ -183,7 +186,6 @@ from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block
 from backend.data.workspace_folder import resolve_attachable_workspace_folders
 from backend.integrations.codex.access import enforce_codex_access_http
-from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import tracing
 from backend.util.background import spawn_background_task
@@ -1207,7 +1209,7 @@ async def select_session_credentials_route(
             # later one would silently drop a credential the caller validated.
             raise HTTPException(status_code=422, detail="duplicate_provider")
         credential = await store.get_creds_by_id(user_id, credential_id)
-        if credential is None or not provider_matches(credential.provider, provider):
+        if credential is None or not credential_matches_selection(credential, provider):
             raise HTTPException(status_code=404, detail="credential_not_found")
         selections[provider] = credential_id
 
