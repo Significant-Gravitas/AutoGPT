@@ -164,9 +164,14 @@ const POPULAR_SERVICE_IDS = [
 
 const POPULAR_COUNT = 8;
 
+// A service only ranks once it opens straight onto a way to connect, never
+// onto "No connection method available" or a server that needs setting up.
 function popularityRank(provider: ConnectableProvider): number {
   const rank = POPULAR_SERVICE_IDS.indexOf(provider.serviceId);
-  return rank === -1 ? POPULAR_SERVICE_IDS.length : rank;
+  if (rank === -1 || !connectsInOneStep(provider)) {
+    return POPULAR_SERVICE_IDS.length;
+  }
+  return rank;
 }
 
 // Popular services first, in rank order; everything else stays A to Z.
@@ -179,8 +184,6 @@ export function sortByPopularity(
   );
 }
 
-// A popular shortcut should open straight onto a way to connect, never onto
-// "No connection method available" or a server that needs setting up first.
 function connectsInOneStep(provider: ConnectableProvider): boolean {
   if (provider.supportedAuthTypes.length > 0) return true;
   return provider.mcpServer?.connection_mode === "hosted";
@@ -190,11 +193,7 @@ export function popularProviders(
   providers: ConnectableProvider[],
 ): ConnectableProvider[] {
   return sortByPopularity(providers)
-    .filter(
-      (provider) =>
-        popularityRank(provider) < POPULAR_SERVICE_IDS.length &&
-        connectsInOneStep(provider),
-    )
+    .filter((provider) => popularityRank(provider) < POPULAR_SERVICE_IDS.length)
     .slice(0, POPULAR_COUNT);
 }
 

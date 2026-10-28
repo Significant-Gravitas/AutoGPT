@@ -112,5 +112,8 @@ describe("ConnectServiceDialog", () => {
     expect(
       await screen.findByRole("button", { name: "Back to services" }),
     ).toBeDefined();
+    expect(
+      screen.getByRole("heading", { name: "Google", level: 2 }),
+    ).toBeDefined();
   });
 });

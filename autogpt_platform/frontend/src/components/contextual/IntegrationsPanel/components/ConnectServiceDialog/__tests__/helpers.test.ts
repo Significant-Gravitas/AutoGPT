@@ -265,6 +265,21 @@ describe("sortByPopularity", () => {
     expect(sorted.map((p) => p.id)).toEqual(["mcp_atlassian", "aave"]);
   });
 
+  test("does not rank a service that cannot be connected in one step", () => {
+    const sorted = sortByPopularity([
+      makeProvider("zerobounce"),
+      makeProvider("slack", { supportedAuthTypes: [] }),
+      makeProvider("aave"),
+      makeProvider("notion"),
+    ]);
+    expect(sorted.map((p) => p.serviceId)).toEqual([
+      "notion",
+      "aave",
+      "slack",
+      "zerobounce",
+    ]);
+  });
+
   test("does not reorder the list it is given", () => {
     const providers = [makeProvider("aave"), makeProvider("google")];
     sortByPopularity(providers);
