@@ -140,7 +140,9 @@ class TestPersistAndSummarize:
 
         assert 'workspace_path="tool-outputs/tc-123.json">' in result
         assert "format=" not in result
-        assert "to read any section. To process the file" in result
+        assert "to read any section." in result
+        assert "continue from the returned end offset" in result
+        assert "To process the file" in result
 
 
 # ---------------------------------------------------------------------------

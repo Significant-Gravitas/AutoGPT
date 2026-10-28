@@ -180,7 +180,8 @@ async def _persist_and_summarize(
             f"\nFull output ({total:,} chars) saved to workspace. "
             f"Use read_workspace_file("
             f'path="{file_path}", offset=<char_offset>, length=50000) '
-            f"to read any section. "
+            f"to read any section. If a read returns less than requested, "
+            f"continue from the returned end offset with the remaining length. "
             f"{sandbox}"
         )
     return (
