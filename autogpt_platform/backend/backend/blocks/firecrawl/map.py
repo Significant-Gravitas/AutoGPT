@@ -2,10 +2,12 @@ from typing import Any
 
 from firecrawl import FirecrawlApp
 
+from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -39,6 +41,7 @@ class FirecrawlMapWebsiteBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -49,6 +52,10 @@ class FirecrawlMapWebsiteBlock(Block):
         # Sync call
         map_result = app.map(
             url=input_data.url,
+        )
+        # Firecrawl bills 1 credit (~$0.001) per map request.
+        self.merge_stats(
+            NodeExecutionStats(provider_cost=0.001, provider_cost_type="cost_usd")
         )
 
         # Convert SearchResult objects to dicts

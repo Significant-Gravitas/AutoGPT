@@ -8,6 +8,11 @@
 
 <!-- List the key changes. Keep it higher level than the diff but specific enough to highlight what's new/modified. -->
 
+### Agents and large language models used
+
+<!-- List each agent platform with its model name/version (e.g. Claude Code with Claude Opus 4.1).
+Write None if no agents were used, or unknown for unavailable model details. -->
+
 ### Checklist 📋
 
 #### For code changes:

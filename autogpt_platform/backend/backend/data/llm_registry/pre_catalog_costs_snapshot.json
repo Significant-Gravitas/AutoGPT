@@ -1,0 +1,1170 @@
+{
+  "model_cost": {
+    "Llama-3.3-70B-Instruct": 1,
+    "Llama-3.3-8B-Instruct": 1,
+    "Llama-4-Maverick-17B-128E-Instruct-FP8": 1,
+    "Llama-4-Scout-17B-16E-Instruct-FP8": 1,
+    "amazon/nova-lite-v1": 1,
+    "amazon/nova-micro-v1": 1,
+    "amazon/nova-pro-v1": 1,
+    "claude-haiku-4-5-20251001": 4,
+    "claude-opus-4-5-20251101": 14,
+    "claude-opus-4-6": 14,
+    "claude-opus-4-7": 14,
+    "claude-sonnet-4-5-20250929": 9,
+    "claude-sonnet-4-6": 9,
+    "cohere/command-a-03-2025": 3,
+    "cohere/command-a-reasoning-08-2025": 6,
+    "cohere/command-a-translate-08-2025": 3,
+    "cohere/command-a-vision-07-2025": 3,
+    "deepseek/deepseek-chat": 2,
+    "deepseek/deepseek-r1-0528": 1,
+    "dolphin-mistral:latest": 1,
+    "google/gemini-2.0-flash-001": 1,
+    "google/gemini-2.0-flash-lite-001": 1,
+    "google/gemini-2.5-flash": 1,
+    "google/gemini-2.5-flash-lite": 1,
+    "google/gemini-2.5-pro": 4,
+    "google/gemini-3-flash-preview": 2,
+    "google/gemini-3.1-flash-lite-preview": 1,
+    "google/gemini-3.1-pro-preview": 5,
+    "gpt-4.1-2025-04-14": 2,
+    "gpt-4.1-mini-2025-04-14": 1,
+    "gpt-4o": 3,
+    "gpt-4o-mini": 1,
+    "gpt-5-2025-08-07": 2,
+    "gpt-5-chat-latest": 5,
+    "gpt-5-mini-2025-08-07": 1,
+    "gpt-5-nano-2025-08-07": 1,
+    "gpt-5.1-2025-11-13": 5,
+    "gpt-5.2-2025-12-11": 6,
+    "gryphe/mythomax-l2-13b": 1,
+    "llama-3.1-8b-instant": 1,
+    "llama-3.3-70b-versatile": 1,
+    "llama3": 1,
+    "llama3.1:405b": 1,
+    "llama3.2": 1,
+    "llama3.3": 1,
+    "meta-llama/Llama-3.3-70B-Instruct-Turbo": 1,
+    "meta-llama/llama-4-maverick": 1,
+    "meta-llama/llama-4-scout": 1,
+    "microsoft/phi-4": 1,
+    "mistralai/codestral-2508": 1,
+    "mistralai/mistral-large-2512": 2,
+    "mistralai/mistral-medium-3.1": 2,
+    "mistralai/mistral-small-3.2-24b-instruct": 1,
+    "moonshotai/kimi-k2-thinking": 2,
+    "moonshotai/kimi-k2.5": 1,
+    "moonshotai/kimi-k2.6": 2,
+    "nousresearch/hermes-3-llama-3.1-405b": 1,
+    "nousresearch/hermes-3-llama-3.1-70b": 1,
+    "o3-2025-04-16": 4,
+    "o3-mini": 2,
+    "openai/gpt-oss-120b": 1,
+    "openai/gpt-oss-20b": 1,
+    "perplexity/sonar": 1,
+    "perplexity/sonar-deep-research": 10,
+    "perplexity/sonar-pro": 5,
+    "perplexity/sonar-reasoning-pro": 5,
+    "qwen/qwen3-235b-a22b-thinking-2507": 1,
+    "qwen/qwen3-coder": 9,
+    "v0-1.0-md": 1,
+    "v0-1.5-lg": 2,
+    "v0-1.5-md": 1,
+    "x-ai/grok-3": 3,
+    "x-ai/grok-4": 9,
+    "x-ai/grok-4-fast": 1,
+    "x-ai/grok-4.1-fast": 1,
+    "x-ai/grok-4.20": 5,
+    "x-ai/grok-4.20-multi-agent": 5,
+    "x-ai/grok-code-fast-1": 1,
+    "z-ai/glm-4.6": 1,
+    "z-ai/glm-4.6v": 1,
+    "z-ai/glm-4.7": 1,
+    "z-ai/glm-4.7-flash": 1,
+    "z-ai/glm-5": 2,
+    "z-ai/glm-5-turbo": 4,
+    "z-ai/glm-5v-turbo": 4
+  },
+  "model_metadata": {
+    "Llama-3.3-70B-Instruct": {
+      "context_window": 128000,
+      "creator_name": "Meta",
+      "display_name": "Llama 3.3 70B Instruct",
+      "max_output_tokens": 4028,
+      "price_tier": 1,
+      "provider": "llama_api",
+      "provider_name": "Llama API"
+    },
+    "Llama-3.3-8B-Instruct": {
+      "context_window": 128000,
+      "creator_name": "Meta",
+      "display_name": "Llama 3.3 8B Instruct",
+      "max_output_tokens": 4028,
+      "price_tier": 1,
+      "provider": "llama_api",
+      "provider_name": "Llama API"
+    },
+    "Llama-4-Maverick-17B-128E-Instruct-FP8": {
+      "context_window": 128000,
+      "creator_name": "Meta",
+      "display_name": "Llama 4 Maverick 17B 128E Instruct FP8",
+      "max_output_tokens": 4028,
+      "price_tier": 1,
+      "provider": "llama_api",
+      "provider_name": "Llama API"
+    },
+    "Llama-4-Scout-17B-16E-Instruct-FP8": {
+      "context_window": 128000,
+      "creator_name": "Meta",
+      "display_name": "Llama 4 Scout 17B 16E Instruct FP8",
+      "max_output_tokens": 4028,
+      "price_tier": 1,
+      "provider": "llama_api",
+      "provider_name": "Llama API"
+    },
+    "amazon/nova-lite-v1": {
+      "context_window": 300000,
+      "creator_name": "Amazon",
+      "display_name": "Nova Lite V1",
+      "max_output_tokens": 5120,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "amazon/nova-micro-v1": {
+      "context_window": 128000,
+      "creator_name": "Amazon",
+      "display_name": "Nova Micro V1",
+      "max_output_tokens": 5120,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "amazon/nova-pro-v1": {
+      "context_window": 300000,
+      "creator_name": "Amazon",
+      "display_name": "Nova Pro V1",
+      "max_output_tokens": 5120,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "claude-haiku-4-5-20251001": {
+      "context_window": 200000,
+      "creator_name": "Anthropic",
+      "display_name": "Claude Haiku 4.5",
+      "max_output_tokens": 64000,
+      "price_tier": 2,
+      "provider": "anthropic",
+      "provider_name": "Anthropic"
+    },
+    "claude-opus-4-5-20251101": {
+      "context_window": 200000,
+      "creator_name": "Anthropic",
+      "display_name": "Claude Opus 4.5",
+      "max_output_tokens": 64000,
+      "price_tier": 3,
+      "provider": "anthropic",
+      "provider_name": "Anthropic"
+    },
+    "claude-opus-4-6": {
+      "context_window": 200000,
+      "creator_name": "Anthropic",
+      "display_name": "Claude Opus 4.6",
+      "max_output_tokens": 128000,
+      "price_tier": 3,
+      "provider": "anthropic",
+      "provider_name": "Anthropic"
+    },
+    "claude-opus-4-7": {
+      "context_window": 200000,
+      "creator_name": "Anthropic",
+      "display_name": "Claude Opus 4.7",
+      "max_output_tokens": 128000,
+      "price_tier": 3,
+      "provider": "anthropic",
+      "provider_name": "Anthropic"
+    },
+    "claude-sonnet-4-5-20250929": {
+      "context_window": 200000,
+      "creator_name": "Anthropic",
+      "display_name": "Claude Sonnet 4.5",
+      "max_output_tokens": 64000,
+      "price_tier": 3,
+      "provider": "anthropic",
+      "provider_name": "Anthropic"
+    },
+    "claude-sonnet-4-6": {
+      "context_window": 200000,
+      "creator_name": "Anthropic",
+      "display_name": "Claude Sonnet 4.6",
+      "max_output_tokens": 64000,
+      "price_tier": 3,
+      "provider": "anthropic",
+      "provider_name": "Anthropic"
+    },
+    "cohere/command-a-03-2025": {
+      "context_window": 256000,
+      "creator_name": "Cohere",
+      "display_name": "Command A 03.2025",
+      "max_output_tokens": 8192,
+      "price_tier": 2,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "cohere/command-a-reasoning-08-2025": {
+      "context_window": 256000,
+      "creator_name": "Cohere",
+      "display_name": "Command A Reasoning 08.2025",
+      "max_output_tokens": 32768,
+      "price_tier": 3,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "cohere/command-a-translate-08-2025": {
+      "context_window": 128000,
+      "creator_name": "Cohere",
+      "display_name": "Command A Translate 08.2025",
+      "max_output_tokens": 8192,
+      "price_tier": 2,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "cohere/command-a-vision-07-2025": {
+      "context_window": 128000,
+      "creator_name": "Cohere",
+      "display_name": "Command A Vision 07.2025",
+      "max_output_tokens": 8192,
+      "price_tier": 2,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "deepseek/deepseek-chat": {
+      "context_window": 64000,
+      "creator_name": "DeepSeek",
+      "display_name": "DeepSeek Chat",
+      "max_output_tokens": 2048,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "deepseek/deepseek-r1-0528": {
+      "context_window": 163840,
+      "creator_name": "DeepSeek",
+      "display_name": "DeepSeek R1 0528",
+      "max_output_tokens": 163840,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "dolphin-mistral:latest": {
+      "context_window": 32768,
+      "creator_name": "Mistral AI",
+      "display_name": "Dolphin Mistral Latest",
+      "max_output_tokens": null,
+      "price_tier": 1,
+      "provider": "ollama",
+      "provider_name": "Ollama"
+    },
+    "google/gemini-2.0-flash-001": {
+      "context_window": 1048576,
+      "creator_name": "Google",
+      "display_name": "Gemini 2.0 Flash 001",
+      "max_output_tokens": 8192,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "google/gemini-2.0-flash-lite-001": {
+      "context_window": 1048576,
+      "creator_name": "Google",
+      "display_name": "Gemini 2.0 Flash Lite 001",
+      "max_output_tokens": 8192,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "google/gemini-2.5-flash": {
+      "context_window": 1048576,
+      "creator_name": "Google",
+      "display_name": "Gemini 2.5 Flash",
+      "max_output_tokens": 65535,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "google/gemini-2.5-flash-lite": {
+      "context_window": 1048576,
+      "creator_name": "Google",
+      "display_name": "Gemini 2.5 Flash Lite",
+      "max_output_tokens": 65535,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "google/gemini-2.5-pro": {
+      "context_window": 1048576,
+      "creator_name": "Google",
+      "display_name": "Gemini 2.5 Pro",
+      "max_output_tokens": 65536,
+      "price_tier": 2,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "google/gemini-3-flash-preview": {
+      "context_window": 1048576,
+      "creator_name": "Google",
+      "display_name": "Gemini 3 Flash Preview",
+      "max_output_tokens": 65536,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "google/gemini-3.1-flash-lite-preview": {
+      "context_window": 1048576,
+      "creator_name": "Google",
+      "display_name": "Gemini 3.1 Flash Lite Preview",
+      "max_output_tokens": 65536,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "google/gemini-3.1-pro-preview": {
+      "context_window": 1048576,
+      "creator_name": "Google",
+      "display_name": "Gemini 3.1 Pro Preview",
+      "max_output_tokens": 65536,
+      "price_tier": 2,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "gpt-4.1-2025-04-14": {
+      "context_window": 1047576,
+      "creator_name": "OpenAI",
+      "display_name": "GPT-4.1",
+      "max_output_tokens": 32768,
+      "price_tier": 1,
+      "provider": "openai",
+      "provider_name": "OpenAI"
+    },
+    "gpt-4.1-mini-2025-04-14": {
+      "context_window": 1047576,
+      "creator_name": "OpenAI",
+      "display_name": "GPT-4.1 Mini",
+      "max_output_tokens": 32768,
+      "price_tier": 1,
+      "provider": "openai",
+      "provider_name": "OpenAI"
+    },
+    "gpt-4o": {
+      "context_window": 128000,
+      "creator_name": "OpenAI",
+      "display_name": "GPT-4o",
+      "max_output_tokens": 16384,
+      "price_tier": 2,
+      "provider": "openai",
+      "provider_name": "OpenAI"
+    },
+    "gpt-4o-mini": {
+      "context_window": 128000,
+      "creator_name": "OpenAI",
+      "display_name": "GPT-4o Mini",
+      "max_output_tokens": 16384,
+      "price_tier": 1,
+      "provider": "openai",
+      "provider_name": "OpenAI"
+    },
+    "gpt-5-2025-08-07": {
+      "context_window": 400000,
+      "creator_name": "OpenAI",
+      "display_name": "GPT-5",
+      "max_output_tokens": 128000,
+      "price_tier": 1,
+      "provider": "openai",
+      "provider_name": "OpenAI"
+    },
+    "gpt-5-chat-latest": {
+      "context_window": 400000,
+      "creator_name": "OpenAI",
+      "display_name": "GPT-5 Chat Latest",
+      "max_output_tokens": 16384,
+      "price_tier": 2,
+      "provider": "openai",
+      "provider_name": "OpenAI"
+    },
+    "gpt-5-mini-2025-08-07": {
+      "context_window": 400000,
+      "creator_name": "OpenAI",
+      "display_name": "GPT-5 Mini",
+      "max_output_tokens": 128000,
+      "price_tier": 1,
+      "provider": "openai",
+      "provider_name": "OpenAI"
+    },
+    "gpt-5-nano-2025-08-07": {
+      "context_window": 400000,
+      "creator_name": "OpenAI",
+      "display_name": "GPT-5 Nano",
+      "max_output_tokens": 128000,
+      "price_tier": 1,
+      "provider": "openai",
+      "provider_name": "OpenAI"
+    },
+    "gpt-5.1-2025-11-13": {
+      "context_window": 400000,
+      "creator_name": "OpenAI",
+      "display_name": "GPT-5.1",
+      "max_output_tokens": 128000,
+      "price_tier": 2,
+      "provider": "openai",
+      "provider_name": "OpenAI"
+    },
+    "gpt-5.2-2025-12-11": {
+      "context_window": 400000,
+      "creator_name": "OpenAI",
+      "display_name": "GPT-5.2",
+      "max_output_tokens": 128000,
+      "price_tier": 3,
+      "provider": "openai",
+      "provider_name": "OpenAI"
+    },
+    "gryphe/mythomax-l2-13b": {
+      "context_window": 4096,
+      "creator_name": "Gryphe",
+      "display_name": "MythoMax L2 13B",
+      "max_output_tokens": 4096,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "llama-3.1-8b-instant": {
+      "context_window": 128000,
+      "creator_name": "Meta",
+      "display_name": "Llama 3.1 8B Instant",
+      "max_output_tokens": 8192,
+      "price_tier": 1,
+      "provider": "groq",
+      "provider_name": "Groq"
+    },
+    "llama-3.3-70b-versatile": {
+      "context_window": 128000,
+      "creator_name": "Meta",
+      "display_name": "Llama 3.3 70B Versatile",
+      "max_output_tokens": 32768,
+      "price_tier": 1,
+      "provider": "groq",
+      "provider_name": "Groq"
+    },
+    "llama3": {
+      "context_window": 8192,
+      "creator_name": "Meta",
+      "display_name": "Llama 3",
+      "max_output_tokens": null,
+      "price_tier": 1,
+      "provider": "ollama",
+      "provider_name": "Ollama"
+    },
+    "llama3.1:405b": {
+      "context_window": 8192,
+      "creator_name": "Meta",
+      "display_name": "Llama 3.1 405B",
+      "max_output_tokens": null,
+      "price_tier": 1,
+      "provider": "ollama",
+      "provider_name": "Ollama"
+    },
+    "llama3.2": {
+      "context_window": 8192,
+      "creator_name": "Meta",
+      "display_name": "Llama 3.2",
+      "max_output_tokens": null,
+      "price_tier": 1,
+      "provider": "ollama",
+      "provider_name": "Ollama"
+    },
+    "llama3.3": {
+      "context_window": 8192,
+      "creator_name": "Meta",
+      "display_name": "Llama 3.3",
+      "max_output_tokens": null,
+      "price_tier": 1,
+      "provider": "ollama",
+      "provider_name": "Ollama"
+    },
+    "meta-llama/Llama-3.3-70B-Instruct-Turbo": {
+      "context_window": 128000,
+      "creator_name": "Meta",
+      "display_name": "Llama 3.3 70B Instruct Turbo",
+      "max_output_tokens": null,
+      "price_tier": 1,
+      "provider": "aiml_api",
+      "provider_name": "AI/ML API"
+    },
+    "meta-llama/llama-4-maverick": {
+      "context_window": 1048576,
+      "creator_name": "Meta",
+      "display_name": "Llama 4 Maverick",
+      "max_output_tokens": 1000000,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "meta-llama/llama-4-scout": {
+      "context_window": 131072,
+      "creator_name": "Meta",
+      "display_name": "Llama 4 Scout",
+      "max_output_tokens": 131072,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "microsoft/phi-4": {
+      "context_window": 16384,
+      "creator_name": "Microsoft",
+      "display_name": "Phi-4",
+      "max_output_tokens": 16384,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "mistralai/codestral-2508": {
+      "context_window": 256000,
+      "creator_name": "Mistral AI",
+      "display_name": "Codestral 2508",
+      "max_output_tokens": null,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "mistralai/mistral-large-2512": {
+      "context_window": 262144,
+      "creator_name": "Mistral AI",
+      "display_name": "Mistral Large 3 2512",
+      "max_output_tokens": null,
+      "price_tier": 2,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "mistralai/mistral-medium-3.1": {
+      "context_window": 131072,
+      "creator_name": "Mistral AI",
+      "display_name": "Mistral Medium 3.1",
+      "max_output_tokens": null,
+      "price_tier": 2,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "mistralai/mistral-small-3.2-24b-instruct": {
+      "context_window": 131072,
+      "creator_name": "Mistral AI",
+      "display_name": "Mistral Small 3.2 24B",
+      "max_output_tokens": 131072,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "moonshotai/kimi-k2-thinking": {
+      "context_window": 262144,
+      "creator_name": "Moonshot AI",
+      "display_name": "Kimi K2 Thinking",
+      "max_output_tokens": 262144,
+      "price_tier": 2,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "moonshotai/kimi-k2.5": {
+      "context_window": 262144,
+      "creator_name": "Moonshot AI",
+      "display_name": "Kimi K2.5",
+      "max_output_tokens": 262144,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "moonshotai/kimi-k2.6": {
+      "context_window": 262144,
+      "creator_name": "Moonshot AI",
+      "display_name": "Kimi K2.6",
+      "max_output_tokens": 262144,
+      "price_tier": 2,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "nousresearch/hermes-3-llama-3.1-405b": {
+      "context_window": 131000,
+      "creator_name": "Nous Research",
+      "display_name": "Hermes 3 Llama 3.1 405B",
+      "max_output_tokens": 4096,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "nousresearch/hermes-3-llama-3.1-70b": {
+      "context_window": 12288,
+      "creator_name": "Nous Research",
+      "display_name": "Hermes 3 Llama 3.1 70B",
+      "max_output_tokens": 12288,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "o3-2025-04-16": {
+      "context_window": 200000,
+      "creator_name": "OpenAI",
+      "display_name": "O3",
+      "max_output_tokens": 100000,
+      "price_tier": 2,
+      "provider": "openai",
+      "provider_name": "OpenAI"
+    },
+    "o3-mini": {
+      "context_window": 200000,
+      "creator_name": "OpenAI",
+      "display_name": "O3 Mini",
+      "max_output_tokens": 100000,
+      "price_tier": 1,
+      "provider": "openai",
+      "provider_name": "OpenAI"
+    },
+    "openai/gpt-oss-120b": {
+      "context_window": 131072,
+      "creator_name": "OpenAI",
+      "display_name": "GPT-OSS 120B",
+      "max_output_tokens": 131072,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "openai/gpt-oss-20b": {
+      "context_window": 131072,
+      "creator_name": "OpenAI",
+      "display_name": "GPT-OSS 20B",
+      "max_output_tokens": 32768,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "perplexity/sonar": {
+      "context_window": 127000,
+      "creator_name": "Perplexity",
+      "display_name": "Sonar",
+      "max_output_tokens": 8000,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "perplexity/sonar-deep-research": {
+      "context_window": 128000,
+      "creator_name": "Perplexity",
+      "display_name": "Sonar Deep Research",
+      "max_output_tokens": 16000,
+      "price_tier": 3,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "perplexity/sonar-pro": {
+      "context_window": 200000,
+      "creator_name": "Perplexity",
+      "display_name": "Sonar Pro",
+      "max_output_tokens": 8000,
+      "price_tier": 2,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "perplexity/sonar-reasoning-pro": {
+      "context_window": 128000,
+      "creator_name": "Perplexity",
+      "display_name": "Sonar Reasoning Pro",
+      "max_output_tokens": 8000,
+      "price_tier": 2,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "qwen/qwen3-235b-a22b-thinking-2507": {
+      "context_window": 262144,
+      "creator_name": "Qwen",
+      "display_name": "Qwen 3 235B A22B Thinking 2507",
+      "max_output_tokens": 262144,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "qwen/qwen3-coder": {
+      "context_window": 262144,
+      "creator_name": "Qwen",
+      "display_name": "Qwen 3 Coder",
+      "max_output_tokens": 262144,
+      "price_tier": 3,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "v0-1.0-md": {
+      "context_window": 128000,
+      "creator_name": "v0 by Vercel",
+      "display_name": "v0 1.0 MD",
+      "max_output_tokens": 64000,
+      "price_tier": 1,
+      "provider": "v0",
+      "provider_name": "v0 by Vercel"
+    },
+    "v0-1.5-lg": {
+      "context_window": 512000,
+      "creator_name": "v0 by Vercel",
+      "display_name": "v0 1.5 LG",
+      "max_output_tokens": 64000,
+      "price_tier": 1,
+      "provider": "v0",
+      "provider_name": "v0 by Vercel"
+    },
+    "v0-1.5-md": {
+      "context_window": 128000,
+      "creator_name": "v0 by Vercel",
+      "display_name": "v0 1.5 MD",
+      "max_output_tokens": 64000,
+      "price_tier": 1,
+      "provider": "v0",
+      "provider_name": "v0 by Vercel"
+    },
+    "x-ai/grok-3": {
+      "context_window": 131072,
+      "creator_name": "xAI",
+      "display_name": "Grok 3",
+      "max_output_tokens": 131072,
+      "price_tier": 2,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "x-ai/grok-4": {
+      "context_window": 256000,
+      "creator_name": "xAI",
+      "display_name": "Grok 4",
+      "max_output_tokens": 256000,
+      "price_tier": 3,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "x-ai/grok-4-fast": {
+      "context_window": 2000000,
+      "creator_name": "xAI",
+      "display_name": "Grok 4 Fast",
+      "max_output_tokens": 30000,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "x-ai/grok-4.1-fast": {
+      "context_window": 2000000,
+      "creator_name": "xAI",
+      "display_name": "Grok 4.1 Fast",
+      "max_output_tokens": 30000,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "x-ai/grok-4.20": {
+      "context_window": 2000000,
+      "creator_name": "xAI",
+      "display_name": "Grok 4.20",
+      "max_output_tokens": 100000,
+      "price_tier": 3,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "x-ai/grok-4.20-multi-agent": {
+      "context_window": 2000000,
+      "creator_name": "xAI",
+      "display_name": "Grok 4.20 Multi-Agent",
+      "max_output_tokens": 100000,
+      "price_tier": 3,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "x-ai/grok-code-fast-1": {
+      "context_window": 256000,
+      "creator_name": "xAI",
+      "display_name": "Grok Code Fast 1",
+      "max_output_tokens": 10000,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "z-ai/glm-4.6": {
+      "context_window": 204800,
+      "creator_name": "Z.ai",
+      "display_name": "GLM 4.6",
+      "max_output_tokens": 204800,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "z-ai/glm-4.6v": {
+      "context_window": 131072,
+      "creator_name": "Z.ai",
+      "display_name": "GLM 4.6V",
+      "max_output_tokens": 131072,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "z-ai/glm-4.7": {
+      "context_window": 202752,
+      "creator_name": "Z.ai",
+      "display_name": "GLM 4.7",
+      "max_output_tokens": 65535,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "z-ai/glm-4.7-flash": {
+      "context_window": 202752,
+      "creator_name": "Z.ai",
+      "display_name": "GLM 4.7 Flash",
+      "max_output_tokens": 202752,
+      "price_tier": 1,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "z-ai/glm-5": {
+      "context_window": 80000,
+      "creator_name": "Z.ai",
+      "display_name": "GLM 5",
+      "max_output_tokens": 80000,
+      "price_tier": 2,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "z-ai/glm-5-turbo": {
+      "context_window": 202752,
+      "creator_name": "Z.ai",
+      "display_name": "GLM 5 Turbo",
+      "max_output_tokens": 131072,
+      "price_tier": 3,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    },
+    "z-ai/glm-5v-turbo": {
+      "context_window": 202752,
+      "creator_name": "Z.ai",
+      "display_name": "GLM 5V Turbo",
+      "max_output_tokens": 131072,
+      "price_tier": 3,
+      "provider": "open_router",
+      "provider_name": "OpenRouter"
+    }
+  },
+  "token_cost": {
+    "claude-haiku-4-5-20251001": {
+      "cache_creation": 188.0,
+      "cache_read": 15.0,
+      "input": 150.0,
+      "output": 750.0
+    },
+    "claude-opus-4-5-20251101": {
+      "cache_creation": 938.0,
+      "cache_read": 75.0,
+      "input": 750.0,
+      "output": 3750.0
+    },
+    "claude-opus-4-6": {
+      "cache_creation": 938.0,
+      "cache_read": 75.0,
+      "input": 750.0,
+      "output": 3750.0
+    },
+    "claude-opus-4-7": {
+      "cache_creation": 938.0,
+      "cache_read": 75.0,
+      "input": 750.0,
+      "output": 3750.0
+    },
+    "claude-sonnet-4-5-20250929": {
+      "cache_creation": 563.0,
+      "cache_read": 45.0,
+      "input": 450.0,
+      "output": 2250.0
+    },
+    "claude-sonnet-4-6": {
+      "cache_creation": 563.0,
+      "cache_read": 45.0,
+      "input": 450.0,
+      "output": 2250.0
+    },
+    "cohere/command-a-03-2025": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 375.0,
+      "output": 1500.0
+    },
+    "deepseek/deepseek-chat": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 21.0,
+      "output": 42.0
+    },
+    "deepseek/deepseek-r1-0528": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 21.0,
+      "output": 42.0
+    },
+    "google/gemini-2.0-flash-001": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 15.0,
+      "output": 60.0
+    },
+    "google/gemini-2.0-flash-lite-001": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 11.0,
+      "output": 45.0
+    },
+    "google/gemini-2.5-flash": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 45.0,
+      "output": 375.0
+    },
+    "google/gemini-2.5-flash-lite": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 15.0,
+      "output": 60.0
+    },
+    "google/gemini-2.5-pro": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 188.0,
+      "output": 1500.0
+    },
+    "google/gemini-3-flash-preview": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 75.0,
+      "output": 450.0
+    },
+    "google/gemini-3.1-flash-lite-preview": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 38.0,
+      "output": 225.0
+    },
+    "google/gemini-3.1-pro-preview": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 300.0,
+      "output": 1800.0
+    },
+    "gpt-4.1-2025-04-14": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 300.0,
+      "output": 1200.0
+    },
+    "gpt-4.1-mini-2025-04-14": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 60.0,
+      "output": 240.0
+    },
+    "gpt-4o": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 375.0,
+      "output": 1500.0
+    },
+    "gpt-4o-mini": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 23.0,
+      "output": 90.0
+    },
+    "gpt-5-2025-08-07": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 188.0,
+      "output": 1500.0
+    },
+    "gpt-5-chat-latest": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 188.0,
+      "output": 1500.0
+    },
+    "gpt-5-mini-2025-08-07": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 38.0,
+      "output": 300.0
+    },
+    "gpt-5-nano-2025-08-07": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 8.0,
+      "output": 60.0
+    },
+    "gpt-5.1-2025-11-13": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 188.0,
+      "output": 1500.0
+    },
+    "gpt-5.2-2025-12-11": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 263.0,
+      "output": 2100.0
+    },
+    "llama-3.1-8b-instant": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 8.0,
+      "output": 12.0
+    },
+    "llama-3.3-70b-versatile": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 89.0,
+      "output": 119.0
+    },
+    "meta-llama/llama-4-maverick": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 75.0,
+      "output": 116.0
+    },
+    "meta-llama/llama-4-scout": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 17.0,
+      "output": 51.0
+    },
+    "mistralai/codestral-2508": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 45.0,
+      "output": 135.0
+    },
+    "mistralai/mistral-large-2512": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 300.0,
+      "output": 900.0
+    },
+    "mistralai/mistral-medium-3.1": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 60.0,
+      "output": 300.0
+    },
+    "mistralai/mistral-small-3.2-24b-instruct": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 15.0,
+      "output": 45.0
+    },
+    "moonshotai/kimi-k2-thinking": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 90.0,
+      "output": 375.0
+    },
+    "moonshotai/kimi-k2.5": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 66.0,
+      "output": 300.0
+    },
+    "moonshotai/kimi-k2.6": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 112.0,
+      "output": 698.0
+    },
+    "o3-2025-04-16": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 300.0,
+      "output": 1200.0
+    },
+    "o3-mini": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 165.0,
+      "output": 660.0
+    },
+    "openai/gpt-oss-120b": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 23.0,
+      "output": 90.0
+    },
+    "openai/gpt-oss-20b": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 11.0,
+      "output": 45.0
+    },
+    "perplexity/sonar": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 150.0,
+      "output": 150.0
+    },
+    "perplexity/sonar-deep-research": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 300.0,
+      "output": 1200.0
+    },
+    "perplexity/sonar-pro": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 450.0,
+      "output": 2250.0
+    },
+    "perplexity/sonar-reasoning-pro": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 300.0,
+      "output": 1200.0
+    },
+    "x-ai/grok-3": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 450.0,
+      "output": 2250.0
+    },
+    "x-ai/grok-4": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 450.0,
+      "output": 2250.0
+    },
+    "x-ai/grok-4-fast": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 30.0,
+      "output": 75.0
+    },
+    "x-ai/grok-4.1-fast": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 30.0,
+      "output": 75.0
+    },
+    "x-ai/grok-4.20": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 300.0,
+      "output": 900.0
+    },
+    "x-ai/grok-code-fast-1": {
+      "cache_creation": 0.0,
+      "cache_read": 0.0,
+      "input": 30.0,
+      "output": 225.0
+    }
+  }
+}

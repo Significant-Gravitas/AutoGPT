@@ -3,6 +3,7 @@ from urllib.parse import quote
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -15,7 +16,7 @@ from backend.blocks.jina._auth import (
     JinaCredentialsInput,
 )
 from backend.blocks.search import GetRequest
-from backend.data.model import SchemaField
+from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.exceptions import BlockExecutionError
 from backend.util.request import HTTPClientError, HTTPServerError, validate_url_host
 
@@ -44,6 +45,7 @@ class SearchTheWebBlock(Block, GetRequest):
             test_credentials=TEST_CREDENTIALS,
             test_output=("results", "search content"),
             test_mock={"get_request": lambda *args, **kwargs: "search content"},
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -69,6 +71,13 @@ class SearchTheWebBlock(Block, GetRequest):
                 block_name=self.name,
                 block_id=self.id,
             ) from e
+
+        # Jina Reader Search: $0.01/query on the paid tier. Fixed per-query
+        # cost; routed through COST_USD so the platform cost log records
+        # real USD spend (costMicrodollars) alongside the credit charge.
+        self.merge_stats(
+            NodeExecutionStats(provider_cost=0.01, provider_cost_type="cost_usd")
+        )
 
         # Output the search results
         yield "results", results
@@ -105,6 +114,7 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
             test_credentials=TEST_CREDENTIALS,
             test_output=("content", "scraped content"),
             test_mock={"get_request": lambda *args, **kwargs: "scraped content"},
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -128,10 +138,16 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
         try:
             content = await self.get_request(url, json=False, headers=headers)
         except HTTPClientError as e:
-            yield "error", f"Client error ({e.status_code}) fetching {input_data.url}: {e}"
+            yield (
+                "error",
+                f"Client error ({e.status_code}) fetching {input_data.url}: {e}",
+            )
             return
         except HTTPServerError as e:
-            yield "error", f"Server error ({e.status_code}) fetching {input_data.url}: {e}"
+            yield (
+                "error",
+                f"Server error ({e.status_code}) fetching {input_data.url}: {e}",
+            )
             return
         except Exception as e:
             yield "error", f"Failed to fetch {input_data.url}: {e}"

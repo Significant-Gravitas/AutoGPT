@@ -1,26 +1,18 @@
 "use client";
 
-import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
-import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
-import { toast } from "@/components/molecules/Toast/use-toast";
-import useCredits from "@/hooks/useCredits";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import { cn } from "@/lib/utils";
-import { Flask, UploadSimple } from "@phosphor-icons/react";
+import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ChatContainer } from "./components/ChatContainer/ChatContainer";
-import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
-import { CostConfirmationDialog } from "./components/CostConfirmationDialog/CostConfirmationDialog";
-import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
-import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
-import { MobileHeader } from "./components/MobileHeader/MobileHeader";
+import { parseAsString, useQueryState } from "nuqs";
+import { useState } from "react";
+import { CopilotChatHost } from "./CopilotChatHost";
+import { ContextPanelAutoOpen } from "./components/ContextPanel/ContextPanelAutoOpen";
+import { CopilotModals } from "./components/CopilotModals/CopilotModals";
+import { FileDropZone } from "./components/FileDropZone/FileDropZone";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
-import { NotificationDialog } from "./components/NotificationDialog/NotificationDialog";
-import { RateLimitResetDialog } from "./components/RateLimitResetDialog/RateLimitResetDialog";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
-import { useCopilotPage } from "./useCopilotPage";
+import { useIsMobile } from "./useIsMobile";
 
 const ArtifactPanel = dynamic(
   () =>
@@ -30,135 +22,29 @@ const ArtifactPanel = dynamic(
   { ssr: false },
 );
 
+const ContextPanel = dynamic(
+  () =>
+    import("./components/ContextPanel/ContextPanel").then(
+      (m) => m.ContextPanel,
+    ),
+  { ssr: false },
+);
+
 export function CopilotPage() {
-  const [isDragging, setIsDragging] = useState(false);
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
-  const dragCounter = useRef(0);
+  const isMobile = useIsMobile();
 
-  const handleDroppedFilesConsumed = useCallback(() => {
-    setDroppedFiles([]);
-  }, []);
-
-  function handleDragEnter(e: React.DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current += 1;
-    if (e.dataTransfer.types.includes("Files")) {
-      setIsDragging(true);
-    }
-  }
-
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-
-  function handleDragLeave(e: React.DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current -= 1;
-    if (dragCounter.current === 0) {
-      setIsDragging(false);
-    }
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current = 0;
-    setIsDragging(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      setDroppedFiles(files);
-    }
-  }
-
-  const {
-    sessionId,
-    messages,
-    status,
-    error,
-    stop,
-    isReconnecting,
-    isSyncing,
-    createSession,
-    onSend,
-    isLoadingSession,
-    isSessionError,
-    isCreatingSession,
-    isUploadingFiles,
-    isUserLoading,
-    isLoggedIn,
-    // Pagination
-    hasMoreMessages,
-    isLoadingMore,
-    loadMore,
-    // Mobile drawer
-    isMobile,
-    isDrawerOpen,
-    sessions,
-    isLoadingSessions,
-    handleOpenDrawer,
-    handleCloseDrawer,
-    handleDrawerOpenChange,
-    handleSelectSession,
-    handleNewChat,
-    // Delete functionality (available via ChatSidebar context menu on all viewports)
-    sessionToDelete,
-    isDeleting,
-    handleConfirmDelete,
-    handleCancelDelete,
-    // Historical durations for persisted timer stats
-    historicalDurations,
-    // Rate limit reset
-    rateLimitMessage,
-    dismissRateLimit,
-    pendingCostEstimate,
-    confirmCostEstimate,
-    dismissCostEstimate,
-    // Dry run session state
-    sessionDryRun,
-  } = useCopilotPage();
-
-  const {
-    data: usage,
-    isSuccess: hasUsage,
-    isError: usageError,
-  } = useGetV2GetCopilotUsage({
-    query: {
-      select: (res) => res.data as CoPilotUsageStatus,
-      refetchInterval: 30000,
-      staleTime: 10000,
-    },
-  });
-  const resetCost = usage?.reset_cost;
-
-  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
-  const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
-  const hasInsufficientCredits =
-    credits !== null && resetCost != null && credits < resetCost;
-
-  // Fall back to a toast when the credit-based reset feature is disabled or
-  // when the usage query fails (so the user still gets feedback).
-  useEffect(() => {
-    if (
-      rateLimitMessage &&
-      (usageError || (hasUsage && (resetCost ?? 0) <= 0))
-    ) {
-      toast({
-        title: "Usage limit reached",
-        description: rateLimitMessage,
-        variant: "destructive",
-      });
-      dismissRateLimit();
-    }
-  }, [rateLimitMessage, resetCost, hasUsage, usageError, dismissRateLimit]);
+  const { isUserLoading, isLoggedIn } = useAuth();
+  // Read sessionId here purely to key the chat-host subtree. The view still
+  // remounts on session switch, but the underlying AI SDK Chat runtime now
+  // lives in a per-session registry so live streams can continue in
+  // background JS state while another chat is on screen.
+  const [sessionId] = useQueryState("sessionId", parseAsString);
 
   if (isUserLoading || !isLoggedIn) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#f8f8f9]">
+      // TODO(tokens): no exact role for #F6F7FB / neutral-400
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#f6f7fb]">
         <ScaleLoader className="text-neutral-400" />
       </div>
     );
@@ -167,110 +53,77 @@ export function CopilotPage() {
   return (
     <SidebarProvider
       defaultOpen={true}
-      className="h-[calc(100vh-72px)] min-h-0"
+      // The chat column needs an explicit, viewport-bound height: it relies on
+      // a definite height so its inner `min-h-0` chain lets the messages area
+      // (not the page) absorb growth — e.g. expanding the task progress
+      // accordion above the input. The chrome's ancestors (SidebarProvider
+      // `min-h-svh` → SidebarInset `flex-1` → `section flex-1`) only set a
+      // *minimum* height, so `height: 100%` would resolve to content height
+      // and the accordion would push the input below the fold. The inset
+      // header overlays the chat (see PlatformChrome) instead of stacking
+      // above it, so the full viewport is available. `svh` keeps the input
+      // visible when mobile browser chrome is shown.
+      style={{ height: "100svh" }}
+      className="min-h-0"
     >
-      {!isMobile && <ChatSidebar />}
-      <div className="flex h-full w-full flex-row overflow-hidden">
-        <div
-          className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8f8f9] px-0"
-          onDragEnter={handleDragEnter}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
-          <NotificationBanner />
-          {/* Test mode banner: only shown when the CURRENT session is confirmed to be
-              a dry_run session via its immutable metadata. Never shown based on the
-              global isDryRun store preference alone — that only predicts future sessions
-              and would mislead users browsing non-dry-run sessions while the toggle is on.
-              The DryRunToggleButton (visible on new chats) already communicates the preference. */}
-          {sessionId && sessionDryRun && (
-            <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
-              <Flask size={13} weight="bold" />
-              Test mode — this session runs agents as simulation
-            </div>
-          )}
-          {/* Drop overlay */}
-          <div
-            className={cn(
-              "pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-violet-400 bg-violet-500/10 transition-opacity duration-150",
-              isDragging ? "opacity-100" : "opacity-0",
-            )}
-          >
-            <UploadSimple className="h-10 w-10 text-violet-500" weight="bold" />
-            <span className="text-lg font-medium text-violet-600">
-              Drop files here
-            </span>
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <ChatContainer
-              messages={messages}
-              status={status}
-              error={error}
-              sessionId={sessionId}
-              isLoadingSession={isLoadingSession}
-              isSessionError={isSessionError}
-              isCreatingSession={isCreatingSession}
-              isReconnecting={isReconnecting}
-              isSyncing={isSyncing}
-              onCreateSession={createSession}
-              onSend={onSend}
-              onStop={stop}
-              isUploadingFiles={isUploadingFiles}
-              hasMoreMessages={hasMoreMessages}
-              isLoadingMore={isLoadingMore}
-              onLoadMore={loadMore}
-              droppedFiles={droppedFiles}
-              onDroppedFilesConsumed={handleDroppedFilesConsumed}
-              historicalDurations={historicalDurations}
-            />
-          </div>
-        </div>
-        {!isMobile && isArtifactsEnabled && <ArtifactPanel />}
-      </div>
-      {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
-      {isMobile && (
-        <MobileDrawer
-          isOpen={isDrawerOpen}
-          sessions={sessions}
-          currentSessionId={sessionId}
-          isLoading={isLoadingSessions}
-          onSelectSession={handleSelectSession}
-          onNewChat={handleNewChat}
-          onClose={handleCloseDrawer}
-          onOpenChange={handleDrawerOpenChange}
-        />
-      )}
-      {/* Delete confirmation dialog - rendered at top level for proper z-index on mobile */}
-      {isMobile && (
-        <DeleteChatDialog
-          session={sessionToDelete}
-          isDeleting={isDeleting}
-          onConfirm={handleConfirmDelete}
-          onCancel={handleCancelDelete}
-        />
-      )}
-      <NotificationDialog />
-      <CostConfirmationDialog
-        estimate={pendingCostEstimate}
-        onConfirm={confirmCostEstimate}
-        onCancel={dismissCostEstimate}
+      <MainArea
+        isMobile={isMobile}
+        sessionId={sessionId}
+        droppedFiles={droppedFiles}
+        setDroppedFiles={setDroppedFiles}
       />
-      <RateLimitResetDialog
-        isOpen={!!rateLimitMessage && hasUsage && (resetCost ?? 0) > 0}
-        onClose={dismissRateLimit}
-        resetCost={resetCost ?? 0}
-        resetMessage={rateLimitMessage ?? ""}
-        isWeeklyExhausted={
-          hasUsage &&
-          usage.weekly.limit > 0 &&
-          usage.weekly.used >= usage.weekly.limit
-        }
-        hasInsufficientCredits={hasInsufficientCredits}
-        isBillingEnabled={isBillingEnabled}
-        onCreditChange={fetchCredits}
-      />
+      {isMobile && sessionId && <ContextPanel sessionId={sessionId} mobile />}
+      {isMobile && <ArtifactPanel mobile />}
+
+      <CopilotModals />
     </SidebarProvider>
+  );
+}
+
+interface MainAreaProps {
+  isMobile: boolean;
+  sessionId: string | null;
+  droppedFiles: File[];
+  setDroppedFiles: (files: File[]) => void;
+}
+
+function MainArea({
+  isMobile,
+  sessionId,
+  droppedFiles,
+  setDroppedFiles,
+}: MainAreaProps) {
+  return (
+    <div className="flex h-full w-full flex-row overflow-hidden">
+      {/* TODO(tokens): no exact role for #F6F7FB */}
+      <div className="relative flex min-w-0 flex-1 overflow-hidden bg-[#f6f7fb]">
+        <FileDropZone
+          className="relative flex min-w-0 flex-1 flex-col overflow-hidden px-0"
+          onFilesDropped={setDroppedFiles}
+        >
+          {/* max-lg:pt-16 clears the floating inset-header controls (sidebar
+              toggle + workspace-files trigger) that overlay the top-left
+              corner. */}
+          <div className="flex flex-col gap-3 px-4 pt-4 empty:hidden max-lg:pt-16">
+            <LowCreditBanner />
+            <NotificationBanner />
+          </div>
+          <CopilotChatHost
+            key={`chat-host-${sessionId ?? "new"}`}
+            droppedFiles={droppedFiles}
+            onDroppedFilesConsumed={() => setDroppedFiles([])}
+            floatingControls="newLayout"
+          />
+          {/* Owns the session-entry reset that forgets the previous chat's
+              artifact. */}
+          <ContextPanelAutoOpen
+            key={`context-auto-open-${sessionId ?? "new"}`}
+            sessionId={sessionId}
+          />
+        </FileDropZone>
+      </div>
+      {!isMobile && sessionId && <ContextPanel sessionId={sessionId} />}
+      {!isMobile && sessionId && <ArtifactPanel sessionId={sessionId} />}
+    </div>
   );
 }

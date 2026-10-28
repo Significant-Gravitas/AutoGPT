@@ -3,12 +3,6 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import {
-  ArrowSquareOutIcon,
-  CopyIcon,
-  DotsThreeOutlineVerticalIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import {
@@ -19,6 +13,13 @@ import {
   SecondaryMenuItem,
   SecondaryMenuSeparator,
 } from "./SecondaryMenu";
+import {
+  Copy01Icon,
+  Delete02Icon,
+  LinkSquare01Icon,
+  MoreVerticalIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const meta: Meta = {
   title: "Molecules/SecondaryMenu",
@@ -33,29 +34,26 @@ export const ContextMenuExample: Story = {
     <div className="flex h-96 items-center justify-center">
       <ContextMenu.Root>
         <ContextMenu.Trigger asChild>
-          <div className="flex h-32 w-64 cursor-pointer items-center justify-center rounded-lg border border-gray-300 bg-gray-50 dark:border-gray-600 dark:bg-gray-800">
+          <div className="flex h-32 w-64 cursor-pointer items-center justify-center rounded-lg border border-gray-300 bg-gray-50">
             Right-click me
           </div>
         </ContextMenu.Trigger>
         <SecondaryMenuContent>
           <SecondaryMenuItem onSelect={() => alert("Copy")}>
-            <CopyIcon size={20} className="mr-2 dark:text-gray-100" />
-            <span className="dark:text-gray-100">Copy</span>
+            <Icon icon={Copy01Icon} size={20} className="mr-2" />
+            <span>Copy</span>
           </SecondaryMenuItem>
           <SecondaryMenuItem onSelect={() => alert("Open agent")}>
-            <ArrowSquareOutIcon size={20} className="mr-2 dark:text-gray-100" />
-            <span className="dark:text-gray-100">Open agent</span>
+            <Icon icon={LinkSquare01Icon} size={20} className="mr-2" />
+            <span>Open agent</span>
           </SecondaryMenuItem>
           <SecondaryMenuSeparator />
           <SecondaryMenuItem
             variant="destructive"
             onSelect={() => alert("Delete")}
           >
-            <TrashIcon
-              size={20}
-              className="mr-2 text-red-500 dark:text-red-400"
-            />
-            <span className="dark:text-red-400">Delete</span>
+            <Icon icon={Delete02Icon} size={20} className="mr-2 text-error" />
+            <span>Delete</span>
           </SecondaryMenuItem>
         </SecondaryMenuContent>
       </ContextMenu.Root>
@@ -69,28 +67,25 @@ export const DropdownMenuExample: Story = {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="secondary" size="small">
-            <DotsThreeOutlineVerticalIcon size={16} weight="fill" />
+            <Icon icon={MoreVerticalIcon} size={16} />
           </Button>
         </DropdownMenuTrigger>
         <SecondaryDropdownMenuContent side="right" align="start">
           <SecondaryDropdownMenuItem onClick={() => alert("Copy")}>
-            <CopyIcon size={20} className="mr-2 dark:text-gray-100" />
-            <span className="dark:text-gray-100">Copy</span>
+            <Icon icon={Copy01Icon} size={20} className="mr-2" />
+            <span>Copy</span>
           </SecondaryDropdownMenuItem>
           <SecondaryDropdownMenuItem onClick={() => alert("Open agent")}>
-            <ArrowSquareOutIcon size={20} className="mr-2 dark:text-gray-100" />
-            <span className="dark:text-gray-100">Open agent</span>
+            <Icon icon={LinkSquare01Icon} size={20} className="mr-2" />
+            <span>Open agent</span>
           </SecondaryDropdownMenuItem>
           <SecondaryDropdownMenuSeparator />
           <SecondaryDropdownMenuItem
             variant="destructive"
             onClick={() => alert("Delete")}
           >
-            <TrashIcon
-              size={20}
-              className="mr-2 text-red-500 dark:text-red-400"
-            />
-            <span className="dark:text-red-400">Delete</span>
+            <Icon icon={Delete02Icon} size={20} className="mr-2 text-error" />
+            <span>Delete</span>
           </SecondaryDropdownMenuItem>
         </SecondaryDropdownMenuContent>
       </DropdownMenu>

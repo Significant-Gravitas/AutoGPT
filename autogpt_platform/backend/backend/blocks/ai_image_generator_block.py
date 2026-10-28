@@ -8,6 +8,7 @@ from replicate.helpers import FileOutput
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
@@ -184,6 +185,7 @@ class AIImageGeneratorBlock(Block):
                     "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJYgCdAEO"
                 )
             },
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def _run_client(

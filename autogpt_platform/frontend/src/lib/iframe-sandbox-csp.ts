@@ -32,6 +32,38 @@
 // changes (SRI is not possible because the JIT runtime is generated on demand).
 export const TAILWIND_CDN_URL = "https://cdn.tailwindcss.com/3.4.16";
 
+// Sandboxed srcdoc iframes without `allow-same-origin` resolve `href="#id"` links
+// against the parent's URL as base. The default click then either navigates the
+// iframe to `<parent-url>#id` (reloading our app inside the iframe) or updates
+// the parent window's hash — both of which break the artifact preview.
+//
+// This script stays inside the iframe document and handles in-page anchor
+// navigation locally by scrolling to the element with the matching id.
+export const FRAGMENT_LINK_INTERCEPTOR_SCRIPT = `<script>
+(function() {
+  if (document.__fragmentLinkInterceptor) return;
+  function handler(e) {
+    var t = e.target;
+    if (!t || typeof t.closest !== 'function') return;
+    var a = t.closest('a[href^="#"]');
+    if (!a) return;
+    var href = a.getAttribute('href');
+    if (!href || href === '#') return;
+    var id;
+    try { id = decodeURIComponent(href.slice(1)); } catch (_) { id = href.slice(1); }
+    if (!id) return;
+    var target = document.getElementById(id);
+    if (!target) return;
+    e.preventDefault();
+    if (typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+  document.__fragmentLinkInterceptor = handler;
+  document.addEventListener('click', handler);
+})();
+</script>`;
+
 /**
  * Inject content into the <head> of an HTML document string.
  * If the content has no <head> tag, wraps it in a full document skeleton.

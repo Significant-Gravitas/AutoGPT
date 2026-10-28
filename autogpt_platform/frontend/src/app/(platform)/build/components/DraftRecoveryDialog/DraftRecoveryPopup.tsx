@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { ClockCounterClockwiseIcon, XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo } from "@/lib/utils/time";
 import {
@@ -13,6 +12,8 @@ import { useDraftRecoveryPopup } from "./useDraftRecoveryPopup";
 import { Text } from "@/components/atoms/Text/Text";
 import { AnimatePresence, motion } from "framer-motion";
 import { DraftDiff } from "@/lib/dexie/draft-utils";
+import { Cancel01Icon, HistoryIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface DraftRecoveryPopupProps {
   isInitialLoadComplete: boolean;
@@ -97,23 +98,28 @@ export function DraftRecoveryPopup({
         >
           <div
             className={cn(
-              "flex items-center gap-3 rounded-xlarge border border-amber-200 bg-amber-50 px-4 py-3 shadow-lg",
+              "flex items-center gap-3 rounded-xlarge border border-warning-border bg-warning-surface px-4 py-3 shadow-lg",
             )}
           >
-            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
-              <ClockCounterClockwiseIcon className="h-5 w-5" weight="fill" />
+            <div
+              // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-amber-300 #FCD34D
+              className="flex items-center gap-2 text-warning-foreground dark:text-amber-300"
+            >
+              <Icon icon={HistoryIcon} className="h-5 w-5" />
             </div>
 
             <div className="flex flex-col">
               <Text
                 variant="small-medium"
+                // TODO(tokens): no exact role: text-amber-900 #78350F; dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-amber-100 #FEF3C7
                 className="text-amber-900 dark:text-amber-100"
               >
                 Unsaved changes found
               </Text>
               <Text
                 variant="small"
-                className="text-amber-700 dark:text-amber-400"
+                // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-amber-400 #FBBF24
+                className="text-warning-foreground dark:text-amber-400"
               >
                 {diffSummary ||
                   `${nodeCount} block${nodeCount !== 1 ? "s" : ""}, ${edgeCount} connection${edgeCount !== 1 ? "s" : ""}`}{" "}
@@ -130,7 +136,7 @@ export function DraftRecoveryPopup({
                     onClick={onLoad}
                     className="aspect-square min-w-0 p-1.5"
                   >
-                    <ClockCounterClockwiseIcon size={20} weight="fill" />
+                    <Icon icon={HistoryIcon} size={20} />
                     <span className="sr-only">Restore changes</span>
                   </Button>
                 </TooltipTrigger>
@@ -145,7 +151,7 @@ export function DraftRecoveryPopup({
                     aria-label="Discard changes"
                     className="aspect-square min-w-0 p-1.5"
                   >
-                    <XIcon size={20} />
+                    <Icon icon={Cancel01Icon} size={20} />
                     <span className="sr-only">Discard changes</span>
                   </Button>
                 </TooltipTrigger>

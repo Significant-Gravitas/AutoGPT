@@ -1,28 +1,30 @@
 "use client";
 
+import { cn } from "@/lib/utils";
+import { FormProvider } from "react-hook-form";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/__legacy__/ui/card";
+} from "@/components/atoms/Card/Card";
 import {
-  Form,
   FormControl,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/__legacy__/ui/form";
+} from "@/components/molecules/Form/Form";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "@/components/atoms/Select/components/SelectPrimitives";
 import { Button } from "@/components/atoms/Button/Button";
-import { User } from "@supabase/supabase-js";
+import { Text } from "@/components/atoms/Text/Text";
+import type { User } from "@/lib/auth/types";
 import * as React from "react";
 import { TIMEZONES } from "./helpers";
 import { useTimezoneForm } from "./useTimezoneForm";
@@ -33,7 +35,6 @@ type Props = {
 };
 
 export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
-  console.log("currentTimezone", currentTimezone);
   // If timezone is not set, try to detect it from the browser
   const effectiveTimezone = React.useMemo(() => {
     if (currentTimezone === "not-set") {
@@ -53,19 +54,33 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
   });
 
   return (
-    <Card>
+    <Card variant="outlined">
       <CardHeader>
         <CardTitle>Timezone</CardTitle>
       </CardHeader>
       <CardContent>
-        <Form {...form}>
+        <FormProvider {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
               control={form.control}
               name="timezone"
-              render={({ field }) => (
+              render={({ field, fieldState }) => (
                 <FormItem>
-                  <FormLabel>Select your timezone</FormLabel>
+                  <FormLabel
+                    // the legacy label's error dark: class, moved verbatim; DS6 (SECRT-3116) deletes it
+                    className={cn(
+                      "peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+                      fieldState.error && "dark:text-red-900",
+                    )}
+                  >
+                    <Text
+                      variant="body-medium-lh-none"
+                      as="span"
+                      tone="inherit"
+                    >
+                      Select your timezone
+                    </Text>
+                  </FormLabel>
                   <Select
                     onValueChange={field.onChange}
                     defaultValue={field.value}
@@ -83,7 +98,11 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
                       ))}
                     </SelectContent>
                   </Select>
-                  <FormMessage />
+                  <FormMessage
+                    // TODO(tokens): SECRT-3152 rare size: text-[0.8rem].
+                    // dark:text-red-900: the legacy FormMessage's, moved verbatim (DS6, SECRT-3116)
+                    className="text-[0.8rem] leading-inherit dark:text-red-900"
+                  />
                 </FormItem>
               )}
             />
@@ -91,7 +110,7 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
               {isLoading ? "Saving..." : "Save timezone"}
             </Button>
           </form>
-        </Form>
+        </FormProvider>
       </CardContent>
     </Card>
   );

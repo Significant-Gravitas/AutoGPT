@@ -17,6 +17,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -25,6 +26,7 @@ from backend.sdk import (
 )
 
 from ._config import exa
+from .helpers import merge_exa_cost
 
 # Import WebsetItemModel for use in enrichment samples
 # This is safe as websets_items doesn't import from websets_polling
@@ -108,6 +110,7 @@ class ExaWaitForWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForWebsetBlock.Input,
             output_schema=ExaWaitForWebsetBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -126,6 +129,7 @@ class ExaWaitForWebsetBlock(Block):
                     timeout=input_data.timeout,
                     poll_interval=input_data.check_interval,
                 )
+                merge_exa_cost(self, final_webset)
 
                 elapsed = time.time() - start_time
 
@@ -165,6 +169,7 @@ class ExaWaitForWebsetBlock(Block):
                 while time.time() - start_time < input_data.timeout:
                     # Get current webset status
                     webset = await aexa.websets.get(id=input_data.webset_id)
+                    merge_exa_cost(self, webset)
                     current_status = (
                         webset.status.value
                         if hasattr(webset.status, "value")
@@ -210,6 +215,7 @@ class ExaWaitForWebsetBlock(Block):
                 # Timeout reached
                 elapsed = time.time() - start_time
                 webset = await aexa.websets.get(id=input_data.webset_id)
+                merge_exa_cost(self, webset)
                 final_status = (
                     webset.status.value
                     if hasattr(webset.status, "value")
@@ -331,6 +337,7 @@ class ExaWaitForSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForSearchBlock.Input,
             output_schema=ExaWaitForSearchBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -348,6 +355,7 @@ class ExaWaitForSearchBlock(Block):
                 search = await aexa.websets.searches.get(
                     webset_id=input_data.webset_id, id=input_data.search_id
                 )
+                merge_exa_cost(self, search)
 
                 # Extract status
                 status = (
@@ -404,6 +412,7 @@ class ExaWaitForSearchBlock(Block):
             search = await aexa.websets.searches.get(
                 webset_id=input_data.webset_id, id=input_data.search_id
             )
+            merge_exa_cost(self, search)
             final_status = (
                 search.status.value
                 if hasattr(search.status, "value")
@@ -489,6 +498,7 @@ class ExaWaitForEnrichmentBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForEnrichmentBlock.Input,
             output_schema=ExaWaitForEnrichmentBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -506,6 +516,7 @@ class ExaWaitForEnrichmentBlock(Block):
                 enrichment = await aexa.websets.enrichments.get(
                     webset_id=input_data.webset_id, id=input_data.enrichment_id
                 )
+                merge_exa_cost(self, enrichment)
 
                 # Extract status
                 status = (
@@ -523,16 +534,20 @@ class ExaWaitForEnrichmentBlock(Block):
                     items_enriched = 0
 
                     if input_data.sample_results and status == "completed":
-                        sample_data, items_enriched = (
-                            await self._get_sample_enrichments(
-                                input_data.webset_id, input_data.enrichment_id, aexa
-                            )
+                        (
+                            sample_data,
+                            items_enriched,
+                        ) = await self._get_sample_enrichments(
+                            input_data.webset_id, input_data.enrichment_id, aexa
                         )
 
                     yield "enrichment_id", input_data.enrichment_id
                     yield "final_status", status
                     yield "items_enriched", items_enriched
-                    yield "enrichment_title", enrichment.title or enrichment.description or ""
+                    yield (
+                        "enrichment_title",
+                        enrichment.title or enrichment.description or "",
+                    )
                     yield "elapsed_time", elapsed
                     if input_data.sample_results:
                         yield "sample_data", sample_data
@@ -551,6 +566,7 @@ class ExaWaitForEnrichmentBlock(Block):
             enrichment = await aexa.websets.enrichments.get(
                 webset_id=input_data.webset_id, id=input_data.enrichment_id
             )
+            merge_exa_cost(self, enrichment)
             final_status = (
                 enrichment.status.value
                 if hasattr(enrichment.status, "value")
@@ -576,6 +592,7 @@ class ExaWaitForEnrichmentBlock(Block):
         """Get sample enriched data and count."""
         # Get a few items to see enrichment results using SDK
         response = await aexa.websets.items.list(webset_id=webset_id, limit=5)
+        merge_exa_cost(self, response)
 
         sample_data: list[SampleEnrichmentModel] = []
         enriched_count = 0

@@ -21,10 +21,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { DotsThreeVertical } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { CreateTemplateModal } from "../../../selected-views/SelectedRunView/components/CreateTemplateModal/CreateTemplateModal";
+import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -108,11 +109,16 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
+            // TODO(tokens): no exact role for hover:bg-gray-100 (#F3F4F6)
             className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <DotsThreeVertical className="h-5 w-5 text-gray-400" />
+            <Icon
+              // TODO(tokens): no exact role for text-gray-400 (#9CA3AF)
+              icon={MoreVerticalIcon}
+              className="h-5 w-5 text-gray-400"
+            />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

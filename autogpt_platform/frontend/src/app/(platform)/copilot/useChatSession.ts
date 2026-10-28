@@ -1,32 +1,166 @@
 import {
   getGetV2GetSessionQueryKey,
-  getGetV2ListSessionsQueryKey,
+  type postV2CreateSessionResponse,
+  useGetV2ListChatTransports,
   useGetV2GetSession,
+  useGetV2ListSessions,
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import type { CreateSessionRequest } from "@/app/api/__generated__/models/createSessionRequest";
+import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
+import { type CopilotLlmAuthSelection, useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { trackFunnel } from "@/services/experts/experts-analytics";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
-import { useEffect, useMemo, useRef } from "react";
-import { convertChatSessionMessagesToUiMessages } from "./helpers/convertChatSessionToUiMessages";
-import { resolveSessionDryRun } from "./helpers";
+import { v4 as uuidv4 } from "uuid";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  convertChatSessionMessagesToUiMessages,
+  type TurnStatsMap,
+} from "./helpers/convertChatSessionToUiMessages";
+import {
+  CREATE_SESSION_RETRY_DELAY_MS,
+  resolveSessionDryRun,
+  retryLostCreateResponse,
+} from "./helpers";
+import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
+import { getSessionSentFrom } from "./sentFrom";
+import {
+  getAvailableLLMTransports,
+  resolveCopilotLLMAuthSelection,
+} from "./helpers/copilotLlmAuth";
+import {
+  getAutopilotModeChoice,
+  useAutopilotModeStore,
+} from "./autopilotModeStore";
+import { useCopilotStreamStore } from "./copilotStreamStore";
+import { latestExpertSessionParams } from "./expertSessionQuery";
+import {
+  compareShadowWithSession,
+  setStreamShadowRate,
+} from "./stream/turnShadow";
+import { ReportedSendError } from "./helpers/reportedSendError";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
+  expertId?: string | null;
+  /** Off = keep the fresh new-task state addressed to the expert instead of
+   *  jumping into their latest thread (``/copilot?expertId=…&new=1``). */
+  adoptLatestExpertThread?: boolean;
 }
 
-export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
+interface CreateSessionBodyArgs {
+  copilotLlmAuth: CopilotLlmAuthSelection | null;
+  resolvedLLMAuth: CopilotLlmAuthSelection;
+  dryRun: boolean;
+  expertId: string | null;
+  options?: { expertKickoff?: boolean };
+}
+
+interface PendingCreate {
+  id: string;
+  request: string;
+}
+
+function createSessionData(
+  pendingCreate: { current: PendingCreate | null },
+  {
+    copilotLlmAuth,
+    resolvedLLMAuth,
+    dryRun,
+    expertId,
+    options,
+  }: CreateSessionBodyArgs,
+) {
+  const sessionData: CreateSessionRequest = {};
+  // Only an explicit choice travels. Naming the route unconditionally
+  // makes every new chat an override, which is how a connection picked
+  // once quietly became the account's default and how a default changed
+  // in Settings stopped taking effect: the server skips its own default
+  // whenever the client names one. `copilotLlmAuth` is null until the
+  // user actually picks, and null means "use whatever the server says".
+  if (copilotLlmAuth !== null) {
+    sessionData.llm_auth_provider = resolvedLLMAuth.authProvider;
+    if (resolvedLLMAuth.authProvider !== "platform") {
+      sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
+    }
+  }
+  if (dryRun) sessionData.dry_run = true;
+  if (expertId) sessionData.expert_id = expertId;
+  // Same rule as the route: only a mode the user picked travels, so a new
+  // expert thread starts on the expert's own default rather than "auto".
+  // It is part of the request, so a different pick names a new session.
+  const pickedMode = getAutopilotModeChoice(null);
+  if (pickedMode) sessionData.autopilot_mode = pickedMode;
+  // Naming the session up front lets a retry after a lost response adopt
+  // it. Kickoff is already get-or-create on the server.
+  if (options?.expertKickoff) sessionData.expert_kickoff = true;
+  else {
+    const request = JSON.stringify(sessionData);
+    if (pendingCreate.current?.request !== request) {
+      // uuidv4({}) rather than crypto.randomUUID, which is missing on plain HTTP.
+      pendingCreate.current = { id: uuidv4({}), request };
+    }
+    sessionData.session_id = pendingCreate.current.id;
+  }
+  return sessionData;
+}
+
+function createdSessionId(response: postV2CreateSessionResponse) {
+  if (response.status !== 200 || !response.data?.id) {
+    const error = new Error("Failed to create session");
+    Sentry.captureException(error, {
+      extra: { status: response.status },
+    });
+    throw error;
+  }
+  return response.data.id;
+}
+
+export function useChatSession({
+  dryRun = false,
+  expertId = null,
+  adoptLatestExpertThread = true,
+}: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
+  const copilotLlmAuth = useCopilotUIStore((state) => state.copilotLlmAuth);
+  const clearNewChatChoice = useAutopilotModeStore(
+    (state) => state.clearNewChatChoice,
+  );
+
+  // A mode picked in a new chat belongs to that composer and recipient. Once
+  // the user moves on without sending (another new chat, a different expert)
+  // the pick must not travel with them, or it would override the next
+  // expert's own default.
+  useEffect(() => {
+    if (!sessionId) clearNewChatChoice();
+  }, [sessionId, expertId, clearNewChatChoice]);
+
+  const transportQuery = useGetV2ListChatTransports({
+    query: {
+      enabled: !sessionId,
+      refetchOnWindowFocus: true,
+      staleTime: 0,
+    },
+  });
+  const chatTransports =
+    transportQuery.data?.status === 200
+      ? transportQuery.data.data.transports
+      : undefined;
 
   const sessionQuery = useGetV2GetSession(sessionId ?? "", undefined, {
     query: {
       enabled: !!sessionId,
-      staleTime: Infinity, // Manual invalidation on session switch
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       refetchOnMount: true,
+      retry: (failureCount, error) =>
+        !isDefinitiveSessionFailure(error) && failureCount < 3,
     },
   });
 
@@ -66,102 +200,251 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
     }
   }, [sessionId, queryClient]);
 
+  // Deep link /copilot?expertId=<id>: adopt the expert's latest thread. Only
+  // the mount-time expertId adopts — a recipient picked in the UI after mount
+  // must keep the fresh new-task state, not jump to the expert's old thread.
+  // The once-per-expert latch lives in the UI store, NOT in a ref: the chat
+  // host remounts on every sessionId change (CopilotPage keys the subtree),
+  // and "New Chat" clears the expertId param asynchronously via nuqs — a
+  // ref-based latch is wiped by the remount before the param clears, which
+  // bounced New Chat straight back into the adopted thread.
+  const [mountExpertId] = useState(expertId);
+  const adoptedExpertThreads = useCopilotUIStore((s) => s.adoptedExpertThreads);
+  const markExpertThreadAdopted = useCopilotUIStore(
+    (s) => s.markExpertThreadAdopted,
+  );
+  // Once the user commits to a new thread by hitting send, adoption must stop:
+  // `useSendMessage` flushes its pending first message on *any* sessionId
+  // change, so a late adoption would post that message into the old thread.
+  // The ref serves the adoption effect, the state this render's lock.
+  const sendStartedRef = useRef(false);
+  const [hasSendStarted, setHasSendStarted] = useState(false);
+  // The id the last create named, kept while every attempt lost its response
+  // so a resend of the same request adopts what that attempt may have saved.
+  const pendingCreateRef = useRef<PendingCreate | null>(null);
+  const canAdoptExpertSession =
+    adoptLatestExpertThread &&
+    !!expertId &&
+    !sessionId &&
+    expertId === mountExpertId &&
+    !adoptedExpertThreads.has(expertId);
+
+  const latestExpertSessionQuery = useGetV2ListSessions(
+    latestExpertSessionParams(expertId),
+    {
+      query: {
+        enabled: canAdoptExpertSession,
+        refetchOnWindowFocus: false,
+      },
+    },
+  );
+
+  useEffect(() => {
+    if (!canAdoptExpertSession || !expertId) return;
+    if (sendStartedRef.current) return;
+    if (latestExpertSessionQuery.data?.status !== 200) return;
+    const latest = latestExpertSessionQuery.data.data.sessions[0];
+    if (!latest) return;
+    markExpertThreadAdopted(expertId);
+    setSessionId(latest.id);
+  }, [
+    canAdoptExpertSession,
+    expertId,
+    latestExpertSessionQuery.data,
+    markExpertThreadAdopted,
+    setSessionId,
+  ]);
+
+  // True while the deep-link adoption could still navigate away from the
+  // new-task screen. Callers disable the composer for that window so a draft
+  // (or a send) can't be swallowed by the navigation. Keyed on `isLoading`
+  // rather than `isPending` so a failing request releases the composer instead
+  // of locking it for the length of the retry schedule; `sendStartedRef` is
+  // what actually guarantees a send is never misrouted.
+  const isAdoptingExpertSession =
+    canAdoptExpertSession &&
+    !hasSendStarted &&
+    latestExpertSessionQuery.isLoading;
+
+  const freshSessionData =
+    !!sessionId && sessionQuery.data?.status === 200 && !sessionQuery.isFetching
+      ? sessionQuery.data.data
+      : null;
+
+  const streamShadowRate = useGetFlag(Flag.COPILOT_STREAM_SHADOW);
+  useEffect(() => {
+    setStreamShadowRate(streamShadowRate);
+  }, [streamShadowRate]);
+
+  useEffect(() => {
+    if (sessionId && freshSessionData) {
+      compareShadowWithSession(sessionId, freshSessionData);
+    }
+  }, [sessionId, freshSessionData]);
+
   // Expose active_stream info so the caller can trigger manual resume
   // after hydration completes (rather than relying on AI SDK's built-in
   // resume which fires before hydration).
-  const hasActiveStream = useMemo(() => {
-    if (sessionQuery.isFetching) return false;
-    if (sessionQuery.data?.status !== 200) return false;
-    return !!sessionQuery.data.data.active_stream;
-  }, [sessionQuery.data, sessionQuery.isFetching, sessionId]);
+  const hasActiveStream = !!freshSessionData?.active_stream;
+
+  // Backend-reported start time of the active turn. Used to seed the
+  // elapsed-time counter on mount so restored sessions show honest
+  // "time since the backend started the turn" rather than "time since
+  // this mount subscribed to the SSE".
+  const activeStreamStartedAt =
+    freshSessionData?.active_stream?.started_at ?? null;
 
   // Pagination metadata from the initial page load
-  const hasMoreMessages = useMemo(() => {
-    if (sessionQuery.data?.status !== 200) return false;
-    return !!sessionQuery.data.data.has_more_messages;
-  }, [sessionQuery.data]);
+  const hasMoreMessages = !!freshSessionData?.has_more_messages;
 
-  const oldestSequence = useMemo(() => {
-    if (sessionQuery.data?.status !== 200) return null;
-    return sessionQuery.data.data.oldest_sequence ?? null;
-  }, [sessionQuery.data]);
+  const oldestSequence = freshSessionData?.oldest_sequence ?? null;
 
   // Memoize so the effect in useCopilotPage doesn't infinite-loop on a new
   // array reference every render. Re-derives only when query data changes.
   // When the session is complete (no active stream), mark dangling tool
   // calls as completed so stale spinners don't persist after refresh.
-  const { hydratedMessages, historicalDurations } = useMemo(() => {
-    if (sessionQuery.data?.status !== 200 || !sessionId)
+  // Kept as a memo with the compiler on: effects depend on this array, and
+  // useHydrateOnStreamEnd compares it by reference to tell a fresh refetch
+  // from the snapshot it saw when the stream ended.
+  const { hydratedMessages, historicalTurnStats, activeTurnStartMessageId } =
+    useMemo(() => {
+      if (!freshSessionData || !sessionId)
+        return {
+          hydratedMessages: undefined,
+          historicalTurnStats: new Map() as TurnStatsMap,
+          activeTurnStartMessageId: null,
+        };
+      const result = convertChatSessionMessagesToUiMessages(
+        sessionId,
+        freshSessionData.messages ?? [],
+        {
+          isComplete: !hasActiveStream,
+          activeTurnStartedAt: activeStreamStartedAt,
+        },
+      );
       return {
-        hydratedMessages: undefined,
-        historicalDurations: new Map<string, number>(),
+        hydratedMessages: result.messages,
+        historicalTurnStats: result.stats,
+        activeTurnStartMessageId: result.activeTurnStartId,
       };
-    const result = convertChatSessionMessagesToUiMessages(
-      sessionId,
-      sessionQuery.data.data.messages ?? [],
-      { isComplete: !hasActiveStream },
-    );
-    return {
-      hydratedMessages: result.messages,
-      historicalDurations: result.durations,
-    };
-  }, [sessionQuery.data, sessionId, hasActiveStream]);
+    }, [freshSessionData, sessionId, hasActiveStream, activeStreamStartedAt]);
 
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
     usePostV2CreateSession({
       mutation: {
-        onSuccess: (response) => {
-          if (response.status === 200 && response.data?.id) {
-            setSessionId(response.data.id);
-            queryClient.invalidateQueries({
-              queryKey: getGetV2ListSessionsQueryKey(),
-            });
-          }
-        },
+        retry: retryLostCreateResponse,
+        retryDelay: CREATE_SESSION_RETRY_DELAY_MS,
       },
     });
 
-  async function createSession() {
+  async function createSession(options?: { expertKickoff?: boolean }) {
     if (sessionId) return sessionId;
-    try {
-      const body = dryRun ? { data: { dry_run: true } } : { data: null };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await (createSessionMutation as any)(body);
-      if (response.status !== 200 || !response.data?.id) {
-        const error = new Error("Failed to create session");
-        Sentry.captureException(error, {
-          extra: { status: response.status },
-        });
-        toast({
-          variant: "destructive",
-          title: "Could not start a new chat session",
-          description: "Please try again.",
-        });
-        throw error;
-      }
-      return response.data.id;
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === "Failed to create session"
-      ) {
-        throw error; // already handled above
-      }
-      Sentry.captureException(error);
+    // Latched for the life of this mount, including on failure: once the user
+    // has asked for a new thread, auto-navigating them into an old one is
+    // never the right recovery.
+    sendStartedRef.current = true;
+    setHasSendStarted(true);
+    const transports =
+      chatTransports ??
+      (transportQuery.isError ? undefined : await loadChatTransports());
+    const resolvedLLMAuth = resolveCopilotLLMAuthSelection(
+      transports,
+      copilotLlmAuth,
+    );
+    const availableTransports = getAvailableLLMTransports(transports);
+    if (transports === undefined) {
       toast({
         variant: "destructive",
-        title: "Could not start a new chat session",
-        description: "Please try again.",
+        title: "Could not check AI connections",
+        description: "Refresh the page and try again.",
       });
+      throw new ReportedSendError("Could not load AI connections");
+    }
+    if (availableTransports.length === 0) {
+      // NoAIConnectionNotice above the composer says how to fix this and
+      // stays put; the toast only marks that this send went nowhere.
+      toast({
+        variant: "destructive",
+        title: "No AI connection is set up",
+        description:
+          "Your message is back in the composer. See the notice above it for how to connect a model.",
+      });
+      throw new ReportedSendError("No AI connection is set up");
+    }
+    if (!resolvedLLMAuth) {
+      toast({
+        variant: "destructive",
+        title: "Choose an AI connection",
+        description:
+          "Select the connection your expert should use before starting a new task.",
+      });
+      throw new ReportedSendError("AI connection selection required");
+    }
+    if (
+      copilotLlmAuth !== null &&
+      copilotLlmAuth.authProvider !== "platform" &&
+      resolvedLLMAuth.authProvider === "platform"
+    ) {
+      toast({
+        title: "AI connections changed",
+        description:
+          "The next task will use the available connection when it starts.",
+      });
+    }
+
+    try {
+      const response = await createSessionMutation({
+        data: createSessionData(pendingCreateRef, {
+          copilotLlmAuth,
+          resolvedLLMAuth,
+          dryRun,
+          expertId,
+          options,
+        }),
+      });
+      const newSessionId = createdSessionId(response);
+      pendingCreateRef.current = null;
+      useCopilotStreamStore
+        .getState()
+        .bindPendingFirstSendToSession(newSessionId);
+      useAutopilotModeStore.getState().bindNewChatToSession(newSessionId);
+      setSessionId(newSessionId);
+      if (expertId) {
+        trackFunnel("expert_thread_created", { expert_id: expertId });
+      }
+      queryClient.invalidateQueries({
+        queryKey: SESSION_LIST_QUERY_KEY,
+      });
+      return newSessionId;
+    } catch (error) {
+      if (!(error instanceof TypeError)) pendingCreateRef.current = null;
+      // The caller owns the one toast for this failure (see
+      // toastSendFailure); toasting here as well stacked two contradictory
+      // messages. A paywall is an account state, not a fault.
+      if (
+        !isPaywallError(error) &&
+        !(
+          error instanceof Error && error.message === "Failed to create session"
+        )
+      ) {
+        Sentry.captureException(error);
+      }
       throw error;
     }
+  }
+
+  // A send typed before the connection list arrives waits for it instead of
+  // being refused; `cancelRefetch: false` joins the request already in flight.
+  async function loadChatTransports() {
+    const { data } = await transportQuery.refetch({ cancelRefetch: false });
+    return data?.status === 200 ? data.data.transports : undefined;
   }
 
   // Raw messages from the initial page — exposed for cross-page
   // tool output matching by useLoadMoreMessages.
   const rawSessionMessages =
-    sessionQuery.data?.status === 200
-      ? ((sessionQuery.data.data.messages ?? []) as unknown[])
+    freshSessionData?.messages != null
+      ? ((freshSessionData.messages ?? []) as unknown[])
       : [];
 
   // The actual dry_run value stored in the session's metadata, read directly
@@ -171,25 +454,97 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
   // Design intent: the global isDryRun store is only used when creating NEW
   // sessions. Once a session exists, its dry_run flag is immutable and should
   // be read from here rather than from the store, which may have changed.
-  const sessionDryRun = useMemo(
-    () => resolveSessionDryRun(sessionQuery.data),
-    [sessionQuery.data],
-  );
+  const sessionDryRun = freshSessionData
+    ? resolveSessionDryRun(sessionQuery.data)
+    : false;
+
+  const sessionChatStatus = (
+    freshSessionData as { chat_status?: string } | undefined
+  )?.chat_status;
+
+  const storedLlmAuthProvider =
+    sessionQuery.data?.status === 200
+      ? sessionQuery.data.data.metadata?.llm_auth_provider
+      : null;
+  const sessionLlmAuthProvider:
+    | "platform"
+    | "codex"
+    | "microsoft_365_copilot"
+    | null = sessionId
+    ? storedLlmAuthProvider === "codex" ||
+      storedLlmAuthProvider === "microsoft_365_copilot"
+      ? storedLlmAuthProvider
+      : "platform"
+    : null;
+  const sessionLlmCredentialId =
+    sessionId && sessionQuery.data?.status === 200
+      ? (sessionQuery.data.data.metadata?.llm_credential_id ?? null)
+      : null;
+  // What the AutoPilot budget follows: the session's own connection, or for a
+  // new chat the one it will start on (null until that is known).
+  const chatLlmAuthProvider = sessionId
+    ? sessionLlmAuthProvider
+    : (resolveCopilotLLMAuthSelection(chatTransports, copilotLlmAuth)
+        ?.authProvider ?? null);
+
+  // The expert this session actually belongs to, straight off the session
+  // response rather than the URL — the ?expertId= param only describes what
+  // the NEXT session will be and is absent on most ways of reaching a thread.
+  // Read from the query rather than `freshSessionData` (which nulls out during
+  // background refetches) so the expert header doesn't blink.
+  const sessionExpertId =
+    sessionQuery.data?.status === 200
+      ? (sessionQuery.data.data.expert_id ?? null)
+      : null;
+
+  const sessionAutopilotMode =
+    sessionQuery.data?.status === 200
+      ? (sessionQuery.data.data.metadata?.autopilot_mode ?? null)
+      : null;
+
+  const sessionSentFrom =
+    sessionQuery.data?.status === 200
+      ? getSessionSentFrom(sessionQuery.data.data.metadata)
+      : null;
 
   return {
     sessionId,
     setSessionId,
+    /** The session GET as last fetched; null while a fetch is in flight. */
+    sessionView: freshSessionData,
+    sessionLlmAuthProvider,
+    sessionLlmCredentialId,
+    chatLlmAuthProvider,
+    sessionExpertId,
+    isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
-    historicalDurations,
+    historicalTurnStats,
+    activeTurnStartMessageId,
     hasActiveStream,
+    activeStreamStartedAt,
     hasMoreMessages,
     oldestSequence,
+    // Only treat the session as loading during the INITIAL fetch (no cached
+    // data yet). Background refetches keep the input enabled — otherwise a
+    // fill+Enter race can trigger handleSend while ``disabled`` briefly
+    // flips back to ``true`` mid-refetch, silently dropping the message.
     isLoadingSession: sessionQuery.isLoading,
     isSessionError: sessionQuery.isError,
+    // Another account's session and a missing one are the same 404 by design.
+    isSessionNotFound: isDefinitiveSessionFailure(sessionQuery.error),
     createSession,
     isCreatingSession,
     refetchSession: sessionQuery.refetch,
     sessionDryRun,
+    sessionChatStatus,
+    sessionSentFrom,
+    sessionAutopilotMode,
   };
+}
+
+function isDefinitiveSessionFailure(error: unknown) {
+  return (
+    error instanceof ApiError && (error.status === 403 || error.status === 404)
+  );
 }

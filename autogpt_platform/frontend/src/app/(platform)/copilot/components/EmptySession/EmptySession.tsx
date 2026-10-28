@@ -1,118 +1,226 @@
 "use client";
 
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
-import { useGetV2GetSuggestedPrompts } from "@/app/api/__generated__/endpoints/chat/chat";
-import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Text } from "@/components/atoms/Text/Text";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
+import { tourTarget } from "@/lib/tour-targets";
+import { useFirstRunTourAutoStart } from "@/app/(platform)/components/FirstRunTour/useFirstRunTourAutoStart";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import type { ComponentProps, ReactNode } from "react";
+import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
+import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
+import { RecipientChip } from "../ChatInput/components/RecipientChip";
+import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
+import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
+import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
+import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
+import { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
+import { EmptyHero } from "./components/EmptyHero";
+import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
+import { GreetingLoader } from "./components/GreetingLoader";
 import {
+  getExpertInputPlaceholder,
   getGreetingName,
-  getInputPlaceholder,
-  getSuggestionThemes,
+  getIntroLine,
 } from "./helpers";
-import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
+import { useHomeComposer } from "./useHomeComposer";
+import { useRecipientPicker } from "./useRecipientPicker";
 
 interface Props {
-  inputLayoutId: string;
   isCreatingSession: boolean;
   onCreateSession: () => void | Promise<string>;
-  onSend: (message: string, files?: File[]) => void | Promise<void>;
+  onSend: (
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+  ) => void | Promise<void>;
+  /** Sends a suggested task, resolving to the chat it started. */
+  onStartTask?: (message: string) => Promise<string | undefined>;
   isUploadingFiles?: boolean;
   droppedFiles?: File[];
   onDroppedFilesConsumed?: () => void;
+  isInteractionLocked?: boolean;
+  isKickoffStarting?: boolean;
+  expertName?: string;
+  /** Expert the new conversation will address; scopes workspace-file pickers. */
+  expertId?: string | null;
+  /** Starts voice mode from the + menu. Absent when the flag is off. */
+  voiceMode?: ComponentProps<typeof ChatInput>["voiceMode"];
+  /** The chat's approval-mode selector. Absent when the flag is off. */
+  modeSelector?: ReactNode;
+  /** Out of AutoPilot budget with a reset ahead: the composer sets the new
+   *  chat's first message to send at the reset. */
+  atReset?: ComponentProps<typeof ChatInput>["atReset"];
+  /** Shown above the composer while sending is paused. */
+  usageNotice?: ReactNode;
+  /** The running-low hint, shown under the composer. */
+  lowHint?: ReactNode;
 }
 
 export function EmptySession({
-  inputLayoutId,
   isCreatingSession,
   onSend,
+  onStartTask,
   isUploadingFiles,
   droppedFiles,
   onDroppedFilesConsumed,
+  isInteractionLocked,
+  isKickoffStarting,
+  expertName,
+  expertId = null,
+  voiceMode,
+  modeSelector,
+  atReset,
+  usageNotice,
+  lowHint,
 }: Props) {
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const greetingName = getGreetingName(user);
+  const intro = useOnboardingIntroCard();
+  useFirstRunTourAutoStart({
+    isPending: intro.isFirstRunPending,
+    onFinished: intro.finishFirstRun,
+  });
 
-  const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
-    useGetV2GetSuggestedPrompts({
-      query: { staleTime: Infinity, gcTime: Infinity, refetchOnMount: false },
-    });
-  const themes = getSuggestionThemes(
-    suggestedPromptsResponse?.status === 200
-      ? suggestedPromptsResponse.data.themes
-      : undefined,
+  const {
+    options,
+    recipient,
+    selectedExpert,
+    isLoadingRecipient,
+    selectRecipient,
+  } = useRecipientPicker();
+  const isComposerDisabled = isCreatingSession || !!isInteractionLocked;
+  const suggestions = useSuggestedTasks({
+    surface: intro.isVisible ? "intro" : "home",
+    onSend: onStartTask ?? onSend,
+    enabled: !intro.isAwaitingGreeting,
+  });
+  const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
+  const recipientPicker = (
+    <RecipientChip
+      recipient={recipient}
+      options={options}
+      isLoading={isLoadingRecipient}
+      onSelect={selectRecipient}
+    />
   );
 
-  const [inputPlaceholder, setInputPlaceholder] = useState(
-    getInputPlaceholder(),
-  );
+  const { inputPlaceholder } = useHomeComposer({
+    enabled:
+      !intro.isVisible && !intro.isAwaitingGreeting && !isKickoffStarting,
+    greetingPath: intro.isVisible ? intro.path : null,
+  });
 
-  useEffect(() => {
-    function handleResize() {
-      setInputPlaceholder(getInputPlaceholder(window.innerWidth));
-    }
-    handleResize();
-    const mql = window.matchMedia("(max-width: 500px)");
-    mql.addEventListener("change", handleResize);
-    const mql2 = window.matchMedia("(max-width: 1080px)");
-    mql2.addEventListener("change", handleResize);
-    return () => {
-      mql.removeEventListener("change", handleResize);
-      mql2.removeEventListener("change", handleResize);
-    };
-  }, []);
+  if (isKickoffStarting) {
+    return <ExpertKickoffLoader expertName={expertName} />;
+  }
 
   return (
-    <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[#f8f8f9] px-0 py-5 md:px-6 md:py-10">
+    <div className="relative flex h-full flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
+      {/* Which connection the new chat runs on, kept out of the composer and
+          in the page corner, level with the inset header's controls. */}
+      <div className="absolute right-3 top-3 z-30 empty:hidden">
+        <ConnectionPicker className="ml-0" />
+      </div>
       <motion.div
-        className="w-full max-w-[52rem] text-center"
+        className={cn("relative z-10 w-full text-center", "max-w-[1120px]")}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="mx-auto max-w-[52rem]">
-          <Text variant="h3" className="mb-1 !text-[1.375rem] text-zinc-700">
-            Hey, <span className="text-violet-600">{greetingName}</span>
-          </Text>
-          <Text variant="h3" className="mb-8 !font-normal">
-            Tell me about your work — I&apos;ll find what to automate.
-          </Text>
+        <div className="mx-auto max-w-[52rem] pt-6">
+          {intro.isVisible ? (
+            <OnboardingIntroCard
+              name={greetingName}
+              greeting={intro.greeting}
+              suggestions={suggestions}
+              transcript={intro.transcript}
+              disabled={isComposerDisabled || !!atReset}
+            />
+          ) : intro.isAwaitingGreeting ? (
+            // For as long as the pipeline is still writing, which can be
+            // behind the first-run walkthrough. The orb it renders is the same
+            // element the card above puts in its heading, so the swap
+            // moves it there rather than replacing it.
+            <GreetingLoader />
+          ) : (
+            <EmptyHero
+              name={greetingName}
+              intro={introLine}
+              recipientPicker={recipientPicker}
+              isExpert={Boolean(selectedExpert)}
+              expertRole={selectedExpert?.role}
+            />
+          )}
 
-          <div className="mb-6">
-            <motion.div
-              layoutId={inputLayoutId}
-              transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
-              className="w-full px-2"
-            >
-              <ChatInput
-                inputId="chat-input-empty"
-                onSend={onSend}
-                disabled={isCreatingSession}
-                isUploadingFiles={isUploadingFiles}
-                placeholder={inputPlaceholder}
-                className="w-full"
-                droppedFiles={droppedFiles}
-                onDroppedFilesConsumed={onDroppedFilesConsumed}
-              />
-            </motion.div>
-          </div>
+          {/* Held back while the greeting is on its way — it enters with
+              the greeting page instead of sitting under a bare hero. */}
+          {!intro.isAwaitingGreeting && (
+            <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
+              <div
+                {...tourTarget("composer")}
+                className={cn(
+                  "text-left transition-colors duration-300 ease-out",
+                  // The greeting's prompt card bleeds 1.25rem past the text
+                  // (-mx-5); the composer stretches the same amount so their
+                  // edges line up. No chrome of its own: the composer card is
+                  // the only outline on screen. The regular hero keeps it
+                  // centered.
+                  intro.isVisible
+                    ? "-mx-5 max-w-[50.5rem]"
+                    : "mx-auto w-full max-w-[42rem]",
+                )}
+              >
+                {usageNotice && (
+                  <div className="mb-3 text-left">{usageNotice}</div>
+                )}
+                <ChatInput
+                  inputId="chat-input-empty"
+                  draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
+                  stacked
+                  voiceMode={voiceMode}
+                  modeSelector={modeSelector}
+                  onSend={onSend}
+                  disabled={isComposerDisabled}
+                  atReset={atReset}
+                  isUploadingFiles={isUploadingFiles}
+                  placeholder={
+                    atReset
+                      ? SEND_AT_RESET_PLACEHOLDER
+                      : selectedExpert
+                        ? getExpertInputPlaceholder(selectedExpert.name)
+                        : inputPlaceholder
+                  }
+                  className={cn(
+                    "w-full max-md:[&_[data-slot=input-group-control]]:min-h-16",
+                    "[&_textarea]:min-h-[4.5rem]",
+                  )}
+                  droppedFiles={droppedFiles}
+                  onDroppedFilesConsumed={onDroppedFilesConsumed}
+                  expertId={expertId}
+                  expertName={expertName}
+                  assistantName={selectedExpert?.name ?? expertName ?? null}
+                  recipientPicker={
+                    intro.isVisible ? recipientPicker : undefined
+                  }
+                />
+                {lowHint}
+              </div>
+            </div>
+          )}
+
+          {/* These prompts are Otto's, so they go while an expert is the
+              recipient. */}
+          {!intro.isVisible && !intro.isAwaitingGreeting && !selectedExpert && (
+            <SuggestedTasksBlock
+              suggestions={suggestions}
+              disabled={isComposerDisabled || !!atReset}
+            />
+          )}
         </div>
 
-        {isLoadingPrompts ? (
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            {Array.from({ length: 4 }, (_, i) => (
-              <Skeleton key={i} className="h-10 w-28 shrink-0 rounded-full" />
-            ))}
-          </div>
-        ) : (
-          <SuggestionThemes
-            themes={themes}
-            onSend={onSend}
-            disabled={isCreatingSession}
-          />
-        )}
+        {!intro.isVisible && !intro.isAwaitingGreeting && <HomeRecap />}
       </motion.div>
     </div>
   );

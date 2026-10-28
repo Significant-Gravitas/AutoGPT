@@ -70,9 +70,16 @@ class RunAgentRequest(BaseModel):
     )
 
 
-def _create_ephemeral_session(user_id: str) -> ChatSession:
-    """Create an ephemeral session for stateless API requests."""
-    return ChatSession.new(user_id, dry_run=False)
+def _create_ephemeral_session(
+    user_id: str, organization_id: str | None = None
+) -> ChatSession:
+    """Create an ephemeral session for stateless API requests.
+
+    ``organization_id`` should be the API key's org so tools launched
+    through this session attribute to the key's tenant (mirrors the
+    external ``execute_graph`` route).
+    """
+    return ChatSession.new(user_id, dry_run=False, organization_id=organization_id)
 
 
 @tools_router.post(
@@ -93,7 +100,7 @@ async def find_agent(
     Returns:
         List of matching agents or no results response
     """
-    session = _create_ephemeral_session(auth.user_id)
+    session = _create_ephemeral_session(auth.user_id, auth.organization_id)
     result = await find_agent_tool._execute(
         user_id=auth.user_id,
         session=session,
@@ -133,7 +140,7 @@ async def run_agent(
         - execution_started: If agent was run or scheduled successfully
         - error: If something went wrong
     """
-    session = _create_ephemeral_session(auth.user_id)
+    session = _create_ephemeral_session(auth.user_id, auth.organization_id)
     result = await run_agent_tool._execute(
         user_id=auth.user_id,
         session=session,

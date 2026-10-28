@@ -1,6 +1,5 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CaretDownIcon, CaretRightIcon, InfoIcon } from "@phosphor-icons/react";
 import { RJSFSchema } from "@rjsf/utils";
 import { useState } from "react";
 
@@ -16,6 +15,12 @@ import { getTypeDisplayInfo } from "./helpers";
 import { BlockUIType } from "../../types";
 import { cn } from "@/lib/utils";
 import { useBrokenOutputs } from "./useBrokenOutputs";
+import {
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  InformationCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const OutputHandler = ({
   outputSchema,
@@ -100,13 +105,14 @@ export const OutputHandler = ({
               {hasNestedProperties && (
                 <button
                   onClick={() => toggleObjectExpanded(fullKey)}
+                  // TODO(tokens): no exact role: text-slate-500 #64748B, hover:text-slate-700 #475263
                   className="flex items-center text-slate-500 hover:text-slate-700"
                   aria-label={isExpanded ? "Collapse" : "Expand"}
                 >
                   {isExpanded ? (
-                    <CaretDownIcon size={12} weight="bold" />
+                    <Icon icon={ArrowDown01Icon} size={12} />
                   ) : (
-                    <CaretRightIcon size={12} weight="bold" />
+                    <Icon icon={ArrowRight01Icon} size={12} />
                   )}
                 </button>
               )}
@@ -119,7 +125,7 @@ export const OutputHandler = ({
                         aria-label="info"
                         tabIndex={0}
                       >
-                        <InfoIcon />
+                        <Icon icon={InformationCircleIcon} />
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>{fieldSchema?.description}</TooltipContent>
@@ -127,21 +133,19 @@ export const OutputHandler = ({
                 </TooltipProvider>
               )}
               <Text
-                variant="body"
+                variant={isBroken ? "body-line-through" : "body"}
                 className={cn(
+                  // TODO(tokens): no exact role: text-slate-700 #475263
                   "text-slate-700",
-                  isBroken && "text-red-500 line-through",
+                  isBroken && "text-error",
                 )}
               >
                 {fieldTitle}
               </Text>
               <Text
-                variant="small"
+                variant={isBroken ? "small-line-through" : "small"}
                 as="span"
-                className={cn(
-                  colorClass,
-                  isBroken && "!text-red-500 line-through",
-                )}
+                className={cn(colorClass, isBroken && "!text-error")}
               >
                 ({displayType})
               </Text>
@@ -172,20 +176,21 @@ export const OutputHandler = ({
   };
 
   return (
-    <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-zinc-200 bg-white py-3.5">
+    <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-border-base bg-surface py-3.5">
       <Button
         variant="ghost"
         className="mr-4 h-fit min-w-0 p-0 hover:border-transparent hover:bg-transparent"
         onClick={() => setIsOutputVisible(!isOutputVisible)}
       >
         <Text
-          variant="body"
-          className="flex items-center gap-2 !font-semibold text-slate-700"
+          variant="body-semibold"
+          // TODO(tokens): no exact role: text-slate-700 #475263
+          className="flex items-center gap-2 text-slate-700"
         >
           Output{" "}
-          <CaretDownIcon
+          <Icon
+            icon={ArrowDown01Icon}
             size={16}
-            weight="bold"
             className={`transition-transform ${isOutputVisible ? "rotate-180" : ""}`}
           />
         </Text>

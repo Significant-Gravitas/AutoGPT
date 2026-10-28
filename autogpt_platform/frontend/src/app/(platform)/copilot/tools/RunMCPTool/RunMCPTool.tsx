@@ -1,6 +1,4 @@
 "use client";
-
-import { PlugsConnectedIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -16,6 +14,12 @@ import {
   serverHost,
   type MCPErrorOutput,
 } from "./helpers";
+import {
+  isUnparseableJsonOutput,
+  reportCorruptedToolOutput,
+} from "../../helpers/toolOutput";
+import { PlugSocketIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export interface RunMCPToolPart {
   type: string;
@@ -35,8 +39,15 @@ export function RunMCPToolComponent({ part }: Props) {
     part.state === "input-streaming" || part.state === "input-available";
 
   const output = getRunMCPToolOutput(part);
+  const isCorrupted =
+    part.state === "output-available" &&
+    !output &&
+    isUnparseableJsonOutput(part.output);
+  if (isCorrupted) reportCorruptedToolOutput(part.toolCallId, part.type);
   const isError =
-    part.state === "output-error" || (!!output && isErrorOutput(output));
+    part.state === "output-error" ||
+    isCorrupted ||
+    (!!output && isErrorOutput(output));
 
   const setupRequirementsOutput =
     part.state === "output-available" &&
@@ -60,14 +71,22 @@ export function RunMCPToolComponent({ part }: Props) {
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
-          text={text}
-          className={isError ? "text-red-500" : undefined}
+          text={isCorrupted ? "Tool result could not be displayed" : text}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 
+      {isCorrupted && (
+        <p className="mt-1 text-sm text-error">
+          The result data arrived corrupted, so any sign-in or setup card it
+          contained can&apos;t be shown. Ask your expert to retry this step.
+        </p>
+      )}
+
       {/* Error detail card */}
       {errorOutput && (
-        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        // TODO(tokens): no exact role for red-200 #FAC5C5
+        <div className="mt-2 rounded-lg border border-red-200 bg-error-surface px-3 py-2 text-sm text-error-foreground">
           {errorOutput.message}
           {errorOutput.error && (
             <pre className="mt-1 whitespace-pre-wrap break-words text-xs opacity-80">
@@ -81,14 +100,14 @@ export function RunMCPToolComponent({ part }: Props) {
       {setupRequirementsOutput && (
         <MCPSetupCard
           output={setupRequirementsOutput}
-          retryInstruction="I've connected the MCP server credentials. Please retry run_mcp_tool with the same server_url and arguments."
+          retryInstruction="I've connected the integration. Please retry the same call."
         />
       )}
 
       {/* Tool execution result */}
       {mcpToolOutput && (
         <ToolAccordion
-          icon={<PlugsConnectedIcon size={32} weight="light" />}
+          icon={<Icon icon={PlugSocketIcon} size={32} />}
           title={mcpToolOutput.tool_name}
           description={`from ${serverHost(mcpToolOutput.server_url)}`}
         >

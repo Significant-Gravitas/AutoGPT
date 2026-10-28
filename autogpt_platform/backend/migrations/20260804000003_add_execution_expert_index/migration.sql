@@ -1,0 +1,11 @@
+-- CreateIndex
+-- In its own migration so the build never runs under the ACCESS EXCLUSIVE
+-- lock 20260804000000 takes to add the column. Run inline, the plain form
+-- holds a SHARE lock on AgentGraphExecution — the largest table in the
+-- schema — for the whole scan: reads continue, writes block. Postgres
+-- rejects CREATE INDEX CONCURRENTLY inside a transaction block and Prisma
+-- wraps each migration in one, so deployments that can't tolerate the
+-- write pause should build the CONCURRENTLY equivalent out-of-band once
+-- 20260804000000 has landed the column; IF NOT EXISTS then makes this
+-- statement a no-op.
+CREATE INDEX IF NOT EXISTS "AgentGraphExecution_expertId_createdAt_idx" ON "AgentGraphExecution"("expertId", "createdAt");

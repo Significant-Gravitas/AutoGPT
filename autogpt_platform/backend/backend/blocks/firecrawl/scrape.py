@@ -3,10 +3,12 @@ from typing import Any
 from firecrawl import FirecrawlApp
 
 from backend.blocks.firecrawl._api import ScrapeFormat
+from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -67,6 +69,7 @@ class FirecrawlScrapeBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -80,6 +83,11 @@ class FirecrawlScrapeBlock(Block):
             only_main_content=input_data.only_main_content,
             max_age=input_data.max_age,
             wait_for=input_data.wait_for,
+        )
+        # Firecrawl bills 1 credit (~$0.001) per scraped page; scrape is a
+        # single-page operation.
+        self.merge_stats(
+            NodeExecutionStats(provider_cost=0.001, provider_cost_type="cost_usd")
         )
         yield "data", scrape_result
 

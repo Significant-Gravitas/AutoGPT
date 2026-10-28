@@ -1,0 +1,1067 @@
+"""Tests for the copilot pending-messages buffer.
+
+Uses a fake async Redis client so the tests don't require a real Redis
+instance (the backend test suite's DB/Redis fixtures are heavyweight
+and pull in the full app startup).
+"""
+
+import asyncio
+import json
+from typing import Any
+from unittest.mock import AsyncMock
+
+import pytest
+
+from backend.copilot import pending_messages as pm_module
+from backend.copilot.gate.held import HeldResult
+from backend.copilot.pending_messages import (
+    MAX_PENDING_MESSAGES,
+    PendingMessage,
+    PendingMessageContext,
+    accept_client_message,
+    claim_client_message,
+    clear_pending_messages_unsafe,
+    client_message_state,
+    drain_and_format_for_injection,
+    drain_pending_for_persist,
+    drain_pending_messages,
+    format_pending_as_followup,
+    format_pending_as_user_message,
+    peek_pending_count,
+    peek_pending_messages,
+    push_pending_message,
+    release_client_message,
+    stash_pending_for_persist,
+)
+from backend.copilot.tool_image import ToolImage
+
+# ── Fake Redis ──────────────────────────────────────────────────────
+
+
+class _FakeRedis:
+    def __init__(self) -> None:
+        # Values are ``str | bytes`` because real redis-py returns
+        # bytes when ``decode_responses=False``; the drain path must
+        # handle both and our tests exercise both.
+        self.lists: dict[str, list[str | bytes]] = {}
+        self.strings: dict[str, str] = {}
+        self.ttls: dict[str, int | None] = {}
+        self.published: list[tuple[str, str]] = []
+
+    async def rpush(self, key: str, *values: Any) -> int:
+        lst = self.lists.setdefault(key, [])
+        lst.extend(values)
+        return len(lst)
+
+    async def ltrim(self, key: str, start: int, stop: int) -> None:
+        lst = self.lists.get(key, [])
+        # Redis LTRIM stop is inclusive; -1 means the last element.
+        if stop == -1:
+            self.lists[key] = lst[start:]
+        else:
+            self.lists[key] = lst[start : stop + 1]
+
+    async def expire(self, key: str, seconds: int) -> int:
+        # Fake doesn't enforce TTL — just acknowledge.
+        return 1
+
+    async def publish(self, channel: str, payload: str) -> int:
+        self.published.append((channel, payload))
+        return 1
+
+    async def execute_command(self, *args: Any) -> Any:
+        # Minimal handler for the sharded SPUBLISH call made by
+        # push_pending_message. Routing semantics are irrelevant here —
+        # we just record the publish for assertion.
+        if args and args[0] == "SPUBLISH":
+            _, channel, payload = args
+            self.published.append((channel, payload))
+            return 1
+        raise NotImplementedError(f"fake execute_command does not handle {args[0]!r}")
+
+    async def lpop(self, key: str, count: int) -> list[str | bytes] | None:
+        lst = self.lists.get(key)
+        if not lst:
+            return None
+        popped = lst[:count]
+        self.lists[key] = lst[count:]
+        return popped
+
+    async def llen(self, key: str) -> int:
+        return len(self.lists.get(key, []))
+
+    async def lrange(self, key: str, start: int, stop: int) -> list[str | bytes]:
+        lst = self.lists.get(key, [])
+        # Redis LRANGE stop is inclusive; -1 means the last element.
+        if stop == -1:
+            return list(lst[start:])
+        return list(lst[start : stop + 1])
+
+    async def delete(self, key: str) -> int:
+        if key in self.lists:
+            del self.lists[key]
+            return 1
+        return int(self.strings.pop(key, None) is not None)
+
+    async def set(
+        self, key: str, value: str, nx: bool = False, ex: int | None = None
+    ) -> bool | None:
+        if nx and key in self.strings:
+            return None
+        self.strings[key] = value
+        self.ttls[key] = ex
+        return True
+
+    async def get(self, key: str) -> str | None:
+        return self.strings.get(key)
+
+    async def eval(
+        self,
+        script: str,
+        numkeys: int,
+        key: str,
+        *args: Any,
+    ) -> int | list[str | bytes]:
+        if "LRANGE" in script:
+            current = self.lists.get(key, [])[: len(args)]
+            decoded = [
+                item.decode() if isinstance(item, bytes) else item for item in current
+            ]
+            if decoded != list(args):
+                return []
+            return await self.lpop(key, len(args)) or []
+        expected, new, ttl_seconds, or_missing = args
+        current = self.strings.get(key)
+        if current != expected and not (current is None and or_missing == "1"):
+            return 0
+        if new:
+            self.strings[key] = new
+            self.ttls[key] = int(ttl_seconds)
+        else:
+            self.strings.pop(key, None)
+        return 1
+
+    async def exists(self, key: str) -> int:
+        return int(key in self.strings or key in self.lists)
+
+    def pipeline(self, transaction: bool = True) -> "_FakePipeline":
+        # Returns a fake pipeline that records ops and replays them in
+        # order on ``execute()``.  Used by ``capped_rpush`` (push_pending_message)
+        # and ``incr_with_ttl`` (call-rate check) via MULTI/EXEC.
+        return _FakePipeline(self)
+
+    async def incr(self, key: str) -> int:
+        # Used by incr_with_ttl's pipeline.
+        current = int(self.lists.get(key, [0])[0]) if self.lists.get(key) else 0
+        current += 1
+        # We abuse the same lists dict for simple counters — store [count].
+        self.lists[key] = [str(current)]
+        return current
+
+
+class _FakePipeline:
+    """Async pipeline shim matching the redis-py MULTI/EXEC surface."""
+
+    def __init__(self, parent: "_FakeRedis") -> None:
+        self._parent = parent
+        self._ops: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
+
+    # Each method just records the op; dispatching happens in execute().
+    def rpush(self, key: str, *values: Any) -> "_FakePipeline":
+        self._ops.append(("rpush", (key, *values), {}))
+        return self
+
+    def ltrim(self, key: str, start: int, stop: int) -> "_FakePipeline":
+        self._ops.append(("ltrim", (key, start, stop), {}))
+        return self
+
+    def expire(self, key: str, seconds: int, **kw: Any) -> "_FakePipeline":
+        self._ops.append(("expire", (key, seconds), kw))
+        return self
+
+    def llen(self, key: str) -> "_FakePipeline":
+        self._ops.append(("llen", (key,), {}))
+        return self
+
+    def incr(self, key: str) -> "_FakePipeline":
+        self._ops.append(("incr", (key,), {}))
+        return self
+
+    async def execute(self) -> list[Any]:
+        results: list[Any] = []
+        for name, args, _kw in self._ops:
+            fn = getattr(self._parent, name)
+            results.append(await fn(*args))
+        return results
+
+    # Support `async with pipeline() as pipe:` too.
+    async def __aenter__(self) -> "_FakePipeline":
+        return self
+
+    async def __aexit__(self, *a: Any) -> None:
+        return None
+
+
+@pytest.fixture()
+def fake_redis(monkeypatch: pytest.MonkeyPatch) -> _FakeRedis:
+    redis = _FakeRedis()
+
+    async def _get_redis_async() -> _FakeRedis:
+        return redis
+
+    monkeypatch.setattr(pm_module, "get_redis_async", _get_redis_async)
+    return redis
+
+
+# ── Basic push / drain ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_push_and_drain_single_message(fake_redis: _FakeRedis) -> None:
+    length = await push_pending_message("sess1", PendingMessage(content="hello"))
+    assert length == 1
+    assert await peek_pending_count("sess1") == 1
+
+    drained = await drain_pending_messages("sess1")
+    assert len(drained) == 1
+    assert drained[0].content == "hello"
+    assert await peek_pending_count("sess1") == 0
+
+
+@pytest.mark.asyncio
+async def test_push_and_drain_round_trips_metadata(fake_redis: _FakeRedis) -> None:
+    """Sender provenance rides the Redis payload so the row persisted at the
+    other end can say where the message came from."""
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": None}
+    await push_pending_message(
+        "sess-meta", PendingMessage(content="hello", metadata=provenance)
+    )
+    await push_pending_message("sess-meta", PendingMessage(content="typed"))
+
+    drained = await drain_pending_messages("sess-meta")
+    assert [m.metadata for m in drained] == [provenance, None]
+
+
+def test_pending_message_metadata_survives_json() -> None:
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": "expert-a"}
+    payload = PendingMessage(content="hi", metadata=provenance).model_dump_json()
+    assert PendingMessage.model_validate_json(payload).metadata == provenance
+    # A human message carries none, and a pre-metadata payload still parses.
+    assert PendingMessage(content="hi").metadata is None
+    assert PendingMessage.model_validate_json('{"content": "old"}').metadata is None
+
+
+@pytest.mark.asyncio
+async def test_a_long_held_result_requeued_into_the_buffer_drains_whole(
+    fake_redis: _FakeRedis,
+) -> None:
+    """A rolled-back save re-queues held results here; one past a typed
+    follow-up's 32,000 characters must still drain, as its action already ran."""
+    result = HeldResult(content="x" * 40_000, metadata={"held_call": {"r": "1"}})
+    await push_pending_message("sess-held", result)
+
+    drained = await drain_pending_messages("sess-held")
+
+    assert len(drained) == 1
+    assert isinstance(drained[0], HeldResult)
+    assert drained[0].content == result.content
+
+
+@pytest.mark.asyncio
+async def test_push_and_drain_preserves_order(fake_redis: _FakeRedis) -> None:
+    for i in range(3):
+        await push_pending_message("sess2", PendingMessage(content=f"msg {i}"))
+
+    drained = await drain_pending_messages("sess2")
+    assert [m.content for m in drained] == ["msg 0", "msg 1", "msg 2"]
+
+
+@pytest.mark.asyncio
+async def test_drain_empty_returns_empty_list(fake_redis: _FakeRedis) -> None:
+    assert await drain_pending_messages("nope") == []
+
+
+@pytest.mark.asyncio
+async def test_drain_defaults_id_for_legacy_entries(fake_redis: _FakeRedis) -> None:
+    """Entries written before ``PendingMessage.id`` existed are still sitting
+    in Redis when the new worker rolls out; they must validate (with a fresh
+    id) instead of being dropped as malformed."""
+    fake_redis.lists["copilot:pending:{legacy}"] = [
+        json.dumps({"content": "queued before the deploy"})
+    ]
+
+    drained = await drain_pending_messages("legacy")
+
+    assert [m.content for m in drained] == ["queued before the deploy"]
+    assert drained[0].id
+
+
+# ── Buffer cap ──────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_cap_drops_oldest_when_exceeded(fake_redis: _FakeRedis) -> None:
+    # Push MAX_PENDING_MESSAGES + 3 messages
+    for i in range(MAX_PENDING_MESSAGES + 3):
+        await push_pending_message("sess3", PendingMessage(content=f"m{i}"))
+
+    # Buffer should be clamped to MAX
+    assert await peek_pending_count("sess3") == MAX_PENDING_MESSAGES
+
+    drained = await drain_pending_messages("sess3")
+    assert len(drained) == MAX_PENDING_MESSAGES
+    # Oldest 3 dropped — we should only see m3..m(MAX+2)
+    assert drained[0].content == "m3"
+    assert drained[-1].content == f"m{MAX_PENDING_MESSAGES + 2}"
+
+
+# ── Clear ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_clear_removes_buffer(fake_redis: _FakeRedis) -> None:
+    await push_pending_message("sess4", PendingMessage(content="x"))
+    await push_pending_message("sess4", PendingMessage(content="y"))
+    await clear_pending_messages_unsafe("sess4")
+    assert await peek_pending_count("sess4") == 0
+
+
+@pytest.mark.asyncio
+async def test_clear_is_idempotent(fake_redis: _FakeRedis) -> None:
+    # Clearing an already-empty buffer should not raise
+    await clear_pending_messages_unsafe("sess_empty")
+    await clear_pending_messages_unsafe("sess_empty")
+
+
+# ── Publish hook ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_push_publishes_notification(fake_redis: _FakeRedis) -> None:
+    await push_pending_message("sess5", PendingMessage(content="hi"))
+    assert ("copilot:pending:notify:sess5", "1") in fake_redis.published
+
+
+# ── Format helper ───────────────────────────────────────────────────
+
+
+def test_format_pending_plain_text() -> None:
+    msg = PendingMessage(content="just text")
+    out = format_pending_as_user_message(msg)
+    assert out == {"role": "user", "content": "just text"}
+
+
+def test_format_pending_with_context_url() -> None:
+    msg = PendingMessage(
+        content="see this page",
+        context=PendingMessageContext(url="https://example.com"),
+    )
+    out = format_pending_as_user_message(msg)
+    content = out["content"]
+    assert out["role"] == "user"
+    assert "see this page" in content
+    # The URL should appear verbatim in the [Page URL: ...] block.
+    assert "[Page URL: https://example.com]" in content
+
+
+def test_format_pending_with_file_ids() -> None:
+    msg = PendingMessage(content="look here", file_ids=["a", "b"])
+    out = format_pending_as_user_message(msg)
+    assert "file_id=a" in out["content"]
+    assert "file_id=b" in out["content"]
+
+
+def test_format_pending_with_all_fields() -> None:
+    """All fields (content + context url/content + file_ids) should all appear."""
+    msg = PendingMessage(
+        content="summarise this",
+        context=PendingMessageContext(
+            url="https://example.com/page",
+            content="headline text",
+        ),
+        file_ids=["f1", "f2"],
+    )
+    out = format_pending_as_user_message(msg)
+    body = out["content"]
+    assert out["role"] == "user"
+    assert "summarise this" in body
+    assert "[Page URL: https://example.com/page]" in body
+    assert "[Page content]\nheadline text" in body
+    assert "file_id=f1" in body
+    assert "file_id=f2" in body
+
+
+# ── Followup block caps ────────────────────────────────────────────
+
+
+def test_format_followup_single_message() -> None:
+    out = format_pending_as_followup([PendingMessage(content="hello")])
+    assert "<user_follow_up>" in out
+    assert "</user_follow_up>" in out
+    assert "Message 1:\nhello" in out
+
+
+def test_format_followup_escapes_the_tags_a_message_quotes() -> None:
+    out = format_pending_as_followup(
+        [PendingMessage(content="keep <user_follow_up> and </user_follow_up> rows")]
+    )
+    assert out.count("<user_follow_up>") == 1
+    assert out.count("</user_follow_up>") == 1
+    assert "keep &lt;user_follow_up&gt; and &lt;/user_follow_up&gt; rows" in out
+
+
+def test_format_followup_total_cap_drops_overflow() -> None:
+    """10 × 2 KB messages must truncate past the total cap (~6 KB) with a
+    marker indicating how many were dropped."""
+    messages = [PendingMessage(content="A" * 2_000) for _ in range(10)]
+    out = format_pending_as_followup(messages)
+    # Block stays within the total cap (plus a little wrapper overhead).
+    # The body alone is capped at 6 KB; we allow generous overhead for the
+    # <user_follow_up> wrapper + headers.
+    assert len(out) < 8_000
+    assert "more message(s) truncated" in out
+    # The first message at least must be present.
+    assert "Message 1:" in out
+
+
+def test_format_followup_total_cap_marker_counts_dropped() -> None:
+    """The marker should name the exact number of dropped messages."""
+    # Each 3 KB message gets capped to 2 KB first; with ~2 KB per entry and a
+    # 6 KB total cap, roughly two entries fit and the rest are dropped.
+    messages = [PendingMessage(content="X" * 3_000) for _ in range(5)]
+    out = format_pending_as_followup(messages)
+    assert "Message 1:" in out
+    assert "Message 2:" in out
+    # Message 3 would push total past 6 KB; marker should report exactly how
+    # many were left out (here: messages 3, 4, 5 → 3 dropped).
+    assert "[3 more message(s) truncated]" in out
+
+
+def test_format_followup_empty_returns_empty_string() -> None:
+    assert format_pending_as_followup([]) == ""
+
+
+# ── Malformed payload handling ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_drain_skips_malformed_entries(
+    fake_redis: _FakeRedis,
+) -> None:
+    # Seed the fake with a mix of valid and malformed payloads
+    fake_redis.lists[pm_module._buffer_key("bad")] = [
+        json.dumps({"content": "valid"}),
+        "{not valid json",
+        json.dumps({"content": "also valid", "file_ids": ["a"]}),
+    ]
+    drained = await drain_pending_messages("bad")
+    assert len(drained) == 2
+    assert drained[0].content == "valid"
+    assert drained[1].content == "also valid"
+
+
+@pytest.mark.asyncio
+async def test_drain_decodes_bytes_payloads(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Real redis-py returns ``bytes`` when ``decode_responses=False``.
+
+    Seed the fake with bytes values to exercise the ``decode("utf-8")``
+    branch in ``drain_pending_messages`` so a regression there doesn't
+    slip past CI.
+    """
+    fake_redis.lists[pm_module._buffer_key("bytes_sess")] = [
+        json.dumps({"content": "from bytes"}).encode("utf-8"),
+    ]
+    drained = await drain_pending_messages("bytes_sess")
+    assert len(drained) == 1
+    assert drained[0].content == "from bytes"
+
+
+@pytest.mark.asyncio
+async def test_peek_decodes_bytes_payloads(
+    fake_redis: _FakeRedis,
+) -> None:
+    """``peek_pending_messages`` uses the same ``_decode_redis_item`` helper
+    as the drain path.  Seed with bytes to guard against regression.
+    """
+    fake_redis.lists[pm_module._buffer_key("peek_bytes_sess")] = [
+        json.dumps({"content": "peeked from bytes"}).encode("utf-8"),
+    ]
+    peeked = await peek_pending_messages("peek_bytes_sess")
+    assert len(peeked) == 1
+    assert peeked[0].content == "peeked from bytes"
+    # peek must NOT consume the item
+    assert fake_redis.lists[pm_module._buffer_key("peek_bytes_sess")] != []
+
+
+# ── Concurrency ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_concurrent_push_and_drain(fake_redis: _FakeRedis) -> None:
+    """Two pushes fired concurrently should both land; a concurrent drain
+    should see at least one of them (the fake serialises, so it will
+    always see both, but we exercise the code path either way)."""
+    await asyncio.gather(
+        push_pending_message("sess_conc", PendingMessage(content="a")),
+        push_pending_message("sess_conc", PendingMessage(content="b")),
+    )
+    drained = await drain_pending_messages("sess_conc")
+    assert len(drained) >= 1
+    contents = {m.content for m in drained}
+    assert contents <= {"a", "b"}
+
+
+# ── Publish error path ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_push_survives_publish_failure(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A publish error must not propagate — the buffer is still authoritative."""
+
+    async def _fail_publish(channel: str, payload: str) -> int:
+        raise RuntimeError("redis publish down")
+
+    monkeypatch.setattr(fake_redis, "publish", _fail_publish)
+
+    length = await push_pending_message("sess_pub_err", PendingMessage(content="ok"))
+    assert length == 1
+    drained = await drain_pending_messages("sess_pub_err")
+    assert len(drained) == 1
+    assert drained[0].content == "ok"
+
+
+# ── peek_pending_messages ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_peek_pending_messages_returns_all_without_consuming(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Peek returns all queued messages and leaves the buffer intact."""
+    await push_pending_message("peek1", PendingMessage(content="first"))
+    await push_pending_message("peek1", PendingMessage(content="second"))
+
+    peeked = await peek_pending_messages("peek1")
+    assert len(peeked) == 2
+    assert peeked[0].content == "first"
+    assert peeked[1].content == "second"
+
+    # Buffer must not be consumed — count still 2
+    assert await peek_pending_count("peek1") == 2
+    drained = await drain_pending_messages("peek1")
+    assert len(drained) == 2
+
+
+@pytest.mark.asyncio
+async def test_peek_pending_messages_empty_buffer(fake_redis: _FakeRedis) -> None:
+    """Peek on a missing key returns an empty list without raising."""
+    result = await peek_pending_messages("no_such_session")
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_peek_pending_messages_decodes_bytes_payloads(
+    fake_redis: _FakeRedis,
+) -> None:
+    """peek_pending_messages decodes bytes entries the same way drain does."""
+    fake_redis.lists[pm_module._buffer_key("peek_bytes")] = [
+        json.dumps({"content": "from bytes"}).encode("utf-8"),
+    ]
+    peeked = await peek_pending_messages("peek_bytes")
+    assert len(peeked) == 1
+    assert peeked[0].content == "from bytes"
+
+
+@pytest.mark.asyncio
+async def test_peek_pending_messages_skips_malformed_entries(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Malformed entries are skipped and valid ones are returned."""
+    fake_redis.lists[pm_module._buffer_key("peek_bad")] = [
+        json.dumps({"content": "valid peek"}),
+        "{bad json",
+        json.dumps({"content": "also valid peek"}),
+    ]
+    peeked = await peek_pending_messages("peek_bad")
+    assert len(peeked) == 2
+    assert peeked[0].content == "valid peek"
+    assert peeked[1].content == "also valid peek"
+
+
+# ── Persist queue (mid-turn follow-up UI bubble hand-off) ───────────
+
+
+@pytest.mark.asyncio
+async def test_stash_for_persist_enqueues_and_drain_pops_in_order(
+    fake_redis: _FakeRedis,
+) -> None:
+    """stash_pending_for_persist writes messages under the persist key;
+    drain_pending_for_persist LPOPs them in enqueue order."""
+    msgs = [
+        PendingMessage(content="first mid-turn follow-up"),
+        PendingMessage(content="second"),
+    ]
+    await stash_pending_for_persist("sess-persist", msgs)
+
+    # Stored under the distinct persist key, NOT the primary buffer.
+    assert "copilot:pending-persist:sess-persist" in fake_redis.lists
+    assert pm_module._buffer_key("sess-persist") not in fake_redis.lists
+
+    drained = await drain_pending_for_persist("sess-persist")
+    assert len(drained) == 2
+    assert drained[0].content == "first mid-turn follow-up"
+    assert drained[1].content == "second"
+
+    # Queue is empty after drain.
+    assert await drain_pending_for_persist("sess-persist") == []
+
+
+@pytest.mark.asyncio
+async def test_stash_for_persist_empty_list_is_noop(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Passing an empty list must NOT create a Redis key (would leak
+    empty persist entries and require a drain for no reason)."""
+    await stash_pending_for_persist("sess-noop", [])
+    assert "copilot:pending-persist:sess-noop" not in fake_redis.lists
+
+
+@pytest.mark.asyncio
+async def test_drain_pending_for_persist_missing_key_returns_empty(
+    fake_redis: _FakeRedis,
+) -> None:
+    assert await drain_pending_for_persist("never-stashed") == []
+
+
+@pytest.mark.asyncio
+async def test_drain_pending_for_persist_skips_malformed(
+    fake_redis: _FakeRedis,
+) -> None:
+    fake_redis.lists["copilot:pending-persist:bad"] = [
+        json.dumps({"content": "good one"}),
+        "not json",
+        json.dumps({"content": "another good one"}),
+    ]
+    result = await drain_pending_for_persist("bad")
+    assert [m.content for m in result] == ["good one", "another good one"]
+
+
+@pytest.mark.asyncio
+async def test_persist_queue_isolated_from_primary_buffer(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Draining the persist queue must NOT touch the primary pending
+    buffer (and vice versa) — they serve different lifecycles."""
+    # Seed the primary buffer with one entry.
+    await push_pending_message("sess-iso", PendingMessage(content="primary"))
+    # Stash a separate entry on the persist queue.
+    await stash_pending_for_persist("sess-iso", [PendingMessage(content="persist")])
+
+    drained_persist = await drain_pending_for_persist("sess-iso")
+    assert [m.content for m in drained_persist] == ["persist"]
+
+    # Primary buffer untouched.
+    assert await peek_pending_count("sess-iso") == 1
+    drained_primary = await drain_pending_messages("sess-iso")
+    assert [m.content for m in drained_primary] == ["primary"]
+
+
+@pytest.mark.asyncio
+async def test_stash_for_persist_swallows_redis_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A broken Redis during stash must not raise — Claude has already
+    seen the follow-up via tool output; the only fallout is a missing
+    UI bubble, which we log and move on."""
+
+    async def _broken_redis() -> Any:
+        raise ConnectionError("redis down")
+
+    monkeypatch.setattr(pm_module, "get_redis_async", _broken_redis)
+
+    # Must NOT raise.
+    await stash_pending_for_persist("sess-broken", [PendingMessage(content="lost")])
+
+
+# ── drain_and_format_for_injection: shared entry point ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_drain_and_format_for_injection_happy_path(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Queued messages drain into a ready-to-inject <user_follow_up> block
+    AND are stashed on the persist queue for UI row hand-off."""
+    await push_pending_message("sess-share", PendingMessage(content="do X also"))
+
+    result = await drain_and_format_for_injection("sess-share", log_prefix="[TEST]")
+
+    assert "<user_follow_up>" in result
+    assert "do X also" in result
+    # Primary buffer drained.
+    assert await peek_pending_count("sess-share") == 0
+    # Persist queue got a copy for the UI.
+    persisted = await drain_pending_for_persist("sess-share")
+    assert len(persisted) == 1
+    assert persisted[0].content == "do X also"
+
+
+@pytest.mark.asyncio
+async def test_drain_and_format_for_injection_empty_returns_empty(
+    fake_redis: _FakeRedis,
+) -> None:
+    assert await drain_and_format_for_injection("sess-empty", log_prefix="[TEST]") == ""
+
+
+@pytest.mark.asyncio
+async def test_drain_and_format_for_injection_swallows_redis_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _broken() -> Any:
+        raise ConnectionError("down")
+
+    monkeypatch.setattr(pm_module, "get_redis_async", _broken)
+
+    # Must NOT raise — broken Redis becomes "nothing to inject".
+    assert (
+        await drain_and_format_for_injection("sess-broken", log_prefix="[TEST]") == ""
+    )
+
+
+@pytest.mark.asyncio
+async def test_drain_and_format_for_injection_missing_session_id() -> None:
+    assert await drain_and_format_for_injection("", log_prefix="[TEST]") == ""
+
+
+async def test_text_hook_leaves_image_and_later_messages_in_order(fake_redis):
+    image = PendingMessage(
+        content="Approved image",
+        model_image=ToolImage(mime_type="image/png", data_base64="cGl4ZWxz"),
+    )
+    for message in [
+        PendingMessage(content="before"),
+        image,
+        PendingMessage(content="after"),
+    ]:
+        await push_pending_message("images", message)
+    result = await drain_and_format_for_injection("images", log_prefix="test")
+    assert "before" in result and "after" not in result
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    remaining = await drain_pending_messages("images")
+    assert [message.content for message in remaining] == ["Approved image", "after"]
+    assert remaining[0].model_image == image.model_image
+
+
+@pytest.mark.parametrize("malformed", ["not JSON", '{"model_image":"invalid"}'])
+async def test_text_hook_drops_corrupt_prefix_without_consuming_images(
+    fake_redis, malformed
+):
+    image = PendingMessage(
+        content="Approved image",
+        model_image=ToolImage(mime_type="image/png", data_base64="cGl4ZWxz"),
+    )
+    before = PendingMessage(content="before")
+    after = PendingMessage(content="after")
+    await fake_redis.rpush(
+        pm_module._buffer_key("images"),
+        malformed,
+        before.model_dump_json(),
+        image.model_dump_json(),
+        after.model_dump_json(),
+    )
+
+    result = await drain_and_format_for_injection("images", log_prefix="test")
+    assert "before" in result and "after" not in result
+    assert await peek_pending_count("images") == 2
+    assert await drain_pending_for_persist("images") == [before]
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    assert await drain_pending_messages("images") == [image, after]
+
+
+async def test_text_hook_redis_error_does_not_drop_the_queue(fake_redis, monkeypatch):
+    await push_pending_message("images", PendingMessage(content="before"))
+    monkeypatch.setattr(
+        fake_redis, "eval", AsyncMock(side_effect=ConnectionError("offline"))
+    )
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    assert [message.content for message in await drain_pending_messages("images")] == [
+        "before"
+    ]
+
+
+async def test_text_hook_does_not_pop_a_prefix_another_consumer_changed(
+    fake_redis, monkeypatch
+):
+    await push_pending_message("images", PendingMessage(content="before"))
+    original_eval = fake_redis.eval
+
+    async def concurrent_drain(script, numkeys, key, *args):
+        await fake_redis.lpop(key, 1)
+        await push_pending_message("images", PendingMessage(content="new"))
+        return await original_eval(script, numkeys, key, *args)
+
+    monkeypatch.setattr(fake_redis, "eval", concurrent_drain)
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    assert [message.content for message in await drain_pending_messages("images")] == [
+        "new"
+    ]
+
+
+# ── Cluster-slot colocation regression ───────────────────────────────
+# The gated-rpush Lua script in `capped_rpush_if_hash_field` touches both
+# the session-meta hash (`stream_registry._get_session_meta_key`) and the
+# pending buffer list (`_buffer_key`) atomically. Redis Cluster requires
+# every key referenced by a multi-key Lua script to hash to the same slot,
+# so both keys must share a hash tag (the `{...}` substring Redis uses for
+# slot calculation). Without this, the EVAL returns `CROSSSLOT keys in
+# request` once cluster mode is active.
+
+
+def _redis_keyslot(key: str) -> int:
+    """Compute the Redis Cluster slot for ``key`` using CRC16-XMODEM mod 16384.
+
+    Mirrors the algorithm in redis-py's ``RedisCluster.keyslot`` and the
+    Redis spec — extracts the first ``{...}`` substring as the hash tag,
+    falls back to the whole key when no tag is present.
+    """
+    start = key.find("{")
+    if start != -1:
+        end = key.find("}", start + 1)
+        if end > start + 1:
+            key = key[start + 1 : end]
+    crc = 0
+    poly = 0x1021
+    for byte in key.encode():
+        crc ^= byte << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ poly) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+    return crc % 16384
+
+
+def test_buffer_and_session_meta_keys_share_cluster_slot() -> None:
+    """Regression: pending-buffer key + session-meta key must hash to the
+    same Redis Cluster slot, otherwise the gated-rpush Lua script returns
+    CROSSSLOT once cluster mode is enabled."""
+    # Late import so the test doesn't pull stream_registry's heavy module
+    # graph (it transitively wires the AppService client) at file load.
+    from backend.copilot.stream_registry import _get_session_meta_key
+
+    for session_id in [
+        "sess-abcdef-123",
+        "0eb0aae8-6926-4b50-97af-72840841dc70",
+        "x",
+    ]:
+        buf = pm_module._buffer_key(session_id)
+        meta = _get_session_meta_key(session_id)
+        assert "{" in buf and "}" in buf, f"_buffer_key missing hash tag: {buf!r}"
+        assert (
+            "{" in meta and "}" in meta
+        ), f"_get_session_meta_key missing hash tag: {meta!r}"
+        assert _redis_keyslot(buf) == _redis_keyslot(meta), (
+            f"CROSSSLOT regression: {buf!r} (slot {_redis_keyslot(buf)}) "
+            f"!= {meta!r} (slot {_redis_keyslot(meta)})"
+        )
+
+
+# ── Client message claims (SECRT-2695) ──────────────────────────────
+
+
+@pytest.fixture()
+def short_claim_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pm_module, "_CLIENT_MESSAGE_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(pm_module, "_CLIENT_MESSAGE_POLL_SECONDS", 0.01)
+
+
+@pytest.mark.asyncio
+async def test_client_message_claim_is_granted_once(fake_redis: _FakeRedis) -> None:
+    """A retransmit of an accepted send must find the id already taken."""
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    await accept_client_message("sess-1", "msg-a", "first")
+    assert await claim_client_message("sess-1", "msg-a", "copy") == "accepted"
+    assert await client_message_state("sess-1", "msg-a") == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_client_message_reservation_is_short_and_acceptance_long(
+    fake_redis: _FakeRedis,
+) -> None:
+    """A request that dies before settling its send must not block the id
+    for the hour an accepted send is remembered."""
+    key = pm_module._client_message_key("sess-1", "msg-a")
+
+    await claim_client_message("sess-1", "msg-a", "first")
+    assert fake_redis.ttls[key] == pm_module._CLIENT_MESSAGE_RESERVE_TTL_SECONDS
+    await accept_client_message("sess-1", "msg-a", "first")
+    assert fake_redis.ttls[key] == pm_module._PENDING_TTL_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_client_message_claims_are_per_id_and_session(
+    fake_redis: _FakeRedis,
+) -> None:
+    assert await claim_client_message("sess-1", "msg-a", "o1") == "claimed"
+    assert await claim_client_message("sess-1", "msg-b", "o2") == "claimed"
+    assert await claim_client_message("sess-2", "msg-a", "o3") == "claimed"
+
+
+@pytest.mark.asyncio
+async def test_released_client_message_can_be_claimed_again(
+    fake_redis: _FakeRedis,
+) -> None:
+    """A refused send drops its claim so the same id can land on retry."""
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    await release_client_message("sess-1", "msg-a", "first")
+    assert await client_message_state("sess-1", "msg-a") is None
+    assert await claim_client_message("sess-1", "msg-a", "retry") == "claimed"
+
+
+@pytest.mark.asyncio
+async def test_lapsed_claimant_cannot_settle_its_successors_claim(
+    fake_redis: _FakeRedis,
+) -> None:
+    """The first request outlived its reservation and another took the id
+    over: the first can neither release nor accept the successor's claim."""
+    key = pm_module._client_message_key("sess-1", "msg-a")
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    del fake_redis.strings[key]  # the reservation expired
+    assert await claim_client_message("sess-1", "msg-a", "successor") == "claimed"
+
+    await release_client_message("sess-1", "msg-a", "first")
+    await accept_client_message("sess-1", "msg-a", "first")
+
+    assert fake_redis.strings[key] == "reserved:successor"
+
+
+@pytest.mark.asyncio
+async def test_lapsed_claimant_still_records_its_accepted_send(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Nobody took the id over, so the send is marked accepted anyway."""
+    key = pm_module._client_message_key("sess-1", "msg-a")
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    del fake_redis.strings[key]  # the reservation expired
+
+    await accept_client_message("sess-1", "msg-a", "first")
+
+    assert await client_message_state("sess-1", "msg-a") == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_accepting_a_claim_finishes_when_the_request_is_cancelled(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The send already landed, so a cancelled request must still record it:
+    a reservation left to lapse would let a retry send it again."""
+    key = pm_module._client_message_key("sess-1", "msg-a")
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    accepting = asyncio.Event()
+    finish = asyncio.Event()
+    settle = fake_redis.eval
+
+    async def slow_eval(*args: Any) -> int:
+        accepting.set()
+        await finish.wait()
+        return await settle(*args)
+
+    monkeypatch.setattr(fake_redis, "eval", slow_eval)
+    request = asyncio.create_task(accept_client_message("sess-1", "msg-a", "first"))
+    await accepting.wait()
+
+    request.cancel()
+    await asyncio.sleep(0)
+    finish.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request
+    assert fake_redis.strings[key] == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_accepting_a_claim_finishes_when_the_request_is_cancelled_twice(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second cancellation while the accept is finishing must not cut it
+    short either, or the reservation is left to lapse."""
+    key = pm_module._client_message_key("sess-1", "msg-a")
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    accepting = asyncio.Event()
+    finish = asyncio.Event()
+    settle = fake_redis.eval
+
+    async def slow_eval(*args: Any) -> int:
+        accepting.set()
+        await finish.wait()
+        return await settle(*args)
+
+    monkeypatch.setattr(fake_redis, "eval", slow_eval)
+    request = asyncio.create_task(accept_client_message("sess-1", "msg-a", "first"))
+    await accepting.wait()
+
+    request.cancel()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    request.cancel()
+    await asyncio.sleep(0)
+    finish.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request
+    assert fake_redis.strings[key] == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_copy_during_reservation_waits_for_acceptance(
+    fake_redis: _FakeRedis, short_claim_wait: None
+) -> None:
+    """A copy is not told the send was taken until it has been."""
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    copy = asyncio.create_task(claim_client_message("sess-1", "msg-a", "copy"))
+    await asyncio.sleep(0.02)
+    assert not copy.done()
+
+    await accept_client_message("sess-1", "msg-a", "first")
+
+    assert await copy == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_copy_during_reservation_takes_the_id_when_the_first_is_refused(
+    fake_redis: _FakeRedis, short_claim_wait: None
+) -> None:
+    """The first copy was refused, so the send was never taken: the copy
+    carries it instead of being answered as a duplicate."""
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    copy = asyncio.create_task(claim_client_message("sess-1", "msg-a", "copy"))
+    await asyncio.sleep(0.02)
+
+    await release_client_message("sess-1", "msg-a", "first")
+
+    assert await copy == "claimed"
+
+
+@pytest.mark.asyncio
+async def test_copy_gives_up_when_the_reservation_outlasts_the_wait(
+    fake_redis: _FakeRedis, short_claim_wait: None
+) -> None:
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+
+    assert await claim_client_message("sess-1", "msg-a", "copy") == "reserved"
+    assert await client_message_state("sess-1", "msg-a") == "reserved"
+
+
+@pytest.mark.asyncio
+async def test_client_message_claims_fail_open_on_redis_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dedup is best effort: a Redis blip must never block a send."""
+    monkeypatch.setattr(
+        pm_module, "get_redis_async", AsyncMock(side_effect=ConnectionError("down"))
+    )
+    assert await claim_client_message("sess-1", "msg-a", "first") == "claimed"
+    assert await client_message_state("sess-1", "msg-a") is None
+    await accept_client_message("sess-1", "msg-a", "first")
+    await release_client_message("sess-1", "msg-a", "first")

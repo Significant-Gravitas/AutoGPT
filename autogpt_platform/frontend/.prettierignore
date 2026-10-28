@@ -5,3 +5,4 @@ pnpm-lock.yaml
 public
 Dockerfile
 .prettierignore
+.env*

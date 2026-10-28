@@ -1,0 +1,595 @@
+import {
+  getGetV2ListChatConnectionsMockHandler200,
+  getPutV2SetDefaultChatTransportMockHandler200,
+} from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import {
+  getDeleteV1DeleteCredentialsMockHandler200,
+  getDeleteV1DeleteCredentialsMockHandler401,
+  getGetV1CodexAccountMockHandler200,
+  getGetV1ListCredentialsMockHandler200,
+} from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
+import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
+import { server } from "@/mocks/mock-server";
+import {
+  act,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const connectChatGPT = vi.hoisted(() =>
+  vi.fn<(onSuccess: () => void) => void>(),
+);
+vi.mock(
+  "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/useOAuthConnect",
+  () => ({
+    useOAuthConnect: ({ onSuccess }: { onSuccess: () => void }) => ({
+      connect: () => connectChatGPT(onSuccess),
+      isPending: false,
+    }),
+  }),
+);
+
+vi.mock("@/components/contextual/DeviceAuth/DeviceAuthConnectButton", () => {
+  function MockDeviceAuthConnectButton({
+    providerName,
+    onSuccess,
+  }: {
+    providerName: string;
+    onSuccess: () => void;
+  }) {
+    return <button onClick={() => onSuccess()}>Connect {providerName}</button>;
+  }
+  return { DeviceAuthConnectButton: MockDeviceAuthConnectButton };
+});
+
+import { AIConnectionsSection } from "../AIConnectionsSection";
+
+function platform(isDefault: boolean): AIConnectionOffer {
+  return {
+    offer_id: "platform:deployment",
+    auth_provider: "platform",
+    provider_family: "autogpt",
+    display_name: "Self-hosted chat",
+    auth_method: "deployment",
+    credential_id: null,
+    backed_by_label: "This server's chat provider",
+    description:
+      "New chats are backed by the chat provider configured on this server.",
+    state: "ready",
+    selectable: true,
+    is_default: isDefault,
+    tiers: [
+      {
+        tier: "standard",
+        label: "Balanced",
+        selectable: true,
+        display_model: "Sonnet 5",
+      },
+      {
+        tier: "advanced",
+        label: "Advanced",
+        selectable: true,
+        display_model: "Opus 5",
+      },
+    ],
+    limitations: [],
+  } as AIConnectionOffer;
+}
+
+function chatgpt(isDefault: boolean, id = "cred-1"): AIConnectionOffer {
+  return {
+    offer_id: `codex:${id}`,
+    auth_provider: "codex",
+    provider_family: "openai",
+    display_name: "ChatGPT",
+    auth_method: "chatgpt_oauth",
+    credential_id: id,
+    backed_by_label: "Your ChatGPT plan",
+    description:
+      "New chats are backed by your ChatGPT plan, and spend no AutoGPT credits.",
+    state: "ready",
+    selectable: true,
+    is_default: isDefault,
+    tiers: [
+      {
+        tier: "standard",
+        label: "Balanced",
+        selectable: true,
+        display_model: "GPT-5.6 Terra",
+      },
+      {
+        tier: "advanced",
+        label: "Advanced",
+        selectable: true,
+        display_model: "GPT-5.6 Sol",
+      },
+    ],
+    limitations: [],
+  } as AIConnectionOffer;
+}
+
+function lockedChatgpt(): AIConnectionOffer {
+  return {
+    ...chatgpt(false),
+    offer_id: "codex:locked",
+    credential_id: null,
+    state: "locked",
+    selectable: false,
+    lock_reason: "Connect ChatGPT to use this subscription",
+  };
+}
+
+function microsoft(isDefault: boolean, id = "cred-msft"): AIConnectionOffer {
+  return {
+    offer_id: `microsoft_365_copilot:${id}`,
+    auth_provider: "microsoft_365_copilot",
+    provider_family: "microsoft",
+    display_name: "Microsoft 365 Copilot",
+    auth_method: "device_oauth",
+    credential_id: id,
+    backed_by_label: "Your Microsoft Copilot plan",
+    description:
+      "New chats are backed by your Microsoft Copilot subscription and work context.",
+    state: "ready",
+    selectable: true,
+    is_default: isDefault,
+    tiers: [],
+    limitations: [],
+  } as AIConnectionOffer;
+}
+
+interface MockCredential {
+  id: string;
+  username?: string;
+  provider?: string;
+  title?: string;
+  scopes?: string[];
+}
+
+function mockTransports(
+  offers: AIConnectionOffer[],
+  credentials: MockCredential[] = [],
+) {
+  server.use(
+    getGetV2ListChatConnectionsMockHandler200({ offers }),
+    getPutV2SetDefaultChatTransportMockHandler200({ transports: [] }),
+    getGetV1ListCredentialsMockHandler200(
+      credentials.map((credential) => ({
+        id: credential.id,
+        provider: credential.provider ?? "codex",
+        type: "oauth2" as const,
+        title: credential.title ?? "ChatGPT for Codex",
+        scopes: credential.scopes ?? [],
+        username: credential.username ?? null,
+      })),
+    ),
+  );
+}
+
+describe("AIConnectionsSection", () => {
+  beforeEach(() => {
+    connectChatGPT.mockClear();
+  });
+
+  it("refreshes connected subscriptions after ChatGPT sign-in succeeds", async () => {
+    mockTransports([platform(true)]);
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "ChatGPT" }),
+    );
+
+    mockTransports([platform(true), chatgpt(false)]);
+    act(() => connectChatGPT.mock.calls[0][0]());
+
+    expect(await screen.findByText("Connected")).toBeDefined();
+    expect(
+      screen
+        .getByRole("radio", { name: /ChatGPT/ })
+        .querySelector("img")
+        ?.getAttribute("src"),
+    ).toBe("/integrations/openai.png");
+    expect(screen.queryByRole("button", { name: "ChatGPT" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Microsoft 365 Copilot" }),
+    ).toBeDefined();
+    expect(
+      screen
+        .getByRole("radio", { name: /Self-hosted chat/ })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("refreshes connected subscriptions and closes the Microsoft sign-in dialog on success", async () => {
+    mockTransports([platform(true)]);
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Microsoft 365 Copilot" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+
+    mockTransports([platform(true), microsoft(false)]);
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Connect Microsoft 365 Copilot",
+      }),
+    );
+
+    expect(await screen.findByText("Connected")).toBeDefined();
+    expect(
+      screen
+        .getByRole("radio", { name: /Microsoft 365 Copilot/ })
+        .querySelector("img")
+        ?.getAttribute("src"),
+    ).toBe("/integrations/microsoft.webp");
+    expect(
+      screen.queryByRole("button", { name: "Microsoft 365 Copilot" }),
+    ).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("button", { name: "ChatGPT" })).toBeDefined();
+    expect(
+      screen
+        .getByRole("radio", { name: /Self-hosted chat/ })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("offers ChatGPT first and starts sign-in from its logo card", async () => {
+    mockTransports([platform(true)]);
+    render(<AIConnectionsSection />);
+
+    const cards = await screen.findByRole("group", {
+      name: "Available AI subscriptions",
+    });
+    const buttons = within(cards).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "ChatGPT",
+      "Microsoft 365 Copilot",
+    ]);
+    expect(buttons[0].querySelector("img")?.getAttribute("src")).toBe(
+      "/integrations/openai.png",
+    );
+    await userEvent.click(buttons[0]);
+    expect(connectChatGPT).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps only Microsoft sign-in available once ChatGPT is connected", async () => {
+    mockTransports([platform(true), chatgpt(false)]);
+    render(<AIConnectionsSection />);
+
+    expect(await screen.findByText("Connected")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "ChatGPT" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Microsoft 365 Copilot" }),
+    ).toBeDefined();
+  });
+
+  it("lists every connection with what backs a run on it", async () => {
+    mockTransports([platform(true), chatgpt(false)]);
+
+    render(<AIConnectionsSection />);
+
+    expect(await screen.findByText("Self-hosted chat")).toBeDefined();
+    expect(screen.getByText("ChatGPT")).toBeDefined();
+    expect(
+      screen.getByText(/backed by your ChatGPT plan, and spend no AutoGPT/i),
+    ).toBeDefined();
+  });
+
+  it("names the account a connection runs as", async () => {
+    mockTransports(
+      [platform(false), chatgpt(true)],
+      [{ id: "cred-1", username: "nick@example.com" }],
+    );
+
+    render(<AIConnectionsSection />);
+
+    expect(await screen.findByText("nick@example.com")).toBeDefined();
+  });
+
+  it("does not call an unlinked ChatGPT offer connected", async () => {
+    mockTransports([platform(true), lockedChatgpt()]);
+
+    render(<AIConnectionsSection />);
+
+    expect(
+      await screen.findByRole("button", { name: "ChatGPT" }),
+    ).toBeDefined();
+    expect(screen.queryByText("Connected")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Manage" })).toBeNull();
+  });
+
+  it("treats a disconnected account snapshot as requiring reconnect", async () => {
+    mockTransports(
+      [platform(false), chatgpt(true)],
+      [{ id: "cred-1", username: "stored@example.com" }],
+    );
+    server.use(
+      getGetV1CodexAccountMockHandler200({
+        connected: false,
+        requires_openai_auth: true,
+        email: "stale@example.com",
+        plan_type: "Plus",
+      }),
+    );
+
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage" }),
+    );
+
+    expect(
+      await screen.findByText(/connection needs to be reconnected/i),
+    ).toBeDefined();
+    expect(screen.getAllByText("stored@example.com")).toHaveLength(2);
+    expect(screen.queryByText("stale@example.com")).toBeNull();
+    expect(screen.queryByText("Plus plan")).toBeNull();
+  });
+
+  it("keeps the manage dialog open when disconnect fails", async () => {
+    mockTransports([platform(false), chatgpt(true)]);
+    server.use(
+      getGetV1CodexAccountMockHandler200({
+        connected: true,
+        requires_openai_auth: false,
+      }),
+      getDeleteV1DeleteCredentialsMockHandler401({ detail: "Not authorized" }),
+    );
+
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Disconnect" })).toBeDefined(),
+    );
+  });
+
+  it("asks before force-removing an in-use connection", async () => {
+    mockTransports([platform(false), chatgpt(true)]);
+    server.use(
+      getGetV1CodexAccountMockHandler200({
+        connected: true,
+        requires_openai_auth: false,
+      }),
+      getDeleteV1DeleteCredentialsMockHandler200(({ request }) =>
+        new URL(request.url).searchParams.get("force") === "true"
+          ? { deleted: true, revoked: true }
+          : {
+              deleted: false,
+              need_confirmation: true,
+              message: "Used by an active schedule",
+            },
+      ),
+    );
+
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Force remove" }),
+    ).toBeDefined();
+    expect(await screen.findByText("Used by an active schedule")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Force remove" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull(),
+    );
+  });
+
+  it("shows the Microsoft account and its granted access", async () => {
+    mockTransports(
+      [platform(false), microsoft(true)],
+      [
+        {
+          id: "cred-msft",
+          provider: "microsoft_365_copilot",
+          username: "nick@example.com",
+          title: "Nick Example",
+          scopes: ["User.Read", "Mail.Read", "Chat.Read"],
+        },
+      ],
+    );
+
+    render(<AIConnectionsSection />);
+
+    expect(await screen.findByText("nick@example.com")).toBeDefined();
+    expect(screen.getByText("Connected")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Manage" }));
+
+    expect(await screen.findByText("Nick Example")).toBeDefined();
+    expect(screen.getByText("Basic account profile")).toBeDefined();
+    expect(screen.getByText("Outlook mail")).toBeDefined();
+    expect(screen.getByText("Teams chats")).toBeDefined();
+  });
+
+  it("keeps the Microsoft manage dialog open when disconnect fails", async () => {
+    mockTransports(
+      [platform(false), microsoft(true)],
+      [
+        {
+          id: "cred-msft",
+          provider: "microsoft_365_copilot",
+          username: "nick@example.com",
+        },
+      ],
+    );
+    server.use(
+      getDeleteV1DeleteCredentialsMockHandler401({ detail: "Not authorized" }),
+    );
+
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Disconnect" })).toBeDefined(),
+    );
+  });
+
+  it("asks before force-removing an in-use Microsoft connection", async () => {
+    mockTransports([platform(false), microsoft(true)]);
+    server.use(
+      getDeleteV1DeleteCredentialsMockHandler200(({ request }) =>
+        new URL(request.url).searchParams.get("force") === "true"
+          ? { deleted: true, revoked: true }
+          : {
+              deleted: false,
+              need_confirmation: true,
+              message: "Used by an active schedule",
+            },
+      ),
+    );
+
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Force remove" }),
+    ).toBeDefined();
+    expect(await screen.findByText("Used by an active schedule")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Force remove" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull(),
+    );
+  });
+
+  it("marks the saved default, and only that one", async () => {
+    mockTransports([platform(false), chatgpt(true)]);
+
+    render(<AIConnectionsSection />);
+
+    const options = await screen.findAllByRole("radio");
+    expect(options).toHaveLength(2);
+    const checked = options.filter(
+      (option) => option.getAttribute("aria-checked") === "true",
+    );
+    expect(checked).toHaveLength(1);
+    expect(checked[0].textContent).toContain("ChatGPT");
+  });
+
+  it("saves the connection the user picks", async () => {
+    mockTransports([platform(true), chatgpt(false)]);
+    const saved = vi.fn();
+    server.events.on("request:start", ({ request }) => {
+      if (
+        request.method === "PUT" &&
+        request.url.includes("transports/default")
+      )
+        saved();
+    });
+
+    render(<AIConnectionsSection />);
+    const chatgptOption = await screen.findByRole("radio", { name: /ChatGPT/ });
+    await userEvent.click(chatgptOption);
+
+    await waitFor(() => expect(saved).toHaveBeenCalled());
+  });
+
+  it("does not re-save the connection that is already the default", async () => {
+    mockTransports([platform(true), chatgpt(false)]);
+    const saved = vi.fn();
+    server.events.on("request:start", ({ request }) => {
+      if (
+        request.method === "PUT" &&
+        request.url.includes("transports/default")
+      )
+        saved();
+    });
+
+    render(<AIConnectionsSection />);
+    const current = await screen.findByRole("radio", {
+      name: /Self-hosted chat/,
+    });
+    await userEvent.click(current);
+
+    await waitFor(() => expect(saved).not.toHaveBeenCalled());
+  });
+
+  it("presents no choice when there is only one connection", async () => {
+    mockTransports([platform(true)]);
+
+    render(<AIConnectionsSection />);
+
+    // The row still says what powers a chat — it just isn't a decision.
+    expect(await screen.findByText("Self-hosted chat")).toBeDefined();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryByRole("radio")).toBeNull();
+  });
+
+  it("names what is coming without claiming it works", async () => {
+    mockTransports([platform(true)]);
+
+    render(<AIConnectionsSection />);
+
+    expect(await screen.findByText("GitHub Copilot")).toBeDefined();
+    expect(screen.getByText("Grok")).toBeDefined();
+    expect(screen.getAllByText("Coming soon")).toHaveLength(2);
+    expect(
+      screen.queryByRole("button", { name: /GitHub Copilot|Grok/ }),
+    ).toBeNull();
+  });
+
+  it("names the models each connection runs", async () => {
+    // The reason for reading /connections rather than /transports: transports
+    // carries no tiers, so this line could not exist before.
+    mockTransports([platform(true), chatgpt(false)]);
+
+    render(<AIConnectionsSection />);
+
+    expect(
+      await screen.findByText(
+        "Balanced: GPT-5.6 Terra · Advanced: GPT-5.6 Sol",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByText("Balanced: Sonnet 5 · Advanced: Opus 5"),
+    ).toBeDefined();
+  });
+
+  it("takes its copy from the server rather than deciding it here", async () => {
+    // describeTransport used to compose this sentence client-side, which
+    // drifts from the server that enforces the billing it describes.
+    mockTransports([{ ...chatgpt(true), description: "Server said this." }]);
+
+    render(<AIConnectionsSection />);
+
+    expect(await screen.findByText("Server said this.")).toBeDefined();
+  });
+
+  it("shows a connection the plan excludes, with what unlocks it", async () => {
+    mockTransports([
+      platform(true),
+      {
+        ...chatgpt(false),
+        state: "locked",
+        selectable: false,
+        lock_reason: "A Max plan or higher is required to use ChatGPT.",
+      } as AIConnectionOffer,
+    ]);
+
+    render(<AIConnectionsSection />);
+
+    expect(
+      await screen.findByText(
+        "A Max plan or higher is required to use ChatGPT.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryByRole("radio")).toBeNull();
+  });
+});

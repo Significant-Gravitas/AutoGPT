@@ -39,6 +39,7 @@ class LinearScope(str, Enum):
 
 linear = (
     ProviderBuilder("linear")
+    .with_description("Issues and project tracking")
     .with_api_key(env_var_name="LINEAR_API_KEY", title="Linear API Key")
     .with_base_cost(1, BlockCostType.RUN)
     .with_oauth(

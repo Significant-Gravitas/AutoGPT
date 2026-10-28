@@ -4,10 +4,7 @@ import {
   getGetV1ListGraphExecutionsQueryKey,
   usePostV1ExecuteGraphAgent,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import {
-  getGetV1ListExecutionSchedulesForAGraphQueryOptions,
-  useDeleteV1DeleteExecutionSchedule,
-} from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
@@ -22,9 +19,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { DotsThreeVertical } from "@phosphor-icons/react";
+import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -58,11 +57,7 @@ export function ScheduleActionsDropdown({
 
       onDeleted?.();
 
-      queryClient.invalidateQueries({
-        queryKey: getGetV1ListExecutionSchedulesForAGraphQueryOptions(
-          agent.graph_id,
-        ).queryKey,
-      });
+      invalidateAllScheduleQueries(queryClient, agent.graph_id);
     } catch (error: unknown) {
       toast({
         title: "Failed to delete schedule",
@@ -117,11 +112,16 @@ export function ScheduleActionsDropdown({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
+            // TODO(tokens): no exact role for hover:bg-gray-100 (#F3F4F6)
             className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <DotsThreeVertical className="h-5 w-5 text-gray-400" />
+            <Icon
+              // TODO(tokens): no exact role for text-gray-400 (#9CA3AF)
+              icon={MoreVerticalIcon}
+              className="h-5 w-5 text-gray-400"
+            />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

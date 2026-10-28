@@ -1,109 +1,152 @@
-import {
-  getV1OnboardingState,
-  postV1CompleteOnboardingStep,
-  postV1SubmitOnboardingProfile,
-} from "@/app/api/__generated__/endpoints/onboarding/onboarding";
-import { resolveResponse } from "@/app/api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { postV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { trackAdsConversion } from "@/services/analytics/google-ads";
+import { trackTrialCheckoutAbandoned } from "@/services/analytics/monetization-analytics";
+import { environment } from "@/services/environment";
+import { useTrialCheckoutReturn } from "@/services/trials/useTrialCheckoutReturn";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { stepKey } from "./progress";
 import { Step, useOnboardingWizardStore } from "./store";
-
-function parseStep(value: string | null): Step {
-  const n = Number(value);
-  if (n >= 1 && n <= 4) return n as Step;
-  return 1;
-}
+import { onboardingStepKey, trackOnboardingStep } from "./tracking";
+import { useOnboardingLayout } from "./useOnboardingLayout";
+import { useOnboardingProfile } from "./useOnboardingProfile";
+import { useWizardProgress } from "./useWizardProgress";
 
 export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isLoggedIn } = useSupabase();
-  const currentStep = useOnboardingWizardStore((s) => s.currentStep);
+  const { isLoggedIn, isUserLoading, user } = useAuth();
+  const trialConfirmation = useTrialCheckoutReturn();
+  const storedStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
-  const reset = useOnboardingWizardStore((s) => s.reset);
-  const [isLoading, setIsLoading] = useState(true);
-  const hasSubmitted = useRef(false);
-  const hasInitialized = useRef(false);
 
-  // Initialise store from URL on mount, reset form data
-  useEffect(() => {
-    if (hasInitialized.current) return;
-    hasInitialized.current = true;
-    const urlStep = parseStep(searchParams.get("step"));
-    reset();
-    goToStep(urlStep);
-  }, [searchParams, reset, goToStep]);
+  const {
+    steps,
+    preparingStep,
+    totalSteps,
+    isReady,
+    isPaymentEnabled,
+    isSelfHostConnectEnabled,
+    paidConfirmation,
+  } = useOnboardingLayout({
+    userID: user?.id ?? null,
+    isLoggedIn,
+    isUserLoading,
+    trialConfirmation,
+  });
 
-  // Sync store → URL when step changes
+  const progress = useWizardProgress({
+    userID: user?.id ?? null,
+    ready: isReady,
+    steps,
+  });
+  const currentStep =
+    isPaymentEnabled && !environment.isLocal()
+      ? (Math.min(storedStep, steps.subscription!) as Step)
+      : storedStep;
+  const profile = useOnboardingProfile({
+    user,
+    enabled: progress.isReady && currentStep === preparingStep,
+  });
+  const completion = useRef<{ userID: string | undefined } | null>(null);
+  const activeUserID = useRef(user?.id);
+  activeUserID.current = user?.id;
+  const [completionError, setCompletionError] = useState<{
+    userID: string | undefined;
+    message: string;
+  } | null>(null);
+
   useEffect(() => {
-    const urlStep = parseStep(searchParams.get("step"));
-    if (currentStep !== urlStep) {
-      router.replace(`/onboarding?step=${currentStep}`, { scroll: false });
+    return () => {
+      completion.current = null;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!progress.isReady) return;
+    if (currentStep !== storedStep) goToStep(currentStep);
+    if (searchParams.get("trial") === "cancelled") {
+      trackTrialCheckoutAbandoned("onboarding");
     }
-  }, [currentStep, router, searchParams]);
-
-  // Check if onboarding already completed
-  useEffect(() => {
-    if (!isLoggedIn) return;
-
-    async function checkCompletion() {
-      try {
-        const onboarding = await resolveResponse(getV1OnboardingState());
-        if (onboarding.completedSteps.includes("VISIT_COPILOT")) {
-          router.replace("/copilot");
-          return;
-        }
-      } catch {
-        // If we can't check, show onboarding anyway
-      }
-      setIsLoading(false);
+    const key = stepKey(steps, currentStep);
+    if (searchParams.get("step") !== key) {
+      router.replace(`/onboarding?step=${key}`, { scroll: false });
     }
+  }, [
+    progress.isReady,
+    currentStep,
+    storedStep,
+    goToStep,
+    steps,
+    searchParams,
+    router,
+  ]);
 
-    checkCompletion();
-  }, [isLoggedIn, router]);
-
-  // Submit profile when entering step 4
+  const trackingKey = onboardingStepKey(steps, currentStep);
   useEffect(() => {
-    if (currentStep !== 4 || hasSubmitted.current) return;
-    hasSubmitted.current = true;
-
-    const { name, role, otherRole, painPoints, otherPainPoint } =
-      useOnboardingWizardStore.getState();
-    const resolvedRole = role === "Other" ? otherRole : role;
-    const resolvedPainPoints = painPoints
-      .filter((p) => p !== "Something else")
-      .concat(
-        painPoints.includes("Something else") && otherPainPoint.trim()
-          ? [otherPainPoint.trim()]
-          : [],
-      );
-
-    postV1SubmitOnboardingProfile({
-      user_name: name,
-      user_role: resolvedRole,
-      pain_points: resolvedPainPoints,
-    }).catch(() => {
-      // Best effort — profile data is non-critical for accessing copilot
-    });
-  }, [currentStep]);
+    if (progress.isReady && trackingKey) trackOnboardingStep(trackingKey);
+  }, [progress.isReady, trackingKey]);
 
   async function handlePreparingComplete() {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        await postV1CompleteOnboardingStep({ step: "VISIT_COPILOT" });
-        router.replace("/copilot");
-        return;
-      } catch {
-        if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
-      }
+    if (
+      !progress.isReady ||
+      completion.current?.userID === user?.id ||
+      (isPaymentEnabled && !environment.isLocal())
+    )
+      return;
+    const attempt = { userID: user?.id };
+    completion.current = attempt;
+    function isCurrent() {
+      return (
+        completion.current === attempt && activeUserID.current === user?.id
+      );
     }
-    router.replace("/copilot");
+    setCompletionError(null);
+    try {
+      await useOnboardingWizardStore.getState().flushProgress?.();
+      if (!isCurrent()) return;
+      await profile.ensureSaved();
+      if (!isCurrent()) return;
+      const result = await postV1CompleteOnboardingStep({
+        step: "ONBOARDING_COMPLETE",
+      });
+      if (!isCurrent()) return;
+      if (result.status !== 200) throw new Error("Completion failed");
+      trackAdsConversion("onboarding_complete", {
+        transactionID: user?.id,
+        email: user?.email,
+      });
+      progress.finish();
+      router.replace("/home");
+    } catch {
+      if (!isCurrent()) return;
+      setCompletionError({
+        userID: user?.id,
+        message:
+          "We couldn't finish setting up your account. Your progress is saved; please retry.",
+      });
+    } finally {
+      if (completion.current === attempt) completion.current = null;
+    }
   }
 
   return {
     currentStep,
-    isLoading,
+    isLoading: !progress.isReady || !isReady,
+    progressError: progress.error,
+    progressConflict: progress.conflict,
+    retryProgress: progress.retry,
+    completionError:
+      profile.error ??
+      (completionError?.userID === user?.id ? completionError?.message : null),
     handlePreparingComplete,
+    isPaymentEnabled,
+    isSelfHostConnectEnabled,
+    steps,
+    preparingStep,
+    totalSteps,
+    trialConfirmation,
+    paidConfirmation,
   };
 }

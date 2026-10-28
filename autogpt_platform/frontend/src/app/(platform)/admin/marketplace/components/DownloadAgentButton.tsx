@@ -1,7 +1,8 @@
 "use client";
 
 import { downloadAsAdmin } from "@/app/(platform)/admin/marketplace/actions";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { agentGraphExportFilename, exportAsJSONFile } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 
@@ -18,25 +19,7 @@ export function DownloadAgentAdminButton({
       // Call the server action to get the data
       const fileData = await downloadAsAdmin(storeListingVersionId);
 
-      // Client-side download logic
-      const jsonData = JSON.stringify(fileData, null, 2);
-      const blob = new Blob([jsonData], { type: "application/json" });
-
-      // Create a temporary URL for the Blob
-      const url = window.URL.createObjectURL(blob);
-
-      // Create a temporary anchor element
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `agent_${storeListingVersionId}.json`;
-
-      // Append the anchor to the body, click it, and remove it
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      // Revoke the temporary URL
-      window.URL.revokeObjectURL(url);
+      exportAsJSONFile(fileData as object, agentGraphExportFilename(fileData));
     } catch (error) {
       console.error("Download failed:", error);
     } finally {
@@ -46,8 +29,8 @@ export function DownloadAgentAdminButton({
 
   return (
     <Button
-      size="sm"
-      variant="outline"
+      size="legacy-sm"
+      variant="legacy-outline"
       onClick={handleDownload}
       disabled={isLoading}
     >

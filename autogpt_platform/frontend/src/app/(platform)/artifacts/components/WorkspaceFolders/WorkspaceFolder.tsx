@@ -1,0 +1,109 @@
+"use client";
+
+import { useState } from "react";
+import { Text } from "@/components/atoms/Text/Text";
+import { FILE_DRAG_MIME, readFileDragIds } from "./drag";
+import { FolderActionsMenu } from "./FolderActionsMenu";
+import { folderSummary } from "./folderTree";
+import { FOLDER_STYLE } from "./folder-constants";
+import { Folder01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
+
+interface Props {
+  id: string;
+  name: string;
+  fileCount: number;
+  subfolderCount: number;
+  onEdit: () => void;
+  onMove: () => void;
+  onDelete: () => void;
+  onClick: () => void;
+  onFileDrop: (fileIds: string[], folderId: string) => void;
+}
+
+export function WorkspaceFolder({
+  id,
+  name,
+  fileCount,
+  subfolderCount,
+  onEdit,
+  onMove,
+  onDelete,
+  onClick,
+  onFileDrop,
+}: Props) {
+  const [isDragOver, setIsDragOver] = useState(false);
+  const style = FOLDER_STYLE;
+
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (e.dataTransfer.types.includes(FILE_DRAG_MIME)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setIsDragOver(true);
+    }
+  }
+
+  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    // Ignore leave events fired while moving onto a child element — only clear
+    // the highlight when the cursor actually exits the folder card.
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setIsDragOver(false);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setIsDragOver(false);
+    const fileIds = readFileDragIds(e.dataTransfer);
+    if (fileIds.length > 0) onFileDrop(fileIds, id);
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      data-testid="workspace-folder"
+      data-folder-id={id}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (isKey(e, "Enter", " ")) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`group flex cursor-pointer items-center gap-3 rounded-2xl border border-border-base bg-surface p-3 transition-all hover:border-border-strong ${
+        isDragOver ? `${style.surface} ring-2 ${style.ring}` : ""
+      }`}
+    >
+      <div
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${style.surface}`}
+      >
+        <Icon icon={Folder01Icon} size={22} className={style.icon} />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Text
+          variant="body-medium"
+          className="truncate text-foreground-strong"
+          data-testid="workspace-folder-name"
+          title={name}
+        >
+          {name}
+        </Text>
+        <Text variant="small" className="text-foreground-tertiary">
+          {folderSummary(fileCount, subfolderCount)}
+        </Text>
+      </div>
+      <div className="flex items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+        <FolderActionsMenu
+          folderName={name}
+          onRename={onEdit}
+          onMove={onMove}
+          onDelete={onDelete}
+        />
+      </div>
+    </div>
+  );
+}

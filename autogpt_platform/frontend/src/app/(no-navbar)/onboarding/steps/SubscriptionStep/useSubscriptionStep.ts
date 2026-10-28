@@ -1,0 +1,185 @@
+import {
+  getGetSubscriptionStatusQueryKey,
+  useUpdateSubscriptionTier,
+} from "@/app/api/__generated__/endpoints/credits/credits";
+import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import {
+  getSubscriptionValue,
+  trackAdsConversionBeforeNavigation,
+} from "@/services/analytics/google-ads";
+import { environment } from "@/services/environment";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
+import { useOnboardingWizardStore } from "../../store";
+import { COUNTRIES } from "@/components/molecules/PlanCard/countries";
+import {
+  PLAN_KEYS,
+  type PlanKey,
+  TEAM_INTAKE_FORM_URL,
+} from "@/components/molecules/PlanCard/plans";
+import { useSubscriptionPricingExperiment } from "./useSubscriptionPricingExperiment";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
+import { useMountEffect } from "@/hooks/useMountEffect";
+import {
+  markPaywallCheckoutStarted,
+  trackPaywallCheckoutCancelled,
+  trackPaywallView,
+} from "./tracking";
+import { trackPlanSelected } from "@/services/analytics/monetization-analytics";
+
+const PLAN_TO_TIER: Record<
+  Exclude<PlanKey, typeof PLAN_KEYS.TEAM | typeof PLAN_KEYS.BUSINESS>,
+  SubscriptionTierRequestTier
+> = {
+  PRO: "PRO",
+  MAX: "MAX",
+};
+
+interface CheckoutResponse {
+  url?: string;
+}
+
+export function useSubscriptionStep() {
+  const queryClient = useQueryClient();
+  const setSelectedBilling = useOnboardingWizardStore(
+    (s) => s.setSelectedBilling,
+  );
+  const selectedCountryCode = useOnboardingWizardStore(
+    (s) => s.selectedCountryCode,
+  );
+  const setSelectedPlan = useOnboardingWizardStore((s) => s.setSelectedPlan);
+  const nextStep = useOnboardingWizardStore((s) => s.nextStep);
+  const selectedPlan = useOnboardingWizardStore((s) => s.selectedPlan);
+
+  const { mutateAsync: updateTier, isPending: isUpdatingTier } =
+    useUpdateSubscriptionTier();
+  const { billing, plans, pricingVariant } = useSubscriptionPricingExperiment();
+  const searchParams = useSearchParams();
+
+  // This step only mounts once the paywall is genuinely on screen, so mount is
+  // the honest moment to report the impression — and the one moment it can't
+  // be missed, whatever the flags resolve to afterwards.
+  useMountEffect(() => {
+    trackPaywallView();
+    // Stripe sends the user back here with `subscription=cancelled` after they
+    // abandon checkout, so the return lands on this same mount.
+    if (searchParams.get("subscription") === "cancelled") {
+      trackPaywallCheckoutCancelled();
+    }
+  });
+  // Local guard that flips synchronously on first click so the profile-save
+  // phase (which runs before `isUpdatingTier` becomes true) can't be
+  // re-entered by a fast double-click queueing duplicate POSTs.
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const checkoutRedirect = useCheckoutRedirect();
+  const isRequesting = isUpdatingTier || isSubmitting;
+  const isProcessing = isRequesting || checkoutRedirect.isRedirecting;
+  // Every checkout button on the page shares the redirect, so only this
+  // step's own request or redirect may spin its plan button.
+  const loadingPlan =
+    isRequesting || checkoutRedirect.isRedirectingHere ? selectedPlan : null;
+
+  const countryIdx = Math.max(
+    0,
+    COUNTRIES.findIndex((c) => c.countryCode === selectedCountryCode),
+  );
+  const country = COUNTRIES[countryIdx];
+  const isYearly = billing === "yearly";
+
+  function reportPlanSelected(planKey: PlanKey) {
+    trackPlanSelected({
+      subscription_tier: planKey === PLAN_KEYS.TEAM ? "BUSINESS" : planKey,
+      billing_cycle: isYearly ? "yearly" : "monthly",
+      surface: "onboarding",
+      ...(pricingVariant && { pricing_variant: pricingVariant }),
+    });
+  }
+
+  async function handlePlanSelect(planKey: PlanKey) {
+    if (planKey === PLAN_KEYS.TEAM) {
+      reportPlanSelected(planKey);
+      window.open(TEAM_INTAKE_FORM_URL, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (planKey === PLAN_KEYS.BUSINESS) return;
+    if (isProcessing) return;
+    reportPlanSelected(planKey);
+    setIsSubmitting(true);
+
+    // Local dev: backend has no Stripe wiring, so skip the checkout
+    // round-trip and advance straight to Preparing. The profile still
+    // gets POSTed there via useOnboardingPage's submission effect.
+    if (environment.isLocal()) {
+      setSelectedPlan(planKey);
+      nextStep();
+      return;
+    }
+
+    setSelectedPlan(planKey);
+    const tier = PLAN_TO_TIER[planKey];
+    const cycle = isYearly ? "yearly" : "monthly";
+
+    try {
+      const ownerID = useOnboardingWizardStore.getState().userID;
+      await useOnboardingWizardStore.getState().flushProgress?.();
+      if (useOnboardingWizardStore.getState().userID !== ownerID) return;
+      const baseUrl = `${window.location.origin}/onboarding`;
+      const result = await updateTier({
+        data: {
+          tier,
+          success_url: `${baseUrl}?step=preparing&subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${planKey}&cycle=${cycle}`,
+          cancel_url: `${baseUrl}?step=subscription&subscription=cancelled`,
+          billing_cycle: cycle,
+          surface: "onboarding",
+        },
+      });
+      if (useOnboardingWizardStore.getState().userID !== ownerID) return;
+      const url = (result?.data as CheckoutResponse | undefined)?.url;
+      if (url) {
+        // A Checkout URL is the only proof that Stripe Checkout actually
+        // starts — reporting earlier would count the in-place and failed
+        // paths as conversions.
+        await trackAdsConversionBeforeNavigation("begin_checkout", {
+          value: getSubscriptionValue(planKey, cycle),
+        });
+        markPaywallCheckoutStarted();
+        // Navigating away — don't refetch (would set state on an
+        // unmounting component while Stripe Checkout takes over).
+        window.location.href = url;
+        checkoutRedirect.markRedirecting();
+        return;
+      }
+      await queryClient.invalidateQueries(
+        { queryKey: getGetSubscriptionStatusQueryKey() },
+        { throwOnError: true },
+      );
+      if (useOnboardingWizardStore.getState().userID !== ownerID) return;
+      nextStep();
+    } catch (error) {
+      setSelectedPlan(null);
+      toast({
+        title: "Couldn't start checkout",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Stripe didn't accept the request. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return {
+    billing,
+    setBilling: setSelectedBilling,
+    plans,
+    country,
+    isYearly,
+    handlePlanSelect,
+    isUpdatingTier: isProcessing,
+    selectedPlan: loadingPlan,
+  };
+}

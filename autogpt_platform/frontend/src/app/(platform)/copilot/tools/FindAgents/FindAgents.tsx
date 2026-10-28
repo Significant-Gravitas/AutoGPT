@@ -80,14 +80,14 @@ export function FindAgentsTool({ part }: Props) {
         />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 
       {hasAgents && agentsFoundOutput && (
         <ToolAccordion
           icon={<AccordionIcon toolType={part.type} />}
-          title="Agent results"
+          title="Workflow results"
           description={accordionDescription}
         >
           <ContentGrid className="sm:grid-cols-2">
@@ -106,13 +106,15 @@ export function FindAgentsTool({ part }: Props) {
                       href ? <ContentLink href={href}>Open</ContentLink> : null
                     }
                   >
-                    <div className="flex items-center gap-2">
-                      <ContentCardTitle>{agent.name}</ContentCardTitle>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <ContentCardTitle className="min-w-0 flex-1">
+                        {agent.name}
+                      </ContentCardTitle>
                       {agentSource && (
                         <ContentBadge>{agentSource}</ContentBadge>
                       )}
                     </div>
-                    <ContentCardDescription className="mt-1 line-clamp-2">
+                    <ContentCardDescription className="mt-1 line-clamp-2 break-words">
                       {agent.description}
                     </ContentCardDescription>
                   </ContentCardHeader>

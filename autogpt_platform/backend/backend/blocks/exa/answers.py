@@ -8,6 +8,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -17,6 +18,7 @@ from backend.sdk import (
 )
 
 from ._config import exa
+from .helpers import merge_exa_cost
 
 
 class AnswerCitation(BaseModel):
@@ -85,6 +87,7 @@ class ExaAnswerBlock(Block):
             categories={BlockCategory.SEARCH, BlockCategory.AI},
             input_schema=ExaAnswerBlock.Input,
             output_schema=ExaAnswerBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -111,3 +114,7 @@ class ExaAnswerBlock(Block):
         yield "citations", citations
         for citation in citations:
             yield "citation", citation
+
+        # Current SDK AnswerResponse dataclass omits cost_dollars; helper
+        # no-ops today, but keeps billing wired when exa_py adds the field.
+        merge_exa_cost(self, response)

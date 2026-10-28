@@ -11,6 +11,7 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -22,17 +23,18 @@ from backend.blocks.elevenlabs._auth import (
     ElevenLabsCredentialsInput,
 )
 from backend.blocks.video._utils import (
+    VideoMediaStorage,
     extract_source_name,
     get_video_codecs,
     strip_chapters_inplace,
 )
 from backend.data.execution import ExecutionContext
-from backend.data.model import CredentialsField, SchemaField
+from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 from backend.util.exceptions import BlockExecutionError
-from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
+from backend.util.file import MediaFileType, get_exec_file_path
 
 
-class VideoNarrationBlock(Block):
+class VideoNarrationBlock(VideoMediaStorage, Block):
     """Generate AI narration and add to video."""
 
     class Input(BlockSchemaInput):
@@ -44,7 +46,8 @@ class VideoNarrationBlock(Block):
         )
         script: str = SchemaField(description="Narration script text")
         voice_id: str = SchemaField(
-            description="ElevenLabs voice ID", default="21m00Tcm4TlvDq8ikWAM"  # Rachel
+            description="ElevenLabs voice ID",
+            default="21m00Tcm4TlvDq8ikWAM",  # Rachel
         )
         model_id: Literal[
             "eleven_multilingual_v2",
@@ -102,26 +105,27 @@ class VideoNarrationBlock(Block):
                 "_store_input_video": lambda *args, **kwargs: "test.mp4",
                 "_store_output_video": lambda *args, **kwargs: "narrated_test.mp4",
             },
+            effect=BlockEffect.WORKSPACE,
         )
 
-    async def _store_input_video(
-        self, execution_context: ExecutionContext, file: MediaFileType
-    ) -> MediaFileType:
-        """Store input video. Extracted for testability."""
-        return await store_media_file(
-            file=file,
-            execution_context=execution_context,
-            return_format="for_local_processing",
-        )
+    # Models that consume 0.5 credits per character (v2.5 tier). All other
+    # models default to 1.0 credit per character.
+    _HALF_RATE_MODELS = {"eleven_flash_v2_5", "eleven_turbo_v2_5"}
+    # ElevenLabs Starter plan: $5 / 30K credits = $0.000167 / credit.
+    _USD_PER_CREDIT = 0.000167
 
-    async def _store_output_video(
-        self, execution_context: ExecutionContext, file: MediaFileType
-    ) -> MediaFileType:
-        """Store output video. Extracted for testability."""
-        return await store_media_file(
-            file=file,
-            execution_context=execution_context,
-            return_format="for_block_output",
+    def _record_script_cost(self, script: str, model_id: str) -> None:
+        """Emit provider_cost (USD) for the narration run so the COST_USD
+        resolver can bill real ElevenLabs spend. Flash/Turbo v2.5 bill at
+        half the char rate of Multilingual/Turbo v2.
+        """
+        credits_per_char = 0.5 if model_id in self._HALF_RATE_MODELS else 1.0
+        script_usd = len(script) * self._USD_PER_CREDIT * credits_per_char
+        self.merge_stats(
+            NodeExecutionStats(
+                provider_cost=script_usd,
+                provider_cost_type="cost_usd",
+            )
         )
 
     def _generate_narration_audio(
@@ -222,6 +226,8 @@ class VideoNarrationBlock(Block):
                 input_data.voice_id,
                 input_data.model_id,
             )
+
+            self._record_script_cost(input_data.script, input_data.model_id)
 
             # Save audio to exec file path
             audio_filename = MediaFileType(f"{node_exec_id}_narration.mp3")

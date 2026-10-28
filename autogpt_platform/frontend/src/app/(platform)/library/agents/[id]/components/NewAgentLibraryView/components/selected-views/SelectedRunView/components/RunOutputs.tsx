@@ -9,15 +9,23 @@ import {
   OutputActions,
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
+import { HIDDEN_FROM_REPLAY } from "@/lib/replay-privacy";
+import { cn } from "@/lib/utils";
 import React, { useMemo } from "react";
 
 type OutputsRecord = Record<string, Array<unknown>>;
 
 interface RunOutputsProps {
   outputs: OutputsRecord;
+  shareToken?: string;
+  hiddenFromReplay?: boolean;
 }
 
-export function RunOutputs({ outputs }: RunOutputsProps) {
+export function RunOutputs({
+  outputs,
+  shareToken,
+  hiddenFromReplay = false,
+}: RunOutputsProps) {
   const items = useMemo(() => {
     const list: Array<{
       key: string;
@@ -30,6 +38,7 @@ export function RunOutputs({ outputs }: RunOutputsProps) {
     Object.entries(outputs || {}).forEach(([key, values]) => {
       (values || []).forEach((value, index) => {
         const metadata: OutputMetadata = {};
+        if (shareToken) metadata.shareToken = shareToken;
         if (
           typeof value === "object" &&
           value !== null &&
@@ -76,14 +85,20 @@ export function RunOutputs({ outputs }: RunOutputsProps) {
     });
 
     return list;
-  }, [outputs]);
+  }, [outputs, shareToken]);
 
   if (!items.length) {
+    // TODO(tokens): no exact role for text-neutral-600 (#525252)
     return <div className="text-neutral-600">No output from this run.</div>;
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div
+      className={cn(
+        "flex flex-col gap-4",
+        hiddenFromReplay && HIDDEN_FROM_REPLAY,
+      )}
+    >
       <div className="absolute right-3 top-3 z-10">
         <OutputActions
           items={items.map((item) => ({

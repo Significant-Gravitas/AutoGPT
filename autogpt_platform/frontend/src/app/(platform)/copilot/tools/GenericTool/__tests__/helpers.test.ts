@@ -22,6 +22,11 @@ describe("extractToolName", () => {
     const part = { type: "Read" } as unknown as ToolUIPart;
     expect(extractToolName(part)).toBe("Read");
   });
+
+  it("strips the tool- prefix for web_search", () => {
+    const part = { type: "tool-web_search" } as unknown as ToolUIPart;
+    expect(extractToolName(part)).toBe("web_search");
+  });
 });
 
 describe("formatToolName", () => {
@@ -36,6 +41,39 @@ describe("formatToolName", () => {
   it("handles already capitalized names", () => {
     expect(formatToolName("WebSearch")).toBe("WebSearch");
   });
+
+  it("uses friendly display name for subtask tools", () => {
+    expect(formatToolName("run_sub_session")).toBe("Subtask");
+    expect(formatToolName("get_sub_session_result")).toBe("Subtask result");
+  });
+
+  it("keeps expert tool names as nouns so every wrapper reads right", () => {
+    // getAnimationText wraps these as "Running X…" / "X completed" /
+    // "X failed", so a past-tense label reads as "Running Asked a teammate…".
+    for (const tool of [
+      "delegate_to_expert",
+      "handoff_to_expert",
+      "hire_expert",
+      "raise_expert",
+      "update_expert",
+      "confirm_expert_change",
+    ]) {
+      expect(formatToolName(tool)).not.toMatch(/^(Asked|Handed|Updated)\b/);
+      expect(formatToolName(tool)).not.toMatch(/ed$/);
+    }
+    expect(formatToolName("delegate_to_expert")).toBe("Teammate delegation");
+    expect(formatToolName("update_expert")).toBe("Expert update");
+  });
+
+  it("uses the 'Action' label for run_block (frontend parlance)", () => {
+    expect(formatToolName("run_block")).toBe("Action");
+  });
+
+  it("strips redundant 'run_' prefix for other run_* tools", () => {
+    // "Running Run agent" reads awkwardly — the override produces
+    // "Running Agent".
+    expect(formatToolName("run_agent")).toBe("Workflow");
+  });
 });
 
 describe("getToolCategory", () => {
@@ -43,8 +81,9 @@ describe("getToolCategory", () => {
     expect(getToolCategory("bash_exec")).toBe("bash");
   });
 
-  it("returns 'web' for web_fetch, WebSearch, WebFetch", () => {
+  it("returns 'web' for web_fetch, web_search, WebSearch, WebFetch", () => {
     expect(getToolCategory("web_fetch")).toBe("web");
+    expect(getToolCategory("web_search")).toBe("web");
     expect(getToolCategory("WebSearch")).toBe("web");
     expect(getToolCategory("WebFetch")).toBe("web");
   });
@@ -185,14 +224,14 @@ describe("getAnimationText", () => {
     expect(getAnimationText(part, "bash")).toBe("Ran: echo hello");
   });
 
-  it("shows exit code on non-zero exit", () => {
+  it("still shows the command even on non-zero exit (exit code lives in the accordion description)", () => {
     const part = makePart({
       type: "tool-bash_exec",
       state: "output-available",
       input: { command: "false" },
       output: { exit_code: 1 },
     });
-    expect(getAnimationText(part, "bash")).toBe("Command exited with code 1");
+    expect(getAnimationText(part, "bash")).toBe("Ran: false");
   });
 
   it("shows error text for bash failure", () => {
@@ -210,6 +249,50 @@ describe("getAnimationText", () => {
       input: { query: "test query" },
     });
     expect(getAnimationText(part, "web")).toBe('Searching "test query"');
+  });
+
+  it("shows searching text for web_search with a query summary", () => {
+    const part = makePart({
+      type: "tool-web_search",
+      state: "input-streaming",
+      input: { query: "kimi k2.6" },
+    });
+    expect(getAnimationText(part, "web")).toBe('Searching "kimi k2.6"');
+  });
+
+  it("falls back to generic searching text for web_search with no query", () => {
+    const part = makePart({
+      type: "tool-web_search",
+      state: "input-streaming",
+    });
+    expect(getAnimationText(part, "web")).toBe("Searching the web…");
+  });
+
+  it("shows completed text for web_search with a query summary", () => {
+    const part = makePart({
+      type: "tool-web_search",
+      state: "output-available",
+      input: { query: "kimi k2.6" },
+      output: { results: [] },
+    });
+    expect(getAnimationText(part, "web")).toBe('Searched "kimi k2.6"');
+  });
+
+  it("falls back to generic completed text for web_search with no query", () => {
+    const part = makePart({
+      type: "tool-web_search",
+      state: "output-available",
+      output: { results: [] },
+    });
+    expect(getAnimationText(part, "web")).toBe("Web search completed");
+  });
+
+  it("shows error text for web_search failure", () => {
+    const part = makePart({
+      type: "tool-web_search",
+      state: "output-error",
+    });
+    expect(getAnimationText(part, "web")).toBe("Search failed");
   });
 
   it("shows fetching text for web_fetch", () => {
@@ -265,7 +348,9 @@ describe("getAnimationText", () => {
       state: "input-available",
       input: { description: "analyze code" },
     });
-    expect(getAnimationText(part, "agent")).toBe("Running agent: analyze code");
+    expect(getAnimationText(part, "agent")).toBe(
+      "Running subtask: analyze code",
+    );
   });
 
   it("shows agent completed for async launch", () => {
@@ -274,7 +359,9 @@ describe("getAnimationText", () => {
       state: "output-available",
       output: { isAsync: true },
     });
-    expect(getAnimationText(part, "agent")).toBe("Agent started in background");
+    expect(getAnimationText(part, "agent")).toBe(
+      "Subtask started in background",
+    );
   });
 
   it("shows default streaming text for unknown tools", () => {
@@ -332,7 +419,7 @@ describe("getAnimationText", () => {
       state: "output-available",
       output: { retrieval_status: "timeout" },
     });
-    expect(getAnimationText(part, "agent")).toBe("Agent still running\u2026");
+    expect(getAnimationText(part, "agent")).toBe("Subtask still running\u2026");
   });
 
   it("shows agent completed with summary for sync agent", () => {
@@ -343,7 +430,7 @@ describe("getAnimationText", () => {
       output: { status: "completed" },
     });
     expect(getAnimationText(part, "agent")).toBe(
-      "Agent completed: analyze code",
+      "Subtask completed: analyze code",
     );
   });
 
@@ -353,7 +440,7 @@ describe("getAnimationText", () => {
       state: "output-available",
       output: {},
     });
-    expect(getAnimationText(part, "agent")).toBe("Agent completed");
+    expect(getAnimationText(part, "agent")).toBe("Subtask completed");
   });
 
   it("shows error text for web search failure", () => {

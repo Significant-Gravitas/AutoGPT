@@ -2,33 +2,39 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
-import Avatar, {
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
-import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
-import Link from "next/link";
+} from "@/components/molecules/Popover/Popover";
+import { environment } from "@/services/environment";
 import * as React from "react";
-import { getAccountMenuOptionIcon, MenuItemGroup } from "../../helpers";
+import { MenuItemGroup } from "../../helpers";
 import { AccountLogoutOption } from "./components/AccountLogoutOption";
+import { AccountMenuActivityRow } from "./components/AccountMenuActivityRow";
+import { AccountMenuFeedbackRow } from "./components/AccountMenuFeedbackRow";
+import { AccountMenuHeader } from "./components/AccountMenuHeader";
+import { AccountMenuRow } from "./components/AccountMenuRow";
+import { AccountMenuTourRow } from "./components/AccountMenuTourRow";
+import { InitialAvatar } from "./components/InitialAvatar";
+import { getAccountMenuIcon } from "./helpers";
 
 interface Props {
   userName?: string;
+  userHandle?: string;
   userEmail?: string;
   avatarSrc?: string;
-  hideNavBarUsername?: boolean;
   menuItemGroups: MenuItemGroup[];
   isLoading?: boolean;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
 }
 
 export function AccountMenu({
   userName,
+  userHandle,
   userEmail,
   avatarSrc,
   menuItemGroups,
   isLoading = false,
+  side = "top",
+  align = "start",
 }: Props) {
   const popupId = React.useId();
 
@@ -37,119 +43,118 @@ export function AccountMenu({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex cursor-pointer items-center space-x-3"
+          // TODO(tokens): no exact role for focus-visible:ring-neutral-300 (#D4D4D4)
+          className="flex cursor-pointer items-center space-x-3 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
           aria-label="Open profile menu"
           aria-controls={popupId}
           aria-haspopup="true"
           data-testid="profile-popout-menu-trigger"
         >
-          <Avatar>
-            <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />
-            <AvatarFallback aria-hidden="true">
-              {userName?.charAt(0) || "U"}
-            </AvatarFallback>
-          </Avatar>
+          <InitialAvatar
+            src={avatarSrc}
+            name={userName}
+            username={userHandle}
+            className="h-8 w-8"
+          />
         </button>
       </PopoverTrigger>
 
       <PopoverContent
         id={popupId}
-        className="flex flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/65 p-4 shadow backdrop-blur-[10px] dark:bg-zinc-800/70"
+        side={side}
+        align={align}
+        sideOffset={8}
+        // TODO(tokens): no exact role for border-neutral-200 (#E5E5E5)
+        className="w-72 overflow-hidden rounded-2xl border border-neutral-200 bg-surface px-0 py-2 shadow-lg"
         data-testid="account-menu-popover"
       >
-        {/* Header with avatar and user info */}
-        <div className="inline-flex items-center justify-start gap-1 self-stretch">
-          <Avatar className="h-[60px] w-[60px]">
-            <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />
-            <AvatarFallback aria-hidden="true">
-              {userName?.charAt(0) || "U"}
-            </AvatarFallback>
-          </Avatar>
-          <div className="relative flex h-[47px] w-[173px] flex-col items-start justify-center gap-1">
-            {isLoading || !userName || !userEmail ? (
-              <>
-                <Skeleton className="h-4 w-24 bg-white/40" />
-                <Skeleton className="h-4 w-32 bg-white/40" />
-              </>
-            ) : (
-              <>
-                <div className="max-w-[10.5rem] truncate font-sans text-base font-semibold leading-none text-white dark:text-neutral-200">
-                  {userName}
-                </div>
-                <div
-                  data-testid="account-menu-user-email"
-                  className="max-w-[10.5rem] truncate font-sans text-base font-normal leading-none text-white dark:text-neutral-400"
-                >
-                  {userEmail}
-                </div>
-              </>
-            )}
-          </div>
+        <div className="px-2">
+          <AccountMenuHeader
+            userName={userName}
+            userHandle={userHandle}
+            userEmail={userEmail}
+            avatarSrc={avatarSrc}
+            isLoading={isLoading}
+          />
         </div>
 
-        {/* Menu items */}
-        <div className="flex w-full flex-col items-start justify-start gap-2 rounded-[23px]">
-          {menuItemGroups.map((group, groupIndex) => (
-            <div
-              key={groupIndex}
-              className="flex w-full flex-col items-start justify-start gap-5 rounded-[18px] bg-white p-3.5 dark:bg-neutral-900"
-            >
-              {group.items.map((item, itemIndex) => {
-                if (item.href) {
-                  return (
-                    <Link
-                      key={itemIndex}
-                      href={item.href}
-                      className="inline-flex w-full items-center justify-start gap-2.5"
-                    >
-                      <div className="relative">
-                        {getAccountMenuOptionIcon(item.icon)}
-                      </div>
-                      <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
-                        {item.text}
-                      </div>
-                    </Link>
-                  );
-                } else if (item.text === "Log out") {
-                  return <AccountLogoutOption key={itemIndex} />;
-                } else if (item.text === "Publish an agent") {
-                  return (
-                    <PublishAgentModal
-                      key={itemIndex}
-                      trigger={
-                        <div className="inline-flex w-full flex-row flex-nowrap items-center justify-start gap-2.5">
-                          <div className="relative">
-                            {getAccountMenuOptionIcon(item.icon)}
-                          </div>
-                          <div className="font-sans text-base font-medium leading-normal text-neutral-800">
-                            {item.text}
-                          </div>
-                        </div>
-                      }
-                    />
-                  );
-                } else {
-                  return (
-                    <div
-                      key={itemIndex}
-                      className="inline-flex w-full items-center justify-start gap-2.5"
-                      onClick={item.onClick}
-                      role="button"
-                      tabIndex={0}
-                    >
-                      <div className="relative">
-                        {getAccountMenuOptionIcon(item.icon)}
-                      </div>
-                      <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
-                        {item.text}
-                      </div>
-                    </div>
-                  );
-                }
-              })}
-            </div>
-          ))}
-        </div>
+        {menuItemGroups.map((group, groupIndex) => {
+          const isLogoutGroup = group.items.some(
+            (item) => item.text === "Log out",
+          );
+          const showDivider = groupIndex === 0 || isLogoutGroup;
+
+          return (
+            <React.Fragment key={`group-${groupIndex}`}>
+              {showDivider && (
+                <div
+                  // TODO(tokens): no exact role for bg-neutral-200 (#E5E5E5)
+                  className="mx-3 my-1 h-px bg-neutral-200"
+                />
+              )}
+              <div className="px-2 py-1">
+                <ul className="flex flex-col gap-0.5">
+                  {/* Help lives in the last group: replaying the first-run
+                      walkthrough sits with "What's new" and the docs. */}
+                  {isLogoutGroup && (
+                    <li>
+                      <AccountMenuTourRow />
+                    </li>
+                  )}
+                  {group.items.map((item, itemIndex) => {
+                    const key = `${groupIndex}-${itemIndex}-${item.text}`;
+                    const icon = getAccountMenuIcon(item.icon);
+
+                    if (item.text === "Log out") {
+                      return (
+                        <li key={key}>
+                          <AccountLogoutOption />
+                        </li>
+                      );
+                    }
+
+                    if (item.href) {
+                      return (
+                        <li key={key}>
+                          <AccountMenuRow
+                            as="link"
+                            href={item.href}
+                            external={item.external}
+                            icon={icon}
+                            label={item.text}
+                          />
+                        </li>
+                      );
+                    }
+
+                    return (
+                      <li key={key}>
+                        <AccountMenuRow
+                          as="button"
+                          onClick={item.onClick}
+                          icon={icon}
+                          label={item.text}
+                        />
+                      </li>
+                    );
+                  })}
+                  {groupIndex === 0 && (
+                    <>
+                      <li>
+                        <AccountMenuActivityRow />
+                      </li>
+                      {environment.isCloud() && (
+                        <li>
+                          <AccountMenuFeedbackRow />
+                        </li>
+                      )}
+                    </>
+                  )}
+                </ul>
+              </div>
+            </React.Fragment>
+          );
+        })}
       </PopoverContent>
     </Popover>
   );

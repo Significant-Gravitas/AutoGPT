@@ -1,29 +1,45 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import { CaretCircleRightIcon } from "@phosphor-icons/react";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import NextLink from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import Avatar, {
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
-import { Link } from "@/components/atoms/Link/Link";
+import { cn } from "@/lib/utils";
 import { AgentCardMenu } from "./components/AgentCardMenu";
 import { FavoriteButton } from "./components/FavoriteButton";
+import { useImageFallback } from "@/hooks/useImageFallback";
 import { useLibraryAgentCard } from "./useLibraryAgentCard";
 import { useFavoriteAnimation } from "../../context/FavoriteAnimationContext";
+import { StatusBadge } from "../StatusBadge/StatusBadge";
+import { ContextualActionButton } from "../ContextualActionButton/ContextualActionButton";
+import type { AgentStatusInfo } from "../../types";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
+import { Chatting01Icon, EyeIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
+  statusInfo: AgentStatusInfo;
   draggable?: boolean;
 }
 
-export function LibraryAgentCard({ agent, draggable = true }: Props) {
-  const { id, name, graph_id, can_access_graph, image_url } = agent;
+export function LibraryAgentCard({
+  agent,
+  statusInfo,
+  draggable = true,
+}: Props) {
+  const { id, name, image_url } = agent;
+  const { showImage, handleImageError } = useImageFallback(image_url);
+  const router = useRouter();
   const { triggerFavoriteAnimation } = useFavoriteAnimation();
 
   function handleDragStart(e: React.DragEvent<HTMLDivElement>) {
@@ -31,18 +47,14 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
     e.dataTransfer.effectAllowed = "move";
   }
 
-  const {
-    isFromMarketplace,
-    isFavorite,
-    profile,
-    creator_image_url,
-    handleToggleFavorite,
-  } = useLibraryAgentCard({
+  const { isFavorite, handleToggleFavorite } = useLibraryAgentCard({
     agent,
     onFavoriteAdd: triggerFavoriteAnimation,
   });
 
-  return (
+  const hasError = statusInfo.status === "error";
+
+  const card = (
     <div
       draggable={draggable}
       onDragStart={handleDragStart}
@@ -52,7 +64,11 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
         layoutId={`agent-card-${id}`}
         data-testid="library-agent-card"
         data-agent-id={id}
-        className="group relative inline-flex h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border border-zinc-100 bg-white hover:shadow-md"
+        className={cn(
+          "group relative inline-flex h-auto min-h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border bg-surface hover:shadow-md",
+          // TODO(tokens): no exact role for border-red-400 (#F26969)
+          hasError ? "border-red-400" : "border-separator",
+        )}
         transition={{
           type: "spring",
           damping: 25,
@@ -61,23 +77,10 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
         style={{ willChange: "transform" }}
       >
         <NextLink href={`/library/agents/${id}`} className="flex-shrink-0">
-          <div className="relative flex items-center gap-2 px-4 pt-3">
-            <Avatar className="h-4 w-4 rounded-full">
-              <AvatarImage
-                src={
-                  isFromMarketplace
-                    ? creator_image_url || "/avatar-placeholder.png"
-                    : profile?.avatar_url || "/avatar-placeholder.png"
-                }
-                alt={`${name} creator avatar`}
-              />
-              <AvatarFallback size={48}>{name.charAt(0)}</AvatarFallback>
-            </Avatar>
-            <Text
-              variant="small-medium"
-              className="uppercase tracking-wide text-zinc-400"
-            >
-              {isFromMarketplace ? "FROM MARKETPLACE" : "Built by you"}
+          <div className="relative flex items-center gap-3 pl-2 pr-4 pt-3">
+            <StatusBadge status={statusInfo.status} />
+            <Text variant="small" className="text-foreground-subtle">
+              {statusInfo.totalRuns} tasks
             </Text>
           </div>
         </NextLink>
@@ -89,7 +92,7 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
         <AgentCardMenu agent={agent} />
 
         <div className="flex w-full flex-1 flex-col px-4 pb-2">
-          <Link
+          <NextLink
             href={`/library/agents/${id}`}
             className="flex w-full items-start justify-between gap-2 no-underline hover:no-underline focus:ring-0"
           >
@@ -101,7 +104,7 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
               {name}
             </Text>
 
-            {!image_url ? (
+            {!showImage || !image_url ? (
               <div
                 className={`h-[3.64rem] w-[6.70rem] flex-shrink-0 rounded-small ${
                   [
@@ -120,36 +123,65 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
             ) : (
               <Image
                 src={image_url}
+                unoptimized={isLocalStoreMediaUrl(image_url)}
                 alt={`${name} preview image`}
                 width={107}
                 height={58}
                 className="flex-shrink-0 rounded-small object-cover"
+                onError={handleImageError}
               />
             )}
-          </Link>
+          </NextLink>
 
-          <div className="mt-auto flex w-full justify-start gap-6 border-t border-zinc-100 pb-1 pt-3">
-            <Link
-              href={`/library/agents/${id}`}
+          <div className="mt-4 flex w-full items-center justify-end gap-1 border-t border-separator pb-0 pt-2">
+            <button
+              type="button"
+              onClick={() => router.push(`/library/agents/${id}`)}
               data-testid="library-agent-card-see-runs-link"
-              className="flex items-center gap-1 text-[13px]"
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-body-sm font-medium leading-inherit text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
             >
-              See runs <CaretCircleRightIcon size={20} />
-            </Link>
-
-            {can_access_graph && (
-              <Link
-                href={`/build?flowID=${graph_id}`}
-                data-testid="library-agent-card-open-in-builder-link"
-                className="flex items-center gap-1 text-[13px]"
-                isExternal
-              >
-                Open in builder <CaretCircleRightIcon size={20} />
-              </Link>
-            )}
+              <Icon icon={EyeIcon} size={14} className="shrink-0" />
+              See tasks
+            </button>
+            <ContextualActionButton
+              status={statusInfo.status}
+              agentID={id}
+              executionID={statusInfo.activeExecutionID ?? undefined}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const prompt = encodeURIComponent(
+                  `Tell me about my workflow "${name}" (library workflow ID: ${id}). Use find_library_agent with this exact agent_id to look it up, then summarize its current status, recent runs, and how I can get the most out of it.`,
+                );
+                router.push(`/home?autosubmit=true#prompt=${prompt}`);
+              }}
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-body-sm font-medium leading-inherit text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
+            >
+              <Icon icon={Chatting01Icon} size={14} className="shrink-0" />
+              Chat
+            </button>
           </div>
         </div>
       </motion.div>
     </div>
   );
+
+  if (hasError && statusInfo.lastError) {
+    return (
+      <Tooltip inheritDelay>
+        <TooltipTrigger asChild>{card}</TooltipTrigger>
+        <TooltipPortal>
+          <TooltipContent
+            // TODO(tokens): no exact role for text-red-300 (#F69999)
+            className="max-w-xs text-red-300"
+          >
+            {statusInfo.lastError}
+          </TooltipContent>
+        </TooltipPortal>
+      </Tooltip>
+    );
+  }
+
+  return card;
 }

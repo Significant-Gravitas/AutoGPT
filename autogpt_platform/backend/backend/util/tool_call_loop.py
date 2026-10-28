@@ -81,6 +81,7 @@ class ToolCallResult:
     tool_name: str
     content: str
     is_error: bool = False
+    image_blocks: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -203,9 +204,10 @@ async def tool_call_loop(
     while max_iterations < 0 or iteration < max_iterations:
         iteration += 1
 
-        # On last iteration, add a hint to finish.  Only copy the list
-        # when the hint needs to be appended to avoid per-iteration overhead
-        # on long conversations.
+        # On last iteration, add a hint to finish and drop tools so the
+        # model is forced to produce a final text response instead of
+        # issuing another tool call that would get cut off cold.  Only
+        # copy the message list when we actually need to mutate it.
         is_last = (
             last_iteration_message
             and max_iterations > 0
@@ -216,11 +218,13 @@ async def tool_call_loop(
             iteration_messages.append(
                 {"role": "system", "content": last_iteration_message}
             )
+            iteration_tools: Sequence[Any] = []
         else:
             iteration_messages = messages
+            iteration_tools = tools
 
         # Call LLM
-        response = await llm_call(iteration_messages, tools)
+        response = await llm_call(iteration_messages, iteration_tools)
         total_prompt_tokens += response.prompt_tokens
         total_completion_tokens += response.completion_tokens
 

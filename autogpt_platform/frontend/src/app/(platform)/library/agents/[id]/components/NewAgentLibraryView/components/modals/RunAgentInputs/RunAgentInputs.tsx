@@ -16,11 +16,14 @@ import {
   BlockIOSubSchema,
   BlockIOTableSubSchema,
   DataType,
-  determineDataType,
+  GoogleDrivePickerSchema,
+  resolveDataType,
   TableRow,
 } from "@/lib/autogpt-server-api/types";
-import { PlusIcon, XIcon } from "@phosphor-icons/react";
+import { getSelectOptions } from "./helpers";
 import { useRunAgentInputs } from "./useRunAgentInputs";
+import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 /**
  * A generic prop structure for the TypeBasedInput.
@@ -51,7 +54,15 @@ export function RunAgentInputs({
 }: Props & React.HTMLAttributes<HTMLElement>) {
   const { handleUploadFile, uploadProgress } = useRunAgentInputs();
 
-  const dataType = determineDataType(schema);
+  // Options and keys come from the schema the type was judged by: an optional
+  // field keeps them on its anyOf member, not on the field itself.
+  const { type, schema: valueSchema } = resolveDataType(schema);
+  const selectOptions = getSelectOptions(valueSchema);
+  // A select with nothing to pick from, like an empty enum, takes text.
+  const dataType =
+    type === DataType.SELECT && selectOptions.length === 0
+      ? DataType.SHORT_TEXT
+      : type;
 
   const baseId = String(schema.title ?? "input")
     .replace(/\s+/g, "-")
@@ -99,9 +110,9 @@ export function RunAgentInputs({
       break;
 
     case DataType.GOOGLE_DRIVE_PICKER: {
-      const pickerSchema = schema as any;
-      const config: import("@/lib/autogpt-server-api/types").GoogleDrivePickerConfig =
-        pickerSchema.google_drive_picker_config || {};
+      const config =
+        (valueSchema as GoogleDrivePickerSchema).google_drive_picker_config ??
+        {};
 
       innerInputElement = (
         <GoogleDrivePickerInput
@@ -118,7 +129,10 @@ export function RunAgentInputs({
     case DataType.BOOLEAN:
       innerInputElement = (
         <>
-          <span className="text-sm text-gray-500">
+          <span
+            // TODO(tokens): no exact role for text-gray-500 (#6B7280)
+            className="text-sm text-gray-500"
+          >
             {placeholder || (value ? "Enabled" : "Disabled")}
           </span>
           <Switch
@@ -207,29 +221,24 @@ export function RunAgentInputs({
       break;
 
     case DataType.SELECT:
-      if (
-        "enum" in schema &&
-        Array.isArray(schema.enum) &&
-        schema.enum.length > 0
-      ) {
-        innerInputElement = (
-          <DSSelect
-            id={`${baseId}-select`}
-            label={schema.title ?? placeholder ?? "Select"}
-            hideLabel
-            value={value ?? ""}
-            onValueChange={(val: string) => onChange(val)}
-            placeholder={placeholder || "Select an option"}
-            options={schema.enum
-              .filter((opt) => opt)
-              .map((opt) => ({ value: opt, label: String(opt) }))}
-          />
-        );
-        break;
-      }
+      innerInputElement = (
+        <DSSelect
+          id={`${baseId}-select`}
+          label={schema.title ?? placeholder ?? "Select"}
+          hideLabel
+          value={value ?? ""}
+          onValueChange={(val: string) => onChange(val)}
+          placeholder={placeholder || "Select an option"}
+          options={selectOptions.map((opt) => ({
+            value: opt,
+            label: String(opt),
+          }))}
+        />
+      );
+      break;
 
     case DataType.MULTI_SELECT: {
-      const _schema = schema as BlockIOObjectSubSchema;
+      const _schema = valueSchema as BlockIOObjectSubSchema;
       const allKeys = Object.keys(_schema.properties);
       const selectedValues = Object.entries(value || {})
         .filter(([_, v]) => v)
@@ -258,7 +267,7 @@ export function RunAgentInputs({
 
     case DataType.TABLE: {
       // Render a simple table UI for the run modal
-      const tableSchema = schema as BlockIOTableSubSchema;
+      const tableSchema = valueSchema as BlockIOTableSubSchema;
       const headers = tableSchema.items?.properties
         ? Object.keys(tableSchema.items.properties)
         : ["Column 1", "Column 2", "Column 3"];
@@ -292,7 +301,10 @@ export function RunAgentInputs({
           <div className="overflow-hidden rounded-md border">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-800">
+                <tr
+                  // TODO(tokens): no exact role for bg-gray-50 (#F9FAFB); no dark roles yet for dark:bg-gray-800 (#1F2937)
+                  className="bg-gray-50 dark:bg-gray-800"
+                >
                   {headers.map((header) => (
                     <th
                       key={header}
@@ -306,7 +318,11 @@ export function RunAgentInputs({
               </thead>
               <tbody>
                 {tableData.map((row, rowIndex) => (
-                  <tr key={rowIndex} className="border-t dark:border-gray-700">
+                  <tr
+                    // TODO(tokens): no dark roles yet for dark:border-gray-700 (#374151)
+                    key={rowIndex}
+                    className="border-t dark:border-gray-700"
+                  >
                     {headers.map((header) => (
                       <td key={header} className="px-3 py-1">
                         <input
@@ -315,6 +331,7 @@ export function RunAgentInputs({
                           onChange={(e) =>
                             updateRow(rowIndex, header, e.target.value)
                           }
+                          // TODO(tokens): no dark roles yet for dark:border-gray-700 (#374151), dark:bg-gray-900 (#111827)
                           className="w-full rounded border px-2 py-1 dark:border-gray-700 dark:bg-gray-900"
                           placeholder={`Enter ${header}`}
                         />
@@ -328,7 +345,7 @@ export function RunAgentInputs({
                         onClick={() => removeRow(rowIndex)}
                         className="h-8 w-8 p-0"
                       >
-                        <XIcon className="h-4 w-4" weight="bold" />
+                        <Icon icon={Cancel01Icon} className="h-4 w-4" />
                       </Button>
                     </td>
                   </tr>
@@ -343,7 +360,7 @@ export function RunAgentInputs({
             onClick={addRow}
             className="w-full"
           >
-            <PlusIcon className="mr-2 h-4 w-4" weight="bold" />
+            <Icon icon={PlusSignIcon} className="mr-2 h-4 w-4" />
             Add Row
           </Button>
         </div>

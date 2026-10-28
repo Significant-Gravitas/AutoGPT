@@ -1,5 +1,6 @@
 """Admin endpoints for checking and resetting user CoPilot rate limit usage."""
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -11,6 +12,8 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import (
     SubscriptionTier,
     get_global_rate_limits,
+    get_stripe_sweep_revert_warning,
+    get_tier_multipliers,
     get_usage_status,
     get_user_tier,
     reset_user_usage,
@@ -32,16 +35,23 @@ router = APIRouter(
 class UserRateLimitResponse(BaseModel):
     user_id: str
     user_email: Optional[str] = None
-    daily_token_limit: int
-    weekly_token_limit: int
-    daily_tokens_used: int
-    weekly_tokens_used: int
+    daily_cost_limit_microdollars: int
+    weekly_cost_limit_microdollars: int
+    daily_cost_used_microdollars: int
+    weekly_cost_used_microdollars: int
     tier: SubscriptionTier
+    # Full per-tier multiplier map incl. admin-managed tiers like ENTERPRISE,
+    # unlike the price-filtered /credits/subscription map.
+    tier_multipliers: dict[str, float] = {}
 
 
 class UserTierResponse(BaseModel):
     user_id: str
     tier: SubscriptionTier
+    # Set by POST /rate_limit/tier when the grant will not stick: the user has
+    # a Stripe customer without an active subscription, so the Stripe
+    # reconciliation sweep will revert the tier to NO_TIER on its next run.
+    warning: Optional[str] = None
 
 
 class SetUserTierRequest(BaseModel):
@@ -101,18 +111,22 @@ async def get_user_rate_limit(
     logger.info("Admin %s checking rate limit for user %s", admin_user_id, resolved_id)
 
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
-        resolved_id, config.daily_token_limit, config.weekly_token_limit
+        resolved_id,
+        config.daily_cost_limit_microdollars,
+        config.weekly_cost_limit_microdollars,
     )
     usage = await get_usage_status(resolved_id, daily_limit, weekly_limit, tier=tier)
+    multipliers = await get_tier_multipliers()
 
     return UserRateLimitResponse(
         user_id=resolved_id,
         user_email=resolved_email,
-        daily_token_limit=daily_limit,
-        weekly_token_limit=weekly_limit,
-        daily_tokens_used=usage.daily.used,
-        weekly_tokens_used=usage.weekly.used,
+        daily_cost_limit_microdollars=daily_limit,
+        weekly_cost_limit_microdollars=weekly_limit,
+        daily_cost_used_microdollars=usage.daily.used,
+        weekly_cost_used_microdollars=usage.weekly.used,
         tier=tier,
+        tier_multipliers=multipliers,
     )
 
 
@@ -141,9 +155,12 @@ async def reset_user_rate_limit(
         raise HTTPException(status_code=500, detail="Failed to reset usage") from e
 
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
-        user_id, config.daily_token_limit, config.weekly_token_limit
+        user_id,
+        config.daily_cost_limit_microdollars,
+        config.weekly_cost_limit_microdollars,
     )
     usage = await get_usage_status(user_id, daily_limit, weekly_limit, tier=tier)
+    multipliers = await get_tier_multipliers()
 
     try:
         resolved_email = await get_user_email_by_id(user_id)
@@ -154,11 +171,12 @@ async def reset_user_rate_limit(
     return UserRateLimitResponse(
         user_id=user_id,
         user_email=resolved_email,
-        daily_token_limit=daily_limit,
-        weekly_token_limit=weekly_limit,
-        daily_tokens_used=usage.daily.used,
-        weekly_tokens_used=usage.weekly.used,
+        daily_cost_limit_microdollars=daily_limit,
+        weekly_cost_limit_microdollars=weekly_limit,
+        daily_cost_used_microdollars=usage.daily.used,
+        weekly_cost_used_microdollars=usage.weekly.used,
         tier=tier,
+        tier_multipliers=multipliers,
     )
 
 
@@ -226,7 +244,25 @@ async def set_user_rate_limit_tier(
         logger.exception("Failed to set user tier")
         raise HTTPException(status_code=500, detail="Failed to set tier") from e
 
-    return UserTierResponse(user_id=request.user_id, tier=request.tier)
+    warning = await _sweep_revert_warning(request.user_id, request.tier)
+    return UserTierResponse(user_id=request.user_id, tier=request.tier, warning=warning)
+
+
+async def _sweep_revert_warning(user_id: str, tier: SubscriptionTier) -> Optional[str]:
+    """Best-effort: the tier is already written, so a Stripe or DB hiccup here
+    must not turn the response into a 500 or hold the admin for long."""
+    try:
+        return await asyncio.wait_for(
+            get_stripe_sweep_revert_warning(user_id, tier), timeout=5.0
+        )
+    except Exception:
+        logger.warning(
+            "Could not check whether the Stripe sweep will revert the tier grant"
+            " for user %s",
+            user_id,
+            exc_info=True,
+        )
+        return None
 
 
 class UserSearchResult(BaseModel):

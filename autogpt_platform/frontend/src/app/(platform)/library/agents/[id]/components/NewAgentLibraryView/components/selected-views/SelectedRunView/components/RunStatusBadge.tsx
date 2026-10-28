@@ -1,15 +1,18 @@
+import { getRunStatusInfo } from "@/components/molecules/RunStatusBadge/RunStatusBadge";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import {
-  CheckCircleIcon,
-  ClockIcon,
-  PauseCircleIcon,
-  StopCircleIcon,
-  WarningCircleIcon,
-  WarningIcon,
-  XCircleIcon,
-} from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import {
+  Alert01Icon,
+  Alert02Icon,
+  AlertCircleIcon,
+  CancelCircleIcon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  PauseCircleIcon,
+  StopCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type StatusIconMap = {
   icon: React.ReactNode;
@@ -20,65 +23,97 @@ type StatusIconMap = {
 const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
   INCOMPLETE: {
     icon: (
-      <WarningCircleIcon size={16} className="text-red-700" weight="bold" />
+      <Icon
+        icon={AlertCircleIcon}
+        size={16}
+        className="text-error-foreground"
+      />
     ),
-    bgColor: "bg-red-50",
-    textColor: "!text-red-700",
+    bgColor: "bg-error-surface",
+    textColor: "!text-error-foreground",
   },
   QUEUED: {
-    icon: <ClockIcon size={16} className="text-yellow-700" weight="bold" />,
+    // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
+    icon: <Icon icon={Clock01Icon} size={16} className="text-yellow-700" />,
     bgColor: "bg-yellow-50",
     textColor: "!text-yellow-700",
   },
   RUNNING: {
-    icon: (
-      <PauseCircleIcon size={16} className="text-yellow-700" weight="bold" />
-    ),
+    // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
+    icon: <Icon icon={PauseCircleIcon} size={16} className="text-yellow-700" />,
     bgColor: "bg-yellow-50",
     textColor: "!text-yellow-700",
   },
   REVIEW: {
-    icon: <WarningIcon size={16} className="text-yellow-700" weight="bold" />,
+    // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
+    icon: <Icon icon={Alert01Icon} size={16} className="text-yellow-700" />,
     bgColor: "bg-yellow-50",
     textColor: "!text-yellow-700",
   },
   COMPLETED: {
     icon: (
-      <CheckCircleIcon size={16} className="text-green-700" weight="bold" />
+      <Icon
+        icon={CheckmarkCircle02Icon}
+        size={16}
+        className="text-success-foreground"
+      />
     ),
-    bgColor: "bg-green-50",
-    textColor: "!text-green-700",
+    bgColor: "bg-success-surface",
+    textColor: "!text-success-foreground",
   },
   TERMINATED: {
-    icon: <StopCircleIcon size={16} className="text-slate-700" weight="bold" />,
+    // TODO(tokens): no exact role for text-slate-700 (#475263)
+    icon: <Icon icon={StopCircleIcon} size={16} className="text-slate-700" />,
     bgColor: "bg-slate-50",
     textColor: "!text-slate-700",
   },
   FAILED: {
-    icon: <XCircleIcon size={16} className="text-red-700" weight="bold" />,
-    bgColor: "bg-red-50",
-    textColor: "!text-red-700",
+    icon: (
+      <Icon
+        icon={CancelCircleIcon}
+        size={16}
+        className="text-error-foreground"
+      />
+    ),
+    bgColor: "bg-error-surface",
+    textColor: "!text-error-foreground",
   },
+};
+
+const completedWithErrorsStyle: StatusIconMap = {
+  icon: (
+    <Icon icon={Alert02Icon} size={16} className="text-warning-foreground" />
+  ),
+  bgColor: "bg-warning-surface",
+  textColor: "!text-warning-foreground",
 };
 
 type Props = {
   status: AgentExecutionStatus;
+  completedWithErrors?: boolean;
 };
 
-export function RunStatusBadge({ status }: Props) {
+export function RunStatusBadge({ status, completedWithErrors = false }: Props) {
+  const style = completedWithErrors
+    ? completedWithErrorsStyle
+    : statusIconMap[status];
+  const label = completedWithErrors
+    ? "Completed with errors"
+    : getRunStatusInfo(status).label;
+
   return (
     <div
       className={cn(
         "inline-flex items-center gap-1 rounded-md p-1",
-        statusIconMap[status].bgColor,
+        style.bgColor,
       )}
     >
-      {statusIconMap[status].icon}
+      {style.icon}
       <Text
         variant="small-medium"
-        className={cn(statusIconMap[status].textColor, "capitalize")}
+        className={cn(style.textColor, "capitalize")}
       >
-        {status.toLowerCase()}
+        {label}
       </Text>
     </div>
   );

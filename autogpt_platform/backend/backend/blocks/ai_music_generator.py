@@ -9,6 +9,7 @@ from replicate.client import Client as ReplicateClient
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -145,6 +146,7 @@ class AIMusicGeneratorBlock(Block):
                 "run_model": lambda api_key, music_gen_model_version, prompt, duration, temperature, top_k, top_p, classifier_free_guidance, output_format, normalization_strategy: "https://replicate.com/output/generated-audio-url.wav",
             },
             test_credentials=TEST_CREDENTIALS,
+            effect=BlockEffect.READ,
         )
 
     async def run(

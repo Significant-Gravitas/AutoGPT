@@ -3,13 +3,14 @@ import type { AgentsFoundResponse } from "@/app/api/__generated__/models/agentsF
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import type { NoResultsResponse } from "@/app/api/__generated__/models/noResultsResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
+import { ToolUIPart } from "ai";
 import {
   FolderOpenIcon,
-  MagnifyingGlassIcon,
-  SquaresFourIcon,
-  StorefrontIcon,
-} from "@phosphor-icons/react";
-import { ToolUIPart } from "ai";
+  GridViewIcon,
+  Search01Icon,
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export interface FindAgentInput {
   query: string;
@@ -91,7 +92,7 @@ export function getSourceLabelFromToolType(toolType?: FindAgentsToolType): {
   if (toolType === "tool-find_agent") {
     return { source: "marketplace", label: "Marketplace" };
   }
-  return { source: "unknown", label: "Agents" };
+  return { source: "unknown", label: "Workflows" };
 }
 
 export function getAnimationText(part: {
@@ -106,8 +107,8 @@ export function getAnimationText(part: {
   // Action phrase matching legacy ToolCallMessage
   const actionPhrase =
     source === "library"
-      ? "Looking for library agents"
-      : "Looking for agents in the marketplace";
+      ? "Looking for library workflows"
+      : "Looking for workflows in the marketplace";
 
   const queryText = query ? ` matching "${query}"` : "";
 
@@ -122,20 +123,20 @@ export function getAnimationText(part: {
         return `${actionPhrase}${queryText}`;
       }
       if (isNoResultsOutput(output)) {
-        return `No agents found${queryText}`;
+        return `No workflows found${queryText}`;
       }
       if (isAgentsFoundOutput(output)) {
         const count = output.count ?? output.agents?.length ?? 0;
-        return `Found ${count} agent${count === 1 ? "" : "s"}${queryText}`;
+        return `Found ${count} workflow${count === 1 ? "" : "s"}${queryText}`;
       }
       if (isErrorOutput(output)) {
-        return `Error finding agents${queryText}`;
+        return `Error finding workflows${queryText}`;
       }
       return `${actionPhrase}${queryText}`;
     }
 
     case "output-error":
-      return `Error finding agents${queryText}`;
+      return `Error finding workflows${queryText}`;
 
     default:
       return actionPhrase;
@@ -162,16 +163,16 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   const { source } = getSourceLabelFromToolType(toolType);
-  const IconComponent =
-    source === "library" ? MagnifyingGlassIcon : SquaresFourIcon;
+  const icon = source === "library" ? Search01Icon : GridViewIcon;
 
   return (
-    <IconComponent
+    <Icon
+      icon={icon}
       size={14}
-      weight="regular"
+      // TODO(tokens): no exact role for neutral-500 #737373, neutral-400 #A3A3A3
       className={
         isError
-          ? "text-red-500"
+          ? "text-error"
           : isStreaming
             ? "text-neutral-500"
             : "text-neutral-400"
@@ -182,6 +183,6 @@ export function ToolIcon({
 
 export function AccordionIcon({ toolType }: { toolType?: FindAgentsToolType }) {
   const { source } = getSourceLabelFromToolType(toolType);
-  const IconComponent = source === "library" ? FolderOpenIcon : StorefrontIcon;
-  return <IconComponent size={32} weight="light" />;
+  const icon = source === "library" ? FolderOpenIcon : Store01Icon;
+  return <Icon icon={icon} size={32} />;
 }

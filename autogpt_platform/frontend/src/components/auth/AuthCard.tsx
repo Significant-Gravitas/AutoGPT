@@ -22,7 +22,11 @@ AuthCard.BottomText = function BottomText({
         "mt-4 inline-flex w-full items-center justify-center gap-1",
       )}
     >
-      <Text variant="body-medium" className="text-slate-950">
+      <Text
+        variant="body-medium"
+        // TODO(tokens): no exact role for text-slate-950 (#020617)
+        className="text-slate-950"
+      >
         {text}
       </Text>
       {link ? (
@@ -40,9 +44,14 @@ interface Props {
   className?: string;
 }
 
-export function AuthCard({ children, title }: Props) {
+export function AuthCard({ children, title, className }: Props) {
   return (
-    <Card className="mx-auto flex min-h-[40vh] w-full max-w-[32rem] flex-col items-center justify-center gap-8">
+    <Card
+      className={cn(
+        "mx-auto flex min-h-[40vh] w-full max-w-[32rem] flex-col items-center justify-center gap-8",
+        className,
+      )}
+    >
       <Text variant="h3" as="h2" className="mb-3">
         {title}
       </Text>

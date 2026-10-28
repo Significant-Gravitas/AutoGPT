@@ -6,7 +6,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/__legacy__/ui/card";
+} from "@/components/atoms/Card/Card";
 import { APIKeysModals } from "./components/APIKeysModals/APIKeysModals";
 
 export const metadata: Metadata = { title: "API Keys - AutoGPT Platform" };
@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "API Keys - AutoGPT Platform" };
 const ApiKeysPage = () => {
   return (
     <div className="w-full pr-4 pt-24 md:pt-0">
-      <Card>
+      <Card variant="outlined">
         <CardHeader>
           <CardTitle>AutoGPT Platform API Keys</CardTitle>
           <CardDescription>

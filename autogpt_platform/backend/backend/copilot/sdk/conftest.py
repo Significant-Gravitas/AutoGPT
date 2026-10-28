@@ -2,28 +2,78 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 
+from backend.copilot.sdk.cli_version import _VERSIONS, _cli_the_sdk_finds
 from backend.util import json
+
+
+def build_cli_cost_row(session_id: str, total: float) -> str:
+    """Build a native CLI cost snapshot shared by retry and restart tests."""
+    return (
+        json.dumps(
+            {"type": "cost-state", "sessionId": session_id, "totalCostUSD": total}
+        )
+        + "\n"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Env vars that ``ChatConfig`` validators read — must be cleared so explicit
+# constructor values are used.  Centralised here so adding a new env-backed
+# field only needs one update across the SDK test suite.
+# ---------------------------------------------------------------------------
+_CONFIG_ENV_VARS = (
+    "CHAT_USE_OPENROUTER",
+    "CHAT_API_KEY",
+    "OPEN_ROUTER_API_KEY",
+    "OPENAI_API_KEY",
+    "CHAT_BASE_URL",
+    "OPENROUTER_BASE_URL",
+    "OPENAI_BASE_URL",
+    "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
+    "CHAT_USE_CLAUDE_AGENT_SDK",
+    "CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE",
+    "CHAT_CLAUDE_AGENT_CLI_PATH",
+    "CLAUDE_AGENT_CLI_PATH",
+    # Aux-client + title-model + direct-key vars: read by
+    # ``_validate_aux_client_for_direct_main`` to decide whether
+    # subscription / direct-Anthropic configs are safe.  Local ``.env``
+    # files often set these; clearing them ensures the test's explicit
+    # constructor kwargs (or lack thereof) drive the validator.
+    "CHAT_AUX_API_KEY",
+    "CHAT_AUX_BASE_URL",
+    "CHAT_TITLE_MODEL",
+    "CHAT_DIRECT_ANTHROPIC_API_KEY",
+    "ANTHROPIC_API_KEY",
+)
+
+
+@pytest.fixture()
+def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear env-backed CHAT_* settings so ChatConfig uses constructor values."""
+    for var in _CONFIG_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_cli_version_checks():
+    """No test sees a CLI version or path another test read."""
+    _VERSIONS.clear()
+    _cli_the_sdk_finds.cache_clear()
+    yield
+    _VERSIONS.clear()
+    _cli_the_sdk_finds.cache_clear()
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", name="server")
 async def _server_noop() -> None:
     """No-op server stub — SDK tests don't need the full backend."""
     return None
-
-
-@pytest_asyncio.fixture(
-    scope="session", loop_scope="session", autouse=True, name="graph_cleanup"
-)
-async def _graph_cleanup_noop() -> AsyncIterator[None]:
-    """No-op graph cleanup stub."""
-    yield
 
 
 @pytest.fixture()
@@ -108,3 +158,14 @@ def build_structured_transcript(
         lines.append(json.dumps(entry, separators=(",", ":")))
         last_uuid = uid
     return "\n".join(lines) + "\n"
+
+
+@pytest.fixture(autouse=True)
+def login_chain_unchanged(request):
+    """Sandbox doubles hold no login files; tests of that check opt out."""
+    if request.node.get_closest_marker("real_login_chain"):
+        yield
+        return
+    unchanged = AsyncMock(return_value={})
+    with (patch("backend.util.sandbox_login.changed_login_files", unchanged),):
+        yield

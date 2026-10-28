@@ -2,15 +2,15 @@
 """Download CoPilot transcripts from prod GCS and load into local dev environment.
 
 Usage:
-    # Step 1: Download from prod GCS (needs MEDIA_GCS_BUCKET_NAME + gcloud auth)
-    MEDIA_GCS_BUCKET_NAME=<prod-bucket> USER_ID=<user-uuid> \
+    # Step 1: Download from prod GCS (needs PRIVATE_USER_DATA_BUCKET + gcloud auth)
+    PRIVATE_USER_DATA_BUCKET=<prod-bucket> USER_ID=<user-uuid> \
         poetry run python scripts/download_transcripts.py download <session_id> ...
 
     # Step 2: Load downloaded transcripts into local storage + DB
     poetry run python scripts/download_transcripts.py load <session_id> ...
 
     # Or do both in one step (if you have GCS access):
-    MEDIA_GCS_BUCKET_NAME=<prod-bucket> USER_ID=<user-uuid> \
+    PRIVATE_USER_DATA_BUCKET=<prod-bucket> USER_ID=<user-uuid> \
         poetry run python scripts/download_transcripts.py both <session_id> ...
 
 The "download" step saves transcripts to transcripts/<session_id>.jsonl.
@@ -67,9 +67,14 @@ async def cmd_download(session_ids: list[str]) -> None:
         print("  You can find it in Sentry breadcrumbs or the DB.")
         sys.exit(1)
 
-    bucket = os.environ.get("MEDIA_GCS_BUCKET_NAME", "")
+    from backend.util.settings import Config
+
+    bucket = Config().resolved_private_user_data_bucket
     if not bucket:
-        print("ERROR: Set MEDIA_GCS_BUCKET_NAME to the prod GCS bucket.")
+        print(
+            "ERROR: Set PRIVATE_USER_DATA_BUCKET (or legacy "
+            "MEDIA_GCS_BUCKET_NAME) to the prod GCS bucket."
+        )
         sys.exit(1)
 
     os.makedirs(TRANSCRIPTS_DIR, exist_ok=True)
@@ -198,9 +203,12 @@ async def cmd_load(session_ids: list[str]) -> None:
 
         # Create chat session in DB
         try:
-            from backend.copilot.db import create_chat_session, get_chat_session
+            from backend.copilot.db import (
+                create_chat_session,
+                get_chat_session_metadata,
+            )
 
-            existing = await get_chat_session(sid)
+            existing = await get_chat_session_metadata(sid)
             if existing:
                 print(f"[{sid[:12]}] Session already exists in DB, skipping creation")
             else:

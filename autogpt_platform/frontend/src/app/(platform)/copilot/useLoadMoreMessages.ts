@@ -1,9 +1,13 @@
-import { getV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
+import {
+  getV2GetSession,
+  type getV2GetSessionResponse,
+} from "@/app/api/__generated__/endpoints/chat/chat";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   convertChatSessionMessagesToUiMessages,
   extractToolOutputsFromRaw,
+  type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 
 interface UseLoadMoreMessagesArgs {
@@ -23,10 +27,10 @@ export function useLoadMoreMessages({
   initialHasMore,
   initialPageRawMessages,
 }: UseLoadMoreMessagesArgs) {
-  // Store accumulated raw messages from all older pages (in ascending order).
+  // Accumulated raw messages from all extra pages (ascending order).
   // Re-converting them all together ensures tool outputs are matched across
   // inter-page boundaries.
-  const [olderRawMessages, setOlderRawMessages] = useState<unknown[]>([]);
+  const [pagedRawMessages, setPagedRawMessages] = useState<unknown[]>([]);
   const [oldestSequence, setOldestSequence] = useState<number | null>(
     initialOldestSequence,
   );
@@ -37,16 +41,14 @@ export function useLoadMoreMessages({
   // Epoch counter to discard stale loadMore responses after a reset
   const epochRef = useRef(0);
 
-  // Track the sessionId and initial cursor to reset state on change
   const prevSessionIdRef = useRef(sessionId);
-  const prevInitialOldestRef = useRef(initialOldestSequence);
 
   // Sync initial values from parent when they change.
   //
   // The parent's `initialOldestSequence` drifts forward every time the
   // session query refetches (e.g. after a stream completes — see
   // `useCopilotStream` invalidation on `streaming → ready`). If we
-  // wiped `olderRawMessages` every time that happened, users who had
+  // wiped `pagedRawMessages` every time that happened, users who had
   // scrolled back would lose their loaded history on each new turn and
   // subsequent `loadMore` calls would fetch messages that overlap with
   // the AI SDK's retained state in `currentMessages`, producing visible
@@ -62,8 +64,7 @@ export function useLoadMoreMessages({
     if (prevSessionIdRef.current !== sessionId) {
       // Session changed — full reset
       prevSessionIdRef.current = sessionId;
-      prevInitialOldestRef.current = initialOldestSequence;
-      setOlderRawMessages([]);
+      setPagedRawMessages([]);
       setOldestSequence(initialOldestSequence);
       setHasMore(initialHasMore);
       setIsLoadingMore(false);
@@ -73,82 +74,64 @@ export function useLoadMoreMessages({
       return;
     }
 
-    prevInitialOldestRef.current = initialOldestSequence;
-
-    // If we haven't paged back yet, mirror the parent so the first
+    // If we haven't paged yet, mirror the parent so the first
     // `loadMore` starts from the correct cursor.
-    if (olderRawMessages.length === 0) {
+    if (pagedRawMessages.length === 0) {
       setOldestSequence(initialOldestSequence);
       setHasMore(initialHasMore);
     }
   }, [sessionId, initialOldestSequence, initialHasMore]);
 
   // Convert all accumulated raw messages in one pass so tool outputs
-  // are matched across inter-page boundaries. Initial page tool outputs
-  // are included via extraToolOutputs to handle the boundary between
-  // the last older page and the initial/streaming page.
-  const olderMessages: UIMessage<unknown, UIDataTypes, UITools>[] =
-    useMemo(() => {
-      if (!sessionId || olderRawMessages.length === 0) return [];
-      const extraToolOutputs =
-        initialPageRawMessages.length > 0
-          ? extractToolOutputsFromRaw(initialPageRawMessages)
-          : undefined;
-      return convertChatSessionMessagesToUiMessages(
-        sessionId,
-        olderRawMessages,
-        { isComplete: true, extraToolOutputs },
-      ).messages;
-    }, [sessionId, olderRawMessages, initialPageRawMessages]);
+  // are matched across inter-page boundaries.
+  // Include initial page tool outputs so older paged pages can match
+  // tool calls whose outputs landed in the initial page.
+  // Kept as a memo with the compiler on: these messages head the list whose
+  // identity the chat's effects depend on (see useCopilotPage).
+  const { messages: pagedMessages, stats: pagedTurnStats } = useMemo((): {
+    messages: UIMessage<unknown, UIDataTypes, UITools>[];
+    stats: TurnStatsMap;
+  } => {
+    if (!sessionId || pagedRawMessages.length === 0)
+      return { messages: [], stats: new Map() };
+    const extraToolOutputs =
+      initialPageRawMessages.length > 0
+        ? extractToolOutputsFromRaw(initialPageRawMessages)
+        : undefined;
+    return convertChatSessionMessagesToUiMessages(sessionId, pagedRawMessages, {
+      isComplete: true,
+      extraToolOutputs,
+    });
+  }, [sessionId, pagedRawMessages, initialPageRawMessages]);
 
   async function loadMore() {
-    if (
-      !sessionId ||
-      !hasMore ||
-      isLoadingMoreRef.current ||
-      oldestSequence === null
-    )
-      return;
+    if (!sessionId || !hasMore || isLoadingMoreRef.current) return;
+    if (oldestSequence === null) return;
 
     const requestEpoch = epochRef.current;
     isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
+    await fetchOlderPage(sessionId, oldestSequence, requestEpoch).finally(
+      () => {
+        if (epochRef.current === requestEpoch) {
+          isLoadingMoreRef.current = false;
+          setIsLoadingMore(false);
+        }
+      },
+    );
+  }
+
+  async function fetchOlderPage(
+    loadSessionId: string,
+    beforeSequence: number,
+    requestEpoch: number,
+  ) {
     try {
-      const response = await getV2GetSession(sessionId, {
+      const response = await getV2GetSession(loadSessionId, {
         limit: 50,
-        before_sequence: oldestSequence,
+        before_sequence: beforeSequence,
       });
-
-      // Discard response if session/pagination was reset while awaiting
-      if (epochRef.current !== requestEpoch) return;
-
-      if (response.status !== 200) {
-        consecutiveErrorsRef.current += 1;
-        console.warn(
-          `[loadMore] Failed to load messages (status=${response.status}, attempt=${consecutiveErrorsRef.current})`,
-        );
-        if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
-          setHasMore(false);
-        }
-        return;
-      }
-
-      consecutiveErrorsRef.current = 0;
-
-      const newRaw = (response.data.messages ?? []) as unknown[];
-      setOlderRawMessages((prev) => {
-        const merged = [...newRaw, ...prev];
-        if (merged.length > MAX_OLDER_MESSAGES) {
-          return merged.slice(merged.length - MAX_OLDER_MESSAGES);
-        }
-        return merged;
-      });
-      setOldestSequence(response.data.oldest_sequence ?? null);
-      if (newRaw.length + olderRawMessages.length >= MAX_OLDER_MESSAGES) {
-        setHasMore(false);
-      } else {
-        setHasMore(!!response.data.has_more_messages);
-      }
+      applyOlderPage(response, requestEpoch);
     } catch (error) {
       if (epochRef.current !== requestEpoch) return;
       consecutiveErrorsRef.current += 1;
@@ -156,13 +139,55 @@ export function useLoadMoreMessages({
       if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
         setHasMore(false);
       }
-    } finally {
-      if (epochRef.current === requestEpoch) {
-        isLoadingMoreRef.current = false;
-        setIsLoadingMore(false);
-      }
     }
   }
 
-  return { olderMessages, hasMore, isLoadingMore, loadMore };
+  function applyOlderPage(
+    response: getV2GetSessionResponse,
+    requestEpoch: number,
+  ) {
+    // Discard response if session/pagination was reset while awaiting
+    if (epochRef.current !== requestEpoch) return;
+
+    if (response.status !== 200) {
+      consecutiveErrorsRef.current += 1;
+      console.warn(
+        `[loadMore] Failed to load messages (status=${response.status}, attempt=${consecutiveErrorsRef.current})`,
+      );
+      if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
+        setHasMore(false);
+      }
+      return;
+    }
+
+    consecutiveErrorsRef.current = 0;
+
+    const newRaw = (response.data.messages ?? []) as unknown[];
+    const estimatedTotal = pagedRawMessages.length + newRaw.length;
+    setPagedRawMessages((prev) => {
+      const merged = [...newRaw, ...prev];
+      if (merged.length > MAX_OLDER_MESSAGES) {
+        return merged.slice(merged.length - MAX_OLDER_MESSAGES);
+      }
+      return merged;
+    });
+
+    // Note: after truncation, oldest_sequence may reference a dropped
+    // message. This is safe because we also set hasMore=false below,
+    // preventing further loads with the stale cursor.
+    setOldestSequence(response.data.oldest_sequence ?? null);
+    if (estimatedTotal >= MAX_OLDER_MESSAGES) {
+      setHasMore(false);
+    } else {
+      setHasMore(!!response.data.has_more_messages);
+    }
+  }
+
+  return {
+    pagedMessages,
+    pagedTurnStats,
+    hasMore,
+    isLoadingMore,
+    loadMore,
+  };
 }

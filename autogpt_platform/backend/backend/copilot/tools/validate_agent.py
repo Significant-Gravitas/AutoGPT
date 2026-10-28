@@ -3,10 +3,20 @@
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 
 from .agent_generator.validation import AgentValidator, get_blocks_as_dicts
+from .agent_json_input import (
+    AGENT_JSON_REF_SCHEMA,
+    AGENT_JSON_SCHEMA,
+    reads_workspace_file,
+    resolve_agent_json_or_error,
+)
 from .base import BaseTool
+from .external_scope import error_detail
+from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase, ValidationResultResponse
 
 logger = logging.getLogger(__name__)
@@ -20,11 +30,20 @@ class ValidateAgentGraphTool(BaseTool):
         return "validate_agent_graph"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # Reading the graph from a workspace file is a read of the caller's files.
+        return [APIKeyPermission.READ_FILES] if reads_workspace_file(args) else []
+
+    @property
     def description(self) -> str:
         return (
             "Validate agent JSON for correctness: block_ids, links, required fields, "
             "type compatibility, nested sink notation, prompt brace escaping, "
-            "and AgentExecutorBlock configs. On failure, use fix_agent_graph to auto-fix."
+            "and AgentExecutorBlock configs. On failure, use tool:fix_agent_graph to auto-fix. "
+            "Requires tool:get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
@@ -36,35 +55,49 @@ class ValidateAgentGraphTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "agent_json": {
-                    "type": "object",
-                    "description": "Agent JSON with 'nodes' and 'links' arrays.",
-                },
+                "agent_json": AGENT_JSON_SCHEMA,
+                "agent_json_ref": AGENT_JSON_REF_SCHEMA,
             },
-            "required": ["agent_json"],
+            "required": [],
         }
 
     async def _execute(
         self,
         user_id: str | None,
         session: ChatSession,
-        agent_json: dict | None = None,
+        agent_json: dict | str | None = None,
+        agent_json_ref: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
 
-        if not agent_json or not isinstance(agent_json, dict):
-            return ErrorResponse(
-                message="Please provide a valid agent JSON object.",
-                error="Missing or invalid agent_json parameter",
-                session_id=session_id,
-            )
+        guide_gate = require_guide_read(session, "validate_agent_graph")
+        if guide_gate is not None:
+            return guide_gate
+
+        agent_json, resolve_error = await resolve_agent_json_or_error(
+            agent_json=agent_json,
+            agent_json_ref=agent_json_ref,
+            user_id=user_id,
+            session=session,
+            session_id=session_id,
+            missing_message=(
+                "Please provide a valid agent JSON object via agent_json (inline "
+                'or an "@@agptfile:<path>" string), or agent_json_ref pointing '
+                "at the workspace workflow file."
+            ),
+            missing_error="Missing or invalid agent_json parameter",
+            invalid_error="Missing or invalid agent_json parameter",
+        )
+        if resolve_error is not None:
+            return resolve_error
+        assert agent_json is not None  # narrowed: resolve_error covers the None case
 
         nodes = agent_json.get("nodes", [])
 
         if not nodes:
             return ErrorResponse(
-                message="The agent JSON has no nodes. An agent needs at least one block.",
+                message="The agent JSON has no nodes. A workflow needs at least one block.",
                 error="empty_agent",
                 session_id=session_id,
             )
@@ -76,14 +109,14 @@ class ValidateAgentGraphTool(BaseTool):
         except Exception as e:
             logger.error(f"Validation error: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Validation encountered an error: {str(e)}",
+                message=f"Validation encountered an error: {error_detail(e, session)}",
                 error="validation_exception",
                 session_id=session_id,
             )
 
         if is_valid:
             return ValidationResultResponse(
-                message="Agent graph is valid! No issues found.",
+                message="Workflow is valid! No issues found.",
                 valid=True,
                 errors=[],
                 error_count=0,

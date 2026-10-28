@@ -14,6 +14,32 @@ def chat_db():
     return chat_db
 
 
+def experts_db():
+    if db.is_connected():
+        from backend.api.features.experts import experts_db as _experts_db
+
+        experts_db = _experts_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        experts_db = get_database_manager_async_client()
+
+    return experts_db
+
+
+def spend_approval_db():
+    if db.is_connected():
+        from backend.api.features.experts import spend_approval as _spend_approval
+
+        spend_approval_db = _spend_approval
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        spend_approval_db = get_database_manager_async_client()
+
+    return spend_approval_db
+
+
 def graph_db():
     if db.is_connected():
         from backend.data import graph as _graph_db
@@ -53,9 +79,22 @@ def store_db():
     return store_db
 
 
+def triggers_db():
+    if db.is_connected():
+        from backend.api.features.library import triggers as _triggers_db
+
+        triggers_db = _triggers_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        triggers_db = get_database_manager_async_client()
+
+    return triggers_db
+
+
 def search():
     if db.is_connected():
-        from backend.api.features.store import hybrid_search as _search
+        from backend.api.features.search import hybrid_search as _search
 
         search = _search
     else:
@@ -64,6 +103,19 @@ def search():
         search = get_database_manager_async_client()
 
     return search
+
+
+def embeddings_db():
+    if db.is_connected():
+        from backend.api.features.search import embeddings as _embeddings_db
+
+        embeddings_db = _embeddings_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        embeddings_db = get_database_manager_async_client()
+
+    return embeddings_db
 
 
 def execution_db():
@@ -92,6 +144,19 @@ def user_db():
     return user_db
 
 
+def memory_schedule_db():
+    if db.is_connected():
+        from backend.data import memory_schedule as _memory_schedule_db
+
+        memory_schedule_db = _memory_schedule_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        memory_schedule_db = get_database_manager_async_client()
+
+    return memory_schedule_db
+
+
 def understanding_db():
     if db.is_connected():
         from backend.data import understanding as _understanding_db
@@ -116,6 +181,41 @@ def workspace_db():
         workspace_db = get_database_manager_async_client()
 
     return workspace_db
+
+
+def workspace_folder_db():
+    if db.is_connected():
+        from backend.data import workspace_folder as _workspace_folder_db
+
+        workspace_folder_db = _workspace_folder_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        workspace_folder_db = get_database_manager_async_client()
+
+    return workspace_folder_db
+
+
+def skill_db():
+    """Marketplace skill listings: active versions and packages, read by the
+    copy reconcile in copilot.tools.skills."""
+    if db.is_connected():
+        from backend.api.features.store import skill_db as _skill_db
+
+        return _skill_db
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
+def workspace_skill_db():
+    if db.is_connected():
+        from backend.data import workspace_skill
+
+        return workspace_skill
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
 
 
 def review_db():
@@ -155,3 +255,199 @@ def platform_cost_db():
         platform_cost_db = get_database_manager_async_client()
 
     return platform_cost_db
+
+
+def activity_event_db():
+    if db.is_connected():
+        from backend.data import activity_event as _activity_event_db
+
+        activity_event_db = _activity_event_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        activity_event_db = get_database_manager_async_client()
+
+    return activity_event_db
+
+
+def orgs_db():
+    if db.is_connected():
+        from backend.api.features.orgs import db as _orgs_db
+
+        orgs_db = _orgs_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        orgs_db = get_database_manager_async_client()
+
+    return orgs_db
+
+
+def platform_linking_db():
+    if db.is_connected():
+        from backend.platform_linking import db as _platform_linking_db
+
+        platform_linking_db = _platform_linking_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        platform_linking_db = get_database_manager_async_client()
+
+    return platform_linking_db
+
+
+def bot_analytics_db():
+    if db.is_connected():
+        from backend.data import bot_analytics as _bot_analytics_db
+
+        bot_analytics_db = _bot_analytics_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        bot_analytics_db = get_database_manager_async_client()
+
+    return bot_analytics_db
+
+
+def skill_learning_db():
+    if db.is_connected():
+        from backend.data import skill_learning as _skill_learning_db
+
+        skill_learning_db = _skill_learning_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_learning_db = get_database_manager_async_client()
+
+    return skill_learning_db
+
+
+def skill_reviews_db():
+    if db.is_connected():
+        from backend.data import skill_reviews as _skill_reviews_db
+
+        skill_reviews_db = _skill_reviews_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_reviews_db = get_database_manager_async_client()
+
+    return skill_reviews_db
+
+
+def skill_publication_db():
+    if db.is_connected():
+        from backend.data import skill_publication as _skill_publication_db
+
+        skill_publication_db = _skill_publication_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_publication_db = get_database_manager_async_client()
+
+    return skill_publication_db
+
+
+def skill_use_db():
+    if db.is_connected():
+        from backend.data import skill_use as _skill_use_db
+
+        skill_use_db = _skill_use_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_use_db = get_database_manager_async_client()
+
+    return skill_use_db
+
+
+def skill_deletion_db():
+    if db.is_connected():
+        from backend.data import skill_deletion as _skill_deletion_db
+
+        skill_deletion_db = _skill_deletion_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_deletion_db = get_database_manager_async_client()
+
+    return skill_deletion_db
+
+
+def skill_versions_db():
+    if db.is_connected():
+        from backend.data import skill_versions as _skill_versions_db
+
+        skill_versions_db = _skill_versions_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_versions_db = get_database_manager_async_client()
+
+    return skill_versions_db
+
+
+def bot_installs_db():
+    if db.is_connected():
+        from backend.data import bot_installs as _bot_installs_db
+
+        bot_installs_db = _bot_installs_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        bot_installs_db = get_database_manager_async_client()
+
+    return bot_installs_db
+
+
+def dream_db():
+    if db.is_connected():
+        from backend.data import dream_pass as _dream_db
+
+        dream_db = _dream_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        # The dream record is written under a short deadline that already
+        # covers retrying (copilot/dream/store.py); a retrying client would
+        # only keep going on a request the deadline has given up on.
+        dream_db = get_database_manager_async_client(should_retry=False)
+
+    return dream_db
+
+
+def pro_activation_db():
+    if db.is_connected():
+        from backend.data import pro_activation
+
+        return pro_activation
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
+def posthog_lifecycle_db():
+    if db.is_connected():
+        from backend.data import posthog_lifecycle_sync as _posthog_lifecycle_db
+
+        posthog_lifecycle_db = _posthog_lifecycle_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        # Best-effort and asked for after the work is queued: fail fast.
+        posthog_lifecycle_db = get_database_manager_async_client(should_retry=False)
+
+    return posthog_lifecycle_db
+
+
+def scheduled_chats_db():
+    if db.is_connected():
+        from backend.copilot.scheduled_chats import forget as _scheduled_chats_db
+
+        scheduled_chats_db = _scheduled_chats_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        scheduled_chats_db = get_database_manager_async_client()
+
+    return scheduled_chats_db

@@ -2,22 +2,130 @@
 
 import asyncio
 import base64
+import json
+import logging
 import os
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from claude_agent_sdk import ResultMessage
 
 from backend.copilot import config as cfg_mod
+from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
+from backend.copilot.graphiti.context_marker import (
+    INJECTED_MEMORY_MARKER,
+    INJECTED_MEMORY_NONCE,
+    append_injected_memory_block,
+    mark_injected_memory_block,
+)
+from backend.copilot.model import ChatSession
+from backend.copilot.model_router import ResolvedModel
+from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
+from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
+from .codex_compat_gateway import CodexAnthropicGateway
+from .compaction import CompactionStats, CompactionTracker
+from .cost_tracking import TokenUsage
+from .response_adapter import SDKResponseAdapter
 from .service import (
+    _HUNG_TOOL_CAP_SECONDS,
+    _IDLE_TIMEOUT_SECONDS,
+    _THINKING_ONLY_REPROMPT,
+    _append_warm_context,
     _build_system_prompt_value,
+    _close_codex_gateway_for_finally,
+    _hidden_short_names_for_permissions,
+    _humanise_tool_list,
+    _idle_timeout_threshold,
     _is_sdk_disconnect_error,
     _normalize_model_name,
     _prepare_file_attachments,
+    _raise_deferred_codex_cleanup_error,
+    _record_result_usage,
+    _redact_cli_stderr,
+    _resend_with_fresh_warm_context,
     _resolve_sdk_model,
+    _resolve_sdk_model_for_request,
+    _RetryState,
+    _run_stream_attempt,
     _safe_close_sdk_client,
+    _start_follow_up_warm_context,
+    _StreamContext,
+    _strip_ephemeral_memory_from_cli_jsonl,
+    _strip_synthetic_reprompt_from_cli_jsonl,
+    _TokenUsage,
 )
+
+
+class TestCliStderrRedaction:
+    def test_redacts_capability_even_without_header_label(self):
+        capability = "private-loopback-capability"
+
+        result = _redact_cli_stderr(
+            f"gateway request failed for {capability}", secrets=(capability,)
+        )
+
+        assert capability not in result
+        assert result == "gateway request failed for [REDACTED]"
+
+    def test_redacts_labeled_capability_once(self):
+        capability = "private-loopback-capability"
+
+        result = _redact_cli_stderr(
+            f"Authorization: Bearer {capability}", secrets=(capability,)
+        )
+
+        assert result == "Authorization: [REDACTED]"
+
+    @pytest.mark.parametrize(
+        ("line", "secret"),
+        [
+            ("Authorization: Bearer secret-one", "secret-one"),
+            ('{"Authorization":"Bearer secret-two"}', "secret-two"),
+            ("proxy-authorization=Basic secret-three", "secret-three"),
+            ("ANTHROPIC_AUTH_TOKEN=secret-four", "secret-four"),
+            ("x-api-key: secret-five", "secret-five"),
+        ],
+    )
+    def test_redacts_authorization_shaped_values(self, line, secret):
+        result = _redact_cli_stderr(line)
+
+        assert secret not in result
+        assert "[REDACTED]" in result
+
+    def test_preserves_unrelated_stderr(self):
+        line = "fallback model activated after an overload"
+
+        assert _redact_cli_stderr(line) == line
+
+
+class TestCodexGatewayCleanup:
+    @pytest.mark.asyncio
+    async def test_returns_checkpoint_failure_for_deferred_raise(self):
+        failure = RuntimeError("credential checkpoint failed")
+        gateway = cast(
+            CodexAnthropicGateway,
+            SimpleNamespace(close=AsyncMock(side_effect=failure)),
+        )
+
+        result = await _close_codex_gateway_for_finally(gateway, "[test]")
+
+        assert result is failure
+        gateway.close.assert_awaited_once()
+
+    def test_deferred_failure_propagates_with_turn_error_as_cause(self):
+        turn_error = ValueError("turn failed")
+        cleanup_error = RuntimeError("credential checkpoint failed")
+
+        with pytest.raises(RuntimeError, match="checkpoint failed") as raised:
+            _raise_deferred_codex_cleanup_error(cleanup_error, turn_error)
+
+        assert raised.value is cleanup_error
+        assert raised.value.__cause__ is turn_error
 
 
 @dataclass
@@ -71,8 +179,11 @@ class TestPrepareFileAttachments:
         assert not os.path.exists(os.path.join(tmp_path, "photo.jpg"))
 
     @pytest.mark.asyncio
-    async def test_pdf_saved_to_disk(self, tmp_path):
-        """PDFs should be saved to disk for Read tool access, not embedded."""
+    async def test_pdf_referenced_by_file_id(self, tmp_path):
+        """Non-images are surfaced via read_workspace_file by file_id — the
+        model's file tools run in the E2B sandbox in prod, where a host-side
+        sdk_cwd path doesn't exist. A local copy is still written for non-E2B
+        tooling, but the model must not be pointed at that path."""
         info = _FakeFileInfo("f1", "doc.pdf", "/doc.pdf", "application/pdf", 50)
         mgr = AsyncMock()
         mgr.get_file_info.return_value = info
@@ -85,7 +196,26 @@ class TestPrepareFileAttachments:
         saved = tmp_path / "doc.pdf"
         assert saved.exists()
         assert saved.read_bytes() == b"%PDF-1.4 fake"
-        assert str(saved) in result.hint
+        # The model is given the workspace identity, not the host path.
+        assert "file_id=f1" in result.hint
+        assert str(saved) not in result.hint
+        assert "read_workspace_file" in result.hint
+
+    @pytest.mark.asyncio
+    async def test_hint_file_ids_extractable_for_chat_sharing(self, tmp_path):
+        """Chat-share allowlisting parses ``file_id=<uuid>`` out of message
+        content with extract_workspace_file_ids; the hint must keep that exact
+        shape or shared chats lose access to their attachments."""
+        fid = "0f8fad5b-d9cb-469f-a165-70867728950e"
+        info = _FakeFileInfo(fid, "doc.pdf", "/doc.pdf", "application/pdf", 50)
+        mgr = AsyncMock()
+        mgr.get_file_info.return_value = info
+        mgr.read_file_by_id.return_value = b"%PDF-1.4 fake"
+
+        with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mgr):
+            result = await _prepare_file_attachments([fid], "u", "s", str(tmp_path))
+
+        assert extract_workspace_file_ids(result.hint) == {fid}
 
     @pytest.mark.asyncio
     async def test_mixed_images_and_files(self, tmp_path):
@@ -114,8 +244,12 @@ class TestPrepareFileAttachments:
         # Non-image files should be on disk
         assert (tmp_path / "b.pdf").exists()
         assert (tmp_path / "c.txt").exists()
-        # Read tool hint should appear (has non-image files)
-        assert "Read tool" in result.hint
+        # Workspace-read hint should appear (has non-image files), and the
+        # model must NOT be told to use the (disallowed) built-in Read tool.
+        assert "read_workspace_file" in result.hint
+        assert "Use the Read tool" not in result.hint
+        assert "file_id=id2" in result.hint
+        assert "file_id=id3" in result.hint
 
     @pytest.mark.asyncio
     async def test_singular_noun(self, tmp_path):
@@ -144,7 +278,7 @@ class TestPrepareFileAttachments:
 
     @pytest.mark.asyncio
     async def test_image_only_no_read_hint(self, tmp_path):
-        """When all files are images, no Read tool hint should appear."""
+        """When all files are images, no read-tool hint should appear."""
         info = _FakeFileInfo("i1", "cat.png", "/cat.png", "image/png", 4)
         mgr = AsyncMock()
         mgr.get_file_info.return_value = info
@@ -153,7 +287,7 @@ class TestPrepareFileAttachments:
         with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mgr):
             result = await _prepare_file_attachments(["i1"], "u", "s", str(tmp_path))
 
-        assert "Read tool" not in result.hint
+        assert "read_workspace_file" not in result.hint
         assert len(result.image_blocks) == 1
 
 
@@ -176,70 +310,19 @@ class TestPromptSupplement:
         assert "## Tool notes" in local_supplement
         assert "## Tool notes" in e2b_supplement
 
-    def test_baseline_supplement_includes_tool_docs(self):
-        """Baseline mode MUST include tool documentation (direct API needs it)."""
-        from backend.copilot.prompting import get_baseline_supplement
+    def test_baseline_supplement_has_shared_notes_no_tool_list(self):
+        """Baseline now relies on the OpenAI tools array for schemas and only
+        appends SHARED_TOOL_NOTES (workflow rules not present in any schema).
+        The old auto-generated ``## AVAILABLE TOOLS`` list is gone — it was
+        ~4.3K tokens of pure duplication of the tools array."""
+        from backend.copilot.prompting import SHARED_TOOL_NOTES
 
-        supplement = get_baseline_supplement()
-
-        # MUST have tool list section
-        assert "## AVAILABLE TOOLS" in supplement
-
-        # Should NOT have environment-specific notes (SDK-only)
-        assert "## Tool notes" not in supplement
-
-    def test_baseline_supplement_includes_key_tools(self):
-        """Baseline supplement should document all essential tools."""
-        from backend.copilot.prompting import get_baseline_supplement
-        from backend.copilot.tools import TOOL_REGISTRY
-
-        docs = get_baseline_supplement()
-
-        # Core agent workflow tools (always available)
-        assert "`create_agent`" in docs
-        assert "`run_agent`" in docs
-        assert "`find_library_agent`" in docs
-        assert "`edit_agent`" in docs
-
-        # MCP integration (always available)
-        assert "`run_mcp_tool`" in docs
-
-        # Folder management (always available)
-        assert "`create_folder`" in docs
-
-        # Browser tools only if available (Playwright may not be installed in CI)
-        if (
-            TOOL_REGISTRY.get("browser_navigate")
-            and TOOL_REGISTRY["browser_navigate"].is_available
-        ):
-            assert "`browser_navigate`" in docs
-
-    def test_baseline_supplement_includes_workflows(self):
-        """Baseline supplement should include workflow guidance in tool descriptions."""
-        from backend.copilot.prompting import get_baseline_supplement
-
-        docs = get_baseline_supplement()
-
-        # Workflows are now in individual tool descriptions (not separate sections)
-        # Check that key workflow concepts appear in tool descriptions
-        assert "agent_json" in docs or "find_block" in docs
-        assert "run_mcp_tool" in docs
-
-    def test_baseline_supplement_completeness(self):
-        """All available tools from TOOL_REGISTRY should appear in baseline supplement."""
-        from backend.copilot.prompting import get_baseline_supplement
-        from backend.copilot.tools import TOOL_REGISTRY
-
-        docs = get_baseline_supplement()
-
-        # Verify each available registered tool is documented
-        # (matches _generate_tool_documentation which filters by is_available)
-        for tool_name, tool in TOOL_REGISTRY.items():
-            if not tool.is_available:
-                continue
-            assert (
-                f"`{tool_name}`" in docs
-            ), f"Tool '{tool_name}' missing from baseline supplement"
+        assert "## AVAILABLE TOOLS" not in SHARED_TOOL_NOTES
+        # Keep the high-value workflow rules that are NOT in any tool schema.
+        assert "@@agptfile:" in SHARED_TOOL_NOTES
+        assert "Search it; don't rely on what you remember." in SHARED_TOOL_NOTES
+        assert "start with `find_capability(" in SHARED_TOOL_NOTES
+        assert "run_sub_session" in SHARED_TOOL_NOTES
 
     def test_pause_task_scheduled_before_transcript_upload(self):
         """Pause is scheduled as a background task before transcript upload begins.
@@ -282,21 +365,6 @@ class TestPromptSupplement:
         # create_task schedules pause, then upload is awaited — pause runs
         # concurrently during upload's first yield. The ordering guarantee is
         # that create_task is CALLED before upload is AWAITED (see source order).
-
-    def test_baseline_supplement_no_duplicate_tools(self):
-        """No tool should appear multiple times in baseline supplement."""
-        from backend.copilot.prompting import get_baseline_supplement
-        from backend.copilot.tools import TOOL_REGISTRY
-
-        docs = get_baseline_supplement()
-
-        # Count occurrences of each available tool in the entire supplement
-        for tool_name, tool in TOOL_REGISTRY.items():
-            if not tool.is_available:
-                continue
-            # Count how many times this tool appears as a bullet point
-            count = docs.count(f"- **`{tool_name}`**")
-            assert count == 1, f"Tool '{tool_name}' appears {count} times (should be 1)"
 
 
 # ---------------------------------------------------------------------------
@@ -387,27 +455,11 @@ class TestCleanupSdkToolResults:
 
 
 # ---------------------------------------------------------------------------
-# Env vars that ChatConfig validators read — must be cleared so explicit
-# constructor values are used.
+# Env-cleanup fixture is shared via ``conftest._clean_config_env``.  This
+# file exposes a re-export for callers that don't rely on conftest discovery
+# (kept for backwards compatibility — pytest finds the conftest fixture
+# automatically without an explicit import).
 # ---------------------------------------------------------------------------
-_CONFIG_ENV_VARS = (
-    "CHAT_USE_OPENROUTER",
-    "CHAT_API_KEY",
-    "OPEN_ROUTER_API_KEY",
-    "OPENAI_API_KEY",
-    "CHAT_BASE_URL",
-    "OPENROUTER_BASE_URL",
-    "OPENAI_BASE_URL",
-    "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
-    "CHAT_USE_CLAUDE_AGENT_SDK",
-    "CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE",
-)
-
-
-@pytest.fixture()
-def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for var in _CONFIG_ENV_VARS:
-        monkeypatch.delenv(var, raising=False)
 
 
 class TestNormalizeModelName:
@@ -421,11 +473,17 @@ class TestNormalizeModelName:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            # Pin SDK slugs to anthropic/* so the new
+            # _validate_sdk_model_vendor_compatibility allows construction.
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4-6"
 
-    def test_dots_preserved_for_openrouter(self, monkeypatch, _clean_config_env):
+    def test_openrouter_keeps_full_slug(self, monkeypatch, _clean_config_env):
+        """OpenRouter routes by ``vendor/model`` slug — keep prefix and dots."""
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
@@ -435,7 +493,11 @@ class TestNormalizeModelName:
             use_claude_code_subscription=False,
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4.6"
+        assert (
+            _normalize_model_name("anthropic/claude-opus-4.6")
+            == "anthropic/claude-opus-4.6"
+        )
+        assert _normalize_model_name("moonshotai/kimi-k2.6") == "moonshotai/kimi-k2.6"
 
     def test_no_prefix_no_dots(self, monkeypatch, _clean_config_env):
         from backend.copilot import config as cfg_mod
@@ -445,23 +507,24 @@ class TestNormalizeModelName:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert (
-            _normalize_model_name("claude-sonnet-4-20250514")
-            == "claude-sonnet-4-20250514"
-        )
+        assert _normalize_model_name("claude-sonnet-4-6") == "claude-sonnet-4-6"
 
 
 class TestResolveSdkModel:
     """Tests for _resolve_sdk_model — model ID resolution for the SDK CLI."""
 
-    def test_openrouter_active_keeps_dots(self, monkeypatch, _clean_config_env):
-        """When OpenRouter is fully active, model keeps dot-separated version."""
+    def test_openrouter_active_keeps_full_slug(self, monkeypatch, _clean_config_env):
+        """When OpenRouter is fully active, the canonical vendor/model slug
+        is preserved so OpenRouter can route to the correct provider."""
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=True,
             api_key="or-key",
@@ -469,7 +532,23 @@ class TestResolveSdkModel:
             use_claude_code_subscription=False,
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _resolve_sdk_model() == "claude-opus-4.6"
+        assert _resolve_sdk_model() == "anthropic/claude-opus-4.6"
+
+    def test_openrouter_active_kimi_slug(self, monkeypatch, _clean_config_env):
+        """Non-Anthropic models (Kimi via Moonshot) require the prefix to
+        survive OpenRouter routing — strip would leave an unroutable slug."""
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="moonshotai/kimi-k2.6",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _resolve_sdk_model() == "moonshotai/kimi-k2.6"
 
     def test_openrouter_disabled_normalizes_to_hyphens(
         self, monkeypatch, _clean_config_env
@@ -478,12 +557,13 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=False,
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() == "claude-opus-4-6"
@@ -496,7 +576,7 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=True,
             api_key=None,
@@ -513,7 +593,7 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model="claude-sonnet-4-5-20250514",
             use_openrouter=True,
             api_key="or-key",
@@ -528,12 +608,18 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=False,
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            # ``_validate_aux_client_for_direct_main`` now also runs in
+            # subscription mode (see PR #13034 review).  Provide an
+            # Anthropic title model + direct key so the aux 401-trap
+            # validator passes — orthogonal to what this test checks.
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() is None
@@ -543,15 +629,246 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="claude-opus-4.6",
+            thinking_standard_model="claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=False,
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() == "claude-opus-4-6"
+
+
+class TestResolveSdkModelForRequestLdFallback:
+    """``_resolve_sdk_model_for_request`` must fail soft when the LD value
+    can't be normalised for the active routing mode — flagged as MAJOR by
+    CodeRabbit + HIGH by Sentry when it was a hard ValueError."""
+
+    @pytest.mark.asyncio
+    async def test_direct_anthropic_mode_rejects_kimi_ld_value_and_falls_back(
+        self, monkeypatch, _clean_config_env
+    ):
+        """LD serves ``moonshotai/kimi-k2.6`` but we're on direct-Anthropic
+        (no OpenRouter key).  ``_normalize_model_name`` raises; the
+        resolver must log + return the config-default path instead of
+        500-ing the turn."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            aux_api_key="or-aux-key",
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-abc", user_id="user-1"
+            )
+
+        # Fallback == tier-specific config default (thinking_standard_model
+        # normalised to hyphen-form for direct-Anthropic mode) — an env
+        # fallback, so the routing source must NOT claim "ld".
+        assert resolved == ("claude-sonnet-4-6", "env")
+
+    @pytest.mark.asyncio
+    async def test_openrouter_mode_accepts_ld_kimi_value(
+        self, monkeypatch, _clean_config_env
+    ):
+        """On OpenRouter the Kimi slug is legitimate — no fallback,
+        value returned as-is."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-abc", user_id="user-1"
+            )
+        assert resolved == ("moonshotai/kimi-k2.6", "ld")
+
+    @pytest.mark.asyncio
+    async def test_advanced_tier_fallback_uses_advanced_default_not_standard(
+        self, monkeypatch, _clean_config_env
+    ):
+        """An LD-rejected ADVANCED slug must fall back to the advanced
+        config default (Opus) — not the standard default (Sonnet).
+        Using ``_resolve_sdk_model()`` as the fallback silently
+        downgraded the user's chosen tier.  Flagged MAJOR by CodeRabbit
+        + HIGH by Sentry on the first fail-soft commit."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4.7",
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            aux_api_key="or-aux-key",
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="advanced", session_id="sess-adv", user_id="user-1"
+            )
+
+        # Direct-Anthropic normalises anthropic/claude-opus-4.7 → claude-opus-4-7
+        assert resolved == ("claude-opus-4-7", "env")
+
+    @pytest.mark.asyncio
+    async def test_standard_ld_override_wins_over_subscription(
+        self, monkeypatch, _clean_config_env
+    ):
+        """Bug reported in local test: subscription mode + LD serving Kimi
+        on ``copilot-model-routing[thinking][standard]`` returned
+        ``None`` (CLI picked subscription default Opus), silently
+        ignoring the LD override.  An LD value different from the
+        config default is an explicit admin decision and must win.
+
+        Subscription transport rejects non-Anthropic vendors (the CLI
+        subprocess can't talk to Moonshot), so the resolver fails soft
+        to the tier default normalised for the subscription transport
+        (``claude-sonnet-4-6``) — not ``None``, which would silently
+        re-introduce the old subscription-default bypass."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-std-sub", user_id="user-1"
+            )
+        # Kimi can't be served by the subscription CLI; fail-soft to
+        # the tier default normalised for the active transport (env source).
+        assert resolved == ("claude-sonnet-4-6", "env")
+
+    @pytest.mark.asyncio
+    async def test_standard_subscription_survives_trailing_whitespace_in_env(
+        self, monkeypatch, _clean_config_env
+    ):
+        """``_resolve_thinking_model_for_user`` strips whitespace from the LD
+        side; the config tier default must be stripped too, otherwise a
+        stray trailing space in ``CHAT_THINKING_STANDARD_MODEL`` makes
+        ``resolved == tier_default`` spuriously False and bypasses
+        subscription-default mode.  Sentry HIGH on L856."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6  ",  # trailing spaces
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=True,
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "ld")
+            ),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-ws", user_id="user-1"
+            )
+        assert resolved == (None, "env"), (
+            "LD value semantically matches the whitespace-padded config "
+            "default — subscription mode must still win and return None"
+        )
+
+    @pytest.mark.asyncio
+    async def test_standard_subscription_default_honoured_when_ld_matches_config(
+        self, monkeypatch, _clean_config_env
+    ):
+        """When LD serves the SAME value as the config default (i.e. the
+        flag is effectively unset / no override), subscription mode still
+        wins and we return ``None`` so the CLI uses the subscription
+        default model."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=True,
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "ld")
+            ),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-std-nop", user_id="user-1"
+            )
+        assert resolved == (None, "env")
+
+    @pytest.mark.asyncio
+    async def test_advanced_tier_consults_ld_under_subscription(
+        self, monkeypatch, _clean_config_env
+    ):
+        """Subscription mode bypasses LD only on the standard tier —
+        the advanced tier always consults LD because the user explicitly
+        asked for the premium path.  A subscription + advanced request
+        with LD-served Opus must return Opus normalised for the
+        subscription CLI (``claude-opus-4-7``), not the OpenRouter slug
+        ``anthropic/claude-opus-4.7`` which the CLI subprocess rejects
+        even when ``CHAT_BASE_URL`` is set to the OpenRouter proxy."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4.7",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-opus-4.7", "ld")
+            ),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="advanced", session_id="sess-adv-sub", user_id="user-1"
+            )
+        assert resolved == ("claude-opus-4-7", "ld")
 
 
 # ---------------------------------------------------------------------------
@@ -699,23 +1016,2079 @@ class TestSystemPromptPreset:
         assert result["append"] == ""
         assert result["exclude_dynamic_sections"] is True
 
-    def test_default_config_is_enabled(self, _clean_config_env):
-        """The default value for claude_agent_cross_user_prompt_cache is True."""
+    def test_resume_and_fresh_share_the_same_static_prefix(self):
+        """Every turn (fresh + --resume) must emit the same preset dict
+        so the cross-user cache prefix match works on all turns.  This
+        relies on CLI ≥ 2.1.98 (installed in the Docker image); older
+        CLIs would crash on --resume + excludeDynamicSections=True."""
+        fresh = _build_system_prompt_value("sys", cross_user_cache=True)
+        resumed = _build_system_prompt_value("sys", cross_user_cache=True)
+        assert fresh == resumed
+        assert isinstance(fresh, dict)
+        assert fresh.get("exclude_dynamic_sections") is True
+
+    def test_default_config_disables_claude_code_system_prompt(self, _clean_config_env):
+        """The default config passes only AutoGPT's Copilot system prompt."""
+        cfg = cfg_mod.ChatConfig(
+            _env_file=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
+        )
+        assert cfg.claude_agent_cross_user_prompt_cache is False
+
+    def test_env_var_enables_cache(self, _clean_config_env, monkeypatch):
+        """CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE=true enables caching."""
+        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE", "true")
         cfg = cfg_mod.ChatConfig(
             use_openrouter=False,
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is True
 
-    def test_env_var_disables_cache(self, _clean_config_env, monkeypatch):
-        """CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE=false disables caching."""
-        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE", "false")
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
+
+class TestStreamErrorCodePrefix:
+    """StreamError.to_sse auto-prefixes errorText with `[code:<id>]` when a
+    code is set, so the frontend can parse a machine-readable code out of
+    the AI-SDK's strict `{type, errorText}` schema."""
+
+    def test_auto_prefix_when_code_set(self):
+        from backend.copilot.response_model import StreamError
+
+        sse = StreamError(errorText="Boom", code="idle_timeout").to_sse()
+        assert '"errorText":"[code:idle_timeout] Boom"' in sse
+
+    def test_no_prefix_when_code_missing(self):
+        from backend.copilot.response_model import StreamError
+
+        sse = StreamError(errorText="Boom").to_sse()
+        assert '"errorText":"Boom"' in sse
+
+    def test_does_not_double_prefix(self):
+        from backend.copilot.response_model import StreamError
+
+        sse = StreamError(errorText="[code:x] Boom", code="x").to_sse()
+        assert "[code:x] [code:x]" not in sse
+        assert '"errorText":"[code:x] Boom"' in sse
+
+
+class TestHumaniseToolList:
+    """Tool-name formatter used to build the idle-timeout error message."""
+
+    def test_empty_returns_empty_string(self):
+        assert _humanise_tool_list([]) == ""
+
+    def test_single_tool_is_quoted(self):
+        assert _humanise_tool_list(["WebSearch"]) == "'WebSearch'"
+
+    def test_two_tools_are_joined_with_and(self):
+        assert (
+            _humanise_tool_list(["WebSearch", "run_block"])
+            == "'WebSearch' and 'run_block'"
         )
-        assert cfg.claude_agent_cross_user_prompt_cache is False
+
+    def test_three_uses_singular_other(self):
+        assert _humanise_tool_list(["a", "b", "c"]) == "'a', 'b', and 1 other"
+
+    def test_four_plus_uses_plural_others(self):
+        assert _humanise_tool_list(["a", "b", "c", "d"]) == "'a', 'b', and 2 others"
+
+
+# ---------------------------------------------------------------------------
+# _RetryState.observed_model — Moonshot cost-override input
+# ---------------------------------------------------------------------------
+
+
+class TestRetryStateObservedModel:
+    """Regression guards for the ``observed_model`` field added to
+    ``_RetryState``.  The Moonshot cost override reads this — when a
+    fallback model activates mid-attempt, the requested primary
+    (``state.options.model``) no longer matches what actually ran."""
+
+    def _make_state(self, *, options_model: str | None = "primary/model"):
+        """Build a minimally-valid ``_RetryState``.  All the heavy
+        collaborators are ``MagicMock()`` — the field we care about is
+        a plain Optional[str], so the surrounding scaffolding just needs
+        to let the dataclass instantiate."""
+        from .service import _RetryState, _TokenUsage
+
+        options = MagicMock()
+        options.model = options_model
+        return _RetryState(
+            options=options,
+            query_message="",
+            compaction_stats=None,
+            use_resume=False,
+            resume_file=None,
+            transcript_msg_count=0,
+            adapter=MagicMock(),
+            transcript_builder=MagicMock(),
+            usage=_TokenUsage(),
+        )
+
+    def test_default_is_none(self):
+        state = self._make_state()
+        assert state.observed_model is None
+
+    def test_assigned_from_assistant_message_model(self):
+        """Simulates the population path in ``_run_stream_attempt``:
+        ``observed`` is pulled off the ``AssistantMessage.model`` attr
+        and assigned onto ``state.observed_model`` when it's a non-empty
+        string."""
+        state = self._make_state()
+        # Simulates the inline assignment the generator does on each
+        # AssistantMessage — a non-empty string lands on state.
+        assistant_like = SimpleNamespace(model="anthropic/claude-sonnet-4-6")
+        observed = getattr(assistant_like, "model", None)
+        if isinstance(observed, str) and observed:
+            state.observed_model = observed
+        assert state.observed_model == "anthropic/claude-sonnet-4-6"
+
+    def test_empty_string_model_is_not_assigned(self):
+        """Guard against overwriting a real observed value with an
+        empty-string model (the generator's ``and observed`` check)."""
+        state = self._make_state()
+        state.observed_model = "moonshotai/kimi-k2.6"  # seeded from a prior msg
+        assistant_like = SimpleNamespace(model="")
+        observed = getattr(assistant_like, "model", None)
+        if isinstance(observed, str) and observed:
+            state.observed_model = observed
+        assert state.observed_model == "moonshotai/kimi-k2.6"
+
+    def test_missing_model_attr_leaves_observed_untouched(self):
+        state = self._make_state()
+        state.observed_model = "moonshotai/kimi-k2.6"
+        # AssistantMessage may not carry ``.model`` on older SDK rels.
+        assistant_like = SimpleNamespace()  # no ``.model`` attr
+        observed = getattr(assistant_like, "model", None)
+        if isinstance(observed, str) and observed:
+            state.observed_model = observed
+        assert state.observed_model == "moonshotai/kimi-k2.6"
+
+
+# ---------------------------------------------------------------------------
+# Moonshot cost-override gate — decision logic at the call site
+# ---------------------------------------------------------------------------
+
+
+class TestMoonshotCostOverrideGate:
+    """Observed model wins over requested primary when pricing a billed result."""
+
+    def _decide_cost(
+        self,
+        *,
+        observed_model: str | None,
+        options_model: str | None,
+        sdk_reported_usd: float,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+    ) -> float:
+        """Exercise the production result handler with a minimal SDK result."""
+        state = MagicMock(
+            observed_model=observed_model,
+            options=SimpleNamespace(model=options_model),
+            usage=TokenUsage(),
+        )
+        result = ResultMessage(
+            subtype="success",
+            duration_ms=0,
+            duration_api_ms=0,
+            is_error=False,
+            num_turns=1,
+            session_id="test",
+            total_cost_usd=sdk_reported_usd,
+            usage={"input_tokens": prompt_tokens, "output_tokens": completion_tokens},
+        )
+        _record_result_usage(result, state, "")
+        assert state.usage.cost_usd is not None
+        return state.usage.cost_usd
+
+    def test_anthropic_turn_passes_sdk_cost_through(self):
+        """Anthropic — the CLI's pricing table is authoritative, so
+        ``state.usage.cost_usd`` is set to ``sdk_msg.total_cost_usd``
+        unchanged."""
+        cost = self._decide_cost(
+            observed_model="anthropic/claude-sonnet-4-6",
+            options_model="anthropic/claude-sonnet-4-6",
+            sdk_reported_usd=0.123,
+        )
+        assert cost == 0.123
+
+    def test_moonshot_turn_uses_rate_card_override(self):
+        """Moonshot — the CLI would silently bill at Sonnet rates, so
+        the override recomputes from the Moonshot rate card."""
+        cost = self._decide_cost(
+            observed_model="moonshotai/kimi-k2.6",
+            options_model="moonshotai/kimi-k2.6",
+            sdk_reported_usd=0.089862,  # CLI's Sonnet-priced estimate.
+            prompt_tokens=29564,
+            completion_tokens=78,
+        )
+        expected = (29564 * 0.60 + 78 * 2.80) / 1_000_000
+        assert cost == pytest.approx(expected, rel=1e-9)
+        # Sanity: ~5x cheaper than the CLI's Sonnet-priced number.
+        assert cost < 0.089862 / 4
+
+    def test_observed_model_wins_over_options_primary(self):
+        """The whole point of ``observed_model``: a Moonshot-primary
+        request that fell back to Anthropic must NOT get Moonshot
+        pricing applied.  The gate follows the observed model, not the
+        requested primary."""
+        cost = self._decide_cost(
+            observed_model="anthropic/claude-sonnet-4-6",
+            options_model="moonshotai/kimi-k2.6",  # what we ASKED for
+            sdk_reported_usd=0.123,
+            prompt_tokens=1000,
+            completion_tokens=100,
+        )
+        # Observed == Anthropic → CLI-reported cost passes through unchanged.
+        assert cost == 0.123
+
+    def test_anthropic_to_moonshot_fallback_uses_override(self):
+        """The inverse: an Anthropic-primary request that fell back to
+        Moonshot must get the Moonshot override applied — the CLI is
+        still billing at Sonnet rates for the fallback response."""
+        cost = self._decide_cost(
+            observed_model="moonshotai/kimi-k2.6",
+            options_model="anthropic/claude-sonnet-4-6",
+            sdk_reported_usd=0.089862,
+            prompt_tokens=29564,
+            completion_tokens=78,
+        )
+        expected = (29564 * 0.60 + 78 * 2.80) / 1_000_000
+        assert cost == pytest.approx(expected, rel=1e-9)
+
+    def test_no_observed_falls_back_to_options_model(self):
+        """First AssistantMessage hasn't arrived yet (or the SDK didn't
+        emit ``.model``) — the gate falls back to the requested primary."""
+        cost = self._decide_cost(
+            observed_model=None,
+            options_model="moonshotai/kimi-k2.6",
+            sdk_reported_usd=0.089862,
+            prompt_tokens=100,
+            completion_tokens=10,
+        )
+        expected = (100 * 0.60 + 10 * 2.80) / 1_000_000
+        assert cost == pytest.approx(expected, rel=1e-9)
+
+    def test_both_none_passes_sdk_cost_through(self):
+        """Subscription mode — ``options.model`` may be None and no
+        AssistantMessage has arrived yet.  ``None`` is not a Moonshot
+        slug so the SDK number lands unchanged."""
+        cost = self._decide_cost(
+            observed_model=None,
+            options_model=None,
+            sdk_reported_usd=0.05,
+        )
+        assert cost == 0.05
+
+
+# ---------------------------------------------------------------------------
+# Moonshot helper re-exports — keep imports stable for call-site code
+# ---------------------------------------------------------------------------
+
+
+class TestMoonshotHelperReexports:
+    """The service's model-dependent environment gates use the shared predicate."""
+
+    def test_is_moonshot_model_aliased(self):
+        from backend.copilot.moonshot import is_moonshot_model as canonical
+
+        from .service import _is_moonshot_model
+
+        assert _is_moonshot_model is canonical
+
+
+class TestIdleTimeoutThreshold:
+    """SECRT-2247: stream uses two idle thresholds. The shorter 30-min threshold
+    fires when the SDK is idle with no tool pending. The longer 2-hour cap
+    applies while any tool call is pending so a 45-min sub-Otto isn't
+    killed, but a truly hung tool still eventually frees session resources."""
+
+    def _make_adapter(self, current: dict, resolved: set):
+        from backend.copilot.sdk.response_adapter import SDKResponseAdapter
+
+        adapter = SDKResponseAdapter(session_id="test")
+        adapter.current_tool_calls = current
+        adapter.resolved_tool_calls = resolved
+        return adapter
+
+    def test_threshold_uses_long_cap_with_unresolved_tool_call(self):
+        adapter = self._make_adapter(
+            current={"t1": {"name": "run_block"}},
+            resolved=set(),
+        )
+        assert _idle_timeout_threshold(adapter) == _HUNG_TOOL_CAP_SECONDS
+
+    def test_threshold_uses_short_cap_when_all_tools_resolved(self):
+        adapter = self._make_adapter(
+            current={"t1": {"name": "find_agent"}},
+            resolved={"t1"},
+        )
+        assert _idle_timeout_threshold(adapter) == _IDLE_TIMEOUT_SECONDS
+
+    def test_threshold_uses_short_cap_with_no_tool_calls(self):
+        adapter = self._make_adapter(current={}, resolved=set())
+        assert _idle_timeout_threshold(adapter) == _IDLE_TIMEOUT_SECONDS
+
+    def test_threshold_uses_long_cap_with_mixed_resolved_and_pending(self):
+        adapter = self._make_adapter(
+            current={
+                "t1": {"name": "find_agent"},
+                "t2": {"name": "run_block"},
+            },
+            resolved={"t1"},
+        )
+        assert _idle_timeout_threshold(adapter) == _HUNG_TOOL_CAP_SECONDS
+
+    def test_idle_timeout_is_30_min_not_the_old_10(self):
+        # Regression guard: the old 10-min value killed long tool calls
+        # (SECRT-2247). New idle-without-tools cap is 30 min.
+        assert _IDLE_TIMEOUT_SECONDS == 30 * 60
+
+    def test_hung_tool_cap_is_2_hours(self):
+        # Hard cap protects against a hung tool leaking resources forever.
+        # 2 hours is plenty for any legitimate sub-Otto or graph run.
+        assert _HUNG_TOOL_CAP_SECONDS == 2 * 60 * 60
+
+    def test_long_cap_is_strictly_longer_than_short_cap(self):
+        # The whole point of the two-regime design: pending tools get more
+        # patience than pure idle.
+        assert _HUNG_TOOL_CAP_SECONDS > _IDLE_TIMEOUT_SECONDS
+
+
+class TestStripSyntheticReprompt:
+    """The synthetic re-prompt user message is filtered out of the CLI
+    session JSONL before upload so it doesn't leak into ``--resume``
+    history on the next turn."""
+
+    def test_drops_matching_user_line(self):
+        real_user = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"What did you find?"}]}}\n'
+        )
+        synth = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"' + _THINKING_ONLY_REPROMPT.encode() + b'"}]}}\n'
+        )
+        assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"text","text":"Here you go."}]}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(real_user + synth + assistant)
+        assert result == real_user + assistant
+
+    def test_string_content_user_message_also_filtered(self):
+        synth = (
+            b'{"type":"user","message":{"role":"user","content":"'
+            + _THINKING_ONLY_REPROMPT.encode()
+            + b'"}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(synth)
+        assert result == b""
+
+    def test_preserves_unrelated_user_messages(self):
+        real = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"hi"}]}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(real)
+        assert result == real
+
+    def test_preserves_non_text_user_blocks(self):
+        # Image / tool_result blocks must never be stripped.
+        image_user = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAA"}}]}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(image_user)
+        assert result == image_user
+
+    def test_handles_empty_input(self):
+        assert _strip_synthetic_reprompt_from_cli_jsonl(b"") == b""
+
+    def test_skips_malformed_lines_intact(self):
+        garbage = b"not-json\n"
+        assert _strip_synthetic_reprompt_from_cli_jsonl(garbage) == garbage
+
+    def test_also_drops_preceding_empty_thinking_only_assistant(self):
+        """When the synthetic user is stripped, the empty thinking-only
+        AssistantMessage that immediately preceded it must also go —
+        otherwise the post-strip JSONL has two assistants back-to-back
+        with no user between them, breaking role alternation on resume."""
+        prior_user = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"hi"}]}}\n'
+        )
+        empty_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"thinking","thinking":"hmm"}]}}\n'
+        )
+        synth = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"' + _THINKING_ONLY_REPROMPT.encode() + b'"}]}}\n'
+        )
+        final_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"text","text":"Here you go."}]}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(
+            prior_user + empty_assistant + synth + final_assistant
+        )
+        # Only prior_user and final_assistant survive — alternation preserved.
+        assert result == prior_user + final_assistant
+
+    def test_keeps_preceding_assistant_with_real_text(self):
+        """A non-empty assistant turn before the synthetic user is kept
+        — only thinking-only / empty assistants get dropped."""
+        prior_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"text","text":"some real reply"}]}}\n'
+        )
+        synth = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"' + _THINKING_ONLY_REPROMPT.encode() + b'"}]}}\n'
+        )
+        final_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"text","text":"final reply"}]}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(
+            prior_assistant + synth + final_assistant
+        )
+        # Only synth was dropped; the text-bearing assistant stays.
+        assert result == prior_assistant + final_assistant
+
+    def test_drops_preceding_redacted_thinking_only_assistant(self):
+        """``redacted_thinking`` blocks (Anthropic's encrypted-thinking
+        variant) must also count as empty so the role-alternation strip
+        works for safety-redacted reasoning the same way as plain
+        ``thinking`` blocks."""
+        prior_user = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"hi"}]}}\n'
+        )
+        redacted_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"redacted_thinking","data":"opaque-blob"}]}}\n'
+        )
+        synth = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"' + _THINKING_ONLY_REPROMPT.encode() + b'"}]}}\n'
+        )
+        final_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"text","text":"final reply"}]}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(
+            prior_user + redacted_assistant + synth + final_assistant
+        )
+        assert result == prior_user + final_assistant
+
+    def test_what_pointed_at_a_dropped_line_points_past_it(self):
+        """The CLI links each entry to the one before it; an entry whose
+        parent or leaf was dropped points at the nearest kept ancestor
+        instead, so --resume still reaches the earlier turns and the answer
+        (the chain CLI 2.1.284 writes for a re-prompted turn)."""
+        entries = [
+            {"type": "user", "uuid": "u1", "parentUuid": None, "message": {"role": "user", "content": "hi"}},
+            {"type": "assistant", "uuid": "a2", "parentUuid": "u1", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "hmm"}]}},
+            {"type": "user", "uuid": "u3", "parentUuid": "a2", "message": {"role": "user", "content": [{"type": "text", "text": _THINKING_ONLY_REPROMPT}]}},
+            {"type": "attachment", "uuid": "k4", "parentUuid": "u3", "attachment": {"type": "date"}},
+            {"type": "last-prompt", "leafUuid": "u3"},
+            {"type": "assistant", "uuid": "a5", "parentUuid": "k4", "message": {"role": "assistant", "content": [{"type": "text", "text": "Here you go."}]}},
+        ]  # fmt: skip
+        content = b"".join(json.dumps(entry).encode() + b"\n" for entry in entries)
+
+        result = [
+            json.loads(line)
+            for line in _strip_synthetic_reprompt_from_cli_jsonl(content).splitlines()
+        ]
+
+        assert [entry.get("uuid") for entry in result] == ["u1", "k4", None, "a5"]
+        assert result[1]["parentUuid"] == "u1"
+        assert result[2]["leafUuid"] == "u1"
+        assert result[3]["parentUuid"] == "k4"
+
+
+class TestConsumeSdkUntilDone:
+    """Integration coverage for the extracted SDK consume loop.
+
+    Drives the helper directly with a patched ``_iter_sdk_messages`` so we
+    don't have to spin up the full ``stream_chat_completion_sdk`` retry
+    rig — just verify that the moved-from-while-True body still dispatches
+    the SDK message stream correctly across the common branches."""
+
+    def _ctx(self, session_id="s1"):
+        from datetime import UTC, datetime
+        from unittest.mock import MagicMock
+
+        from backend.copilot.model import ChatSession
+        from backend.copilot.sdk.compaction import CompactionTracker
+        from backend.copilot.sdk.service import _StreamContext
+
+        now = datetime.now(UTC)
+        session = ChatSession(
+            session_id=session_id,
+            user_id="u-1",
+            usage=[],
+            started_at=now,
+            updated_at=now,
+            messages=[],
+        )
+        lock = MagicMock()
+        lock.refresh = AsyncMock()
+        attachments = MagicMock()
+        attachments.image_blocks = []
+        return _StreamContext(
+            session=session,
+            session_id=session_id,
+            log_prefix=f"[SDK] [{session_id[:8]}]",
+            sdk_cwd="/tmp/test",
+            current_message="hello",
+            file_ids=None,
+            message_id="m-1",
+            attachments=attachments,
+            compaction=CompactionTracker(),
+            lock=lock,
+        )
+
+    def _state(self, session_id="s1"):
+        from unittest.mock import MagicMock
+
+        from backend.copilot.sdk.response_adapter import SDKResponseAdapter
+        from backend.copilot.sdk.service import _RetryState, _TokenUsage
+
+        adapter = SDKResponseAdapter(message_id="m-1", session_id=session_id)
+        transcript_builder = MagicMock()
+        transcript_builder.append_user = MagicMock()
+        transcript_builder.append_assistant = MagicMock()
+        transcript_builder.append_tool_result = MagicMock()
+        return _RetryState(
+            options=MagicMock(),
+            query_message="hello",
+            compaction_stats=None,
+            use_resume=False,
+            resume_file=None,
+            transcript_msg_count=0,
+            adapter=adapter,
+            transcript_builder=transcript_builder,
+            usage=_TokenUsage(),
+        )
+
+    def _acc(self, session_id="s1"):
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _StreamAccumulator
+
+        return _StreamAccumulator(
+            assistant_response=ChatMessage(role="assistant", content=""),
+            accumulated_tool_calls=[],
+        )
+
+    def _loop_state(self):
+        import time
+
+        from backend.copilot.sdk.service import _SDKLoopState
+
+        now = time.monotonic()
+        return _SDKLoopState(last_real_msg_time=now, last_flush_time=now)
+
+    @pytest.mark.asyncio
+    async def test_happy_path_text_then_result(self):
+        """AssistantMessage with TextBlock → ResultMessage(success) →
+        helper yields StreamStart, Step events, TextDelta(s), Finish."""
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+
+        from backend.copilot.response_model import StreamFinish, StreamTextDelta
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client, wake=None, tool_display_wake=None):
+            yield AssistantMessage(content=[TextBlock(text="hi")], model="test")
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+                result="hi",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        # Must dispatch a TextDelta carrying the assistant content and a
+        # StreamFinish (the helper exits when ``acc.stream_completed`` flips).
+        text_deltas = [e for e in events if isinstance(e, StreamTextDelta)]
+        assert any(d.delta == "hi" for d in text_deltas)
+        assert any(isinstance(e, StreamFinish) for e in events)
+        assert acc.stream_completed is True
+        assert loop_state.ended_with_stream_error is False
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_sentinel_yields_heartbeat_event(self):
+        """``None`` from ``_iter_sdk_messages`` is the heartbeat sentinel —
+        the helper must refresh the lock and yield ``StreamHeartbeat``
+        without aborting the turn."""
+        from claude_agent_sdk import ResultMessage
+
+        from backend.copilot.response_model import StreamFinish, StreamHeartbeat
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client, wake=None, tool_display_wake=None):
+            yield None  # heartbeat
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+                result="",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        ctx.lock.refresh.assert_awaited()
+        assert any(isinstance(e, StreamHeartbeat) for e in events)
+        assert any(isinstance(e, StreamFinish) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_thinking_only_finish_defers_to_caller(self):
+        """A turn that ends with only thinking blocks (no text, no
+        tool_use) should set ``pending_thinking_only_reprompt`` and skip
+        ``StreamFinish`` so the caller can fire a re-prompt round."""
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ResultMessage,
+            ThinkingBlock,
+            ToolResultBlock,
+            ToolUseBlock,
+            UserMessage,
+        )
+
+        from backend.copilot.response_model import StreamFinish
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+        from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client, wake=None, tool_display_wake=None):
+            yield AssistantMessage(
+                content=[
+                    ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={})
+                ],
+                model="test",
+            )
+            yield UserMessage(
+                content=[
+                    ToolResultBlock(tool_use_id="t1", content="result", is_error=False)
+                ],
+                parent_tool_use_id=None,
+            )
+            yield AssistantMessage(
+                content=[ThinkingBlock(thinking="...", signature="")],
+                model="test",
+            )
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=2,
+                session_id="s1",
+                result="",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        assert state.adapter.pending_thinking_only_reprompt is True
+        # No StreamFinish — driver hands control back so it can re-prompt.
+        assert not any(isinstance(e, StreamFinish) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_tool_use_roundtrip(self):
+        """Full tool-use cycle: SystemMessage(init) → AssistantMessage(ToolUse)
+        → UserMessage(ToolResult) → AssistantMessage(text) → ResultMessage."""
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ResultMessage,
+            SystemMessage,
+            TextBlock,
+            ToolResultBlock,
+            ToolUseBlock,
+            UserMessage,
+        )
+
+        from backend.copilot.response_model import (
+            StreamFinish,
+            StreamTextDelta,
+            StreamToolInputAvailable,
+            StreamToolOutputAvailable,
+        )
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+        from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client, wake=None, tool_display_wake=None):
+            yield SystemMessage(subtype="init", data={})
+            yield AssistantMessage(
+                content=[
+                    ToolUseBlock(
+                        id="t1",
+                        name=f"{MCP_TOOL_PREFIX}find_block",
+                        input={"q": "x"},
+                    )
+                ],
+                model="test",
+            )
+            yield UserMessage(
+                content=[
+                    ToolResultBlock(tool_use_id="t1", content="found 3", is_error=False)
+                ],
+                parent_tool_use_id=None,
+            )
+            yield AssistantMessage(content=[TextBlock(text="all done")], model="test")
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=2,
+                session_id="s1",
+                result="all done",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        # Tool input + output dispatched, final text + finish.
+        assert any(isinstance(e, StreamToolInputAvailable) for e in events)
+        assert any(isinstance(e, StreamToolOutputAvailable) for e in events)
+        assert any(
+            isinstance(e, StreamTextDelta) and e.delta == "all done" for e in events
+        )
+        assert any(isinstance(e, StreamFinish) for e in events)
+        assert acc.stream_completed is True
+
+    @pytest.mark.asyncio
+    async def test_result_subtype_error_yields_stream_error(self):
+        """``ResultMessage(subtype="error")`` from the SDK should surface as
+        a ``StreamError`` paired with ``StreamFinish``."""
+        from claude_agent_sdk import ResultMessage
+
+        from backend.copilot.response_model import StreamError, StreamFinish
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client, wake=None, tool_display_wake=None):
+            yield ResultMessage(
+                subtype="error",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=True,
+                num_turns=0,
+                session_id="s1",
+                result="upstream blew up",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        assert any(isinstance(e, StreamError) for e in events)
+        assert any(isinstance(e, StreamFinish) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_task_progress_message_yields_heartbeat(self):
+        """``SystemMessage(subtype="task_progress")`` flows through the
+        adapter and yields a ``StreamHeartbeat`` so the SSE channel and
+        Redis lock TTL stay alive during long tool runs."""
+        from claude_agent_sdk import ResultMessage, SystemMessage
+
+        from backend.copilot.response_model import StreamHeartbeat
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client, wake=None, tool_display_wake=None):
+            yield SystemMessage(subtype="task_progress", data={"step": 1})
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+                result="",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        assert any(isinstance(e, StreamHeartbeat) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_empty_tool_calls_breaker_increments_counter(self):
+        """The empty-tool-call circuit breaker counts consecutive
+        AssistantMessages whose ToolUseBlock has empty input.  Verify the
+        helper threads the running counter through ``loop_state``."""
+        from claude_agent_sdk import AssistantMessage, ResultMessage, ToolUseBlock
+
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+        from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client, wake=None, tool_display_wake=None):
+            # Two consecutive AssistantMessages with empty tool args —
+            # the breaker counter should advance but not yet trip.
+            for i in range(2):
+                yield AssistantMessage(
+                    content=[
+                        ToolUseBlock(
+                            id=f"t{i}",
+                            name=f"{MCP_TOOL_PREFIX}some_tool",
+                            input={},
+                        )
+                    ],
+                    model="test",
+                )
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+                result="",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            async for _ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                pass
+
+        # Counter advanced via ``_check_empty_tool_breaker`` write-through.
+        assert loop_state.consecutive_empty_tool_calls >= 0
+
+
+class TestStreamEndedWithoutResultMessage:
+    """When the SDK CLI hangs up without a ResultMessage (per-query budget
+    exhausted, max_turns hit, OOM, crash) the post-stream branch must
+    surface a visible user-facing notice and append the notice as the
+    assistant ChatMessage — *not* the legacy ``STOPPED_BY_USER_MARKER``
+    which mis-classified the event as a user cancel."""
+
+    def _ctx(self, session_id="s1"):
+        from datetime import UTC, datetime
+
+        from backend.copilot.model import ChatSession
+        from backend.copilot.sdk.compaction import CompactionTracker
+        from backend.copilot.sdk.service import _StreamContext
+
+        now = datetime.now(UTC)
+        session = ChatSession(
+            session_id=session_id,
+            user_id="u-1",
+            usage=[],
+            started_at=now,
+            updated_at=now,
+            messages=[],
+        )
+        lock = MagicMock()
+        lock.refresh = AsyncMock()
+        attachments = MagicMock()
+        attachments.image_blocks = []
+        return _StreamContext(
+            session=session,
+            session_id=session_id,
+            log_prefix=f"[SDK] [{session_id[:8]}]",
+            sdk_cwd="/tmp/test",
+            current_message="hello",
+            file_ids=None,
+            message_id="m-1",
+            attachments=attachments,
+            compaction=CompactionTracker(),
+            lock=lock,
+        )
+
+    def _state(self, session_id="s1"):
+        from backend.copilot.sdk.response_adapter import SDKResponseAdapter
+        from backend.copilot.sdk.service import _RetryState, _TokenUsage
+
+        adapter = SDKResponseAdapter(message_id="m-1", session_id=session_id)
+        transcript_builder = MagicMock()
+        transcript_builder.append_user = MagicMock()
+        transcript_builder.append_assistant = MagicMock()
+        transcript_builder.append_tool_result = MagicMock()
+        return _RetryState(
+            options=MagicMock(resume=None, session_id=session_id),
+            query_message="hello",
+            compaction_stats=None,
+            use_resume=False,
+            resume_file=None,
+            transcript_msg_count=0,
+            adapter=adapter,
+            transcript_builder=transcript_builder,
+            usage=_TokenUsage(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_drain_without_resultmessage_surfaces_visible_notice(self):
+        """``_iter_sdk_messages`` exhausting without a ResultMessage is the
+        CLI-side-kill path. The branch must (a) yield visible
+        StreamTextStart/Delta/End carrying the notice text and (b) append
+        an assistant ChatMessage holding the notice — not the legacy
+        ``STOPPED_BY_USER_MARKER``."""
+        from backend.copilot.constants import (
+            STOPPED_BY_USER_MARKER,
+            STREAM_INCOMPLETE_MARKER,
+        )
+        from backend.copilot.response_model import (
+            StreamTextDelta,
+            StreamTextEnd,
+            StreamTextStart,
+        )
+        from backend.copilot.sdk.service import _run_stream_attempt
+
+        ctx = self._ctx()
+        state = self._state()
+
+        async def empty_iter(_client, wake=None, tool_display_wake=None):
+            # Drain immediately — no ResultMessage ever arrives. Mirrors
+            # the CLI exiting on per-query ``max_budget_usd`` exhaustion
+            # mid-tool-call.
+            if False:
+                yield None  # pragma: no cover  (make this an async generator)
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch(
+                "backend.copilot.sdk.service._iter_sdk_messages",
+                new=empty_iter,
+            ),
+        ):
+            events = []
+            async for ev in _run_stream_attempt(ctx, state):
+                events.append(ev)
+
+        # (a) A visible Start/Delta/End trio carrying the notice text.
+        starts = [e for e in events if isinstance(e, StreamTextStart)]
+        deltas = [e for e in events if isinstance(e, StreamTextDelta)]
+        ends = [e for e in events if isinstance(e, StreamTextEnd)]
+        notice_deltas = [d for d in deltas if d.delta == STREAM_INCOMPLETE_MARKER]
+        assert notice_deltas, (
+            "post-stream branch must emit a StreamTextDelta carrying "
+            "STREAM_INCOMPLETE_MARKER so the user sees the notice"
+        )
+        notice_id = notice_deltas[0].id
+        assert any(s.id == notice_id for s in starts)
+        assert any(e.id == notice_id for e in ends)
+
+        # (b) Appended assistant ChatMessage carries the new notice — not
+        # the legacy stopped-by-user marker.
+        assistant_msgs = [m for m in ctx.session.messages if m.role == "assistant"]
+        assert assistant_msgs, "branch must append an assistant message"
+        contents = [m.content for m in assistant_msgs]
+        assert STREAM_INCOMPLETE_MARKER in contents
+        assert STOPPED_BY_USER_MARKER not in contents
+
+    @pytest.mark.asyncio
+    async def test_ended_with_stream_error_persists_stream_error_marker(self):
+        """SECRT-2333: when the SDK turn ends with
+        ``loop_state.ended_with_stream_error=True`` (idle timeout, transient
+        retries exhausted, breaker, subtype=error) and no marker is on the
+        tail yet, the post-stream branch must persist a STREAM_ERROR_MARKER
+        ChatMessage so chat reload sees a clear "stopped on error" entry —
+        even when the on-wire StreamError is dropped (client disconnect)."""
+        from backend.copilot.constants import STREAM_ERROR_MARKER
+        from backend.copilot.sdk.service import _HandledStreamError, _run_stream_attempt
+
+        ctx = self._ctx()
+        state = self._state()
+
+        async def fake_consume(_client, _ctx, _state, _acc, loop_state):
+            loop_state.stream_error_msg = "Idle timeout"
+            loop_state.stream_error_code = "idle_timeout"
+            loop_state.ended_with_stream_error = True
+            if False:
+                yield None  # pragma: no cover  (make this an async generator)
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch(
+                "backend.copilot.sdk.service._consume_sdk_until_done",
+                new=fake_consume,
+            ),
+            pytest.raises(_HandledStreamError),
+        ):
+            async for _ev in _run_stream_attempt(ctx, state):
+                pass
+
+        contents = [m.content for m in ctx.session.messages]
+        assert STREAM_ERROR_MARKER in contents, contents
+
+    @pytest.mark.asyncio
+    async def test_ended_with_stream_error_skips_marker_when_one_exists(self):
+        """When the inner branch (idle timeout, breaker) already appended an
+        ``_append_error_marker`` row, the post-stream branch must NOT add a
+        second STREAM_ERROR_MARKER on top — that would render two error
+        bubbles on reload."""
+        from backend.copilot.constants import (
+            COPILOT_RETRYABLE_ERROR_PREFIX,
+            STREAM_ERROR_MARKER,
+        )
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _HandledStreamError, _run_stream_attempt
+
+        ctx = self._ctx()
+        state = self._state()
+
+        async def fake_consume(_client, _ctx, _state, _acc, loop_state):
+            # Mirror the idle-timeout branch: it calls ``_append_error_marker``
+            # before flipping the flag.
+            _ctx.session.messages.append(
+                ChatMessage(
+                    role="assistant",
+                    content=f"{COPILOT_RETRYABLE_ERROR_PREFIX} Idle timeout",
+                )
+            )
+            loop_state.stream_error_msg = "Idle timeout"
+            loop_state.stream_error_code = "idle_timeout"
+            loop_state.ended_with_stream_error = True
+            if False:
+                yield None  # pragma: no cover
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch(
+                "backend.copilot.sdk.service._consume_sdk_until_done",
+                new=fake_consume,
+            ),
+            pytest.raises(_HandledStreamError),
+        ):
+            async for _ev in _run_stream_attempt(ctx, state):
+                pass
+
+        contents = [m.content for m in ctx.session.messages]
+        assert STREAM_ERROR_MARKER not in contents, contents
+
+    @pytest.mark.asyncio
+    async def test_a_hangup_while_landing_pauses_instead_of_the_notice(self):
+        """Once the governor is refusing tools, a CLI hangup ended the landing:
+        the turn pauses (no checkpoint claimed) rather than showing the
+        incomplete-turn notice, and a paused turn never auto-continues."""
+        from backend.copilot.constants import STREAM_INCOMPLETE_MARKER
+        from backend.copilot.response_model import StreamTurnPaused
+        from backend.copilot.sdk.governor import TurnGovernor
+        from backend.copilot.sdk.service import _run_stream_attempt
+        from backend.copilot.turn_budget import TurnBudget
+        from backend.copilot.turn_pause import pause_of
+
+        ctx = self._ctx()
+        state = self._state()
+        governor = TurnGovernor(
+            budget=TurnBudget(usd=0.0, limiting="weekly"), step_checkin=450
+        )
+        assert governor.refusal() is not None
+        state.governor = governor
+        state.adapter.governor = governor
+
+        async def empty_iter(_client, wake=None, tool_display_wake=None):
+            if False:
+                yield None  # pragma: no cover
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch("backend.copilot.sdk.service._iter_sdk_messages", new=empty_iter),
+        ):
+            events = [ev async for ev in _run_stream_attempt(ctx, state)]
+
+        paused = [e for e in events if isinstance(e, StreamTurnPaused)]
+        assert len(paused) == 1
+        assert paused[0].pause["reason"] == "weekly"
+        assert paused[0].pause["checkpoint_saved"] is False
+        contents = [m.content for m in ctx.session.messages]
+        assert STREAM_INCOMPLETE_MARKER not in contents, contents
+        assert pause_of(ctx.session.messages[-1]) is not None
+        assert governor.landed is True
+
+
+class TestCliBoundUserText:
+    """A message such as "/compact" reaches the CLI with a leading space, so
+    the CLI sends it to the model instead of answering it as a command, while
+    the transcript keeps what the user typed."""
+
+    def _ctx_and_state(self, image_blocks: list[dict]):
+        now = datetime.now(UTC)
+        session = ChatSession(
+            session_id="s1",
+            user_id="u-1",
+            usage=[],
+            started_at=now,
+            updated_at=now,
+            messages=[],
+        )
+        ctx = _StreamContext(
+            session=session,
+            session_id="s1",
+            log_prefix="[SDK] [s1]",
+            sdk_cwd="/tmp/test",
+            current_message="/compact",
+            file_ids=None,
+            message_id="m-1",
+            attachments=MagicMock(image_blocks=image_blocks),
+            compaction=CompactionTracker(),
+            lock=MagicMock(refresh=AsyncMock()),
+        )
+        state = _RetryState(
+            options=MagicMock(resume=None, session_id="s1"),
+            query_message="/compact",
+            compaction_stats=None,
+            use_resume=True,
+            resume_file="s1",
+            transcript_msg_count=0,
+            adapter=SDKResponseAdapter(message_id="m-1", session_id="s1"),
+            transcript_builder=MagicMock(),
+            usage=_TokenUsage(),
+        )
+        return ctx, state
+
+    async def _send(self, image_blocks: list[dict]):
+        async def no_messages(_client, wake=None, tool_display_wake=None):
+            for message in ():
+                yield message
+
+        ctx, state = self._ctx_and_state(image_blocks)
+        client = MagicMock(query=AsyncMock(), _transport=MagicMock(write=AsyncMock()))
+        sdk_client = MagicMock(
+            __aenter__=AsyncMock(return_value=client),
+            __aexit__=AsyncMock(return_value=False),
+        )
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=sdk_client,
+            ),
+            patch("backend.copilot.sdk.service._iter_sdk_messages", new=no_messages),
+        ):
+            async for _ in _run_stream_attempt(ctx, state):
+                pass
+        return client, state.transcript_builder
+
+    @pytest.mark.asyncio
+    async def test_text_turn(self):
+        client, transcript = await self._send(image_blocks=[])
+
+        client.query.assert_awaited_once_with(" /compact", session_id="s1")
+        transcript.append_user.assert_called_once_with(content="/compact")
+
+    @pytest.mark.asyncio
+    async def test_turn_with_images(self):
+        image = {"type": "image", "source": {"type": "base64", "data": "x"}}
+        client, transcript = await self._send(image_blocks=[image])
+
+        line = json.loads(client._transport.write.await_args.args[0])
+        assert line["message"]["content"] == [
+            image,
+            {"type": "text", "text": " /compact"},
+        ]
+        # The SDK's verbatim_prompts mark only reaches lines it writes itself.
+        assert line["client_composed"] is True
+        transcript.append_user.assert_called_once_with(
+            content=[image, {"type": "text", "text": "/compact"}]
+        )
+
+
+class TestHiddenShortNamesForPermissions:
+    """``_hidden_short_names_for_permissions`` is the pure function that
+    decides which MCP tools to skip at registration so the model never sees
+    permission-denied names — direct fix for the production trace where the
+    SDK's auto-deny string was narrated as a fake Allow/Deny UI."""
+
+    def test_none_permissions_hides_nothing(self):
+        assert _hidden_short_names_for_permissions(None) == frozenset()
+
+    def test_empty_permissions_hides_nothing(self):
+        # tools=[] makes is_empty() true regardless of the *_exclude flags.
+        perms = CopilotPermissions(tools=[], blocks=[])
+        assert _hidden_short_names_for_permissions(perms) == frozenset()
+
+    def test_blacklist_hides_listed_tools(self):
+        perms = CopilotPermissions(
+            tools=list(BUILDER_BLOCKED_TOOLS),
+            tools_exclude=True,
+        )
+        hidden = _hidden_short_names_for_permissions(perms)
+        assert set(BUILDER_BLOCKED_TOOLS) <= hidden
+        # Everything else stays visible.
+        assert hidden == all_known_tool_names() - (
+            all_known_tool_names() - set(BUILDER_BLOCKED_TOOLS)
+        )
+
+    def test_whitelist_hides_everything_not_listed(self):
+        all_tools = all_known_tool_names()
+        # Pick one stable, well-known tool as the whitelist.
+        keep = "find_capability"
+        assert keep in all_tools, "test relies on find_capability being registered"
+        perms = CopilotPermissions(
+            tools=[keep],
+            tools_exclude=False,
+        )
+        hidden = _hidden_short_names_for_permissions(perms)
+        assert keep not in hidden
+        assert hidden == all_tools - {keep}
+
+    def test_unknown_tool_in_blacklist_is_ignored(self):
+        """Typos in the blacklist must not phantom-hide real tools — the
+        function operates on the intersection with the known-tool set."""
+        perms = CopilotPermissions(
+            tools=["this_tool_does_not_exist"],
+            tools_exclude=True,
+        )
+        hidden = _hidden_short_names_for_permissions(perms)
+        # No real tool gets hidden by an unknown name.
+        assert hidden == frozenset()
+        # Sanity: all real tools remain visible.
+        assert all_known_tool_names() - hidden == all_known_tool_names()
+
+
+# SECRT-2378: warm context must not accumulate in the CLI --resume transcript.
+class TestStripEphemeralMemoryFromCliJsonl:
+    def _user_line(self, text: str) -> bytes:
+        return (
+            b'{"type":"user","message":{"role":"user","content":'
+            + json.dumps([{"type": "text", "text": text}]).encode()
+            + b"}}\n"
+        )
+
+    def test_strips_marked_injected_block(self):
+        # The injector stamps the sentinel; the stripper must remove exactly it.
+        block = mark_injected_memory_block(
+            "<temporal_context>\n<FACTS>\n  - stale fact\n</FACTS>\n</temporal_context>"
+        )
+        line = self._user_line(f"deploy staging now\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"temporal_context" not in result
+        assert b"stale fact" not in result
+        assert b"deploy staging now" in result
+
+    def test_preserves_user_typed_unmarked_tags(self):
+        # A <temporal_context> tag the USER typed carries no nonce — leave it.
+        line = self._user_line(
+            "how do I use <temporal_context>? <memory_context>x</memory_context>"
+        )
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_preserves_user_block_with_forged_marker(self):
+        # A user can type the marker attribute with any value; one that is not
+        # this process's nonce leaves their text to survive the upload scrub
+        # verbatim. A pasted matching nonce is the documented limit, pinned in
+        # test_a_user_block_carrying_this_process_nonce_is_scrubbed.
+        forged = (
+            '<temporal_context data-agpt-injected="1">my own notes'
+            "</temporal_context>"
+        )
+        line = self._user_line(f"remember this\n\n{forged}")
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_preserves_block_marked_with_a_foreign_nonce(self):
+        # Only THIS process's nonce is scrubbed — a stamp from anywhere else
+        # (another process, a replayed transcript) is treated as user content.
+        foreign = INJECTED_MEMORY_MARKER.replace(INJECTED_MEMORY_NONCE, "deadbeef")
+        block = f"<temporal_context {foreign}>stale</temporal_context>"
+        line = self._user_line(f"the user turn\n\n{block}")
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_marks_an_open_tag_that_carries_attributes(self):
+        # The producer (_format_context) lives in another module. If it ever
+        # emits attributes or padding, an exact-string stamp would silently
+        # no-op — and an unstamped block is never scrubbed, so stale memory
+        # replays on --resume. Match the tag by name so that can't happen.
+        block = mark_injected_memory_block(
+            '<temporal_context role="memory">\n  - stale fact\n</temporal_context>'
+        )
+        assert block is not None
+        assert INJECTED_MEMORY_MARKER in block
+        assert 'role="memory"' in block, "producer attributes must survive"
+
+        line = self._user_line(f"deploy staging now\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"stale fact" not in result
+        assert b"deploy staging now" in result
+
+    def test_unstampable_block_is_dropped_and_logged(self, caplog):
+        # Belt and braces: if the tag NAME itself ever changes, the block
+        # cannot carry the mark, so nothing could scrub it from the uploaded
+        # transcript, where it would replay a forgotten fact on every later
+        # turn. The turn goes on without it (memory must never break chat)
+        # and an operator gets a signal.
+        block = "<memory_context>x</memory_context>"
+        with caplog.at_level(logging.WARNING):
+            assert mark_injected_memory_block(block) is None
+            assert append_injected_memory_block("the query", block) == "the query"
+        assert "temporal_context" in caplog.text
+
+    def test_a_user_block_carrying_this_process_nonce_is_scrubbed(self):
+        # The nonce is not a proof of authorship: the model reads it in the
+        # prompt, and a block carrying it is removed whoever wrote it. The
+        # documented limit of the scrub (``INJECTED_MEMORY_NONCE``).
+        pasted = f"<temporal_context {INJECTED_MEMORY_MARKER}>mine</temporal_context>"
+        line = self._user_line(f"my notes\n\n{pasted}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"mine" not in result
+        assert b"my notes" in result
+
+    def test_marker_carries_a_random_nonce(self):
+        assert INJECTED_MEMORY_NONCE not in ("", "1")
+        assert len(INJECTED_MEMORY_NONCE) >= 16
+        assert INJECTED_MEMORY_MARKER == (
+            f'data-agpt-injected="{INJECTED_MEMORY_NONCE}"'
+        )
+
+    def test_untouched_entry_is_byte_identical(self):
+        # No injected block: the line must come back byte-for-byte, even with
+        # trailing whitespace that a naive .strip() would have altered.
+        line = self._user_line("hello there   ")
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_preserves_user_whitespace_around_removed_block(self):
+        # When a block IS removed, the user's own leading/trailing whitespace
+        # and intentional blank-line runs must survive untouched — only the
+        # block plus the "\n\n" separator the injector added is removed.
+        user_text = "  indented\n\n\n\nkeep blanks  "
+        block = mark_injected_memory_block("<temporal_context>x</temporal_context>")
+        # Exactly how _append_warm_context builds it: text + "\n\n" + block.
+        line = self._user_line(f"{user_text}\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"temporal_context" not in result
+        restored = json.loads(result.strip())["message"]["content"][0]["text"]
+        assert restored == user_text
+
+    def test_drops_now_empty_text_block_keeps_siblings(self):
+        block = mark_injected_memory_block(
+            "<temporal_context>only memory</temporal_context>"
+        )
+        content = [
+            {"type": "text", "text": "real question"},
+            {"type": "text", "text": block},
+        ]
+        line = (
+            b'{"type":"user","message":{"role":"user","content":'
+            + json.dumps(content).encode()
+            + b"}}\n"
+        )
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        blocks = json.loads(result.strip())["message"]["content"]
+        # The emptied injected block is dropped; the real question survives.
+        assert len(blocks) == 1
+        assert blocks[0]["text"] == "real question"
+
+    def test_message_that_is_only_injected_block_is_left_intact(self):
+        # Stripping would empty the content — Anthropic rejects that on resume,
+        # so the original line is kept verbatim rather than emitted empty.
+        block = mark_injected_memory_block(
+            "<temporal_context>only memory</temporal_context>"
+        )
+        assert block is not None
+        line = self._user_line(block)
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def _user_line_str(self, text: str) -> bytes:
+        """A user entry whose ``content`` is a BARE STRING.
+
+        The CLI emits this shape as well as the list-of-blocks one, so it
+        drives ``CLIUserTextMessage`` rather than ``CLIUserBlocksMessage``.
+        """
+        return (
+            b'{"type":"user","message":{"role":"user","content":'
+            + json.dumps(text).encode()
+            + b"}}\n"
+        )
+
+    def test_strips_the_block_from_bare_string_content(self):
+        # The string-content branch is a real CLI shape but every other test
+        # here uses list-form blocks, so this path could strand injected
+        # memory in the transcript with the whole suite green.
+        block = mark_injected_memory_block(
+            "<temporal_context>\n  - stale fact\n</temporal_context>"
+        )
+        line = self._user_line_str(f"deploy staging now\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"temporal_context" not in result
+        assert b"stale fact" not in result
+        restored = json.loads(result.strip())["message"]["content"]
+        # Still a bare string, and the user's own text is byte-identical.
+        assert restored == "deploy staging now"
+
+    def test_bare_string_that_is_only_the_block_is_left_intact(self):
+        # Emptying the content is what --resume rejects, so this fails safe
+        # by keeping the line rather than emitting "".
+        block = mark_injected_memory_block(
+            "<temporal_context>only memory</temporal_context>"
+        )
+        assert block is not None
+        line = self._user_line_str(block)
+        assert _strip_ephemeral_memory_from_cli_jsonl(line) == line
+
+    def test_round_trips_with_the_injector(self):
+        # What _append_warm_context stamps, the stripper removes.
+        block = mark_injected_memory_block("<temporal_context>fresh</temporal_context>")
+        assert block is not None
+        line = self._user_line("the user turn\n\n" + block)
+        result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert b"temporal_context" not in result
+        assert b"the user turn" in result
+
+    def test_rewrite_preserves_every_other_field(self):
+        # Rewritten lines are re-serialised through typed models, so unknown
+        # CLI fields (entry-, message- and block-level) must survive.
+        block = mark_injected_memory_block("<temporal_context>x</temporal_context>")
+        entry = {
+            "parentUuid": "p1",
+            "type": "user",
+            "uuid": "u1",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "message": {
+                "id": "m1",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"keep me\n\n{block}",
+                        "cache_control": {"type": "ephemeral"},
+                    },
+                    {"type": "image", "source": {"data": "AAA"}},
+                ],
+            },
+        }
+        result = json.loads(
+            _strip_ephemeral_memory_from_cli_jsonl(json.dumps(entry).encode() + b"\n")
+        )
+        assert result["parentUuid"] == "p1"
+        assert result["uuid"] == "u1"
+        assert result["timestamp"] == "2026-01-01T00:00:00Z"
+        assert result["message"]["id"] == "m1"
+        blocks = result["message"]["content"]
+        assert blocks[0] == {
+            "type": "text",
+            "text": "keep me",
+            "cache_control": {"type": "ephemeral"},
+        }
+        assert blocks[1] == {"type": "image", "source": {"data": "AAA"}}
+
+    def test_preserves_non_text_blocks_and_malformed_lines(self):
+        image = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"image","source":{"data":"AAA"}}]}}\n'
+        )
+        garbage = b"not-json\n"
+        assert _strip_ephemeral_memory_from_cli_jsonl(image) == image
+        assert _strip_ephemeral_memory_from_cli_jsonl(garbage) == garbage
+        assert _strip_ephemeral_memory_from_cli_jsonl(b"") == b""
+
+    def test_warns_when_a_nonce_line_is_not_valid_json(self, caplog):
+        """The fail-safe branch: a line carries THIS process's nonce but does
+        not parse. It must survive byte-identical (never eat user text) AND
+        warn — the warning is the only signal that the transcript is growing
+        and will replay stale memory on --resume."""
+        line = b'{"type":"user","message":' + INJECTED_MEMORY_NONCE.encode() + b"\n"
+        with caplog.at_level(logging.WARNING):
+            result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert result == line
+        assert "survived the transcript scrub" in caplog.text
+
+    def test_warns_when_a_nonce_line_is_not_a_cli_user_entry(self, caplog):
+        """Same fail-safe, other arm: valid JSON carrying the nonce that does
+        not match ``CLIUserEntry`` (e.g. an assistant entry)."""
+        entry = {
+            "type": "assistant",
+            "message": {"role": "assistant", "content": INJECTED_MEMORY_MARKER},
+        }
+        line = json.dumps(entry).encode() + b"\n"
+        with caplog.at_level(logging.WARNING):
+            result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert result == line
+        assert "survived the transcript scrub" in caplog.text
+
+    def test_rewrites_only_the_marked_line_of_a_long_transcript(self):
+        """The ``marker not in line`` fast path is what keeps the scrub from
+        re-validating every prior line on every turn. Pin that the other lines
+        come back byte-identical, not merely semantically equal — a reformat
+        would rewrite the whole transcript each turn."""
+        block = mark_injected_memory_block(
+            "<temporal_context>\n  - stale fact\n</temporal_context>"
+        )
+        prior = [
+            self._user_line("first question"),
+            b'{"type":"assistant","message":{"role":"assistant","content":"answer"}}\n',
+            self._user_line("second question"),
+        ]
+        marked = self._user_line(f"deploy staging now\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(b"".join(prior + [marked]))
+
+        assert result.startswith(b"".join(prior)), "untouched lines must be verbatim"
+        assert b"stale fact" not in result
+        assert b"deploy staging now" in result
+
+
+class TestResendWithFreshWarmContext:
+    """Every retry of the turn's query sends the query as built plus one
+    block read for that send (the generator-level cases are in
+    ``retry_scenarios_test.py``)."""
+
+    @staticmethod
+    def _state(query_message: str, base: str | None) -> _RetryState:
+        return _RetryState(
+            options=MagicMock(),
+            query_message=query_message,
+            compaction_stats=None,
+            use_resume=False,
+            resume_file=None,
+            transcript_msg_count=0,
+            adapter=MagicMock(),
+            transcript_builder=MagicMock(),
+            usage=_TokenUsage(),
+            warm_context_base=base,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("compacted", [False, True])
+    async def test_each_retry_replaces_the_block_instead_of_stacking(self, compacted):
+        base = "  the user's words\n\n\nkept exactly  "
+        state = self._state(f"{base}\n\n<old block>", base)
+        if compacted:
+            state.compaction_stats = CompactionStats(
+                messages_before=9, messages_after=2
+            )
+        append = AsyncMock(side_effect=lambda query, **_: f"{query}\n\n<fresh>")
+
+        await _resend_with_fresh_warm_context(state, append)
+        await _resend_with_fresh_warm_context(state, append)
+
+        assert state.query_message == f"{base}\n\n<fresh>"
+        assert append.await_args is not None
+        assert append.await_args.kwargs == {"was_compacted": compacted}
+
+    @pytest.mark.asyncio
+    async def test_a_continuation_is_resent_as_it_is(self):
+        """The building-mode restart sends a continuation, not the turn's
+        query: it has no base and carries no block of its own."""
+        state = self._state("continue building", None)
+        append = AsyncMock()
+
+        await _resend_with_fresh_warm_context(state, append)
+
+        assert state.query_message == "continue building"
+        append.assert_not_awaited()
+
+
+_FIRST_BLOCK = (
+    "<temporal_context>\n<FACTS>\n"
+    "  - Alice works on Atlas (valid: 2025-01-01 00:00:00+00:00 — present)\n"
+    "</FACTS>\n</temporal_context>"
+)
+
+
+# SECRT-2378: the per-send wiring — the branch where the bug lived.
+class TestAppendWarmContext:
+    @pytest.mark.asyncio
+    async def test_appends_on_follow_up_user_turn(self):
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+            )
+        assert out.startswith("the query")
+        # The appended block is stamped with the strip sentinel.
+        assert out.endswith("fresh</temporal_context>")
+        assert INJECTED_MEMORY_MARKER in out
+        assert mock_refresh.await_args is not None
+        assert mock_refresh.await_args.kwargs["force"] is False
+
+    @pytest.mark.asyncio
+    async def test_forces_refresh_after_compaction(self):
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            await _append_warm_context(
+                "q",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="continue",
+                was_compacted=True,
+            )
+        assert mock_refresh.await_args is not None
+        assert mock_refresh.await_args.kwargs["force"] is True
+
+    @pytest.mark.asyncio
+    async def test_refresh_is_scoped_to_the_expert(self):
+        """The first turn injects the EXPERT's warm context; a follow-up turn
+        that refreshed from the user's personal graph would swap the memory
+        set mid-conversation."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            await _append_warm_context(
+                "q",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id="expert-1",
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+            )
+        assert mock_refresh.await_args is not None
+        assert mock_refresh.await_args.kwargs["expert_id"] == "expert-1"
+
+    @pytest.mark.asyncio
+    async def test_joiner_uses_the_refresh_the_starter_began(self):
+        """The refresh is in flight BEFORE the joiner is reached, so its
+        graph round-trip overlaps the query build. Pin that the joiner
+        consumes the started refresh rather than issuing a second fetch."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            pending = _start_follow_up_warm_context(
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+            )
+            assert pending is not None
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+                pending=pending,
+            )
+
+        assert out.startswith("the query")
+        assert INJECTED_MEMORY_MARKER in out
+        mock_refresh.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_starter_declines_turns_that_would_not_fetch(self):
+        """A declined start must not fetch — and must leave the joiner's own
+        forced path intact for the one case the starter cannot judge yet
+        (a short message that turns out to follow a compaction)."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            for override in (
+                {"current_message": "ok"},  # substance gate
+                {"has_history": False},  # first turn
+                {"is_user_message": False},  # tool result
+                {"graphiti_enabled": False},  # memory off
+                {"user_id": None},  # anonymous
+            ):
+                base = {
+                    "graphiti_enabled": True,
+                    "has_history": True,
+                    "is_user_message": True,
+                    "user_id": "u1",
+                    "expert_id": None,
+                    "current_message": "a substantive follow-up request here",
+                }
+                base.update(override)
+                assert _start_follow_up_warm_context(**base) is None
+            mock_refresh.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unused_pending_refresh_is_cancelled(self):
+        """A started refresh the joiner does not use (a gate that closed in
+        between) must be cancelled — a dangling task would outlive the turn
+        and write nothing anyone reads."""
+        started = asyncio.Event()
+
+        async def _never_finishes(*_args, **_kwargs):
+            started.set()
+            await asyncio.sleep(3600)
+
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new=_never_finishes,
+        ):
+            pending = _start_follow_up_warm_context(
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="a substantive follow-up request here",
+            )
+            assert pending is not None
+            await started.wait()
+            out = await _append_warm_context(
+                "q",
+                graphiti_enabled=False,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="a substantive follow-up request here",
+                was_compacted=False,
+                pending=pending,
+            )
+
+        assert out == "q"
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(pending.task, timeout=1)
+
+    @pytest.mark.asyncio
+    async def test_retry_reads_memory_again_instead_of_replaying_the_block(self):
+        """The retry path rebuilds the query and calls this again for the
+        same message, and must read memory again. The failed attempt's tool
+        calls ran before the retry without counting as streamed output, and
+        its rollback takes a ``memory_forget`` among them out of the history
+        the retry sends: replaying the first block would hand the model the
+        fact the user just had forgotten."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            side_effect=[
+                "<temporal_context>Alice works on Atlas</temporal_context>",
+                "<temporal_context>Bob leads Atlas</temporal_context>",
+            ],
+        ) as mock_refresh:
+            first = await _append_warm_context(
+                "q1",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+            )
+            second = await _append_warm_context(
+                "q2",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+                was_compacted=True,
+            )
+
+        assert mock_refresh.await_count == 2
+        assert mock_refresh.await_args is not None
+        assert mock_refresh.await_args.kwargs["force"] is True
+        assert "Alice works on Atlas" in first
+        assert second.startswith("q2")
+        assert "Alice works on Atlas" not in second
+        assert "Bob leads Atlas" in second
+        assert INJECTED_MEMORY_MARKER in second
+
+    @pytest.mark.asyncio
+    async def test_gated_out_first_call_still_allows_a_forced_retry_fetch(self):
+        """A trivial first attempt starts no refresh at all, and the
+        post-compaction retry (force=True) must still fetch — a skipped
+        refresh must not re-break the headline case this PR fixes."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>forced</temporal_context>",
+        ) as mock_refresh:
+            await _append_warm_context(
+                "q1",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="continue",
+                was_compacted=False,
+            )
+            out = await _append_warm_context(
+                "q2",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="continue",
+                was_compacted=True,
+            )
+
+        mock_refresh.assert_awaited_once()
+        assert mock_refresh.await_args is not None
+        assert mock_refresh.await_args.kwargs["force"] is True
+        assert out.endswith("forced</temporal_context>")
+
+    @pytest.mark.asyncio
+    async def test_returns_query_unchanged_when_refresh_yields_nothing(self):
+        """Empty graph or a timed-out fetch returns None — the query must
+        come back byte-identical with no sentinel stamped, or the scrub
+        would have a marker with no block to remove."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+            )
+        assert out == "the query"
+        assert INJECTED_MEMORY_MARKER not in out
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("first_turn_block", [None, _FIRST_BLOCK])
+    async def test_noop_on_non_user_or_disabled(self, first_turn_block):
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            for override in (
+                {"is_user_message": False},  # tool-result submission
+                {"graphiti_enabled": False},  # memory off
+                {"user_id": None},  # anonymous
+            ):
+                base = {
+                    "graphiti_enabled": True,
+                    "has_history": first_turn_block is None,
+                    "is_user_message": True,
+                    "user_id": "u1",
+                    "expert_id": None,
+                    "current_message": "a substantive follow-up request here",
+                    "was_compacted": False,
+                    "first_turn_block": first_turn_block,
+                }
+                base.update(override)
+                out = await _append_warm_context("q", **base)
+                assert out == "q"
+            mock_refresh.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_first_send_of_a_first_turn_carries_its_fetch_marked(self):
+        """The first turn's block, read during setup, goes into the query
+        only, stamped like a refresh's so the upload scrub removes it; it is
+        not read again."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=False,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="hi",
+                was_compacted=False,
+                first_turn_block=_FIRST_BLOCK,
+            )
+
+        mock_refresh.assert_not_awaited()
+        assert out.startswith("the query\n\n<temporal_context ")
+        assert out.count("<temporal_context") == 1
+        assert INJECTED_MEMORY_MARKER in out
+        assert "Alice works on Atlas" in out
+
+    @pytest.mark.asyncio
+    async def test_a_first_turn_with_nothing_recalled_sends_the_query_as_is(self):
+        """An empty first-turn fetch is final for that send: no block, no
+        mark and no second read."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=False,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Alice working on",
+                was_compacted=False,
+                first_turn_block="",
+            )
+
+        mock_refresh.assert_not_awaited()
+        assert out == "the query"
+
+    @pytest.mark.asyncio
+    async def test_a_first_turn_retry_reads_memory_again_whatever_the_message(self):
+        """A retry of a first turn has no block of its own any more (the
+        first one was never part of the user's message), so it reads memory
+        again, forced like the first turn's own read: a first turn recalls
+        whatever the message's length."""
+        with patch(
+            "backend.copilot.graphiti.context_refresh.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            out = await _append_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=False,
+                is_user_message=True,
+                user_id="u1",
+                expert_id="expert-1",
+                current_message="hi",
+                was_compacted=False,
+            )
+
+        mock_refresh.assert_awaited_once_with(
+            "u1", "hi", expert_id="expert-1", force=True
+        )
+        assert out.endswith("fresh</temporal_context>")
+        assert INJECTED_MEMORY_MARKER in out

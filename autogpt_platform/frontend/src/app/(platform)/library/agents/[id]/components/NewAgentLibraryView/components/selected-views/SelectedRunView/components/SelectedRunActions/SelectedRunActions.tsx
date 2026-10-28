@@ -2,18 +2,19 @@ import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import {
-  ArrowBendLeftUpIcon,
-  ArrowBendRightDownIcon,
-  CardsThreeIcon,
-  EyeIcon,
-  StopIcon,
-} from "@phosphor-icons/react";
 import { AgentActionsDropdown } from "../../../AgentActionsDropdown";
 import { SelectedActionsWrap } from "../../../SelectedActionsWrap";
 import { ShareRunButton } from "../../../ShareRunButton/ShareRunButton";
 import { CreateTemplateModal } from "../CreateTemplateModal/CreateTemplateModal";
 import { useSelectedRunActions } from "./useSelectedRunActions";
+import {
+  Album01Icon,
+  CornerLeftUpIcon,
+  CornerRightDownIcon,
+  EyeIcon,
+  StopIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   agent: LibraryAgent;
@@ -64,15 +65,15 @@ export function SelectedRunActions({
             <LoadingSpinner size="small" />
           ) : (
             <div className="gap- relative flex flex-col items-center justify-center">
-              <ArrowBendLeftUpIcon
-                weight="bold"
+              <Icon
+                icon={CornerLeftUpIcon}
                 size={16}
-                className="relative bottom-[4px] z-0 rotate-90 text-zinc-700"
+                className="relative bottom-[4px] z-0 rotate-90 text-foreground-body"
               />
-              <ArrowBendRightDownIcon
-                weight="bold"
+              <Icon
+                icon={CornerRightDownIcon}
                 size={16}
-                className="absolute bottom-[-5px] z-10 rotate-90 text-zinc-700"
+                className="absolute bottom-[-5px] z-10 rotate-90 text-foreground-body"
               />
             </div>
           )}
@@ -85,9 +86,10 @@ export function SelectedRunActions({
           aria-label="Stop task"
           onClick={handleStopRun}
           disabled={isStopping}
-          className="border-red-600 bg-red-600 text-white hover:border-red-800 hover:bg-red-800"
+          // TODO(tokens): no exact role for hover:border-red-800 (#832525), hover:bg-red-800 (#832525)
+          className="border-error-hover bg-error-hover text-action-foreground hover:border-red-800 hover:bg-red-800"
         >
-          <StopIcon weight="bold" size={18} />
+          <Icon icon={StopIcon} size={18} />
         </Button>
       ) : null}
       {openInBuilderHref ? (
@@ -99,7 +101,7 @@ export function SelectedRunActions({
           target="_blank"
           aria-label="View task details"
         >
-          <EyeIcon weight="bold" size={18} className="text-zinc-700" />
+          <Icon icon={EyeIcon} size={18} className="text-foreground-body" />
         </Button>
       ) : null}
       <ShareRunButton
@@ -117,7 +119,11 @@ export function SelectedRunActions({
             onClick={() => setIsCreateTemplateModalOpen(true)}
             title="Create template"
           >
-            <CardsThreeIcon weight="bold" size={18} className="text-zinc-700" />
+            <Icon
+              icon={Album01Icon}
+              size={18}
+              className="text-foreground-body"
+            />
           </Button>
           <CreateTemplateModal
             isOpen={isCreateTemplateModalOpen}

@@ -21,7 +21,7 @@ The block authenticates through Meta's API via Ayrshare. Content can mention use
 |-------|-------------|------|----------|
 | post | The post text (max 500 chars, empty string allowed). Only 1 hashtag allowed. Use @handle to mention users. | str | No |
 | media_urls | Optional list of media URLs. Supports up to 20 images/videos in a carousel. Auto-preview links unless media is included. | List[str] | No |
-| is_video | Whether the media is a video | bool | No |
+| is_video | Whether the media is a video. Set to True when uploading a video so billing applies the video tier. | bool | No |
 | schedule_date | UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ) | str (date-time) | No |
 | disable_comments | Whether to disable comments | bool | No |
 | shorten_links | Whether to shorten links | bool | No |

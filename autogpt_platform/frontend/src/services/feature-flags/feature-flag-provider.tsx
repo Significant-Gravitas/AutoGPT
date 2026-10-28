@@ -1,68 +1,55 @@
 "use client";
 
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import * as Sentry from "@sentry/nextjs";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { LDProvider } from "launchdarkly-react-client-sdk";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
+import { getAnonymousID } from "../analytics/anonymous-id";
 import { environment } from "../environment";
+import { LD_INIT_TIMEOUT_SECONDS } from "./constants";
+import { FLAG_BACKEND, usesLaunchDarkly } from "./flag-backend";
+import { FlagResolutionContext } from "./flag-resolution";
+import { buildLDContext } from "./helpers";
 
-const LAUNCHDARKLY_INIT_TIMEOUT_MS = 5000;
-
-export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
-  const { user, isUserLoading } = useSupabase();
-  const envEnabled = environment.areFeatureFlagsEnabled();
+export function FeatureFlagProvider({ children }: { children: ReactNode }) {
+  const { user, isUserLoading } = useAuth();
+  const envEnabled = usesLaunchDarkly() && environment.areFeatureFlagsEnabled();
   const clientId = environment.getLaunchDarklyClientId();
 
+  // Undefined until the session check resolves, which it never does on the
+  // server. The page renders regardless so crawlers get its content; the
+  // provider below just holds off initialising until the context is known,
+  // during which every flag reads as "not answered yet" and the resolution
+  // timeout in ``useFlagStatus`` has not started counting.
   const context = useMemo(() => {
     if (isUserLoading) return;
-
-    if (!user) {
-      return {
-        kind: "user" as const,
-        key: "anonymous",
-        anonymous: true,
-      };
-    }
-
-    // Mirror the context built by the backend
-    // (feature_flag.py:_fetch_user_context_data) so LaunchDarkly targeting
-    // rules evaluate identically on both sides.
-    return {
-      kind: "user" as const,
-      key: user.id,
-      anonymous: false,
-      ...(user.email && {
-        email: user.email,
-        email_domain: user.email.split("@").at(-1),
-      }),
-      ...(user.role && { role: user.role }),
-      custom: {
-        ...(user.role && { role: user.role }),
-      },
-    };
+    return buildLDContext(user, getAnonymousID());
   }, [user, isUserLoading]);
+
+  if (FLAG_BACKEND === "server") {
+    // The server reads flags for the signed-in user, so the wait starts once the session is known.
+    return (
+      <FlagResolutionContext.Provider value={!isUserLoading}>
+        {children}
+      </FlagResolutionContext.Provider>
+    );
+  }
 
   if (!envEnabled) {
     return <>{children}</>;
   }
 
-  if (isUserLoading) {
-    return <LoadingSpinner size="large" cover />;
-  }
-
   return (
-    <LDProvider
-      clientSideID={clientId ?? ""}
-      context={context}
-      timeout={LAUNCHDARKLY_INIT_TIMEOUT_MS}
-      reactOptions={{ useCamelCaseFlagKeys: false }}
-      options={{
-        inspectors: [Sentry.buildLaunchDarklyFlagUsedHandler()],
-      }}
-    >
-      {children}
-    </LDProvider>
+    <FlagResolutionContext.Provider value={context !== undefined}>
+      <LDProvider
+        clientSideID={clientId ?? ""}
+        context={context}
+        deferInitialization
+        timeout={LD_INIT_TIMEOUT_SECONDS}
+        reactOptions={{ useCamelCaseFlagKeys: false }}
+      >
+        {children}
+      </LDProvider>
+    </FlagResolutionContext.Provider>
   );
 }

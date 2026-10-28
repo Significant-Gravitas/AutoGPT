@@ -1,15 +1,29 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
-import { CaretRight, DownloadSimple } from "@phosphor-icons/react";
+import { useEffect } from "react";
 import type { ArtifactRef } from "../../store";
 import { useCopilotUIStore } from "../../store";
 import { downloadArtifact } from "../ArtifactPanel/downloadArtifact";
 import { classifyArtifact } from "../ArtifactPanel/helpers";
+import { ArrowRight01Icon, Download01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   artifact: ArtifactRef;
+  /** Read-only mode: opt out of the side-effects that only make sense
+   *  for the owner (auto-registering with the artifact panel so a
+   *  newly arriving file can pop the panel open).
+   *
+   *  Click behaviour is unchanged from the owner case: an openable
+   *  artifact still calls ``openArtifact`` and renders inside
+   *  ``ArtifactPanel`` (the public share viewer mounts the panel too),
+   *  while a non-openable asset falls back to a direct download.  In
+   *  other words, ``readOnly`` does NOT force every click to download
+   *  — that's only true for non-openable assets, regardless of mode. */
+  readOnly?: boolean;
 }
 
 function formatSize(bytes?: number): string {
@@ -19,18 +33,33 @@ function formatSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function ArtifactCard({ artifact }: Props) {
-  const activeID = useCopilotUIStore((s) => s.artifactPanel.activeArtifact?.id);
-  const isOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
+export function ArtifactCard({ artifact, readOnly }: Props) {
+  const isActive = useCopilotUIStore(
+    (s) => s.artifactPanel.activeArtifact?.id === artifact.id,
+  );
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
+  const registerArtifactForAutoOpen = useCopilotUIStore(
+    (s) => s.registerArtifactForAutoOpen,
+  );
 
-  const isActive = isOpen && activeID === artifact.id;
+  // Register this artifact on mount — the store decides whether to auto-open.
+  // Fires once per artifact ID; subsequent renders with the same ID are no-ops
+  // in the store (knownIds check).
+  // Skipped in readOnly mode — the share viewer has no panel for auto-open
+  // to target, and registering would just pollute the store.
+  const registerForAutoOpen = useStableCallback(() => {
+    registerArtifactForAutoOpen(artifact);
+  });
+  useEffect(() => {
+    if (readOnly) return;
+    registerForAutoOpen();
+  }, [artifact.id, artifact.mimeType, registerArtifactForAutoOpen, readOnly]);
+
   const classification = classifyArtifact(
     artifact.mimeType,
     artifact.title,
     artifact.sizeBytes,
   );
-  const Icon = classification.icon;
 
   function handleDownloadOnly() {
     downloadArtifact(artifact).catch(() => {
@@ -47,21 +76,29 @@ export function ArtifactCard({ artifact }: Props) {
       <button
         type="button"
         onClick={handleDownloadOnly}
-        className="my-1 flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-left transition-colors hover:bg-zinc-50"
+        className="my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border border-border-base bg-surface px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-surface-muted"
       >
-        <Icon size={20} className="shrink-0 text-zinc-400" />
+        <Icon
+          icon={classification.icon}
+          size={20}
+          className="shrink-0 text-foreground-subtle"
+        />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-zinc-900">
+          <p className="truncate text-sm font-medium text-foreground-strong">
             {artifact.title}
           </p>
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-foreground-subtle">
             {classification.label}
             {artifact.sizeBytes
               ? ` \u2022 ${formatSize(artifact.sizeBytes)}`
               : ""}
           </p>
         </div>
-        <DownloadSimple size={16} className="shrink-0 text-zinc-400" />
+        <Icon
+          icon={Download01Icon}
+          size={16}
+          className="shrink-0 text-foreground-subtle"
+        />
       </button>
     );
   }
@@ -71,28 +108,34 @@ export function ArtifactCard({ artifact }: Props) {
       type="button"
       onClick={() => openArtifact(artifact)}
       className={cn(
-        "my-1 flex w-full items-center gap-3 rounded-lg border bg-white px-3 py-2.5 text-left transition-colors hover:bg-zinc-50",
-        isActive ? "border-violet-300 bg-violet-50/50" : "border-zinc-200",
+        "my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border bg-surface px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-surface-muted",
+        // TODO(tokens): no exact role for border-violet-300
+        isActive
+          ? "border-violet-300 bg-accent-surface/50"
+          : "border-border-base",
       )}
     >
       <Icon
+        icon={classification.icon}
         size={20}
         className={cn(
           "shrink-0",
-          isActive ? "text-violet-500" : "text-zinc-400",
+          // TODO(tokens): no exact role for text-violet-500
+          isActive ? "text-violet-500" : "text-foreground-subtle",
         )}
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-900">
+        <p className="truncate text-sm font-medium text-foreground-strong">
           {artifact.title}
         </p>
-        <p className="text-xs text-zinc-400">
+        <p className="text-xs text-foreground-subtle">
           <span
             className={cn(
               "inline-block rounded-full px-1.5 py-0.5 text-xs font-medium",
               artifact.origin === "user-upload"
-                ? "bg-blue-50 text-blue-500"
-                : "bg-violet-50 text-violet-500",
+                ? "bg-info-surface text-info"
+                : // TODO(tokens): no exact role for text-violet-500
+                  "bg-accent-surface text-violet-500",
             )}
           >
             {classification.label}
@@ -102,11 +145,13 @@ export function ArtifactCard({ artifact }: Props) {
             : ""}
         </p>
       </div>
-      <CaretRight
+      <Icon
+        icon={ArrowRight01Icon}
         size={16}
         className={cn(
           "shrink-0",
-          isActive ? "text-violet-400" : "text-zinc-300",
+          // TODO(tokens): no exact role for text-violet-400
+          isActive ? "text-violet-400" : "text-foreground-disabled",
         )}
       />
     </button>

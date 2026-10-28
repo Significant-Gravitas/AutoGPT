@@ -1,19 +1,47 @@
 "use client";
 
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
+import { isCompletedWithErrors } from "@/lib/run-health";
 import { formatTimeAgo } from "@/lib/utils/time";
-import {
-  CheckCircleIcon,
-  ClockIcon,
-  StopCircleIcon,
-  WarningIcon,
-  SpinnerIcon,
-  MinusCircleIcon,
-} from "@phosphor-icons/react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
+import {
+  Alert01Icon,
+  Alert02Icon,
+  ArrowUpRight01Icon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  Loading03Icon,
+  MinusSignCircleIcon,
+  StopCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+
+function ActivityNavIndicator() {
+  const { pending } = useLinkStatus();
+  if (pending) {
+    return (
+      <LoadingSpinner
+        size="small"
+        // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
+        className="shrink-0 text-neutral-400"
+        aria-hidden="true"
+      />
+    );
+  }
+  return (
+    <Icon
+      icon={ArrowUpRight01Icon}
+      size={16}
+      // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
+      className="shrink-0 text-neutral-400"
+      aria-hidden="true"
+    />
+  );
+}
 
 interface Props {
   execution: AgentExecutionWithInfo;
@@ -23,21 +51,43 @@ export function ActivityItem({ execution }: Props) {
   function getStatusIcon() {
     switch (execution.status) {
       case AgentExecutionStatus.QUEUED:
-        return <ClockIcon size={18} className="text-purple-500" />;
+        return <Icon icon={Clock01Icon} size={18} className="text-brand" />;
       case AgentExecutionStatus.RUNNING:
         return (
-          <SpinnerIcon size={18} className="animate-spin text-purple-500" />
+          <Icon
+            icon={Loading03Icon}
+            size={18}
+            className="animate-spin text-brand"
+          />
         );
       case AgentExecutionStatus.COMPLETED:
-        return <CheckCircleIcon size={18} className="text-purple-500" />;
+        return isCompletedWithErrors(execution) ? (
+          <Icon
+            icon={Alert02Icon}
+            size={18}
+            // TODO(tokens): no exact role for text-amber-600 (#D97706)
+            className="text-amber-600"
+          />
+        ) : (
+          <Icon icon={CheckmarkCircle02Icon} size={18} className="text-brand" />
+        );
       case AgentExecutionStatus.FAILED:
-        return <WarningIcon size={18} className="text-purple-500" />;
+        return <Icon icon={Alert01Icon} size={18} className="text-brand" />;
       case AgentExecutionStatus.TERMINATED:
-        return <StopCircleIcon size={18} className="text-purple-500" />;
+        return <Icon icon={StopCircleIcon} size={18} className="text-brand" />;
       case AgentExecutionStatus.INCOMPLETE:
-        return <MinusCircleIcon size={18} className="text-purple-500" />;
+        return (
+          <Icon icon={MinusSignCircleIcon} size={18} className="text-brand" />
+        );
       case AgentExecutionStatus.REVIEW:
-        return <WarningIcon size={18} className="text-yellow-600" />;
+        return (
+          <Icon
+            icon={Alert01Icon}
+            size={18}
+            // TODO(tokens): no exact role for text-yellow-600 (#DFAF00)
+            className="text-yellow-600"
+          />
+        );
       default:
         return null;
     }
@@ -70,7 +120,9 @@ export function ActivityItem({ execution }: Props) {
     let statusText = "ended";
     switch (execution.status) {
       case AgentExecutionStatus.COMPLETED:
-        statusText = "completed";
+        statusText = isCompletedWithErrors(execution)
+          ? "completed with errors"
+          : "completed";
         break;
       case AgentExecutionStatus.FAILED:
         statusText = "failed";
@@ -104,7 +156,11 @@ export function ActivityItem({ execution }: Props) {
       {/* Icon + Agent Name */}
       <div className="flex items-center space-x-2">
         {getStatusIcon()}
-        <Text variant="body-medium" className="max-w-44 truncate text-gray-900">
+        <Text
+          variant="small-medium"
+          // TODO(tokens): no exact role for text-gray-900 (#111827)
+          className="max-w-44 truncate text-gray-900"
+        >
           {execution.agent_name}
         </Text>
       </div>
@@ -115,7 +171,11 @@ export function ActivityItem({ execution }: Props) {
           <Text
             key={index}
             variant="small"
-            className={index === 0 ? "!text-zinc-600" : "!text-zinc-500"}
+            className={
+              index === 0
+                ? "!text-foreground-secondary"
+                : "!text-foreground-tertiary"
+            }
           >
             {line}
           </Text>
@@ -124,17 +184,17 @@ export function ActivityItem({ execution }: Props) {
     </>
   );
 
-  return withExecutionLink ? (
-    <Link
-      className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-bgLightGrey"
-      href={linkUrl}
-      role="button"
-    >
-      {content}
-    </Link>
-  ) : (
-    <div className="block border-b border-slate-50 px-2 py-3 last:border-b-0">
-      {content}
-    </div>
-  );
+  if (withExecutionLink) {
+    return (
+      <Link
+        className="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-2 py-3 transition-colors hover:bg-bgLightGrey"
+        href={linkUrl}
+      >
+        <div className="min-w-0 flex-1">{content}</div>
+        <ActivityNavIndicator />
+      </Link>
+    );
+  }
+
+  return <div className="block rounded-xl px-2 py-3">{content}</div>;
 }

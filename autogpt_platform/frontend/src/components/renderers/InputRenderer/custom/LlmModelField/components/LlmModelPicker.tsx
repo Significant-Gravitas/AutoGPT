@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CaretDownIcon } from "@phosphor-icons/react";
 import {
   Popover,
   PopoverContent,
@@ -21,11 +20,14 @@ import { LlmIcon } from "./LlmIcon";
 import { LlmMenuHeader } from "./LlmMenuHeader";
 import { LlmMenuItem } from "./LlmMenuItem";
 import { LlmPriceTier } from "./LlmPriceTier";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type MenuView = "creator" | "model" | "provider";
 
 type Props = {
   models: LlmModelMetadata[];
+  selectedName?: string;
   selectedModel?: LlmModelMetadata;
   recommendedModel?: LlmModelMetadata;
   onSelect: (value: string) => void;
@@ -34,6 +36,7 @@ type Props = {
 
 export function LlmModelPicker({
   models,
+  selectedName,
   selectedModel,
   recommendedModel,
   onSelect,
@@ -116,10 +119,19 @@ export function LlmModelPicker({
     [onSelect],
   );
 
-  const triggerModel = selectedModel ?? recommendedModel ?? models[0];
-  const triggerTitle = triggerModel
-    ? getModelDisplayName(triggerModel)
-    : "Select model";
+  // A stored slug missing from the metadata map means the model was hidden
+  // or kill-switched after this node was configured. Show the truth (the
+  // raw stored slug) rather than silently displaying the recommended model
+  // while the stored one still executes.
+  const isUnavailableSelection = Boolean(selectedName) && !selectedModel;
+  const triggerModel = isUnavailableSelection
+    ? undefined
+    : (selectedModel ?? recommendedModel ?? models[0]);
+  const triggerTitle = isUnavailableSelection
+    ? `${selectedName} (unavailable)`
+    : triggerModel
+      ? getModelDisplayName(triggerModel)
+      : "Select model";
   const triggerCreator = triggerModel?.creator ?? "";
 
   return (
@@ -129,22 +141,25 @@ export function LlmModelPicker({
           type="button"
           disabled={disabled}
           className={cn(
-            "flex w-full min-w-[15rem] items-center rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left",
-            "hover:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-200",
+            "flex w-full min-w-[15rem] items-center rounded-lg border border-border-base bg-surface px-3 py-2 text-left",
+            "hover:border-border-strong focus:outline-none focus:ring-2 focus:ring-border-base",
             disabled && "cursor-not-allowed opacity-60",
           )}
         >
           <LlmIcon value={triggerCreator} />
-          <Text variant="body" className="ml-1 flex-1 text-zinc-900">
+          <Text variant="body" className="ml-1 flex-1 text-foreground-strong">
             {triggerTitle}
           </Text>
-          <CaretDownIcon className="h-3 w-3 text-zinc-900" weight="bold" />
+          <Icon
+            icon={ArrowDown01Icon}
+            className="h-3 w-3 text-foreground-strong"
+          />
         </button>
       </PopoverTrigger>
       <PopoverContent
         align="start"
         sideOffset={4}
-        className="max-h-[45vh] w-[--radix-popover-trigger-width] min-w-[16rem] overflow-y-auto rounded-md border border-zinc-200 bg-white p-0 shadow-[0px_1px_4px_rgba(12,12,13,0.12)]"
+        className="w-(--radix-popover-trigger-width) max-h-[45vh] min-w-[16rem] overflow-y-auto rounded-md border border-border-base bg-surface p-0 shadow-[0px_1px_4px_rgba(12,12,13,0.12)]"
       >
         {view === "creator" && (
           <div className="flex flex-col">
@@ -156,7 +171,7 @@ export function LlmModelPicker({
                   icon={<LlmIcon value={recommendedModel.creator} />}
                   onClick={() => handleSelectModel(recommendedModel.name)}
                 />
-                <div className="border-b border-zinc-200" />
+                <div className="border-b border-border-base" />
               </>
             )}
             {creators.map((creator) => (
@@ -186,7 +201,7 @@ export function LlmModelPicker({
               label={currentCreator}
               onBack={() => setView("creator")}
             />
-            <div className="border-b border-zinc-200" />
+            <div className="border-b border-border-base" />
             {modelEntries.map((entry) => (
               <LlmMenuItem
                 key={entry.title}
@@ -217,7 +232,7 @@ export function LlmModelPicker({
               label={activeTitle}
               onBack={() => setView("model")}
             />
-            <div className="border-b border-zinc-200" />
+            <div className="border-b border-border-base" />
             {providerEntries.map((entry) => (
               <LlmMenuItem
                 key={`${entry.title}-${entry.provider}`}

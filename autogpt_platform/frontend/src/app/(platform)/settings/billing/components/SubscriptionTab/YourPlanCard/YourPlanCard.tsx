@@ -1,0 +1,290 @@
+"use client";
+
+import { motion, useReducedMotion } from "framer-motion";
+import { Badge } from "@/components/atoms/Badge/Badge";
+import { Button } from "@/components/atoms/Button/Button";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { BillingOffer } from "../BillingOffer";
+import { AutopilotUsageCard } from "../AutopilotUsageCard/AutopilotUsageCard";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
+
+import {
+  formatCents,
+  formatShortDate,
+  getSectionMotionProps,
+} from "../../../helpers";
+import { CycleToggle } from "./CycleToggle";
+import { SwitchCycleDialog } from "./SwitchCycleDialog";
+import { SwitchTierDialog } from "./SwitchTierDialog";
+import { ENTERPRISE_CONTACT_URL, useYourPlanCard } from "./useYourPlanCard";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+
+interface Props {
+  index?: number;
+  showUsage?: boolean;
+}
+
+export function YourPlanCard({ index = 0, showUsage = false }: Props) {
+  const reduceMotion = useReducedMotion();
+  const controller = useYourPlanCard();
+  const {
+    plan,
+    isError,
+    retry,
+    isLoading,
+    isUpdatingTier,
+    isRedirecting,
+    canManagePortal,
+    canUpgrade,
+    canDowngrade,
+    canResume,
+    selectedCycle,
+    pendingCycle,
+    pendingTierUpgrade,
+    pendingTierUpgradeLabel,
+    pendingTierDowngrade,
+    pendingTierDowngradeLabel,
+    isCycleToggleVisible,
+    cycleDialogTitle,
+    cycleDialogBody,
+    tierUpgradeDialogBody,
+    tierDowngradeDialogBody,
+    onCycleChange,
+    onConfirmCycleSwitch,
+    onCancelCycleSwitch,
+    onConfirmTierUpgrade,
+    onCancelTierUpgrade,
+    onConfirmTierDowngrade,
+    onCancelTierDowngrade,
+    onUpgrade,
+    onDowngrade,
+    onResume,
+    onManage,
+  } = controller;
+
+  const sectionMotion = getSectionMotionProps(index, Boolean(reduceMotion));
+
+  if (plan?.tierKey === "TRIAL") return null;
+  if (isError) return <ErrorCard context="your subscription" onRetry={retry} />;
+
+  if (isLoading || !plan) {
+    return (
+      <motion.div {...sectionMotion}>
+        <Skeleton className="h-[100px] rounded-[18px]" />
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.section {...sectionMotion} className="flex w-full flex-col gap-4">
+      <div className="sr-only">
+        <Text variant="body-medium" as="span" className="text-textBlack">
+          Your plan
+        </Text>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3 py-4">
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Text variant="large-semibold" as="h2" className="text-textBlack">
+              {plan.label}
+            </Text>
+            <Badge
+              variant="success"
+              size="small"
+              className={
+                plan.isPendingCancel ||
+                plan.isPendingDowngrade ||
+                plan.isPendingCycleSwitch
+                  ? // TODO(tokens): no exact role (bg-amber-100 #FEF3C7, text-amber-800 #92400E)
+                    "bg-amber-100 text-amber-800"
+                  : // TODO(tokens): no exact role (bg-violet-100 #EDE9FE, text-violet-800 #5B21B6)
+                    "bg-violet-100 text-violet-800"
+              }
+            >
+              {!plan.isPaidPlan
+                ? "Inactive"
+                : plan.isPendingCancel
+                  ? "Cancellation scheduled"
+                  : plan.isPendingDowngrade
+                    ? "Downgrade scheduled"
+                    : plan.isPendingCycleSwitch
+                      ? "Cycle switch scheduled"
+                      : "Active"}
+            </Badge>
+            {isCycleToggleVisible ? (
+              <CycleToggle
+                value={selectedCycle}
+                onChange={onCycleChange}
+                disabled={isUpdatingTier || isRedirecting}
+              />
+            ) : null}
+          </div>
+          {plan.isAdminManaged ? (
+            <Text variant="body" as="span" className="text-foreground-body">
+              Managed by your AutoGPT account team.{" "}
+              <a
+                href={ENTERPRISE_CONTACT_URL}
+                // TODO(tokens): no fitting role for hover:text-purple-600 #6C2EDF; #6C2EDF is brand-hover, a hover fill
+                className="font-medium text-brand no-underline hover:text-purple-600"
+              >
+                Contact us
+              </a>{" "}
+              for changes.
+            </Text>
+          ) : plan.isPaidPlan ? (
+            <Text variant="body" as="span" className="text-foreground-body">
+              {formatCents(plan.monthlyCostCents)}
+              {plan.billingCycle === "yearly" ? " / year" : " / month"}
+              {plan.isPendingCancel && plan.pendingEffectiveAt
+                ? ` · Ends on ${formatShortDate(plan.pendingEffectiveAt)}`
+                : plan.isPendingDowngrade && plan.pendingEffectiveAt
+                  ? ` · Switches to ${plan.pendingTierLabel} on ${formatShortDate(plan.pendingEffectiveAt)}`
+                  : plan.isPendingCycleSwitch && plan.pendingEffectiveAt
+                    ? ` · Active until ${formatShortDate(plan.pendingEffectiveAt)}`
+                    : plan.currentPeriodEnd
+                      ? ` · Renews on ${formatShortDate(plan.currentPeriodEnd * 1000)}`
+                      : null}
+            </Text>
+          ) : (
+            <Text variant="body" as="span" className="text-foreground-body">
+              Pick a plan to continue using AutoGPT.
+            </Text>
+          )}
+          {plan.isPaidPlan &&
+          plan.isPendingCycleSwitch &&
+          plan.pendingEffectiveAt &&
+          plan.pendingCycle ? (
+            <Text
+              variant="small"
+              as="span"
+              className="text-foreground-tertiary"
+            >
+              Switching to {plan.pendingCycle} {plan.label} on{" "}
+              {formatShortDate(plan.pendingEffectiveAt)} · No charge today
+            </Text>
+          ) : null}
+        </div>
+
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {canResume ? (
+            <Button
+              variant="primary"
+              size="small"
+              onClick={onResume}
+              disabled={isUpdatingTier || isRedirecting}
+              loading={isUpdatingTier}
+            >
+              {plan.isPendingCancel
+                ? "Resume subscription"
+                : plan.isPendingCycleSwitch
+                  ? "Cancel cycle switch"
+                  : "Cancel downgrade"}
+            </Button>
+          ) : null}
+          {canDowngrade && plan.previousTierLabel ? (
+            <Button
+              variant="outline"
+              size="small"
+              onClick={onDowngrade}
+              disabled={isUpdatingTier || isRedirecting}
+              loading={isUpdatingTier}
+            >
+              Downgrade to {plan.previousTierLabel}
+            </Button>
+          ) : null}
+          {plan.isPaidPlan && !plan.isAdminManaged ? (
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={onManage}
+              disabled={!canManagePortal}
+            >
+              Manage subscription
+            </Button>
+          ) : null}
+          {canUpgrade &&
+          plan.nextTierLabel &&
+          (!showUsage || !plan.isPaidPlan) ? (
+            <Button
+              variant="primary"
+              size="small"
+              onClick={onUpgrade}
+              disabled={isUpdatingTier || isRedirecting}
+              loading={isUpdatingTier && !plan.nextTierIsTeamLink}
+              rightIcon={
+                plan.nextTierIsTeamLink ? (
+                  <Icon icon={LinkSquare01Icon} size={14} aria-hidden="true" />
+                ) : undefined
+              }
+            >
+              {!plan.isPaidPlan
+                ? `Start ${plan.nextTierLabel}`
+                : plan.nextTierIsTeamLink
+                  ? `Talk to sales — ${plan.nextTierLabel}`
+                  : `Upgrade to ${plan.nextTierLabel}`}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      {showUsage ? (
+        <div className="grid items-stretch gap-4 md:grid-cols-[1.15fr_1fr]">
+          <AutopilotUsageCard index={1} />
+          <BillingOffer controller={controller} />
+        </div>
+      ) : null}
+
+      {pendingCycle ? (
+        <SwitchCycleDialog
+          isOpen={pendingCycle !== null}
+          onOpenChange={(open) => {
+            if (!open) onCancelCycleSwitch();
+          }}
+          targetCycle={pendingCycle}
+          title={cycleDialogTitle || undefined}
+          body={cycleDialogBody}
+          isSaving={isUpdatingTier}
+          onConfirm={onConfirmCycleSwitch}
+        />
+      ) : null}
+
+      {pendingTierUpgrade && pendingTierUpgradeLabel ? (
+        <SwitchTierDialog
+          isOpen={pendingTierUpgrade !== null}
+          onOpenChange={(open) => {
+            if (!open) onCancelTierUpgrade();
+          }}
+          targetTierLabel={pendingTierUpgradeLabel}
+          body={tierUpgradeDialogBody}
+          priceCents={controller.offerPriceCents}
+          billingCycle={plan.billingCycle}
+          usageCarriesOver={
+            plan.tierKey === "PRO" && pendingTierUpgrade === "MAX"
+          }
+          usageMultiplier={controller.upgradeUsageMultiplier}
+          upgradeReview={controller.upgradeReview}
+          isSaving={isUpdatingTier}
+          onConfirm={onConfirmTierUpgrade}
+        />
+      ) : null}
+
+      {pendingTierDowngrade && pendingTierDowngradeLabel ? (
+        <SwitchTierDialog
+          isOpen={pendingTierDowngrade !== null}
+          onOpenChange={(open) => {
+            if (!open) onCancelTierDowngrade();
+          }}
+          targetTierLabel={pendingTierDowngradeLabel}
+          title={`Downgrade to ${pendingTierDowngradeLabel}?`}
+          confirmLabel={`Downgrade to ${pendingTierDowngradeLabel}`}
+          body={tierDowngradeDialogBody}
+          isSaving={isUpdatingTier}
+          onConfirm={onConfirmTierDowngrade}
+        />
+      ) : null}
+    </motion.section>
+  );
+}

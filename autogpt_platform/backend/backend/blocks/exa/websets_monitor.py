@@ -16,6 +16,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -25,6 +26,7 @@ from backend.sdk import (
 
 from ._config import exa
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from .helpers import merge_exa_cost
 
 
 # Mirrored model for stability - don't use SDK types directly in block outputs
@@ -227,6 +229,7 @@ class ExaCreateMonitorBlock(Block):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock=self._create_test_mock(),
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -321,6 +324,7 @@ class ExaCreateMonitorBlock(Block):
             payload["metadata"] = input_data.metadata
 
         sdk_monitor = await aexa.websets.monitors.create(params=payload)
+        merge_exa_cost(self, sdk_monitor)
 
         monitor = MonitorModel.from_sdk(sdk_monitor)
 
@@ -376,6 +380,7 @@ class ExaGetMonitorBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetMonitorBlock.Input,
             output_schema=ExaGetMonitorBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -385,6 +390,7 @@ class ExaGetMonitorBlock(Block):
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         sdk_monitor = await aexa.websets.monitors.get(monitor_id=input_data.monitor_id)
+        merge_exa_cost(self, sdk_monitor)
 
         monitor = MonitorModel.from_sdk(sdk_monitor)
 
@@ -451,6 +457,7 @@ class ExaUpdateMonitorBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaUpdateMonitorBlock.Input,
             output_schema=ExaUpdateMonitorBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -479,6 +486,7 @@ class ExaUpdateMonitorBlock(Block):
         sdk_monitor = await aexa.websets.monitors.update(
             monitor_id=input_data.monitor_id, params=payload
         )
+        merge_exa_cost(self, sdk_monitor)
 
         # Convert to our stable model
         monitor = MonitorModel.from_sdk(sdk_monitor)
@@ -514,6 +522,8 @@ class ExaDeleteMonitorBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaDeleteMonitorBlock.Input,
             output_schema=ExaDeleteMonitorBlock.Output,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -525,6 +535,7 @@ class ExaDeleteMonitorBlock(Block):
         deleted_monitor = await aexa.websets.monitors.delete(
             monitor_id=input_data.monitor_id
         )
+        merge_exa_cost(self, deleted_monitor)
 
         yield "monitor_id", deleted_monitor.id
         yield "success", "true"
@@ -573,6 +584,7 @@ class ExaListMonitorsBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaListMonitorsBlock.Input,
             output_schema=ExaListMonitorsBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -586,6 +598,7 @@ class ExaListMonitorsBlock(Block):
             limit=input_data.limit,
             webset_id=input_data.webset_id,
         )
+        merge_exa_cost(self, response)
 
         # Convert SDK monitors to our stable models
         monitors = [MonitorModel.from_sdk(m) for m in response.data]

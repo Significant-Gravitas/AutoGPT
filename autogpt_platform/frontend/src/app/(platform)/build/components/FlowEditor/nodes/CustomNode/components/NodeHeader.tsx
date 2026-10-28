@@ -6,12 +6,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { beautifyString, cn } from "@/lib/utils";
-import { useState } from "react";
+import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
 import { CustomNodeData } from "../CustomNode";
+import { formatNodeDisplayTitle, getNodeDisplayTitle } from "../helpers";
 import { NodeBadges } from "./NodeBadges";
 import { NodeContextMenu } from "./NodeContextMenu";
 import { NodeCost } from "./NodeCost";
+import { isKey } from "@/lib/keyboard";
 
 type Props = {
   data: CustomNodeData;
@@ -21,28 +23,40 @@ type Props = {
 export const NodeHeader = ({ data, nodeId }: Props) => {
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
 
-  const title = (data.metadata?.customized_name as string) || data.title;
+  const title = getNodeDisplayTitle(data);
+  const displayTitle = formatNodeDisplayTitle(data);
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(title);
 
+  useEffect(() => {
+    if (!isEditingTitle) {
+      setEditedTitle(title);
+    }
+  }, [title, isEditingTitle]);
+
   const handleTitleEdit = () => {
-    updateNodeData(nodeId, {
-      metadata: { ...data.metadata, customized_name: editedTitle },
-    });
+    if (editedTitle !== title) {
+      updateNodeData(nodeId, {
+        metadata: { ...data.metadata, customized_name: editedTitle },
+      });
+    }
     setIsEditingTitle(false);
   };
 
   const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") handleTitleEdit();
-    if (e.key === "Escape") {
+    if (isKey(e, "Enter")) handleTitleEdit();
+    if (isKey(e, "Escape")) {
       setEditedTitle(title);
       setIsEditingTitle(false);
     }
   };
 
   return (
-    <div className="flex h-auto flex-col gap-1 rounded-xlarge border-b border-zinc-200 bg-gradient-to-r from-slate-50/80 to-white/90 px-4 py-4 pt-3">
+    <div
+      // TODO(tokens): no exact role: from-slate-50/80 #F7F8F9
+      className="flex h-auto flex-col gap-1 rounded-xlarge border-b border-border-base bg-gradient-to-r from-slate-50/80 to-surface/90 px-4 py-4 pt-3"
+    >
       {/* Title row with context menu */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -58,7 +72,7 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
                 autoFocus
                 className={cn(
                   "m-0 h-fit w-full border-none bg-transparent p-0 focus:outline-none focus:ring-0",
-                  "font-sans text-[1rem] font-semibold leading-[1.5rem] text-zinc-800",
+                  "font-sans text-body-lg font-semibold leading-6 text-foreground-emphasis",
                 )}
                 onBlur={handleTitleEdit}
                 onKeyDown={handleTitleKeyDown}
@@ -72,12 +86,12 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
                         variant="large-semibold"
                         className="line-clamp-1 hover:cursor-text"
                       >
-                        {beautifyString(title).replace("Block", "").trim()}
+                        {displayTitle}
                       </Text>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{beautifyString(title).replace("Block", "").trim()}</p>
+                    <p>{displayTitle}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -86,8 +100,9 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
 
           <div className="flex items-center gap-2">
             <Text
-              variant="small"
-              className="shrink-0 !font-medium !text-slate-500"
+              variant="small-medium"
+              // TODO(tokens): no exact role: !text-slate-500 #64748B
+              className="shrink-0 !text-slate-500"
             >
               #{nodeId.split("-")[0]}
             </Text>

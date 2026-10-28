@@ -27,11 +27,12 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { exportAsJSONFile } from "@/lib/utils";
-import { DotsThreeIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -78,12 +79,12 @@ export function AgentActionsDropdown({
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
       });
 
-      toast({ title: "Agent deleted" });
+      toast({ title: "Workflow deleted" });
       setShowDeleteDialog(false);
       router.push("/library");
     } catch (error: unknown) {
       toast({
-        title: "Failed to delete agent",
+        title: "Failed to delete workflow",
         description:
           error instanceof Error
             ? error.message
@@ -105,13 +106,13 @@ export function AgentActionsDropdown({
       if (res.status === 200) {
         const filename = `${agent.name}_v${agent.graph_version}.json`;
         exportAsJSONFile(res.data as any, filename);
-        toast({ title: "Agent exported" });
+        toast({ title: "Workflow exported" });
       } else {
-        toast({ title: "Failed to export agent", variant: "destructive" });
+        toast({ title: "Failed to export workflow", variant: "destructive" });
       }
     } catch (e: any) {
       toast({
-        title: "Failed to export agent",
+        title: "Failed to export workflow",
         description: e?.message,
         variant: "destructive",
       });
@@ -182,7 +183,7 @@ export function AgentActionsDropdown({
             aria-label="More actions"
             className="min-w-fit"
           >
-            <DotsThreeIcon size={18} />
+            <Icon icon={MoreHorizontalIcon} size={18} />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -203,20 +204,20 @@ export function AgentActionsDropdown({
               target="_blank"
               className="flex items-center gap-2"
             >
-              Edit agent
+              Edit workflow
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={handleExport}
             className="flex items-center gap-2"
           >
-            Export agent to file
+            Export workflow to file
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setShowDeleteDialog(true)}
             className="flex items-center gap-2"
           >
-            Delete agent
+            Delete workflow
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -261,13 +262,13 @@ export function AgentActionsDropdown({
           set: setShowDeleteDialog,
         }}
         styling={{ maxWidth: "32rem" }}
-        title="Delete agent"
+        title="Delete workflow"
       >
         <Dialog.Content>
           <div>
             <Text variant="large">
-              Are you sure you want to delete this agent? This action cannot be
-              undone.
+              Are you sure you want to delete this workflow? This action cannot
+              be undone.
             </Text>
             <Dialog.Footer>
               <Button
@@ -282,7 +283,7 @@ export function AgentActionsDropdown({
                 onClick={handleDeleteAgent}
                 loading={isDeletingAgent}
               >
-                Delete Agent
+                Delete Workflow
               </Button>
             </Dialog.Footer>
           </div>

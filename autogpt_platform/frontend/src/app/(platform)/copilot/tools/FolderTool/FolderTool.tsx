@@ -2,14 +2,6 @@
 
 import type { ToolUIPart } from "ai";
 import {
-  FileIcon,
-  FolderIcon,
-  FolderPlusIcon,
-  FoldersIcon,
-  TrashIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
-import {
   File as TreeFile,
   Folder as TreeFolder,
   Tree,
@@ -40,6 +32,16 @@ import {
   type FolderToolOutput,
   type FolderTreeInfo,
 } from "./helpers";
+import {
+  AlertDiamondIcon,
+  Delete02Icon,
+  FileEmpty02Icon,
+  Folder01Icon,
+  FolderAddIcon,
+  FolderLibraryIcon,
+  FolderOpenIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   part: ToolUIPart;
@@ -57,14 +59,13 @@ function ToolStatusIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
-  return <FolderIcon size={14} weight="regular" className="text-neutral-400" />;
+  // TODO(tokens): no exact role for neutral-400 #A3A3A3
+  return <Icon icon={Folder01Icon} size={14} className="text-neutral-400" />;
 }
 
 /* ------------------------------------------------------------------ */
@@ -82,26 +83,31 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
               style={{ backgroundColor: folder.color }}
             />
           ) : (
-            <FolderIcon size={14} weight="fill" className="text-neutral-600" />
+            // TODO(tokens): no exact role for neutral-600 #525252
+            <Icon icon={Folder01Icon} size={14} className="text-neutral-600" />
           )}
           <ContentCardTitle>{folder.name}</ContentCardTitle>
         </div>
       </ContentCardHeader>
       <ContentHint>
-        {folder.agent_count} agent{folder.agent_count !== 1 ? "s" : ""}
+        {folder.agent_count} workflow{folder.agent_count !== 1 ? "s" : ""}
         {folder.subfolder_count > 0 &&
           ` · ${folder.subfolder_count} subfolder${folder.subfolder_count !== 1 ? "s" : ""}`}
       </ContentHint>
       {folder.agents && folder.agents.length > 0 && (
+        // TODO(tokens): no exact role for neutral-200 #E5E5E5
         <div className="mt-2 space-y-1 border-t border-neutral-200 pt-2">
           {folder.agents.map((a) => (
             <div key={a.id} className="flex items-center gap-1.5">
-              <FileIcon
+              <Icon
+                icon={FileEmpty02Icon}
                 size={12}
-                weight="duotone"
+                // TODO(tokens): no exact role for neutral-600 #525252
                 className="text-neutral-600"
               />
-              <span className="text-xs text-zinc-600">{a.name}</span>
+              <span className="text-xs text-foreground-secondary">
+                {a.name}
+              </span>
             </div>
           ))}
         </div>
@@ -128,7 +134,7 @@ function folderTreeToElements(nodes: FolderTreeInfo[]): TreeNode[] {
     ];
     return {
       id: node.id,
-      name: `${node.name} (${node.agent_count} agent${node.agent_count !== 1 ? "s" : ""})`,
+      name: `${node.name} (${node.agent_count} workflow${node.agent_count !== 1 ? "s" : ""})`,
       children: children.length > 0 ? children : undefined,
     };
   });
@@ -147,10 +153,12 @@ function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
       initialExpandedItems={allIDs}
       elements={elements}
       openIcon={
-        <FolderIcon size={16} weight="fill" className="text-neutral-600" />
+        // TODO(tokens): no exact role for neutral-600 #525252
+        <Icon icon={FolderOpenIcon} size={16} className="text-neutral-600" />
       }
       closeIcon={
-        <FolderIcon size={16} weight="duotone" className="text-neutral-600" />
+        // TODO(tokens): no exact role for neutral-600 #525252
+        <Icon icon={Folder01Icon} size={16} className="text-neutral-600" />
       }
       className="max-h-64"
     >
@@ -167,10 +175,11 @@ function FolderTreeNodes({ element }: { element: TreeNode }) {
       <TreeFile
         value={element.id}
         fileIcon={
-          <FileIcon size={14} weight="duotone" className="text-neutral-600" />
+          // TODO(tokens): no exact role for neutral-600 #525252
+          <Icon icon={FileEmpty02Icon} size={14} className="text-neutral-600" />
         }
       >
-        <span className="text-sm text-zinc-700">{element.name}</span>
+        <span className="text-sm text-foreground-body">{element.name}</span>
       </TreeFile>
     );
   }
@@ -248,16 +257,15 @@ function getAccordionTitle(output: FolderToolOutput): string {
   if (isFolderMoved(output)) return `Moved "${output.folder.name}"`;
   if (isFolderDeleted(output)) return "Folder deleted";
   if (isAgentsMoved(output))
-    return `Moved ${output.count} agent${output.count !== 1 ? "s" : ""}`;
+    return `Moved ${output.count} workflow${output.count !== 1 ? "s" : ""}`;
   return "Folder operation";
 }
 
 function getAccordionIcon(output: FolderToolOutput) {
-  if (isFolderCreated(output))
-    return <FolderPlusIcon size={32} weight="light" />;
-  if (isFolderList(output)) return <FoldersIcon size={32} weight="light" />;
-  if (isFolderDeleted(output)) return <TrashIcon size={32} weight="light" />;
-  return <FolderIcon size={32} weight="light" />;
+  if (isFolderCreated(output)) return <Icon icon={FolderAddIcon} size={32} />;
+  if (isFolderList(output)) return <Icon icon={FolderLibraryIcon} size={32} />;
+  if (isFolderDeleted(output)) return <Icon icon={Delete02Icon} size={32} />;
+  return <Icon icon={Folder01Icon} size={32} />;
 }
 
 export function FolderTool({ part }: Props) {
@@ -278,7 +286,7 @@ export function FolderTool({ part }: Props) {
         <ToolStatusIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 

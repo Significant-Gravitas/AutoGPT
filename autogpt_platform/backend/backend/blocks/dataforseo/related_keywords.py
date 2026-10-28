@@ -4,9 +4,11 @@ DataForSEO Google Related Keywords block.
 
 from typing import Any, Dict, List, Optional
 
+from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -145,6 +147,7 @@ class DataForSeoRelatedKeywordsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     async def _fetch_related_keywords(
@@ -176,6 +179,16 @@ class DataForSeoRelatedKeywordsBlock(Block):
             client = DataForSeoClient(credentials)
 
             results = await self._fetch_related_keywords(client, input_data)
+
+            # DataForSEO reports per-task USD cost on the response. Feed it
+            # into NodeExecutionStats so the COST_USD resolver bills the
+            # real provider spend at reconciliation time.
+            self.merge_stats(
+                NodeExecutionStats(
+                    provider_cost=client.last_cost_usd,
+                    provider_cost_type="cost_usd",
+                )
+            )
 
             # Process and format the results
             related_keywords = []
@@ -279,6 +292,7 @@ class RelatedKeywordExtractorBlock(Block):
                 ("serp_info", None),
                 ("clickstream_data", None),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(

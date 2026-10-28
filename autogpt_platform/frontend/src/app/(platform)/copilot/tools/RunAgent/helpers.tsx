@@ -5,13 +5,14 @@ import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/ex
 import type { NeedLoginResponse } from "@/app/api/__generated__/models/needLoginResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
-import {
-  PlayIcon,
-  RocketLaunchIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
+import {
+  AlertDiamondIcon,
+  PlayIcon,
+  Rocket01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export interface RunAgentInput {
   username_agent_slug?: string;
@@ -121,7 +122,7 @@ function getAgentIdentifierText(
   const slug = input.username_agent_slug?.trim();
   if (slug) return slug;
   const libraryId = input.library_agent_id?.trim();
-  if (libraryId) return `Library agent ${libraryId}`;
+  if (libraryId) return `Library workflow ${libraryId}`;
   return null;
 }
 
@@ -136,8 +137,8 @@ export function getAnimationText(part: {
     input?.schedule_name?.trim() || input?.cron?.trim(),
   );
   const actionPhrase = isSchedule
-    ? "Scheduling the agent to run"
-    : "Running the agent";
+    ? "Scheduling the workflow to run"
+    : "Running the workflow";
   const identifierText = agentIdentifier ? ` "${agentIdentifier}"` : "";
 
   switch (part.state) {
@@ -151,13 +152,16 @@ export function getAnimationText(part: {
         return `Started "${output.graph_name}"`;
       }
       if (isRunAgentAgentDetailsOutput(output)) {
-        return `Agent inputs needed for "${output.agent.name}"`;
+        if (output.agent.trigger_info) {
+          return `Webhook trigger setup for "${output.agent.name}"`;
+        }
+        return `Workflow inputs needed for "${output.agent.name}"`;
       }
       if (isRunAgentSetupRequirementsOutput(output)) {
         return `Setup needed for "${output.setup_info.agent_name}"`;
       }
       if (isRunAgentNeedLoginOutput(output))
-        return "Sign in required to run agent";
+        return "Sign in required to run workflow";
       return "Something went wrong";
     }
     case "output-error":
@@ -165,6 +169,16 @@ export function getAnimationText(part: {
     default:
       return actionPhrase;
   }
+}
+
+export function getStreamingLoadingText(part: { input?: unknown }): string {
+  const input = part.input as RunAgentInput | undefined;
+  const isSchedule = Boolean(
+    input?.schedule_name?.trim() || input?.cron?.trim(),
+  );
+  return isSchedule
+    ? "Scheduling workflow, this might take a minute"
+    : "Running workflow, this might take a minute";
 }
 
 export function ToolIcon({
@@ -175,18 +189,17 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return <PlayIcon size={14} weight="regular" className="text-neutral-400" />;
+  // TODO(tokens): no exact role for neutral-400 #A3A3A3
+  return <Icon icon={PlayIcon} size={14} className="text-neutral-400" />;
 }
 
 export function AccordionIcon() {
-  return <RocketLaunchIcon size={28} weight="light" />;
+  return <Icon icon={Rocket01Icon} size={28} />;
 }
 
 export function formatMaybeJson(value: unknown): string {
@@ -222,7 +235,9 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
     return {
       icon,
       title: output.agent.name,
-      description: "Inputs required",
+      description: output.agent.trigger_info
+        ? "Webhook trigger setup"
+        : "Inputs required",
     };
   }
 
@@ -256,10 +271,8 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
   }
 
   return {
-    icon: (
-      <WarningDiamondIcon size={28} weight="light" className="text-red-500" />
-    ),
+    icon: <Icon icon={AlertDiamondIcon} size={28} className="text-error" />,
     title: "Error",
-    titleClassName: "text-red-500",
+    titleClassName: "text-error",
   };
 }

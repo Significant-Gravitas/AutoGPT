@@ -16,7 +16,7 @@ from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
 
 if TYPE_CHECKING:
-    from backend.data.integrations import Webhook
+    from backend.data.integrations import WebhookWithoutSecrets
 
 
 class LibraryAgentStatus(str, Enum):
@@ -42,6 +42,8 @@ class LibraryFolder(pydantic.BaseModel):
     updated_at: datetime.datetime
     agent_count: int = 0  # Direct agents in folder
     subfolder_count: int = 0  # Direct child folders
+    organization_id: str | None = None
+    team_id: str | None = None
 
     @staticmethod
     def from_db(
@@ -61,6 +63,8 @@ class LibraryFolder(pydantic.BaseModel):
             updated_at=folder.updatedAt,
             agent_count=agent_count,
             subfolder_count=subfolder_count,
+            organization_id=folder.organizationId,
+            team_id=folder.teamId,
         )
 
 
@@ -132,6 +136,24 @@ class MarketplaceListing(pydantic.BaseModel):
     creator: MarketplaceListingCreator
 
 
+class LibraryAgentRef(pydantic.BaseModel):
+    """Just enough of a library agent to label and deep-link a run.
+
+    Deliberately cheap: no relation includes, no schedule info, unlike
+    :class:`LibraryAgent`. Used where a caller only needs to turn a set of
+    graph ids into display names and links.
+    """
+
+    id: str
+    graph_id: str
+    name: str
+    # The agent's own picture, so a surface listing runs can show the agent
+    # instead of a generic glyph.
+    image_url: str | None = None
+    # A removed agent still names its past runs; it just cannot be linked.
+    is_deleted: bool = False
+
+
 class RecentExecution(pydantic.BaseModel):
     """Summary of a recent execution for quality assessment.
 
@@ -175,6 +197,7 @@ class LibraryAgent(pydantic.BaseModel):
 
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    last_run_at: datetime.datetime | None = None
 
     name: str
     description: str
@@ -213,8 +236,20 @@ class LibraryAgent(pydantic.BaseModel):
     folder_id: str | None = None
     folder_name: str | None = None  # Denormalized for display
 
+    is_hidden: bool = False
+
     recommended_schedule_cron: str | None = None
+    is_scheduled: bool = pydantic.Field(
+        default=False,
+        description="Whether this agent has active execution schedules",
+    )
+    next_scheduled_run: str | None = pydantic.Field(
+        default=None,
+        description="ISO 8601 timestamp of the next scheduled run, if any",
+    )
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
+    organization_id: str | None = None
+    team_id: str | None = None
     marketplace_listing: Optional["MarketplaceListing"] = None
 
     @staticmethod
@@ -222,7 +257,8 @@ class LibraryAgent(pydantic.BaseModel):
         agent: prisma.models.LibraryAgent,
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
         store_listing: Optional[prisma.models.StoreListing] = None,
-        profile: Optional[prisma.models.Profile] = None,
+        execution_count_override: Optional[int] = None,
+        schedule_info: Optional[dict[str, str]] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
@@ -232,6 +268,11 @@ class LibraryAgent(pydantic.BaseModel):
             raise ValueError("Associated Agent record is required.")
 
         graph = GraphModel.from_db(agent.AgentGraph, sub_graphs=sub_graphs)
+        if agent.AgentGraph.userId != agent.userId:
+            # Someone else's agent in this user's library (e.g. from the
+            # marketplace): its input defaults mustn't carry the owner's
+            # picked files or the credentials embedded in them.
+            graph.clear_auto_credentials()
 
         created_at = agent.createdAt
 
@@ -258,16 +299,22 @@ class LibraryAgent(pydantic.BaseModel):
         status = status_result.status
         new_output = status_result.new_output
 
-        execution_count = len(executions)
+        execution_count = (
+            execution_count_override
+            if execution_count_override is not None
+            else len(executions)
+        )
         success_rate: float | None = None
         avg_correctness_score: float | None = None
-        if execution_count > 0:
+        if executions and execution_count > 0:
             success_count = sum(
                 1
                 for e in executions
                 if e.executionStatus == prisma.enums.AgentExecutionStatus.COMPLETED
             )
-            success_rate = (success_count / execution_count) * 100
+            # Over the included runs, not the total: an override counts runs
+            # the include never loaded, so their outcomes are unknown here.
+            success_rate = (success_count / len(executions)) * 100
 
             correctness_scores = []
             for e in executions:
@@ -307,19 +354,25 @@ class LibraryAgent(pydantic.BaseModel):
         can_access_graph = agent.AgentGraph.userId == agent.userId
         is_latest_version = True
 
-        marketplace_listing_data = None
-        if store_listing and store_listing.ActiveVersion and profile:
-            creator_data = MarketplaceListingCreator(
-                name=profile.name,
-                id=profile.id,
-                slug=profile.username,
-            )
-            marketplace_listing_data = MarketplaceListing(
+        active_listing = store_listing.ActiveVersion if store_listing else None
+        creator_profile = store_listing.CreatorProfile if store_listing else None
+        marketplace_listing_info = (
+            MarketplaceListing(
                 id=store_listing.id,
-                name=store_listing.ActiveVersion.name,
+                name=active_listing.name,
                 slug=store_listing.slug,
-                creator=creator_data,
+                creator=MarketplaceListingCreator(
+                    name=creator_profile.name,
+                    id=creator_profile.id,
+                    slug=creator_profile.username,
+                ),
             )
+            if store_listing
+            and active_listing
+            and creator_profile
+            and not store_listing.isDeleted
+            else None
+        )
 
         return LibraryAgent(
             id=agent.id,
@@ -331,8 +384,17 @@ class LibraryAgent(pydantic.BaseModel):
             status=status,
             created_at=created_at,
             updated_at=updated_at,
-            name=graph.name,
-            description=graph.description,
+            last_run_at=agent.lastRunAt,
+            # Prefer the marketplace title/description snapshotted at download
+            # time; fall back to the graph's own values for user-created agents
+            # (which have no snapshot). `is not None` so an intentionally empty
+            # published value is preserved rather than replaced by the graph's.
+            name=agent.name if agent.name is not None else graph.name,
+            description=(
+                agent.description
+                if agent.description is not None
+                else graph.description
+            ),
             instructions=graph.instructions,
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,
@@ -351,11 +413,18 @@ class LibraryAgent(pydantic.BaseModel):
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
             is_favorite=agent.isFavorite,
+            is_hidden=agent.isHidden,
             folder_id=agent.folderId,
+            organization_id=agent.organizationId,
+            team_id=agent.teamId,
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
+            is_scheduled=bool(schedule_info and agent.agentGraphId in schedule_info),
+            next_scheduled_run=(
+                schedule_info.get(agent.agentGraphId) if schedule_info else None
+            ),
             settings=_parse_settings(agent.settings),
-            marketplace_listing=marketplace_listing_data,
+            marketplace_listing=marketplace_listing_info,
         )
 
 
@@ -415,6 +484,10 @@ class LibraryAgentResponse(pydantic.BaseModel):
 class LibraryAgentPresetCreatable(pydantic.BaseModel):
     """
     Request model used when creating a new preset for a library agent.
+
+    A preset's webhook is never caller-specified here; webhook-triggered presets
+    are created through ``POST /presets/setup-trigger``, which provisions a
+    webhook owned by the caller server-side.
     """
 
     graph_id: str
@@ -427,8 +500,6 @@ class LibraryAgentPresetCreatable(pydantic.BaseModel):
     description: str
 
     is_active: bool = True
-
-    webhook_id: Optional[str] = None
 
 
 class LibraryAgentPresetCreatableFromGraphExecution(pydantic.BaseModel):
@@ -479,11 +550,23 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
-    webhook: "Webhook | None"
+    # Resource-follows-parent tenancy: presets are tagged with the parent
+    # graph's org/team at creation. Executions of the preset attribute to
+    # THIS org/team, not the caller's active header context.
+    organization_id: str | None = None
+    team_id: str | None = None
+
+    # Read-only in responses; set server-side via the setup-trigger flow only.
+    webhook_id: Optional[str] = None
+    webhook: "WebhookWithoutSecrets | None"
+
+    # Expert attribution, resolved server-side at creation; every run this
+    # preset fires inherits it.
+    expert_id: Optional[str] = None
 
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
-        from backend.data.integrations import Webhook
+        from backend.data.integrations import WebhookWithoutSecrets
 
         if preset.InputPresets is None:
             raise ValueError("InputPresets must be included in AgentPreset query")
@@ -515,8 +598,15 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             is_active=preset.isActive,
             inputs=input_data,
             credentials=input_credentials,
+            organization_id=preset.organizationId,
+            team_id=preset.teamId,
             webhook_id=preset.webhookId,
-            webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
+            webhook=(
+                WebhookWithoutSecrets.from_db(preset.Webhook)
+                if preset.Webhook
+                else None
+            ),
+            expert_id=preset.expertId,
         )
 
 
@@ -525,6 +615,23 @@ class LibraryAgentPresetResponse(pydantic.BaseModel):
 
     presets: list[LibraryAgentPreset]
     pagination: Pagination
+
+
+class SkippedWebhookPreset(pydantic.BaseModel):
+    """A webhook preset that was left pinned to its old version because the
+    newly activated version swaps or reconfigures the trigger block. The user
+    needs to reconfigure the trigger on the new version for it to fire."""
+
+    id: str
+    name: str
+    pinned_version: int
+
+
+class WebhookPresetMigrationResult(pydantic.BaseModel):
+    """Outcome of migrating webhook-attached presets to a new graph version."""
+
+    migrated_count: int = 0
+    skipped_presets: list[SkippedWebhookPreset] = pydantic.Field(default_factory=list)
 
 
 class LibraryAgentFilter(str, Enum):
@@ -539,6 +646,7 @@ class LibraryAgentSort(str, Enum):
 
     CREATED_AT = "createdAt"
     UPDATED_AT = "updatedAt"
+    LAST_RUN = "lastRunAt"
 
 
 class LibraryAgentUpdateRequest(pydantic.BaseModel):
@@ -560,6 +668,10 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     )
     is_archived: Optional[bool] = pydantic.Field(
         default=None, description="Archive the agent"
+    )
+    is_hidden: Optional[bool] = pydantic.Field(
+        default=None,
+        description="Whether to hide the agent from the library listing",
     )
     settings: Optional[GraphSettings] = pydantic.Field(
         default=None, description="User-specific settings for this library agent"

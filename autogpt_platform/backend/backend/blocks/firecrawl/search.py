@@ -4,10 +4,12 @@ from firecrawl import FirecrawlApp
 from firecrawl.v2.types import ScrapeOptions
 
 from backend.blocks.firecrawl._api import ScrapeFormat
+from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -51,6 +53,7 @@ class FirecrawlSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -67,6 +70,17 @@ class FirecrawlSearchBlock(Block):
                 max_age=input_data.max_age,
                 wait_for=input_data.wait_for,
             ),
+        )
+        # Firecrawl bills per returned web result (~1 credit each). The
+        # SearchResponse structure exposes `.web` when scrape_options was
+        # requested; fall back to `limit` as an upper bound estimate.
+        web_results = getattr(scrape_result, "web", None) or []
+        billed_units = max(len(web_results), 1)
+        self.merge_stats(
+            NodeExecutionStats(
+                provider_cost=billed_units * 0.001,
+                provider_cost_type="cost_usd",
+            )
         )
         yield "data", scrape_result
         if hasattr(scrape_result, "web") and scrape_result.web:

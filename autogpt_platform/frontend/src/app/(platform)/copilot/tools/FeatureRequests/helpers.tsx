@@ -1,10 +1,11 @@
-import {
-  CheckCircleIcon,
-  LightbulbIcon,
-  MagnifyingGlassIcon,
-  PlusCircleIcon,
-} from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
+import {
+  BulbIcon,
+  CheckmarkCircle02Icon,
+  PlusSignCircleIcon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 /* ------------------------------------------------------------------ */
 /*  Types (local until API client is regenerated)                      */
@@ -238,18 +239,19 @@ export function ToolIcon({
   isStreaming?: boolean;
   isError?: boolean;
 }) {
-  const IconComponent =
+  const icon =
     toolType === "tool-create_feature_request"
-      ? PlusCircleIcon
-      : MagnifyingGlassIcon;
+      ? PlusSignCircleIcon
+      : Search01Icon;
 
   return (
-    <IconComponent
+    <Icon
+      icon={icon}
       size={14}
-      weight="regular"
+      // TODO(tokens): no exact role for neutral-500 #737373, neutral-400 #A3A3A3
       className={
         isError
-          ? "text-red-500"
+          ? "text-error"
           : isStreaming
             ? "text-neutral-500"
             : "text-neutral-400"
@@ -263,9 +265,9 @@ export function AccordionIcon({
 }: {
   toolType: FeatureRequestToolType;
 }) {
-  const IconComponent =
+  const icon =
     toolType === "tool-create_feature_request"
-      ? CheckCircleIcon
-      : LightbulbIcon;
-  return <IconComponent size={32} weight="light" />;
+      ? CheckmarkCircle02Icon
+      : BulbIcon;
+  return <Icon icon={icon} size={32} />;
 }

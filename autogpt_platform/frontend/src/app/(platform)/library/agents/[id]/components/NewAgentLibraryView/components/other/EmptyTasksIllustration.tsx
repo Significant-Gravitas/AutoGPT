@@ -3,6 +3,7 @@ type Props = {
 };
 
 export function EmptyTasksIllustration({ className }: Props) {
+  // TODO(tokens): no exact role for the illustration colours #101720, #236FE7, #2973E8, #5C2F00, #F1EBFE, #F48282, #F69999, #FF9C0F, #FFFFFE; no fitting role for the luminance-mask fill white #FFFFFF; #FFFFFF is card, a surface fill
   return (
     <div className={className}>
       <svg

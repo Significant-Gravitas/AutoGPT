@@ -29,10 +29,11 @@ const getSecondCalculatorFormSelector = (): string | HTMLElement => {
   return '[data-id^="form-creator-container-"]';
 };
 
+// TODO(tokens): no exact role: text-amber-600 #D97706; no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
 const getSecondCalcRequirementsHtml = () => `
-  <div id="second-calc-requirements-box" class="mt-3 p-3 bg-amber-50 ring-1 ring-amber-200 rounded-2xl">
-    <p id="second-calc-requirements-title" class="text-sm font-medium text-amber-600 m-0 mb-2">⚠️ Required to continue:</p>
-    <ul id="second-calc-requirements-list" class="text-[0.8125rem] text-amber-600 m-0 pl-4 space-y-1">
+  <div id="second-calc-requirements-box" class="mt-3 p-3 bg-warning-surface ring-1 ring-amber-200 rounded-2xl">
+    <p id="second-calc-requirements-title" class="text-body leading-5 font-medium text-amber-600 m-0 mb-2">⚠️ Required to continue:</p>
+    <ul id="second-calc-requirements-list" class="text-body-sm leading-inherit text-amber-600 m-0 pl-4 space-y-1">
       <li id="req2-b" class="flex items-center gap-2">
         <span class="req-icon">○</span> Enter a number in field <strong>B</strong> (e.g., 2)
       </li>
@@ -40,7 +41,7 @@ const getSecondCalcRequirementsHtml = () => `
         <span class="req-icon">○</span> Select an <strong>Operation</strong> (e.g., Multiply)
       </li>
     </ul>
-    <p class="text-[0.75rem] text-amber-500 m-0 mt-2 italic">Note: Field A will be connected from the first Calculator's output</p>
+    <p class="text-caption leading-inherit text-warning m-0 mt-2 italic">Note: Field A will be connected from the first Calculator's output</p>
   </div>
 `;
 
@@ -50,10 +51,13 @@ const updateSecondCalcToSuccessState = () => {
   const reqList = document.querySelector("#second-calc-requirements-list");
 
   if (reqBox && reqTitle) {
-    reqBox.classList.remove("bg-amber-50", "ring-amber-200");
-    reqBox.classList.add("bg-green-50", "ring-green-200");
+    // TODO(tokens): no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
+    reqBox.classList.remove("bg-warning-surface", "ring-amber-200");
+    // TODO(tokens): no exact role: ring-green-200 #94D5AC
+    reqBox.classList.add("bg-success-surface", "ring-green-200");
+    // TODO(tokens): no exact role: text-amber-600 #D97706
     reqTitle.classList.remove("text-amber-600");
-    reqTitle.classList.add("text-green-600");
+    reqTitle.classList.add("text-success");
     reqTitle.innerHTML = "🎉 Hurray! All values are completed!";
     if (reqList) {
       reqList.classList.add("hidden");
@@ -67,9 +71,12 @@ const updateSecondCalcToWarningState = () => {
   const reqList = document.querySelector("#second-calc-requirements-list");
 
   if (reqBox && reqTitle) {
-    reqBox.classList.remove("bg-green-50", "ring-green-200");
-    reqBox.classList.add("bg-amber-50", "ring-amber-200");
-    reqTitle.classList.remove("text-green-600");
+    // TODO(tokens): no exact role: ring-green-200 #94D5AC
+    reqBox.classList.remove("bg-success-surface", "ring-green-200");
+    // TODO(tokens): no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
+    reqBox.classList.add("bg-warning-surface", "ring-amber-200");
+    reqTitle.classList.remove("text-success");
+    // TODO(tokens): no exact role: text-amber-600 #D97706
     reqTitle.classList.add("text-amber-600");
     reqTitle.innerHTML = "⚠️ Required to continue:";
     if (reqList) {
@@ -82,15 +89,16 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
   {
     id: "adding-second-calculator",
     title: "Adding Second Calculator",
+    // TODO(tokens): no exact role: ring-blue-200 #BFDBFE
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Great job configuring the first Calculator!</p>
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.5rem;">Now let's add a <strong>second Calculator block</strong> and connect them together.</p>
+      <div class="text-body text-foreground-emphasis">
+        <p class="text-body font-normal text-foreground-emphasis m-0">Great job configuring the first Calculator!</p>
+        <p class="text-body font-normal text-foreground-emphasis m-0" style="margin-top: 0.5rem;">Now let's add a <strong>second Calculator block</strong> and connect them together.</p>
         
-        <div class="mt-3 p-3 bg-blue-50 ring-1 ring-blue-200 rounded-2xl">
-          <p class="text-sm font-medium text-blue-600 m-0 mb-1">We'll create a chain:</p>
-          <p class="text-[0.8125rem] text-blue-600 m-0">Calculator 1 → Calculator 2</p>
-          <p class="text-[0.75rem] text-blue-500 m-0 mt-1 italic">The output of the first will feed into the second!</p>
+        <div class="mt-3 p-3 bg-info-surface ring-1 ring-blue-200 rounded-2xl">
+          <p class="text-body leading-5 font-medium text-info-foreground m-0 mb-1">We'll create a chain:</p>
+          <p class="text-body-sm leading-inherit text-info-foreground m-0">Calculator 1 → Calculator 2</p>
+          <p class="text-caption leading-inherit text-info m-0 mt-1 italic">The output of the first will feed into the second!</p>
         </div>
       </div>
     `,
@@ -110,13 +118,14 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
   {
     id: "second-calculator-added",
     title: "Second Calculator Added! ✅",
+    // TODO(tokens): no exact role: ring-green-200 #94D5AC
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">I've added a <strong>second Calculator block</strong> to your canvas.</p>
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.5rem;">Now let's configure it and connect them together.</p>
+      <div class="text-body text-foreground-emphasis">
+        <p class="text-body font-normal text-foreground-emphasis m-0">I've added a <strong>second Calculator block</strong> to your canvas.</p>
+        <p class="text-body font-normal text-foreground-emphasis m-0" style="margin-top: 0.5rem;">Now let's configure it and connect them together.</p>
         
-        <div class="mt-3 p-3 bg-green-50 ring-1 ring-green-200 rounded-2xl">
-          <p class="text-sm font-medium text-green-600 m-0">You now have 2 Calculator blocks!</p>
+        <div class="mt-3 p-3 bg-success-surface ring-1 ring-green-200 rounded-2xl">
+          <p class="text-body leading-5 font-medium text-success m-0">You now have 2 Calculator blocks!</p>
         </div>
       </div>
     `,
@@ -138,8 +147,8 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
     id: "configure-second-calculator",
     title: "Configure Second Calculator",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Now configure the <strong>second Calculator block</strong>.</p>
+      <div class="text-body text-foreground-emphasis">
+        <p class="text-body font-normal text-foreground-emphasis m-0">Now configure the <strong>second Calculator block</strong>.</p>
         ${getSecondCalcRequirementsHtml()}
         ${banner(ICONS.ClickIcon, "Fill in field B and select an Operation", "action")}
       </div>
@@ -204,11 +213,13 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
           const reqOpEl = document.querySelector("#req2-op");
 
           if (reqBEl) {
-            reqBEl.classList.toggle("text-green-600", hasB);
+            reqBEl.classList.toggle("text-success", hasB);
+            // TODO(tokens): no exact role: text-amber-600 #D97706
             reqBEl.classList.toggle("text-amber-600", !hasB);
           }
           if (reqOpEl) {
-            reqOpEl.classList.toggle("text-green-600", hasOp);
+            reqOpEl.classList.toggle("text-success", hasOp);
+            // TODO(tokens): no exact role: text-amber-600 #D97706
             reqOpEl.classList.toggle("text-amber-600", !hasOp);
           }
 

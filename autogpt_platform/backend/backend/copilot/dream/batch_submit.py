@@ -1,0 +1,468 @@
+"""Submit one dream phase to Anthropic batch + enqueue with BatchExecutor.
+
+Both the orchestrator (kicking off phase 1) and the dream
+``batch_callbacks`` (chaining phases 2 → 3 as results arrive) need to
+submit identically: build the per-phase prompt with whatever upstream
+phase outputs we have, ask for tool_use structured output against the
+phase's Pydantic schema (forced where the phase model accepts a forced
+tool), then enqueue the submission so the BatchExecutor polls it. This
+module owns that flow.
+
+Splitting it out:
+  * Keeps the orchestrator focused on routing / cost accounting and
+    not duplicating Anthropic message-shape construction.
+  * Keeps the callback module focused on lifecycle (which phase
+    landed, what's next, mark complete vs errored) rather than
+    SDK plumbing.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import TYPE_CHECKING, Literal
+
+from pydantic import BaseModel
+
+from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.inference.structured_output import (
+    OUTPUT_TOOL_CALL_ONCE,
+    with_output_tool_instruction,
+)
+from backend.copilot.model_normalize import normalize_model_for_anthropic
+from backend.copilot.trial_cost_context import capture_cost_context
+from backend.executor.batch_executor import (
+    INITIAL_POLL_DELAY_SECONDS,
+    PendingEntry,
+    enqueue_pending,
+)
+from backend.util.feature_flag import Flag
+from backend.util.llm.providers import (
+    BatchSubmissionRef,
+    ProviderResponse,
+    call_provider,
+    cancel_batch,
+)
+from backend.util.llm.tool_use import (
+    is_forced_tool_choice,
+    pydantic_to_anthropic_tool,
+    structured_tool_choice,
+)
+
+from .fetch import DreamInput
+from .input_bundle import input_bundle_from_dict, input_bundle_to_dict
+from .locks import BATCH_LOCK_TTL_SECONDS, read_dream_lock_token
+from .prompts import (
+    build_consolidate_prompt,
+    build_recombine_prompt,
+    build_sanitize_prompt,
+)
+from .schemas import ConsolidationOutput, DreamOperations, RecombinationOutput
+
+if TYPE_CHECKING:
+    from backend.copilot.config import ChatConfig
+
+logger = logging.getLogger(__name__)
+
+DreamPhase = Literal["consolidate", "recombine", "sanitize"]
+
+
+# Tool name the model must emit for each phase. A forced ``tool_choice``
+# makes the model answer with exactly one tool_use block — no prose around
+# the JSON. It does not make the ``input`` schema-valid (that takes
+# Anthropic's strict tool mode, which is not enabled), so ``batch_callbacks``
+# still validates each result against the phase's Pydantic model. A model
+# that rejects a forced tool gets ``auto``, with the tool description and
+# the last user turn asking for the call; a text answer is parsed on
+# arrival.
+PHASE_TOOL_NAMES: dict[DreamPhase, str] = {
+    "consolidate": "emit_consolidation",
+    "recombine": "emit_recombination",
+    "sanitize": "emit_dream_operations",
+}
+
+
+PHASE_RESPONSE_MODELS: dict[DreamPhase, type[BaseModel]] = {
+    "consolidate": ConsolidationOutput,
+    "recombine": RecombinationOutput,
+    "sanitize": DreamOperations,
+}
+
+
+# Max output tokens per phase (mirrors the sync orchestrator's values). The
+# budget covers thinking as well as the JSON: orchestrator.py's
+# CONSOLIDATE_MAX_TOKENS says why consolidate's is not 4096.
+PHASE_MAX_TOKENS: dict[DreamPhase, int] = {
+    "consolidate": 16384,
+    "recombine": 16384,
+    "sanitize": 16384,
+}
+
+
+PHASE_TEMPERATURES: dict[DreamPhase, float] = {
+    "consolidate": 0.2,
+    "recombine": 0.9,
+    "sanitize": 0.0,
+}
+
+
+PHASE_DESCRIPTIONS: dict[DreamPhase, str] = {
+    "consolidate": (
+        "Emit the consolidated facts produced from the user's recent "
+        "episodes + active facts."
+    ),
+    "recombine": (
+        "Emit novel recombination proposals drawn from the " "consolidated facts."
+    ),
+    "sanitize": (
+        "Emit the gated final dream operations (writes / proposals / "
+        "demotions / entity invalidations / summary_for_user)."
+    ),
+}
+
+
+def phase_models_for_config(config: "ChatConfig") -> dict[str, str]:
+    """Per-phase model map (native-Anthropic form) for the batch path.
+
+    Mirrors the sync orchestrator's per-phase choice: the standard tier
+    for consolidate/sanitize, the advanced tier (opus + extended
+    thinking) for recombine. Built once at submit and threaded through
+    the batch payload so the model used to *submit* a phase is the exact
+    model used to *price* it — no single-model fan-out across phases.
+
+    The batch path always submits to Anthropic's native Batches API,
+    whatever the chat transport, so every model takes the native spelling
+    (``normalize_model_for_anthropic``), and a non-Anthropic model raises
+    ``ValueError`` here rather than submitting a batch that fails hours
+    later.
+    """
+    standard = _native_phase_model(
+        config.fast_standard_model, "CHAT_FAST_STANDARD_MODEL"
+    )
+    return {
+        "consolidate": standard,
+        "recombine": _native_phase_model(
+            config.fast_advanced_model, "CHAT_FAST_ADVANCED_MODEL"
+        ),
+        "sanitize": standard,
+    }
+
+
+def _native_phase_model(model: str, setting: str) -> str:
+    """*model* in its native Anthropic spelling. The shared normalizer's
+    error suggests enabling OpenRouter, which this path never uses, so a
+    non-Anthropic model gets the two remedies that do apply."""
+    try:
+        return normalize_model_for_anthropic(model)
+    except ValueError as exc:
+        raise ValueError(
+            "The dream batch path submits every phase to Anthropic's Message "
+            f"Batches API, so its phase models must be Anthropic models; got "
+            f"{setting}={model!r}. Choose Anthropic phase models (anthropic/* "
+            "or claude-* slugs), or disable batch routing (the "
+            f"{Flag.DREAM_PASS_BATCH_ENABLED.value!r} flag) so dreams run on "
+            "the sync path."
+        ) from exc
+
+
+async def submit_phase(
+    *,
+    user_id: str,
+    pass_id: str,
+    job_id: str,
+    phase: DreamPhase,
+    phase_models: dict[str, str],
+    api_key: str,
+    input_bundle: DreamInput,
+    consolidated_json: str | None = None,
+    recombined_json: str | None = None,
+) -> BatchSubmissionRef:
+    """Submit one dream phase as a single-request Anthropic batch.
+
+    The custom_id encodes ``{pass_id}:{phase}`` so the BatchExecutor's
+    dispatch + dream callbacks can correlate the result back. Returns
+    the ``BatchSubmissionRef`` so the caller can persist the batch_id
+    on the JobStatus row.
+
+    The pending-queue entry's ``payload`` carries everything the
+    callback needs to chain to the next phase: user_id, pass_id,
+    job_id, and the per-phase model map so each phase is submitted —
+    and later priced — with its own model.
+    """
+    # Each phase batch gets its own 24h provider SLA window, so a
+    # multi-phase chain can legitimately outlive a TTL stamped once at the
+    # first submit. Re-arm the bundle TTL at every submit so it stays alive
+    # exactly as long as some phase batch may still call back.
+    # The payload carries a copy of the attribution the pass runs under (the
+    # one its row keeps, which the callback checks it against).
+    cost_context = await capture_cost_context(user_id)
+    await refresh_input_bundle_ttl(pass_id)
+    model = phase_models[phase]
+    messages = _build_phase_messages(
+        phase=phase,
+        input_bundle=input_bundle,
+        consolidated_json=consolidated_json,
+        recombined_json=recombined_json,
+    )
+    tool_name = PHASE_TOOL_NAMES[phase]
+    tool_choice = structured_tool_choice(model, tool_name)
+    description = PHASE_DESCRIPTIONS[phase]
+    if not is_forced_tool_choice(tool_choice):
+        # Nothing forces the call, so the tool description and the last
+        # user turn ask for it.
+        description = f"{description} {OUTPUT_TOOL_CALL_ONCE}"
+        messages = with_output_tool_instruction(messages, tool_name)
+    tools = [
+        pydantic_to_anthropic_tool(
+            PHASE_RESPONSE_MODELS[phase],
+            tool_name=tool_name,
+            description=description,
+        )
+    ]
+    # Anthropic's custom_id must match ``^[a-zA-Z0-9_-]{1,64}$`` —
+    # colons aren't allowed. Underscore separator keeps the
+    # ``pass_id_phase`` structure parseable by the dream callback
+    # while staying within the provider's alphabet.
+    custom_id = f"{pass_id}_{phase}"
+
+    submission = await call_provider(
+        provider="anthropic",
+        model=model,
+        api_key=api_key,
+        messages=messages,
+        max_tokens=PHASE_MAX_TOKENS[phase],
+        temperature=PHASE_TEMPERATURES[phase],
+        tools=tools,
+        tool_choice=tool_choice,
+        execution_mode="batch",
+        custom_id=custom_id,
+    )
+    if isinstance(submission, ProviderResponse):
+        raise RuntimeError(
+            "submit_phase requested execution_mode='batch' but "
+            "call_provider returned ProviderResponse — Anthropic batch "
+            "may be unsupported for the configured model."
+        )
+
+    entry = PendingEntry(
+        provider="anthropic",
+        provider_batch_id=submission.provider_batch_id,
+        callback_namespace="dream_pass",
+        submitted_at=submission.submitted_at,
+        next_poll_at=submission.submitted_at,
+        poll_delay_seconds=INITIAL_POLL_DELAY_SECONDS,
+        payload={
+            "user_id": user_id,
+            "cost_context": cost_context.model_dump(mode="json"),
+            "expert_id": input_bundle.expert_id,
+            "pass_id": pass_id,
+            "job_id": job_id,
+            "phase": phase,
+            "phase_models": phase_models,
+            "custom_ids": [custom_id],
+            # The phase mapping is what dream_callbacks uses to route
+            # the result row back to a phase label. With one custom_id
+            # per batch we could just look it up by phase, but keeping
+            # the explicit mapping lets us group requests into one
+            # batch in the future without touching the callback.
+            "phase_for_custom_id": {custom_id: phase},
+        },
+    )
+    try:
+        await enqueue_pending(entry)
+    except Exception:
+        # The provider already accepted (and will bill for) this batch, but
+        # the BatchExecutor now has no pending entry to poll it — left as-is
+        # it would run to completion with no callback, orphaning the spend
+        # and stalling the pass. Best-effort cancel the provider batch before
+        # surfacing the failure so the orchestrator releases the lock + marks
+        # the job failed without leaving a paid, un-pollable batch behind.
+        logger.exception(
+            "Dream pass=%s phase=%s: enqueue failed after batch=%s submitted — "
+            "cancelling orphaned provider batch",
+            pass_id,
+            phase,
+            submission.provider_batch_id,
+        )
+        await cancel_batch(
+            provider="anthropic",
+            provider_batch_id=submission.provider_batch_id,
+            api_key=api_key,
+        )
+        raise
+    logger.info(
+        "Dream pass=%s submitted %s batch=%s",
+        pass_id,
+        phase,
+        submission.provider_batch_id,
+    )
+    return submission
+
+
+def _build_phase_messages(
+    *,
+    phase: DreamPhase,
+    input_bundle: DreamInput,
+    consolidated_json: str | None,
+    recombined_json: str | None,
+) -> list[dict[str, str]]:
+    """Build the OpenAI-format message list for one phase.
+
+    Reuses the existing prompt builders so batch and sync paths
+    produce identical inputs — only the transport (batch vs sync)
+    and the structured-output enforcement (tool_use vs response_format)
+    differ.
+    """
+    if phase == "consolidate":
+        return build_consolidate_prompt(input_bundle)
+    if phase == "recombine":
+        if consolidated_json is None:
+            raise ValueError(
+                "recombine phase requires consolidated_json from the "
+                "previous phase's result."
+            )
+        return build_recombine_prompt(input_bundle, consolidated_json)
+    if phase == "sanitize":
+        if consolidated_json is None or recombined_json is None:
+            raise ValueError(
+                "sanitize phase requires both consolidated_json and " "recombined_json."
+            )
+        return build_sanitize_prompt(input_bundle, consolidated_json, recombined_json)
+    raise ValueError(f"Unknown dream phase: {phase}")
+
+
+# ---------------------------------------------------------------------------
+# DreamInput persistence across batch result callbacks
+# ---------------------------------------------------------------------------
+
+
+def input_bundle_key(pass_id: str) -> str:
+    return f"dream:batch:input:{pass_id}"
+
+
+# The pass's lease runs ``BATCH_LOCK_TTL_SECONDS`` from its submit and each
+# callback; the reaper closes a pass one lock TTL after its lease lapsed and
+# runs every ten minutes. The per-pass keys (this bundle and the batch state)
+# outlive the lease by twelve hours, so the reaper still finds them to charge
+# and delete behind a backlog of cleanups that keep failing (a pass that ends
+# normally deletes them at once). A batch that never completes is timed out
+# well before, by the BatchExecutor's 24h ``MAX_BATCH_LIFETIME_SECONDS``.
+INPUT_TTL_SECONDS = BATCH_LOCK_TTL_SECONDS + 12 * 60 * 60
+
+
+async def persist_input_bundle(
+    pass_id: str,
+    input_bundle: DreamInput,
+    *,
+    lock_token: str | None = None,
+) -> None:
+    """Serialize ``DreamInput`` to Redis so callbacks can rebuild prompts.
+
+    DreamInput carries lists of dataclasses; we round-trip through
+    ``json`` rather than pickling so the wire format stays portable +
+    debuggable (`docker exec redis ... HGET ...` works).
+
+    The stored body also carries the dream lock's ownership token
+    (``lock_token``): the orchestrator persists the bundle while it still
+    holds the lock, and the batch callback — hours later, in a different
+    process — needs that token for the compare-and-delete release in
+    ``release_dream_lock``. Riding on this key avoids a second per-pass
+    key and keeps the batch state single-key for cluster mode.
+
+    The orchestrator passes its lock handle's own ``lock_token``
+    explicitly — reading the live lock key here instead could capture a
+    *newer* pass's token (lock expired and was re-acquired between this
+    pass's acquire and the persist), letting this pass's callback release
+    a lock it doesn't own hours later. When no token is supplied we fall
+    back to the live key; apply requires a lease before writing.
+    """
+    from backend.data.redis_client import get_redis_async
+
+    redis = await get_redis_async()
+    payload = input_bundle_to_dict(input_bundle)
+    if lock_token is None:
+        lock_token = await read_dream_lock_token(
+            MemoryScope.build(input_bundle.user_id, input_bundle.expert_id)
+        )
+    if lock_token is not None:
+        payload["lock_token"] = lock_token
+    await redis.set(
+        input_bundle_key(pass_id), json.dumps(payload), ex=INPUT_TTL_SECONDS
+    )
+
+
+async def refresh_input_bundle_ttl(pass_id: str) -> None:
+    """Reset the persisted input bundle's TTL to the full window.
+
+    Best-effort: on the first phase submit the bundle was just persisted
+    with a fresh TTL, and a genuinely lost bundle stays the callback's
+    hard-fail guard's responsibility — so a missing key or a Redis blip
+    here only logs.
+    """
+    from backend.data.redis_client import get_redis_async
+
+    try:
+        redis = await get_redis_async()
+        refreshed = await redis.expire(input_bundle_key(pass_id), INPUT_TTL_SECONDS)
+    except Exception:
+        logger.warning(
+            "Failed to refresh DreamInput TTL for pass=%s", pass_id, exc_info=True
+        )
+        return
+    if not refreshed:
+        logger.warning(
+            "DreamInput missing at TTL refresh for pass=%s — the phase "
+            "callback will fail closed if it stays gone",
+            pass_id,
+        )
+
+
+async def read_lock_token(pass_id: str) -> str | None:
+    """Dream-lock ownership token persisted alongside the input bundle.
+
+    None when the bundle is gone (TTL expired or already cleaned up), is
+    corrupted, or was written while no lock was held. The batch paths then
+    go by the lease token the pass's row keeps
+    (``batch_outcome.lock_token_of``); with no token anywhere the pass's
+    ownership of the lock is unknown, and the lock is left held rather
+    than risking a blind delete of a newer pass's lock.
+    """
+    from backend.data.redis_client import get_redis_async
+
+    redis = await get_redis_async()
+    raw = await redis.get(input_bundle_key(pass_id))
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    try:
+        token = json.loads(raw).get("lock_token")
+    except Exception:
+        logger.exception(
+            "Corrupted DreamInput in Redis for pass=%s — no lock token", pass_id
+        )
+        return None
+    return token if isinstance(token, str) else None
+
+
+async def read_input_bundle(pass_id: str) -> DreamInput | None:
+    from backend.data.redis_client import get_redis_async
+
+    redis = await get_redis_async()
+    raw = await redis.get(input_bundle_key(pass_id))
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    try:
+        return input_bundle_from_dict(json.loads(raw))
+    except Exception:
+        logger.exception("Corrupted DreamInput in Redis for pass=%s — bailing", pass_id)
+        return None
+
+
+async def delete_input_bundle(pass_id: str) -> None:
+    from backend.data.redis_client import get_redis_async
+
+    redis = await get_redis_async()
+    await redis.delete(input_bundle_key(pass_id))

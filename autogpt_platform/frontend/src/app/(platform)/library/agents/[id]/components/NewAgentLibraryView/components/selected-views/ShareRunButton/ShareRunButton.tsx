@@ -5,13 +5,14 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import {
-  CheckIcon,
-  CopyIcon,
-  ShareFatIcon,
-  WarningIcon,
-} from "@phosphor-icons/react";
 import { useShareRunButton } from "./useShareRunButton";
+import {
+  Alert01Icon,
+  Copy01Icon,
+  Share08Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   graphId: string;
@@ -43,7 +44,7 @@ export function ShareRunButton({
 
   return (
     <Dialog
-      title="Share Agent Run"
+      title="Share Workflow Run"
       styling={{ maxWidth: "36rem", minWidth: "auto" }}
     >
       <Dialog.Trigger>
@@ -53,7 +54,7 @@ export function ShareRunButton({
           aria-label="Share results"
           className={isShared ? "relative" : ""}
         >
-          <ShareFatIcon weight="bold" size={18} className="text-zinc-700" />
+          <Icon icon={Share08Icon} size={18} className="text-foreground-body" />
         </Button>
       </Dialog.Trigger>
 
@@ -61,20 +62,20 @@ export function ShareRunButton({
         <div className="flex flex-col gap-4">
           <Text variant="large">
             {isShared
-              ? "Your agent run is currently shared. Anyone with the link can view the output."
-              : "Generate a public link to share this agent run output with others."}
+              ? "Your workflow run is currently shared. Anyone with the link can view the output."
+              : "Generate a public link to share this workflow run output with others."}
           </Text>
 
           {!isShared ? (
             <>
               <div className="!mb-4">
                 <Alert>
-                  <WarningIcon className="h-4 w-4" />
+                  <Icon icon={Alert01Icon} className="h-4 w-4" />
                   <Text variant="body">
-                    When you enable sharing, the output of this agent run will
-                    be publicly accessible to anyone with the link. The page
-                    will include a noindex directive to discourage search engine
-                    crawling, but this cannot be guaranteed.
+                    When you enable sharing, the output of this workflow run
+                    will be publicly accessible to anyone with the link. The
+                    page will include a noindex directive to discourage search
+                    engine crawling, but this cannot be guaranteed.
                   </Text>
                 </Alert>
               </div>
@@ -105,11 +106,15 @@ export function ShareRunButton({
                   size="small"
                   className="mt-0.5 !min-w-0"
                 >
-                  {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
+                  {copied ? (
+                    <Icon icon={Tick02Icon} size={16} />
+                  ) : (
+                    <Icon icon={Copy01Icon} size={16} />
+                  )}
                 </Button>
               </div>
               <Alert>
-                <WarningIcon className="h-4 w-4" />
+                <Icon icon={Alert01Icon} className="h-4 w-4" />
                 <AlertDescription>
                   This link is publicly accessible. Only share it with people
                   you trust. The shared page includes noindex directives to

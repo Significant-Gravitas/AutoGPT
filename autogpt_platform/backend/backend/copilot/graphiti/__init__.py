@@ -1,1 +1,1 @@
-"""Graphiti temporal knowledge graph memory for AutoPilot."""
+"""Graphiti temporal knowledge graph memory for Otto."""

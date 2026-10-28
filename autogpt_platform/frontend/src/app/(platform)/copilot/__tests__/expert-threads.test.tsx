@@ -1,0 +1,973 @@
+import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import {
+  getGetExpertMockHandler,
+  getListExpertIdentitiesMockHandler,
+} from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import type { Expert } from "@/app/api/__generated__/models/expert";
+import { server } from "@/mocks/mock-server";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { parseAsString, useQueryState } from "nuqs";
+import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RecipientChip } from "../components/ChatInput/components/RecipientChip";
+import { useRecipientPicker } from "../components/EmptySession/useRecipientPicker";
+import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatMessagesContainer";
+import { useChatSession } from "../useChatSession";
+import { getNewChatHref } from "@/components/layout/AppSidebar/components/RecentChats/helpers";
+import { useCopilotUIStore } from "../store";
+import { groupSessionsByExpert } from "../useSessionList";
+
+const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
+vi.mock("posthog-js", () => ({ default: { capture } }));
+
+/** Funnel events as PostHog received them, in order. */
+function funnelCalls() {
+  return capture.mock.calls.map(([event, data]) => ({
+    type: event as string,
+    data: (data ?? {}) as Record<string, unknown>,
+  }));
+}
+
+beforeEach(() => {
+  capture.mockReset();
+});
+
+function funnelEventNames() {
+  return capture.mock.calls.map(([event]) => event as string);
+}
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: () => false,
+  };
+});
+
+vi.mock(
+  "../../copilot/components/UsageLimits/UsagePopover/UsagePopover",
+  () => ({
+    UsagePopover: () => null,
+  }),
+);
+
+vi.mock("use-stick-to-bottom", () => ({
+  useStickToBottomContext: () => ({
+    scrollRef: { current: { scrollHeight: 100, scrollTop: 0 } },
+  }),
+  Conversation: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ConversationContent: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ConversationScrollButton: () => null,
+}));
+
+vi.mock("@/components/organisms/Conversation/Conversation", () => ({
+  Conversation: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="conversation">{children}</div>
+  ),
+  ConversationContent: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="conversation-content">{children}</div>
+  ),
+  ConversationScrollButton: () => null,
+}));
+
+vi.mock("@/components/organisms/Message/Message", () => ({
+  Message: ({
+    children,
+    from,
+  }: {
+    children: React.ReactNode;
+    from?: string;
+  }) => <div data-testid={`message-${from ?? "unknown"}`}>{children}</div>,
+  MessageActions: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  MessageContent: ({
+    children,
+    className,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+  }) => <div className={className}>{children}</div>,
+}));
+
+vi.mock(
+  "../components/ChatMessagesContainer/components/AssistantMessageActions",
+  () => ({
+    AssistantMessageActions: () => null,
+  }),
+);
+vi.mock("../components/ChatMessagesContainer/components/CopyButton", () => ({
+  CopyButton: () => null,
+}));
+vi.mock(
+  "../components/ChatMessagesContainer/components/MessageAttachments",
+  () => ({
+    MessageAttachments: () => null,
+  }),
+);
+vi.mock(
+  "../components/ChatMessagesContainer/components/MessagePartRenderer",
+  () => ({
+    MessagePartRenderer: () => null,
+  }),
+);
+vi.mock("../components/ChatMessagesContainer/components/QueueBadge", () => ({
+  QueueBadge: () => null,
+}));
+vi.mock(
+  "../components/ChatMessagesContainer/components/ThinkingIndicator",
+  () => ({
+    ThinkingIndicator: () => null,
+  }),
+);
+vi.mock("../components/ChatMessagesContainer/helpers", () => ({
+  extractReviewTargets: () => ({ chat: false, runs: [] }),
+  getLatestCompactionPhase: () => null,
+  getTurnMessages: () => [],
+  isChainableToolPart: () => false,
+}));
+vi.mock("../components/JobStatsBar/TurnStatsBar", () => ({
+  TurnStatsBar: () => null,
+}));
+vi.mock("../components/JobStatsBar/useElapsedTimer", () => ({
+  useElapsedTimer: () => ({ elapsedSeconds: 0 }),
+  useElapsedAnchor: () => ({ startedAtMs: null, frozenSeconds: 0 }),
+}));
+vi.mock("../components/CopilotPendingReviews/CopilotPendingReviews", () => ({
+  CopilotPendingReviews: () => null,
+}));
+
+const mariaExpert: Expert = {
+  id: "expert-maria",
+  name: "Maria",
+  avatar_url: "https://example.com/maria.png",
+  role: "Marketing Strategist",
+  bio: null,
+  skills: [],
+  tagline: "Grows your brand while you sleep",
+  identity: "You are Maria, a senior marketing strategist.",
+  voice_preferences: "Warm, concise, and direct.",
+  boundaries: "Never invent customer evidence.",
+  protected_soul_rules: [
+    "The expert discloses that it is AI when acting externally.",
+    "The expert asks for approval before acting externally.",
+  ],
+  is_template: false,
+  source_template_id: "template-maria",
+  is_archived: false,
+  workflows: [],
+};
+
+function makeSession(overrides: Record<string, unknown>) {
+  return {
+    id: "s1",
+    title: "Chat",
+    is_processing: false,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+afterEach(() => {
+  cleanup();
+  server.resetHandlers();
+  useCopilotUIStore.setState({ adoptedExpertThreads: new Set<string>() });
+});
+
+function ExpertSessionHarness() {
+  const [expertId] = useQueryState("expertId", parseAsString);
+  const [newThread] = useQueryState("new", parseAsString);
+  const { createSession, sessionId } = useChatSession({
+    expertId,
+    adoptLatestExpertThread: !newThread,
+  });
+  return (
+    <div>
+      <div data-testid="session-id">{sessionId ?? "none"}</div>
+      <div data-testid="expert-id">{expertId ?? "none"}</div>
+      <button onClick={() => void createSession().catch(() => {})}>
+        create
+      </button>
+    </div>
+  );
+}
+
+function AutopilotSessionHarness() {
+  const { createSession, sessionId } = useChatSession();
+  return (
+    <div>
+      <div data-testid="session-id">{sessionId ?? "none"}</div>
+      <button onClick={() => void createSession().catch(() => {})}>
+        create
+      </button>
+    </div>
+  );
+}
+
+/** Mirrors the app sidebar's New Chat link, which lands on /home with neither
+ *  a session nor an expert in the URL. */
+function NewChatButton() {
+  const [, setSessionId] = useQueryState("sessionId", parseAsString);
+  const [, setExpertId] = useQueryState("expertId", parseAsString);
+  return (
+    <button
+      onClick={() => {
+        void setSessionId(null);
+        void setExpertId(null);
+      }}
+    >
+      New Chat
+    </button>
+  );
+}
+
+/** Mirrors `CopilotPage`, which keys the chat host on the session id — every
+ *  session change (including "New Chat" clearing it) remounts `useChatSession`
+ *  with fresh refs. */
+function KeyedSessionHost() {
+  const [sessionId] = useQueryState("sessionId", parseAsString);
+  return <ExpertSessionHarness key={`chat-host-${sessionId ?? "new"}`} />;
+}
+
+/** Stands in for the sidebar's "New chat with Maria" link: following it
+ *  lands on the href `getNewChatHref` builds, which replaces the whole query
+ *  string, so whatever session was open is dropped along the way. Each key
+ *  goes through its own setter, like the real New Chat handler. */
+function SidebarNewChatLink() {
+  const [, setExpertId] = useQueryState("expertId", parseAsString);
+  const [, setSessionId] = useQueryState("sessionId", parseAsString);
+  const [, setNewThread] = useQueryState("new", parseAsString);
+  function follow() {
+    const href = getNewChatHref("expert-maria", new Set(["expert-maria"]));
+    const target = new URL(href ?? "/home", "http://localhost");
+    void setSessionId(target.searchParams.get("sessionId"));
+    void setExpertId(target.searchParams.get("expertId"));
+    void setNewThread(target.searchParams.get("new"));
+  }
+  return <button onClick={follow}>New chat with Maria</button>;
+}
+
+const NuqsWrapper = withNuqsTestingAdapter({
+  searchParams: "?expertId=expert-maria",
+  hasMemory: true,
+});
+
+const EmptyNuqsWrapper = withNuqsTestingAdapter({
+  searchParams: "",
+  hasMemory: true,
+});
+
+describe("useChatSession — expert sessions", () => {
+  it("creates a session with expert_id when visiting /copilot?expertId=expert-maria", async () => {
+    let createBody: unknown = null;
+    let transportInventoryLoaded = false;
+    server.use(
+      http.post("*/api/chat/sessions", async ({ request }) => {
+        createBody = await request.json();
+        return HttpResponse.json({
+          id: "new-session-1",
+          created_at: "2026-01-01T00:00:00Z",
+          user_id: "user-1",
+          expert_id: "expert-maria",
+        });
+      }),
+      http.get("*/api/chat/sessions/new-session-1", () =>
+        HttpResponse.json({
+          id: "new-session-1",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+          user_id: "user-1",
+          messages: [],
+        }),
+      ),
+      http.get("*/api/chat/transports", () => {
+        transportInventoryLoaded = true;
+        return HttpResponse.json({
+          transports: [
+            {
+              auth_provider: "platform",
+              credential_id: null,
+              label: "AutoGPT Platform",
+              available: true,
+              default: true,
+            },
+          ],
+        });
+      }),
+      getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
+    );
+
+    render(
+      <CredentialsProvidersContext.Provider value={{}}>
+        <NuqsWrapper>
+          <ExpertSessionHarness />
+        </NuqsWrapper>
+      </CredentialsProvidersContext.Provider>,
+    );
+    await waitFor(() => expect(transportInventoryLoaded).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "create" }));
+
+    await waitFor(() => {
+      // No route travels unless the user picked one. Naming it here would
+      // make the server skip its own default, which is how a connection
+      // chosen for one chat leaked into every later chat.
+      expect(createBody).toEqual({
+        expert_id: "expert-maria",
+        session_id: expect.any(String),
+      });
+    });
+    await waitFor(() =>
+      expect(
+        funnelCalls().find((event) => event.type === "expert_thread_created")
+          ?.data,
+      ).toEqual({ expert_id: "expert-maria" }),
+    );
+  });
+
+  it("does not emit expert_thread_created for an Autopilot session", async () => {
+    let transportInventoryLoaded = false;
+    server.use(
+      http.post("*/api/chat/sessions", () =>
+        HttpResponse.json({
+          id: "new-autopilot-session",
+          created_at: "2026-01-01T00:00:00Z",
+          user_id: "user-1",
+          expert_id: null,
+        }),
+      ),
+      http.get("*/api/chat/sessions/new-autopilot-session", () =>
+        HttpResponse.json({
+          id: "new-autopilot-session",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+          user_id: "user-1",
+          messages: [],
+        }),
+      ),
+      http.get("*/api/chat/transports", () => {
+        transportInventoryLoaded = true;
+        return HttpResponse.json({
+          transports: [
+            {
+              auth_provider: "platform",
+              credential_id: null,
+              label: "AutoGPT Platform",
+              available: true,
+              default: true,
+            },
+          ],
+        });
+      }),
+      getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
+    );
+
+    render(
+      <CredentialsProvidersContext.Provider value={{}}>
+        <EmptyNuqsWrapper>
+          <AutopilotSessionHarness />
+        </EmptyNuqsWrapper>
+      </CredentialsProvidersContext.Provider>,
+    );
+    await waitFor(() => expect(transportInventoryLoaded).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "create" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("session-id").textContent).toBe(
+        "new-autopilot-session",
+      ),
+    );
+
+    expect(funnelEventNames()).not.toContain("expert_thread_created");
+  });
+
+  it("opens the expert's latest thread when one already exists", async () => {
+    const seenExpertFilters: (string | null)[] = [];
+    server.use(
+      http.get("*/api/chat/sessions", ({ request }) => {
+        const url = new URL(request.url);
+        seenExpertFilters.push(url.searchParams.get("expert_id"));
+        return HttpResponse.json({
+          sessions: [
+            makeSession({
+              id: "s-maria-latest",
+              title: "Maria thread",
+              expert_id: "expert-maria",
+              updated_at: "2026-01-02T00:00:00Z",
+            }),
+          ],
+          total: 1,
+        });
+      }),
+      http.get("*/api/chat/sessions/s-maria-latest", () =>
+        HttpResponse.json({
+          id: "s-maria-latest",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-02T00:00:00Z",
+          user_id: "user-1",
+          messages: [],
+        }),
+      ),
+    );
+
+    render(
+      <NuqsWrapper>
+        <ExpertSessionHarness />
+      </NuqsWrapper>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("session-id").textContent).toBe(
+        "s-maria-latest",
+      );
+    });
+    expect(seenExpertFilters).toContain("expert-maria");
+  });
+
+  it("keeps a fresh thread addressed to the expert when the link carries new=1", async () => {
+    let listedSessions = 0;
+    server.use(
+      http.get("*/api/chat/sessions", () => {
+        listedSessions += 1;
+        return HttpResponse.json({
+          sessions: [
+            makeSession({ id: "s-maria-latest", expert_id: "expert-maria" }),
+          ],
+          total: 1,
+        });
+      }),
+    );
+    const NewThreadWrapper = withNuqsTestingAdapter({
+      searchParams: "?expertId=expert-maria&new=1",
+      hasMemory: true,
+    });
+
+    render(
+      <NewThreadWrapper>
+        <ExpertSessionHarness />
+      </NewThreadWrapper>,
+    );
+
+    expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(listedSessions).toBe(0);
+  });
+
+  it("opens a fresh expert page from the sidebar + while that expert's chat is running, and again after", async () => {
+    const runningSession = makeSession({
+      id: "s-maria-running",
+      title: "Maria thread",
+      expert_id: "expert-maria",
+      is_processing: true,
+    });
+    let adoptionLookups = 0;
+    const writesToRunningSession: string[] = [];
+    server.use(
+      http.get("*/api/chat/sessions", ({ request }) => {
+        if (new URL(request.url).searchParams.get("expert_id")) {
+          adoptionLookups += 1;
+        }
+        return HttpResponse.json({ sessions: [runningSession], total: 1 });
+      }),
+      http.get("*/api/chat/sessions/s-maria-running", () =>
+        HttpResponse.json({
+          ...runningSession,
+          user_id: "user-1",
+          messages: [],
+          active_stream: { started_at: "2026-01-01T00:00:00Z" },
+        }),
+      ),
+      http.all("*/api/chat/sessions/s-maria-running/*", ({ request }) => {
+        writesToRunningSession.push(`${request.method} ${request.url}`);
+        return HttpResponse.json({});
+      }),
+      http.post("*/api/chat/sessions", () =>
+        HttpResponse.json({
+          id: "s-maria-fresh",
+          created_at: "2026-01-03T00:00:00Z",
+          user_id: "user-1",
+          expert_id: "expert-maria",
+        }),
+      ),
+      http.get("*/api/chat/sessions/s-maria-fresh", () =>
+        HttpResponse.json({
+          id: "s-maria-fresh",
+          created_at: "2026-01-03T00:00:00Z",
+          updated_at: "2026-01-03T00:00:00Z",
+          user_id: "user-1",
+          expert_id: "expert-maria",
+          messages: [],
+        }),
+      ),
+      http.get("*/api/chat/transports", () =>
+        HttpResponse.json({
+          transports: [
+            {
+              auth_provider: "platform",
+              credential_id: null,
+              label: "AutoGPT Platform",
+              available: true,
+              default: true,
+            },
+          ],
+        }),
+      ),
+    );
+    // The adapter only commits the URL after nuqs's throttle, so the test
+    // reads it back here rather than trusting the optimistic hook state.
+    let committedUrl = new URLSearchParams(
+      "?expertId=expert-maria&sessionId=s-maria-running",
+    );
+    const RunningWrapper = withNuqsTestingAdapter({
+      searchParams: committedUrl.toString(),
+      hasMemory: true,
+      onUrlUpdate: (event) => {
+        committedUrl = event.searchParams;
+      },
+    });
+
+    render(
+      <CredentialsProvidersContext.Provider value={{}}>
+        <RunningWrapper>
+          <SidebarNewChatLink />
+          <KeyedSessionHost />
+        </RunningWrapper>
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(screen.getByTestId("session-id").textContent).toBe(
+      "s-maria-running",
+    );
+
+    // Clicks happen inside waitFor, as in the New Chat test below: the
+    // testing adapter resets nuqs's update queue whenever it re-renders, so
+    // a click that lands while a previous URL commit is still rendering can
+    // be dropped. Re-clicking is idempotent (sets the same values).
+    async function followSidebarLink() {
+      await waitFor(() => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "New chat with Maria" }),
+        );
+        expect(screen.getByTestId("session-id").textContent).toBe("none");
+      });
+      await waitFor(() => expect(committedUrl.get("sessionId")).toBeNull());
+    }
+
+    // First click: the running thread is dropped for the fresh page, and the
+    // remount must not go looking for Maria's latest thread to re-adopt.
+    await followSidebarLink();
+    expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria");
+    expect(committedUrl.get("expertId")).toBe("expert-maria");
+    expect(committedUrl.get("new")).toBe("1");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(adoptionLookups).toBe(0);
+
+    // Start a task on the fresh page, then hit + again: the second fresh page
+    // must not bounce into either Maria thread.
+    fireEvent.click(screen.getByRole("button", { name: "create" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("session-id").textContent).toBe(
+        "s-maria-fresh",
+      );
+    });
+    await waitFor(() =>
+      expect(committedUrl.get("sessionId")).toBe("s-maria-fresh"),
+    );
+    await followSidebarLink();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria");
+    expect(committedUrl.get("new")).toBe("1");
+    expect(adoptionLookups).toBe(0);
+    // Leaving the running chat is navigation only: nothing was sent to it.
+    expect(writesToRunningSession).toEqual([]);
+  });
+
+  it("stays on a fresh session after New Chat instead of re-adopting the expert's thread", async () => {
+    server.use(
+      http.get("*/api/chat/sessions", ({ request }) => {
+        const url = new URL(request.url);
+        const expertId = url.searchParams.get("expert_id");
+        const mariaSession = makeSession({
+          id: "s-maria-latest",
+          title: "Maria thread",
+          expert_id: "expert-maria",
+        });
+        if (expertId === "expert-maria") {
+          return HttpResponse.json({ sessions: [mariaSession], total: 1 });
+        }
+        return HttpResponse.json({ sessions: [mariaSession], total: 1 });
+      }),
+      http.get("*/api/chat/sessions/s-maria-latest", () =>
+        HttpResponse.json({
+          id: "s-maria-latest",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-02T00:00:00Z",
+          user_id: "user-1",
+          expert_id: "expert-maria",
+          messages: [],
+        }),
+      ),
+      getListExpertIdentitiesMockHandler([mariaExpert]),
+    );
+
+    render(
+      <NuqsWrapper>
+        <NewChatButton />
+        <KeyedSessionHost />
+      </NuqsWrapper>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("session-id").textContent).toBe(
+        "s-maria-latest",
+      );
+    });
+
+    // Re-clicking is idempotent (sets null), so click inside waitFor in case
+    // the adoption effect bounces the session back once before settling.
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole("button", { name: "New Chat" }));
+      expect(screen.getByTestId("session-id").textContent).toBe("none");
+    });
+    // The remount re-runs the adoption effect against a warm cache, so give it
+    // a chance to bounce back before declaring the fix good.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(screen.getByTestId("expert-id").textContent).toBe("none");
+  });
+});
+
+describe("groupSessionsByExpert", () => {
+  it("partitions sessions by expert_id with the Otto group first", () => {
+    const groups = groupSessionsByExpert([
+      makeSession({ id: "s1" }),
+      makeSession({ id: "s2", expert_id: "expert-maria" }),
+      makeSession({ id: "s3", expert_id: "expert-juan" }),
+      makeSession({ id: "s4", expert_id: "expert-maria" }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any);
+
+    expect(groups.map((group) => group.expertId)).toEqual([
+      null,
+      "expert-maria",
+      "expert-juan",
+    ]);
+    expect(
+      groups[1].sessions.map((session: { id: string }) => session.id),
+    ).toEqual(["s2", "s4"]);
+    expect(
+      groups[0].sessions.map((session: { id: string }) => session.id),
+    ).toEqual(["s1"]);
+  });
+});
+
+describe("ChatMessagesContainer — expert identity", () => {
+  const assistantMessage = {
+    id: "m1",
+    role: "assistant",
+    parts: [{ type: "text", text: "Here is your marketing plan." }],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+  const mariaIdentity = {
+    id: "expert-maria",
+    name: "Maria",
+    avatarUrl: mariaExpert.avatar_url,
+    role: mariaExpert.role,
+    jobTitle: "Marketing Manager",
+    isArchived: false,
+    readOnlyReason: null,
+  };
+
+  it("shows the expert name and avatar in the thread header only", () => {
+    server.use(
+      getGetExpertMockHandler(mariaExpert),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+    );
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={mariaIdentity}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(within(header).getByText("Maria")).toBeDefined();
+    expect(within(header).getByText("Marketing Manager")).toBeDefined();
+    expect(within(header).queryByText(mariaExpert.role)).toBeNull();
+    expect(within(header).getByRole("img", { name: "Maria" })).toBeDefined();
+    expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
+  });
+
+  it("keeps the chip a passive label with no file counter", async () => {
+    let workspaceFileRequests = 0;
+    server.use(
+      getGetExpertMockHandler(mariaExpert),
+      http.get("*/api/workspace/files", () => {
+        workspaceFileRequests += 1;
+        return HttpResponse.json({ files: [], offset: 0, has_more: false });
+      }),
+    );
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={mariaIdentity}
+        sessionID="session-1"
+      />,
+    );
+
+    const header = await screen.findByTestId("expert-thread-header");
+    expect(within(header).queryByRole("button")).toBeNull();
+    expect(workspaceFileRequests).toBe(0);
+  });
+
+  it("wears the Otto identity on plain sessions", () => {
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(header.textContent).toContain("Otto");
+    expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
+  });
+
+  it("keeps the passive chip keyboard-reachable with its area", () => {
+    server.use(
+      getGetExpertMockHandler(mariaExpert),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+    );
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={mariaIdentity}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    const chip = within(header).getByLabelText("Maria — Marketing Manager");
+
+    // A tooltip opens on focus as well as hover; an unfocusable trigger
+    // hides the role from keyboard users entirely.
+    expect(chip.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("does not rewrite a job title that matches a special area", () => {
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={{
+          ...mariaIdentity,
+          jobTitle: "Social & Content Repurposing",
+        }}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(
+      within(header).getByText("Social & Content Repurposing"),
+    ).toBeDefined();
+    expect(within(header).queryByText("Social media")).toBeNull();
+  });
+
+  it("falls back to the default role when an expert has no title or area", () => {
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={{ ...mariaIdentity, role: null, jobTitle: null }}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(within(header).getByText("Head of AI")).toBeDefined();
+    expect(within(header).getByLabelText("Maria — Head of AI")).toBeDefined();
+  });
+});
+
+function RecipientPickerHarness() {
+  const [expertId] = useQueryState("expertId", parseAsString);
+  const { recipient } = useRecipientPicker();
+  return (
+    <div>
+      <div data-testid="picker-expert-id">{expertId ?? "none"}</div>
+      <div data-testid="picker-recipient">{recipient.name}</div>
+    </div>
+  );
+}
+
+describe("recipient picker", () => {
+  it("does not look up or adopt the expert's latest thread when the recipient is picked after mount", async () => {
+    let expertListRequests = 0;
+    server.use(
+      http.get("*/api/chat/sessions", ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("expert_id") === "expert-maria") {
+          expertListRequests += 1;
+          return HttpResponse.json({
+            sessions: [
+              makeSession({ id: "old-thread", expert_id: "expert-maria" }),
+            ],
+            total: 1,
+          });
+        }
+        return HttpResponse.json({ sessions: [], total: 0 });
+      }),
+    );
+
+    function RecipientSwitchHarness() {
+      const [expertId, setExpertId] = useQueryState("expertId", parseAsString);
+      const { sessionId } = useChatSession({ expertId });
+      return (
+        <div>
+          <div data-testid="session-id">{sessionId ?? "none"}</div>
+          <div data-testid="expert-id">{expertId ?? "none"}</div>
+          <button onClick={() => void setExpertId("expert-maria")}>
+            pick maria
+          </button>
+        </div>
+      );
+    }
+
+    const FreshMountWrapper = withNuqsTestingAdapter({
+      searchParams: "?",
+      hasMemory: true,
+    });
+    render(
+      <FreshMountWrapper>
+        <RecipientSwitchHarness />
+      </FreshMountWrapper>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "pick maria" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria"),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    // Adoption is impossible here, so the lookup should never be issued.
+    expect(expertListRequests).toBe(0);
+  });
+
+  it("RecipientChip shows a placeholder instead of Otto while experts load", () => {
+    render(
+      <RecipientChip
+        recipient={{ id: null, name: "Otto", avatarUrl: null }}
+        options={[]}
+        onSelect={vi.fn()}
+        isLoading
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "Loading recipient" }));
+    expect(screen.queryByText("Otto")).toBeNull();
+  });
+
+  it("RecipientChip lists the team and reports the selection", async () => {
+    const onSelect = vi.fn();
+    render(
+      <RecipientChip
+        recipient={{ id: null, name: "Otto", avatarUrl: null }}
+        options={[
+          { id: null, name: "Otto", avatarUrl: null },
+          { id: "expert-maria", name: "Maria", avatarUrl: null },
+        ]}
+        onSelect={onSelect}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /change recipient/i }),
+    );
+    await userEvent.click(await screen.findByText("Maria"));
+    expect(onSelect).toHaveBeenCalledWith("expert-maria");
+  });
+
+  it("clears an unresolved expert recipient after the identity query errors", async () => {
+    server.use(
+      http.get("*/api/experts/identities", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+
+    const ErrorWrapper = withNuqsTestingAdapter({
+      searchParams: "?expertId=expert-maria",
+      hasMemory: true,
+    });
+    render(
+      <ErrorWrapper>
+        <RecipientPickerHarness />
+      </ErrorWrapper>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("picker-expert-id").textContent).toBe("none"),
+    );
+    expect(screen.getByTestId("picker-recipient").textContent).toBe("Otto");
+  });
+
+  it("clears an archived expert recipient after identities load", async () => {
+    server.use(
+      getListExpertIdentitiesMockHandler([
+        {
+          id: "expert-maria",
+          name: "Maria",
+          avatar_url: "https://example.com/maria.png",
+          role: "Marketing Strategist",
+          is_archived: true,
+        },
+      ]),
+    );
+
+    const ArchivedWrapper = withNuqsTestingAdapter({
+      searchParams: "?expertId=expert-maria",
+      hasMemory: true,
+    });
+    render(
+      <ArchivedWrapper>
+        <RecipientPickerHarness />
+      </ArchivedWrapper>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("picker-expert-id").textContent).toBe("none"),
+    );
+    expect(screen.getByTestId("picker-recipient").textContent).toBe("Otto");
+  });
+});

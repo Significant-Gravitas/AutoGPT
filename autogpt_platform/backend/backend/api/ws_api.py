@@ -1,15 +1,14 @@
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Protocol
 
 import pydantic
 import uvicorn
-from autogpt_libs.auth.jwt_utils import parse_jwt_token
+from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
-from backend.api.conn_manager import ConnectionManager
+from backend.api.conn_manager import ConnectionManager, _is_ws_close_race
 from backend.api.model import (
     WSMessage,
     WSMethod,
@@ -17,41 +16,44 @@ from backend.api.model import (
     WSSubscribeGraphExecutionsRequest,
 )
 from backend.api.utils.cors import build_cors_params
-from backend.data.execution import AsyncRedisExecutionEventBus
-from backend.data.notification_bus import AsyncRedisNotificationEventBus
-from backend.data.user import DEFAULT_USER_ID
+from backend.data import redis_client
+from backend.data.user import is_user_banned
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
+    start_metrics_server,
     update_websocket_connections,
 )
-from backend.util.retry import continuous_retry
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+ACCOUNT_BANNED_CLOSE_CODE = 4004
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    manager = get_connection_manager()
-    fut = asyncio.create_task(event_broadcaster(manager))
-    fut.add_done_callback(lambda _: logger.info("Event broadcaster stopped"))
-    yield
+    # No Prisma: reads go through the DatabaseManager (db_accessors), so this
+    # server needs no database URL. Eager Redis connect to fail fast.
+    await redis_client.get_redis_async()
+    try:
+        yield
+    finally:
+        # Silences asyncio's "Unclosed ClusterNode" GC warning at shutdown.
+        try:
+            await redis_client.disconnect_async()
+        except Exception:
+            logger.warning("redis_client.disconnect_async failed", exc_info=True)
 
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
 _connection_manager = None
 
-# Add Prometheus instrumentation
-instrument_fastapi(
-    app,
-    service_name="websocket-server",
-    expose_endpoint=True,
-    endpoint="/metrics",
-    include_in_schema=settings.config.app_env == AppEnvironment.LOCAL,
-)
+# Add Prometheus instrumentation. The metrics are served by WebsocketServer.run
+# on their own port, never on this public app.
+instrument_fastapi(app, service_name="websocket-server", expose_endpoint=False)
 
 
 def get_connection_manager():
@@ -61,50 +63,34 @@ def get_connection_manager():
     return _connection_manager
 
 
-@continuous_retry()
-async def event_broadcaster(manager: ConnectionManager):
-    execution_bus = AsyncRedisExecutionEventBus()
-    notification_bus = AsyncRedisNotificationEventBus()
-
-    try:
-
-        async def execution_worker():
-            async for event in execution_bus.listen("*"):
-                await manager.send_execution_update(event)
-
-        async def notification_worker():
-            async for notification in notification_bus.listen("*"):
-                await manager.send_notification(
-                    user_id=notification.user_id,
-                    payload=notification.payload,
-                )
-
-        await asyncio.gather(execution_worker(), notification_worker())
-    finally:
-        # Ensure PubSub connections are closed on any exit to prevent leaks
-        await execution_bus.close()
-        await notification_bus.close()
-
-
 async def authenticate_websocket(websocket: WebSocket) -> str:
-    if not settings.config.enable_auth:
-        return DEFAULT_USER_ID
-
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=4001, reason="Missing authentication token")
         return ""
 
     try:
-        payload = parse_jwt_token(token)
-        user_id = payload.get("sub")
-        if not user_id:
-            await websocket.close(code=4002, reason="Invalid token")
-            return ""
-        return user_id
+        payload = await parse_jwt_token_async(token)
     except ValueError:
         await websocket.close(code=4003, reason="Invalid token")
         return ""
+    user_id = payload.get("sub")
+    if not user_id:
+        await websocket.close(code=4002, reason="Invalid token")
+        return ""
+
+    # Refused when the ban can't be read, as a request to a signed-in route is;
+    # 1011 rather than the ban's code, so an outage never reads as a ban.
+    try:
+        banned = await is_user_banned(user_id)
+    except Exception:
+        logger.warning(f"Ban lookup failed for user #{user_id}; refusing the socket")
+        await websocket.close(code=1011, reason="Try again")
+        return ""
+    if banned:
+        await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
+        return ""
+    return user_id
 
 
 # ===================== Message Handlers ===================== #
@@ -256,6 +242,10 @@ async def websocket_router(
     try:
         while True:
             data = await websocket.receive_text()
+            # The socket outlives its token, so a ban ends it at the next message.
+            if await _banned_now(user_id):
+                await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
+                break
             try:
                 message = WSMessage.model_validate_json(data)
             except pydantic.ValidationError as e:
@@ -297,10 +287,35 @@ async def websocket_router(
                     ).model_dump_json()
                 )
                 continue
+            except ValueError as e:
+                logger.warning(
+                    "Subscription rejected for user #%s on '%s': %s",
+                    user_id,
+                    message.method.value,
+                    e,
+                )
+                await websocket.send_text(
+                    WSMessage(
+                        method=WSMethod.ERROR,
+                        success=False,
+                        error=str(e),
+                    ).model_dump_json()
+                )
+                continue
             except Exception as e:
+                # The client left mid-handler: there is no one to reply to.
+                if _is_ws_close_race(e, websocket):
+                    break
                 logger.error(
                     f"Error while handling '{message.method.value}' message "
                     f"for user #{user_id}: {e}"
+                )
+                await websocket.send_text(
+                    WSMessage(
+                        method=WSMethod.ERROR,
+                        success=False,
+                        error=f"Could not handle '{message.method.value}'; retry",
+                    ).model_dump_json()
                 )
                 continue
 
@@ -321,18 +336,34 @@ async def websocket_router(
                 )
 
     except WebSocketDisconnect:
-        manager.disconnect_socket(websocket, user_id=user_id)
         logger.debug("WebSocket client disconnected")
+    except Exception:
+        logger.exception(f"Unexpected error in websocket_router for user #{user_id}")
     finally:
+        # Always release subscription pumps + Redis connections, regardless of how
+        # the loop exited — otherwise non-WebSocketDisconnect failures leak both.
+        await manager.disconnect_socket(websocket, user_id=user_id)
         update_websocket_connections(user_id, -1)
 
 
+async def _banned_now(user_id: str) -> bool:
+    """A lookup that fails keeps the socket; the next message asks again."""
+    try:
+        return await is_user_banned(user_id)
+    except Exception:
+        logger.warning(f"Ban lookup failed for user #{user_id}; keeping the socket")
+        return False
+
+
 @app.get("/")
+@app.get("/health")
 async def health():
     return {"status": "healthy"}
 
 
 class WebsocketServer(AppProcess):
+    reads_feature_flags = False
+
     def run(self):
         logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
         cors_params = build_cors_params(
@@ -347,6 +378,7 @@ class WebsocketServer(AppProcess):
             allow_headers=["*"],
         )
 
+        start_metrics_server(Config().websocket_server_metrics_port)
         uvicorn.run(
             server_app,
             host=Config().websocket_server_host,

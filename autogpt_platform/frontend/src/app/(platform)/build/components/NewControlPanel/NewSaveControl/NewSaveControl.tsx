@@ -1,10 +1,11 @@
-import { Card, CardContent, CardFooter } from "@/components/__legacy__/ui/card";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormProvider } from "react-hook-form";
+import { Card, CardContent, CardFooter } from "@/components/atoms/Card/Card";
+import { FormField } from "@/components/molecules/Form/Form";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
+} from "@/components/molecules/Popover/Popover";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import {
@@ -12,10 +13,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { FloppyDiskIcon } from "@phosphor-icons/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { ControlPanelButton } from "../ControlPanelButton";
 import { useNewSaveControl } from "./useNewSaveControl";
+import { FloppyDiskIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const NewSaveControl = () => {
   const { form, isSaving, graphVersion, handleSave } = useNewSaveControl();
@@ -40,21 +42,28 @@ export const NewSaveControl = () => {
               selected={saveControlOpen}
               className="rounded-none"
             >
-              <FloppyDiskIcon className="size-5" />
+              <Icon icon={FloppyDiskIcon} className="size-5" />
             </ControlPanelButton>
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side="right">Save</TooltipContent>
       </Tooltip>
+      {/* TODO(tokens): today's popover look. No exact role: border-neutral-200
+          #E5E5E5; text-neutral-950 #0A0A0A is the `focus` role, a ring colour,
+          not a text colour (SECRT-3154). */}
       <PopoverContent
         side="right"
         sideOffset={15}
         align="start"
         data-id="save-control-popover-content"
-        className="w-96 max-w-[400px] rounded-xlarge"
+        className="w-96 max-w-[400px] rounded-xlarge border-neutral-200 text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
       >
-        <Card className="border-none dark:bg-slate-900">
-          <Form {...form}>
+        <Card
+          variant="outlined"
+          // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-slate-900 #2A313A
+          className="border-none dark:bg-slate-900"
+        >
+          <FormProvider {...form}>
             <form onSubmit={form.handleSubmit(handleSave)}>
               <CardContent className="p-0">
                 <div className="space-y-3">
@@ -66,7 +75,7 @@ export const NewSaveControl = () => {
                         id="name"
                         label="Name"
                         size="small"
-                        placeholder="Enter your agent name"
+                        placeholder="Enter your workflow name"
                         data-id="save-control-name-input"
                         data-testid="save-control-name-input"
                         maxLength={100}
@@ -84,7 +93,7 @@ export const NewSaveControl = () => {
                         id="description"
                         size="small"
                         label="Description"
-                        placeholder="Your agent description"
+                        placeholder="Your workflow description"
                         data-id="save-control-description-input"
                         data-testid="save-control-description-input"
                         maxLength={500}
@@ -115,17 +124,18 @@ export const NewSaveControl = () => {
                   variant="primary"
                   type="submit"
                   size="small"
+                  // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-slate-700 #475263, dark:text-slate-100 #EFF1F4, dark:hover:bg-slate-800 #475263
                   className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
                   data-id="save-control-save-agent"
                   data-testid="save-control-save-agent-button"
                   disabled={isSaving}
                   loading={isSaving}
                 >
-                  Save Agent
+                  Save Workflow
                 </Button>
               </CardFooter>
             </form>
-          </Form>
+          </FormProvider>
         </Card>
       </PopoverContent>
     </Popover>

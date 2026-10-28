@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { User } from "@supabase/supabase-js";
+import type { User } from "@/lib/auth/types";
 import {
   usePostV1UpdateUserTimezone,
   getGetV1GetUserTimezoneQueryKey,

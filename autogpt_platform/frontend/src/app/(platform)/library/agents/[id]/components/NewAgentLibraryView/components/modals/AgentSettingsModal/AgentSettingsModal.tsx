@@ -6,8 +6,9 @@ import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
-import { GearIcon } from "@phosphor-icons/react";
 import { useState } from "react";
+import { Settings01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -48,7 +49,7 @@ export function AgentSettingsModal({
     <Dialog
       controlled={{ isOpen, set: setIsOpen }}
       styling={{ maxWidth: "600px", maxHeight: "90vh" }}
-      title="Agent Settings"
+      title="Workflow Settings"
     >
       {controlledOpen === undefined && (
         <Dialog.Trigger>
@@ -56,24 +57,28 @@ export function AgentSettingsModal({
             variant="ghost"
             size="small"
             className="m-0 min-w-0 rounded-full p-0 px-1"
-            aria-label="Agent Settings"
+            aria-label="Workflow Settings"
           >
-            <GearIcon size={18} className="text-zinc-600" />
-            <Text variant="small">Agent Settings</Text>
+            <Icon
+              icon={Settings01Icon}
+              size={18}
+              className="text-foreground-secondary"
+            />
+            <Text variant="small">Workflow Settings</Text>
           </Button>
         </Dialog.Trigger>
       )}
       <Dialog.Content>
         <div className="space-y-6">
           {showHITLToggle && (
-            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
+            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-separator bg-surface p-6">
               <div className="flex w-full items-start justify-between gap-4">
                 <div className="flex-1">
                   <Text variant="large-semibold">
                     Human-in-the-loop approval
                   </Text>
-                  <Text variant="large" className="mt-1 text-zinc-900">
-                    The agent will pause at human-in-the-loop blocks and wait
+                  <Text variant="large" className="mt-1 text-foreground-strong">
+                    The workflow will pause at human-in-the-loop blocks and wait
                     for your review before continuing
                   </Text>
                 </div>
@@ -87,15 +92,15 @@ export function AgentSettingsModal({
             </div>
           )}
           {showSensitiveActionToggle && (
-            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
+            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-separator bg-surface p-6">
               <div className="flex w-full items-start justify-between gap-4">
                 <div className="flex-1">
                   <Text variant="large-semibold">
                     Sensitive action approval
                   </Text>
-                  <Text variant="large" className="mt-1 text-zinc-900">
-                    The agent will pause at sensitive action blocks and wait for
-                    your review before continuing
+                  <Text variant="large" className="mt-1 text-foreground-strong">
+                    The workflow will pause at sensitive action blocks and wait
+                    for your review before continuing
                   </Text>
                 </div>
                 <Switch

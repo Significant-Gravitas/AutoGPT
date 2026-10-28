@@ -50,6 +50,7 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 - Use Next.js `<Link>` for internal navigation — never raw `<a>` tags
 - No `any` types unless the value genuinely can be anything
 - No linter suppressors (`// @ts-ignore`, `// eslint-disable`) — fix the actual issue
+- **React Compiler folders** — the compiler builds the folders in `reactCompilerSources` (`next.config.mjs`: the copilot and the chat organisms `Conversation`, `Message` and `PromptInput`). There the `react-hooks` compiler rules and `exhaustive-deps` are errors (warnings everywhere else), oxlint's `autogpt/no-manual-memo` rejects new `useMemo`/`useCallback`, `"use memo"`/`"use no memo"` and any `memo()` without a `// memo-boundary: <why>` comment above it, and `autogpt/no-hookless-use-function` rejects a `use*` function that calls no hook. `src/reactCompilerCoverage.test.ts` fails on any compiler bailout missing from its `KNOWN_BAILOUTS`. Code written before these rules is grandfathered (`.eslintrc.json` overrides, `scripts/eslint-rules/manual-memo-baseline.json`); those lists can only shrink, and the tests fail when an entry is fixed but not removed
 - **File length** — keep files under ~200 lines; extract sub-components or hooks into their own files when a file grows beyond this
 - **Function/component length** — keep render functions and hooks under ~50 lines; extract named helpers or sub-components when they grow longer
 
@@ -61,8 +62,8 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 - **Component Structure**: Separate render logic (`.tsx`) from business logic (`use*.ts` hooks)
 - **Workflow Builder**: Visual graph editor using @xyflow/react
 - **UI Components**: shadcn/ui (Radix UI primitives) with Tailwind CSS styling
-- **Icons**: Phosphor Icons only
-- **Feature Flags**: LaunchDarkly integration
+- **Icons**: Hugeicons (stroke-rounded) only, rendered through the `Icon` atom
+- **Feature Flags**: read from the backend's `/api/feature-flags` by default, which answers from PostHog
 - **Error Handling**: ErrorCard for render errors, toast for mutations, Sentry for exceptions
 - **Testing**: Vitest + React Testing Library + MSW for integration tests (primary), Playwright for E2E, Storybook for visual
 
@@ -85,7 +86,10 @@ See @CONTRIBUTING.md for complete patterns. Quick reference:
 3. **Data fetching**: Use generated API hooks from `@/app/api/__generated__/endpoints/`
    - Regenerate with `pnpm generate:api`
    - Pattern: `use{Method}{Version}{OperationName}`
-4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
+4. **Styling**: Tailwind CSS only, use design tokens, Hugeicons only
+   - Import icon data from `@hugeicons/core-free-icons` and render it with the `Icon` atom (`src/components/atoms/Icon/Icon.tsx`), e.g. `<Icon icon={Delete02Icon} size={16} />`.
+   - Never render `HugeiconsIcon` directly — the atom applies the 2px design-system stroke width.
+   - Type icon-carrying props with `IconSvgElement` from `@hugeicons/react`.
 5. **Testing**: Integration tests are the default (~90%). See `TESTING.md` for full details.
    - **New pages/features**: Write integration tests in `__tests__/` next to `page.tsx` using Vitest + RTL + MSW
    - **API mocking**: Use Orval-generated MSW handlers from `@/app/api/__generated__/endpoints/{tag}/{tag}.msw.ts`
@@ -98,3 +102,12 @@ See @CONTRIBUTING.md for complete patterns. Quick reference:
    - Do not type hook returns, let Typescript infer as much as possible
    - Never type with `any` unless a variable/attribute can ACTUALLY be of any type
    - avoid index and barrel files
+
+## Writing Tests That Don't Flake
+
+- **Write for a CI runner 2–3× slower than your machine** — drive product timers (an arm delay, a debounce, an auto-dismiss) with fake timers rather than racing them with `sleep`, and wait with `findBy*` or `waitFor`. The shared setup already raises the test timeout to 15 s and Testing Library's to 3 s.
+- **Query with `findBy*` after any action that refetches or re-renders, and make a search test's MSW handler answer only the typed query** — `getBy*` reads the list a debounced refetch is about to replace.
+- **Assert a callback fired from an effect inside `waitFor`** — `findBy*` resolves on the DOM change, before the effect has run.
+- **Match accessible names exactly** (`{ name: "Max" }` or an anchored regex) — the generated MSW mocks fill names from faker, and `/Max/` can match random text in another card. The shared setup seeds faker, so such a collision fails every run rather than now and then.
+- **Leave nothing pending when a test file ends** — a timer, a library debounce or a request that lands after teardown fails the shard after every test has passed. The shared setup waits a bounded time for open requests, so settle any request a test holds open on purpose; timers are yours to clear.
+- **Playwright: act only on a settled page** — wait for the app's own response, or a state that proves the last action took, before the next step; mark any new first-visit popup as seen in `src/playwright/coverage-fixture.ts`, the way it marks the changelog, and import `test` from there; and read a timeout as a possible backend stall before raising it. A click that lands while a list re-renders, or on a popup covering the control, is lost, and the step then waits out its timeout for a page that never comes.

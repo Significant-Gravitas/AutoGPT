@@ -1,18 +1,25 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
 import { codeRenderer } from "@/components/contextual/OutputRenderers/renderers/CodeRenderer";
 import { Suspense, useState } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
+import { ArtifactErrorBoundary } from "./ArtifactErrorBoundary";
 import { ArtifactReactPreview } from "./ArtifactReactPreview";
 import { ArtifactSkeleton } from "./ArtifactSkeleton";
+import { ExpertArtifactContent } from "./ExpertArtifactContent";
 import {
+  FRAGMENT_LINK_INTERCEPTOR_SCRIPT,
   TAILWIND_CDN_URL,
   wrapWithHeadInjection,
 } from "@/lib/iframe-sandbox-csp";
 import { useArtifactContent } from "./useArtifactContent";
+
+// Text is typed with <p> props; the retry buttons keep their type="button".
+const BUTTON_TYPE = { type: "button" } as const;
 
 interface Props {
   artifact: ArtifactRef;
@@ -38,35 +45,58 @@ function ArtifactContentLoader({
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm text-zinc-500">Failed to load content</p>
-        <p className="text-xs text-zinc-400">{error}</p>
-        <button
-          type="button"
+        <Text variant="body-tight" as="p" tone="muted">
+          Failed to load content
+        </Text>
+        <Text variant="small-tight" as="p" tone="subtle">
+          {error}
+        </Text>
+        <Text
+          as="button"
+          variant="small-medium-tight"
+          tone="body"
+          {...BUTTON_TYPE}
           onClick={retry}
-          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          // TODO(tokens): no exact role for focus-visible:ring-violet-400
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
           Try again
-        </button>
+        </Text>
       </div>
     );
   }
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
-      <ArtifactRenderer
-        artifact={artifact}
-        content={content}
-        pdfUrl={pdfUrl}
-        isSourceView={isSourceView}
-        classification={classification}
-      />
+      <ArtifactErrorBoundary
+        artifactID={artifact.id}
+        artifactTitle={artifact.title}
+        artifactType={classification.type}
+      >
+        <ArtifactRenderer
+          artifact={artifact}
+          content={content}
+          pdfUrl={pdfUrl}
+          isSourceView={isSourceView}
+          classification={classification}
+        />
+      </ArtifactErrorBoundary>
     </div>
   );
+}
+
+function withCacheBust(src: string, nonce: number): string {
+  if (nonce === 0) return src;
+  const sep = src.includes("?") ? "&" : "?";
+  return `${src}${sep}_retry=${nonce}`;
 }
 
 function ArtifactImage({ src, alt }: { src: string; alt: string }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  // Incremented on every Try Again so the URL changes and the browser
+  // can't reuse a negative-cached response (SECRT-2221).
+  const [retryNonce, setRetryNonce] = useState(0);
 
   if (error) {
     return (
@@ -74,17 +104,24 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm text-zinc-500">Failed to load image</p>
-        <button
-          type="button"
+        <Text variant="body-tight" as="p" tone="muted">
+          Failed to load image
+        </Text>
+        <Text
+          as="button"
+          variant="small-medium-tight"
+          tone="body"
+          {...BUTTON_TYPE}
           onClick={() => {
             setError(false);
             setLoaded(false);
+            setRetryNonce((n) => n + 1);
           }}
-          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          // TODO(tokens): no exact role for focus-visible:ring-violet-400
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
           Try again
-        </button>
+        </Text>
       </div>
     );
   }
@@ -92,11 +129,14 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
   return (
     <div className="relative flex items-center justify-center p-4">
       {!loaded && (
-        <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
+        <Skeleton
+          variant="translucent"
+          className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md"
+        />
       )}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={src}
+        src={withCacheBust(src, retryNonce)}
         alt={alt}
         className={`max-h-full max-w-full object-contain transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
         onLoad={() => setLoaded(true)}
@@ -109,6 +149,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
 function ArtifactVideo({ src }: { src: string }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   if (error) {
     return (
@@ -116,17 +157,24 @@ function ArtifactVideo({ src }: { src: string }) {
         role="alert"
         className="flex flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm text-zinc-500">Failed to load video</p>
-        <button
-          type="button"
+        <Text variant="body-tight" as="p" tone="muted">
+          Failed to load video
+        </Text>
+        <Text
+          as="button"
+          variant="small-medium-tight"
+          tone="body"
+          {...BUTTON_TYPE}
           onClick={() => {
             setError(false);
             setLoaded(false);
+            setRetryNonce((n) => n + 1);
           }}
-          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          // TODO(tokens): no exact role for focus-visible:ring-violet-400
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
           Try again
-        </button>
+        </Text>
       </div>
     );
   }
@@ -134,10 +182,13 @@ function ArtifactVideo({ src }: { src: string }) {
   return (
     <div className="relative flex items-center justify-center p-4">
       {!loaded && (
-        <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
+        <Skeleton
+          variant="translucent"
+          className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md"
+        />
       )}
       <video
-        src={src}
+        src={withCacheBust(src, retryNonce)}
         controls
         preload="metadata"
         className={`max-h-full max-w-full rounded-md transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
@@ -191,16 +242,24 @@ function ArtifactRenderer({
   // Source view: always show raw text
   if (isSourceView) {
     return (
-      <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm text-zinc-800">
+      <Text
+        variant="body-mono-tight"
+        as="pre"
+        tone="emphasis"
+        className="whitespace-pre-wrap break-words p-4"
+      >
         {content}
-      </pre>
+      </Text>
     );
   }
 
   if (classification.type === "html") {
     // Inject Tailwind CDN — no CSP (see iframe-sandbox-csp.ts for why)
     const tailwindScript = `<script src="${TAILWIND_CDN_URL}"></script>`;
-    const wrapped = wrapWithHeadInjection(content, tailwindScript);
+    const wrapped = wrapWithHeadInjection(
+      content,
+      tailwindScript + FRAGMENT_LINK_INTERCEPTOR_SCRIPT,
+    );
     return (
       <iframe
         sandbox="allow-scripts"
@@ -279,13 +338,21 @@ function ArtifactRenderer({
 
   // Fallback: plain text
   return (
-    <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm text-zinc-800">
+    <Text
+      variant="body-mono-tight"
+      as="pre"
+      tone="emphasis"
+      className="whitespace-pre-wrap break-words p-4"
+    >
       {content}
-    </pre>
+    </Text>
   );
 }
 
 export function ArtifactContent(props: Props) {
+  if (props.artifact.expert) {
+    return <ExpertArtifactContent expert={props.artifact.expert} />;
+  }
   return (
     <Suspense fallback={<ArtifactSkeleton />}>
       <ArtifactContentLoader {...props} />

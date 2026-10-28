@@ -1,58 +1,171 @@
 "use client";
-
-import { CaretLeft } from "@phosphor-icons/react";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { cn } from "@/lib/utils";
+import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
 import { ProgressBar } from "./components/ProgressBar";
+import { ProgressError } from "./components/ProgressError";
 import { StepIndicator } from "./components/StepIndicator";
-import { PainPointsStep } from "./steps/PainPointsStep";
+import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
+import { ConnectStep } from "./steps/ConnectStep/ConnectStep";
+import { HireStep } from "./steps/HireStep/HireStep";
+import { IntroStep } from "./steps/IntroStep/IntroStep";
 import { PreparingStep } from "./steps/PreparingStep";
 import { RoleStep } from "./steps/RoleStep";
-import { WelcomeStep } from "./steps/WelcomeStep";
+import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
 import { useOnboardingWizardStore } from "./store";
 import { useOnboardingPage } from "./useOnboardingPage";
 
 export default function OnboardingPage() {
-  const { currentStep, isLoading, handlePreparingComplete } =
-    useOnboardingPage();
+  const {
+    currentStep,
+    isLoading,
+    handlePreparingComplete,
+    isPaymentEnabled,
+    isSelfHostConnectEnabled,
+    steps,
+    preparingStep,
+    totalSteps,
+    trialConfirmation,
+    paidConfirmation,
+    progressError,
+    progressConflict,
+    retryProgress,
+    completionError,
+  } = useOnboardingPage();
   const prevStep = useOnboardingWizardStore((s) => s.prevStep);
+  const isStepBusy = useOnboardingWizardStore((s) => s.isStepBusy);
 
-  if (isLoading) return null;
+  if (isLoading && paidConfirmation.error)
+    return (
+      <ErrorCard
+        context="your payment"
+        responseError={{ message: paidConfirmation.error }}
+        onRetry={paidConfirmation.retry}
+      />
+    );
+  if (isLoading && paidConfirmation.pending)
+    return (
+      <Text variant="body" role="status">
+        Confirming your subscription…
+      </Text>
+    );
+  if (isLoading)
+    return !trialConfirmation.ready ? (
+      <Text variant="body" role="status">
+        Confirming your trial and card setup…
+      </Text>
+    ) : progressError ? (
+      <ProgressError
+        message={progressError}
+        conflict={progressConflict}
+        retry={retryProgress}
+      />
+    ) : (
+      <Text variant="body" role="status">
+        Loading your setup…
+      </Text>
+    );
 
-  const totalSteps = 4;
-  const showDots = currentStep <= 3;
-  const showBack = currentStep > 1 && currentStep <= 3;
-
-  const showProgressBar = currentStep <= 3;
+  // ProgressBar + StepIndicator track only the user-interactive steps.
+  // PreparingStep is a transition view that hides both indicators.
+  const showDots = currentStep <= totalSteps;
+  // Back is hidden on the first content step
+  // and while the current step is mid-flight (brain dump processing) — there
+  // is nothing coherent to go back to. Read from the layout so it tracks
+  // buildStepLayout rather than a hardcoded position.
+  const firstContentStep = steps.team ?? steps.role;
+  const showBack =
+    currentStep > firstContentStep && currentStep <= totalSteps && !isStepBusy;
+  const showProgressBar = currentStep <= totalSteps;
+  const showLogout = currentStep <= totalSteps;
 
   return (
     <div className="flex min-h-screen w-full flex-col items-center">
+      {progressError && (
+        <ProgressError
+          message={progressError}
+          conflict={progressConflict}
+          retry={retryProgress}
+        />
+      )}
+      {completionError && (
+        <ErrorCard
+          context="your account setup"
+          responseError={{ message: completionError }}
+          onRetry={handlePreparingComplete}
+        />
+      )}
+      {trialConfirmation.error ? (
+        <ErrorCard
+          context="your trial"
+          responseError={{ message: trialConfirmation.error }}
+          onRetry={trialConfirmation.retry}
+        />
+      ) : null}
       {showProgressBar && (
         <ProgressBar currentStep={currentStep} totalSteps={totalSteps} />
       )}
 
       {showBack && (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="xs"
           onClick={prevStep}
-          className="text-md absolute left-6 top-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
+          leadingIcon={ArrowLeft01Icon}
+          className="absolute left-6 top-6 text-foreground-tertiary hover:text-foreground-strong"
         >
-          <CaretLeft size={16} />
           Back
-        </button>
+        </Button>
       )}
 
-      <div className="flex flex-1 items-center py-16">
-        {currentStep === 1 && <WelcomeStep />}
-        {currentStep === 2 && <RoleStep />}
-        {currentStep === 3 && <PainPointsStep />}
-        {currentStep === 4 && (
+      <div
+        className={cn(
+          "flex w-full min-w-0 flex-1 items-center justify-center",
+          currentStep === steps.subscription
+            ? "pb-8 pt-3 lg:pb-2"
+            : "pb-8 pt-16",
+        )}
+      >
+        {currentStep === steps.team && <IntroStep slide="team" />}
+        {currentStep === steps.autopilot && <IntroStep slide="autopilot" />}
+        {currentStep === steps.role && <RoleStep />}
+        {currentStep === steps.painPoints && <BrainDumpStep />}
+        {currentStep === steps.hire && <HireStep />}
+        {isSelfHostConnectEnabled && currentStep === steps.connect && (
+          <ConnectStep />
+        )}
+        {isPaymentEnabled && currentStep === steps.subscription && (
+          <SubscriptionStep />
+        )}
+        {currentStep === preparingStep && (
           <PreparingStep onComplete={handlePreparingComplete} />
         )}
       </div>
 
       {showDots && (
-        <div className="pb-8">
-          <StepIndicator totalSteps={3} currentStep={currentStep} />
+        <div
+          className={
+            currentStep === steps.subscription ? "pb-8 lg:pb-4" : "pb-8"
+          }
+        >
+          <StepIndicator totalSteps={totalSteps} currentStep={currentStep} />
         </div>
+      )}
+
+      {showLogout && (
+        <Button
+          as="NextLink"
+          href="/logout"
+          variant="ghost"
+          size="xs"
+          leadingIcon={Logout03Icon}
+          className="absolute bottom-6 left-6 text-foreground-tertiary hover:text-foreground-strong"
+        >
+          Log out
+        </Button>
       )}
     </div>
   );

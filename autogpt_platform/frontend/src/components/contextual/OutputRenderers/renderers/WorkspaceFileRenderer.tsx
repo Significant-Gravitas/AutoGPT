@@ -1,4 +1,3 @@
-import { DownloadSimple, FileText } from "@phosphor-icons/react";
 import { type ReactNode, useState } from "react";
 import {
   OutputRenderer,
@@ -8,6 +7,8 @@ import {
 } from "../types";
 import { parseWorkspaceURI, isWorkspaceURI } from "@/lib/workspace-uri";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Download04Icon, File02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const imageMimeTypes = [
   "image/jpeg",
@@ -37,7 +38,10 @@ const audioMimeTypes = [
   "audio/flac",
 ];
 
-function buildDownloadURL(fileID: string): string {
+function buildDownloadURL(fileID: string, shareToken?: string): string {
+  if (shareToken) {
+    return `/api/proxy/api/public/shared/${shareToken}/files/${fileID}/download`;
+  }
   return `/api/proxy/api/workspace/files/${fileID}/download`;
 }
 
@@ -64,6 +68,7 @@ function WorkspaceImage({ src, alt }: { src: string; alt: string }) {
       <img
         src={src}
         alt={alt}
+        // TODO(tokens): no exact role for border-gray-200 #e5e7eb; #e5e7eb is sidebar-border, the sidebar only
         className={`h-auto max-w-full rounded-md border border-gray-200 ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
         loading="lazy"
         onLoad={() => setLoaded(true)}
@@ -83,6 +88,7 @@ function WorkspaceVideo({ src, mimeType }: { src: string; mimeType: string }) {
       )}
       <video
         controls
+        // TODO(tokens): no exact role for border-gray-200 #e5e7eb; #e5e7eb is sidebar-border, the sidebar only
         className={`h-auto max-w-full rounded-md border border-gray-200 ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
         preload="metadata"
         onLoadedMetadata={() => setLoaded(true)}
@@ -124,7 +130,7 @@ function renderWorkspaceFile(
   const uri = parseWorkspaceURI(String(value));
   if (!uri) return null;
 
-  const downloadURL = buildDownloadURL(uri.fileID);
+  const downloadURL = buildDownloadURL(uri.fileID, metadata?.shareToken);
   const mimeType = uri.mimeType || metadata?.mimeType || null;
 
   if (mimeType && imageMimeTypes.includes(mimeType)) {
@@ -144,14 +150,28 @@ function renderWorkspaceFile(
   // Generic file card with icon and download link
   const label = getFileTypeLabel(mimeType);
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
-      <FileText size={28} className="flex-shrink-0 text-gray-500" />
+    <div
+      // TODO(tokens): no exact role for border-gray-200 #e5e7eb, bg-gray-50 #f9fafb; #e5e7eb is sidebar-border, the sidebar only
+      className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3"
+    >
+      <Icon
+        icon={File02Icon}
+        size={28}
+        // TODO(tokens): no exact role for text-gray-500 #6b7280
+        className="flex-shrink-0 text-gray-500"
+      />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+        <span
+          // TODO(tokens): no exact role for text-gray-900 #111827
+          className="truncate text-sm font-medium text-gray-900"
+        >
           {metadata?.filename || label}
         </span>
         {mimeType && (
-          <span className="text-xs text-gray-500 dark:text-gray-400">
+          <span
+            // TODO(tokens): no exact role for text-gray-500 #6b7280
+            className="text-xs text-gray-500"
+          >
             {mimeType}
           </span>
         )}
@@ -159,9 +179,10 @@ function renderWorkspaceFile(
       <a
         href={downloadURL}
         download
-        className="flex-shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+        // TODO(tokens): no exact role for text-gray-500 #6b7280, hover:bg-gray-200 #e5e7eb, hover:text-gray-700 #374151; #e5e7eb is sidebar-border, the sidebar only
+        className="flex-shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700"
       >
-        <DownloadSimple size={18} />
+        <Icon icon={Download04Icon} size={18} />
       </a>
     </div>
   );
@@ -174,7 +195,7 @@ function getCopyContentWorkspaceFile(
   const uri = parseWorkspaceURI(String(value));
   if (!uri) return null;
 
-  const downloadURL = buildDownloadURL(uri.fileID);
+  const downloadURL = buildDownloadURL(uri.fileID, metadata?.shareToken);
   const mimeType =
     uri.mimeType || metadata?.mimeType || "application/octet-stream";
 
@@ -205,7 +226,7 @@ function getDownloadContentWorkspaceFile(
   const filename = metadata?.filename || `file.${ext}`;
 
   return {
-    data: buildDownloadURL(uri.fileID),
+    data: buildDownloadURL(uri.fileID, metadata?.shareToken),
     filename,
     mimeType,
   };

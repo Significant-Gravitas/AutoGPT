@@ -2,11 +2,12 @@
 
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
-import { FileTextIcon } from "@phosphor-icons/react";
 import { formatDistanceToNow } from "date-fns";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";
 import { TemplateActionsDropdown } from "./TemplateActionsDropdown";
+import { File02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   template: LibraryAgentPreset;
@@ -26,8 +27,8 @@ export function TemplateListItem({
   return (
     <SidebarItemCard
       icon={
-        <IconWrapper className="border-blue-50 bg-blue-50">
-          <FileTextIcon size={16} className="text-zinc-700" weight="bold" />
+        <IconWrapper className="border-info-surface bg-info-surface">
+          <Icon icon={File02Icon} size={16} className="text-foreground-body" />
         </IconWrapper>
       }
       title={template.name}

@@ -58,12 +58,12 @@ You can learn more under: [Build your own Blocks](new_blocks.md)
 
 ## Available Language Models
 
-The platform comes pre-integrated with cutting-edge LLM providers:
+The full model list — models, capabilities, context windows, and pricing — lives in the model catalog checked into the platform itself (`autogpt_platform/backend/backend/data/llm_registry/catalog.py`), so every install ships with the exact list its code supports. The platform comes pre-integrated with cutting-edge LLM providers:
 
 * OpenAI - <https://openai.com/>
 * Anthropic - <https://www.anthropic.com/>
 * Groq - <https://groq.com/>
-* Llama - <https://llamaindex.ai/>
+* Llama - <https://www.llama.com/>
 * AI/ML API - <https://aimlapi.com/>
   * AI/ML API provides 300+ AI models including Deepseek, Gemini, ChatGPT. The models run at enterprise-grade rate limits and uptimes.
 
@@ -73,10 +73,12 @@ We've adopted a dual-license approach to balance open collaboration with sustain
 
 * **MIT License**: The majority of the AutoGPT repository remains under this license.
 * **Polyform Shield License**: Applies to the new `autogpt_platform` folder.
+* **Docker image**: The single-container image also bundles third-party services under their own licenses, including FalkorDB under SSPL-1.0. Their license files are in the image under `/usr/share/licenses/`.
 
 This strategy allows us to share previously closed-source components, fostering a vibrant ecosystem of developers and users.
 
 ## Ready to Get Started?
 
-* Read the [Getting Started docs](getting-started.md) to self-host.
-* [Join the waitlist](https://agpt.co/waitlist) for the cloud-hosted beta.
+* **Cloud:** Read the [Getting Started (Cloud)](getting-started-cloud.md) guide to start using the hosted platform immediately.
+* **Self-Host:** Run the whole platform from one Docker image, `significantgravitas/autogpt` on Docker Hub, with the [single-container guide](single-container.md), or read the [Self-Hosting Guide](getting-started.md) to run each service with Docker Compose on your own infrastructure.
+* **Build on it:** Run and build agents from your own code with the [AutoGPT Platform API](integrating/api-guide.md), or give Claude, Cursor or another AI tool access through its [MCP server](integrating/mcp-server.md).

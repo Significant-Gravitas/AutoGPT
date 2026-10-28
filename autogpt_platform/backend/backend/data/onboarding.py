@@ -1,25 +1,33 @@
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal, Optional
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import prisma
 import pydantic
-from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
 
 from backend.api.features.store.model import StoreAgentDetails
 from backend.api.model import OnboardingNotificationPayload
-from backend.data import execution as execution_db
 from backend.data.credit import get_user_credit_model
+from backend.data.db import transaction
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,
 )
+from backend.data.onboarding_steps import (
+    FrontendOnboardingStep as FrontendOnboardingStep,
+)
+from backend.data.onboarding_steps import OnboardingStep
+from backend.data.onboarding_wizard import (
+    OnboardingWizardConflict,
+    OnboardingWizardProgress,
+)
+from backend.data.subscription_trial import get_subscription_trial
 from backend.data.user import get_user_by_id
-from backend.util.cache import cached
 from backend.util.json import SafeJson
+from backend.util.product_analytics import track_onboarding_completed
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 # Mapping from user reason id to categories to search for when choosing agent to show
@@ -31,24 +39,23 @@ REASON_MAPPING: dict[str, list[str]] = {
     "personal_productivity": ["personal", "productivity"],
 }
 POINTS_AGENT_COUNT = 50  # Number of agents to calculate points for
-MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
 
-FrontendOnboardingStep = Literal[
-    OnboardingStep.WELCOME,
-    OnboardingStep.USAGE_REASON,
-    OnboardingStep.INTEGRATIONS,
-    OnboardingStep.AGENT_CHOICE,
-    OnboardingStep.AGENT_NEW_RUN,
-    OnboardingStep.AGENT_INPUT,
-    OnboardingStep.CONGRATS,
-    OnboardingStep.VISIT_COPILOT,
-    OnboardingStep.MARKETPLACE_VISIT,
-    OnboardingStep.BUILDER_OPEN,
-]
+# OnboardingStep and FrontendOnboardingStep are imported from
+# backend.data.onboarding_steps and remain importable from this module for
+# backwards compatibility (`from backend.data.onboarding import OnboardingStep`).
 
 
 class UserOnboardingUpdate(pydantic.BaseModel):
+    wizardProgress: OnboardingWizardProgress | None = None
+    wizardRevision: int | None = pydantic.Field(default=None, ge=0, strict=True)
+    wizardUserId: str | None = pydantic.Field(
+        default=None, min_length=1, max_length=128, strict=True
+    )
     walletShown: Optional[bool] = None
+    # Typed enum so the PATCH endpoint validates step names at the boundary
+    # (invalid values get a 422 instead of being stored and then 500-ing reads,
+    # which type `notified` as list[OnboardingStep]). The API merges this with
+    # the existing column rather than treating it as authoritative.
     notified: Optional[list[OnboardingStep]] = None
     usageReason: Optional[str] = None
     integrations: Optional[list[str]] = None
@@ -57,14 +64,60 @@ class UserOnboardingUpdate(pydantic.BaseModel):
     agentInput: Optional[dict[str, Any]] = None
     onboardingAgentExecutionId: Optional[str] = None
 
+    @pydantic.model_validator(mode="after")
+    def require_wizard_revision(self) -> "UserOnboardingUpdate":
+        if "wizardProgress" in self.model_fields_set and self.wizardRevision is None:
+            raise ValueError("wizardRevision is required when saving wizardProgress")
+        if "wizardProgress" in self.model_fields_set and self.wizardUserId is None:
+            raise ValueError("wizardUserId is required when saving wizardProgress")
+        return self
 
-async def get_user_onboarding(user_id: str):
+
+async def get_user_onboarding(user_id: str) -> UserOnboarding:
+    """Read a user's onboarding state, creating nothing.
+
+    A user with no row yet gets an unsaved all-defaults one, so this works
+    before the ``User`` row exists. Write paths use ``ensure_user_onboarding``.
+    """
+    onboarding = await UserOnboarding.prisma().find_unique(where={"userId": user_id})
+    return onboarding or _default_user_onboarding(user_id)
+
+
+async def ensure_user_onboarding(user_id: str) -> UserOnboarding:
+    """Read a user's onboarding state, creating the row if it is missing.
+
+    For write paths, which follow up with an ``update`` that has nothing to
+    target otherwise. Unlike the read above this does require a provisioned
+    ``User``, which is correct: there is no onboarding progress to record for
+    an account the platform does not have.
+    """
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
         data={
             "create": UserOnboardingCreateInput(userId=user_id),
             "update": {},
         },
+    )
+
+
+def _default_user_onboarding(user_id: str) -> UserOnboarding:
+    """An unsaved row mirroring the column defaults in ``schema.prisma``.
+
+    ``id``/``createdAt`` are placeholders: the API model this is serialized
+    through exposes neither, so they never reach a client.
+    """
+    return UserOnboarding(
+        id="",
+        createdAt=datetime.now(timezone.utc),
+        completedSteps=[],
+        walletShown=False,
+        notified=[],
+        rewardedFor=[],
+        integrations=[],
+        agentRuns=0,
+        consecutiveRunDays=0,
+        wizardRevision=0,
+        userId=user_id,
     )
 
 
@@ -75,6 +128,9 @@ async def reset_user_onboarding(user_id: str):
             "create": UserOnboardingCreateInput(userId=user_id),
             "update": {
                 "completedSteps": [],
+                # Prisma refuses a bare None for a Json column.
+                "wizardProgress": SafeJson(None),
+                "wizardRevision": {"increment": 1},
                 "walletShown": False,
                 "notified": [],
                 "usageReason": None,
@@ -92,12 +148,21 @@ async def reset_user_onboarding(user_id: str):
 
 
 async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
+    if "wizardProgress" in data.model_fields_set and data.wizardUserId != user_id:
+        raise OnboardingWizardConflict()
     update: UserOnboardingUpdateInput = {}
-    onboarding = await get_user_onboarding(user_id)
+    # A write path: the draft save below is a conditional update, which has no
+    # row to match for a user whose first write this is.
+    onboarding = await ensure_user_onboarding(user_id)
     if data.walletShown:
         update["walletShown"] = data.walletShown
     if data.notified is not None:
-        update["notified"] = list(set(data.notified + onboarding.notified))
+        # str(step): persist plain str so the merge with the stored str[] column
+        # stays list[str]. str() works whether the value is an OnboardingStep
+        # (StrEnum) or already a plain str, so it can't AttributeError.
+        update["notified"] = list(
+            set(onboarding.notified + [str(step) for step in data.notified])
+        )
     if data.usageReason is not None:
         update["usageReason"] = data.usageReason
     if data.integrations is not None:
@@ -110,6 +175,15 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["agentInput"] = SafeJson(data.agentInput)
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
+    if "wizardProgress" in data.model_fields_set:
+        update["wizardProgress"] = SafeJson(
+            data.wizardProgress.model_dump(mode="json")
+            if data.wizardProgress is not None
+            else None
+        )
+        if data.wizardRevision is None:
+            raise ValueError("wizardRevision is required when saving wizardProgress")
+        return await _save_wizard_progress(user_id, data.wizardRevision, update)
 
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
@@ -120,39 +194,47 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     )
 
 
+async def _save_wizard_progress(
+    user_id: str, revision: int, update: UserOnboardingUpdateInput
+) -> UserOnboarding:
+    async with transaction() as tx:
+        changed = await tx.useronboarding.update_many(
+            where={"userId": user_id, "wizardRevision": revision},
+            data={**update, "wizardRevision": {"increment": 1}},
+        )
+        if changed != 1:
+            raise OnboardingWizardConflict()
+        return await tx.useronboarding.find_unique_or_raise(where={"userId": user_id})
+
+
 async def _reward_user(user_id: str, onboarding: UserOnboarding, step: OnboardingStep):
+    """Internal grant: callers must derive user_id from authenticated identity
+    or a verified webhook's stored owner, never an untrusted request field."""
     reward = 0
     match step:
-        # Welcome bonus for visiting copilot ($5 = 500 credits)
-        case OnboardingStep.VISIT_COPILOT:
-            reward = 500
-        # Reward user when they clicked New Run during onboarding
-        # This is because they need credits before scheduling a run (next step)
-        # This is seen as a reward for the GET_RESULTS step in the wallet
+        # The wizard fires ONBOARDING_COMPLETE on completion; this is the grant
+        # backing the wallet's "Complete onboarding" task ($3).
+        case OnboardingStep.ONBOARDING_COMPLETE:
+            reward = 300
+            trial = await get_subscription_trial(user_id)
+            if trial and trial.consumed_at:
+                reward = trial.offer.onboarding_credit_amount
         case OnboardingStep.AGENT_NEW_RUN:
             reward = 300
-        case OnboardingStep.MARKETPLACE_VISIT:
-            reward = 100
         case OnboardingStep.MARKETPLACE_ADD_AGENT:
             reward = 100
-        case OnboardingStep.MARKETPLACE_RUN_AGENT:
-            reward = 100
-        case OnboardingStep.BUILDER_SAVE_AGENT:
-            reward = 100
-        case OnboardingStep.RE_RUN_AGENT:
+        case OnboardingStep.LIBRARY_RUN_AGENT:
             reward = 100
         case OnboardingStep.SCHEDULE_AGENT:
             reward = 100
-        case OnboardingStep.RUN_AGENTS:
-            reward = 300
         case OnboardingStep.RUN_3_DAYS:
             reward = 100
         case OnboardingStep.TRIGGER_WEBHOOK:
             reward = 100
         case OnboardingStep.RUN_14_DAYS:
-            reward = 300
+            reward = 100
         case OnboardingStep.RUN_AGENTS_100:
-            reward = 300
+            reward = 100
 
     if reward == 0:
         return
@@ -166,7 +248,9 @@ async def _reward_user(user_id: str, onboarding: UserOnboarding, step: Onboardin
     await UserOnboarding.prisma().update(
         where={"userId": user_id},
         data={
-            "rewardedFor": list(set(onboarding.rewardedFor + [step])),
+            # str(step): persist a plain str (consistent with
+            # update_user_onboarding); robust whether step is a StrEnum or a str.
+            "rewardedFor": list(set(onboarding.rewardedFor + [str(step)])),
         },
     )
 
@@ -175,14 +259,18 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
     """
     Completes the specified onboarding step for the user if not already completed.
     """
-    onboarding = await get_user_onboarding(user_id)
+    onboarding = await ensure_user_onboarding(user_id)
     if step not in onboarding.completedSteps:
         await UserOnboarding.prisma().update(
             where={"userId": user_id},
             data={
-                "completedSteps": list(set(onboarding.completedSteps + [step])),
+                # str(step): persist a plain str (see update_user_onboarding);
+                # robust whether step is a StrEnum or a str.
+                "completedSteps": list(set(onboarding.completedSteps + [str(step)])),
             },
         )
+        if step == OnboardingStep.ONBOARDING_COMPLETE:
+            track_onboarding_completed(user_id=user_id)
         await _reward_user(user_id, onboarding, step)
         await _send_onboarding_notification(user_id, step)
 
@@ -201,23 +289,6 @@ async def _send_onboarding_notification(
     await AsyncRedisNotificationEventBus().publish(
         NotificationEvent(user_id=user_id, payload=payload)
     )
-
-
-async def complete_re_run_agent(user_id: str, graph_id: str) -> None:
-    """
-    Complete RE_RUN_AGENT step when a user runs a graph they've run before.
-    Keeps overhead low by only counting executions if the step is still pending.
-    """
-    onboarding = await get_user_onboarding(user_id)
-    if OnboardingStep.RE_RUN_AGENT in onboarding.completedSteps:
-        return
-
-    # Includes current execution, so count > 1 means there was at least one prior run.
-    previous_exec_count = await execution_db.get_graph_executions_count(
-        user_id=user_id, graph_id=graph_id
-    )
-    if previous_exec_count > 1:
-        await complete_onboarding_step(user_id, OnboardingStep.RE_RUN_AGENT)
 
 
 def _clean_and_split(text: str) -> list[str]:
@@ -325,8 +396,6 @@ def _get_run_milestone_steps(
     new_run_count: int, consecutive_days: int
 ) -> list[OnboardingStep]:
     milestones: list[OnboardingStep] = []
-    if new_run_count >= 10:
-        milestones.append(OnboardingStep.RUN_AGENTS)
     if new_run_count >= 100:
         milestones.append(OnboardingStep.RUN_AGENTS_100)
     if consecutive_days >= 3:
@@ -346,7 +415,7 @@ async def increment_onboarding_runs(user_id: str):
     Increment a user's run counters and trigger any onboarding milestones.
     """
     user_timezone = await _get_user_timezone(user_id)
-    onboarding = await get_user_onboarding(user_id)
+    onboarding = await ensure_user_onboarding(user_id)
     new_run_count = onboarding.agentRuns + 1
     last_run_at, consecutive_run_days = _calculate_consecutive_run_days(
         onboarding.lastRunAt, onboarding.consecutiveRunDays, user_timezone
@@ -458,13 +527,39 @@ def format_onboarding_for_extraction(
     return "\n\n".join(lines)
 
 
-@cached(maxsize=1, ttl_seconds=300)  # Cache for 5 minutes since this rarely changes
-async def onboarding_enabled() -> bool:
+def format_brain_dump_for_extraction(
+    user_name: str,
+    user_role: str,
+    transcript: str,
+) -> str:
+    """Format a spoken brain dump for the same LLM extraction pass.
+
+    The transcript is unpunctuated, rambling, first-person speech rather
+    than form answers, so it gets its own framing: the extractor is told
+    what it is looking at and which fields the "what would you hand off"
+    part of a dump maps onto, otherwise it tends to file everything under
+    ``additional_notes``.
+
+    The transcript is passed **whole** — extraction runs against the
+    complete text even when a shortened version is what gets injected into
+    the copilot's first prompt.
     """
-    Check if onboarding should be enabled based on store agent count.
-    Cached to prevent repeated slow database queries.
-    """
-    # Use a more efficient query that stops counting after finding enough agents
-    count = await prisma.models.StoreAgent.prisma().count(take=MIN_AGENT_COUNT + 1)
-    # Onboarding is enabled if there are at least 2 agents in the store
-    return count >= MIN_AGENT_COUNT
+    name = " ".join(user_name.strip().split())
+    role = " ".join(user_role.strip().split())
+
+    return "\n\n".join(
+        [
+            f"Q: What is your name?\nA: {name}",
+            f"Q: What best describes your role?\nA: {role}",
+            (
+                "The following is a transcript of the user speaking freely for a "
+                "few minutes about their work, in answer to: what keeps stealing "
+                "your week? It is unedited speech — expect filler words, "
+                "self-corrections and no punctuation. Extract only what the user "
+                "actually said; never invent details. Work they describe wanting "
+                "to hand off belongs in manual_tasks and automation_goals; tools "
+                "they name belong in current_software.\n\n"
+                f"Transcript:\n{transcript.strip()}"
+            ),
+        ]
+    )

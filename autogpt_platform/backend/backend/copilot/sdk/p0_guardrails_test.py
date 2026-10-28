@@ -1,21 +1,52 @@
 """Tests for P0 guardrails: _resolve_fallback_model, security env vars, TMPDIR."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.constants import is_transient_api_error
+from backend.copilot.constants import (
+    COMPACTION_TOOL_NAME,
+    is_transient_api_error,
+    is_transient_assistant_error,
+)
+from backend.copilot.model import ChatSession
+from backend.copilot.response_model import (
+    StreamCompactionProgress,
+    StreamToolInputAvailable,
+    StreamToolInputStart,
+    StreamToolOutputAvailable,
+)
+from backend.copilot.sdk.compaction import CompactionTracker
+from backend.copilot.sdk.openrouter_cost import TurnGenerations
+from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES, _TokenUsage
+from backend.copilot.sdk.transient_retry_test import _overloaded, _reply, _Turn
+
+_TOOL_ROW_EVENTS = (
+    StreamToolInputStart,
+    StreamToolInputAvailable,
+    StreamToolOutputAvailable,
+)
 
 
 def _make_config(**overrides) -> ChatConfig:
-    """Create a ChatConfig with safe defaults, applying *overrides*."""
+    """Create a ChatConfig with safe defaults, applying *overrides*.
+
+    SDK model fields are pinned to anthropic/* so the
+    ``_validate_sdk_model_vendor_compatibility`` model_validator allows
+    construction with ``use_openrouter=False`` (the default here).
+    """
     defaults = {
         "use_claude_code_subscription": False,
         "use_openrouter": False,
         "api_key": None,
         "base_url": None,
+        "thinking_standard_model": "anthropic/claude-sonnet-4-6",
+        "thinking_advanced_model": "anthropic/claude-opus-4-7",
+        # Aux key satisfies ``_validate_aux_client_for_direct_main`` —
+        # these tests target SDK behavior, not the aux check.
+        "aux_api_key": "or-aux-key",
     }
     defaults.update(overrides)
     return ChatConfig(**defaults)
@@ -39,10 +70,13 @@ class TestResolveFallbackModel:
 
             assert _resolve_fallback_model() is None
 
-    def test_strips_provider_prefix(self):
-        """OpenRouter-style 'anthropic/claude-sonnet-4-...' is stripped."""
+    def test_keeps_full_slug_when_openrouter_active(self):
+        """OpenRouter routes by ``vendor/model`` slug — _normalize_model_name
+        now preserves the prefix when openrouter_active is True so non-
+        Anthropic vendors stay routable.  Anthropic slugs are passed
+        through unchanged in this mode (PR #12878)."""
         cfg = _make_config(
-            claude_agent_fallback_model="anthropic/claude-sonnet-4-20250514",
+            claude_agent_fallback_model="anthropic/claude-sonnet-4-6",
             use_openrouter=True,
             api_key="sk-test",
             base_url="https://openrouter.ai/api/v1",
@@ -52,8 +86,7 @@ class TestResolveFallbackModel:
 
             result = _resolve_fallback_model()
 
-        assert result == "claude-sonnet-4-20250514"
-        assert "/" not in result
+        assert result == "anthropic/claude-sonnet-4-6"
 
     def test_dots_replaced_for_direct_anthropic(self):
         """Direct Anthropic requires hyphen-separated versions."""
@@ -201,7 +234,13 @@ class TestConfigDefaults:
 
     def test_max_turns_default(self):
         cfg = _make_config()
-        assert cfg.claude_agent_max_turns == 50
+        assert cfg.agent_max_turns == 100
+
+    def test_sdk_step_checkin_default(self):
+        # The SDK path checks in after a long run instead of stopping at
+        # ``agent_max_turns``; "Keep going" starts a fresh count.
+        cfg = _make_config()
+        assert cfg.sdk_step_checkin == 450
 
     def test_max_budget_usd_default(self):
         cfg = _make_config()
@@ -239,8 +278,12 @@ class TestBuildSdkEnv:
         assert env["ANTHROPIC_AUTH_TOKEN"] == ""
         assert env["ANTHROPIC_BASE_URL"] == ""
 
-    def test_direct_anthropic_inherits_api_key(self):
-        """Mode 2: direct Anthropic doesn't set ANTHROPIC_* keys (inherits from parent)."""
+    def test_direct_anthropic_carries_the_parents_api_key(self, monkeypatch):
+        """Mode 2: direct Anthropic states the deployment's key, which the
+        launch no longer inherits with the rest of the parent's environment."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-deployment-key")
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
         cfg = _make_config(
             use_claude_code_subscription=False,
             use_openrouter=False,
@@ -250,7 +293,7 @@ class TestBuildSdkEnv:
 
             env = build_sdk_env()
 
-        assert "ANTHROPIC_API_KEY" not in env
+        assert env["ANTHROPIC_API_KEY"] == "sk-ant-deployment-key"
         assert "ANTHROPIC_AUTH_TOKEN" not in env
         assert "ANTHROPIC_BASE_URL" not in env
 
@@ -306,7 +349,7 @@ class TestBuildSdkEnv:
         assert env["CLAUDE_CODE_REFRESH_TOKEN"] == ""
 
     def test_direct_anthropic_clears_oauth_tokens(self):
-        """Mode 2: OAuth tokens are cleared so CLI uses ANTHROPIC_API_KEY from parent env."""
+        """Mode 2: OAuth tokens are cleared so CLI uses the deployment's ANTHROPIC_API_KEY."""
         cfg = _make_config(
             use_claude_code_subscription=False,
             use_openrouter=False,
@@ -415,6 +458,35 @@ class TestIsTransientApiError:
         assert is_transient_api_error("econnreset")
 
 
+# The bundled CLI's (2.1.284) wording for API errors it gives up on.
+_CLI_529 = (
+    "API Error: 529 Overloaded. This is a server-side issue, usually temporary "
+    "— try again in a moment."
+)
+_CLI_AT_CAPACITY = (
+    "API Error: Repeated 529 Overloaded errors. The API is at capacity — this "
+    "is usually temporary. Try again in a moment."
+)
+
+
+class TestIsTransientAssistantError:
+    """An API error the CLI reports in an AssistantMessage is transient by its
+    category, whatever the CLI's current wording says."""
+
+    @pytest.mark.parametrize("content", [_CLI_529, _CLI_AT_CAPACITY, ""])
+    @pytest.mark.parametrize("category", ["server_error", "rate_limit"])
+    def test_retryable_categories(self, category: str, content: str):
+        assert is_transient_assistant_error(category, content)
+
+    @pytest.mark.parametrize(
+        "category",
+        ["authentication_failed", "billing_error", "invalid_request", "unknown"],
+    )
+    def test_other_categories_need_a_transient_text(self, category: str):
+        assert not is_transient_assistant_error(category, "Prompt is too long")
+        assert is_transient_assistant_error(category, "upstream status code 503")
+
+
 # ---------------------------------------------------------------------------
 # _HandledStreamError.already_yielded contract
 # ---------------------------------------------------------------------------
@@ -497,21 +569,21 @@ class TestConfigValidators:
 
     def test_max_turns_rejects_zero(self):
         with pytest.raises(ValidationError):
-            _make_config(claude_agent_max_turns=0)
+            _make_config(agent_max_turns=0)
 
     def test_max_turns_rejects_negative(self):
         with pytest.raises(ValidationError):
-            _make_config(claude_agent_max_turns=-1)
+            _make_config(agent_max_turns=-1)
 
     def test_max_turns_rejects_above_10000(self):
         with pytest.raises(ValidationError):
-            _make_config(claude_agent_max_turns=10001)
+            _make_config(agent_max_turns=10001)
 
     def test_max_turns_accepts_boundary_values(self):
-        cfg_low = _make_config(claude_agent_max_turns=1)
-        assert cfg_low.claude_agent_max_turns == 1
-        cfg_high = _make_config(claude_agent_max_turns=10000)
-        assert cfg_high.claude_agent_max_turns == 10000
+        cfg_low = _make_config(agent_max_turns=1)
+        assert cfg_low.agent_max_turns == 1
+        cfg_high = _make_config(agent_max_turns=10000)
+        assert cfg_high.agent_max_turns == 10000
 
     def test_max_budget_rejects_zero(self):
         with pytest.raises(ValidationError):
@@ -671,6 +743,13 @@ class TestNextTransientBackoff:
 # ---------------------------------------------------------------------------
 
 
+def _backoff_ctx(message_id: str = "msg-id", session_id: str = "sess-id") -> MagicMock:
+    """The stream a backoff relaunches, with no CLI working dir to clear."""
+    return MagicMock(
+        message_id=message_id, session_id=session_id, sdk_cwd="", log_prefix=""
+    )
+
+
 class TestDoTransientBackoff:
     """Unit tests for _do_transient_backoff.
 
@@ -685,12 +764,12 @@ class TestDoTransientBackoff:
         from backend.copilot.response_model import StreamStatus
         from backend.copilot.sdk.service import _do_transient_backoff
 
-        state = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
         state.usage = MagicMock()
 
         events = []
         with patch("asyncio.sleep", new=AsyncMock()):
-            async for evt in _do_transient_backoff(5, state, "msg-id", "sess-id"):
+            async for evt in _do_transient_backoff(5, state, _backoff_ctx()):
                 events.append(evt)
 
         assert len(events) == 1
@@ -703,12 +782,12 @@ class TestDoTransientBackoff:
 
         from backend.copilot.sdk.service import _do_transient_backoff
 
-        state = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
         state.usage = MagicMock()
 
         mock_sleep = AsyncMock()
         with patch("asyncio.sleep", new=mock_sleep):
-            async for _ in _do_transient_backoff(7, state, "msg-id", "sess-id"):
+            async for _ in _do_transient_backoff(7, state, _backoff_ctx()):
                 pass
 
         mock_sleep.assert_called_once_with(7)
@@ -720,7 +799,7 @@ class TestDoTransientBackoff:
         from backend.copilot.sdk.service import _do_transient_backoff
 
         original_adapter = MagicMock()
-        state = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
         state.adapter = original_adapter
         state.usage = MagicMock()
 
@@ -730,26 +809,46 @@ class TestDoTransientBackoff:
         ):
             new_adapter = MagicMock()
             mock_cls.return_value = new_adapter
-            async for _ in _do_transient_backoff(3, state, "msg-1", "sess-1"):
+            async for _ in _do_transient_backoff(
+                3, state, _backoff_ctx("msg-1", "sess-1")
+            ):
                 pass
 
         mock_cls.assert_called_once_with(message_id="msg-1", session_id="sess-1")
         assert state.adapter is new_adapter
 
-    async def test_resets_usage_after_yield(self):
-        """state.usage.reset() is called so the next attempt starts with clean counters."""
+    async def test_keeps_reported_usage_and_clears_the_cli_baseline(self):
+        """A retry keeps the spend already reported, but re-reads the CLI
+        baseline at relaunch, so the failed attempt's unreported spend is not
+        charged."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from backend.copilot.sdk.service import _do_transient_backoff
 
-        state = MagicMock()
-        state.usage = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
+        state.usage = _TokenUsage(
+            prompt_tokens=100,
+            completion_tokens=10,
+            cache_read_tokens=20,
+            cache_creation_tokens=30,
+            cost_usd=0.02,
+            cli_cost_usd=0.1,
+            cli_session_total_usd=1.1,
+        )
 
         with patch("asyncio.sleep", new=AsyncMock()):
-            async for _ in _do_transient_backoff(2, state, "msg-id", "sess-id"):
+            async for _ in _do_transient_backoff(2, state, _backoff_ctx()):
                 pass
 
-        state.usage.reset.assert_called_once()
+        assert state.usage == _TokenUsage(
+            prompt_tokens=100,
+            completion_tokens=10,
+            cache_read_tokens=20,
+            cache_creation_tokens=30,
+            cost_usd=0.02,
+            cli_cost_usd=0.1,
+            cli_session_total_usd=None,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -828,6 +927,76 @@ class TestEphemeralEventTypesConstant:
         from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
 
         assert StreamHeartbeat in _EPHEMERAL_EVENT_TYPES
+
+    def test_compaction_progress_is_in_ephemeral_types(self):
+        """A compaction row's progress phases ride along with the row's own
+        tool events, which decide whether the row counts; a phase is not
+        output of its own.
+        """
+        assert StreamCompactionProgress in _EPHEMERAL_EVENT_TYPES, (
+            "StreamCompactionProgress must be in _EPHEMERAL_EVENT_TYPES — a "
+            "cosmetic progress phase must not suppress the transient retry"
+        )
+
+    async def test_a_compaction_the_cli_ran_counts_as_output(self):
+        """The CLI's own compaction streams a row and persists it with the
+        attempt, so a relaunch would roll the row the user watched back out
+        of the chat: the row's tool events count, its progress phases do not.
+
+        Not relaunching keeps only a row that closed. A compaction cut short
+        never closes or persists its row: see
+        ``test_a_compaction_cut_short_by_a_529_leaves_its_row_unfinished``.
+
+        A pre-query compaction row never reaches this count: the retry loop
+        yields it outside the attempt.
+        """
+        tracker = CompactionTracker()
+        session = ChatSession.new(user_id="test-user", dry_run=False)
+        tracker.on_compact()
+        events = [
+            *tracker.emit_start_if_ready(),
+            *(await tracker.emit_end_if_ready(session)).events,
+        ]
+        counted = {
+            type(e).__name__
+            for e in events
+            if not isinstance(e, _EPHEMERAL_EVENT_TYPES)
+        }
+        assert counted == {
+            "StreamToolInputStart",
+            "StreamToolInputAvailable",
+            "StreamToolOutputAvailable",
+        }
+
+    async def test_a_compaction_cut_short_by_a_529_leaves_its_row_unfinished(
+        self, tmp_path, monkeypatch
+    ):
+        """The real loop: the CLI starts compacting, the row opens, then a 529.
+
+        The open row counts as streamed, so the launch is not relaunched and
+        the turn ends in the retryable error. The compaction never finished,
+        so its row is neither closed on the wire nor persisted. The frontend
+        hides a row left unfinished, so nothing the user can still see goes
+        missing on refresh.
+        """
+        turn = _Turn(tmp_path, monkeypatch)
+
+        await turn.run([[turn.precompact(), _overloaded()], _reply("gen-ok")])
+
+        assert len(turn.launched) == 1
+        assert [error.code for error in turn.errors()] == ["transient_api_error"]
+        row = {
+            type(e).__name__
+            for e in turn.events
+            if isinstance(e, _TOOL_ROW_EVENTS) and e.toolName == COMPACTION_TOOL_NAME
+        }
+        assert row == {"StreamToolInputStart", "StreamToolInputAvailable"}
+        persisted = [
+            tc["function"]["name"]
+            for message in turn.persisted_messages()
+            for tc in message.tool_calls or []
+        ]
+        assert COMPACTION_TOOL_NAME not in persisted
 
     def test_is_a_tuple(self):
         """isinstance() requires a tuple (not a list) as second argument."""
@@ -1031,7 +1200,7 @@ class TestHandledStreamErrorTransientRetry:
             # Second call: success — yield a content event
             yield StreamFinish()
 
-        state = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
         state.usage = MagicMock()
         state.transcript_builder = MagicMock()
         state.transcript_builder.snapshot.return_value = ([], None)
@@ -1061,7 +1230,7 @@ class TestHandledStreamErrorTransientRetry:
                     if backoff is not None:
                         with patch("asyncio.sleep", new=AsyncMock()):
                             async for evt in _do_transient_backoff(
-                                backoff, state, "msg-id", "sess-id"
+                                backoff, state, _backoff_ctx()
                             ):
                                 emitted.append(evt)
                         continue  # retry
@@ -1115,7 +1284,7 @@ class TestHandledStreamErrorTransientRetry:
             return
             yield  # noqa: B901
 
-        state = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
         state.usage = MagicMock()
         state.transcript_builder = MagicMock()
         state.transcript_builder.snapshot.return_value = ([], None)
@@ -1143,7 +1312,7 @@ class TestHandledStreamErrorTransientRetry:
                     if backoff is not None:
                         with patch("asyncio.sleep", new=AsyncMock()):
                             async for evt in _do_transient_backoff(
-                                backoff, state, "m", "s"
+                                backoff, state, _backoff_ctx()
                             ):
                                 emitted.append(evt)
                         continue
@@ -1220,7 +1389,7 @@ class TestGenericExceptionTransientRetry:
                 raise Exception("ECONNRESET")
             yield StreamFinish()
 
-        state = MagicMock()
+        state = MagicMock(generations=TurnGenerations())
         state.usage = MagicMock()
         state.transcript_builder = MagicMock()
         state.transcript_builder.snapshot.return_value = ([], None)
@@ -1249,7 +1418,7 @@ class TestGenericExceptionTransientRetry:
                     if backoff is not None:
                         with patch("asyncio.sleep", new=AsyncMock()):
                             async for evt in _do_transient_backoff(
-                                backoff, state, "m", "s"
+                                backoff, state, _backoff_ctx()
                             ):
                                 emitted.append(evt)
                         continue

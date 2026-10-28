@@ -1,15 +1,21 @@
 """Tests for workspace file tool helpers and path validation."""
 
 import base64
+import json
 import os
 import shutil
-from unittest.mock import AsyncMock, patch
+from datetime import UTC, datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.api.features.store.exceptions import VirusScanError
 from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
+from backend.copilot.google_data_redaction import GOOGLE_DATA_METADATA_KEY
+from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tools._test_data import make_session, setup_test_data
 from backend.copilot.tools.models import ErrorResponse
+from backend.copilot.tools.workdir import validate_ephemeral_path
 from backend.copilot.tools.workspace_files import (
     _MAX_LOCAL_TOOL_RESULT_BYTES,
     DeleteWorkspaceFileTool,
@@ -22,8 +28,8 @@ from backend.copilot.tools.workspace_files import (
     WriteWorkspaceFileTool,
     _read_local_tool_result,
     _resolve_write_content,
-    _validate_ephemeral_path,
 )
+from backend.data.workspace import WorkspaceFile
 
 # Re-export so pytest discovers the session-scoped fixture
 setup_test_data = setup_test_data
@@ -39,14 +45,14 @@ def ephemeral_dir(tmp_path, monkeypatch):
     session_dir.mkdir()
 
     monkeypatch.setattr(
-        "backend.copilot.tools.workspace_files.make_session_path",
+        "backend.copilot.tools.workdir.make_session_path",
         lambda session_id: str(session_dir),
     )
     return session_dir
 
 
 # ---------------------------------------------------------------------------
-# _validate_ephemeral_path
+# validate_ephemeral_path
 # ---------------------------------------------------------------------------
 
 
@@ -54,7 +60,7 @@ class TestValidateEphemeralPath:
     def test_valid_path(self, ephemeral_dir):
         target = ephemeral_dir / "file.txt"
         target.touch()
-        result = _validate_ephemeral_path(
+        result = validate_ephemeral_path(
             str(target), param_name="test", session_id="s1"
         )
         assert isinstance(result, str)
@@ -62,7 +68,7 @@ class TestValidateEphemeralPath:
 
     def test_path_traversal_rejected(self, ephemeral_dir):
         evil_path = str(ephemeral_dir / ".." / "etc" / "passwd")
-        result = _validate_ephemeral_path(evil_path, param_name="test", session_id="s1")
+        result = validate_ephemeral_path(evil_path, param_name="test", session_id="s1")
         # Should return ErrorResponse
         from backend.copilot.tools.models import ErrorResponse
 
@@ -73,7 +79,7 @@ class TestValidateEphemeralPath:
         other_dir.mkdir()
         target = other_dir / "steal.txt"
         target.touch()
-        result = _validate_ephemeral_path(
+        result = validate_ephemeral_path(
             str(target), param_name="test", session_id="s1"
         )
         from backend.copilot.tools.models import ErrorResponse
@@ -86,7 +92,7 @@ class TestValidateEphemeralPath:
         outside_file.write_text("secret")
         symlink = ephemeral_dir / "link.txt"
         symlink.symlink_to(outside_file)
-        result = _validate_ephemeral_path(
+        result = validate_ephemeral_path(
             str(symlink), param_name="test", session_id="s1"
         )
         from backend.copilot.tools.models import ErrorResponse
@@ -98,7 +104,7 @@ class TestValidateEphemeralPath:
         nested.mkdir(parents=True)
         target = nested / "data.csv"
         target.touch()
-        result = _validate_ephemeral_path(
+        result = validate_ephemeral_path(
             str(target), param_name="test", session_id="s1"
         )
         assert isinstance(result, str)
@@ -596,6 +602,9 @@ async def test_read_workspace_file_no_fallback_when_resolve_succeeds(setup_test_
         mime_type = "text/plain"
         size_bytes = len(fake_content)
 
+        def __init__(self) -> None:
+            self.metadata: dict = {}
+
     mock_resolve = AsyncMock(return_value=(fake_file_id, _FakeFileInfo()))
 
     mock_manager = AsyncMock()
@@ -623,3 +632,676 @@ async def test_read_workspace_file_no_fallback_when_resolve_succeeds(setup_test_
     # Normal workspace path must have produced a content response.
     assert isinstance(result, WorkspaceFileContentResponse)
     assert base64.b64decode(result.content_base64) == fake_content
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_read_workspace_file_redirects_sdk_tool_result_shorthand(
+    setup_test_data,
+):
+    """A shorthand SDK path (``tool-outputs/<id>.json``) that doesn't
+    resolve in cloud workspace and doesn't exist on disk must return the
+    redirect hint pointing at ``read_tool_result`` / ``@@agptfile``
+    rather than the generic ``Path not allowed``."""
+    user = setup_test_data["user"]
+    session = make_session(user.id)
+
+    mock_resolve = AsyncMock(
+        return_value=ErrorResponse(
+            message="Path not allowed",
+            session_id=session.session_id,
+        )
+    )
+    with patch("backend.copilot.tools.workspace_files._resolve_file", mock_resolve):
+        read_tool = ReadWorkspaceFileTool()
+        result = await read_tool._execute(
+            user_id=user.id,
+            session=session,
+            path="tool-outputs/toolu_abc.json",
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert "read_tool_result" in result.message
+    assert "@@agptfile" in result.message
+
+
+# ---------------------------------------------------------------------------
+# WriteWorkspaceFileTool exception handling (quota, virus, scan errors)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestWriteWorkspaceFileToolWorkingFiles:
+    """The write reports what the workspace marked, for the activity log."""
+
+    async def _write(self, filename: str, is_internal: bool):
+        session = make_session("user-1")
+        record = WorkspaceFile(
+            id="file-1",
+            workspace_id="ws-1",
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            name=filename,
+            path=f"/sessions/{session.session_id}/{filename}",
+            storage_path="local://file-1",
+            mime_type="application/json",
+            size_bytes=2,
+            is_internal=is_internal,
+        )
+        mock_manager = AsyncMock()
+        mock_manager.write_file = AsyncMock(return_value=record)
+        with patch(
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
+            AsyncMock(return_value=mock_manager),
+        ):
+            tool = WriteWorkspaceFileTool()
+            result = await tool._execute(
+                user_id="user-1", session=session, filename=filename, content="{}"
+            )
+        return tool.activity_event(session=session, result=result, filename=filename)
+
+    async def test_a_working_file_leaves_no_activity(self):
+        assert await self._write("build_state.json", is_internal=True) is None
+
+    async def test_a_deliverable_is_reported(self):
+        draft = await self._write("sticker-catalog.json", is_internal=False)
+
+        assert draft is not None
+        assert draft.title == "sticker-catalog.json"
+
+
+class TestWriteWorkspaceFileToolErrorHandling:
+    """Verify WriteWorkspaceFileTool returns proper ErrorResponse for exceptions."""
+
+    async def _execute_write(self, side_effect, setup_test_data):
+        """Helper: run WriteWorkspaceFileTool with mocked write_file."""
+        user = setup_test_data["user"]
+        session = make_session(user.id)
+
+        mock_manager = AsyncMock()
+        mock_manager.write_file = AsyncMock(side_effect=side_effect)
+
+        with patch(
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
+            AsyncMock(return_value=mock_manager),
+        ):
+            tool = WriteWorkspaceFileTool()
+            return await tool._execute(
+                user_id=user.id,
+                session=session,
+                filename="test.txt",
+                content="hello",
+            )
+
+    async def test_quota_exceeded_returns_error_response(self, setup_test_data):
+        """Quota exceeded (ValueError) → ErrorResponse with storage message + recovery hint."""
+        result = await self._execute_write(
+            ValueError("Storage limit exceeded: 250 MB used of 250 MB (100.0%)"),
+            setup_test_data,
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "Storage limit exceeded" in result.message
+        # The agent needs an actionable hint so it can offer to clean up rather
+        # than just relaying the error to the user.
+        assert "delete_workspace_file" in result.message
+        assert "list_workspace_files" in result.message
+
+    async def test_virus_detected_returns_error_response(self, setup_test_data):
+        """VirusDetectedError → ErrorResponse with virus message."""
+        from backend.api.features.store.exceptions import VirusDetectedError
+
+        result = await self._execute_write(
+            VirusDetectedError("Eicar-Test-Signature"),
+            setup_test_data,
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "Virus detected" in result.message
+
+    async def test_virus_scan_error_returns_error_response(self, setup_test_data):
+        """VirusScanError (infra failure) → ErrorResponse with scan message."""
+        from backend.api.features.store.exceptions import VirusScanError
+
+        result = await self._execute_write(
+            VirusScanError("ClamAV connection refused"),
+            setup_test_data,
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "ClamAV" in result.message
+
+    async def test_file_conflict_returns_error_response(self, setup_test_data):
+        """File path conflict (ValueError) → ErrorResponse."""
+        result = await self._execute_write(
+            ValueError("File already exists at path: /sessions/abc/test.txt"),
+            setup_test_data,
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "already exists" in result.message
+
+
+@pytest.mark.parametrize("external_caller", [True, False])
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_virus_scan_outage_tells_an_external_caller_no_internals(
+    external_caller: bool,
+):
+    """The scanner client's text can name its host; the chat keeps it, once."""
+    manager = AsyncMock()
+    manager.write_file = AsyncMock(
+        side_effect=VirusScanError(
+            "Virus scanning failed: connect to clamav.internal:3310 refused"
+        )
+    )
+    session = make_session("user-1")
+    session.external_caller = external_caller
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        result = await WriteWorkspaceFileTool()._execute(
+            user_id="user-1", session=session, filename="a.txt", content="hi"
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.message.count("Virus scanning failed") == 1
+    assert ("clamav.internal" in result.message) is not external_caller
+
+
+class TestReadWorkspaceFileSdkToolResultRedirect:
+    """The model sometimes calls read_workspace_file with an SDK
+    tool-result shorthand path (e.g. ``tool-outputs/<id>.json``).
+    That path is neither in workspace storage nor a resolvable local
+    file, so without the redirect branch the model gets a generic
+    "Path not allowed" with no pointer to the right tool. This mirrors
+    the bash_exec redirect coverage.
+
+    Mocks ``_resolve_file`` and ``get_workspace_manager`` so the unit
+    test stays scoped to the redirect branch without touching Prisma /
+    workspace storage.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_sdk_cwd(self):
+        """Sibling test classes set ``sdk_cwd`` via the shared ContextVar.
+        Clear it so ``is_allowed_local_path`` doesn't claim our relative
+        shorthand paths as legitimate sdk_cwd children and short-circuit
+        the redirect branch we're testing."""
+        from backend.copilot.context import set_execution_context
+
+        set_execution_context(user_id="test", session=None, sandbox=None, sdk_cwd=None)
+
+    @staticmethod
+    async def _call_read_with_resolve_failure(path: str):
+        read_tool = ReadWorkspaceFileTool()
+        session = make_session("user-redirect-test")
+        with (
+            patch(
+                "backend.copilot.tools.workspace_files.get_workspace_manager",
+                new=AsyncMock(return_value=AsyncMock()),
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files._resolve_file",
+                new=AsyncMock(
+                    return_value=ErrorResponse(
+                        message="not found", session_id=session.session_id
+                    )
+                ),
+            ),
+        ):
+            return await read_tool._execute(
+                user_id="user-redirect-test",
+                session=session,
+                path=path,
+            )
+
+    @pytest.mark.asyncio
+    async def test_relative_tool_outputs_shorthand_returns_redirect_hint(self):
+        result = await self._call_read_with_resolve_failure(
+            "tool-outputs/toolu_nonexistent.json"
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" in result.message
+        assert "@@agptfile" in result.message
+
+    @pytest.mark.asyncio
+    async def test_relative_tool_results_shorthand_returns_redirect_hint(self):
+        result = await self._call_read_with_resolve_failure(
+            "tool-results/toolu_nonexistent.json"
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" in result.message
+
+    @pytest.mark.asyncio
+    async def test_unrelated_missing_path_does_not_redirect(self):
+        """Regression: paths that don't look like SDK tool-results must
+        still surface the original resolve error, not the redirect hint."""
+        result = await self._call_read_with_resolve_failure(
+            "some/random/missing-file.txt"
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" not in result.message
+        assert "@@agptfile" not in result.message
+
+    @pytest.mark.asyncio
+    async def test_redirect_wins_over_sdk_cwd_local_fallback(self):
+        """When ``sdk_cwd`` is set, the relative shorthand
+        ``tool-outputs/<id>.json`` resolves under it and would otherwise
+        pass the ``is_allowed_local_path`` check, dispatching to
+        ``_read_local_tool_result`` which fails with a generic "Path not
+        allowed" — defeating the whole point of the redirect.
+
+        Regression coverage: with ``sdk_cwd`` set, the relative-shorthand
+        redirect must still fire before the local-read fallback runs.
+        """
+        from backend.copilot.context import set_execution_context
+
+        # Override the autouse fixture that cleared sdk_cwd — we
+        # specifically want sdk_cwd set here to exercise the bug.
+        set_execution_context(
+            user_id="user-redirect-test",
+            session=None,
+            sandbox=None,
+            sdk_cwd="/tmp/copilot-redirect-test",
+        )
+
+        read_tool = ReadWorkspaceFileTool()
+        session = make_session("user-redirect-test")
+        with (
+            patch(
+                "backend.copilot.tools.workspace_files.get_workspace_manager",
+                new=AsyncMock(return_value=AsyncMock()),
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files._resolve_file",
+                new=AsyncMock(
+                    return_value=ErrorResponse(
+                        message="not found", session_id=session.session_id
+                    )
+                ),
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files._read_local_tool_result",
+            ) as mock_local_read,
+        ):
+            result = await read_tool._execute(
+                user_id="user-redirect-test",
+                session=session,
+                path="tool-outputs/toolu_x.json",
+            )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" in result.message
+        assert "@@agptfile" in result.message
+        # The local-read fallback must NOT have run — that's the bug
+        # this test guards against.
+        mock_local_read.assert_not_called()
+
+
+class TestSkillsRegistryACL:
+    """Writes and deletes targeting either skills folder — Otto's
+    ``/skills/`` or an expert's ``/experts/<id>/skills/`` — must go through
+    the skills registry (``store_skill`` / ``delete_skill``) which enforces
+    frontmatter validation, the per-expert cap, and content sanitisation.
+    A direct workspace write would bypass all of that."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "skills/foo/SKILL.md",
+            "/skills/foo/SKILL.md",
+            "  /Skills/foo/SKILL.md  ",  # case + whitespace tolerance
+            "skills",
+            "/skills/",
+            "/experts/expert-a/skills/foo/SKILL.md",
+            "experts/expert-a/skills/foo/scripts/run.py",
+            "  /Experts/expert-a/Skills/foo/SKILL.md  ",
+            "/experts/expert-a/skills",
+        ],
+    )
+    async def test_write_workspace_file_rejects_skills_path(self, path):
+        tool = WriteWorkspaceFileTool()
+        session = make_session("user-acl-test")
+        result = await tool._execute(
+            user_id="user-acl-test",
+            session=session,
+            filename="SKILL.md",
+            content="---\nname: foo\ndescription: x\n---\nbody",
+            path=path,
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "skills registry" in result.message
+        assert "store_skill" in result.message
+
+    @pytest.mark.asyncio
+    async def test_write_workspace_file_rejects_skills_filename_default_path(self):
+        """When ``path`` is omitted the default path is ``/{filename}``,
+        so a filename like ``skills`` (or starting with ``skills/``)
+        must still be blocked."""
+        tool = WriteWorkspaceFileTool()
+        session = make_session("user-acl-test")
+        # Filename like ``skills/SKILL.md`` would default to path ``/skills/SKILL.md``.
+        # WorkspaceManager typically forbids slashes in filename, but the
+        # ACL must reject this before we ever reach the manager.
+        result = await tool._execute(
+            user_id="user-acl-test",
+            session=session,
+            filename="skills/SKILL.md",
+            content="x",
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "skills registry" in result.message
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/skills/foo/SKILL.md",
+            "/experts/expert-a/skills/foo/SKILL.md",
+            "/experts/expert-a/skills/foo/references/notes.md",
+        ],
+    )
+    async def test_delete_workspace_file_rejects_skills_path(self, path):
+        tool = DeleteWorkspaceFileTool()
+        session = make_session("user-acl-test")
+        result = await tool._execute(
+            user_id="user-acl-test",
+            session=session,
+            path=path,
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "skills registry" in result.message
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/experts/expert-a/notes.md",
+            "/experts",
+            "/expertskills/foo/SKILL.md",
+            "/documents/skills-notes.md",
+        ],
+    )
+    async def test_paths_outside_either_registry_are_not_blocked(self, path):
+        """The guard must not swallow an ordinary path that merely starts the
+        same way — an expert folder that is not its skills folder, or a
+        lookalike name."""
+        from backend.copilot.tools.workspace_files import _path_under_skills_registry
+
+        assert _path_under_skills_registry(path) is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "offset, length, reads",
+    [
+        # Only the bytes the slice can reach: four per character at most.
+        (100, 50, 4 * 150),
+        # "From here to the end" stops at the per-read cap.
+        (10, None, 4 * (10 + 30_000)),
+    ],
+)
+async def test_a_ranged_read_loads_only_the_bytes_it_can_return(
+    offset: int, length: int | None, reads: int
+):
+    """A large file was loaded and decoded whole for every slice of it."""
+    content = ("x" * 2_000_000).encode()
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(return_value=_text_file(len(content)))
+    manager.read_file_head_by_id = AsyncMock(
+        side_effect=lambda _file_id, max_bytes: content[:max_bytes]
+    )
+    manager.read_file_by_id = AsyncMock(side_effect=AssertionError("read whole"))
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        resp = await ReadWorkspaceFileTool()._execute(
+            user_id="user-1",
+            session=make_session("user-1"),
+            file_id="f-1",
+            offset=offset,
+            length=length,
+        )
+
+    assert isinstance(resp, WorkspaceFileContentResponse), resp.message
+    manager.read_file_head_by_id.assert_awaited_once_with("f-1", reads)
+    sliced = base64.b64decode(resp.content_base64).decode()
+    assert len(sliced) == (length if length is not None else 30_000)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "offset, length, reads, returned",
+    [
+        # A slice crossing the bound is cut at it.
+        (999_990, 100, 4 * 1_000_000, 10),
+        # One read returns what fits in a tool result, and reads no further.
+        (10, None, 4 * 60_010, 60_000),
+        (0, 1_000_000, 4 * 60_000, 60_000),
+    ],
+)
+async def test_an_external_ranged_read_reads_no_further_than_its_bound(
+    offset: int, length: int | None, reads: int, returned: int
+):
+    content = ("x" * 2_000_000).encode()
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(return_value=_text_file(len(content)))
+    manager.read_file_head_by_id = AsyncMock(
+        side_effect=lambda _file_id, max_bytes: content[:max_bytes]
+    )
+    session = make_session("user-1")
+    session.external_caller = True
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        resp = await ReadWorkspaceFileTool()._execute(
+            user_id="user-1",
+            session=session,
+            file_id="f-1",
+            offset=offset,
+            length=length,
+        )
+
+    assert isinstance(resp, WorkspaceFileContentResponse), resp.message
+    manager.read_file_head_by_id.assert_awaited_once_with("f-1", reads)
+    assert len(base64.b64decode(resp.content_base64).decode()) == returned
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_external_ranged_read_comes_back_whole_in_one_tool_result():
+    """A slice past what a result keeps came back cut in the middle, base64 and all."""
+    content = ("é" * 1_000_000).encode()
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(return_value=_text_file(len(content)))
+    manager.read_file_head_by_id = AsyncMock(
+        side_effect=lambda _file_id, max_bytes: content[:max_bytes]
+    )
+    session = make_session("user-1")
+    session.external_caller = True
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        resp = await ReadWorkspaceFileTool()._execute(
+            user_id="user-1", session=session, file_id="f-1", offset=0, length=1_000_000
+        )
+
+    # What the tool result keeps of it, as BaseTool.execute builds it.
+    kept = StreamToolOutputAvailable(
+        toolCallId="tc-1", output=resp.model_dump_json(exclude_none=True)
+    )
+    assert isinstance(kept.output, str)
+    payload = json.loads(kept.output)
+    sliced = base64.b64decode(payload["content_base64"]).decode()
+    assert sliced == "é" * 30_000
+    assert "Read chars 0–30000 " in payload["message"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_external_caller_cannot_read_from_deep_in_a_file():
+    """A deep offset made the tool load the whole file for a tiny slice."""
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(return_value=_text_file(100_000_000))
+    manager.read_file_head_by_id = AsyncMock(side_effect=AssertionError("read"))
+    manager.read_file_by_id = AsyncMock(side_effect=AssertionError("read whole"))
+    session = make_session("user-1")
+    session.external_caller = True
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        resp = await ReadWorkspaceFileTool()._execute(
+            user_id="user-1",
+            session=session,
+            file_id="f-1",
+            offset=104_857_600,
+            length=1,
+        )
+
+    assert isinstance(resp, ErrorResponse)
+    assert "Download the file" in resp.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_large_text_files_preview_reads_only_its_head():
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(return_value=_text_file(50_000_000))
+    manager.read_file_head_by_id = AsyncMock(return_value=b"y" * 501)
+    manager.read_file_by_id = AsyncMock(side_effect=AssertionError("read whole"))
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        await ReadWorkspaceFileTool()._execute(
+            user_id="user-1", session=make_session("user-1"), file_id="f-1"
+        )
+
+    manager.read_file_head_by_id.assert_awaited_once_with("f-1", 501)
+
+
+def _text_file(size_bytes: int) -> WorkspaceFile:
+    now = datetime.now(timezone.utc)
+    return WorkspaceFile(
+        id="f-1",
+        workspace_id="ws-1",
+        created_at=now,
+        updated_at=now,
+        name="big.txt",
+        path="/big.txt",
+        storage_path="local://big.txt",
+        mime_type="text/plain",
+        size_bytes=size_bytes,
+    )
+
+
+class TestReadingASpilledGoogleOutput:
+    """A Google block's output too large for the model is saved to
+    ``tool-outputs/``; reading it back is Google data too."""
+
+    @staticmethod
+    async def _read(metadata: dict, **kwargs):
+        content = b'{"type": "block_output", "outputs": {"result": ["the email"]}}'
+        info = WorkspaceFile(
+            id="file-1",
+            workspace_id="ws-1",
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            name="call-1.json",
+            path="/tool-outputs/call-1.json",
+            storage_path="s",
+            mime_type="application/json",
+            size_bytes=len(content) if kwargs.pop("small", True) else 10**6,
+            metadata=metadata,
+        )
+        manager = AsyncMock()
+        manager.read_file_by_id = AsyncMock(return_value=content)
+        manager.read_file_head_by_id = AsyncMock(
+            side_effect=lambda _file_id, max_bytes: content[:max_bytes]
+        )
+        with (
+            patch(
+                "backend.copilot.tools.workspace_files._resolve_file",
+                AsyncMock(return_value=(info.id, info)),
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files.get_workspace_manager",
+                AsyncMock(return_value=manager),
+            ),
+        ):
+            return await ReadWorkspaceFileTool()._execute(
+                user_id="user-1",
+                session=MagicMock(session_id="s1", external_caller=False),
+                path="tool-outputs/call-1.json",
+                **kwargs,
+            )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "read",
+        [{}, {"offset": 5, "length": 20}, {"small": False}],
+        ids=["whole", "a window", "a preview"],
+    )
+    async def test_flagged_as_google_data(self, read):
+        google = {"purpose": "tool-output", GOOGLE_DATA_METADATA_KEY: True}
+
+        assert (await self._read(google, **read)).holds_google_data
+        assert not (
+            await self._read({"purpose": "tool-output"}, **read)
+        ).holds_google_data
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("character", ["x", "é"])
+@pytest.mark.parametrize("source", ["workspace", "local"])
+async def test_workspace_windows_stay_readable_without_another_saved_preview(
+    character, source, tmp_path
+):
+    content = character * 35_000
+    raw = content.encode()
+    manager = AsyncMock()
+    manager.get_file_info.return_value = _text_file(len(raw))
+    manager.read_file_head_by_id.side_effect = lambda _file_id, max_bytes: raw[
+        :max_bytes
+    ]
+    local = tmp_path / "result.txt"
+    local.write_bytes(raw)
+    manager.get_file_info_by_path.return_value = None
+    reference = {"file_id": "f-1"} if source == "workspace" else {"path": str(local)}
+    session = make_session("user-1")
+    chunks = []
+    offset = 0
+    with (
+        patch(
+            "backend.copilot.tools.workspace_files.get_sdk_cwd",
+            return_value=str(tmp_path),
+        ),
+        patch(
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
+            AsyncMock(return_value=manager),
+        ),
+        patch(
+            "backend.copilot.tools.base._persist_and_summarize", AsyncMock()
+        ) as persist,
+        patch("backend.copilot.gate.reads.screen_mode", AsyncMock(return_value="off")),
+    ):
+        while offset < len(content):
+            result = await ReadWorkspaceFileTool().execute(
+                "user-1",
+                session,
+                "tc-window",
+                offset=offset,
+                length=50_000,
+                **reference,
+            )
+            persist.assert_not_awaited()
+            payload = json.loads(result.output)
+            chunk = base64.b64decode(payload["content_base64"]).decode()
+            assert chunk
+            assert len(result.output) < 45_000
+            chunks.append(chunk)
+            offset += len(chunk)
+    assert "".join(chunks) == content

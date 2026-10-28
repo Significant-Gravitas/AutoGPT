@@ -37,7 +37,7 @@ class TestTotalTokens:
     async def test_returns_prompt_plus_completion(self):
         """total_tokens = prompt + completion (cache excluded from total)."""
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             total = await persist_and_record_usage(
@@ -63,7 +63,7 @@ class TestTotalTokens:
     async def test_cache_tokens_excluded_from_total(self):
         """Cache tokens are stored separately and not added to total_tokens."""
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             total = await persist_and_record_usage(
@@ -81,7 +81,7 @@ class TestTotalTokens:
     async def test_baseline_path_no_cache(self):
         """Baseline (OpenRouter) path passes no cache tokens; total = prompt + completion."""
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             total = await persist_and_record_usage(
@@ -97,7 +97,7 @@ class TestTotalTokens:
     async def test_sdk_path_with_cache(self):
         """SDK (Anthropic) path passes cache tokens; total still = prompt + completion."""
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             total = await persist_and_record_usage(
@@ -123,7 +123,7 @@ class TestSessionPersistence:
     async def test_appends_usage_to_session(self):
         session = _make_session()
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             await persist_and_record_usage(
@@ -144,7 +144,7 @@ class TestSessionPersistence:
     async def test_appends_cache_breakdown_to_session(self):
         session = _make_session()
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             await persist_and_record_usage(
@@ -163,7 +163,7 @@ class TestSessionPersistence:
     async def test_multiple_turns_append_multiple_records(self):
         session = _make_session()
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             await persist_and_record_usage(
@@ -178,7 +178,7 @@ class TestSessionPersistence:
     async def test_none_session_does_not_raise(self):
         """When session is None (e.g. error path), no exception should be raised."""
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             total = await persist_and_record_usage(
@@ -210,10 +210,11 @@ class TestSessionPersistence:
 
 class TestRateLimitRecording:
     @pytest.mark.asyncio
-    async def test_calls_record_token_usage_when_user_id_present(self):
+    async def test_calls_record_cost_usage_when_cost_and_user_id_present(self):
+        """Rate-limit counter is charged with the real provider cost (microdollars)."""
         mock_record = AsyncMock()
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new=mock_record,
         ):
             await persist_and_record_usage(
@@ -223,22 +224,60 @@ class TestRateLimitRecording:
                 completion_tokens=50,
                 cache_read_tokens=1000,
                 cache_creation_tokens=200,
+                cost_usd=0.0123,
             )
         mock_record.assert_awaited_once_with(
             user_id="user-abc",
-            prompt_tokens=100,
-            completion_tokens=50,
-            cache_read_tokens=1000,
-            cache_creation_tokens=200,
-            model_cost_multiplier=1.0,
+            cost_microdollars=12_300,
+            skip_daily=False,
         )
+
+    @pytest.mark.asyncio
+    async def test_skip_daily_flag_propagates_to_record_cost_usage(self):
+        """Dream pass passes ``skip_daily=True`` so background spend doesn't
+        eat the user's interactive daily cap. Threading must reach
+        ``record_cost_usage`` unchanged."""
+        mock_record = AsyncMock()
+        with patch(
+            "backend.copilot.token_tracking.record_cost_usage",
+            new=mock_record,
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-abc",
+                prompt_tokens=100,
+                completion_tokens=50,
+                cost_usd=0.0123,
+                skip_daily=True,
+            )
+        mock_record.assert_awaited_once_with(
+            user_id="user-abc",
+            cost_microdollars=12_300,
+            skip_daily=True,
+        )
+
+    @pytest.mark.asyncio
+    async def test_skips_record_when_cost_is_missing(self):
+        """Without a provider cost we have no authoritative figure to charge."""
+        mock_record = AsyncMock()
+        with patch(
+            "backend.copilot.token_tracking.record_cost_usage",
+            new=mock_record,
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-abc",
+                prompt_tokens=100,
+                completion_tokens=50,
+            )
+        mock_record.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_skips_record_when_user_id_is_none(self):
         """Anonymous sessions should not create Redis keys."""
         mock_record = AsyncMock()
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new=mock_record,
         ):
             await persist_and_record_usage(
@@ -246,32 +285,38 @@ class TestRateLimitRecording:
                 user_id=None,
                 prompt_tokens=100,
                 completion_tokens=50,
+                cost_usd=0.001,
             )
         mock_record.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_record_failure_does_not_raise(self):
-        """A Redis error in record_token_usage should be swallowed (fail-open)."""
-        mock_record = AsyncMock(side_effect=ConnectionError("Redis down"))
+    async def test_record_usage_bubbles_unexpected_error(self):
+        """Unexpected errors from record_cost_usage must propagate.
+
+        record_cost_usage() owns its own (RedisError, ConnectionError, OSError)
+        fail-open handling. Anything else is a real accounting bug and
+        should not be silently swallowed at this layer.
+        """
+        mock_record = AsyncMock(side_effect=RuntimeError("boom"))
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new=mock_record,
         ):
-            # Should not raise
-            total = await persist_and_record_usage(
-                session=None,
-                user_id="user-xyz",
-                prompt_tokens=100,
-                completion_tokens=50,
-            )
-        assert total == 150
+            with pytest.raises(RuntimeError, match="boom"):
+                await persist_and_record_usage(
+                    session=None,
+                    user_id="user-xyz",
+                    prompt_tokens=100,
+                    completion_tokens=50,
+                    cost_usd=0.002,
+                )
 
     @pytest.mark.asyncio
-    async def test_skips_record_when_zero_tokens(self):
-        """Returns 0 before calling record_token_usage when tokens are zero."""
+    async def test_skips_record_when_zero_tokens_and_no_cost(self):
+        """Returns 0 before calling record_cost_usage when there is nothing to record."""
         mock_record = AsyncMock()
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new=mock_record,
         ):
             await persist_and_record_usage(
@@ -295,7 +340,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -328,15 +373,86 @@ class TestPlatformCostLogging:
         assert entry.metadata["tracking_type"] == "cost_usd"
         assert entry.metadata["tracking_amount"] == 0.005
         assert entry.block_name == "copilot:SDK"
-        assert entry.graph_exec_id == "sess-test"
+        assert entry.chat_session_id == "sess-test"
+        assert entry.graph_exec_id is None
 
+    @pytest.mark.parametrize(
+        "overrides,expected",
+        [
+            ({"graph_exec_id_override": "pass-1"}, ("pass-1", None)),
+            ({"chat_session_id_override": "chat-9"}, (None, "chat-9")),
+        ],
+        ids=["dream-pass", "voice"],
+    )
     @pytest.mark.asyncio
-    async def test_logs_cost_entry_without_cost_usd(self):
+    async def test_a_dream_pass_is_logged_under_its_own_id_not_as_a_chat(
+        self, overrides, expected
+    ):
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_cost_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-cost",
+                prompt_tokens=10,
+                completion_tokens=5,
+                cost_usd=0.001,
+                **overrides,
+            )
+            await asyncio.sleep(0)
+        entry = mock_log.call_args[0][0]
+        assert (entry.graph_exec_id, entry.chat_session_id) == expected
+
+    @pytest.mark.parametrize("expert_id", ["expert-1", None])
+    @pytest.mark.asyncio
+    async def test_the_expert_the_spend_ran_for_reaches_the_row(self, expert_id):
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_cost_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-cost",
+                prompt_tokens=10,
+                completion_tokens=5,
+                cost_usd=0.001,
+                expert_id=expert_id,
+            )
+            await asyncio.sleep(0)
+        assert mock_log.call_args[0][0].expert_id == expert_id
+
+    @pytest.mark.parametrize(
+        "prompt,completion,cache_read,cache_write",
+        [(100, 50, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100), (0, 0, 100, 100)],
+    )
+    @pytest.mark.asyncio
+    async def test_logs_cost_entry_without_cost_usd(
+        self, prompt, completion, cache_read, cache_write
+    ):
         """When cost_usd is None, tracking_type should be 'tokens'."""
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -349,8 +465,10 @@ class TestPlatformCostLogging:
             await persist_and_record_usage(
                 session=None,
                 user_id="user-tokens",
-                prompt_tokens=100,
-                completion_tokens=50,
+                prompt_tokens=prompt,
+                completion_tokens=completion,
+                cache_read_tokens=cache_read,
+                cache_creation_tokens=cache_write,
                 log_prefix="[Baseline]",
             )
             await asyncio.sleep(0)
@@ -359,9 +477,12 @@ class TestPlatformCostLogging:
         assert entry.cost_microdollars is None
         assert entry.tracking_type == "tokens"
         assert entry.metadata["tracking_type"] == "tokens"
-        assert entry.metadata["tracking_amount"] == 150
+        assert entry.metadata["tracking_amount"] == prompt + completion
         assert entry.graph_exec_id is None
         assert entry.block_name == "copilot:Baseline"
+
+        assert entry.cache_read_tokens == (cache_read or None)
+        assert entry.cache_creation_tokens == (cache_write or None)
 
     @pytest.mark.asyncio
     async def test_skips_cost_log_when_no_user_id(self):
@@ -369,7 +490,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -394,7 +515,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -423,7 +544,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -452,7 +573,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -479,7 +600,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -509,7 +630,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -540,12 +661,46 @@ class TestPlatformCostLogging:
         assert entry.output_tokens == 0
 
     @pytest.mark.asyncio
+    async def test_logs_cache_only_tokens_with_no_cost(self):
+        """A fully-cached response nobody could price (no provider cost, no
+        catalog price) still leaves its billed tokens in the ledger."""
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_cost_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-cache-only",
+                prompt_tokens=0,
+                completion_tokens=0,
+                cache_read_tokens=10_000,
+                model="uncatalogued-model",
+                provider="open_router",
+                log_prefix="[dream:consolidate]",
+            )
+            await asyncio.sleep(0)
+        mock_log.assert_awaited_once()
+        entry = mock_log.call_args[0][0]
+        assert entry.cost_microdollars is None
+        assert entry.tracking_type == "tokens"
+        assert entry.metadata["cache_read_tokens"] == 10_000
+
+    @pytest.mark.asyncio
     async def test_negative_cost_usd_falls_back_to_tokens(self):
         """Negative cost_usd must be rejected — val >= 0 guard in persist_and_record_usage."""
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -568,3 +723,35 @@ class TestPlatformCostLogging:
         # Negative cost rejected — falls back to token-based tracking
         assert entry.cost_microdollars is None
         assert entry.metadata["tracking_type"] == "tokens"
+
+
+@pytest.mark.asyncio
+async def test_usage_charges_the_tree_ledger(monkeypatch):
+    """The tree charge is the only thing that makes the spend ceiling bind;
+    nothing asserted it was reached, or with what amount."""
+    from backend.copilot import token_tracking
+    from backend.copilot.context import set_execution_context
+    from backend.copilot.tree import TurnEnvelope
+
+    charged: list[tuple[str, int]] = []
+
+    async def _charge(envelope, microdollars):
+        charged.append((envelope.tree_id, microdollars))
+
+    monkeypatch.setattr(token_tracking, "charge_turn", _charge)
+    monkeypatch.setattr(token_tracking, "record_cost_usage", AsyncMock())
+    monkeypatch.setattr(token_tracking, "_schedule_cost_log", lambda entry: None)
+
+    set_execution_context("u1", None, envelope=TurnEnvelope(tree_id="tree-9", depth=1))
+    try:
+        await token_tracking.persist_and_record_usage(
+            session=None,
+            user_id="u1",
+            prompt_tokens=10,
+            completion_tokens=5,
+            cost_usd=0.25,
+        )
+    finally:
+        set_execution_context(None, None, envelope=None)
+
+    assert charged == [("tree-9", 250_000)]

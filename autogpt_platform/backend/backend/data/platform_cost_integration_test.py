@@ -99,3 +99,21 @@ async def test_log_platform_cost_cache_tokens(cost_log_user):
     assert len(rows) == 1
     assert rows[0].cacheReadTokens == 50
     assert rows[0].cacheCreationTokens == 25
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_log_platform_cost_expert_id(cost_log_user):
+    """The expert a background call ran for is persisted in its column."""
+    user_id = cost_log_user
+    entry = PlatformCostEntry(
+        user_id=user_id,
+        block_name="copilot:dream:consolidate",
+        provider="anthropic",
+        input_tokens=10,
+        expert_id="expert-1",
+    )
+    await log_platform_cost(entry)
+
+    rows = await PrismaLog.prisma().find_many(where={"userId": user_id})
+    assert len(rows) == 1
+    assert rows[0].expertId == "expert-1"

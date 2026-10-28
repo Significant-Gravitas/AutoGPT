@@ -1,15 +1,33 @@
 import { getSystemHeaders } from "@/lib/impersonation";
-import { getWebSocketToken } from "@/lib/supabase/actions";
-import type { UIMessage } from "ai";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
+import { getWebSocketToken } from "@/lib/auth/actions";
+import type { ChatStatus, UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
+import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
+import { parseSpecialMarkers } from "./helpers/messageMarkers";
+import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
+import { TURN_PAUSED_PART_TYPE } from "./turnPause";
 
-export const ORIGINAL_TITLE = "AutoGPT";
+/**
+ * Title/body/icon for the OS-level notification fired when a copilot session
+ * completes. Kept in sync with the same copy hardcoded in `public/push-sw.js`
+ * (NOTIFICATION_MAP.copilot_completion.session_completed) — the SW file is
+ * plain JS served from /public and can't import from this module, so the two
+ * sources are matched by test rather than by reference.
+ */
+export const COPILOT_COMPLETION_NOTIFICATION = {
+  title: "AutoGPT",
+  body: "Task completed",
+  icon: "/notification-icon-192.png",
+} as const;
 
 /**
  * Returns HTTP headers required for direct backend requests from copilot:
  * - Authorization Bearer token (JWT)
  * - X-Act-As-User-Id impersonation header (if an admin is impersonating a user)
+ * - X-PostHog-Session-Id (with analytics consent), so the chat's backend
+ *   events join the browser's PostHog session
  *
  * Use this for all direct-to-backend fetch/SSE calls so that admin user
  * impersonation works consistently across the entire copilot feature.
@@ -18,22 +36,21 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   const { token, error } = await getWebSocketToken();
   if (error || !token) {
     console.warn("[Copilot] Failed to get auth token:", error);
-    throw new Error("Authentication failed — please sign in again.");
+    throw new CopilotAuthError();
   }
   return {
     Authorization: `Bearer ${token}`,
     ...getSystemHeaders(),
+    ...getPostHogSessionHeader(),
   };
 }
 
-/**
- * Build the document title showing how many sessions are ready.
- * Returns the base title when count is 0.
- */
-export function formatNotificationTitle(count: number): string {
-  return count > 0
-    ? `(${count}) AutoPilot is ready - ${ORIGINAL_TITLE}`
-    : ORIGINAL_TITLE;
+/** The server answered and has no session token: signed out, not offline. */
+export class CopilotAuthError extends Error {
+  constructor() {
+    super("Authentication failed — please sign in again.");
+    this.name = "CopilotAuthError";
+  }
 }
 
 /**
@@ -89,6 +106,28 @@ export function hasActiveBackendStream(result: { data?: unknown }): boolean {
   );
 }
 
+/**
+ * Whether the trailing assistant message has at least one part the UI
+ * would visibly render: text with non-empty content, reasoning with
+ * non-empty content, any tool part (tool cards render regardless of
+ * state), or a Paused card — a turn refused before it ran streams nothing
+ * else. Used to gate the resume-snapshot discard — the replay may stream
+ * empty reasoning-start / step-start chunks for minutes before any
+ * rendered content (e.g. Perplexity deep research), and we do not want to
+ * drop the pre-replay snapshot until the user actually sees something.
+ */
+export function hasVisibleAssistantContent(messages: UIMessage[]): boolean {
+  const last = messages[messages.length - 1];
+  if (last?.role !== "assistant") return false;
+  return last.parts.some((part) => {
+    if (part.type === "text" && part.text.trim().length > 0) return true;
+    if (part.type === "reasoning" && part.text.trim().length > 0) return true;
+    if (part.type.startsWith(TOOL_PART_PREFIX)) return true;
+    if (part.type === TURN_PAUSED_PART_TYPE) return true;
+    return false;
+  });
+}
+
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
 export function resolveInProgressTools(
   messages: UIMessage[],
@@ -107,6 +146,79 @@ export function resolveInProgressTools(
   }));
 }
 
+const IN_PROGRESS_PART_STATES = new Set([
+  "streaming",
+  "input-streaming",
+  "input-available",
+]);
+
+/**
+ * True if the message is an assistant message with at least one part that
+ * the stream never finalised — i.e. text / reasoning in ``streaming`` or
+ * tool parts in ``input-streaming`` / ``input-available``. Used both for
+ * the partial-snapshot discard during resume and for zombie-part recovery
+ * on session re-entry.
+ */
+export function hasInProgressAssistantParts(
+  message: UIMessage | undefined,
+): boolean {
+  if (message?.role !== "assistant") return false;
+  return message.parts.some((part) => {
+    if (!("state" in part) || typeof part.state !== "string") return false;
+    return IN_PROGRESS_PART_STATES.has(part.state);
+  });
+}
+
+const COPILOT_INTERRUPTED_MARKER =
+  "[__COPILOT_RETRYABLE_ERROR_a9c2__] Response was interrupted. Resend to try again.";
+
+/**
+ * Close the last assistant message when the stream ended without
+ * finalising it (backend crash mid-write, the user switched away and the
+ * DB snapshot rehydrated with orphaned in-progress parts, etc.). Tool
+ * parts in ``input-streaming`` / ``input-available`` flip to
+ * ``output-error`` "Interrupted" so their spinners stop; text / reasoning
+ * parts in ``streaming`` flip to ``done`` so their typing animation ends
+ * but the partial content is preserved. A retryable-error marker is
+ * appended so the UI renders a "resend to try again" affordance.
+ *
+ * Only the last message is touched — earlier messages can't have unclosed
+ * parts in a healthy session. Returns the original array when no repair
+ * is needed, so callers can cheaply compare references.
+ */
+export function resolveInterruptedMessage(messages: UIMessage[]): UIMessage[] {
+  if (messages.length === 0) return messages;
+  const lastIdx = messages.length - 1;
+  const last = messages[lastIdx];
+  if (!hasInProgressAssistantParts(last)) return messages;
+
+  const resolvedParts = last.parts.map((part) => {
+    if (!("state" in part) || typeof part.state !== "string") return part;
+    if (part.state === "input-streaming" || part.state === "input-available") {
+      return {
+        ...part,
+        state: "output-error" as const,
+        errorText: "Interrupted",
+      };
+    }
+    if (part.state === "streaming") {
+      return { ...part, state: "done" as const };
+    }
+    return part;
+  });
+
+  return [
+    ...messages.slice(0, lastIdx),
+    {
+      ...last,
+      parts: [
+        ...resolvedParts,
+        { type: "text" as const, text: COPILOT_INTERRUPTED_MARKER },
+      ],
+    },
+  ];
+}
+
 /**
  * Extract the user-visible text from the arguments passed to `sendMessage`.
  * Handles both `sendMessage("hello")` and `sendMessage({ text: "hello" })`.
@@ -117,11 +229,40 @@ export function extractSendMessageText(firstArg: unknown): string {
   return String(firstArg ?? "");
 }
 
+/** What the files and folders passed to `sendMessage` point at, sorted, so
+ *  two sends can be told apart when their text is the same. */
+export function extractSendMessageAttachments(firstArg: unknown): string[] {
+  if (!firstArg || typeof firstArg !== "object") return [];
+  if ("files" in firstArg && Array.isArray(firstArg.files))
+    return attachmentKeys(firstArg.files);
+  if ("parts" in firstArg && Array.isArray(firstArg.parts))
+    return attachmentKeys(firstArg.parts);
+  return [];
+}
+
+function attachmentKeys(parts: readonly unknown[]): string[] {
+  return parts
+    .flatMap((part) => {
+      if (!part || typeof part !== "object" || !("type" in part)) return [];
+      if (part.type === "file" && "url" in part)
+        return typeof part.url === "string" ? [part.url] : [];
+      if (part.type === WORKSPACE_FOLDER_PART_TYPE && "data" in part) {
+        const data = part.data as { id?: unknown } | null;
+        return typeof data?.id === "string" ? [`folder:${data.id}`] : [];
+      }
+      return [];
+    })
+    .sort();
+}
+
 interface SuppressDuplicateArgs {
   text: string;
+  /** The outgoing message's attachments, from `extractSendMessageAttachments`. */
+  attachments?: string[];
   isReconnectScheduled: boolean;
   lastSubmittedText: string | null;
   messages: UIMessage[];
+  status?: ChatStatus;
 }
 
 /**
@@ -129,8 +270,10 @@ interface SuppressDuplicateArgs {
  *
  * - ``"reconnecting"``: the stream is reconnecting; the caller should
  *   notify the user (the UI may not yet reflect the disabled state).
- * - ``"duplicate"``: the same text was just submitted and echoed back
- *   by the session — safe to silently drop (user double-clicked).
+ * - ``"duplicate"``: the same text, with the same attachments, was just
+ *   submitted, echoed back by the session and not answered yet — safe to
+ *   silently drop (user double-clicked), because the message is already
+ *   on screen.
  */
 export type SuppressReason = "reconnecting" | "duplicate" | null;
 
@@ -143,11 +286,24 @@ export type SuppressReason = "reconnecting" | "duplicate" | null;
  */
 export function getSendSuppressionReason({
   text,
+  attachments = [],
   isReconnectScheduled,
   lastSubmittedText,
   messages,
+  status,
 }: SuppressDuplicateArgs): SuppressReason {
   if (isReconnectScheduled) return "reconnecting";
+
+  const lastMessage = messages.at(-1);
+  const hasRetryableError =
+    status === "ready" &&
+    lastMessage?.role === "assistant" &&
+    lastMessage.parts.some(
+      (part) =>
+        part.type === "text" &&
+        parseSpecialMarkers(part.text).markerType === "retryable_error",
+    );
+  if (status === "error" || hasRetryableError) return null;
 
   if (text && lastSubmittedText === text) {
     const lastUserMsg = messages.filter((m) => m.role === "user").pop();
@@ -155,7 +311,20 @@ export function getSendSuppressionReason({
       ?.map((p) => ("text" in p ? p.text : ""))
       .join("")
       .trim();
-    if (lastUserText === text) return "duplicate";
+    // The same caption on other files is a new message, not a resend.
+    const lastUserAttachments = attachmentKeys(lastUserMsg?.parts ?? []);
+    const isResend =
+      lastUserText === text &&
+      lastUserAttachments.join("\n") === attachments.join("\n");
+    // A resend is a duplicate only while the first send is still being
+    // answered: the turn is in flight, or its echo is the newest message.
+    // Once a reply (or a Stop marker) followed it, "yes" after "yes" is a
+    // new message, and dropping it would lose text the composer already cleared.
+    const stillBeingAnswered =
+      status === "streaming" ||
+      status === "submitted" ||
+      lastMessage?.role === "user";
+    if (isResend && stillBeingAnswered) return "duplicate";
   }
 
   return null;
@@ -185,6 +354,28 @@ export function disconnectSessionStream(sessionId: string): void {
 }
 
 /**
+ * Decide whether a reconnect request must be coalesced onto the debounce
+ * window boundary, rather than firing immediately.
+ *
+ * Returns the remaining milliseconds until the window closes (so the caller
+ * can schedule a `setTimeout` for that delay) when the previous resume
+ * happened inside the window, or `null` to let the reconnect proceed now.
+ *
+ * `lastResumeAt === 0` signals "no reconnect has fired yet in this session"
+ * — the first reconnect always passes through regardless of `now`.
+ */
+export function shouldDebounceReconnect(
+  lastResumeAt: number,
+  now: number,
+  windowMs: number,
+): number | null {
+  if (lastResumeAt <= 0) return null;
+  const sinceLastResume = now - lastResumeAt;
+  if (sinceLastResume >= windowMs) return null;
+  return windowMs - sinceLastResume;
+}
+
+/**
  * Deduplicate messages by ID and by consecutive content fingerprint.
  *
  * ID dedup catches exact duplicates within the same source.
@@ -198,10 +389,15 @@ export function disconnectSessionStream(sessionId: string): void {
  */
 export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
-  const seenFingerprints = new Set<string>();
+  // Fingerprints seen per user turn. Nested rather than one composite
+  // `${userID}:${fingerprint}` string, which would be rebuilt and re-hashed in
+  // full for every assistant message on every call; the cached fingerprint
+  // string keeps its hash.
+  const seenFingerprintsByTurn = new Map<string, Set<string>>();
   let lastUserMsgID = "";
+  const newestIndex = messages.length - 1;
 
-  return messages.filter((msg) => {
+  const kept = messages.filter((msg, index) => {
     if (seenIds.has(msg.id)) return false;
     seenIds.add(msg.id);
 
@@ -214,19 +410,9 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
     }
 
     if (msg.role === "assistant") {
-      // JSON.stringify the parts array to avoid separator-collision false
-      // positives: a plain join("|") on ["a|b", "c"] and ["a", "b|c"]
-      // produces the same string. JSON encoding each element is unambiguous.
-      // Fall back to JSON.stringify(p) for parts that carry neither a text nor
-      // a toolCallId (e.g. step-start) so structurally different parts never
-      // collapse to the same empty-string fingerprint element.
-      const contentFingerprint = JSON.stringify(
-        msg.parts.map(
-          (p) =>
-            ("text" in p && p.text) ||
-            ("toolCallId" in p && p.toolCallId) ||
-            JSON.stringify(p),
-        ),
+      const contentFingerprint = getContentFingerprint(
+        msg,
+        index === newestIndex,
       );
 
       if (contentFingerprint !== "[]") {
@@ -238,12 +424,83 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
         // resumeStream() first strips the in-progress assistant message —
         // handleReconnect, the wake-resync path, and the hydration-effect path
         // all do this. See useCopilotStream.ts.
-        const contextKey = `assistant:${lastUserMsgID}:${contentFingerprint}`;
-        if (seenFingerprints.has(contextKey)) return false;
-        seenFingerprints.add(contextKey);
+        let seenInTurn = seenFingerprintsByTurn.get(lastUserMsgID);
+        if (!seenInTurn) {
+          seenInTurn = new Set<string>();
+          seenFingerprintsByTurn.set(lastUserMsgID, seenInTurn);
+        }
+        if (seenInTurn.has(contentFingerprint)) return false;
+        seenInTurn.add(contentFingerprint);
       }
     }
 
     return true;
   });
+  // Same array back when nothing was dropped, so memos keyed on it hold.
+  return kept.length === messages.length ? messages : kept;
+}
+
+// Keyed by the parts array, which every streamed update replaces, so a
+// message that has not changed is never serialised twice. The length check
+// catches parts pushed in place. The newest message is never cached: the SDK
+// can still be appending to it in place until its next flush.
+const contentFingerprints = new WeakMap<
+  UIMessage["parts"],
+  { partCount: number; fingerprint: string }
+>();
+
+function getContentFingerprint(msg: UIMessage, isNewest: boolean): string {
+  if (isNewest) return computeContentFingerprint(msg.parts);
+  const cached = contentFingerprints.get(msg.parts);
+  if (cached && cached.partCount === msg.parts.length) {
+    return cached.fingerprint;
+  }
+  const fingerprint = computeContentFingerprint(msg.parts);
+  contentFingerprints.set(msg.parts, {
+    partCount: msg.parts.length,
+    fingerprint,
+  });
+  return fingerprint;
+}
+
+function computeContentFingerprint(parts: UIMessage["parts"]): string {
+  // JSON.stringify the parts array to avoid separator-collision false
+  // positives: a plain join("|") on ["a|b", "c"] and ["a", "b|c"]
+  // produces the same string. JSON encoding each element is unambiguous.
+  // Fall back to JSON.stringify(p) for parts that carry neither a text nor
+  // a toolCallId (e.g. step-start) so structurally different parts never
+  // collapse to the same empty-string fingerprint element.
+  return JSON.stringify(
+    parts.map(
+      (p) =>
+        ("text" in p && p.text) ||
+        ("toolCallId" in p && p.toolCallId) ||
+        JSON.stringify(p),
+    ),
+  );
+}
+
+/**
+ * True when the server reports it moved a turn to a different execution
+ * engine. Nothing displays the engine and nothing can request one — the only
+ * consumer widens its post-finish refetch window, because a switch takes
+ * longer to settle. The named engine is deliberately not returned.
+ */
+export function isEngineSwitchPart(dataPart: {
+  type: string;
+  data?: unknown;
+}): boolean {
+  if (dataPart.type !== "data-mode-changed") return false;
+  const mode = (dataPart.data as { mode?: string } | undefined)?.mode;
+  return mode === "extended_thinking" || mode === "fast";
+}
+
+export const CREATE_SESSION_RETRY_DELAY_MS = 500;
+
+// A network error on create ("Load failed" on Safari, "Failed to fetch" on
+// Chrome) can mean the server committed and only the response was lost. The
+// request names its session id, so one retry adopts that session instead of
+// bouncing the message back to the composer.
+export function retryLostCreateResponse(failureCount: number, error: unknown) {
+  return failureCount < 1 && error instanceof TypeError;
 }

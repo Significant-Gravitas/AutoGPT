@@ -4,9 +4,11 @@ DataForSEO Google Keyword Suggestions block.
 
 from typing import Any, Dict, List, Optional
 
+from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -110,8 +112,10 @@ class DataForSeoKeywordSuggestionsBlock(Block):
             test_output=[
                 (
                     "suggestion",
-                    lambda x: hasattr(x, "keyword")
-                    and x.keyword == "digital marketing strategy",
+                    lambda x: (
+                        hasattr(x, "keyword")
+                        and x.keyword == "digital marketing strategy"
+                    ),
                 ),
                 ("suggestions", lambda x: isinstance(x, list) and len(x) == 1),
                 ("total_count", 1),
@@ -136,6 +140,7 @@ class DataForSeoKeywordSuggestionsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     async def _fetch_keyword_suggestions(
@@ -166,6 +171,16 @@ class DataForSeoKeywordSuggestionsBlock(Block):
             client = DataForSeoClient(credentials)
 
             results = await self._fetch_keyword_suggestions(client, input_data)
+
+            # DataForSEO reports per-task USD cost on the response. Feed it
+            # into NodeExecutionStats so the COST_USD resolver bills the
+            # real provider spend at reconciliation time.
+            self.merge_stats(
+                NodeExecutionStats(
+                    provider_cost=client.last_cost_usd,
+                    provider_cost_type="cost_usd",
+                )
+            )
 
             # Process and format the results
             suggestions = []
@@ -264,6 +279,7 @@ class KeywordSuggestionExtractorBlock(Block):
                 ("serp_info", None),
                 ("clickstream_data", None),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(

@@ -11,12 +11,12 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { analytics } from "@/services/analytics";
-import { PlusIcon } from "@phosphor-icons/react";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 function UndoActions({
   libraryAgentID,
@@ -35,16 +35,18 @@ function UndoActions({
         variant="primary"
         size="small"
         as="NextLink"
-        className="bg-neutral-200 text-zinc-900 hover:bg-neutral-300 hover:text-zinc-800"
+        // TODO(tokens): no exact role: bg-neutral-200 #E5E5E5, hover:bg-neutral-300 #D4D4D4
+        className="bg-neutral-200 text-foreground-strong hover:bg-neutral-300 hover:text-foreground-emphasis"
         href={libraryHref}
       >
-        Open agent
+        Open workflow
       </Button>
       <Button
         variant="ghost"
         size="small"
         loading={isUndoing}
-        className="border-none text-zinc-200 hover:bg-transparent hover:text-zinc-400"
+        // TODO(tokens): no fitting role for text-zinc-200 #DADADC; #DADADC is surface-active (a surface fill), border-base (a border colour)
+        className="border-none text-zinc-200 hover:bg-transparent hover:text-foreground-subtle"
         onClick={async () => {
           setIsUndoing(true);
           try {
@@ -77,19 +79,22 @@ export function AddToLibraryButton({
   className,
   isInLibrary,
 }: Props) {
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [justAdded, setJustAdded] = useState(false);
 
   // Only fetch library list if isInLibrary wasn't provided by parent
-  const { data: libraryAgents } = useGetV2ListLibraryAgents(undefined, {
-    query: {
-      enabled: isLoggedIn && isInLibrary === undefined,
-      select: (res) =>
-        res.status === 200 ? (res.data as LibraryAgentResponse) : undefined,
+  const { data: libraryAgents } = useGetV2ListLibraryAgents(
+    { is_hidden: false },
+    {
+      query: {
+        enabled: isLoggedIn && isInLibrary === undefined,
+        select: (res) =>
+          res.status === 200 ? (res.data as LibraryAgentResponse) : undefined,
+      },
     },
-  });
+  );
 
   const { mutateAsync: addToLibrary, isPending } =
     usePostV2AddMarketplaceAgent();
@@ -115,7 +120,7 @@ export function AddToLibraryButton({
       const details = await getV2GetSpecificAgent(creatorSlug, agentSlug);
 
       if (details.status !== 200) {
-        throw new Error("Failed to fetch agent details");
+        throw new Error("Failed to fetch workflow details");
       }
 
       const { data: response } = await addToLibrary({
@@ -131,13 +136,8 @@ export function AddToLibraryButton({
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
       });
 
-      analytics.sendDatafastEvent("add_to_library", {
-        name: data.name,
-        id: data.id,
-      });
-
       const addedToast = toast({
-        title: `Agent ${agentName} added to your library.`,
+        title: `Workflow ${agentName} added to your library.`,
         description: (
           <UndoActions
             libraryAgentID={data.id}
@@ -172,7 +172,7 @@ export function AddToLibraryButton({
       Sentry.captureException(error);
       toast({
         title: "Error",
-        description: "Failed to add agent to library. Please try again.",
+        description: "Failed to add workflow to library. Please try again.",
         variant: "destructive",
       });
     }
@@ -180,12 +180,12 @@ export function AddToLibraryButton({
 
   return (
     <Button
-      variant="ghost"
+      variant="secondary"
       size="small"
       loading={isPending}
-      leftIcon={<PlusIcon size={14} weight="bold" />}
+      leftIcon={<Icon icon={PlusSignIcon} size={14} />}
       onClick={handleClick}
-      className={`z-10 text-zinc-500 hover:border-transparent hover:bg-transparent hover:text-zinc-800 ${className ?? ""}`}
+      className={`z-10 ${className ?? ""}`}
       aria-label={`Add ${agentName} to library`}
     >
       {isPending ? "Adding..." : "Add"}

@@ -1,9 +1,10 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { TrashIcon } from "@phosphor-icons/react";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useScheduleDetailHeader } from "../../../RunDetailHeader/useScheduleDetailHeader";
+import { Delete02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   agent: LibraryAgent;
@@ -28,7 +29,7 @@ export function DeleteScheduleButton({ agent, scheduleId, onDeleted }: Props) {
       }}
       loading={isDeleting}
     >
-      <TrashIcon size={16} /> Delete schedule
+      <Icon icon={Delete02Icon} size={16} /> Delete schedule
     </Button>
   );
 }

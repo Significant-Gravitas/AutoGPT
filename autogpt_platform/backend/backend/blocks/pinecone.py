@@ -6,6 +6,7 @@ from pinecone import Pinecone, ServerlessSpec
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -14,6 +15,7 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -60,6 +62,7 @@ class PineconeInitBlock(Block):
             categories={BlockCategory.LOGIC},
             input_schema=PineconeInitBlock.Input,
             output_schema=PineconeInitBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -121,6 +124,7 @@ class PineconeQueryBlock(Block):
             categories={BlockCategory.LOGIC},
             input_schema=PineconeQueryBlock.Input,
             output_schema=PineconeQueryBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -160,10 +164,13 @@ class PineconeQueryBlock(Block):
                 combined_text = "\n\n".join(texts)
 
             # Return both the raw matches and combined text
-            yield "results", {
-                "matches": results["matches"],
-                "combined_text": combined_text,
-            }
+            yield (
+                "results",
+                {
+                    "matches": results["matches"],
+                    "combined_text": combined_text,
+                },
+            )
             yield "combined_results", combined_text
 
         except Exception as e:
@@ -199,6 +206,7 @@ class PineconeInsertBlock(Block):
             categories={BlockCategory.LOGIC},
             input_schema=PineconeInsertBlock.Input,
             output_schema=PineconeInsertBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -227,6 +235,13 @@ class PineconeInsertBlock(Block):
                     }
                 )
             idx.upsert(vectors=vectors, namespace=input_data.namespace)
+
+            self.merge_stats(
+                NodeExecutionStats(
+                    provider_cost=float(len(vectors)),
+                    provider_cost_type="items",
+                )
+            )
 
             yield "upsert_response", "successfully upserted"
 

@@ -9,9 +9,12 @@ from backend.integrations.managed_credentials import (
     register_managed_provider,
 )
 from backend.integrations.managed_providers.agentmail import AgentMailManagedProvider
+from backend.integrations.managed_providers.ayrshare import AyrshareManagedProvider
 
 
 def register_all() -> None:
     """Register every built-in managed credential provider (idempotent)."""
     if get_managed_provider(AgentMailManagedProvider.provider_name) is None:
         register_managed_provider(AgentMailManagedProvider())
+    if get_managed_provider(AyrshareManagedProvider.provider_name) is None:
+        register_managed_provider(AyrshareManagedProvider())

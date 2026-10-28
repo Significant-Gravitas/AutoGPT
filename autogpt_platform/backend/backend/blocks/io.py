@@ -54,11 +54,6 @@ class AgentInputBlock(Block):
             default=False,
             advanced=True,
         )
-        secret: bool = SchemaField(
-            description="Whether the input should be treated as a secret.",
-            default=False,
-            advanced=True,
-        )
 
         def generate_schema(self):
             return copy.deepcopy(self.get_field_schema("value"))
@@ -141,11 +136,6 @@ class AgentOutputBlock(Block):
         )
         advanced: bool = SchemaField(
             description="Whether to treat the output as advanced.",
-            default=False,
-            advanced=True,
-        )
-        secret: bool = SchemaField(
-            description="Whether the output should be treated as a secret.",
             default=False,
             advanced=True,
         )
@@ -417,7 +407,10 @@ class AgentFileInputBlock(AgentInputBlock):
             title="Default Value",
         )
         base_64: bool = SchemaField(
-            description="Whether produce an output in base64 format (not recommended, you can pass the string path just fine accross blocks).",
+            description=(
+                "Whether to produce output in base64 format "
+                "(not recommended; you can pass the file reference across blocks)."
+            ),
             default=False,
             advanced=True,
             title="Produce Base64 Output",
@@ -491,7 +484,7 @@ class AgentDropdownInputBlock(AgentInputBlock):
                 "restricted to these values. Leave empty for free-text input."
             ),
             validation_alias=AliasChoices("options", "placeholder_values"),
-            json_schema_extra={"advanced": False, "secret": False},
+            json_schema_extra={"advanced": False},
         )
 
         def generate_schema(self):
@@ -737,7 +730,22 @@ class AgentGoogleDriveFileInputBlock(AgentInputBlock):
         )
         super().__init__(
             id="d3b32f15-6fd7-40e3-be52-e083f51b19a2",
-            description="Block for selecting a file from Google Drive.",
+            description=(
+                "Agent-level input for a Google Drive file. REQUIRED for any "
+                "agent that reads or writes a Drive file (Sheets, Docs, "
+                "Slides, or generic Drive) — the picker is the only source "
+                "of the _credentials_id needed at runtime, so consuming "
+                "blocks cannot receive a hardcoded ID. Set allowed_views to "
+                'match the consumer: ["SPREADSHEETS"] for Sheets, '
+                '["DOCUMENTS"] for Docs, ["PRESENTATIONS"] for Slides '
+                "(leave default for generic Drive). Wire `result` to the "
+                "consumer block's Drive field and leave that field unset in "
+                "the consumer's input_default. Example link to a Google "
+                'Sheets block: {"source_name": "result", "sink_name": '
+                '"spreadsheet"} (use "document" for Docs, "presentation" '
+                "for Slides). Use one input block per distinct file; "
+                "multiple consumers of the same file share it."
+            ),
             disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentGoogleDriveFileInputBlock.Input,
             output_schema=AgentGoogleDriveFileInputBlock.Output,

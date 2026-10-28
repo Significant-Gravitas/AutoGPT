@@ -1,11 +1,30 @@
 """Tests for disconnect_all_listeners in stream_registry."""
 
 import asyncio
+import json
+import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from redis.exceptions import RedisError
 
 from backend.copilot import stream_registry
+from backend.copilot.constants import STREAM_LOCK_PREFIX
+from backend.copilot.executor.utils import get_session_lock_key
+from backend.data import redis_client
+from backend.util.testing import is_tcp_port_reachable
+
+
+def test_tool_display_roundtrips_redis_and_sse():
+    payload = {
+        "type": "data-tool-display",
+        "id": "call-1",
+        "data": {"toolCallId": "call-1", "displayName": "Daily report"},
+    }
+    chunk = stream_registry._reconstruct_chunk(payload)
+    assert chunk is not None
+    assert json.loads(chunk.model_dump_json()) == payload
+    assert json.loads(chunk.to_sse().removeprefix("data: ")) == payload
 
 
 @pytest.fixture(autouse=True)
@@ -108,3 +127,854 @@ async def test_disconnect_all_listeners_timeout_not_counted():
         await task
     except asyncio.CancelledError:
         pass
+
+
+# ---------------------------------------------------------------------------
+# stream_and_publish: closing the wrapper forwards GeneratorExit into the
+# inner stream so its finally (stream lock release, etc.) runs deterministically.
+# ---------------------------------------------------------------------------
+
+
+class _FakeEvent:
+    """Minimal stand-in for a StreamBaseResponse so publish_chunk is a no-op."""
+
+    def __init__(self, idx: int):
+        self.idx = idx
+
+
+@pytest.mark.asyncio
+async def test_stream_and_publish_aclose_propagates_to_inner_stream():
+    """Closing the wrapper MUST run the inner generator's finally block."""
+    inner_finally_ran = asyncio.Event()
+
+    async def _inner():
+        try:
+            yield _FakeEvent(0)
+            yield _FakeEvent(1)
+            yield _FakeEvent(2)
+        finally:
+            inner_finally_ran.set()
+
+    inner = _inner()
+    # Empty turn_id skips publish_chunk — keeps the test hermetic (no Redis).
+    wrapper = stream_registry.stream_and_publish(
+        session_id="sess-test", turn_id="", stream=inner
+    )
+
+    # Consume one event, then close the wrapper early.
+    first = await wrapper.__anext__()
+    assert isinstance(first, _FakeEvent)
+
+    await wrapper.aclose()
+
+    # The inner generator's finally must have run deterministically
+    # (not deferred to GC) so the caller's cleanup (lock release, etc.)
+    # is observable right after aclose returns.
+    assert inner_finally_ran.is_set()
+
+
+@pytest.mark.asyncio
+async def test_stream_and_publish_logs_warning_on_publish_chunk_failure():
+    """``stream_and_publish`` must not propagate a Redis publish failure —
+    it warns once with full stack trace, keeps yielding, and logs
+    subsequent failures at WARNING (terser, no exc_info) so repeated
+    errors stay visible without flooding the trace."""
+    from redis.exceptions import RedisError
+
+    async def _inner():
+        yield _FakeEvent(0)
+        yield _FakeEvent(1)
+        yield _FakeEvent(2)
+
+    async def _raising_publish(turn_id, event, session_id=None):
+        raise RedisError("boom")
+
+    warning_mock = patch.object(
+        stream_registry.logger, "warning", autospec=True
+    ).start()
+    try:
+        with patch.object(stream_registry, "publish_chunk", new=_raising_publish):
+            wrapper = stream_registry.stream_and_publish(
+                session_id="sess-test", turn_id="turn-1", stream=_inner()
+            )
+            received = [evt async for evt in wrapper]
+    finally:
+        patch.stopall()
+
+    # Every event still yields through — publish failures don't break the stream.
+    assert len(received) == 3
+    # One warning per failed publish (3 total).  First call carries a
+    # stack trace (``exc_info=True``); subsequent calls are terser.
+    assert warning_mock.call_count == 3
+    assert warning_mock.call_args_list[0].kwargs.get("exc_info") is True
+    assert warning_mock.call_args_list[1].kwargs.get("exc_info") is not True
+
+
+@pytest.mark.asyncio
+async def test_stream_and_publish_consumer_break_then_aclose_releases_inner():
+    """The processor pattern — break on cancel, then aclose — must release."""
+    inner_finally_ran = asyncio.Event()
+
+    async def _inner():
+        try:
+            for idx in range(100):
+                yield _FakeEvent(idx)
+        finally:
+            inner_finally_ran.set()
+
+    inner = _inner()
+    wrapper = stream_registry.stream_and_publish(
+        session_id="sess-test", turn_id="", stream=inner
+    )
+
+    # Mimic the processor: consume a few events, simulate Stop by breaking,
+    # then aclose the wrapper (as processor._execute_async now does in the
+    # try/finally around the async for).
+    try:
+        count = 0
+        async for _ in wrapper:
+            count += 1
+            if count >= 2:
+                break
+    finally:
+        await wrapper.aclose()
+
+    assert inner_finally_ran.is_set()
+
+
+# ---------------------------------------------------------------------------
+# mark_session_completed: the atomic meta flip to completed/failed must also
+# release the per-session cluster lock, so the next enqueued turn's run
+# handler can acquire it without waiting for the TTL (5 min default).
+# ---------------------------------------------------------------------------
+
+
+class _FakeRedis:
+    """Minimal async-Redis fake: only the calls mark_session_completed makes."""
+
+    def __init__(self, meta: dict[str, str]):
+        self._meta = dict(meta)
+        self.deleted_keys: list[str] = []
+        self.delete = AsyncMock(side_effect=self._record_delete)
+        self.expire = AsyncMock()
+        # No turn has a checkpoint, so completion trims nothing.
+        self.hget = AsyncMock(return_value=None)
+
+    async def _record_delete(self, *keys: str):
+        self.deleted_keys.extend(keys)
+        for k in keys:
+            self._meta.pop(k, None)
+        return len(keys)
+
+    async def hgetall(self, _key: str):
+        return dict(self._meta)
+
+    async def hdel(self, _key: str, *fields: str) -> int:
+        removed = 0
+        for f in fields:
+            if f in self._meta:
+                del self._meta[f]
+                removed += 1
+        return removed
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_releases_cluster_lock_on_success():
+    """CAS swap must be followed by a DELETE on the session's lock key so a
+    stuck-because-of-stale-lock session becomes immediately claimable."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1"})
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+    ):
+        result = await stream_registry.mark_session_completed("sess-1")
+
+    assert result is True
+    assert get_session_lock_key("sess-1") in fake_redis.deleted_keys
+    assert f"{STREAM_LOCK_PREFIX}sess-1" in fake_redis.deleted_keys
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_fires_user_queue_dispatcher():
+    """When a turn completes for ``user_id=u1`` (read from the session's
+    Redis meta), the slot-free hook must invoke
+    ``dispatch_next_for_user('u1')`` so the user's next queued session
+    can be promoted.  Per-user scoping: we don't dispatch for other
+    users (no global broadcast)."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1", "user_id": "u1"})
+    dispatch_mock = AsyncMock(return_value=True)
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+        patch.object(stream_registry, "release_turn_slot", new=AsyncMock()),
+        patch(
+            "backend.copilot.stream_registry.dispatch_next_for_user",
+            new=dispatch_mock,
+        ),
+    ):
+        await stream_registry.mark_session_completed("sess-1")
+
+    dispatch_mock.assert_awaited_once_with("u1")
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_swallows_dispatcher_errors():
+    """The dispatcher firing after slot-free must not be able to break
+    the completion path — any exception from ``dispatch_next_for_user``
+    is logged and swallowed so a queue hiccup never blocks the turn's
+    cleanup."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1", "user_id": "u1"})
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+        patch.object(stream_registry, "release_turn_slot", new=AsyncMock()),
+        patch(
+            "backend.copilot.stream_registry.dispatch_next_for_user",
+            new=AsyncMock(side_effect=RuntimeError("queue brown-out")),
+        ),
+    ):
+        # No exception should bubble.
+        result = await stream_registry.mark_session_completed("sess-1")
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_skip_error_publish_emits_no_stream_error():
+    """``skip_error_publish`` is what lets a user-initiated cancel end a turn
+    without the frontend rendering "the assistant encountered an error".
+
+    Both arms run so the suppression is shown to be load-bearing: the same
+    call without the flag publishes the StreamError. The terminal StreamFinish
+    is published either way, so a subscriber still sees the turn end.
+    """
+
+    async def _mark(*, skip_error_publish: bool):
+        publish_mock = AsyncMock()
+        with (
+            patch.object(
+                stream_registry,
+                "get_redis_async",
+                new=AsyncMock(return_value=_FakeRedis({"status": "running"})),
+            ),
+            patch.object(
+                stream_registry,
+                "hash_compare_and_set",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(stream_registry, "publish_chunk", new=publish_mock),
+        ):
+            await stream_registry.mark_session_completed(
+                "sess-1",
+                error_message="Operation cancelled",
+                skip_error_publish=skip_error_publish,
+            )
+        return [call.args[1] for call in publish_mock.call_args_list]
+
+    suppressed = await _mark(skip_error_publish=True)
+    assert not any(isinstance(c, stream_registry.StreamError) for c in suppressed)
+    assert any(isinstance(c, stream_registry.StreamFinish) for c in suppressed)
+
+    published = await _mark(skip_error_publish=False)
+    assert any(isinstance(c, stream_registry.StreamError) for c in published)
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_republishes_the_error_code():
+    """The executor re-publishes a turn's error here; without its code the
+    client can only match the message text, which is how a budget stop came
+    to open the "Daily usage limit reached" dialog."""
+    publish_mock = AsyncMock()
+    with (
+        patch.object(
+            stream_registry,
+            "get_redis_async",
+            new=AsyncMock(return_value=_FakeRedis({"status": "running"})),
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=publish_mock),
+    ):
+        await stream_registry.mark_session_completed(
+            "sess-1", error_message="The response stopped.", error_code="idle_timeout"
+        )
+    errors = [
+        call.args[1]
+        for call in publish_mock.call_args_list
+        if isinstance(call.args[1], stream_registry.StreamError)
+    ]
+    assert len(errors) == 1
+    assert errors[0].code == "idle_timeout"
+    assert errors[0].to_sse().count("[code:idle_timeout]") == 1
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_skips_lock_release_when_already_completed():
+    """CAS failure = someone else completed the session first; we must not
+    delete their already-released lock, and we must NOT publish StreamFinish
+    twice (the winning caller already published it)."""
+    fake_redis = _FakeRedis({"status": "completed", "turn_id": "turn-1"})
+    publish_mock = AsyncMock()
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=False)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=publish_mock),
+    ):
+        result = await stream_registry.mark_session_completed("sess-1")
+
+    assert result is False
+    assert get_session_lock_key("sess-1") not in fake_redis.deleted_keys
+    assert f"{STREAM_LOCK_PREFIX}sess-1" not in fake_redis.deleted_keys
+    assert not any(
+        isinstance(call.args[1], stream_registry.StreamFinish)
+        for call in publish_mock.call_args_list
+    ), "StreamFinish must NOT be re-published on the CAS-no-op branch"
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_survives_lock_release_redis_error():
+    """A Redis hiccup during lock DELETE must not prevent the StreamFinish
+    publish — the client's SSE stream would otherwise hang on the stale meta
+    status while Redis recovers."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1"})
+    fake_redis.delete = AsyncMock(side_effect=RedisError("boom"))
+    publish_mock = AsyncMock()
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=publish_mock),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+    ):
+        result = await stream_registry.mark_session_completed("sess-1")
+
+    assert result is True
+    assert any(
+        isinstance(call.args[1], stream_registry.StreamFinish)
+        for call in publish_mock.call_args_list
+    ), "StreamFinish must still be published even if lock DELETE raises"
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_releases_stream_lock():
+    """Force-completing a session (cancel / error) must DELETE both the
+    cluster lock and the SDK stream lock. If the stream lock isn't released
+    here, the next user turn races ahead of the SDK turn's finally block and
+    fails with stream_already_active until the 120s TTL expires."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1"})
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+    ):
+        result = await stream_registry.mark_session_completed(
+            "sess-1", error_message="cancelled"
+        )
+
+    assert result is True
+    assert get_session_lock_key("sess-1") in fake_redis.deleted_keys
+    assert f"{STREAM_LOCK_PREFIX}sess-1" in fake_redis.deleted_keys
+
+
+# ---------------------------------------------------------------------------
+# Replays must contain protocol chunks only. Redis cursor data parts are not
+# emitted because AI SDK resume needs the complete stream envelope from 0-0.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_subscribe_to_session_replays_chunks_without_cursor_parts():
+    """During replay, the subscriber queue contains chunks plus terminal finish."""
+    import orjson
+
+    from backend.copilot.response_model import (
+        StreamTextDelta,
+        StreamTextEnd,
+        StreamTextStart,
+    )
+
+    # Three chunks recorded in Redis for a completed turn. Completed status
+    # means the listener branch is skipped and only the replay path runs,
+    # which keeps the test hermetic.
+    stream_key_msgs = [
+        (
+            "9999-0",
+            {"data": orjson.dumps(StreamTextStart(id="blk-1").model_dump()).decode()},
+        ),
+        (
+            "9999-1",
+            {
+                "data": orjson.dumps(
+                    StreamTextDelta(id="blk-1", delta="hi").model_dump()
+                ).decode()
+            },
+        ),
+        (
+            "9999-2",
+            {"data": orjson.dumps(StreamTextEnd(id="blk-1").model_dump()).decode()},
+        ),
+    ]
+
+    fake_redis = AsyncMock()
+    fake_redis.hgetall = AsyncMock(
+        return_value={
+            "user_id": "u1",
+            "session_id": "sess-1",
+            "turn_id": "turn-1",
+            "status": "completed",  # finished → no listener task
+        }
+    )
+    fake_redis.xread = AsyncMock(return_value=[("stream-key", stream_key_msgs)])
+
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        queue = await stream_registry.subscribe_to_session(
+            session_id="sess-1", user_id="u1", last_message_id="0-0"
+        )
+
+    assert queue is not None
+
+    delivered = []
+    while not queue.empty():
+        delivered.append(queue.get_nowait())
+
+    assert [(frame_id, type(chunk)) for frame_id, chunk in delivered] == [
+        ("turn-1:9999-0", StreamTextStart),
+        ("turn-1:9999-1", StreamTextDelta),
+        ("turn-1:9999-2", StreamTextEnd),
+        (None, stream_registry.StreamFinish),
+    ]
+
+
+def test_reconstruct_chunk_round_trips_pending_drained():
+    """The ``data-pending-drained`` hint must survive stream replay.  It is
+    published like any other chunk, so it has to be registered in
+    ``_reconstruct_chunk``; otherwise a client that reconnects mid-turn
+    silently drops the hint and falls back to the slow backstop poll."""
+    import orjson
+
+    from backend.copilot.response_model import (
+        StreamPendingDrained,
+        StreamPendingDrainedMessage,
+    )
+
+    stored = orjson.loads(
+        StreamPendingDrained(
+            drainedCount=2,
+            messages=[
+                StreamPendingDrainedMessage(id="pm-1", content="also add tests"),
+                StreamPendingDrainedMessage(id="pm-2", content="and docs"),
+            ],
+        ).model_dump_json()
+    )
+
+    chunk = stream_registry._reconstruct_chunk(stored)
+
+    assert isinstance(chunk, StreamPendingDrained)
+    assert chunk.drainedCount == 2
+    assert [(m.id, m.content) for m in chunk.messages] == [
+        ("pm-1", "also add tests"),
+        ("pm-2", "and docs"),
+    ]
+
+
+def test_reconstruct_mode_changed_chunk():
+    """Regression: MODE_CHANGED was missing from the reconstruction map, so
+    the picker-sync event was silently dropped after the Redis stream."""
+    from backend.copilot.response_model import StreamModeChanged
+    from backend.copilot.stream_registry import _reconstruct_chunk
+
+    chunk = _reconstruct_chunk(
+        {"type": "data-mode-changed", "mode": "extended_thinking"}
+    )
+    assert isinstance(chunk, StreamModeChanged)
+    assert chunk.mode == "extended_thinking"
+    assert '"data"' in chunk.to_sse()
+
+
+def test_reconstruct_chunk_round_trips_compaction_progress():
+    """Regression: ``data-compaction`` was added to the wire protocol without
+    being registered here, so every live compaction phase was dropped on the
+    executor → Redis → rest_server relay ("Unknown chunk type: data-compaction")
+    and the progress bar never moved in a running deployment.
+    """
+    import orjson
+
+    from backend.copilot.response_model import StreamCompactionProgress
+
+    stored = orjson.loads(
+        StreamCompactionProgress(
+            phase="rebuilding",
+            tokensBefore=128_000,
+            tokensAfter=31_000,
+            messagesBefore=412,
+            messagesAfter=38,
+        ).model_dump_json()
+    )
+
+    chunk = stream_registry._reconstruct_chunk(stored)
+
+    assert isinstance(chunk, StreamCompactionProgress)
+    assert chunk.phase == "rebuilding"
+    assert chunk.tokensBefore == 128_000
+    assert chunk.tokensAfter == 31_000
+    assert chunk.messagesBefore == 412
+    assert chunk.messagesAfter == 38
+    assert '"data"' in chunk.to_sse()
+
+
+# ``data-cursor`` is deprecated and no longer emitted by new subscriptions
+# (see ``StreamCursor``), so it is the one type that may stay unmapped.
+_UNRELAYED_RESPONSE_TYPES = {"CURSOR"}
+
+
+def test_every_response_type_survives_the_relay():
+    """Every event the backend can publish must be reconstructable.
+
+    An unmapped type is discarded with only a log warning, so the feature
+    that emits it silently does nothing in a deployment while every test
+    stays green — this has now happened twice (MODE_CHANGED, COMPACTION).
+    Adding a ``ResponseType`` should force a decision here.
+    """
+    from backend.copilot.response_model import ResponseType
+
+    mapped = {
+        member.name
+        for member in ResponseType
+        if member.value in stream_registry.CHUNK_TYPE_TO_CLASS
+    }
+    expected = {m.name for m in ResponseType} - _UNRELAYED_RESPONSE_TYPES
+
+    missing = sorted(expected - mapped)
+    assert not missing, (
+        f"ResponseType(s) {missing} are not registered in _reconstruct_chunk — "
+        "they would be dropped on the executor → Redis → rest_server relay"
+    )
+
+
+class TestEveryPartSurvivesReplay:
+    """A part the registry cannot reconstruct never reaches the client.
+
+    Turns run in the executor and reach the browser by replay through this
+    registry, so a stream part is only real if ``_reconstruct_chunk`` knows
+    its type. ``StreamProviderFailure`` was emitted correctly, published
+    correctly, and dropped here with "Unknown chunk type" -- invisible except
+    as a warning in the logs.
+    """
+
+    def test_provider_failure_is_reconstructed(self) -> None:
+        from backend.copilot.response_model import ResponseType, StreamProviderFailure
+        from backend.copilot.stream_registry import _reconstruct_chunk
+
+        chunk = _reconstruct_chunk(
+            {
+                "type": ResponseType.PROVIDER_FAILURE.value,
+                "failure": {"kind": "usage_limit", "retryable": False},
+            }
+        )
+
+        assert isinstance(chunk, StreamProviderFailure)
+        assert chunk.failure["kind"] == "usage_limit"
+
+    def test_no_emittable_part_is_missing_from_the_registry(self) -> None:
+        # The map is hand-maintained, so a new part is only one forgotten
+        # line away from being emitted, published, and silently undelivered.
+        import inspect
+
+        from backend.copilot import response_model
+        from backend.copilot.response_model import StreamBaseResponse
+        from backend.copilot.stream_registry import CHUNK_TYPE_TO_CLASS
+
+        # Parts nothing can emit, so nothing can fail to deliver:
+        #   StreamHeartbeat rides as an SSE comment, never as a chunk.
+        #   StreamCursor is deprecated and no longer constructed anywhere.
+        #     (Its docstring says it is kept so older stored chunks can be
+        #     reconstructed, which the missing map entry does not actually
+        #     deliver -- harmless while nothing emits it, but not what the
+        #     docstring claims.)
+        never_published = {"StreamHeartbeat", "StreamCursor"}
+
+        missing = []
+        for name, cls in inspect.getmembers(response_model, inspect.isclass):
+            if not issubclass(cls, StreamBaseResponse) or cls is StreamBaseResponse:
+                continue
+            if name in never_published:
+                continue
+            field = cls.model_fields.get("type")
+            default = getattr(field, "default", None)
+            if default is None or not hasattr(default, "value"):
+                continue
+            if default.value not in CHUNK_TYPE_TO_CLASS:
+                missing.append(f"{name} ({default.value})")
+
+        assert not missing, f"parts that cannot survive replay: {missing}"
+
+
+class TestStreamEntries:
+    def test_resp2_list_shape_is_normalised(self):
+        raw = [("stream-key", [("1-0", {"data": "x"}), (b"2-0", {b"data": b"y"})])]
+        assert stream_registry._stream_entries(raw) == [
+            ("stream-key", [("1-0", {"data": "x"}), ("2-0", {"data": "y"})])
+        ]
+
+    def test_resp3_dict_shape_is_normalised(self):
+        raw = {b"stream-key": [("1-0", {"data": "x"})]}
+        assert stream_registry._stream_entries(raw) == [
+            ("stream-key", [("1-0", {"data": "x"})])
+        ]
+
+    def test_empty_and_none_yield_nothing(self):
+        assert stream_registry._stream_entries(None) == []
+        assert stream_registry._stream_entries([]) == []
+        assert stream_registry._stream_entries([("s", None)]) == [("s", [])]
+
+
+class _StreamFakeRedis(_FakeRedis):
+    """_FakeRedis plus the stream read get_active_session makes."""
+
+    def __init__(self, meta: dict[str, str], newest):
+        super().__init__(meta)
+        self._newest = newest
+        self.xrevrange = AsyncMock(return_value=newest)
+
+
+@pytest.mark.asyncio
+async def test_get_active_session_reads_last_id_from_the_turn_stream():
+    fake_redis = _StreamFakeRedis(
+        {"status": "running", "turn_id": "turn-1", "user_id": "user-1"},
+        newest=[(b"7-0", {b"data": b"{}"})],
+    )
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        session, last_id = await stream_registry.get_active_session(
+            "sess-1", user_id="user-1"
+        )
+
+    assert session is not None
+    assert session.turn_id == "turn-1"
+    assert last_id == "7-0"
+    fake_redis.xrevrange.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_active_session_falls_back_when_the_stream_is_empty():
+    fake_redis = _StreamFakeRedis(
+        {"status": "running", "turn_id": "turn-1"}, newest=None
+    )
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        _session, last_id = await stream_registry.get_active_session("sess-1")
+
+    assert last_id == "0-0"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_message, wakes",
+    [
+        (None, True),
+        ("model provider timed out", True),
+        (stream_registry.CANCELLED_MESSAGE, False),
+    ],
+)
+async def test_a_finished_turn_wakes_the_chat_for_cards_answered_during_it(
+    error_message: str | None, wakes: bool
+):
+    """Nothing else starts that turn, so a failed one wakes it too; the
+    user's own Stop leaves it for their next turn."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1", "user_id": "u1"})
+    wake = AsyncMock()
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+        patch.object(stream_registry, "release_turn_slot", new=AsyncMock()),
+        patch(
+            "backend.copilot.stream_registry.dispatch_next_for_user", new=AsyncMock()
+        ),
+        patch("backend.copilot.gate.held.wake", new=wake),
+    ):
+        await stream_registry.mark_session_completed(
+            "sess-1", error_message=error_message
+        )
+
+    assert wake.await_count == (1 if wakes else 0)
+    if wakes:
+        wake.assert_awaited_once_with("u1", "sess-1")
+
+
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="no local Redis reachable; the CAS script needs one to run",
+)
+class TestCompletionOnRealRedis:
+    """A turn's end can wake the next turn before its safety net runs."""
+
+    @pytest.fixture
+    async def session_id(self):
+        session_id = f"test-completion-{uuid.uuid4().hex}"
+        yield session_id
+        redis = await redis_client.get_redis_async()
+        await redis.delete(stream_registry.get_session_meta_key(session_id))
+
+    async def test_a_late_completion_leaves_the_next_turn_running(self, session_id):
+        await stream_registry.create_session(session_id, None, "", "", turn_id="a")
+        await stream_registry.create_session(session_id, None, "", "", turn_id="b")
+
+        with patch.object(stream_registry, "publish_chunk", new=AsyncMock()) as publish:
+            closed = await stream_registry.mark_session_completed(
+                session_id, error_message="shut down", turn_id="a"
+            )
+
+        session = await stream_registry.get_session(session_id)
+        assert closed is False
+        assert session is not None and session.status == "running"
+        publish.assert_not_awaited()
+
+    async def test_a_turn_frees_its_locks_before_its_slot(self, session_id):
+        """A turn admitted into the freed slot must not meet this turn's lock on
+        another pod, which would drop it unrun."""
+        await stream_registry.create_session(session_id, "u1", "", "", turn_id="a")
+        redis = await redis_client.get_redis_async()
+        await redis.set(get_session_lock_key(session_id), "pod-a")
+        await redis.set(f"{STREAM_LOCK_PREFIX}{session_id}", "a")
+        held_at_release: list[int] = []
+
+        async def release(_user_id: str, sid: str) -> None:
+            held_at_release.append(
+                await redis.exists(
+                    get_session_lock_key(sid), f"{STREAM_LOCK_PREFIX}{sid}"
+                )
+            )
+
+        with (
+            patch.object(stream_registry, "release_turn_slot", new=release),
+            patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+            patch.object(
+                stream_registry.chat_db(),
+                "set_turn_duration",
+                new=AsyncMock(),
+                create=True,
+            ),
+            patch.object(stream_registry, "dispatch_next_for_user", new=AsyncMock()),
+            patch("backend.copilot.gate.held.wake", new=AsyncMock()),
+        ):
+            await stream_registry.mark_session_completed(session_id, turn_id="a")
+
+        assert held_at_release == [0]
+
+    async def test_a_turn_still_completes_itself(self, session_id):
+        await stream_registry.create_session(session_id, None, "", "", turn_id="a")
+
+        with (
+            patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+            patch.object(
+                stream_registry.chat_db(),
+                "set_turn_duration",
+                new=AsyncMock(),
+                create=True,
+            ),
+        ):
+            closed = await stream_registry.mark_session_completed(
+                session_id, turn_id="a"
+            )
+
+        session = await stream_registry.get_session(session_id)
+        assert closed is True
+        assert session is not None and session.status == "completed"
+
+    async def test_meta_without_a_turn_id_still_completes(self, session_id):
+        await stream_registry.create_session(session_id, None, "", "", turn_id="a")
+        redis = await redis_client.get_redis_async()
+        await redis.hdel(stream_registry.get_session_meta_key(session_id), "turn_id")
+
+        with (
+            patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+            patch.object(
+                stream_registry.chat_db(),
+                "set_turn_duration",
+                new=AsyncMock(),
+                create=True,
+            ),
+        ):
+            closed = await stream_registry.mark_session_completed(
+                session_id, turn_id="a"
+            )
+
+        assert closed is True

@@ -13,12 +13,13 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { isMacPlatform } from "@/lib/platform";
-import { MagnifyingGlass } from "@phosphor-icons/react";
 import { useReactFlow } from "@xyflow/react";
 import { useCallback, useMemo } from "react";
 import { ControlPanelButton } from "../../ControlPanelButton";
 import { GraphSearchContent } from "../GraphMenuContent/GraphContent";
 import { useGraphMenu } from "./useGraphMenu";
+import { Search01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function GraphSearchMenu() {
   const nodes = useNodeStore((state) => state.nodes);
@@ -64,12 +65,12 @@ export function GraphSearchMenu() {
               selected={graphSearchOpen}
               className="rounded-none"
             >
-              <MagnifyingGlass className="size-5" />
+              <Icon icon={Search01Icon} className="size-5" />
             </ControlPanelButton>
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side="right">
-          Search Graph ({isMac ? "Cmd" : "Ctrl"}+F)
+          Search Workflow ({isMac ? "Cmd" : "Ctrl"}+F)
         </TooltipContent>
       </Tooltip>
 
@@ -77,6 +78,7 @@ export function GraphSearchMenu() {
         side="right"
         align="start"
         sideOffset={16}
+        // TODO(tokens): no exact role: shadow-[…] #000000
         className="absolute h-[75vh] w-[46.625rem] overflow-hidden rounded-[1rem] border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
         data-id="graph-search-popover-content"
       >

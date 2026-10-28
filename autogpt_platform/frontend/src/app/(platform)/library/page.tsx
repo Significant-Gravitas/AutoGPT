@@ -1,24 +1,32 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { HeartIcon, ListIcon } from "@phosphor-icons/react";
-import { JumpBackIn } from "./components/JumpBackIn/JumpBackIn";
+import { useQueryState } from "nuqs";
+import { AgentsTabIntro } from "./components/AgentsTabIntro/AgentsTabIntro";
 import { LibraryActionHeader } from "./components/LibraryActionHeader/LibraryActionHeader";
 import { LibraryAgentList } from "./components/LibraryAgentList/LibraryAgentList";
 import { useLibraryListPage } from "./components/useLibraryListPage";
 import { FavoriteAnimationProvider } from "./context/FavoriteAnimationContext";
-import { LibraryTab } from "./types";
+import type { LibraryTab, AgentStatusFilter } from "./types";
+import { useLibraryFleetSummary } from "./hooks/useLibraryFleetSummary";
+import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
+import { FavouriteIcon, Menu01Icon } from "@hugeicons/core-free-icons";
 
 const LIBRARY_TABS: LibraryTab[] = [
-  { id: "all", title: "All", icon: ListIcon },
-  { id: "favorites", title: "Favorites", icon: HeartIcon },
+  { id: "all", title: "All", icon: Menu01Icon },
+  { id: "favorites", title: "Favorites", icon: FavouriteIcon },
 ];
 
 export default function LibraryPage() {
   const { searchTerm, setSearchTerm, librarySort, setLibrarySort } =
     useLibraryListPage();
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  // In the URL, so a link can open a folder (the approval card links one).
+  const [selectedFolderId, setSelectedFolderId] = useQueryState("folder");
   const [activeTab, setActiveTab] = useState(LIBRARY_TABS[0].id);
+  const [statusFilter, setStatusFilter] = useState<AgentStatusFilter>("all");
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const { agents } = useLibraryAgents();
+  const fleetSummary = useLibraryFleetSummary(agents);
 
   useEffect(() => {
     document.title = "Library – AutoGPT Platform";
@@ -39,8 +47,11 @@ export default function LibraryPage() {
       onAnimationComplete={handleFavoriteAnimationComplete}
     >
       <main className="pt-160 container min-h-screen space-y-4 pb-20 pt-16 sm:px-8 md:px-12">
-        <LibraryActionHeader setSearchTerm={setSearchTerm} />
-        <JumpBackIn />
+        <LibraryActionHeader
+          setSearchTerm={setSearchTerm}
+          isImportOpen={isImportOpen}
+          onImportOpenChange={setIsImportOpen}
+        />
         <LibraryAgentList
           searchTerm={searchTerm}
           librarySort={librarySort}
@@ -50,8 +61,13 @@ export default function LibraryPage() {
           tabs={LIBRARY_TABS}
           activeTab={activeTab}
           onTabChange={handleTabChange}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          fleetSummary={fleetSummary}
+          briefingAgents={agents}
         />
       </main>
+      <AgentsTabIntro canShow={!isImportOpen} />
     </FavoriteAnimationProvider>
   );
 }

@@ -2,11 +2,12 @@
 
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
-import { LightningIcon } from "@phosphor-icons/react";
 import { formatDistanceToNow } from "date-fns";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";
 import { TriggerActionsDropdown } from "./TriggerActionsDropdown";
+import { FlashIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   trigger: LibraryAgentPreset;
@@ -26,8 +27,11 @@ export function TriggerListItem({
   return (
     <SidebarItemCard
       icon={
-        <IconWrapper className="border-purple-50 bg-purple-50">
-          <LightningIcon size={16} className="text-zinc-700" weight="bold" />
+        <IconWrapper
+          // TODO(tokens): no exact role for border-purple-50 (#F1EBFE), bg-purple-50 (#F1EBFE)
+          className="border-purple-50 bg-purple-50"
+        >
+          <Icon icon={FlashIcon} size={16} className="text-foreground-body" />
         </IconWrapper>
       }
       title={trigger.name}

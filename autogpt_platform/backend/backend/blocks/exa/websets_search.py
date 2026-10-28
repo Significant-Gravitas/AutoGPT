@@ -16,6 +16,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -24,6 +25,7 @@ from backend.sdk import (
 )
 
 from ._config import exa
+from .helpers import merge_exa_cost
 
 
 # Mirrored model for stability
@@ -239,6 +241,7 @@ class ExaCreateWebsetSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCreateWebsetSearchBlock.Input,
             output_schema=ExaCreateWebsetSearchBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -320,6 +323,7 @@ class ExaCreateWebsetSearchBlock(Block):
         sdk_search = await aexa.websets.searches.create(
             webset_id=input_data.webset_id, params=payload
         )
+        merge_exa_cost(self, sdk_search)
 
         search_id = sdk_search.id
         status = (
@@ -353,6 +357,7 @@ class ExaCreateWebsetSearchBlock(Block):
                 current_search = await aexa.websets.searches.get(
                     webset_id=input_data.webset_id, id=search_id
                 )
+                merge_exa_cost(self, current_search)
                 current_status = (
                     current_search.status.value
                     if hasattr(current_search.status, "value")
@@ -434,6 +439,7 @@ class ExaGetWebsetSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetWebsetSearchBlock.Input,
             output_schema=ExaGetWebsetSearchBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -445,6 +451,7 @@ class ExaGetWebsetSearchBlock(Block):
         sdk_search = await aexa.websets.searches.get(
             webset_id=input_data.webset_id, id=input_data.search_id
         )
+        merge_exa_cost(self, sdk_search)
 
         search = WebsetSearchModel.from_sdk(sdk_search)
 
@@ -515,6 +522,7 @@ class ExaCancelWebsetSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCancelWebsetSearchBlock.Input,
             output_schema=ExaCancelWebsetSearchBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -526,6 +534,7 @@ class ExaCancelWebsetSearchBlock(Block):
         canceled_search = await aexa.websets.searches.cancel(
             webset_id=input_data.webset_id, id=input_data.search_id
         )
+        merge_exa_cost(self, canceled_search)
 
         # Extract items found before cancellation
         items_found = 0
@@ -595,6 +604,7 @@ class ExaFindOrCreateSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaFindOrCreateSearchBlock.Input,
             output_schema=ExaFindOrCreateSearchBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -605,6 +615,7 @@ class ExaFindOrCreateSearchBlock(Block):
 
         # Get webset to check existing searches
         webset = await aexa.websets.get(id=input_data.webset_id)
+        merge_exa_cost(self, webset)
 
         # Look for existing search with same query
         existing_search = None
@@ -639,6 +650,7 @@ class ExaFindOrCreateSearchBlock(Block):
             sdk_search = await aexa.websets.searches.create(
                 webset_id=input_data.webset_id, params=payload
             )
+            merge_exa_cost(self, sdk_search)
 
             search = WebsetSearchModel.from_sdk(sdk_search)
 

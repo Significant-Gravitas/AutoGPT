@@ -1,18 +1,17 @@
 """GetDocPageTool - Fetch full content of a documentation page."""
 
+import asyncio
 import logging
-from pathlib import Path
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.util.docs import get_docs_root, make_doc_url
 
 from .base import BaseTool
+from .external_scope import error_detail
 from .models import DocPageResponse, ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
-
-# Base URL for documentation (can be configured)
-DOCS_BASE_URL = "https://docs.agpt.co"
 
 
 class GetDocPageTool(BaseTool):
@@ -21,6 +20,10 @@ class GetDocPageTool(BaseTool):
     @property
     def name(self) -> str:
         return "get_doc_page"
+
+    @property
+    def allow_external_use(self):
+        return True, []
 
     @property
     def description(self) -> str:
@@ -45,12 +48,6 @@ class GetDocPageTool(BaseTool):
     def requires_auth(self) -> bool:
         return False  # Documentation is public
 
-    def _get_docs_root(self) -> Path:
-        """Get the documentation root directory."""
-        this_file = Path(__file__)
-        project_root = this_file.parent.parent.parent.parent.parent.parent.parent.parent
-        return project_root / "docs"
-
     def _extract_title(self, content: str, fallback: str) -> str:
         """Extract title from markdown content."""
         lines = content.split("\n")
@@ -58,11 +55,6 @@ class GetDocPageTool(BaseTool):
             if line.startswith("# "):
                 return line[2:].strip()
         return fallback
-
-    def _make_doc_url(self, path: str) -> str:
-        """Create a URL for a documentation page."""
-        url_path = path.rsplit(".", 1)[0] if "." in path else path
-        return f"{DOCS_BASE_URL}/{url_path}"
 
     async def _execute(
         self,
@@ -100,19 +92,23 @@ class GetDocPageTool(BaseTool):
                 session_id=session_id,
             )
 
-        docs_root = self._get_docs_root()
-        full_path = docs_root / path
-
-        if not full_path.exists():
+        docs_root = get_docs_root()
+        if docs_root is None:
             return ErrorResponse(
-                message=f"Documentation page not found: {path}",
-                error="not_found",
+                message="Documentation is not available in this deployment.",
+                error="docs_unavailable",
                 session_id=session_id,
             )
-
-        # Ensure the path is within docs root
+        # Containment before existence: a uniform error for out-of-root
+        # paths avoids leaking whether a file exists outside docs_root.
         try:
-            full_path.resolve().relative_to(docs_root.resolve())
+            # resolve() both sides: get_docs_root guarantees a resolved root,
+            # but the guard stays self-contained rather than coupling a
+            # security boundary to another module's invariant (idempotent,
+            # one metadata syscall). All later access goes through the
+            # resolved path so the validated path is the one read.
+            full_path = (docs_root / path).resolve()
+            full_path.relative_to(docs_root.resolve())
         except ValueError:
             return ErrorResponse(
                 message="Invalid documentation path.",
@@ -120,8 +116,16 @@ class GetDocPageTool(BaseTool):
                 session_id=session_id,
             )
 
+        # A directory exists too, and reading one fails with its absolute path.
+        if not full_path.is_file():
+            return ErrorResponse(
+                message=f"Documentation page not found: {path}",
+                error="not_found",
+                session_id=session_id,
+            )
+
         try:
-            content = full_path.read_text(encoding="utf-8")
+            content = await asyncio.to_thread(full_path.read_text, encoding="utf-8")
             title = self._extract_title(content, path)
 
             return DocPageResponse(
@@ -129,14 +133,14 @@ class GetDocPageTool(BaseTool):
                 title=title,
                 path=path,
                 content=content,
-                doc_url=self._make_doc_url(path),
+                doc_url=make_doc_url(path),
                 session_id=session_id,
             )
 
         except Exception as e:
             logger.error(f"Failed to read documentation page {path}: {e}")
             return ErrorResponse(
-                message=f"Failed to read documentation page: {str(e)}",
+                message=f"Failed to read documentation page: {error_detail(e, session)}",
                 error="read_failed",
                 session_id=session_id,
             )
