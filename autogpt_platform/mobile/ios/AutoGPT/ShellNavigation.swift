@@ -14,7 +14,12 @@ extension ShellViewController: WKNavigationDelegate, WKUIDelegate {
       decisionHandler(.allow)
       return
     }
-    if policy.isLogin(url) {
+    if action.shouldPerformDownload && policy.isTrustedBlob(url)
+      && action.sourceFrame.isMainFrame
+      && action.sourceFrame.request.url.map(policy.isTrusted) == true
+    {
+      decisionHandler(.download)
+    } else if policy.isLogin(url) {
       decisionHandler(.cancel)
       showMessage("Sign in to use AutoGPT.")
       signIn()

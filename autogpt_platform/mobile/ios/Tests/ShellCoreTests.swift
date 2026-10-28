@@ -31,4 +31,24 @@ final class ShellCoreTests: XCTestCase {
     XCTAssertNil(
       attempt.exchangeBody(callback: URL(string: valid.absoluteString + "&code=\(code)")!))
   }
+
+  func testAnExpiredAttemptCannotRedeemItsCallback() {
+    let attempt = AuthAttempt(createdAt: Date(timeIntervalSinceNow: -600))
+    let callback = URL(
+      string:
+        "autogpt://auth/callback?code=\(String(repeating: "a", count: 43))&state=\(attempt.state)")!
+    XCTAssertNil(attempt.exchangeBody(callback: callback))
+  }
+
+  func testBlobDownloadsMustBelongToTheTrustedOrigin() {
+    let policy = NavigationPolicy(origin: URL(string: "https://platform.agpt.co")!)
+    XCTAssertTrue(policy.isTrustedBlob(URL(string: "blob:https://platform.agpt.co/file")!))
+    for value in [
+      "blob:https://evil.example.com/file", "blob:http://platform.agpt.co/file",
+      "blob:https://platform.agpt.co:444/file", "blob:null/file",
+      "blob:https://evil.com@platform.agpt.co/file", "https://platform.agpt.co/file",
+    ] {
+      XCTAssertFalse(policy.isTrustedBlob(URL(string: value)!), value)
+    }
+  }
 }

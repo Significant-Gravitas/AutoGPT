@@ -52,7 +52,7 @@ export function mobileAuth() {
           const code = randomBytes(32).toString("base64url");
           await ctx.context.internalAdapter.createVerificationValue({
             identifier: grantIdentifier(code, ctx.body.challenge),
-            value: session.session.token,
+            value: session.session.id,
             expiresAt: new Date(Date.now() + 60_000),
           });
           ctx.setHeader("Cache-Control", "no-store");
@@ -78,6 +78,11 @@ export function mobileAuth() {
           }),
         },
         async (ctx) => {
+          if (
+            ctx.headers?.get("origin") !== new URL(ctx.context.baseURL).origin
+          ) {
+            throw ctx.error("FORBIDDEN", { message: "Invalid origin" });
+          }
           ctx.setHeader("Cache-Control", "no-store");
           const challenge = digest(ctx.body.verifier);
           const grant =
@@ -88,9 +93,15 @@ export function mobileAuth() {
             throw ctx.error("UNAUTHORIZED", {
               message: "Sign-in expired. Please try again.",
             });
-          const source = await ctx.context.internalAdapter.findSession(
-            grant.value,
-          );
+          const sourceSession = await ctx.context.adapter.findOne<{
+            token: string;
+          }>({
+            model: "session",
+            where: [{ field: "id", value: grant.value }],
+          });
+          const source = sourceSession
+            ? await ctx.context.internalAdapter.findSession(sourceSession.token)
+            : null;
           if (!source || source.session.expiresAt <= new Date()) {
             throw ctx.error("UNAUTHORIZED");
           }

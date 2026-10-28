@@ -19,4 +19,10 @@ public struct NavigationPolicy {
   public func isLogin(_ url: URL) -> Bool {
     isTrusted(url) && ["/login", "/signup"].contains(url.path)
   }
+
+  public func isTrustedBlob(_ url: URL) -> Bool {
+    guard url.scheme == "blob", let source = URL(string: String(url.absoluteString.dropFirst(5)))
+    else { return false }
+    return isTrusted(source)
+  }
 }
