@@ -1777,6 +1777,8 @@ class ExecutionProcessor:
 
 
 class ExecutionManager(AppProcess):
+    shutdown_poll_seconds = 5
+
     def __init__(self):
         super().__init__()
         self.pool_size = settings.config.num_graph_workers
@@ -2202,7 +2204,8 @@ class ExecutionManager(AppProcess):
     def _cleanup_completed_runs(self) -> list[str]:
         """Remove completed futures from active_graph_runs and update metrics"""
         completed_runs = []
-        for graph_exec_id, (future, _) in self.active_graph_runs.items():
+        # Runs' done-callbacks call this from worker threads, so walk a copy.
+        for graph_exec_id, (future, _) in list(self.active_graph_runs.items()):
             if future.done():
                 completed_runs.append(graph_exec_id)
 
@@ -2257,40 +2260,46 @@ class ExecutionManager(AppProcess):
                 f"{prefix} ⚠️ Error signaling consumer to stop: {type(e)} {e}"
             )
 
-        # Wait for active executions to complete
-        if self.active_graph_runs:
-            logger.info(
-                f"{prefix} ⏳ Waiting for {len(self.active_graph_runs)} active executions to complete..."
-            )
-
-            max_wait = GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
-            wait_interval = 5
-            waited = 0
-
-            while waited < max_wait:
-                self._cleanup_completed_runs()
-                if not self.active_graph_runs:
-                    logger.info(f"{prefix} ✅ All active executions completed")
-                    break
-                else:
-                    ids = [k.split("-")[0] for k in self.active_graph_runs.keys()]
-                    logger.info(
-                        f"{prefix} ⏳ Still waiting for {len(self.active_graph_runs)} executions: {ids}"
-                    )
-
-                    for graph_exec_id in self.active_graph_runs:
-                        if lock := self._execution_locks.get(graph_exec_id):
-                            lock.refresh()
-
-                time.sleep(wait_interval)
-                waited += wait_interval
-
+        # Wait for active executions to complete. Runs finish under this loop and
+        # their done-callbacks pop them from the map, so every walk is over a copy.
+        try:
             if self.active_graph_runs:
-                logger.warning(
-                    f"{prefix} ⚠️ {len(self.active_graph_runs)} executions still running after {max_wait}s"
+                logger.info(
+                    f"{prefix} ⏳ Waiting for {len(self.active_graph_runs)} active executions to complete..."
                 )
-            else:
-                logger.info(f"{prefix} ✅ All executions completed gracefully")
+
+                max_wait = GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
+                wait_interval = self.shutdown_poll_seconds
+                waited = 0
+
+                while waited < max_wait:
+                    self._cleanup_completed_runs()
+                    if not self.active_graph_runs:
+                        logger.info(f"{prefix} ✅ All active executions completed")
+                        break
+                    else:
+                        ids = [k.split("-")[0] for k in list(self.active_graph_runs)]
+                        logger.info(
+                            f"{prefix} ⏳ Still waiting for {len(ids)} executions: {ids}"
+                        )
+
+                        for graph_exec_id in list(self.active_graph_runs):
+                            if lock := self._execution_locks.get(graph_exec_id):
+                                lock.refresh()
+
+                    time.sleep(wait_interval)
+                    waited += wait_interval
+
+                if self.active_graph_runs:
+                    logger.warning(
+                        f"{prefix} ⚠️ {len(self.active_graph_runs)} executions still running after {max_wait}s"
+                    )
+                else:
+                    logger.info(f"{prefix} ✅ All executions completed gracefully")
+        except Exception:
+            # The steps below release this pod's locks and messages; skipping them
+            # leaves the runs held by a pod that is about to exit.
+            logger.exception(f"{prefix} ⚠️ Stopped waiting for active executions")
 
         # Shutdown the executor
         try:
@@ -2301,7 +2310,7 @@ class ExecutionManager(AppProcess):
 
         # Release remaining execution locks
         try:
-            for lock in self._execution_locks.values():
+            for lock in list(self._execution_locks.values()):
                 lock.release()
             self._execution_locks.clear()
             logger.info(f"{prefix} ✅ Released execution locks")
