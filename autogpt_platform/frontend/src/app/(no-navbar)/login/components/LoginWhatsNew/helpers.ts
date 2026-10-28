@@ -32,15 +32,18 @@ export function getReleaseLabel(release: Release, isLatest: boolean) {
 }
 
 export function toPlainText(markdown: string): string {
-  return markdown
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/(\*\*|__|~~|`|\*)(\S(?:.*?\S)?)\1/g, "$2")
-    .replace(/\\([\\`*_{}[\]()#+\-.!|~])/g, "$1")
-    .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, decodeEntity)
-    .replace(/\s+/g, " ")
-    .trim();
+  return (
+    markdown
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/<br\s*\/?>/gi, " ")
+      // An unclosed tag ("<script" at the end) goes too, not just "<b>…</b>".
+      .replace(/<\/?[a-z][^>]*(?:>|$)/gi, "")
+      .replace(/(\*\*|__|~~|`|\*)(\S(?:.*?\S)?)\1/g, "$2")
+      .replace(/\\([\\`*_{}[\]()#+\-.!|~])/g, "$1")
+      .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, decodeEntity)
+      .replace(/\s+/g, " ")
+      .trim()
+  );
 }
 
 // A comma inside brackets stays in its highlight: "New models (Claude, GPT)".

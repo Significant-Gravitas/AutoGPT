@@ -7,6 +7,8 @@ describe("toPlainText", () => {
     ["[docs](https://agpt.co/docs) link", "docs link"],
     ["`code` and ~~gone~~", "code and gone"],
     ["line<br/>break <em>tag</em>", "line break tag"],
+    ["cut off <script", "cut off"],
+    ["Clay <3 Rock", "Clay <3 Rock"],
     ["Clay &amp; Rock &lt;3", "Clay & Rock <3"],
     ["keeps snake_case_names", "keeps snake_case_names"],
     ["  spaced \n  out  ", "spaced out"],
