@@ -1210,7 +1210,7 @@ class WriteWorkspaceFileTool(BaseTool):
             msg = str(e)
             if msg.startswith("Storage limit exceeded"):
                 msg += (
-                    " Use tool:list_workspace_files to find candidates, then "
+                    " Use list_workspace_files to find candidates, then "
                     "tool:delete_workspace_file to free space and retry — or ask "
                     "the user to upgrade their plan."
                 )
