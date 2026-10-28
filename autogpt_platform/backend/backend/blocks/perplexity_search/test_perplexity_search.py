@@ -5,10 +5,13 @@ Complements the ``test_mock`` harness in the block (exercised by
 the attribution headers, and the error boundaries.
 """
 
+import logging
+import traceback
 from typing import Any
 from unittest import mock
 
 import pytest
+from aiohttp import ClientConnectorError
 from pydantic import SecretStr
 
 from backend.blocks.perplexity_search import _api
@@ -84,6 +87,12 @@ async def _run(block: PerplexitySearchBlock, fake: FakeSearch, **inputs) -> dict
     return outputs
 
 
+def _exception_chain_text(exc: BaseException) -> str:
+    """Everything a logger would print for the exception: its str(), repr(),
+    and the formatted traceback including any chained cause or context."""
+    return f"{exc!r}\n{exc}\n" + "".join(traceback.format_exception(exc))
+
+
 def _mock_response(status: int, body: bytes = b"", ok: bool | None = None):
     resp = mock.Mock()
     resp.status = status
@@ -138,8 +147,8 @@ async def test_search_posts_to_search_endpoint_with_attribution_headers():
             b'{"detail":[{"loc":["body","max_results"],"msg":"Input should be less than or equal to 20","type":"less_than_equal"}]}',
             "HTTP 422: Input should be less than or equal to 20",
         ),
-        (429, b"Too Many Requests", "HTTP 429: Too Many Requests"),
-        (301, b"", "HTTP 301"),
+        (429, b"Too Many Requests", "HTTP 429: no error details were provided"),
+        (301, b"", "HTTP 301: no error details were provided"),
     ],
 )
 async def test_search_non_ok_status_raises(status: int, body: bytes, expected: str):
@@ -152,13 +161,97 @@ async def test_search_non_ok_status_raises(status: int, body: bytes, expected: s
 
 
 @pytest.mark.asyncio
-async def test_search_malformed_body_raises():
+async def test_search_malformed_body_raises_without_echoing_it():
     resp = _mock_response(200)
-    resp.json.return_value = {"results": [{"title": "no url"}]}
+    resp.json.return_value = {"results": [{"title": "no url", "secret": "s3cr3t"}]}
     with mock.patch.object(_api, "Requests") as requests_cls:
         requests_cls.return_value.post = mock.AsyncMock(return_value=resp)
-        with pytest.raises(ValueError, match="unexpected response"):
+        with pytest.raises(ValueError, match="could not parse") as exc_info:
             await search(TEST_CREDENTIALS, {"query": "q"})
+    assert "s3cr3t" not in _exception_chain_text(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_search_non_json_error_body_is_not_echoed():
+    body = b"<html>Bad gateway for Bearer mock-perplexity-api-key</html>"
+    resp = _mock_response(502, body, ok=False)
+    with mock.patch.object(_api, "Requests") as requests_cls:
+        requests_cls.return_value.post = mock.AsyncMock(return_value=resp)
+        with pytest.raises(ValueError) as exc_info:
+            await search(TEST_CREDENTIALS, {"query": "q"})
+    text = _exception_chain_text(exc_info.value)
+    assert "HTTP 502: no error details were provided" in text
+    assert "<html>" not in text
+    assert "mock-perplexity-api-key" not in text
+
+
+@pytest.mark.asyncio
+async def test_search_truncates_long_provider_error_message():
+    body = b'{"error":{"message":"' + b"x" * 2000 + b'"}}'
+    resp = _mock_response(400, body, ok=False)
+    with mock.patch.object(_api, "Requests") as requests_cls:
+        requests_cls.return_value.post = mock.AsyncMock(return_value=resp)
+        with pytest.raises(ValueError) as exc_info:
+            await search(TEST_CREDENTIALS, {"query": "q"})
+    assert len(str(exc_info.value)) < 600
+
+
+@pytest.mark.asyncio
+async def test_search_transport_error_text_is_not_echoed():
+    # Worst case: a transport error that quotes the request headers.
+    leaky = ClientConnectorError(
+        mock.Mock(), OSError("Authorization: Bearer mock-perplexity-api-key")
+    )
+    with mock.patch.object(_api, "Requests") as requests_cls:
+        requests_cls.return_value.post = mock.AsyncMock(side_effect=leaky)
+        with pytest.raises(ValueError, match="Could not reach Perplexity") as exc_info:
+            await search(TEST_CREDENTIALS, {"query": "q"})
+    text = _exception_chain_text(exc_info.value)
+    assert "ClientConnectorError" in text
+    assert "mock-perplexity-api-key" not in text
+    assert exc_info.value.__cause__ is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "key",
+    ["pplx-abc\r\nX-Injected: 1", "pplx-abc\n", "pplx-abc\x00", ""],
+    ids=["crlf", "trailing-newline", "nul", "empty"],
+)
+async def test_key_that_cannot_be_a_header_fails_before_sending(key: str):
+    # aiohttp rejects control characters in header values at write time
+    # (ValueError "Forbidden control character detected in headers"); the
+    # block refuses such a key up front so no transport error is involved.
+    credentials = TEST_CREDENTIALS.model_copy(update={"api_key": SecretStr(key)})
+    with (
+        mock.patch.object(_api, "Requests") as requests_cls,
+        pytest.raises(ValueError, match="cannot be sent in an HTTP header"),
+    ):
+        await search(credentials, {"query": "q"})
+    requests_cls.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_key_with_newline_never_reaches_error_output_or_logs(caplog):
+    key = "pplx-abc\nX-Injected: 1"
+    credentials = TEST_CREDENTIALS.model_copy(update={"api_key": SecretStr(key)})
+    block = PerplexitySearchBlock()
+    caplog.set_level(logging.DEBUG)
+
+    with pytest.raises(BlockExecutionError) as exc_info:
+        async for _ in block.execute(
+            {"credentials": TEST_CREDENTIALS_INPUT, "query": "q"},
+            credentials=credentials,
+            execution_context=ExecutionContext(),
+        ):
+            pass
+
+    text = _exception_chain_text(exc_info.value)
+    assert "cannot be sent in an HTTP header" in text
+    assert "pplx-abc" not in text
+    assert "pplx-abc" not in caplog.text
+    assert "Authorization" not in text
+    assert "Authorization" not in caplog.text
 
 
 @pytest.mark.asyncio

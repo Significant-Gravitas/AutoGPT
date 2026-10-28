@@ -1,6 +1,7 @@
 """Thin async client for the Perplexity Search API (POST /search)."""
 
 import asyncio
+import re
 from enum import Enum
 from typing import Any
 
@@ -15,6 +16,14 @@ PERPLEXITY_API_URL = "https://api.perplexity.ai"
 # Identifies this integration to Perplexity; the platform's default
 # User-Agent (AutoGPT-Platform/...) is sent alongside it.
 INTEGRATION_HEADER = {"X-Pplx-Integration": "autogpt"}
+
+# Characters an HTTP header value may not contain. A key with one of these
+# (usually a line break from a copy-paste) is rejected here with a fixed
+# message, so no transport error that mentions the header is ever raised.
+_FORBIDDEN_HEADER_CHARS = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
+
+# Longest provider error message echoed to the user.
+MAX_ERROR_MESSAGE_CHARS = 500
 
 # Published Search API prices per successful request, by search_type.
 WEB_SEARCH_COST_USD = 0.005
@@ -75,8 +84,18 @@ async def search(
     """Send one Search API request and return the parsed response.
 
     Every failure raises ValueError, which the block turns into a
-    BlockExecutionError on its error output.
+    BlockExecutionError on its error output. Error messages are fixed strings
+    plus, for HTTP errors, the ``error.message`` field Perplexity returns.
+    They never include the API key, transport exception text, or a raw
+    response body.
     """
+    api_key = credentials.api_key.get_secret_value()
+    if not api_key or _FORBIDDEN_HEADER_CHARS.search(api_key):
+        raise ValueError(
+            "The Perplexity API key is empty or contains characters that cannot "
+            "be sent in an HTTP header. Check the credential for line breaks or "
+            "other stray characters."
+        )
     requests = Requests(
         trusted_origins=[PERPLEXITY_API_URL],
         raise_for_status=False,
@@ -84,7 +103,7 @@ async def search(
         # error message below instead of retrying until the block times out.
         retry_max_attempts=3,
         extra_headers={
-            "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
+            "Authorization": f"Bearer {api_key}",
             **INTEGRATION_HEADER,
         },
     )
@@ -98,8 +117,13 @@ async def search(
                 timeout=REQUEST_TIMEOUT,
                 json=payload,
             )
-    except (ClientError, TimeoutError) as e:
-        raise ValueError(f"Could not reach Perplexity: {type(e).__name__} {e}") from e
+    except (ClientError, TimeoutError, ValueError) as e:
+        # Only the exception type is reported: aiohttp and the Requests
+        # wrapper may describe the request (including headers) in their text.
+        raise ValueError(
+            f"Could not reach Perplexity ({type(e).__name__}). "
+            "Check the network connection and try again."
+        ) from None
     if not response.ok:
         raise ValueError(
             f"Perplexity Search request failed with HTTP {response.status}: "
@@ -107,10 +131,12 @@ async def search(
         )
     try:
         return PerplexitySearchResponse.model_validate(response.json())
-    except ValidationError as e:
+    except ValueError:
+        # Covers JSON decoding and pydantic ValidationError, whose text quotes
+        # the offending input; the body is not forwarded.
         raise ValueError(
-            f"Perplexity Search returned an unexpected response: {e}"
-        ) from e
+            "Perplexity Search returned a response the block could not parse."
+        ) from None
 
 
 class _PerplexityError(BaseModel):
@@ -139,10 +165,15 @@ class _PerplexityErrorBody(BaseModel):
 
 
 def _error_message(response: Response) -> str:
-    """Pull the human-readable message out of a Perplexity error body."""
+    """Pull the human-readable message out of a Perplexity error body.
+
+    Falls back to a fixed string; the raw body is never echoed.
+    """
     try:
         body = _PerplexityErrorBody.model_validate_json(response.content)
     except ValidationError:
         body = _PerplexityErrorBody()
-    # Anything else is passed through raw.
-    return body.message() or response.text()[:500]
+    message = body.message()
+    if not message:
+        return "no error details were provided"
+    return message[:MAX_ERROR_MESSAGE_CHARS]
