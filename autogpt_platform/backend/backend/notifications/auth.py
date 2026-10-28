@@ -100,11 +100,13 @@ _CONTENT: dict[AuthEmailType, AuthEmailContent] = {
         subject="Verify your new AutoGPT Platform email",
         eyebrow="ACCOUNT · NEW EMAIL ADDRESS",
         headline="Verify your new email address",
+        # For an unverified account the change has already been made when this
+        # is sent, so the copy must not say it is still pending.
         intro=(
             "You asked to change the email address on your AutoGPT account "
-            "to this one. Verify it to finish the change."
+            "to this one. Verify it to confirm the address is yours."
         ),
-        preheader="One click to finish moving your AutoGPT account to this address.",
+        preheader="One click to confirm this is your new AutoGPT email address.",
         action="Verify new email",
         reason="This link was requested from your AutoGPT account settings.",
         expiry="24 hours",
