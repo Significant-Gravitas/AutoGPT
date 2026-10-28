@@ -10,6 +10,7 @@ from functools import cache
 from typing import TYPE_CHECKING
 
 from backend.copilot.providers import SUPPORTED_PROVIDERS
+from backend.copilot.sandbox_status import SESSION_SANDBOX_TTL
 
 if TYPE_CHECKING:
     from backend.copilot.permissions import CopilotPermissions
@@ -214,7 +215,12 @@ def _get_cloud_sandbox_supplement() -> str:
             "Shared by all file tools and `bash_exec`; full Linux with internet",
         ],
         storage_system_1_persistence=[
-            "Files last across turns in this session, and are lost when it expires (12 h idle)",
+            "Files last across turns in this session. After "
+            f"{SESSION_SANDBOX_TTL // 86400} days without a turn, or when the "
+            "sandbox image is updated, you get a new sandbox: only `~/workspace` "
+            "carries over, and the turn opens with a `<sandbox_status>` note "
+            "saying so. Keep work you need later in `~/workspace` or the "
+            "persistent workspace",
         ],
         file_move_name_1_to_2="Sandbox → Persistent",
         file_move_name_2_to_1="Persistent → Sandbox",
@@ -321,7 +327,7 @@ _COMPUTER_NOTE = f"""
 ### Your computer
 The sandbox has a screen. `start_desktop` turns it on and streams it to the user; use it when a task needs a GUI app, or a browser the user should watch or take over.
 - After `start_desktop`, launch the app or browser with `bash_exec` in the background with `DISPLAY={DISPLAY}`. `browser_*` tools run elsewhere and never appear on it.
-- Files and tools outside `~/workspace` are lost when the session expires.
+- Files and tools outside `~/workspace` are lost when the sandbox is replaced.
 - The user sees the desktop too. Never ask them to sign into personal accounts on it; use their connected integrations. """
 
 

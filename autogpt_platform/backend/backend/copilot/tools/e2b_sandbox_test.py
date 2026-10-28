@@ -16,7 +16,7 @@ import contextlib
 import time
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import DEFAULT, AsyncMock, MagicMock, patch
+from unittest.mock import DEFAULT, AsyncMock, MagicMock, call, patch
 
 import pytest
 from e2b import SandboxState
@@ -29,6 +29,7 @@ from backend.blocks.desktop._common import (
     user_volume_name,
     workspace_volume_mounts,
 )
+from backend.copilot.sandbox_status import REPLACED_FLAG_TTL, sandbox_replaced_key
 from backend.util.e2b_template import DESKTOP_IMAGE
 from backend.util.sandbox_metadata import deployment_env
 
@@ -616,6 +617,40 @@ class TestGetOrCreateSandbox:
         assert result is new_sb
         # Redis delete called at least once to clear stale id
         redis.delete.assert_awaited()
+
+    def test_a_box_replacing_a_gone_one_flags_the_turn(self):
+        """The chat had a box and E2B no longer has it: the turn that gets the
+        new one is told, so the model does not find out from a failed cd."""
+        new_sb = _mock_sandbox("sb-fresh")
+        redis = AsyncMock()
+        redis.get = AsyncMock(side_effect=[b"sb-gone", None])
+        redis.set = AsyncMock(return_value=True)
+        redis.delete = AsyncMock()
+
+        with _patch_sdk() as mock_cls, _patch_redis(redis):
+            mock_cls.get_info = AsyncMock(
+                side_effect=SandboxNotFoundException("sb-gone")
+            )
+            mock_cls.create = AsyncMock(return_value=new_sb)
+            asyncio.run(get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT))
+
+        assert (
+            call(sandbox_replaced_key(_SESSION_ID), "1", ex=REPLACED_FLAG_TTL)
+            in redis.set.await_args_list
+        )
+
+    def test_a_new_chats_first_box_is_not_a_replacement(self):
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        with _patch_sdk() as mock_cls, _patch_redis(redis):
+            mock_cls.create = AsyncMock(return_value=_mock_sandbox("sb-new"))
+            asyncio.run(get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT))
+
+        flagged = [
+            c
+            for c in redis.set.await_args_list
+            if c.args[0] == sandbox_replaced_key(_SESSION_ID)
+        ]
+        assert flagged == []
 
 
 # ---------------------------------------------------------------------------
@@ -1307,11 +1342,16 @@ class TestSandboxOwner:
         assert owner.key() == f"copilot:e2b:sandbox:{_SESSION_ID}"
         assert owner.display_key() == f"copilot:e2b:sandbox:{_SESSION_ID}:display"
 
-    def test_expert_cache_outlives_session_cache(self):
+    def test_expert_cache_lasts_at_least_as_long_as_session_cache(self):
         assert (
             SandboxOwner(kind="expert", id=_EXPERT_ID).ttl
-            > SandboxOwner(kind="session", id=_SESSION_ID).ttl
+            >= SandboxOwner(kind="session", id=_SESSION_ID).ttl
         )
+
+    def test_session_cache_outlasts_a_long_wait_between_turns(self):
+        """Turns days apart (routines, approval cards, a user back next week)
+        must still find the paused box; 48 h used to orphan it."""
+        assert SandboxOwner(kind="session", id=_SESSION_ID).ttl >= 7 * 24 * 3600
 
     def test_metadata_identifies_owner_and_kind(self):
         assert SandboxOwner(kind="expert", id=_EXPERT_ID).metadata() == {

@@ -7,6 +7,7 @@ import pytest
 from backend.blocks.desktop._api import DISPLAY
 from backend.copilot import prompting
 from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
+from backend.copilot.tools.e2b_sandbox import SandboxOwner
 
 
 class TestGetSdkSupplementStaticPlaceholder:
@@ -61,7 +62,7 @@ class TestComputerNote:
         result = prompting.get_sdk_supplement(use_e2b=True)
         assert result.count("### Your computer") == 1
         assert "`start_desktop`" in result
-        assert "lost when the session expires" in result
+        assert "lost when the sandbox is replaced" in result
         assert "sign into personal accounts" in result
 
     def test_screen_shows_only_what_runs_in_the_sandbox(self):
@@ -685,3 +686,18 @@ class TestCostSourceRule:
         end = prompting.SHARED_TOOL_NOTES.index("### Math")
         section = prompting.SHARED_TOOL_NOTES[start:end]
         assert "—" not in section and "–" not in section
+
+
+class TestSandboxLifetime:
+    """The lifetime the model is told is the one the code keeps the box for."""
+
+    def test_the_figure_matches_how_long_the_box_is_kept(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        days = SandboxOwner(kind="session", id="s").ttl // 86400
+        assert f"After {days} days without a turn" in result
+        assert "12 h" not in result
+
+    def test_says_only_the_workspace_survives_a_new_sandbox(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert "only `~/workspace` carries over" in result
+        assert "`<sandbox_status>`" in result

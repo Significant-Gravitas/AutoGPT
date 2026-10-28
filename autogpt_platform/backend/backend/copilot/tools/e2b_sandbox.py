@@ -97,6 +97,11 @@ from backend.copilot.integration_creds import (
     placeholder_grants,
     renew_box_grants,
 )
+from backend.copilot.sandbox_status import (
+    REPLACED_FLAG_TTL,
+    SESSION_SANDBOX_TTL,
+    sandbox_replaced_key,
+)
 from backend.data.redis_client import get_redis_async
 from backend.util.e2b_network import (
     EgressOwner,
@@ -188,9 +193,8 @@ _STOP_STREAM_TIMEOUT_SECONDS = 5
 # purpose, so every reader that wants a password sees none.
 _STREAM_STOPPED = ""
 
-# Redis TTL for a session sandbox key.  Must be ≥ the E2B project "paused
-# sandbox lifetime" setting (recommended: set both to 48 h).
-_SANDBOX_ID_TTL = 48 * 3600  # 48 hours
+# Redis TTL for a session sandbox key; see ``SESSION_SANDBOX_TTL``.
+_SANDBOX_ID_TTL = SESSION_SANDBOX_TTL
 
 # An expert's box is meant to outlive any one chat.  The key is refreshed on
 # every use and E2B metadata recovers it after expiry, so this is only a cache
@@ -595,8 +599,9 @@ async def list_owned_sandboxes(owner: SandboxOwner, api_key: str) -> list[Sandbo
 async def find_owned_sandbox_id(owner: SandboxOwner, api_key: str) -> str | None:
     """Recover an expert's box through the E2B API when Redis has forgotten it.
 
-    Session sandboxes are Redis-only: losing that key just means a fresh
-    scratch sandbox, which is not worth a control-plane round-trip.  For an
+    Session sandboxes are Redis-only: their key outlives any gap between turns
+    a chat is likely to have, so a lookup on every new chat's first turn is
+    not worth the control-plane round-trip.  For an
     expert the box *is* the state, so we query E2B by the owner metadata every
     sandbox is stamped with, preferring a running box over a paused one and
     the newest of several (a lost creation race can leave duplicates).
@@ -1131,6 +1136,8 @@ async def get_or_create_owner_sandbox(
             raise
 
         logger.info("[E2B] Created sandbox %.12s for %s", sandbox.sandbox_id, owner)
+        if failed_ids and session_id:
+            await _mark_replaced(session_id)
         if count_turn:
             await _acquire_turn(owner)
         return sandbox
@@ -1168,6 +1175,21 @@ async def get_or_create_sandbox(
         count_turn=count_turn,
         providers=providers,
     )
+
+
+async def _mark_replaced(session_id: str) -> None:
+    """Tell this turn its box replaced a gone one (``build_sandbox_replaced_notice``).
+
+    Best effort: the new box is already the owner's, and a missing notice
+    costs less than failing the turn.
+    """
+    try:
+        redis = await get_redis_async()
+        await redis.set(sandbox_replaced_key(session_id), "1", ex=REPLACED_FLAG_TTL)
+    except Exception as exc:
+        logger.warning(
+            "[E2B] Could not flag a replaced box for %.12s: %s", session_id, exc
+        )
 
 
 async def _act_on_sandbox(
