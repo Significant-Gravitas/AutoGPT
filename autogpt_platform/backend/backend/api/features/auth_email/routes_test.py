@@ -179,6 +179,8 @@ def test_verify_new_email_is_about_the_change_not_a_sign_up(send_mock):
     _, _, body, text = send_mock.call_args.args
     for part in (body, text):
         assert "change the email address on your AutoGPT account" in part
+        assert "New email" in part
+        assert VALID_BODY["to"] in part
         assert "requested from your AutoGPT account settings" in part
         assert "expires in 24 hours" in part
         assert "sign-up" not in part
@@ -368,7 +370,7 @@ def test_auth_email_design_and_plain_text(send_mock, email_type, subject, button
     )
     assert "<svg" not in body and "data:image" not in body
     assert "logo-light.png" in body
-    if email_type == "verify_email":
+    if email_type in ("verify_email", "verify_new_email"):
         assert body.count('alt="Otto, your personal Head of AI"') == 1
         assert re.search(
             r'src="https://[^"]+/autogpt-characters/v1\.1/otto/neutral-transparent/256\.png"',

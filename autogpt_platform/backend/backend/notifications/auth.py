@@ -32,12 +32,15 @@ class AuthEmailContent(BaseModel):
     steps: list[tuple[str, str]] = []
 
 
-def render_auth_email(email_type: AuthEmailType, action_url: str) -> RenderedEmail:
+def render_auth_email(
+    email_type: AuthEmailType, action_url: str, recipient: str
+) -> RenderedEmail:
     content = _CONTENT[email_type]
     assets = settings.config.email_asset_base_url.rstrip("/")
     context = {
         "content": content,
         "action_url": action_url,
+        "recipient": recipient,
         "assets": assets,
         "otto_asset_url": otto_asset_url(assets),
         "urls": build_urls(""),
@@ -51,9 +54,12 @@ def render_auth_email(email_type: AuthEmailType, action_url: str) -> RenderedEma
     )
 
 
-# Often the first email a new user gets, so it has its own fuller layout. The
-# rest use the compact auth layout.
-_TEMPLATES: dict[AuthEmailType, str] = {"verify_email": "auth_verify"}
+# Often the first email a new user gets, and the one confirming a new address,
+# so they have their own fuller layouts. The rest use the compact auth layout.
+_TEMPLATES: dict[AuthEmailType, str] = {
+    "verify_email": "auth_verify",
+    "verify_new_email": "auth_verify_new",
+}
 
 
 _CONTENT: dict[AuthEmailType, AuthEmailContent] = {
@@ -92,13 +98,13 @@ _CONTENT: dict[AuthEmailType, AuthEmailContent] = {
     # it must not read like a sign-up.
     "verify_new_email": AuthEmailContent(
         subject="Verify your new AutoGPT Platform email",
-        eyebrow="ACCOUNT · VERIFY NEW EMAIL",
+        eyebrow="ACCOUNT · NEW EMAIL ADDRESS",
         headline="Verify your new email address",
         intro=(
             "You asked to change the email address on your AutoGPT account "
-            "to this one."
+            "to this one. Verify it to finish the change."
         ),
-        preheader="Use the button below to finish changing your email address.",
+        preheader="One click to finish moving your AutoGPT account to this address.",
         action="Verify new email",
         reason="This link was requested from your AutoGPT account settings.",
         expiry="24 hours",
