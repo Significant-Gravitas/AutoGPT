@@ -140,7 +140,9 @@ class TestPersistAndSummarize:
 
         assert 'workspace_path="tool-outputs/tc-123.json">' in result
         assert "format=" not in result
-        assert "to read any section. To process the file" in result
+        assert "to read any section." in result
+        assert "continue from the returned end offset" in result
+        assert "To process the file" in result
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +192,26 @@ class TestBaseToolExecuteLargeOutput:
         assert "<tool-output-truncated" in str(result.output)
         assert "read_workspace_file" in str(result.output)
         mock_manager.write_file.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("size", [55_000, 75_000, 200_000])
+    async def test_output_the_cli_would_spill_reaches_the_workspace(self, size):
+        """The Claude CLI moves any result over 50,000 chars to a host folder
+        bash_exec can't open (SECRT-3181). The workspace copy has to come
+        first, and the preview the model gets has to stay under that line."""
+        tool = _HugeOutputTool(output_size=size)
+        session = MagicMock()
+        session.session_id = "s-1"
+        session.external_caller = False
+        manager = AsyncMock()
+        db_patch, mgr_patch = _workspace_patches(manager)
+
+        with db_patch, mgr_patch:
+            result = await tool.execute("user-1", session, "tc-spill")
+
+        manager.write_file.assert_awaited_once()
+        assert "save_to_path" in str(result.output)
+        assert len(str(result.output)) < 50_000
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("size", [_LARGE_OUTPUT_THRESHOLD + 10_000, 200_000])
@@ -380,6 +402,7 @@ class TestDigestThreshold:
         # And the way back names the tool and its arguments.
         assert 'read_workspace_file(path="tool-outputs/tc-digest.json"' in output
         assert "offset=<offset>, length=<length>" in output
+        assert "continue from the returned end offset" in output
         # Without this the model reads the outline as a prefix of the output.
         assert "not a literal prefix" in output
         # A flat length= wider than the file turns one "narrow" read into a
