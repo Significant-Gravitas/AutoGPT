@@ -4,15 +4,12 @@ import {
   CHANGELOG_CACHE_CONTROL,
   CHANGELOG_FETCH_INIT,
   fetchReleaseTitle,
+  INDEX_FETCH_TIMEOUT_MS,
   LatestRelease,
   PUBLISHED_CHANGELOG_INDEX,
 } from "../helpers";
 
 const LATEST_RELEASE_COUNT = 3;
-
-// With the 2.5 s page fetches this keeps the route under the login page's
-// 5 s timeout, so a stalled upstream isn't left running after it gives up.
-const INDEX_FETCH_TIMEOUT_MS = 2000;
 
 // The newest releases with their page titles, for the logged-out login page.
 export async function GET() {

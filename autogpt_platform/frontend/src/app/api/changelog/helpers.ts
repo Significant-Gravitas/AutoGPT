@@ -11,8 +11,13 @@ export const CHANGELOG_FETCH_INIT = {
 
 export const CHANGELOG_CACHE_CONTROL = "public, max-age=300, s-maxage=3600";
 
+// The latest-releases route fetches the index, then the pages in parallel.
+// Together these stay under the login page's own timeout (a test holds it),
+// so a stalled upstream isn't left running after the page gives up.
+export const INDEX_FETCH_TIMEOUT_MS = 2000;
+
 // A slow release page costs only its title, never the whole list.
-const RELEASE_PAGE_TIMEOUT_MS = 2500;
+export const RELEASE_PAGE_TIMEOUT_MS = 2500;
 
 // Release page URLs are built from slugs, so only plain kebab-case passes.
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { CHANGELOG_TIMEOUT_MS } from "@/app/(no-navbar)/login/components/LoginWhatsNew/helpers";
+import { INDEX_FETCH_TIMEOUT_MS, RELEASE_PAGE_TIMEOUT_MS } from "../../helpers";
 import { GET } from "../route";
 
 const BASE = "https://agpt.co/docs/platform/changelog/changelog";
@@ -64,6 +66,12 @@ describe("GET /api/changelog/latest", () => {
     expect(fetchSpy).toHaveBeenCalledWith(
       `${BASE}/c-2026.md`,
       expect.objectContaining({ next: { revalidate: 3600 } }),
+    );
+  });
+
+  it("finishes inside the login page's timeout even when upstream stalls", () => {
+    expect(INDEX_FETCH_TIMEOUT_MS + RELEASE_PAGE_TIMEOUT_MS).toBeLessThan(
+      CHANGELOG_TIMEOUT_MS,
     );
   });
 
