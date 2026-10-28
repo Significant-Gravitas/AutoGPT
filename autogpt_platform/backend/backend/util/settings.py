@@ -393,6 +393,31 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum orphaned auth identities healed per sweep.",
     )
 
+    # Daily report of API activity by accounts without an active plan
+    no_plan_activity_report_enabled: bool = Field(
+        default=True,
+        description=(
+            "Count each account's authenticated API requests per day, and post a "
+            "daily system alert listing what accounts without an active plan did."
+        ),
+    )
+    no_plan_activity_min_requests: int = Field(
+        default=500,
+        ge=1,
+        description=(
+            "Requests in one UTC day, internal and external API together, at "
+            "which an account without an active plan is reported."
+        ),
+    )
+    no_plan_activity_min_accounts_per_ip: int = Field(
+        default=3,
+        ge=2,
+        description=(
+            "Accounts without an active plan that signed up or signed in from one "
+            "IP address in one UTC day at which they are reported as a group."
+        ),
+    )
+
     # Execution Accuracy Monitoring
     execution_accuracy_check_interval_hours: int = Field(
         default=24,

@@ -120,6 +120,7 @@ from backend.monitoring import (
     send_due_briefings,
 )
 from backend.monitoring.instrumentation import SCHEDULER_JOBS
+from backend.monitoring.no_plan_activity_monitor import report_no_plan_api_activity
 from backend.util import product_analytics
 from backend.util.clients import (
     get_database_manager_async_client,
@@ -2255,6 +2256,11 @@ def cleanup_auth_ip_events():
     run_async(_cleanup())
 
 
+def no_plan_api_activity_report():
+    """Post the daily report of API activity by accounts without a plan."""
+    return run_async(report_no_plan_api_activity())
+
+
 def cleanup_failed_push_subscriptions():
     """Delete push subscriptions that have exceeded the failure threshold."""
 
@@ -3087,6 +3093,18 @@ class Scheduler(AppService):
                 max_instances=1,
                 jobstore=Jobstores.EXECUTION.value,
             )
+
+            # No-plan API activity - daily, for the UTC day just ended. A cron,
+            # because a restart moves a 24-hour interval job's next run a day out.
+            if config.no_plan_activity_report_enabled:
+                self.scheduler.add_job(
+                    no_plan_api_activity_report,
+                    CronTrigger(hour=0, minute=5, timezone=ZoneInfo("UTC")),
+                    id="report_no_plan_api_activity",
+                    replace_existing=True,
+                    max_instances=1,
+                    jobstore=Jobstores.EXECUTION.value,
+                )
 
             # Failed Push Subscription Cleanup - configurable interval
             self.scheduler.add_job(
@@ -4244,6 +4262,11 @@ class Scheduler(AppService):
     def execute_report_orphaned_auth_identities(self):
         """Manually trigger the auth-identity invariant check and heal."""
         return report_orphaned_auth_identities()
+
+    @expose
+    def execute_report_no_plan_api_activity(self):
+        """Manually post yesterday's report of no-plan API activity."""
+        return no_plan_api_activity_report()
 
     @expose
     def execute_cleanup_expired_files(self):

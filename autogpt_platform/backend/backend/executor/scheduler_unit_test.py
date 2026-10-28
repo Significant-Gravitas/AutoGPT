@@ -2008,6 +2008,19 @@ def test_orphan_sweep_registered_only_when_switched_on(monkeypatch, enabled):
     assert ids.count("report_orphaned_auth_identities") == int(enabled)
 
 
+def test_no_plan_activity_report_fires_daily_at_a_fixed_utc_time(monkeypatch):
+    """A cron: each restart would push an interval job's next run back a day."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+    (job,) = [c for c in calls if c.kwargs.get("id") == "report_no_plan_api_activity"]
+    trigger = job.args[1]
+
+    restart = datetime(2026, 10, 28, 13, 0, tzinfo=timezone.utc)
+    assert isinstance(trigger, CronTrigger)
+    assert trigger.get_next_fire_time(None, restart) == datetime(
+        2026, 10, 29, 0, 5, tzinfo=timezone.utc
+    )
+
+
 def test_startup_embedding_backfill_defaults_on():
     assert Config.model_fields["scheduler_startup_embedding_backfill"].default is True
 

@@ -7,6 +7,7 @@ from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, ConfigDict
 from starlette.types import Scope
 
+from backend.data.api_activity import record_api_request
 from backend.data.auth.api_key import validate_api_key
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
@@ -46,7 +47,7 @@ async def resolve_auth_info(
     if api_key is not None:
         api_key_info = await validate_api_key(api_key)
         if api_key_info:
-            await _refuse_banned_owner(api_key_info)
+            await _admit(api_key_info)
             return api_key_info
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
@@ -59,14 +60,14 @@ async def resolve_auth_info(
         if not is_access_token(bearer.credentials) and (
             api_key_info := await validate_api_key(bearer.credentials)
         ):
-            await _refuse_banned_owner(api_key_info)
+            await _admit(api_key_info)
             return api_key_info
 
         try:
             token_info, _ = await validate_access_token(bearer.credentials)
         except (InvalidClientError, InvalidTokenError) as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
-        await _refuse_banned_owner(token_info)
+        await _admit(token_info)
         return token_info
 
     return None
@@ -133,11 +134,13 @@ async def require_auth(
     return auth
 
 
-async def _refuse_banned_owner(auth: APIAuthorizationInfo) -> None:
+async def _admit(auth: APIAuthorizationInfo) -> None:
+    """Refuse a banned owner's credential, else count the request against it."""
     if await owner_is_banned(auth):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail=ACCOUNT_BANNED_DETAIL
         )
+    await record_api_request(auth.user_id, "external")
 
 
 async def owner_is_banned(auth: APIAuthorizationInfo) -> bool:

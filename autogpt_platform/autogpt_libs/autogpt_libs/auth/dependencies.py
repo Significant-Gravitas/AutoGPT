@@ -148,7 +148,10 @@ async def get_optional_user_id(
     except Exception:
         logger.warning(f"Ban lookup failed for {user_id}; answering as anonymous")
         return None
-    return None if banned else user_id
+    if banned:
+        return None
+    await _count_request(user_id)
+    return user_id
 
 
 async def get_unbanned_jwt_payload(
@@ -160,8 +163,11 @@ async def get_unbanned_jwt_payload(
     Under impersonation the subject is the admin, who may act as a banned user.
     """
     user_id = jwt_payload.get("sub")
-    if user_id and await _is_banned(user_id):
+    if not user_id:
+        return jwt_payload
+    if await _is_banned(user_id):
         raise fastapi.HTTPException(status_code=403, detail=ACCOUNT_BANNED_DETAIL)
+    await _count_request(user_id)
     return jwt_payload
 
 
@@ -176,6 +182,15 @@ async def _is_banned(user_id: str) -> bool:
     if not db.is_connected():
         return False
     return await is_user_banned(user_id)
+
+
+async def _count_request(user_id: str) -> None:
+    """Counts toward the daily report of what accounts without a plan did."""
+    try:
+        from backend.data.api_activity import record_api_request  # deferred
+    except ImportError:
+        return
+    await record_api_request(user_id, "internal")
 
 
 async def requires_user(
