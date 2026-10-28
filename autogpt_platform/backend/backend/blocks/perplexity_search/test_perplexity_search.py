@@ -21,6 +21,7 @@ from backend.blocks.perplexity_search._api import (
     WEB_SEARCH_COST_USD,
     PerplexitySearchResponse,
     PerplexitySearchResult,
+    check_domain_filter,
     search,
 )
 from backend.blocks.perplexity_search.search import PerplexitySearchBlock
@@ -133,31 +134,83 @@ async def test_search_posts_to_search_endpoint_with_attribution_headers():
     assert kwargs["allow_redirects"] is False
 
 
+KEY_MARKER = "mock-perplexity-api-key"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "status, body, expected",
     [
         (
             401,
-            b'{"error":{"message":"Invalid API key provided.","type":"invalid_api_key","code":401}}',
-            "HTTP 401: Invalid API key provided.",
+            b'{"error":{"message":"Invalid API key provided. Bearer mock-perplexity-api-key","type":"invalid_api_key","code":401}}',
+            "rejected the API key (HTTP 401)",
         ),
+        (403, b'{"error":{"message":"Forbidden"}}', "rejected the API key (HTTP 403)"),
         (
             422,
-            b'{"detail":[{"loc":["body","max_results"],"msg":"Input should be less than or equal to 20","type":"less_than_equal"}]}',
-            "HTTP 422: Input should be less than or equal to 20",
+            # FastAPI 422 bodies echo the offending request input.
+            b'{"detail":[{"loc":["body","query"],"msg":"Input should be a valid string","input":"mock-perplexity-api-key","type":"string_type"}]}',
+            "rejected the request parameters (HTTP 422)",
         ),
-        (429, b"Too Many Requests", "HTTP 429: no error details were provided"),
-        (301, b"", "HTTP 301: no error details were provided"),
+        (
+            400,
+            b'{"detail":"bad request"}',
+            "rejected the request parameters (HTTP 400)",
+        ),
+        (429, b"Too Many Requests", "rate limited this request (HTTP 429)"),
+        (
+            502,
+            b"<html>Bad gateway for Bearer mock-perplexity-api-key</html>",
+            "unavailable right now (HTTP 502)",
+        ),
+        (301, b"", "failed with HTTP 301"),
+        (402, b'{"error":{"message":"' + b"x" * 2000 + b'"}}', "failed with HTTP 402"),
     ],
 )
-async def test_search_non_ok_status_raises(status: int, body: bytes, expected: str):
+async def test_search_non_ok_status_raises_fixed_message(
+    status: int, body: bytes, expected: str
+):
     resp = _mock_response(status, body, ok=False)
     with mock.patch.object(_api, "Requests") as requests_cls:
         requests_cls.return_value.post = mock.AsyncMock(return_value=resp)
         with pytest.raises(ValueError) as exc_info:
             await search(TEST_CREDENTIALS, {"query": "q"})
+    text = _exception_chain_text(exc_info.value)
     assert expected in str(exc_info.value)
+    assert len(str(exc_info.value)) < 200
+    # Nothing from the body is reflected: not the key, not the echoed input,
+    # not HTML, not the provider's own message text.
+    assert KEY_MARKER not in text
+    assert "<html>" not in text
+    assert "Input should" not in text
+    assert "Invalid API key provided" not in text
+    assert "xxxx" not in text
+
+
+@pytest.mark.asyncio
+async def test_search_422_body_echoing_the_key_does_not_reach_the_block_error():
+    body = (
+        b'{"detail":[{"loc":["header","authorization"],"msg":"Invalid header: '
+        b'Bearer mock-perplexity-api-key","type":"value_error"}]}'
+    )
+    resp = _mock_response(422, body, ok=False)
+    block = PerplexitySearchBlock()
+    with mock.patch.object(_api, "Requests") as requests_cls:
+        requests_cls.return_value.post = mock.AsyncMock(return_value=resp)
+        with pytest.raises(BlockExecutionError) as exc_info:
+            async for _ in block.execute(
+                {"credentials": TEST_CREDENTIALS_INPUT, "query": "q"},
+                credentials=TEST_CREDENTIALS,
+                execution_context=ExecutionContext(),
+            ):
+                pass
+    text = _exception_chain_text(exc_info.value)
+    assert "rejected the request parameters (HTTP 422)" in text
+    assert KEY_MARKER not in text
+    assert "Invalid header" not in text
+    assert resp.text.call_count == 0
+    assert resp.json.call_count == 0
 
 
 @pytest.mark.asyncio
@@ -169,31 +222,7 @@ async def test_search_malformed_body_raises_without_echoing_it():
         with pytest.raises(ValueError, match="could not parse") as exc_info:
             await search(TEST_CREDENTIALS, {"query": "q"})
     assert "s3cr3t" not in _exception_chain_text(exc_info.value)
-
-
-@pytest.mark.asyncio
-async def test_search_non_json_error_body_is_not_echoed():
-    body = b"<html>Bad gateway for Bearer mock-perplexity-api-key</html>"
-    resp = _mock_response(502, body, ok=False)
-    with mock.patch.object(_api, "Requests") as requests_cls:
-        requests_cls.return_value.post = mock.AsyncMock(return_value=resp)
-        with pytest.raises(ValueError) as exc_info:
-            await search(TEST_CREDENTIALS, {"query": "q"})
-    text = _exception_chain_text(exc_info.value)
-    assert "HTTP 502: no error details were provided" in text
-    assert "<html>" not in text
-    assert "mock-perplexity-api-key" not in text
-
-
-@pytest.mark.asyncio
-async def test_search_truncates_long_provider_error_message():
-    body = b'{"error":{"message":"' + b"x" * 2000 + b'"}}'
-    resp = _mock_response(400, body, ok=False)
-    with mock.patch.object(_api, "Requests") as requests_cls:
-        requests_cls.return_value.post = mock.AsyncMock(return_value=resp)
-        with pytest.raises(ValueError) as exc_info:
-            await search(TEST_CREDENTIALS, {"query": "q"})
-    assert len(str(exc_info.value)) < 600
+    assert "no url" not in _exception_chain_text(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -280,7 +309,12 @@ async def test_search_happy_path_yields_each_result():
 
 
 @pytest.mark.asyncio
-async def test_search_forwards_optional_filters():
+@pytest.mark.parametrize(
+    "domains",
+    [["perplexity.ai", "github.com"], ["-reddit.com", "-pinterest.com"]],
+    ids=["include-only", "exclude-only"],
+)
+async def test_search_forwards_optional_filters(domains: list[str]):
     fake = FakeSearch(_search_response([]))
     block = PerplexitySearchBlock()
     outputs = await _run(
@@ -288,7 +322,7 @@ async def test_search_forwards_optional_filters():
         fake,
         query="q",
         search_type="fast",
-        search_domain_filter=["perplexity.ai", "-reddit.com"],
+        search_domain_filter=domains,
         search_recency_filter="week",
     )
 
@@ -297,13 +331,82 @@ async def test_search_forwards_optional_filters():
             "query": "q",
             "max_results": 5,
             "search_type": "fast",
-            "search_domain_filter": ["perplexity.ai", "-reddit.com"],
+            "search_domain_filter": domains,
             "search_recency_filter": "week",
         }
     ]
     assert outputs["results"] == [[]]
     assert "result" not in outputs
     assert outputs["context"] == [""]
+
+
+def test_more_than_twenty_domains_fails_the_schema_check():
+    # Enforced by maxItems in the JSON schema, so the executor rejects it
+    # before the block runs.
+    error = PerplexitySearchBlock.Input.validate_data(
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "query": "q",
+            "search_domain_filter": [f"site{i}.com" for i in range(21)],
+        }
+    )
+    assert error is not None
+    assert "is too long" in error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "domains, expected",
+    [
+        (["perplexity.ai", "-reddit.com"], "cannot mix included and excluded"),
+        (["perplexity.ai", " "], "cannot be blank"),
+        (["-reddit.com", "-"], "cannot be blank"),
+    ],
+    ids=["mixed-modes", "blank", "dash-only"],
+)
+async def test_invalid_domain_filter_is_rejected_before_the_request(
+    domains: list[str], expected: str
+):
+    fake = FakeSearch(_search_response([]))
+    with pytest.raises(BlockExecutionError, match=expected):
+        await _run(
+            PerplexitySearchBlock(), fake, query="q", search_domain_filter=domains
+        )
+    assert fake.payloads == []
+
+
+@pytest.mark.parametrize(
+    "domains, expected",
+    [
+        (["perplexity.ai", "-reddit.com"], "cannot mix"),
+        ([f"site{i}.com" for i in range(21)], "at most 20"),
+        ([""], "cannot be blank"),
+    ],
+)
+def test_check_domain_filter_rejects(domains: list[str], expected: str):
+    with pytest.raises(ValueError, match=expected):
+        check_domain_filter(domains)
+
+
+@pytest.mark.parametrize(
+    "domains",
+    [[], ["perplexity.ai"], [f"site{i}.com" for i in range(20)], ["-reddit.com"]],
+    ids=["empty", "single", "twenty", "single-exclude"],
+)
+def test_valid_domain_filter_passes_the_schema_check(domains):
+    error = PerplexitySearchBlock.Input.validate_data(
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "query": "q",
+            "search_domain_filter": domains,
+        }
+    )
+    assert error is None
+
+
+def test_domain_filter_schema_declares_the_limit():
+    schema = PerplexitySearchBlock.Input.jsonschema()
+    assert schema["properties"]["search_domain_filter"]["maxItems"] == 20
 
 
 @pytest.mark.asyncio
@@ -326,7 +429,7 @@ async def test_search_api_error_raises_block_error():
     block = PerplexitySearchBlock()
     fake = FakeSearch(
         _search_response([]),
-        error=ValueError("Perplexity Search request failed with HTTP 401"),
+        error=ValueError("Perplexity rejected the API key (HTTP 401)."),
     )
 
     with pytest.raises(BlockExecutionError, match="HTTP 401"):

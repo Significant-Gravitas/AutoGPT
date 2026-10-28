@@ -1,5 +1,7 @@
 from typing import Any
 
+from pydantic import model_validator
+
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -15,10 +17,12 @@ from backend.sdk import (
 from backend.util.exceptions import BlockExecutionError
 
 from ._api import (
+    MAX_DOMAIN_FILTERS,
     PerplexityRecencyFilter,
     PerplexitySearchResponse,
     PerplexitySearchResult,
     PerplexitySearchType,
+    check_domain_filter,
     search,
     search_cost_usd,
 )
@@ -49,10 +53,12 @@ class PerplexitySearchBlock(Block):
         )
         search_domain_filter: list[str] = SchemaField(
             description=(
-                "Limit results to these domains (up to 20). "
-                "Prefix a domain with '-' to exclude it instead."
+                "Up to 20 domains without protocol, e.g. nature.com. Either list "
+                "only domains to include, or prefix every entry with '-' to "
+                "exclude those domains; one request cannot mix the two."
             ),
             default_factory=list,
+            max_length=MAX_DOMAIN_FILTERS,
             advanced=True,
         )
         search_recency_filter: PerplexityRecencyFilter | None = SchemaField(
@@ -60,6 +66,11 @@ class PerplexitySearchBlock(Block):
             default=None,
             advanced=True,
         )
+
+        @model_validator(mode="after")
+        def _check_domain_filter(self):
+            check_domain_filter(self.search_domain_filter)
+            return self
 
     class Output(BlockSchemaOutput):
         results: list[PerplexitySearchResult] = SchemaField(

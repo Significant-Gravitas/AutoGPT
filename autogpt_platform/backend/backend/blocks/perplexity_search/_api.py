@@ -6,10 +6,9 @@ from enum import Enum
 from typing import Any
 
 from aiohttp import ClientError, ClientTimeout
-from pydantic import Field, ValidationError
+from pydantic import Field
 
 from backend.sdk import APIKeyCredentials, BaseModel, Requests, SchemaField
-from backend.util.request import Response
 
 PERPLEXITY_API_URL = "https://api.perplexity.ai"
 
@@ -22,8 +21,8 @@ INTEGRATION_HEADER = {"X-Pplx-Integration": "autogpt"}
 # message, so no transport error that mentions the header is ever raised.
 _FORBIDDEN_HEADER_CHARS = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
 
-# Longest provider error message echoed to the user.
-MAX_ERROR_MESSAGE_CHARS = 500
+# search_domain_filter takes at most 20 domains, all include or all exclude.
+MAX_DOMAIN_FILTERS = 20
 
 # Published Search API prices per successful request, by search_type.
 WEB_SEARCH_COST_USD = 0.005
@@ -65,6 +64,28 @@ class PerplexitySearchResult(BaseModel):
     )
 
 
+def check_domain_filter(domains: list[str]) -> None:
+    """Enforce the Search API's rules for search_domain_filter.
+
+    Raises ValueError (surfaced as an input validation error) when the list
+    has more than 20 entries, has a blank entry, or mixes include entries
+    with '-' prefixed exclude entries in one request.
+    """
+    if len(domains) > MAX_DOMAIN_FILTERS:
+        raise ValueError(
+            f"search_domain_filter accepts at most {MAX_DOMAIN_FILTERS} domains"
+        )
+    if any(not domain.lstrip("-").strip() for domain in domains):
+        raise ValueError("search_domain_filter entries cannot be blank")
+    excluded = sum(1 for domain in domains if domain.startswith("-"))
+    if 0 < excluded < len(domains):
+        raise ValueError(
+            "search_domain_filter cannot mix included and excluded domains: "
+            "list only domains to include, or prefix every entry with '-' to "
+            "exclude them"
+        )
+
+
 def search_cost_usd(search_type: PerplexitySearchType) -> float:
     if search_type == PerplexitySearchType.FAST:
         return FAST_SEARCH_COST_USD
@@ -85,9 +106,9 @@ async def search(
 
     Every failure raises ValueError, which the block turns into a
     BlockExecutionError on its error output. Error messages are fixed strings
-    plus, for HTTP errors, the ``error.message`` field Perplexity returns.
-    They never include the API key, transport exception text, or a raw
-    response body.
+    chosen by HTTP status; they never include the API key, transport
+    exception text, or anything from the response body (a 422 body echoes
+    request input, and a misbehaving upstream could echo headers).
     """
     api_key = credentials.api_key.get_secret_value()
     if not api_key or _FORBIDDEN_HEADER_CHARS.search(api_key):
@@ -125,10 +146,7 @@ async def search(
             "Check the network connection and try again."
         ) from None
     if not response.ok:
-        raise ValueError(
-            f"Perplexity Search request failed with HTTP {response.status}: "
-            f"{_error_message(response)}"
-        )
+        raise ValueError(_http_error_message(response.status))
     try:
         return PerplexitySearchResponse.model_validate(response.json())
     except ValueError:
@@ -139,41 +157,23 @@ async def search(
         ) from None
 
 
-class _PerplexityError(BaseModel):
-    message: str | None = None
-
-
-class _PerplexityDetail(BaseModel):
-    msg: str | None = None
-
-
-class _PerplexityErrorBody(BaseModel):
-    # 401 answers {"error": {"message": ..., "type": ..., "code": 401}};
-    # 422 answers a FastAPI {"detail": [...]} list (or a plain string).
-    error: _PerplexityError | None = None
-    detail: str | list[_PerplexityDetail] | None = None
-
-    def message(self) -> str | None:
-        if self.error and self.error.message:
-            return self.error.message
-        match self.detail:
-            case str() as text:
-                return text
-            case list() as items:
-                return "; ".join(item.msg or "validation error" for item in items)
-        return None
-
-
-def _error_message(response: Response) -> str:
-    """Pull the human-readable message out of a Perplexity error body.
-
-    Falls back to a fixed string; the raw body is never echoed.
-    """
-    try:
-        body = _PerplexityErrorBody.model_validate_json(response.content)
-    except ValidationError:
-        body = _PerplexityErrorBody()
-    message = body.message()
-    if not message:
-        return "no error details were provided"
-    return message[:MAX_ERROR_MESSAGE_CHARS]
+def _http_error_message(status: int) -> str:
+    """Fixed, status-based message for a non-2xx Search API response."""
+    if status in (401, 403):
+        return (
+            f"Perplexity rejected the API key (HTTP {status}). Check the "
+            "credential in your integrations settings."
+        )
+    if status in (400, 422):
+        return (
+            f"Perplexity rejected the request parameters (HTTP {status}). Check "
+            "the query, max_results, and filters."
+        )
+    if status == 429:
+        return "Perplexity rate limited this request (HTTP 429). Try again shortly."
+    if 500 <= status <= 599:
+        return (
+            f"Perplexity Search is unavailable right now (HTTP {status}). Try "
+            "again later."
+        )
+    return f"Perplexity Search request failed with HTTP {status}."

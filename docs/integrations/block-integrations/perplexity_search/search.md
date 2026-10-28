@@ -10,7 +10,7 @@ Search the web with the Perplexity Search API
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block sends the query to `POST https://api.perplexity.ai/search` with Bearer API-key auth. `search_type` picks between `web` (the default, highest quality) and `fast` (quicker, lower price). `search_domain_filter` limits results to the listed domains, or excludes a domain when it is prefixed with `-`; `search_recency_filter` keeps only pages published within the last hour, day, week, month or year. Each row in `results` becomes a PerplexitySearchResult (title, url, snippet, and `date` or `last_updated` when Perplexity knows them). The block emits the full `results` list, then each `result` one at a time, then a `context` string with all results formatted for a prompt. That text is untrusted web content, so treat it as data, not instructions, before passing it to a model. HTTP failures, such as a bad API key (401), an invalid parameter (422) or a rate limit (429), raise a block error with Perplexity's message.
+The block sends the query to `POST https://api.perplexity.ai/search` with Bearer API-key auth. `search_type` picks between `web` (the default, highest quality) and `fast` (quicker, lower price). `search_domain_filter` takes up to 20 domains without protocol, either all domains to include or all prefixed with `-` to exclude (one request cannot mix the two); `search_recency_filter` keeps only pages published within the last hour, day, week, month or year. Each row in `results` becomes a PerplexitySearchResult (title, url, snippet, and `date` or `last_updated` when Perplexity knows them). The block emits the full `results` list, then each `result` one at a time, then a `context` string with all results formatted for a prompt. That text is untrusted web content, so treat it as data, not instructions, before passing it to a model. HTTP failures raise a block error with the status code and a fixed message: 401 or 403 means the key was rejected, 400 or 422 means the request parameters were rejected, 429 means the request was rate limited, and 5xx means Perplexity Search is unavailable. Response text from Perplexity is not forwarded.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -20,7 +20,7 @@ The block sends the query to `POST https://api.perplexity.ai/search` with Bearer
 | query | The search query | str | Yes |
 | max_results | Maximum number of results to return (1 to 20) | int | No |
 | search_type | Web search returns the highest quality results; fast search returns results sooner | "web" \| "fast" | No |
-| search_domain_filter | Limit results to these domains (up to 20). Prefix a domain with '-' to exclude it instead. | List[str] | No |
+| search_domain_filter | Up to 20 domains without protocol, e.g. nature.com. Either list only domains to include, or prefix every entry with '-' to exclude those domains; one request cannot mix the two. | List[str] | No |
 | search_recency_filter | Only return pages published within this time window | "hour" \| "day" \| "week" \| "month" \| "year" | No |
 
 ### Outputs
