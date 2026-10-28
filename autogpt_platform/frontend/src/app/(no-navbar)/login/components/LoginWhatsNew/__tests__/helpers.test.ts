@@ -31,22 +31,41 @@ describe("splitHighlights", () => {
 });
 
 describe("toRelease", () => {
-  test("heads the release with its first highlight", () => {
+  const url =
+    "https://agpt.co/docs/platform/changelog/changelog/september-19-2026";
+
+  test("heads the release with its title over all of its highlights", () => {
     expect(
       toRelease({
         slug: "september-19-2026",
         dateRange: "September 19",
-        highlights: "meet your Experts, routines, Skills marketplace",
-        url: "https://agpt.co/docs/platform/changelog/changelog/september-19-2026",
+        highlights: "meet your Experts, routines, [Clay, Rock](https://x.org)",
+        url,
+        title: "Meet your **Experts**: hire a specialist <!-- draft -->",
       }),
     ).toEqual({
       slug: "september-19-2026",
-      url: "https://agpt.co/docs/platform/changelog/changelog/september-19-2026",
+      url,
       dateRange: "September 19",
-      headline: "Meet your Experts",
-      details: "Routines, Skills marketplace",
+      headline: "Meet your Experts: hire a specialist",
+      details: "Meet your Experts, routines, Clay, Rock",
     });
   });
+
+  test.each([null, "", "  <!-- only a comment -->  "])(
+    "heads the release with its first highlight when the title is %j",
+    (title) => {
+      const release = toRelease({
+        slug: "september-19-2026",
+        dateRange: "September 19",
+        highlights: "meet your Experts, routines, Skills marketplace",
+        url,
+        title,
+      });
+      expect(release.headline).toBe("Meet your Experts");
+      expect(release.details).toBe("Routines, Skills marketplace");
+    },
+  );
 
   test("keeps a comma in link text and drops HTML comments", () => {
     const release = toRelease({
@@ -55,6 +74,7 @@ describe("toRelease", () => {
       highlights:
         "[Clay, Rock](https://agpt.co/x) avatars <!-- internal, unpublished -->, faster runs",
       url: "u",
+      title: null,
     });
     expect(release.headline).toBe("Clay, Rock avatars");
     expect(release.details).toBe("Faster runs");
@@ -66,6 +86,7 @@ describe("toRelease", () => {
       dateRange: "May 1",
       highlights: "**new agents, faster runs**, [docs, guides](https://x.org)",
       url: "u",
+      title: null,
     });
     expect(release.headline).toBe("New agents");
     expect(release.details).toBe("Faster runs, docs, guides");
@@ -82,6 +103,7 @@ describe("toRelease", () => {
       dateRange: "",
       highlights,
       url: "u",
+      title: null,
     });
     expect(release.headline).toBe(headline);
   });
@@ -92,6 +114,7 @@ describe("toRelease", () => {
       dateRange: "May 1",
       highlights: "  ,  ",
       url: "u",
+      title: null,
     });
     expect(release.headline).toBe("Release notes");
     expect(release.details).toBe("");

@@ -1,8 +1,9 @@
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 
-// Detail lines per row, as the published releases usually wrap in the panel:
-// the list keeps its height when they arrive.
-const ROWS = [2, 2, 1];
+// Detail lines per row, as the published releases usually wrap in the panel
+// (every highlight, under a one-line title): the list keeps its height when
+// they arrive.
+const ROWS = [2, 2, 2];
 
 // Matches a release row's line boxes.
 export function ReleaseListSkeleton() {
@@ -18,7 +19,12 @@ export function ReleaseListSkeleton() {
             <span className="size-2 rounded-full bg-surface-hover" />
           </span>
           <div className="flex flex-1 flex-col">
-            <Bar className="h-4 w-32" />
+            {/* The latest row's "Latest" pill makes its date line 18px. */}
+            <div
+              className={`flex items-center ${row === 0 ? "h-[1.125rem]" : "h-4"}`}
+            >
+              <Bar className="h-4 w-32" />
+            </div>
             <div className="mt-1 flex h-[1.375rem] items-center">
               <Bar className="h-3.5 w-1/2" />
             </div>

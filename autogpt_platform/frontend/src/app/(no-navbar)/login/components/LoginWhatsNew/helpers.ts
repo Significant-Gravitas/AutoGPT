@@ -1,6 +1,6 @@
-import type { ChangelogEntry } from "@/components/molecules/ChangelogPopup/helpers";
+import type { LatestRelease } from "@/app/api/changelog/helpers";
 
-export const RELEASE_COUNT = 3;
+const LATEST_RELEASES_URL = "/api/changelog/latest";
 
 // Past this the panel links to the changelog instead of waiting on it.
 export const CHANGELOG_TIMEOUT_MS = 5000;
@@ -19,22 +19,34 @@ const MARKDOWN_LINK = /!?\[([^\]]*)\]\((?:[^()]|\([^()]*\))*\)/g;
 // Stands in for a comma inside link text while the highlights are split.
 const LINK_COMMA = "\uE000";
 
-// A release's highlights are one comma-separated markdown cell: the first
-// heads the release and the rest are its details. Commas in link text
-// ("[Clay, Rock](…)") are set aside first so they don't split a highlight.
-export function toRelease(entry: ChangelogEntry): Release {
-  const highlights = entry.highlights.replace(MARKDOWN_LINK, (link) =>
-    link.replaceAll(",", LINK_COMMA),
-  );
-  const [first = "", ...rest] = splitHighlights(toPlainText(highlights)).map(
-    (highlight) => highlight.replaceAll(LINK_COMMA, ","),
-  );
+// The newest releases, each with its page title when the server could read it.
+export async function fetchLatestReleases(
+  signal: AbortSignal,
+): Promise<LatestRelease[]> {
+  const response = await fetch(LATEST_RELEASES_URL, { signal });
+  if (!response.ok) {
+    throw new Error(`Changelog request failed with ${response.status}`);
+  }
+  const { releases } = (await response.json()) as {
+    releases: LatestRelease[];
+  };
+  return releases;
+}
+
+// A release heads with its page title over all of its highlights. Without a
+// title, the first highlight heads it and the rest are its details.
+export function toRelease(release: LatestRelease): Release {
+  const title = toPlainText(release.title ?? "");
+  const [first = "", ...rest] = toHighlights(release.highlights);
+  const [headline, details] = title
+    ? [title, [first, ...rest]]
+    : [capitalize(first) || "Release notes", rest];
   return {
-    slug: entry.slug,
-    url: entry.url,
-    dateRange: toPlainText(entry.dateRange),
-    headline: capitalize(first) || "Release notes",
-    details: capitalize(rest.join(", ")),
+    slug: release.slug,
+    url: release.url,
+    dateRange: toPlainText(release.dateRange),
+    headline,
+    details: capitalize(details.filter(Boolean).join(", ")),
   };
 }
 
@@ -55,6 +67,17 @@ export function toPlainText(markdown: string): string {
       .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, decodeEntity)
       .replace(/\s+/g, " ")
       .trim()
+  );
+}
+
+// The highlights are one comma-separated markdown cell. Commas in link text
+// ("[Clay, Rock](…)") are set aside first so they don't split a highlight.
+function toHighlights(markdown: string) {
+  const highlights = markdown.replace(MARKDOWN_LINK, (link) =>
+    link.replaceAll(",", LINK_COMMA),
+  );
+  return splitHighlights(toPlainText(highlights)).map((highlight) =>
+    highlight.replaceAll(LINK_COMMA, ","),
   );
 }
 

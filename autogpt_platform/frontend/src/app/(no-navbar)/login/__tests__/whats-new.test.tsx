@@ -21,32 +21,44 @@ vi.mock("../actions", () => ({
 
 const CHANGELOG_URL = "https://agpt.co/docs/platform/changelog/changelog";
 
-function row(dateRange: string, slug: string, highlights: string) {
-  return `| [${dateRange}](/docs/platform/changelog/changelog/${slug}.md) | ${highlights} |`;
+function release(
+  dateRange: string,
+  slug: string,
+  highlights: string,
+  title: string | null = null,
+) {
+  return {
+    slug,
+    dateRange,
+    highlights,
+    url: `${CHANGELOG_URL}/${slug}`,
+    title,
+  };
 }
 
-function indexOf(...rows: string[]) {
-  return ["| Date | Highlights |", "| --- | --- |", ...rows].join("\n");
-}
-
-const INDEX = indexOf(
-  row(
+const RELEASES = [
+  release(
     "October 8 – October 14",
     "october-8-october-14-2026",
     "Redesigned wallet, trial cancel keeps access, verified email at signup",
+    "A clearer wallet, a kinder trial, and shorter replies from Otto",
   ),
-  row(
+  release(
     "September 24 – September 30",
     "september-24-september-30-2026",
     "A bigger roster, Clay & Rock avatars",
   ),
-  row("September 19", "september-19-2026", "Meet your Experts"),
-  row("August 21 – September 4", "august-21-september-4-2026", "Older news"),
-);
+  release(
+    "September 19",
+    "september-19-2026",
+    "Meet your Experts, routines",
+    "Meet your Experts: hire a specialist and put it to work",
+  ),
+];
 
-function serveChangelog(body: string, status = 200) {
+function serveReleases(releases: ReturnType<typeof release>[]) {
   server.use(
-    http.get("/api/changelog", () => HttpResponse.text(body, { status })),
+    http.get("/api/changelog/latest", () => HttpResponse.json({ releases })),
   );
 }
 
@@ -67,13 +79,13 @@ describe("LoginPage What's new", () => {
     vi.useRealTimers();
   });
 
-  test("lists the three latest releases, each linking to its changelog entry", async () => {
-    serveChangelog(INDEX);
+  test("lists the latest releases by title, each linking to its changelog entry", async () => {
+    serveReleases(RELEASES);
     render(<LoginPage />);
     const panel = await findWhatsNew();
 
     const latest = await panel.findByRole("link", {
-      name: "Redesigned wallet, October 8 – October 14, latest release (opens in a new tab)",
+      name: "A clearer wallet, a kinder trial, and shorter replies from Otto, October 8 – October 14, latest release (opens in a new tab)",
     });
     expect(latest.getAttribute("href")).toBe(
       `${CHANGELOG_URL}/october-8-october-14-2026`,
@@ -82,7 +94,9 @@ describe("LoginPage What's new", () => {
     expect(latest.getAttribute("rel")).toBe("noopener noreferrer");
     expect(latest.getAttribute("aria-describedby")).not.toBeNull();
     expect(
-      panel.getByText("Trial cancel keeps access, verified email at signup"),
+      panel.getByText(
+        "Redesigned wallet, trial cancel keeps access, verified email at signup",
+      ),
     ).toBeDefined();
 
     expect(
@@ -92,16 +106,17 @@ describe("LoginPage What's new", () => {
         })
         .getAttribute("href"),
     ).toBe(`${CHANGELOG_URL}/september-24-september-30-2026`);
+    expect(panel.getByText("Clay & Rock avatars")).toBeDefined();
     expect(
       panel
         .getByRole("link", {
-          name: "Meet your Experts, September 19 (opens in a new tab)",
+          name: "Meet your Experts: hire a specialist and put it to work, September 19 (opens in a new tab)",
         })
         .getAttribute("href"),
     ).toBe(`${CHANGELOG_URL}/september-19-2026`);
+    expect(panel.getByText("Meet your Experts, routines")).toBeDefined();
 
     expect(panel.getAllByRole("listitem")).toHaveLength(3);
-    expect(panel.queryByText("Older news")).toBeNull();
     expect(
       panel
         .getByRole("link", { name: "Full changelog (opens in a new tab)" })
@@ -110,7 +125,7 @@ describe("LoginPage What's new", () => {
   });
 
   test("shows the releases there are when fewer than three are published", async () => {
-    serveChangelog(indexOf(row("September 19", "september-19-2026", "Solo")));
+    serveReleases([release("September 19", "september-19-2026", "Solo")]);
     render(<LoginPage />);
     const panel = await findWhatsNew();
 
@@ -123,10 +138,14 @@ describe("LoginPage What's new", () => {
   });
 
   test.each([
-    ["the changelog request fails", "", 502],
-    ["the changelog has no releases", "# What's New\n\nNothing yet.", 200],
+    ["the changelog request fails", { error: "failed" }, 502],
+    ["the changelog has no releases", { releases: [] }, 200],
   ])("links to the changelog when %s", async (_case, body, status) => {
-    serveChangelog(body, status);
+    server.use(
+      http.get("/api/changelog/latest", () =>
+        HttpResponse.json(body, { status }),
+      ),
+    );
     render(<LoginPage />);
     const panel = await findWhatsNew();
 
@@ -145,11 +164,11 @@ describe("LoginPage What's new", () => {
   test("stops waiting on a changelog that never answers", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     server.use(
-      http.get("/api/changelog", async ({ request }) => {
+      http.get("/api/changelog/latest", async ({ request }) => {
         await new Promise((resolve) =>
           request.signal.addEventListener("abort", resolve),
         );
-        return HttpResponse.text("");
+        return HttpResponse.json({ releases: [] });
       }),
     );
     render(<LoginPage />);
@@ -169,15 +188,13 @@ describe("LoginPage What's new", () => {
   test("shows markdown, long and unusual highlights as readable text", async () => {
     const longDetail =
       "a remarkably long highlight that keeps going well past what fits on a single line of the panel";
-    serveChangelog(
-      indexOf(
-        row(
-          "June 18 – July 9",
-          "june-18-july-9-2026",
-          `🚀 **Bold launch** (beta, invite-only), [linked docs](https://example.com), \`code_name\` &amp; more, ${longDetail}`,
-        ),
+    serveReleases([
+      release(
+        "June 18 – July 9",
+        "june-18-july-9-2026",
+        `🚀 **Bold launch** (beta, invite-only), [linked docs](https://example.com), \`code_name\` &amp; more, ${longDetail}`,
       ),
-    );
+    ]);
     render(<LoginPage />);
     const panel = await findWhatsNew();
 
