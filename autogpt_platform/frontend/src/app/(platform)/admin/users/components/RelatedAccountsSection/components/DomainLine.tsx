@@ -19,8 +19,11 @@ export function DomainLine({ report, signedInUserId }: Props) {
   if (domain.is_public_provider) {
     return (
       <Text variant="body" className="text-foreground-body">
-        Email domain {name} is a public mail provider, so its accounts
-        aren&apos;t listed and it can&apos;t be blocked.
+        Email domain {name} is a public mail provider, so it isn&apos;t used to
+        link accounts and can&apos;t be blocked.
+        {report.related.length > 0
+          ? " The accounts below share a sign-in IP with this one."
+          : null}
       </Text>
     );
   }
