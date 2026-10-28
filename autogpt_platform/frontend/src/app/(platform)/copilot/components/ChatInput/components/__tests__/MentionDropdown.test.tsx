@@ -1,4 +1,9 @@
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@/tests/integrations/test-utils";
 import type { MutableRefObject } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
@@ -193,6 +198,32 @@ describe("MentionDropdown", () => {
     expect(screen.queryByText(/No matching/)).toBeNull();
     fireEvent.mouseEnter(options[2]);
     expect(onHighlight).toHaveBeenCalledWith(2);
+  });
+
+  it("still renders Connect last when the results are swapped for the next query", () => {
+    const props = renderDropdown({
+      options: [FILE_ITEM, { kind: "connect", query: "g" }],
+      hasIntegrations: true,
+    });
+    const highlightedRef = props.highlightedRef;
+    const next: MentionOption[] = [
+      GOOGLE_ITEM,
+      FILE_ITEM,
+      { kind: "connect", query: "goo" },
+    ];
+    cleanup();
+    render(
+      <MentionDropdown
+        {...props}
+        highlightedRef={highlightedRef}
+        options={next}
+      />,
+    );
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(3);
+    expect(options[2].textContent).toBe(
+      "Connect an integrationSearch services for “goo”",
+    );
   });
 
   it("drops the headings when files are not part of the picker", () => {

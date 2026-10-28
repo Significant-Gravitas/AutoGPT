@@ -645,4 +645,107 @@ describe("useChatMentions", () => {
     );
     expect(result.current.isOpen).toBe(false);
   });
+
+  describe("Connect row always ends the mention list", () => {
+    function fileNamed(name: string) {
+      return { ...FILE, id: `file-${name}`, name };
+    }
+
+    it("stays last, carrying the live query, while a second integration is typed before the file search catches up", async () => {
+      // Each search answers only its own query, so a stale result is visible.
+      mockListWorkspaceFiles.mockImplementation(({ q }: { q?: string }) =>
+        Promise.resolve({
+          status: 200,
+          data: { files: [fileNamed(`${q ?? ""}.txt`)], has_more: false },
+        }),
+      );
+      const { result, rerender } = renderHook(
+        ({ value }) =>
+          useChatMentions({
+            enabled: true,
+            value,
+            setValue: vi.fn(),
+            addWorkspaceFile: vi.fn(),
+            addWorkspaceFolder: vi.fn(),
+            integrations: [GITHUB, GOOGLE],
+          }),
+        { wrapper: Wrapper, initialProps: { value: "hi @gi" } },
+      );
+
+      act(() => result.current.detect(fakeTextarea("hi @gi")));
+      await waitFor(() =>
+        expect(result.current.options).toContainEqual({
+          kind: "file",
+          file: fileNamed("gi.txt"),
+        }),
+      );
+
+      // The next integration, typed inside the 200ms debounce: integrations
+      // narrow at once while the file results still belong to "gi".
+      rerender({ value: "hi @goo" });
+      act(() => result.current.detect(fakeTextarea("hi @goo")));
+      expect(result.current.options[0]).toEqual({
+        kind: "integration",
+        integration: GOOGLE,
+      });
+      expect(result.current.options.at(-1)).toEqual({
+        kind: "connect",
+        query: "goo",
+      });
+      expect(
+        result.current.options.filter((option) => option.kind === "connect"),
+      ).toHaveLength(1);
+
+      await waitFor(() =>
+        expect(result.current.options).toEqual([
+          { kind: "integration", integration: GOOGLE },
+          { kind: "file", file: fileNamed("goo.txt") },
+          { kind: "connect", query: "goo" },
+        ]),
+      );
+    });
+
+    it("opens the dialog for the latest query when Connect is reached by keyboard mid-race", async () => {
+      mockListWorkspaceFiles.mockImplementation(({ q }: { q?: string }) =>
+        Promise.resolve({
+          status: 200,
+          data: { files: [fileNamed(`${q ?? ""}.txt`)], has_more: false },
+        }),
+      );
+      const { result, rerender } = renderHook(
+        ({ value }) =>
+          useChatMentions({
+            enabled: true,
+            value,
+            setValue: vi.fn(),
+            addWorkspaceFile: vi.fn(),
+            addWorkspaceFolder: vi.fn(),
+            integrations: [GITHUB, GOOGLE],
+          }),
+        { wrapper: Wrapper, initialProps: { value: "hi @gi" } },
+      );
+
+      act(() => result.current.detect(fakeTextarea("hi @gi")));
+      await waitFor(() => expect(result.current.options).toHaveLength(3));
+
+      rerender({ value: "hi @goo" });
+      act(() => result.current.detect(fakeTextarea("hi @goo")));
+      const last = result.current.options.length - 1;
+      for (let step = 0; step < last; step++) {
+        act(() => {
+          result.current.onKeyDown(keyEvent("ArrowDown"));
+        });
+      }
+      expect(result.current.highlightedIndex).toBe(last);
+      act(() => {
+        expect(result.current.onKeyDown(keyEvent("Enter"))).toBe(true);
+      });
+
+      expect(result.current.connectRequest).toEqual({
+        query: "goo",
+        start: 3,
+        end: 7,
+      });
+    });
+  });
 });
