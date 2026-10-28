@@ -461,12 +461,16 @@ async def test_several_reads_hold_at_once(rows):
 
 @pytest.mark.parametrize("engine", ["sdk", "baseline"])
 async def test_a_large_released_read_arrives_late_exactly_as_a_direct_result(
-    rows, engine
+    rows, engine, monkeypatch
 ):
     """Above 30K, where a plain pending message would cut it, and on the SDK
     engine above the 70K cap, so the stored bytes are already capped."""
     from backend.copilot.sdk.tool_adapter import cap_late_tool_result
 
+    monkeypatch.setattr(
+        "backend.copilot.tools.base._persist_and_summarize",
+        AsyncMock(side_effect=lambda raw, *_, **__: raw),
+    )
     content = "y" * (75_000 if engine == "sdk" else 45_000)
     session = _session()
     set_execution_context("user-1", session)
