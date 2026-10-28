@@ -5,6 +5,7 @@ import { memoryAdapter } from "better-auth/adapters/memory";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { admin } from "better-auth/plugins";
 import { mobileAuth } from "../mobile-auth";
+import { mobileConsentPage } from "../mobile-consent-page";
 
 const baseURL = "https://platform.example.com";
 const verifier = randomBytes(32).toString("base64url");
@@ -172,6 +173,31 @@ describe("mobile sign-in", () => {
     expect((await post("exchange", { code, verifier })).status).toBe(302);
   });
 
+  it.each(["https://evil.example.com", "", "null"])(
+    "rejects a cookieless exchange from origin %s without consuming the code",
+    async (origin) => {
+      const { code } = await grant();
+      const rejected = await post("exchange", { code, verifier }, "", origin);
+      expect(rejected.status).toBe(403);
+      expect(rejected.headers.has("set-cookie")).toBe(false);
+      expect((await post("exchange", { code, verifier })).status).toBe(302);
+    },
+  );
+
+  it("rejects an exchange without an Origin header", async () => {
+    const { code } = await grant();
+    const response = await auth.handler(
+      new Request(`${baseURL}/api/auth/mobile/exchange`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ code, verifier }),
+      }),
+    );
+    expect(response.status).toBe(403);
+    expect(response.headers.has("set-cookie")).toBe(false);
+    expect((await post("exchange", { code, verifier })).status).toBe(302);
+  });
+
   it("only redeems a code once, including concurrent requests", async () => {
     const { code } = await grant();
     const responses = await Promise.all([
@@ -206,6 +232,28 @@ describe("mobile sign-in", () => {
       update: { banned: true },
     });
     expect((await post("exchange", { code, verifier })).status).toBe(403);
+  });
+
+  it("allows sign-in after a temporary ban expires", async () => {
+    const { code, userID } = await grant();
+    const context = await auth.$context;
+    await context.adapter.update({
+      model: "user",
+      where: [{ field: "id", value: userID }],
+      update: { banned: true, banExpires: new Date(Date.now() - 1_000) },
+    });
+    expect((await post("exchange", { code, verifier })).status).toBe(302);
+  });
+
+  it("escapes consent fields and permits the fixed app callback in its document policy", async () => {
+    const page = await mobileConsentPage('<img src=x onerror="alert(1)">', {
+      challenge: '"><script>alert(1)</script>',
+      state: '"><img src=x onerror="alert(1)">',
+    }).text();
+    expect(page).not.toContain("<script>");
+    expect(page).not.toContain("<img");
+    expect(page).toContain('http-equiv="Content-Security-Policy"');
+    expect(page).toContain("form-action 'self' autogpt:");
   });
 
   it("requires a session and the exact origin to approve sign-in", async () => {

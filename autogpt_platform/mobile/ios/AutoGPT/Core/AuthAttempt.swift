@@ -4,9 +4,10 @@ import Foundation
 public struct AuthAttempt {
   public let verifier: String
   public let state: String
-  private let createdAt = Date()
+  private let createdAt: Date
 
-  public init() {
+  public init(createdAt: Date = Date()) {
+    self.createdAt = createdAt
     verifier = Self.randomToken()
     state = Self.randomToken()
   }
