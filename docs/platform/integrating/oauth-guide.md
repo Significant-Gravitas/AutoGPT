@@ -42,6 +42,8 @@ Before integrating, you need an OAuth application registered with AutoGPT Platfo
 - **Client Secret** - Secret key for authenticating your application (keep this secure!)
 - **Registered Redirect URIs** - URLs where users will be redirected after authorization
 
+A self-hosted instance with `OAUTH_DYNAMIC_CLIENT_REGISTRATION=true` also lets a client register itself at `POST /api/oauth/register` ([RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)), as MCP clients do. Such a client is public: it gets no secret, omits `client_secret` when it redeems a code, and must use `S256` PKCE. Its redirect URIs must be `http` on the loopback interface or `https`. The instance's `/.well-known/oauth-authorization-server` document lists the registration endpoint when it is on.
+
 ## OAuth Flow
 
 The OAuth flow is technically the same whether you're using it for API access, SSO, or both. The main difference is which scopes you request.

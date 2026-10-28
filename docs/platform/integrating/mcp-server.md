@@ -199,6 +199,8 @@ claude mcp add --transport http --scope user autogpt "$AUTOGPT_API_URL/mcp/" \
 
 It asks for the client secret. Then run `/mcp` in Claude Code and pick the server to sign in.
 
+A self-hosted instance can also let clients register themselves, so they sign in with no client ID at all: set `OAUTH_DYNAMIC_CLIENT_REGISTRATION=true` for the backend. A client registered that way has no secret and must use PKCE, its redirect URIs must be `http` on `localhost`, `127.0.0.1` or `[::1]`, or `https`, and the consent page tells the user AutoGPT hasn't reviewed it. AutoGPT Cloud doesn't allow this yet.
+
 ## Tools
 
 | Tool | What it does | Permissions it needs |
@@ -328,4 +330,4 @@ It prints `COMPLETED {'greeting': ['Hello, Ada!']}`. Change the name and inputs 
 * A tool's result is at most 100,000 characters. A longer one is cut in the middle, and `… (omitted N chars)…` marks the cut. `read_workspace_file` with `offset` or `length` returns at most 60,000 bytes of text a call, and its `message` says which characters it read, so continue from the last one.
 * Runs started over MCP are ordinary runs: they show up in the app and in `GET /runs`, and they cost the same.
 * On a self-hosted instance, `search_docs` returns results only after the instance has indexed its documentation, and `web_search` needs OpenRouter credentials configured on the instance.
-* The server doesn't support dynamic client registration, so a client can only [sign in with OAuth](#sign-in-with-oauth) when you give it a registered application's client ID. Otherwise, configure the API key header.
+* Unless the instance lets clients register themselves, a client can only [sign in with OAuth](#sign-in-with-oauth) when you give it a registered application's client ID. Otherwise, configure the API key header.

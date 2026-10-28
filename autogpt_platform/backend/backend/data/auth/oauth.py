@@ -47,6 +47,8 @@ def _hash_token(token: str) -> str:
 AUTHORIZATION_CODE_TTL = timedelta(minutes=10)
 ACCESS_TOKEN_TTL = timedelta(hours=1)
 REFRESH_TOKEN_TTL = timedelta(days=30)
+# A client that registered itself and holds no token after this is deleted.
+UNUSED_REGISTERED_CLIENT_TTL = timedelta(days=1)
 
 ACCESS_TOKEN_PREFIX = "agpt_xt_"
 REFRESH_TOKEN_PREFIX = "agpt_rt_"
@@ -111,7 +113,12 @@ class OAuthApplicationInfo(BaseModel):
     redirect_uris: list[str]
     grant_types: list[str]
     scopes: list[APIPermission]
-    owner_id: str
+    owner_id: Optional[str] = Field(
+        description="None for a client that registered itself"
+    )
+    is_public: bool = Field(
+        default=False, description="Has no client secret; proves itself with PKCE"
+    )
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -128,6 +135,7 @@ class OAuthApplicationInfo(BaseModel):
             grant_types=app.grantTypes,
             scopes=[APIPermission(s) for s in app.scopes],
             owner_id=app.ownerId,
+            is_public=app.clientSecret is None,
             is_active=app.isActive,
             created_at=app.createdAt,
             updated_at=app.updatedAt,
@@ -137,8 +145,8 @@ class OAuthApplicationInfo(BaseModel):
 class OAuthApplicationInfoWithSecret(OAuthApplicationInfo):
     """OAuth application with client secret hash (for validation)"""
 
-    client_secret_hash: str
-    client_secret_salt: str
+    client_secret_hash: Optional[str]
+    client_secret_salt: Optional[str]
 
     @staticmethod
     def from_db(app: PrismaOAuthApplication):
@@ -150,6 +158,8 @@ class OAuthApplicationInfoWithSecret(OAuthApplicationInfo):
 
     def verify_secret(self, plaintext_secret: str) -> bool:
         """Verify a plaintext client secret against the stored hash"""
+        if self.client_secret_hash is None:
+            return False
         # Use keysmith.verify_key() with stored salt
         return keysmith.verify_key(
             plaintext_secret, self.client_secret_hash, self.client_secret_salt
@@ -300,10 +310,12 @@ async def get_oauth_application_with_secret(
 
 
 async def validate_client_credentials(
-    client_id: str, client_secret: str
+    client_id: str, client_secret: Optional[str]
 ) -> OAuthApplicationInfo:
     """
     Validate client credentials and return application info.
+
+    A public client sends no secret; its code is bound to it by PKCE instead.
 
     Raises:
         InvalidClientError: If client_id or client_secret is invalid, or app is inactive
@@ -315,12 +327,36 @@ async def validate_client_credentials(
     if not app.is_active:
         raise InvalidClientError("Application is not active")
 
-    # Verify client secret
-    if not app.verify_secret(client_secret):
+    if app.is_public:
+        if client_secret is not None:
+            raise InvalidClientError("A public client sends no client_secret")
+    elif client_secret is None or not app.verify_secret(client_secret):
         raise InvalidClientError("Invalid client_secret")
 
     # Return without secret hash
-    return OAuthApplicationInfo(**app.model_dump(exclude={"client_secret_hash"}))
+    return OAuthApplicationInfo(
+        **app.model_dump(exclude={"client_secret_hash", "client_secret_salt"})
+    )
+
+
+async def register_public_client(
+    name: str,
+    redirect_uris: list[str],
+    grant_types: list[str],
+    scopes: list[APIPermission],
+) -> OAuthApplicationInfo:
+    """Register a client that registered itself (RFC 7591): no owner, no secret."""
+    app = await PrismaOAuthApplication.prisma().create(
+        data={
+            "id": str(uuid.uuid4()),
+            "name": name,
+            "clientId": f"agpt_client_{secrets.token_urlsafe(16)}",
+            "redirectUris": redirect_uris,
+            "grantTypes": grant_types,
+            "scopes": scopes,
+        }
+    )
+    return OAuthApplicationInfo.from_db(app)
 
 
 def validate_redirect_uri(app: OAuthApplicationInfo, redirect_uri: str) -> bool:
@@ -860,6 +896,7 @@ async def cleanup_expired_oauth_tokens() -> dict[str, int]:
     - Expired authorization codes (10 min TTL)
     - Expired access tokens (1 hour TTL)
     - Expired refresh tokens (30 day TTL)
+    - Clients that registered themselves and hold no token a day later
 
     Returns a dict with counts of deleted tokens by type.
     """
@@ -880,10 +917,20 @@ async def cleanup_expired_oauth_tokens() -> dict[str, int]:
         where={"expiresAt": {"lt": now}}
     )
 
+    unused_clients_result = await PrismaOAuthApplication.prisma().delete_many(
+        where={
+            "ownerId": None,
+            "createdAt": {"lt": now - UNUSED_REGISTERED_CLIENT_TTL},
+            "AccessTokens": {"none": {}},
+            "RefreshTokens": {"none": {}},
+        }
+    )
+
     deleted = {
         "authorization_codes": codes_result,
         "access_tokens": access_result,
         "refresh_tokens": refresh_result,
+        "unused_registered_clients": unused_clients_result,
     }
 
     total = sum(deleted.values())

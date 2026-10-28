@@ -3242,17 +3242,19 @@ model OAuthApplication {
   description      String?
   logoUrl          String? // URL to app logo stored in GCS
   clientId         String  @unique
-  clientSecret     String // Hashed with Scrypt (same as API keys)
-  clientSecretSalt String // Salt for Scrypt hashing
+  // Hashed with Scrypt (same as API keys); null for a public client, which
+  // proves itself with PKCE alone
+  clientSecret     String?
+  clientSecretSalt String? // Salt for Scrypt hashing
 
   // OAuth configuration
   redirectUris String[] // Allowed callback URLs
   grantTypes   String[]           @default(["authorization_code", "refresh_token"])
   scopes       APIKeyPermission[] // Which permissions the app can request
 
-  // Application management
-  ownerId  String
-  Owner    User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  // Application management; no owner for a client that registered itself
+  ownerId  String?
+  Owner    User?   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   isActive Boolean @default(true)
 
   // Relations
