@@ -215,6 +215,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Stripe Link MPP Pay](block-integrations/stripe_link/mpp.md#stripe-link-mpp-pay) | MPP step 3 of 3: spend an approved Shared Payment Token at the merchant's endpoint |
 | [Stripe Link Retrieve Card](block-integrations/stripe_link/spend_request.md#stripe-link-retrieve-card) | Get the one-time virtual card number and CVC for an approved spend request, to type into a normal checkout form |
 | [Stripe Subscription Trigger](block-integrations/stripe/triggers.md#stripe-subscription-trigger) | Triggers on Stripe subscription events (new, upgrade, cancel) |
+| [Treg Extract Structured Data](block-integrations/treg/pages.md#treg-extract-structured-data) | Pull typed data out of a web page, described by a JSON schema or a plain-English instruction, through Treg |
 
 ## Text Processing
 
@@ -350,6 +351,12 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Tavily Extract](block-integrations/tavily/extract.md#tavily-extract) | Extracts page content from one or more URLs using Tavily, optimized for LLM consumption |
 | [Tavily Map](block-integrations/tavily/map.md#tavily-map) | Maps a website's structure with Tavily, discovering its URLs without extracting content |
 | [Tavily Search](block-integrations/tavily/search.md#tavily-search) | Searches the web using Tavily's AI-native search API |
+| [Treg Extract Web Page](block-integrations/treg/pages.md#treg-extract-web-page) | Read a web page's main content as clean text, through Treg's cheapest working page extractor |
+| [Treg Get LinkedIn Company](block-integrations/treg/linkedin.md#treg-get-linkedin-company) | Read a LinkedIn company page through Treg, without a LinkedIn account or scraper |
+| [Treg Get LinkedIn Profile](block-integrations/treg/linkedin.md#treg-get-linkedin-profile) | Read a LinkedIn member's public profile through Treg, without a LinkedIn account or scraper |
+| [Treg Google Maps Search](block-integrations/treg/search.md#treg-google-maps-search) | Find businesses and places on Google Maps through Treg |
+| [Treg Map Website](block-integrations/treg/pages.md#treg-map-website) | List the pages on a website, through Treg |
+| [Treg Web Search](block-integrations/treg/search.md#treg-web-search) | Search the web, news, Google, research papers or YouTube through Treg, which picks the cheapest working search provider |
 | [Validate Emails](block-integrations/zerobounce/validate_emails.md#validate-emails) | Validate emails |
 
 ## Social Media and Content
@@ -622,6 +629,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Instantiate Code Sandbox](block-integrations/misc.md#instantiate-code-sandbox) | Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block |
 | [MCP Tool](block-integrations/mcp/block.md#mcp-tool) | Connect to any MCP server and execute its tools |
 | [Slant3D Order Webhook](block-integrations/slant3d/webhook.md#slant3d-order-webhook) | This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped |
+| [Treg Call Tool](block-integrations/treg/call_tool.md#treg-call-tool) | Call any of Treg's 4,000+ tools by id (SEO, social, ads, people and company data, scraping, generation), or a tool your Treg team registered |
+| [Treg Get Tool](block-integrations/treg/catalog.md#treg-get-tool) | Look up one Treg tool before calling it: the inputs it takes, its price, and every other provider of the same job |
+| [Treg Search Catalog](block-integrations/treg/catalog.md#treg-search-catalog) | Search Treg's catalog of 4,000+ tools by the job you need done, with each tool's price and success rate |
 
 ## Media Generation
 
@@ -725,6 +735,17 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [People Search](block-integrations/dataforb2b/search.md#people-search) | Search people and B2B leads by structured filters — job title, company, location, industry, seniority, skills — using DataForB2B's database |
 | [Profile Enrichment](block-integrations/dataforb2b/enrich.md#profile-enrichment) | Look up and enrich a professional profile from a LinkedIn URL using DataForB2B's B2B database — returns the full profile (current role, experience and skills) plus work email, personal email and GitHub |
 | [Save Campaign Sequences](block-integrations/smartlead/campaign.md#save-campaign-sequences) | Save sequences within a campaign |
+| [Treg Enrich Company](block-integrations/treg/companies.md#treg-enrich-company) | Look up a company (what it does, size, industry, founding year, headquarters and LinkedIn) from its domain, name, LinkedIn page or an employee's email, through Treg |
+| [Treg Enrich Person](block-integrations/treg/people.md#treg-enrich-person) | Look up who someone is (name, job title, company, LinkedIn and location) from an email, a LinkedIn URL, or a name and company domain, through Treg |
+| [Treg Find Company Jobs](block-integrations/treg/companies.md#treg-find-company-jobs) | List a company's open job listings, a strong signal of what it is investing in, through Treg |
+| [Treg Find LinkedIn From Email](block-integrations/treg/people.md#treg-find-linkedin-from-email) | Find the LinkedIn profile behind a work email, through Treg |
+| [Treg Find Personal Email](block-integrations/treg/emails.md#treg-find-personal-email) | Find someone's personal email (Gmail, Outlook and so on) from their LinkedIn URL or work email, through Treg |
+| [Treg Find Phone Number](block-integrations/treg/phone.md#treg-find-phone-number) | Find someone's phone number from their LinkedIn URL, email, or name and company domain |
+| [Treg Find Similar Companies](block-integrations/treg/companies.md#treg-find-similar-companies) | Find companies similar to one you name, through Treg |
+| [Treg Find Work Email](block-integrations/treg/emails.md#treg-find-work-email) | Find someone's work email from their name and company domain, or their LinkedIn URL |
+| [Treg Search Companies](block-integrations/treg/companies.md#treg-search-companies) | Find companies by description, name, industry or the technology they use |
+| [Treg Search People](block-integrations/treg/people.md#treg-search-people) | Find people by description, company, job title or name |
+| [Treg Verify Email](block-integrations/treg/emails.md#treg-verify-email) | Check whether an email address accepts mail before you send to it, through Treg's cheapest available verifier |
 
 ## AI Safety
 
