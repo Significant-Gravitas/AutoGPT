@@ -7,6 +7,7 @@ import {
   popularProviders,
   sortByPopularity,
   toConnectableProviders,
+  withoutProviders,
   type ConnectableProvider,
 } from "../helpers";
 
@@ -329,5 +330,18 @@ describe("popularProviders", () => {
     );
     expect(popular).toHaveLength(8);
     expect(popular.at(-1)?.serviceId).toBe("hubspot");
+  });
+});
+
+describe("withoutProviders", () => {
+  test("drops the excluded providers and keeps the rest in order", () => {
+    const providers = ["aave", "google", "notion", "zerobounce"].map((id) =>
+      makeProvider(id),
+    );
+    const rest = withoutProviders(providers, [
+      makeProvider("notion"),
+      makeProvider("google"),
+    ]);
+    expect(rest.map((p) => p.id)).toEqual(["aave", "zerobounce"]);
   });
 });

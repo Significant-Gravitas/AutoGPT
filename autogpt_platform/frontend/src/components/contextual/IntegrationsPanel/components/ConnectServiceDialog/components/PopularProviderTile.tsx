@@ -1,12 +1,10 @@
 "use client";
 
-import Image from "next/image";
-import { useState } from "react";
 import type { ConnectableProvider } from "../helpers";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
+import { ProviderLogo } from "./ProviderLogo";
 
 interface Props {
   provider: ConnectableProvider;
@@ -14,9 +12,6 @@ interface Props {
 }
 
 export function PopularProviderTile({ provider, onSelect }: Props) {
-  const src = integrationIconSrc(provider.iconId ?? provider.id);
-  const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
-
   return (
     <button
       type="button"
@@ -24,23 +19,7 @@ export function PopularProviderTile({ provider, onSelect }: Props) {
       // TODO(tokens): no exact role for focus-visible:ring-purple-400 #925cf7
       className="group flex min-h-16 w-full items-center gap-3 rounded-xl border border-border-base bg-surface py-2.5 pl-3 pr-2.5 text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 active:bg-surface-hover"
     >
-      {!src || brokenSrc === src ? (
-        <div
-          aria-hidden
-          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-surface-hover text-caption font-semibold uppercase leading-inherit text-foreground-secondary"
-        >
-          {provider.name?.charAt(0) ?? provider.id.charAt(0)}
-        </div>
-      ) : (
-        <Image
-          src={src}
-          alt=""
-          width={28}
-          height={28}
-          className="size-7 shrink-0 object-contain"
-          onError={() => setBrokenSrc(src)}
-        />
-      )}
+      <ProviderLogo provider={provider} size="sm" />
       <span className="flex min-w-0 flex-1 flex-col">
         <Text
           variant="body-medium"

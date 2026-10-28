@@ -198,6 +198,14 @@ export function popularProviders(
     .slice(0, POPULAR_COUNT);
 }
 
+export function withoutProviders(
+  providers: ConnectableProvider[],
+  excluded: ConnectableProvider[],
+): ConnectableProvider[] {
+  const excludedIds = new Set(excluded.map((provider) => provider.id));
+  return providers.filter((provider) => !excludedIds.has(provider.id));
+}
+
 function normalize(text: string): string {
   return text.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
