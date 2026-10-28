@@ -5,13 +5,17 @@ All subprocess calls are mocked — no agent-browser binary or real browser need
 
 import asyncio
 import json
+import logging
 import os
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.copilot.executor.processor import _CANCEL_GRACE_SECONDS
 from backend.copilot.model import ChatSession
+from backend.data.workspace import WorkspaceFile
+from backend.util.workspace import WorkspaceManager
 
 from .agent_browser import (
     BrowserActTool,
@@ -745,6 +749,96 @@ class TestBrowserScreenshotExecute:
             assert "--annotate" in screenshot_call[0].args
         else:
             assert "--annotate" not in screenshot_call[0].args
+
+    @pytest.mark.asyncio
+    async def test_two_unnamed_captures_in_one_chat_both_save(self, chat_workspace):
+        first = await self.tool._execute(user_id="user1", session=self.session)
+        second = await self.tool._execute(user_id="user1", session=self.session)
+
+        assert isinstance(first, BrowserScreenshotResponse), first.message
+        assert isinstance(second, BrowserScreenshotResponse), second.message
+        assert first.filename != second.filename
+        assert first.file_id != second.file_id
+        assert sorted(chat_workspace) == sorted(
+            f"/sessions/test-session-123/{shot.filename}" for shot in (first, second)
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_refused_save_tells_the_model_why(self, chat_workspace, caplog):
+        first = await self.tool._execute(
+            user_id="user1", session=self.session, filename="page.png"
+        )
+        with caplog.at_level(
+            logging.WARNING, logger="backend.copilot.tools.agent_browser"
+        ):
+            second = await self.tool._execute(
+                user_id="user1", session=self.session, filename="page.png"
+            )
+
+        assert isinstance(first, BrowserScreenshotResponse)
+        assert first.filename == "page.png"
+        refusal = "File already exists at path: /sessions/test-session-123/page.png"
+        assert isinstance(second, ErrorResponse)
+        assert second.error == "workspace_write_failed"
+        assert refusal in second.message
+        assert [r.levelno for r in caplog.records if refusal in r.getMessage()] == [
+            logging.WARNING
+        ]
+
+
+@pytest.fixture
+def chat_workspace(monkeypatch) -> dict[str, WorkspaceFile]:
+    """The real write tool and WorkspaceManager over an in-memory file table, so
+    a repeated path is refused by ``WorkspaceManager.write_file`` itself."""
+    files: dict[str, WorkspaceFile] = {}
+
+    def capture(session_name: str, *args: str, **kwargs) -> tuple:
+        with open(args[-1], "wb") as f:
+            f.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+        return _run_result(rc=0)
+
+    async def create_workspace_file(*, file_id: str, **row) -> WorkspaceFile:
+        files[row["path"]] = WorkspaceFile(
+            id=file_id,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            **{**row, "metadata": row["metadata"] or {}},
+        )
+        return files[row["path"]]
+
+    db = MagicMock()
+    db.get_workspace_total_size = AsyncMock(return_value=0)
+    db.get_workspace_file_by_path = AsyncMock(
+        side_effect=lambda _workspace_id, path: files.get(path)
+    )
+    db.create_workspace_file = AsyncMock(side_effect=create_workspace_file)
+
+    monkeypatch.setattr(
+        "backend.copilot.tools.agent_browser._run", AsyncMock(side_effect=capture)
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(
+            side_effect=lambda user_id, session_id: WorkspaceManager(
+                user_id, "ws-1", session_id
+            )
+        ),
+    )
+    monkeypatch.setattr("backend.util.workspace.workspace_db", lambda: db)
+    monkeypatch.setattr(
+        "backend.util.workspace.get_workspace_storage",
+        AsyncMock(return_value=AsyncMock(store=AsyncMock(return_value="blob"))),
+    )
+    monkeypatch.setattr("backend.util.workspace.scan_content_safe", AsyncMock())
+    monkeypatch.setattr(
+        "backend.util.workspace.get_workspace_storage_limit_bytes",
+        AsyncMock(return_value=250 * 1024 * 1024),
+    )
+    monkeypatch.setattr(
+        "backend.api.features.workspace.embeddings.schedule_workspace_file_embedding",
+        MagicMock(),
+    )
+    return files
 
 
 # ---------------------------------------------------------------------------
