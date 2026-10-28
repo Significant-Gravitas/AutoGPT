@@ -5,6 +5,7 @@ import uuid
 import fastapi
 import fastapi.testclient
 import prisma.enums
+import prisma.models
 import pytest
 import pytest_mock
 from autogpt_libs.auth import get_optional_user_id
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.store.db import StoreAgentsSortOptions
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.graph import GraphModelWithoutNodes
 
 from . import model as store_model
@@ -1020,6 +1022,26 @@ def test_listing_graph_outline_names_no_publisher_account(
         None,
         None,
     )
+
+
+def test_listing_graph_outline_of_a_missing_version_is_404(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    listing_versions = mocker.AsyncMock()
+    listing_versions.find_first.return_value = None
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=listing_versions
+    )
+    handled_app = fastapi.FastAPI()
+    add_exception_handlers(handled_app)
+    handled_app.include_router(store_routes.router)
+    handled_app.dependency_overrides.update(app.dependency_overrides)
+
+    response = fastapi.testclient.TestClient(
+        handled_app, raise_server_exceptions=False
+    ).get("/listings/versions/slv-missing/graph")
+
+    assert response.status_code == 404
 
 
 def test_download_agent_file_sends_listing_downloaded(
