@@ -39,7 +39,13 @@ const PROVIDERS = [
     },
   }),
   provider("aave", { description: "Lending markets" }),
+  provider("airtable"),
+  provider("discord"),
   provider("github"),
+  provider("hubspot"),
+  provider("linear"),
+  provider("openai"),
+  provider("twitter"),
   provider("google", { description: "Gmail, Drive, Calendar, Sheets" }),
   provider("notion"),
   provider("slack", { supported_auth_types: [] }),
@@ -62,17 +68,26 @@ function startingWith(...names: string[]) {
 }
 
 describe("ConnectServiceDialog", () => {
-  test("opens on popular services, with the rest A to Z below", async () => {
+  test("opens on popular services, with the rest in popularity order below", async () => {
     renderDialog();
 
     const popular = await screen.findByRole("region", { name: "Popular" });
     expect(buttonsIn(popular)).toEqual(
-      startingWith("Google", "GitHub", "Notion"),
+      startingWith(
+        "Google",
+        "GitHub",
+        "Notion",
+        "Linear",
+        "Discord",
+        "X",
+        "HubSpot",
+        "Airtable",
+      ),
     );
 
     const more = screen.getByRole("region", { name: "More services" });
     expect(buttonsIn(more)).toEqual(
-      startingWith("1inch", "Aave", "Slack", "ZeroBounce"),
+      startingWith("OpenAI", "ZeroBounce", "1inch", "Aave", "Slack"),
     );
   });
 
@@ -87,7 +102,14 @@ describe("ConnectServiceDialog", () => {
     );
     const dialog = screen.getByRole("dialog");
     expect(buttonsIn(within(dialog).getByRole("list"))).toEqual(
-      startingWith("Google", "Notion", "ZeroBounce"),
+      startingWith(
+        "Google",
+        "Notion",
+        "Discord",
+        "HubSpot",
+        "OpenAI",
+        "ZeroBounce",
+      ),
     );
   });
 

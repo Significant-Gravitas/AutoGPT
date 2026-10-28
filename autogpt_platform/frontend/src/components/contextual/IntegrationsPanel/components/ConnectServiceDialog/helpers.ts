@@ -2,6 +2,7 @@ import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMe
 import { ProviderMetadataSupportedAuthTypesItem as AuthType } from "@/app/api/__generated__/models/providerMetadataSupportedAuthTypesItem";
 
 import { serviceIcon, serviceKey, serviceName } from "../../helpers";
+import { POPULAR_SERVICE_IDS } from "./popularity";
 
 export type AuthMethod = (typeof AuthType)[keyof typeof AuthType];
 
@@ -135,33 +136,6 @@ export function toConnectableProviders(
   return result;
 }
 
-// The services most people come to connect, most popular first. Ranked by
-// how many users connected each one on the platform, then by how widely used
-// the service is. Keyed by service, so a vendor's sign-in and its blocks rank
-// together.
-const POPULAR_SERVICE_IDS = [
-  "google",
-  "github",
-  "slack",
-  "notion",
-  "linear",
-  "discord",
-  "twitter",
-  "hubspot",
-  "airtable",
-  "atlassian",
-  "todoist",
-  "reddit",
-  "telegram",
-  "stripe",
-  "canva",
-  "calendly",
-  "monday",
-  "zapier",
-  "openai",
-  "anthropic",
-];
-
 const POPULAR_COUNT = 8;
 
 // A service only ranks once it opens straight onto a way to connect, never
@@ -174,7 +148,6 @@ function popularityRank(provider: ConnectableProvider): number {
   return rank;
 }
 
-// Popular services first, in rank order; everything else stays A to Z.
 export function sortByPopularity(
   providers: ConnectableProvider[],
 ): ConnectableProvider[] {

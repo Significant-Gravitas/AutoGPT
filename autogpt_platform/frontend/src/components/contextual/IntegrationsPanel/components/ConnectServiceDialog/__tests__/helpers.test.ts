@@ -238,7 +238,7 @@ function makeProvider(
 }
 
 describe("sortByPopularity", () => {
-  test("puts popular services first in rank order, the rest A to Z", () => {
+  test("orders services by popularity rank", () => {
     const sorted = sortByPopularity([
       makeProvider("aave"),
       makeProvider("notion"),
@@ -251,9 +251,9 @@ describe("sortByPopularity", () => {
       "google",
       "github",
       "notion",
+      "zerobounce",
       "1inch",
       "aave",
-      "zerobounce",
     ]);
   });
 
@@ -274,9 +274,22 @@ describe("sortByPopularity", () => {
     ]);
     expect(sorted.map((p) => p.serviceId)).toEqual([
       "notion",
+      "zerobounce",
       "aave",
       "slack",
-      "zerobounce",
+    ]);
+  });
+
+  test("puts services missing from the ranking last, A to Z", () => {
+    const sorted = sortByPopularity([
+      makeProvider("zzz_new", { name: "Zzz" }),
+      makeProvider("aaa_new", { name: "Aaa" }),
+      makeProvider("wonder"),
+    ]);
+    expect(sorted.map((p) => p.serviceId)).toEqual([
+      "wonder",
+      "aaa_new",
+      "zzz_new",
     ]);
   });
 
@@ -288,13 +301,18 @@ describe("sortByPopularity", () => {
 });
 
 describe("popularProviders", () => {
-  test("returns only ranked services, most popular first", () => {
+  test("returns ranked services, most popular first, never unranked ones", () => {
     const popular = popularProviders([
+      makeProvider("brand_new_service"),
       makeProvider("1inch"),
       makeProvider("notion"),
       makeProvider("google"),
     ]);
-    expect(popular.map((p) => p.serviceId)).toEqual(["google", "notion"]);
+    expect(popular.map((p) => p.serviceId)).toEqual([
+      "google",
+      "notion",
+      "1inch",
+    ]);
   });
 
   test("leaves out services that cannot be connected in one step", () => {

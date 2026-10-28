@@ -55,7 +55,7 @@ export function useConnectServiceDialog({
   const popular = isSearching ? [] : popularProviders(allProviders);
   const providers = isSearching
     ? sortByPopularity(filterConnectableProviders(allProviders, debouncedQuery))
-    : withoutProviders(allProviders, popular);
+    : sortByPopularity(withoutProviders(allProviders, popular));
 
   const selectedProvider: ConnectableProvider | null = selectedId
     ? (allProviders.find((p) => p.id === selectedId) ?? null)
