@@ -212,7 +212,7 @@ test("a group can't be decided again while its later runs are still unsent", asy
   // The first run is decided and its list is being read again; the rest wait.
   await waitFor(() => expect(calls.heldRefetches).toBeGreaterThan(0));
   expect(calls.posted).toHaveLength(1);
-  const reject = screen.getByRole("button", { name: "Pause" });
+  const reject = screen.getByRole("button", { name: "Cancel" });
   expect((reject as HTMLButtonElement).disabled).toBe(true);
 
   release();

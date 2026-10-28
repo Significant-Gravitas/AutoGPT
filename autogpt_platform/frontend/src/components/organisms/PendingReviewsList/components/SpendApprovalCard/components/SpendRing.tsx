@@ -7,7 +7,7 @@ interface Props {
 }
 
 const SIZE = 44;
-const RADIUS = 20;
+const RADIUS = 19.5;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 // One full lap is the check-in amount; spend past it laps the ring again.

@@ -46,7 +46,7 @@ export function SpendApprovalCard({
           disabled={disabled}
           loading={pendingAction === "reject"}
         >
-          Pause
+          Cancel
         </Button>
         <Button
           variant="primary"

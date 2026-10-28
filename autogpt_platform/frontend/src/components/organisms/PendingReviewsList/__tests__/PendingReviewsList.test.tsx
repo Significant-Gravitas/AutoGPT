@@ -294,7 +294,7 @@ test("an expert's spend approval is one compact card, beside the other reviews",
 
 test.each([
   ["Keep going", true],
-  ["Pause", false],
+  ["Cancel", false],
 ])(
   "%s on a spend card decides only that expert's runs",
   async (button, approved) => {
@@ -308,8 +308,30 @@ test.each([
       expect.objectContaining({
         node_exec_id: "expert-spend:e-1:run-1",
         approved,
-        auto_approve_future: false,
       }),
     ]);
+    expect(captured.body?.reviews[0].auto_approve_future).not.toBe(true);
   },
 );
+
+test("an unreadable spend payload keeps the standard approval controls", () => {
+  render(
+    <PendingReviewsList
+      reviews={[
+        spendReview({
+          payload: {
+            expert: "Maria",
+            spent_credits: 300,
+            threshold_credits: "unknown",
+            window: "week",
+          },
+        }),
+      ]}
+    />,
+  );
+
+  expect(screen.getByText("Your review is needed")).toBeDefined();
+  expect(screen.getByRole("button", { name: "Approve" })).toBeDefined();
+  expect(screen.getByRole("button", { name: "Reject" })).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Keep going" })).toBeNull();
+});
