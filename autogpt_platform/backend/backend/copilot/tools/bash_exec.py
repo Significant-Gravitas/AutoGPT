@@ -84,6 +84,16 @@ _KILL_TIMEOUT_SECONDS = 10
 # stream setup. Capping this far below it lets the tool's own timeout land first.
 _HUNG_CAP_MARGIN_SECONDS = 120
 
+# `bash -c '<command>'` carries the whole command in its own argv, which is
+# what a `pkill -f` pattern taken from that command then matches.
+_SHELL_KILLED_MESSAGE = (
+    "The command's shell was killed by a signal before it finished, so later "
+    "steps in the command did not run. The usual cause is a `pkill -f` whose "
+    "pattern matches this command's own text. Use `pkill -x <name>`, or "
+    "`pkill -f '[n]pm install'` if the command does not also contain "
+    "`npm install`."
+)
+
 # envd's kill reaches only the shell it started, so the children of a compound
 # command (`npm install && npm run build`) would keep running. This stops the
 # shell first, so it cannot start the next step once a child dies, then stops
@@ -163,7 +173,12 @@ def _build_completion_response(
         out = out.replace(secret, "[REDACTED]")
         err = err.replace(secret, "[REDACTED]")
     return BashExecResponse(
-        message=f"Command executed with status code {exit_code}",
+        # envd reports Go's ExitCode(), which is -1 for a process a signal ended.
+        message=(
+            _SHELL_KILLED_MESSAGE
+            if exit_code == -1
+            else f"Command executed with status code {exit_code}"
+        ),
         stdout=out,
         stderr=err,
         exit_code=exit_code,
@@ -323,12 +338,14 @@ class BashExecTool(BaseTool):
             timeout=timeout,
         )
 
+        if timed_out:
+            message = "Execution timed out"
+        elif exit_code < -1:  # -N for signal N; -1 is run_sandboxed's own failure.
+            message = _SHELL_KILLED_MESSAGE
+        else:
+            message = f"Command executed with status code {exit_code}"
         return BashExecResponse(
-            message=(
-                "Execution timed out"
-                if timed_out
-                else f"Command executed with status code {exit_code}"
-            ),
+            message=message,
             stdout=stdout,
             stderr=stderr,
             exit_code=exit_code,

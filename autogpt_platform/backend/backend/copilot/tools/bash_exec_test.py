@@ -25,7 +25,7 @@ from backend.copilot import integration_creds
 from backend.data.model import APIKeyCredentials
 
 from ._test_data import make_session
-from .bash_exec import _KILL_TREE_SCRIPT, BashExecTool
+from .bash_exec import _KILL_TREE_SCRIPT, _SHELL_KILLED_MESSAGE, BashExecTool
 from .models import BashExecResponse, ErrorResponse
 
 _USER = "user-bash-exec-test"
@@ -281,6 +281,79 @@ class TestBashExecE2BTokenInjection:
         assert "GH_TOKEN" not in call_kwargs["envs"]
         assert "GIT_AUTHOR_NAME" not in call_kwargs["envs"]
         assert isinstance(result, BashExecResponse)
+
+
+class TestBashExecShellKilledBySignal:
+    """A `pkill -f` matching the command's own `bash -c` argv kills that shell,
+    so nothing after it runs; the message has to say so."""
+
+    @pytest.mark.parametrize(
+        "exit_code, message",
+        [
+            (-1, _SHELL_KILLED_MESSAGE),
+            # 128+N is the shell reporting a step a signal killed; it lived on.
+            (143, "Command executed with status code 143"),
+        ],
+        ids=["signal", "128+N"],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_on_e2b(self, exit_code: int, message: str):
+        result = await _make_tool()._execute_on_e2b(
+            sandbox=_make_sandbox(exit_code=exit_code),
+            command='pkill -f "npm install"; npm install',
+            timeout=10,
+            session_id="session-under-test",
+            user_id=None,
+        )
+
+        assert isinstance(result, BashExecResponse)
+        assert result.message == message
+        assert result.exit_code == exit_code
+        assert result.timed_out is False
+
+    @pytest.mark.parametrize(
+        "exit_code, timed_out, stderr, message",
+        [
+            (-15, False, "", _SHELL_KILLED_MESSAGE),
+            (2, False, "", "Command executed with status code 2"),
+            (-1, True, "Execution timed out after 10s", "Execution timed out"),
+            # run_sandboxed's own failure, not a signal.
+            (-1, False, "Sandbox error: boom", "Command executed with status code -1"),
+        ],
+        ids=["signal", "exit", "timeout", "sandbox-error"],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_in_bubblewrap(
+        self, tmp_path, exit_code: int, timed_out: bool, stderr: str, message: str
+    ):
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_current_sandbox",
+                return_value=None,
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.has_full_sandbox", return_value=True
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_workspace_dir",
+                return_value=str(tmp_path),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.run_sandboxed",
+                new=AsyncMock(return_value=("", stderr, exit_code, timed_out)),
+            ),
+        ):
+            result = await _make_tool()._execute(
+                user_id=_USER,
+                session=make_session(user_id=_USER),
+                command='pkill -f "npm install"; npm install',
+                timeout=10,
+            )
+
+        assert isinstance(result, BashExecResponse)
+        assert result.message == message
+        assert result.exit_code == exit_code
+        assert result.timed_out is timed_out
 
 
 class TestBashExecSdkToolResultRedirect:
