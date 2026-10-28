@@ -34,12 +34,14 @@ EAGER_CORE: frozenset[str] = frozenset(
         "ask_question",
         "web_search",
         "web_fetch",
+        # The three go together: read and write take a file id or path that
+        # only a listing hands over, and a model asked where the user's files
+        # are calls ``list_workspace_files`` by name. Deferred, that call was
+        # refused, and the model fell back to ``ls`` on the sandbox, a
+        # different store, and told the user their files were gone.
+        "list_workspace_files",
         "read_workspace_file",
         "write_workspace_file",
-        # The prompt sends the model here to find a file the user uploaded or
-        # saved, and a deferred tool named directly is refused: deferred, the
-        # model fell back to ``ls ~/workspace`` and called the file missing.
-        "list_workspace_files",
         "run_sub_session",
         "delegate_to_expert",
         "handoff_to_expert",
