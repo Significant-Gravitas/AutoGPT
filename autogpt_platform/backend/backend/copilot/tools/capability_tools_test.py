@@ -137,6 +137,15 @@ def test_start_desktop_stays_eager_because_the_prompt_names_it():
     assert "start_desktop" not in DEFERRED_TOOL_NAMES
 
 
+def test_list_workspace_files_stays_eager_because_the_prompt_names_it():
+    """The prompt sends the model to ``list_workspace_files`` for a file the
+    user uploaded or saved; deferred, the call by name was refused and the
+    model listed ``~/workspace`` instead, then called the file missing
+    (SECRT-3188)."""
+    assert "list_workspace_files" in EAGER_CORE
+    assert "list_workspace_files" not in DEFERRED_TOOL_NAMES
+
+
 def test_prompt_names_only_registry_tools():
     for legacy in (
         "find_block",

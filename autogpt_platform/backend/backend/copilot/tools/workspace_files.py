@@ -389,11 +389,10 @@ class ListWorkspaceFilesTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "List persistent workspace files, with the folders at that level. "
-            "Files uploaded on the Files page sit at the workspace root or in "
-            "a folder; pass folder_id to list one, then read a file with "
-            "read_workspace_file. For ephemeral session files, use SDK "
-            "Glob/Read instead."
+            "List workspace storage (the user's uploads and saved files, none "
+            "on the sandbox disk) with the folders at that level. Files-page "
+            "uploads sit at the root or in a folder; pass folder_id to list "
+            "one, then read a file with read_workspace_file."
         )
 
     @property
@@ -536,6 +535,14 @@ class ListWorkspaceFilesTool(BaseTool):
                     "list them with folder_id."
                 )
             lines.append(f"Total size: {total_size:,} bytes")
+            # A routine or a new chat starts with no files of its own, so an
+            # empty current-chat listing reads as "the user's file is gone".
+            if not include_all_sessions and folder_id is None:
+                lines.append(
+                    "Only this chat's files are listed. For files the user "
+                    "uploaded or saved elsewhere (other chats, the Files page), "
+                    "list again with include_all_sessions=true."
+                )
 
             return WorkspaceFileListResponse(
                 files=file_infos,
@@ -1210,7 +1217,7 @@ class WriteWorkspaceFileTool(BaseTool):
             msg = str(e)
             if msg.startswith("Storage limit exceeded"):
                 msg += (
-                    " Use tool:list_workspace_files to find candidates, then "
+                    " Use list_workspace_files to find candidates, then "
                     "tool:delete_workspace_file to free space and retry — or ask "
                     "the user to upgrade their plan."
                 )

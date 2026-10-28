@@ -95,6 +95,26 @@ class TestComputerNote:
         )
 
 
+class TestUploadedFilesAreInWorkspaceStorage:
+    """Two stores are called "workspace": workspace storage (uploads, the Files
+    page, ``write_workspace_file``) and the sandbox folder ``~/workspace``.
+    An agent that looked only in the folder told users their files were gone
+    (SECRT-3188)."""
+
+    def test_both_engines_send_the_model_to_a_workspace_wide_listing(self):
+        # Baseline appends SHARED_TOOL_NOTES directly; SDK through the supplement.
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "not even `~/workspace`" in notes
+        assert "`list_workspace_files(include_all_sessions=true)`" in notes
+        assert "Never call a file missing until that listing lacks it." in notes
+
+    def test_the_computer_note_says_uploads_are_not_in_the_folder(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert "`~/workspace` is a folder on this machine, not workspace storage" in (
+            result
+        )
+
+
 class TestCredentialsSurfacingGuardrails:
     """The eager-card and never-claim-a-card rules live in the base system
     prompt (service.py). The supplement keeps the mechanics: stop on the card,

@@ -36,6 +36,10 @@ EAGER_CORE: frozenset[str] = frozenset(
         "web_fetch",
         "read_workspace_file",
         "write_workspace_file",
+        # The prompt sends the model here to find a file the user uploaded or
+        # saved, and a deferred tool named directly is refused: deferred, the
+        # model fell back to ``ls ~/workspace`` and called the file missing.
+        "list_workspace_files",
         "run_sub_session",
         "delegate_to_expert",
         "handoff_to_expert",
