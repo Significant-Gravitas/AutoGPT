@@ -18,6 +18,22 @@ class DecisionResult(BaseModel):
     citations: list[ParallelCitation]
     decision_id: str
 
+    def answer(self, name: str, *fields: str) -> dict[str, Any]:
+        """The named answer, checked to carry *fields* unless it is a refusal.
+
+        A malformed response raises ValueError, so it reaches the block's
+        error output as a handled failure rather than a bare KeyError.
+        """
+        answer = self.answers.get(name)
+        if answer is None:
+            raise ValueError(f"Parallel returned no answer for '{name}'")
+        missing = [f for f in fields if f not in answer]
+        if missing and not is_refusal(answer):
+            raise ValueError(
+                f"Parallel's answer for '{name}' is missing {', '.join(missing)}"
+            )
+        return answer
+
 
 class ParallelDecisionBase(Block):
     @staticmethod

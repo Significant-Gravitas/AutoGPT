@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from aiohttp import ClientTimeout
+from aiohttp import ClientError, ClientTimeout
 from pydantic import ValidationError
 
 from backend.sdk import APIKeyCredentials, BaseModel, Requests
@@ -27,8 +27,9 @@ async def make_decision(
 ) -> dict[str, Any]:
     """Send one Decisions request and return the parsed response body.
 
-    Refusals are part of a successful (200) response and are returned as-is;
-    only HTTP-level failures raise.
+    Refusals are part of a successful (200) response and are returned as-is.
+    Every failure raises ValueError, which the executor puts on the block's
+    error output as a handled failure.
     """
     requests = Requests(
         trusted_origins=[PARALLEL_API_URL],
@@ -38,7 +39,27 @@ async def make_decision(
         retry_max_attempts=3,
         extra_headers={"x-api-key": credentials.api_key.get_secret_value()},
     )
-    response = await requests.post(
+    try:
+        response = await _post(requests, state, questions, include_excerpts)
+    except (ClientError, TimeoutError) as e:
+        # Network failures and timeouts become handled block errors (the
+        # error output) rather than unexpected crashes.
+        raise ValueError(f"Could not reach Parallel: {type(e).__name__} {e}") from e
+    if not response.ok:
+        raise ValueError(
+            f"Parallel Decisions request failed with HTTP {response.status}: "
+            f"{_error_message(response)}"
+        )
+    return response.json()
+
+
+async def _post(
+    requests: Requests,
+    state: Any,
+    questions: dict[str, dict[str, Any]],
+    include_excerpts: bool,
+) -> Response:
+    return await requests.post(
         f"{PARALLEL_API_URL}/v1/decisions",
         # Requests re-sends extra_headers on every hop and only strips
         # Authorization/Cookie, so a redirect would leak x-api-key.
@@ -50,12 +71,6 @@ async def make_decision(
             "include_excerpts": include_excerpts,
         },
     )
-    if not response.ok:
-        raise ValueError(
-            f"Parallel Decisions request failed with HTTP {response.status}: "
-            f"{_error_message(response)}"
-        )
-    return response.json()
 
 
 class _ParallelError(BaseModel):

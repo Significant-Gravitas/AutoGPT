@@ -86,7 +86,7 @@ class ParallelYesNoDecisionBlock(ParallelDecisionBase):
         )
         for output in self.evidence(result):
             yield output
-        answer = result.answers[SINGLE_QUESTION]
+        answer = result.answer(SINGLE_QUESTION, "noul")
         if is_refusal(answer):
             yield "refused", True
             yield "unsure", input_data.data

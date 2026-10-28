@@ -81,7 +81,7 @@ class ParallelChoiceDecisionBlock(ParallelDecisionBase):
         )
         for output in self.evidence(result):
             yield output
-        answer = result.answers[SINGLE_QUESTION]
+        answer = result.answer(SINGLE_QUESTION, "choice", "probabilities")
         if is_refusal(answer):
             yield "refused", True
             return

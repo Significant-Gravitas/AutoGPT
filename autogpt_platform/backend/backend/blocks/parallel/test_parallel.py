@@ -3,6 +3,7 @@
 import json
 from typing import Any, ClassVar
 
+import aiohttp
 import pytest
 
 from backend.blocks.parallel import _api
@@ -282,3 +283,34 @@ async def test_http_errors_raise_with_the_api_message(monkeypatch, content, mess
     assert FakeRequests.sent["init"]["extra_headers"] == {
         "x-api-key": "mock-parallel-api-key"
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "answers, message",
+    [
+        ({}, "no answer for 'decision'"),
+        ({SINGLE_QUESTION: {"type": "noul"}}, "missing noul"),
+    ],
+)
+async def test_malformed_response_is_a_handled_error(answers, message):
+    # ValueError reaches the error output as an expected failure; a KeyError
+    # would be logged as an unexpected crash.
+    with pytest.raises(ValueError, match=message):
+        await run_block(
+            ParallelYesNoDecisionBlock(), FakeDecisions(answers), question="?"
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error", [aiohttp.ClientConnectionError("refused"), TimeoutError()]
+)
+async def test_network_failures_are_handled_errors(monkeypatch, error):
+    class FailingRequests(FakeRequests):
+        async def post(self, url, json, **kwargs):
+            raise error
+
+    monkeypatch.setattr(_api, "Requests", FailingRequests)
+    with pytest.raises(ValueError, match="Could not reach Parallel"):
+        await _api.make_decision(TEST_CREDENTIALS, {}, {}, True)
