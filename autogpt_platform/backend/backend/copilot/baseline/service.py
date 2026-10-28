@@ -41,6 +41,7 @@ from backend.copilot.baseline.reasoning import (
     anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
+from backend.copilot.baseline.tool_order import writes_files
 from backend.copilot.baseline.tool_persistence import BaselineToolPersistence
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.builder_context import (
@@ -2688,6 +2689,7 @@ async def stream_chat_completion_baseline(
                 update_conversation=_bound_conversation_updater,
                 max_iterations=max_tool_rounds,
                 last_iteration_message=_LAST_ITERATION_HINT,
+                runs_alone=writes_files,
             ):
                 loop_result_holder[0] = loop_result
                 # Engine switch requested (enter_agent_building_mode): end

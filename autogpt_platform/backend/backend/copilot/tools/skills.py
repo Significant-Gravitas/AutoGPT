@@ -3286,6 +3286,8 @@ class ReadSkillTool(BaseTool):
     """Load a skill by name: its body, its package listing, and a copy of
     that package in the working directory the model's shell runs in."""
 
+    writes_files = True
+
     @property
     def name(self) -> str:
         return "read_skill"
