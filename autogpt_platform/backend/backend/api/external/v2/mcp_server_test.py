@@ -1,5 +1,6 @@
 """Keep the MCP tool surface deliberate: every Copilot tool is classified."""
 
+import json
 import logging
 from types import SimpleNamespace
 from typing import Any
@@ -465,7 +466,8 @@ async def test_a_refusal_reaches_the_client_as_an_error_and_a_result_does_not(
     response: ErrorResponse | FolderDeletedResponse,
     is_error: bool,
 ):
-    """A client reads a refusal from the call's status, not from its text."""
+    """A client reads a refusal from the call's status, and either way the text
+    is the tool's own JSON object, as the MCP server's docs promise."""
     mocker.patch(
         "backend.api.external.v2.mcp_server.get_access_token",
         return_value=_token(*_tool_scopes("delete_folder")),
@@ -480,7 +482,8 @@ async def test_a_refusal_reaches_the_client_as_an_error_and_a_result_does_not(
     result = await _call("delete_folder", {"folder_id": "folder-1"})
 
     assert result.isError is is_error
-    assert response.message in result.content[0].text
+    reply = json.loads(result.content[0].text)
+    assert (reply["type"], reply["message"]) == (response.type, response.message)
 
 
 async def test_a_tool_called_over_mcp_runs_without_waiting_for_an_approval(
@@ -567,7 +570,9 @@ async def test_a_missing_credential_comes_back_as_an_error_not_a_setup_card(
     result = await _call("run_agent", {"library_agent_id": "agent-1"})
 
     assert result.isError
-    assert "firecrawl" in result.content[0].text
+    reply = json.loads(result.content[0].text)
+    assert reply["type"] == "error"
+    assert "firecrawl" in reply["message"]
 
 
 async def test_a_tool_is_held_to_the_cap_of_the_rest_route_it_mirrors(
