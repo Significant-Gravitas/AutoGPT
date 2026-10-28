@@ -91,6 +91,16 @@ describe("ConnectServiceDialog", () => {
     );
   });
 
+  test("says so when no service matches the search", async () => {
+    renderDialog();
+    await screen.findByRole("region", { name: "Popular" });
+
+    await userEvent.type(screen.getByLabelText("Search services"), "qwxz");
+
+    expect(await screen.findByText('No services match "qwxz"')).toBeDefined();
+    expect(screen.queryByRole("region", { name: "Popular" })).toBeNull();
+  });
+
   test("a popular service opens its connect step", async () => {
     renderDialog();
     const popular = await screen.findByRole("region", { name: "Popular" });
