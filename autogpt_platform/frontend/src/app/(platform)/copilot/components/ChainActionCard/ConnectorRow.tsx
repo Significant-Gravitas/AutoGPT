@@ -13,6 +13,7 @@ import { ProviderAvatar } from "@/components/contextual/IntegrationsPanel/compon
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import {
+  CredentialsActionsContext,
   CredentialsProvidersContext,
   type CredentialsProviderData,
   type CredentialsProvidersContextType,
@@ -58,6 +59,7 @@ export function ConnectorRow({ row }: Props) {
   // a renewed credential from the one the provider refused.
   const [renewedIds, setRenewedIds] = useState<string[]>([]);
   const allProviders = useContext(CredentialsProvidersContext);
+  const credentialsActions = useContext(CredentialsActionsContext);
   const { mutateAsync: grantCredentials, isPending: isGranting } =
     useGrantExpertCredentials();
   const expertGrant = row.expertGrant;
@@ -432,6 +434,7 @@ export function ConnectorRow({ row }: Props) {
                 setGrantError(UNUSABLE_ACCOUNT_ERROR);
                 return;
               }
+              credentialsActions?.upsert(row.provider, credential);
               setRenewedIds((ids) => [...ids, credential.id]);
               setPendingCredentialId(credential.id);
             } else setAwaitingNewAccount(true);

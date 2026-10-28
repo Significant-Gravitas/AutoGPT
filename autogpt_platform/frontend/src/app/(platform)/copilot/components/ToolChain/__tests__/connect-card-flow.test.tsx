@@ -54,7 +54,7 @@ vi.mock("@/lib/oauth-popup", () => ({
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),
   useToast: () => ({ toast: vi.fn() }),
-  useToastOnFail: () => () => {},
+  useToastOnFail: () => () => () => {},
 }));
 
 import { toast } from "@/components/molecules/Toast/use-toast";
@@ -521,6 +521,56 @@ describe("copilot Connect card, upgrade-target selection", () => {
       await user.click(
         await screen.findByRole("button", { name: "Continue with GitHub" }),
       );
+      await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+      expect(selections).toEqual([{ github: "cred-new" }]);
+      expect(upgradedCredentialID).toBeNull();
+    },
+  );
+
+  it.each(["stale", "failed"])(
+    "continues with the newly connected account after a %s credential reload",
+    async (reload) => {
+      const original = oauthCredential("cred-existing", [REQUIRED_SCOPE]);
+      savedCredentials = [original];
+      let callbackCompleted = false;
+      const selections: Record<string, string>[] = [];
+      server.use(
+        http.get("*/api/integrations/credentials", () => {
+          if (callbackCompleted && reload === "failed") {
+            return HttpResponse.json(
+              { detail: "List unavailable" },
+              { status: 500 },
+            );
+          }
+          return HttpResponse.json([original]);
+        }),
+        http.post("*/api/integrations/github/callback", () => {
+          callbackCompleted = true;
+          return HttpResponse.json(
+            oauthCredential("cred-new", [REQUIRED_SCOPE]),
+          );
+        }),
+        http.put(
+          "*/api/chat/sessions/*/credential-selection",
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              selections: Record<string, string>;
+            };
+            selections.push(body.selections);
+            return HttpResponse.json({ status: "ok" });
+          },
+        ),
+      );
+      const { onSend } = renderChain();
+      const user = userEvent.setup();
+      await user.click(
+        await screen.findByRole("button", { name: "Change account" }),
+      );
+      await user.click(await screen.findByRole("button", { name: "Add new" }));
+      await user.click(
+        await screen.findByRole("button", { name: "Continue with GitHub" }),
+      );
+
       await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
       expect(selections).toEqual([{ github: "cred-new" }]);
       expect(upgradedCredentialID).toBeNull();
@@ -1265,6 +1315,60 @@ describe("named HTTP connections", () => {
       { "http:api.github.com": "http-2" },
     ]);
   });
+
+  it.each(["api.linear.app", "api.github.com"])(
+    "validates a returned host-scoped credential when the list stays stale (host: %s)",
+    async (host) => {
+      const selections: Record<string, string>[] = [];
+      server.use(
+        http.get("*/api/integrations/credentials", () => HttpResponse.json([])),
+        http.post("*/api/integrations/http/credentials", () =>
+          HttpResponse.json({
+            id: "new-key",
+            provider: "http",
+            type: "host_scoped",
+            title: "Linear",
+            host,
+          }),
+        ),
+        http.put(
+          "*/api/chat/sessions/*/credential-selection",
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              selections: Record<string, string>;
+            };
+            selections.push(body.selections);
+            return HttpResponse.json({ status: "ok" });
+          },
+        ),
+      );
+      const { onSend } = renderChain([
+        httpRequirementsPart("linear", "https://api.linear.app/graphql"),
+      ]);
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Connect" }));
+      await user.type(
+        await screen.findByLabelText("API key"),
+        "linear-test-key",
+      );
+      await user.click(
+        screen.getByRole("button", { name: "Save and connect" }),
+      );
+
+      if (host === "api.linear.app") {
+        await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+        expect(selections).toEqual([{ "http:api.linear.app": "new-key" }]);
+      } else {
+        expect(
+          await screen.findByText(
+            "That account is missing the access this needs. Try connecting again.",
+          ),
+        ).toBeDefined();
+        expect(onSend).not.toHaveBeenCalled();
+        expect(selections).toEqual([]);
+      }
+    },
+  );
 
   it("keeps the key form open after a failed save and lets the user retry", async () => {
     let attempts = 0;
