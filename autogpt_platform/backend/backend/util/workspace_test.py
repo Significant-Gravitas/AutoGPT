@@ -173,6 +173,45 @@ async def test_write_file_overwrite_exhausted_retries_raises_and_cleans_up(
 
 
 @pytest.mark.asyncio
+async def test_write_file_rename_takes_the_next_name_when_a_racer_took_the_free_one(
+    manager, mock_storage, mock_db
+):
+    """A write that takes ``test (1).txt`` between our look and our insert
+    pushes us to ``test (2).txt``; nothing is deleted."""
+    mock_db.get_workspace_file_by_path.return_value = _make_workspace_file()
+    mock_db.list_workspace_files = AsyncMock(
+        side_effect=[[], [_make_workspace_file(path="/test (1).txt")]]
+    )
+    created = _make_workspace_file(id="new-id", name="test (2).txt")
+    mock_db.create_workspace_file.side_effect = [_unique_violation(), created]
+
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage",
+            return_value=mock_storage,
+        ),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            return_value=250 * 1024 * 1024,
+        ),
+        patch.object(manager, "delete_file", new_callable=AsyncMock) as mock_delete,
+    ):
+        result = await manager.write_file(
+            filename="test.txt", content=b"hello", rename_on_conflict=True
+        )
+
+    assert result == created
+    assert [
+        (c.kwargs["path"], c.kwargs["name"])
+        for c in mock_db.create_workspace_file.call_args_list
+    ] == [("/test (1).txt", "test (1).txt"), ("/test (2).txt", "test (2).txt")]
+    mock_delete.assert_not_called()
+    mock_storage.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_write_file_quota_exceeded_raises_value_error(
     manager, mock_storage, mock_db
 ):

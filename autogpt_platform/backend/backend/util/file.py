@@ -416,10 +416,11 @@ async def store_media_file(
         content = target_path.read_bytes()
         filename = target_path.name
 
+        # Another run's output of the same name keeps its file: its links point there.
         file_record = await workspace_manager.write_file(
             content=content,
             filename=filename,
-            overwrite=True,
+            rename_on_conflict=True,
         )
         return MediaFileType(f"workspace://{file_record.id}#{file_record.mime_type}")
 
