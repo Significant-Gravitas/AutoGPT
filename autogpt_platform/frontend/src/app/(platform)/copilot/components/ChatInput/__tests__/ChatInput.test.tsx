@@ -319,32 +319,39 @@ describe("ChatInput composer row", () => {
     expect(document.activeElement).toBe(menuItem);
   });
 
-  it("leaves focus in a menu that was already open when it mounted", () => {
-    // Home mounts its composer only once the greeting has loaded.
-    mockRealVoiceRecording = true;
-    const { rerender } = render(
-      <>
-        <div role="dialog" aria-label="Profile menu">
-          <button type="button">Show me around</button>
-        </div>
-        {/* Holds the composer's slot, so the rerender keeps the menu mounted. */}
-        {null}
-      </>,
-    );
-    const menuItem = screen.getByRole("button", { name: "Show me around" });
-    menuItem.focus();
+  it.each([
+    { draft: "no draft", initialPrompt: null },
+    { draft: "a prompt from the link", initialPrompt: "Teach me a new skill" },
+  ])(
+    "leaves focus in a menu that was already open when it mounted, with $draft",
+    ({ initialPrompt }) => {
+      // Home mounts its composer only once the greeting has loaded.
+      mockRealVoiceRecording = true;
+      mockInitialPrompt = initialPrompt;
+      const { rerender } = render(
+        <>
+          <div role="dialog" aria-label="Profile menu">
+            <button type="button">Show me around</button>
+          </div>
+          {/* Holds the composer's slot, so the rerender keeps the menu mounted. */}
+          {null}
+        </>,
+      );
+      const menuItem = screen.getByRole("button", { name: "Show me around" });
+      menuItem.focus();
 
-    rerender(
-      <>
-        <div role="dialog" aria-label="Profile menu">
-          <button type="button">Show me around</button>
-        </div>
-        <ChatInput onSend={mockOnSend} sessionId="session-1" />
-      </>,
-    );
+      rerender(
+        <>
+          <div role="dialog" aria-label="Profile menu">
+            <button type="button">Show me around</button>
+          </div>
+          <ChatInput onSend={mockOnSend} sessionId="session-1" />
+        </>,
+      );
 
-    expect(document.activeElement).toBe(menuItem);
-  });
+      expect(document.activeElement).toBe(menuItem);
+    },
+  );
 
   it("takes focus from a dialog that is on its way out", () => {
     // A sheet closing (picking a chat in the phone's sidebar) stays mounted

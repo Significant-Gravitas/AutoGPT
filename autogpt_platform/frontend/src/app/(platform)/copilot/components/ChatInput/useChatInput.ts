@@ -59,7 +59,7 @@ export function useChatInput({
       // Guided flows can prefill while the composer is already mounted
       // (e.g. from a copilot modal) — put the caret in the input so the
       // draft is immediately editable/sendable.
-      if (!isTouchDevice()) document.getElementById(inputId)?.focus();
+      if (!isTouchDevice()) focusComposer(inputId);
     },
     [initialPrompt, setInitialPrompt, inputId, setValue],
   );
