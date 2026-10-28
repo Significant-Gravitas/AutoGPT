@@ -1,5 +1,6 @@
 """Thin async client for the Parallel Decisions API (POST /v1/decisions)."""
 
+import asyncio
 from typing import Any
 
 from aiohttp import ClientError, ClientTimeout
@@ -15,8 +16,10 @@ PARALLEL_API_URL = "https://api.parallel.ai"
 DECISION_REQUEST_COST_USD = 0.001
 
 # Parallel quotes 200 ms-1 s per request; fail well before aiohttp's 300 s
-# default so a hung call doesn't hold an executor worker.
+# default so a hung call doesn't hold an executor worker. ClientTimeout
+# bounds one attempt; the deadline bounds all retries and backoff together.
 REQUEST_TIMEOUT = ClientTimeout(total=60)
+REQUEST_DEADLINE_SECONDS = 60
 
 
 async def make_decision(
@@ -40,7 +43,8 @@ async def make_decision(
         extra_headers={"x-api-key": credentials.api_key.get_secret_value()},
     )
     try:
-        response = await _post(requests, state, questions, include_excerpts)
+        async with asyncio.timeout(REQUEST_DEADLINE_SECONDS):
+            response = await _post(requests, state, questions, include_excerpts)
     except (ClientError, TimeoutError) as e:
         # Network failures and timeouts become handled block errors (the
         # error output) rather than unexpected crashes.

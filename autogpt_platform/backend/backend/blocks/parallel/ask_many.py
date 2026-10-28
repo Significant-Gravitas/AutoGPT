@@ -27,6 +27,17 @@ from ._test import (
 # the executor checks before charging.
 QUESTION_NAME_PATTERN = r"^[A-Za-z0-9_-]+$"
 QuestionName = Annotated[str, StringConstraints(pattern=QUESTION_NAME_PATTERN)]
+# The executor's JSON schema check uses Python's re, where $ also matches
+# before a final newline; (?!\n) closes that gap (and is a no-op in JS).
+SCHEMA_NAME_PATTERN = r"^[A-Za-z0-9_-]+$(?!\n)"
+
+# Fields each answer type must carry, so a malformed answer is an error
+# rather than passed on as if it were valid.
+ANSWER_FIELDS = {
+    "noul": ("noul",),
+    "choice": ("choice", "probabilities"),
+    "score": ("score", "legend", "probabilities"),
+}
 
 
 class ParallelAskManyDecisionsBlock(ParallelDecisionBase):
@@ -41,7 +52,7 @@ class ParallelAskManyDecisionsBlock(ParallelDecisionBase):
             ),
             min_length=1,
             max_length=100,
-            json_schema_extra={"propertyNames": {"pattern": QUESTION_NAME_PATTERN}},
+            json_schema_extra={"propertyNames": {"pattern": SCHEMA_NAME_PATTERN}},
         )
 
     class Output(ParallelDecisionOutput):
@@ -103,6 +114,8 @@ class ParallelAskManyDecisionsBlock(ParallelDecisionBase):
         )
         for output in self.evidence(result):
             yield output
+        for name, question in input_data.questions.items():
+            result.answer(name, *ANSWER_FIELDS[question.type])
         yield "answers", result.answers
         yield "refused_questions", [
             name for name, answer in result.answers.items() if is_refusal(answer)

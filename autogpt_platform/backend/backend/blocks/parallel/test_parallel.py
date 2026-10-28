@@ -1,5 +1,6 @@
 """Unit tests for the Parallel Decisions blocks beyond the registry smoke test."""
 
+import asyncio
 import json
 from typing import Any, ClassVar
 
@@ -168,16 +169,42 @@ async def test_ask_many_rejects_names_the_api_would_reject(name):
     assert fake.calls == []
 
 
-def test_ask_many_bad_names_fail_the_pre_run_schema_check():
+@pytest.mark.parametrize("name", ["bad name", "trailing\n", ""])
+def test_ask_many_bad_names_fail_the_pre_run_schema_check(name):
     # The executor checks inputs against the JSON schema before charging the
     # run; the model validator only runs after the charge.
     error = ParallelAskManyDecisionsBlock.Input.validate_data(
         {
             "credentials": TEST_CREDENTIALS_INPUT,
-            "questions": {"bad name": {"type": "noul", "question": "Is it?"}},
+            "questions": {name: {"type": "noul", "question": "Is it?"}},
         }
     )
-    assert error is not None and "bad name" in error
+    assert error is not None
+
+
+def test_ask_many_good_names_pass_the_pre_run_schema_check():
+    error = ParallelAskManyDecisionsBlock.Input.validate_data(
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "questions": {"Ok_name-1": {"type": "noul", "question": "Is it?"}},
+        }
+    )
+    assert error is None
+
+
+@pytest.mark.asyncio
+async def test_ask_many_rejects_a_malformed_answer():
+    with pytest.raises(ValueError, match="'b' is missing probabilities"):
+        await run_block(
+            ParallelAskManyDecisionsBlock(),
+            FakeDecisions(
+                {"a": REFUSAL_ANSWER, "b": {"type": "choice", "choice": "x"}}
+            ),
+            questions={
+                "a": {"type": "noul", "question": "A?"},
+                "b": {"type": "choice", "question": "B?", "options": TEST_OPTIONS},
+            },
+        )
 
 
 @pytest.mark.asyncio
@@ -313,4 +340,17 @@ async def test_network_failures_are_handled_errors(monkeypatch, error):
 
     monkeypatch.setattr(_api, "Requests", FailingRequests)
     with pytest.raises(ValueError, match="Could not reach Parallel"):
+        await _api.make_decision(TEST_CREDENTIALS, {}, {}, True)
+
+
+@pytest.mark.asyncio
+async def test_retries_share_one_deadline(monkeypatch):
+    class SlowRequests(FakeRequests):
+        async def post(self, url, json, **kwargs):
+            await asyncio.Event().wait()  # never set: the call hangs
+            return FakeRequests.response
+
+    monkeypatch.setattr(_api, "Requests", SlowRequests)
+    monkeypatch.setattr(_api, "REQUEST_DEADLINE_SECONDS", 0.01)
+    with pytest.raises(ValueError, match="Could not reach Parallel: TimeoutError"):
         await _api.make_decision(TEST_CREDENTIALS, {}, {}, True)
