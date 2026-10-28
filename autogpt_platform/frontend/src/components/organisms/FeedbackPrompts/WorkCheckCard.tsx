@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
@@ -11,7 +12,6 @@ import {
 } from "@hugeicons/core-free-icons";
 import { motion } from "framer-motion";
 import { useState } from "react";
-import { PromptCard } from "./components/PromptCard";
 import { ReasonFlow } from "./components/ReasonFlow";
 import { ThanksLine } from "./components/ThanksLine";
 import { WORK_REASONS } from "./helpers";
@@ -42,16 +42,17 @@ const RATINGS = [
 interface Props {
   name: string;
   avatarUrl: string | null;
-  task: string;
-  eyebrow: string;
+  note: string;
   initialRating?: Rating | null;
 }
 
+// Sits at the end of a chat, under the reply that finished the work. Otto
+// asks for it when a turn delivers what was asked; the backend decides
+// whether it shows (the first time, then at most once a week).
 export function WorkCheckCard({
   name,
   avatarUrl,
-  task,
-  eyebrow,
+  note,
   initialRating = null,
 }: Props) {
   const [rating, setRating] = useState<Rating | null>(initialRating);
@@ -60,23 +61,33 @@ export function WorkCheckCard({
   if (!isOpen) return null;
 
   return (
-    <PromptCard
-      eyebrow={`${eyebrow} · ${task}`}
-      title={
-        rating && rating !== "great"
-          ? `What should ${name} do better?`
-          : `How did ${name} do?`
-      }
-      avatar={
+    <div className="flex max-w-xl flex-col gap-4 rounded-2xl border border-border-base bg-surface p-4 shadow-sm">
+      <div className="flex items-start gap-3">
         <ExpertAvatar
           name={name}
           avatarUrl={avatarUrl}
-          size={40}
+          size={32}
           className="ring-1 ring-border-base"
         />
-      }
-      onClose={() => setIsOpen(false)}
-    >
+        <div className="flex flex-1 flex-col gap-0.5">
+          <Text variant="body-medium" className="!text-foreground-strong">
+            {rating && rating !== "great"
+              ? `What should ${name} do better?`
+              : `How did ${name} do?`}
+          </Text>
+          <Text variant="small" className="!text-foreground-tertiary">
+            {note}
+          </Text>
+        </div>
+        <Button
+          variant="ghost"
+          size="xs"
+          className="-mr-1 -mt-1"
+          onClick={() => setIsOpen(false)}
+        >
+          Not now
+        </Button>
+      </div>
       {rating === null ? (
         <div className="grid grid-cols-3 gap-2">
           {RATINGS.map((option) => (
@@ -111,6 +122,6 @@ export function WorkCheckCard({
           thanks={`Thanks. ${name} learns from this.`}
         />
       ) : null}
-    </PromptCard>
+    </div>
   );
 }

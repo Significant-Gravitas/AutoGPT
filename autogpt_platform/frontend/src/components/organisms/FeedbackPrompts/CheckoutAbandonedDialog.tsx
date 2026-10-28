@@ -5,22 +5,37 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useState } from "react";
 import { NoInitialFocus } from "./components/NoInitialFocus";
 import { ReasonFlow } from "./components/ReasonFlow";
-import { CHECKOUT_REASONS } from "./helpers";
+import { TRIAL_CHECKOUT_REASONS, UPGRADE_CHECKOUT_REASONS } from "./helpers";
+
+type Kind = "trial" | "upgrade";
+
+const COPY: Record<Kind, { title: string; body: string; thanks: string }> = {
+  trial: {
+    title: "Your free trial is ready when you are",
+    body: "Anything holding you back?",
+    thanks:
+      "Thanks. You can start your trial from Billing whenever you're ready.",
+  },
+  upgrade: {
+    title: "Your plan hasn't changed. What held you back?",
+    body: "One tap helps us fix the right thing.",
+    thanks:
+      "Thanks. If your card was the problem, try another one or reply to any of our emails and we'll sort it out.",
+  },
+};
 
 interface Props {
+  kind: Kind;
   initialReason?: string | null;
-  initialSent?: boolean;
 }
 
-export function CheckoutAbandonedDialog({
-  initialReason = null,
-  initialSent = false,
-}: Props) {
+export function CheckoutAbandonedDialog({ kind, initialReason = null }: Props) {
   const [isOpen, setIsOpen] = useState(true);
+  const copy = COPY[kind];
 
   return (
     <Dialog
-      title="No charge was made. What stopped you?"
+      title={copy.title}
       styling={{ maxWidth: "38rem", minWidth: "auto" }}
       controlled={{ isOpen, set: setIsOpen }}
     >
@@ -28,13 +43,16 @@ export function CheckoutAbandonedDialog({
         <NoInitialFocus />
         <div className="flex flex-col gap-4">
           <Text variant="body" className="!text-foreground-tertiary">
-            You left checkout before paying. Your plan hasn&apos;t changed.
+            {copy.body}
           </Text>
           <ReasonFlow
-            reasons={CHECKOUT_REASONS}
+            reasons={
+              kind === "trial"
+                ? TRIAL_CHECKOUT_REASONS
+                : UPGRADE_CHECKOUT_REASONS
+            }
             initialReason={initialReason}
-            initialSent={initialSent}
-            thanks="Thanks. If your card was the problem, try another one or reply to any of our emails and we'll sort it out."
+            thanks={copy.thanks}
           />
         </div>
       </Dialog.Content>

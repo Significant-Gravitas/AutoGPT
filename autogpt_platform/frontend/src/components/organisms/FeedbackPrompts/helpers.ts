@@ -4,12 +4,14 @@ import {
   Clock01Icon,
   Coins01Icon,
   CreditCardIcon,
+  CreditCardNotAcceptIcon,
   HelpCircleIcon,
   KeyboardIcon,
   MicOff01Icon,
   PencilEdit02Icon,
   PackageIcon,
   PuzzleIcon,
+  Search01Icon,
   SquareLock02Icon,
   Target02Icon,
   TestTube01Icon,
@@ -35,11 +37,30 @@ export const TRIAL_CANCEL_REASONS: Reason[] = [
   OTHER,
 ];
 
-export const CHECKOUT_REASONS: Reason[] = [
+export const TRIAL_CHECKOUT_REASONS: Reason[] = [
+  { label: "Not sure what I get", icon: HelpCircleIcon, tone: "info" },
+  {
+    label: "Didn't want to add a card yet",
+    icon: CreditCardIcon,
+    tone: "warning",
+  },
+  { label: "Want to look around first", icon: Search01Icon, tone: "success" },
+  {
+    label: "My card didn't go through",
+    icon: CreditCardNotAcceptIcon,
+    tone: "error",
+  },
+  OTHER,
+];
+
+export const UPGRADE_CHECKOUT_REASONS: Reason[] = [
   { label: "The price", icon: Coins01Icon, tone: "warning" },
   { label: "Not sure what I get", icon: HelpCircleIcon, tone: "info" },
-  { label: "I want to try it first", icon: TestTube01Icon, tone: "success" },
-  { label: "My payment failed", icon: CreditCardIcon, tone: "error" },
+  {
+    label: "My card didn't go through",
+    icon: CreditCardNotAcceptIcon,
+    tone: "error",
+  },
   OTHER,
 ];
 
@@ -76,12 +97,6 @@ export const BRAIN_DUMP_SKIP_REASONS: Reason[] = [
   { label: "Privacy", icon: SquareLock02Icon, tone: "accent" },
   { label: "Not sure what to say", icon: HelpCircleIcon, tone: "warning" },
   { label: "I'd rather type", icon: KeyboardIcon, tone: "success" },
-];
-
-export const HIRE_SKIP_REASONS: Reason[] = [
-  { label: "None fit my work", icon: PuzzleIcon, tone: "accent" },
-  { label: "Not clear what they do", icon: HelpCircleIcon, tone: "info" },
-  { label: "I'll pick later", icon: Clock01Icon, tone: "success" },
 ];
 
 // What GET /api/onboarding/brain-dump/suggested-tasks returns for two different

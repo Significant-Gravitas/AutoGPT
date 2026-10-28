@@ -1,6 +1,6 @@
 import { Text } from "@/components/atoms/Text/Text";
-import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { AUTOPILOT_AVATAR_URL } from "@/components/molecules/AutopilotAvatar/helpers";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { CancelTrialFeedbackDialog } from "./CancelTrialFeedbackDialog";
 import { CheckoutAbandonedDialog } from "./CheckoutAbandonedDialog";
@@ -10,11 +10,7 @@ import { OttoMistakeCard } from "./OttoMistakeCard";
 import { TopUpDismissedCard } from "./TopUpDismissedCard";
 import { WorkCheckCard } from "./WorkCheckCard";
 import { MockPage, SkeletonBlocks } from "./components/MockPage";
-import {
-  BRAIN_DUMP_SKIP_REASONS,
-  HIRE_SKIP_REASONS,
-  SAMPLE_STARTERS,
-} from "./helpers";
+import { BRAIN_DUMP_SKIP_REASONS, SAMPLE_STARTERS } from "./helpers";
 
 const meta: Meta = {
   title: "Prototypes/Feedback prompts",
@@ -64,99 +60,25 @@ export const TrialCancelOfferNoAnswers: Story = {
   render: () => <TrialOffer starters={[]} />,
 };
 
-export const CheckoutAbandoned: Story = {
-  name: "2. Back from checkout without paying",
+export const CheckoutTrial: Story = {
+  name: "2a. Left trial checkout without starting",
   render: () => (
     <MockPage title="Billing">
       <SkeletonBlocks />
-      <CheckoutAbandonedDialog initialReason="My payment failed" />
-    </MockPage>
-  ),
-};
-
-function FinishedTask({ title, output }: { title: string; output: string }) {
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <Text variant="h4">{title}</Text>
-        <span className="rounded-full bg-success-surface px-2.5 py-0.5 text-caption font-medium text-success-foreground">
-          Done
-        </span>
-      </div>
-      <div className="flex flex-col gap-2 rounded-2xl border border-border-base bg-surface p-5">
-        <Text variant="small" className="!text-foreground-tertiary">
-          Result
-        </Text>
-        <Text variant="body">{output}</Text>
-      </div>
-      <div className="h-40 rounded-2xl border border-border-base bg-surface" />
-    </div>
-  );
-}
-
-export const WorkCheckFirstOtto: Story = {
-  name: "3a. Work check: Otto's first finished task",
-  render: () => (
-    <MockPage
-      title="Tasks"
-      corner={
-        <WorkCheckCard
-          name="Otto"
-          avatarUrl={AUTOPILOT_AVATAR_URL}
-          task="Research 10 leads"
-          eyebrow="Otto's first finished task"
-        />
-      }
-    >
-      <FinishedTask
-        title="Research 10 leads"
-        output="Found 10 Austin dental practices with 3+ locations, each with the owner's name and a public email from their site."
+      <CheckoutAbandonedDialog
+        kind="trial"
+        initialReason="Didn't want to add a card yet"
       />
     </MockPage>
   ),
 };
 
-export const WorkCheckWeeklyExpert: Story = {
-  name: "3b. Work check: weekly spot check on an expert",
+export const CheckoutUpgrade: Story = {
+  name: "2b. Left upgrade checkout without paying",
   render: () => (
-    <MockPage
-      title="Tasks"
-      corner={
-        <WorkCheckCard
-          name="Maria"
-          avatarUrl={MARIA_AVATAR}
-          task="Rewrite the pricing page"
-          eyebrow="Quick check-in"
-        />
-      }
-    >
-      <FinishedTask
-        title="Rewrite the pricing page"
-        output="New draft is in your Drive: a shorter hero, plans compared in one table, and a FAQ for the five questions sales hears most."
-      />
-    </MockPage>
-  ),
-};
-
-export const WorkCheckNotGood: Story = {
-  name: "3c. Work check: after “Not good”",
-  render: () => (
-    <MockPage
-      title="Tasks"
-      corner={
-        <WorkCheckCard
-          name="Maria"
-          avatarUrl={MARIA_AVATAR}
-          task="Rewrite the pricing page"
-          eyebrow="Quick check-in"
-          initialRating="bad"
-        />
-      }
-    >
-      <FinishedTask
-        title="Rewrite the pricing page"
-        output="New draft is in your Drive: a shorter hero, plans compared in one table, and a FAQ for the five questions sales hears most."
-      />
+    <MockPage title="Billing">
+      <SkeletonBlocks />
+      <CheckoutAbandonedDialog kind="upgrade" />
     </MockPage>
   ),
 };
@@ -169,14 +91,100 @@ function UserBubble({ children }: { children: string }) {
   );
 }
 
-function OttoTurn({ children }: { children: React.ReactNode }) {
+function ReplyTurn({
+  name,
+  avatarUrl,
+  children,
+}: {
+  name: string;
+  avatarUrl: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex max-w-2xl gap-3">
-      <AutopilotAvatar size={28} className="ring-1 ring-border-base" />
+      <ExpertAvatar
+        name={name}
+        avatarUrl={avatarUrl}
+        size={28}
+        className="ring-1 ring-border-base"
+      />
       <div className="flex flex-1 flex-col gap-3">{children}</div>
     </div>
   );
 }
+
+function OttoTurn({ children }: { children: React.ReactNode }) {
+  return (
+    <ReplyTurn name="Otto" avatarUrl={AUTOPILOT_AVATAR_URL}>
+      {children}
+    </ReplyTurn>
+  );
+}
+
+function OttoLeadsChat() {
+  return (
+    <MockPage title="Otto">
+      <div className="flex flex-col gap-6">
+        <UserBubble>
+          Find 10 dental practices in Austin with 3+ locations, with the
+          owner&apos;s name and email.
+        </UserBubble>
+        <OttoTurn>
+          <Text variant="body">
+            Done. I found 10 practices and saved them to a sheet called “Austin
+            dental groups”, each with the owner&apos;s name and the email listed
+            on their site.
+          </Text>
+          <WorkCheckCard
+            name="Otto"
+            avatarUrl={AUTOPILOT_AVATAR_URL}
+            note="Quick check-in on your first finished task"
+          />
+        </OttoTurn>
+      </div>
+    </MockPage>
+  );
+}
+
+function MariaPricingChat({ rating }: { rating: "bad" | null }) {
+  return (
+    <MockPage title="Maria">
+      <div className="flex flex-col gap-6">
+        <UserBubble>
+          Rewrite our pricing page so it&apos;s shorter and answers what sales
+          gets asked most.
+        </UserBubble>
+        <ReplyTurn name="Maria" avatarUrl={MARIA_AVATAR}>
+          <Text variant="body">
+            The new draft is in your Drive: a shorter hero, the plans compared
+            in one table, and a FAQ for the five questions sales hears most.
+          </Text>
+          <WorkCheckCard
+            name="Maria"
+            avatarUrl={MARIA_AVATAR}
+            note="Quick check-in on this task"
+            initialRating={rating}
+          />
+        </ReplyTurn>
+      </div>
+    </MockPage>
+  );
+}
+
+export const WorkCheckFirstOtto: Story = {
+  name: "3a. Work check: Otto's first finished task",
+  render: () => <OttoLeadsChat />,
+};
+
+export const WorkCheckWeeklyExpert: Story = {
+  name: "3b. Work check: weekly check on an expert's task",
+  render: () => <MariaPricingChat rating={null} />,
+};
+
+export const WorkCheckNotGood: Story = {
+  name: "3c. Work check: after “Not good”",
+  render: () => <MariaPricingChat rating="bad" />,
+};
 
 export const OttoMistake: Story = {
   name: "4. Otto senses it got something wrong",
@@ -224,7 +232,7 @@ function OnboardingStep({
   heading: string;
   body: string;
   question: string;
-  reasons: typeof HIRE_SKIP_REASONS;
+  reasons: typeof BRAIN_DUMP_SKIP_REASONS;
 }) {
   return (
     <MockPage title="" centered>
@@ -255,24 +263,12 @@ export const BrainDumpSkipped: Story = {
   ),
 };
 
-export const HireSkipped: Story = {
-  name: "7. Onboarding: left the hire step without picking",
-  render: () => (
-    <OnboardingStep
-      heading="Pick your first experts"
-      body="Each expert takes one kind of work off your plate."
-      question="What would have helped you pick?"
-      reasons={HIRE_SKIP_REASONS}
-    />
-  ),
-};
-
 export const NpsAsk: Story = {
-  name: "8a. Day 14: NPS",
+  name: "7a. Day 14: NPS",
   render: () => <MockPage title="Home" corner={<NpsCard />} />,
 };
 
 export const NpsScored: Story = {
-  name: "8b. Day 14: NPS after a score",
+  name: "7b. Day 14: NPS after a score",
   render: () => <MockPage title="Home" corner={<NpsCard initialScore={6} />} />,
 };

@@ -8,7 +8,7 @@ interface Props {
   centered?: boolean;
 }
 
-const NAV = ["Home", "Tasks", "Library", "Marketplace"];
+const NAV = ["Home", "Library", "Marketplace"];
 
 export function MockPage({ title, children, corner, centered }: Props) {
   return (
