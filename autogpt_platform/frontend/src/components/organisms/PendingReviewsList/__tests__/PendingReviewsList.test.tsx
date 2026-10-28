@@ -257,3 +257,81 @@ test("rejecting goes through while the JSON draft doesn't parse", async () => {
     reviewed_data: payload,
   });
 });
+
+function spendReview(overrides: Partial<PendingHumanReviewModel> = {}) {
+  return makeReview({
+    node_exec_id: "expert-spend:e-1:run-1",
+    node_id: "expert-spend:e-1",
+    payload: {
+      expert: "Maria",
+      spent_credits: 300,
+      threshold_credits: 250,
+      window: "week",
+    },
+    instructions:
+      "Maria has used 300 of 250 credits this week and needs your approval to keep spending",
+    action: undefined,
+    agent_name: undefined,
+    editable: false,
+    ...overrides,
+  });
+}
+
+test("an expert's spend approval is one compact card, beside the other reviews", () => {
+  render(<PendingReviewsList reviews={[spendReview(), makeReview()]} />);
+
+  expect(
+    screen.getByText("Maria has done 300 credits of work this week"),
+  ).toBeDefined();
+  expect(
+    screen.getByText("That's past your 250 check-in. Keep going?"),
+  ).toBeDefined();
+  expect(screen.getByRole("img", { name: "300 of 250 credits" })).toBeDefined();
+  expect(screen.queryByText(/needs your approval to keep spending/)).toBeNull();
+  // The block review keeps its own card.
+  expect(screen.getByText("Send Email")).toBeDefined();
+});
+
+test.each([
+  ["Keep going", true],
+  ["Cancel", false],
+])(
+  "%s on a spend card decides only that expert's runs",
+  async (button, approved) => {
+    const captured = captureReviewAction();
+    render(<PendingReviewsList reviews={[spendReview(), makeReview()]} />);
+
+    await userEvent.click(screen.getByRole("button", { name: button }));
+
+    await waitFor(() => expect(captured.body).toBeDefined());
+    expect(captured.body?.reviews).toEqual([
+      expect.objectContaining({
+        node_exec_id: "expert-spend:e-1:run-1",
+        approved,
+      }),
+    ]);
+    expect(captured.body?.reviews[0].auto_approve_future).not.toBe(true);
+  },
+);
+
+test("an unreadable spend payload keeps the standard approval controls", () => {
+  render(
+    <PendingReviewsList
+      reviews={[
+        spendReview({
+          payload: {
+            expert: "Maria",
+            spent_credits: 300,
+            threshold_credits: "unknown",
+            window: "week",
+          },
+        }),
+      ]}
+    />,
+  );
+
+  expect(screen.getByText("Your review is needed")).toBeDefined();
+  expect(screen.getByRole("button", { name: "Approve" })).toBeDefined();
+  expect(screen.getByRole("button", { name: "Reject" })).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Keep going" })).toBeNull();
+});

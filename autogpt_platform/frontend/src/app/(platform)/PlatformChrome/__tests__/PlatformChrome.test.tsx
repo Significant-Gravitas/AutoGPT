@@ -1,4 +1,10 @@
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import { useFirstRunTourStore } from "@/app/(platform)/components/FirstRunTour/store";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+} from "@/tests/integrations/test-utils";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -116,6 +122,18 @@ describe("PlatformChrome", () => {
     expect(screen.queryByTestId("app-sidebar")).toBeNull();
     expect(screen.queryByTestId("changelog-popup")).toBeNull();
     expect(screen.getByTestId("child")).toBeDefined();
+  });
+
+  it("holds the changelog back while the first-run walkthrough is open", () => {
+    // On a phone the popup sat inside the walkthrough's window, over the
+    // first tasks it was pointing at. It comes back once the walkthrough ends.
+    act(() => useFirstRunTourStore.getState().open("auto"));
+    const { rerender } = render(<PlatformChrome>content</PlatformChrome>);
+    expect(screen.queryByTestId("changelog-popup")).toBeNull();
+
+    act(() => useFirstRunTourStore.getState().close());
+    rerender(<PlatformChrome>content</PlatformChrome>);
+    expect(screen.getByTestId("changelog-popup")).toBeDefined();
   });
 
   it("waits for the signed-in session before showing the changelog", () => {

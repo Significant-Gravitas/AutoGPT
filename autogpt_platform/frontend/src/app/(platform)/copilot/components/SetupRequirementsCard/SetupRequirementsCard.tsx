@@ -204,9 +204,11 @@ export function SetupRequirementsCard({
   function handleRun() {
     const message = buildProceedMessage();
     markSent();
-    void reportCredentialPicks(sessionID, inputCredentials).then(() =>
-      onSend(message),
-    );
+    void reportCredentialPicks(
+      sessionID,
+      inputCredentials,
+      credentialFields,
+    ).then(() => onSend(message));
   }
 
   // Inside a chain this card renders no Proceed of its own — the chain only
@@ -260,7 +262,7 @@ export function SetupRequirementsCard({
   // Inside a tool chain the card's own Proceed is replaced by the chain's
   // single Proceed step — register readiness + message with the chain.
   const registerWithChain = useStableCallback((actions: ChainActions) => {
-    actions.register({
+    actions.register(actionId, {
       id: actionId,
       ready: canRun,
       manualProceed: needsManualPick || hasUserActionableInputs,
@@ -270,7 +272,8 @@ export function SetupRequirementsCard({
       // A trigger's line carries the chosen credential ids, and an edit-mode
       // card's may carry run inputs; only a bare confirmation is shareable.
       credentialsOnly: needsCredentials && !needsInputs && !isTriggerMode,
-      beforeSend: () => reportCredentialPicks(sessionID, inputCredentials),
+      beforeSend: () =>
+        reportCredentialPicks(sessionID, inputCredentials, credentialFields),
       onSent: markSent,
       connectors: needsCredentials
         ? {

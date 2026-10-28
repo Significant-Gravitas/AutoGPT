@@ -279,10 +279,22 @@ from ._test_data import make_session
 # re-measured on that merged tree (89 tools), with the stack's margin:
 #     merged tree                                 77,301 (89 tools)
 #     + headroom                       +300       77,601
+# Bumped 77_601 -> 77_720 for hire_expert's `handoff_title` and `handoff_task`
+# (SECRT-3138): a hire proposed for a task already in the chat carries it, so
+# the card's Approve hires and hands it off in one click. The rule itself
+# lives in the team-building prompt, so the schema only names the fields and
+# the rest of hire_expert's description was cut to pay for them; no tool was
+# added. Measured on this branch, which is dev f0ae7dfd4 plus this PR:
+#     dev f0ae7dfd4                               77,501 (89 tools)
+#     + handoff_title / handoff_task   +218       77,719 (89 tools)
+# Plus one.
 # Re-measured on the v2 External API root merged with dev 8df80022bc, which
 # brings the MCP tools' external schemas and the preset tools back:
 #     merged tree                                 77,510 (89 tools)
 #     + headroom                       +300       77,810
+# Both met merging dev into #16101 (SECRT-3138); re-measured on that merged
+# tree, which is under dev's ceiling, so the higher value stands:
+#     merged tree                                 77,728 (89 tools)
 _CHAR_BUDGET = 77_810
 
 

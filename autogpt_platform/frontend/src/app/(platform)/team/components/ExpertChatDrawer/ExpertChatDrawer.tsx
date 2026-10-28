@@ -178,6 +178,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
             hasSession={!!sessionId}
             expertId={target.expertId}
             expertName={target.name}
+            assistantName={target.name}
           />
         </div>
       </div>
