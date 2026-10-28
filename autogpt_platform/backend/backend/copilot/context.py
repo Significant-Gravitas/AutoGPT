@@ -307,7 +307,10 @@ def is_sdk_tool_path(path: str) -> bool:
 # bounce off ``Permission denied`` repeatedly.
 #
 # Two shapes are matched:
-#   (1) absolute SDK path:  /<...>/.claude/projects/<cwd>/<uuid>/tool-results/<file>.json
+#   (1) anything under the SDK projects dir: /<...>/.claude/projects[/...]
+#       — files, folders and globs alike (``cd …/tool-results/``,
+#       ``ls /root/.claude/projects/*/*/tool-results/``). The sandbox has
+#       no such folder, so any reference to it ends in ``Permission denied``.
 #   (2) model shorthand:    tool-(results|outputs)/<toolu|mcp>_<id>.json
 #
 # The shorthand branch requires the SDK's actual ID prefix so a user
@@ -315,20 +318,19 @@ def is_sdk_tool_path(path: str) -> bool:
 # trigger a false redirect on legitimate paths like
 # ``my-pipeline/tool-outputs/data.json``.
 _SDK_TOOL_RESULT_RE = re.compile(
-    r"(?:^|[/\s'\"])/?\.claude/projects/[^/\s]+/[^/\s]+/tool-(?:results|outputs)/"
-    r"[\w-]+\.json"
+    r"(?:^|[/\s'\"])/?\.claude/projects(?![\w.-])"
     r"|(?:^|[/\s'\"])tool-(?:results|outputs)/(?:toolu|mcp)_[\w-]+\.json",
     re.IGNORECASE,
 )
 
 
 def looks_like_sdk_tool_result_path(text: str) -> bool:
-    """Return True if *text* references a host-side SDK tool-result file.
+    """Return True if *text* references a host-side SDK tool-result path.
 
     Anchored regex match — avoids false positives on user paths that
     happen to contain a ``tool-outputs/`` directory by requiring either
-    the full ``.claude/projects/<…>/tool-(results|outputs)/<file>.json``
-    shape or the SDK's ``(toolu|mcp)_<id>.json`` filename pattern.
+    a ``.claude/projects`` path (file, folder or glob) or the SDK's
+    ``(toolu|mcp)_<id>.json`` filename pattern.
     """
     if not text:
         return False

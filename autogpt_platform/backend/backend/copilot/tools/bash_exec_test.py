@@ -320,6 +320,36 @@ class TestBashExecSdkToolResultRedirect:
         sandbox.commands.run.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            (
+                "cd /root/.claude/projects/-tmp-copilot-abc/abc/tool-results/ && "
+                "python3 -c \"open('toolu_x.json')\""
+            ),
+            "ls -t /root/.claude/projects/*/*/tool-results/",
+        ],
+    )
+    async def test_redirect_on_sdk_dir_without_file_name(self, cmd):
+        tool = _make_tool()
+        session = make_session(user_id=_USER)
+        sandbox = _make_sandbox()
+        with patch(
+            "backend.copilot.tools.bash_exec.get_current_sandbox",
+            return_value=sandbox,
+        ):
+            result = await tool._execute(
+                user_id=_USER,
+                session=session,
+                command=cmd,
+                timeout=10,
+            )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" in result.message
+        assert "/root/.claude/projects/" in result.message
+        sandbox.commands.run.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_no_redirect_on_user_path_containing_tool_outputs(self):
         """Regression: a user repo path that happens to contain a
         ``tool-outputs`` directory must NOT trigger the redirect, since
