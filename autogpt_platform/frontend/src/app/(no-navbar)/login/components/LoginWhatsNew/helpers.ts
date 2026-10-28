@@ -13,13 +13,22 @@ export interface Release {
   details: string;
 }
 
+// Link URLs may hold one level of brackets: (https://x.org/a_(b)).
+const MARKDOWN_LINK = /!?\[([^\]]*)\]\((?:[^()]|\([^()]*\))*\)/g;
+
+// Stands in for a comma inside link text while the highlights are split.
+const LINK_COMMA = "\uE000";
+
 // A release's highlights are one comma-separated markdown cell: the first
-// heads the release and the rest are its details. It's split before the
-// markdown goes, so a comma in link text ("[Clay, Rock](…)") stays put.
+// heads the release and the rest are its details. Commas in link text
+// ("[Clay, Rock](…)") are set aside first so they don't split a highlight.
 export function toRelease(entry: ChangelogEntry): Release {
-  const [first = "", ...rest] = splitHighlights(stripComments(entry.highlights))
-    .map(toPlainText)
-    .filter(Boolean);
+  const highlights = entry.highlights.replace(MARKDOWN_LINK, (link) =>
+    link.replaceAll(",", LINK_COMMA),
+  );
+  const [first = "", ...rest] = splitHighlights(toPlainText(highlights)).map(
+    (highlight) => highlight.replaceAll(LINK_COMMA, ","),
+  );
   return {
     slug: entry.slug,
     url: entry.url,
@@ -37,8 +46,7 @@ export function getReleaseLabel(release: Release, isLatest: boolean) {
 export function toPlainText(markdown: string): string {
   return (
     stripComments(markdown)
-      // Link URLs may hold one level of brackets: (https://x.org/a_(b)).
-      .replace(/!?\[([^\]]*)\]\((?:[^()]|\([^()]*\))*\)/g, "$1")
+      .replace(MARKDOWN_LINK, "$1")
       .replace(/<br\s*\/?>/gi, " ")
       // An unclosed tag ("<script" at the end) goes too, not just "<b>…</b>".
       .replace(/<\/?[a-z][^>]*(?:>|$)/gi, "")

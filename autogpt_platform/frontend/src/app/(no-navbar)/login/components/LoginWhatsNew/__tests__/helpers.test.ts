@@ -60,6 +60,17 @@ describe("toRelease", () => {
     expect(release.details).toBe("Faster runs");
   });
 
+  test("keeps emphasis that spans highlights from leaving stray markers", () => {
+    const release = toRelease({
+      slug: "s",
+      dateRange: "May 1",
+      highlights: "**new agents, faster runs**, [docs, guides](https://x.org)",
+      url: "u",
+    });
+    expect(release.headline).toBe("New agents");
+    expect(release.details).toBe("Faster runs, docs, guides");
+  });
+
   test.each([
     ["iOS deep links", "iOS deep links"],
     ["macOS app", "macOS app"],
