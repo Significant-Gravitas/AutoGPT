@@ -69,6 +69,11 @@ class Flag(str, Enum):
     CHAT_MODE_OPTION = "chat-mode-option"
     COPILOT_SDK = "copilot-sdk"
     COPILOT_COST_LIMITS = "copilot-cost-limits"
+    # Numeric USD threshold. A served value equal to the config fallback is
+    # still a vendor answer; callers must use ``evaluate_feature_flag_value``.
+    COPILOT_COST_CONFIRMATION_THRESHOLD_USD = (
+        "copilot-cost-confirmation-threshold-usd"
+    )
     # AutoPilot auto mode: the permission gate in ``copilot/gate``.
     # A ROLLOUT control, not a safety control — off means today's
     # ungated behaviour, which is why it defaults False rather than
@@ -447,6 +452,23 @@ async def get_feature_flag_value(
     return value
 
 
+async def evaluate_feature_flag_value(
+    flag_key: str,
+    user_id: str,
+    default: Any = None,
+    *,
+    attributes: dict[str, str] | None = None,
+) -> tuple[Any, bool]:
+    """``(value, evaluated)`` for one raw flag read.
+
+    ``evaluated`` is False when *value* is only *default* because the vendor
+    could not answer. A served value equal to *default* is still evaluated.
+    """
+    return await _evaluate_flag_value(
+        flag_key, user_id, default, attributes=attributes
+    )
+
+
 async def evaluate_experiment_variant(flag_key: str, user_id: str) -> str | None:
     """The arm PostHog buckets *user_id* into for an experiment, or None.
 
@@ -790,6 +812,7 @@ _NON_BOOLEAN_FLAG_VALUES: frozenset[str] = frozenset(
         Flag.COPILOT_MODEL_ROUTING.value,
         Flag.COPILOT_TIER_MULTIPLIERS.value,
         Flag.COPILOT_COST_LIMITS.value,
+        Flag.COPILOT_COST_CONFIRMATION_THRESHOLD_USD.value,
         Flag.COPILOT_TIER_WORKSPACE_STORAGE_LIMITS.value,
         Flag.COPILOT_TIER_STRIPE_PRICES.value,
         Flag.CARD_REQUIRED_TRIAL_OFFER.value,

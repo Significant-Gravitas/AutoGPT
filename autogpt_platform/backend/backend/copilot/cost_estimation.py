@@ -1,19 +1,24 @@
-"""CoPilot pre-execution cost estimation."""
+"""CoPilot pre-execution cost estimation.
 
+The priced history is the last ``HISTORY_MESSAGE_WINDOW`` messages. Approval
+tokens bind the full session length, so a message that arrives between the
+estimate and confirmation forces a new estimate.
+"""
+
+import logging
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from backend.copilot.baseline.service import _resolve_baseline_model
-from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
-from backend.copilot.executor.processor import (
-    resolve_effective_mode,
-    resolve_use_sdk_for_mode,
-)
+from backend.copilot.config import ChatConfig, CopilotLLMModel, CopilotMode
+from backend.copilot.cost_approval import HISTORY_MESSAGE_WINDOW
+from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.model import ChatSession
-from backend.copilot.sdk.service import _resolve_model_and_multiplier
-from backend.util.feature_flag import Flag, get_feature_flag_value
+from backend.copilot.model_router import ModelMode, ModelTier, resolve_model_route
+from backend.util.feature_flag import Flag, evaluate_feature_flag_value
 from backend.util.prompt import estimate_token_count, estimate_token_count_str
+
+logger = logging.getLogger(__name__)
 
 config = ChatConfig()
 
@@ -45,13 +50,12 @@ async def estimate_copilot_turn_cost(
     context: dict[str, str] | None,
     file_ids: list[str] | None,
     mode: CopilotMode | None,
-    model: CopilotLlmModel | None,
+    model: CopilotLLMModel | None,
 ) -> CoPilotTurnCostEstimate:
     """Estimate cost before executing a CoPilot turn."""
+    logger.debug("Estimating turn cost for session %s", session_id)
     resolved_path, resolved_model = await _resolve_path_and_model(
-        session_id=session_id,
         user_id=user_id,
-        mode=mode,
         model=model,
     )
     message_tokens = max(1, estimate_token_count_str(message))
@@ -88,6 +92,7 @@ async def estimate_copilot_turn_cost(
         history_tokens=history_tokens,
         file_count=file_count,
         has_context=context is not None,
+        mode=mode,
     )
     return CoPilotTurnCostEstimate(
         resolved_path=resolved_path,
@@ -111,46 +116,43 @@ async def resolve_cost_confirmation_threshold(
     fallback = max(0.0, float(config.copilot_cost_confirmation_threshold_usd))
     if not user_id:
         return fallback, "default"
-    raw_value = await get_feature_flag_value(
+    raw_value, evaluated = await evaluate_feature_flag_value(
         Flag.COPILOT_COST_CONFIRMATION_THRESHOLD_USD.value,
         user_id,
         fallback,
     )
+    if not evaluated:
+        return fallback, "default"
     try:
         threshold = max(0.0, float(raw_value))
     except (TypeError, ValueError):
         return fallback, "default"
-    if threshold == fallback:
-        return threshold, "default"
     return threshold, "launchdarkly"
 
 
 async def _resolve_path_and_model(
     *,
-    session_id: str,
     user_id: str | None,
-    mode: CopilotMode | None,
-    model: CopilotLlmModel | None,
+    model: CopilotLLMModel | None,
 ) -> tuple[Literal["baseline", "sdk"], str]:
     if config.test_mode:
-        return "baseline", config.fast_model
-    effective_mode = await resolve_effective_mode(mode, user_id)
-    use_sdk = await resolve_use_sdk_for_mode(
-        effective_mode,
+        return "baseline", config.fast_standard_model
+    use_sdk = await resolve_use_sdk(
         user_id,
         use_claude_code_subscription=config.use_claude_code_subscription,
         config_default=config.use_claude_agent_sdk,
+        thinking_available=config.thinking_available,
     )
-    if use_sdk:
-        sdk_model, _ = await _resolve_model_and_multiplier(model, session_id)
-        return "sdk", sdk_model or config.model
-    return "baseline", _resolve_baseline_model(effective_mode)
+    route_mode: ModelMode = "thinking" if use_sdk else "fast"
+    tier: ModelTier = "advanced" if model == "advanced" else "standard"
+    route = await resolve_model_route(route_mode, tier, user_id, config=config)
+    return ("sdk" if use_sdk else "baseline"), route.model
 
 
 def _estimate_history_tokens(session: ChatSession) -> int:
     messages = [
         {"role": m.role, "content": m.content or ""}
-        for m in session.messages[-30:]
+        for m in session.messages[-HISTORY_MESSAGE_WINDOW:]
         if m.role in {"system", "user", "assistant", "tool"}
     ]
     if not messages:
@@ -240,8 +242,11 @@ def _build_rationale(
     history_tokens: int,
     file_count: int,
     has_context: bool,
+    mode: CopilotMode | None,
 ) -> str:
     reasons: list[str] = [f"{resolved_path} path estimated at {llm_calls} model calls"]
+    if mode is not None:
+        reasons.append(f"requested mode {mode}")
     if message_tokens > 800:
         reasons.append("large prompt")
     if history_tokens > 8_000:

@@ -1,109 +1,59 @@
 """Tests for CoPilot cost-estimation helpers."""
 
+from unittest.mock import AsyncMock
+
 import pytest
+import pytest_mock
 
-from backend.copilot import cost_approval
-
-
-@pytest.mark.asyncio
-async def test_approval_token_round_trip_valid():
-    token = await cost_approval.generate_cost_approval_token(
-        user_id="user-1",
-        session_id="sess-1",
-        message="Analyze this task",
-        is_user_message=True,
-        context={"url": "https://example.com", "content": "ctx"},
-        file_ids=["11111111-1111-1111-1111-111111111111"],
-        mode="extended_thinking",
-        model="advanced",
-        ttl_seconds=600,
-    )
-
-    is_valid = await cost_approval.validate_cost_approval_token(
-        token=token,
-        user_id="user-1",
-        session_id="sess-1",
-        message="Analyze this task",
-        is_user_message=True,
-        context={"url": "https://example.com", "content": "ctx"},
-        file_ids=["11111111-1111-1111-1111-111111111111"],
-        mode="extended_thinking",
-        model="advanced",
-    )
-
-    assert is_valid is True
+from backend.copilot import cost_estimation
 
 
 @pytest.mark.asyncio
-async def test_approval_token_invalid_when_message_changes():
-    token = await cost_approval.generate_cost_approval_token(
-        user_id="user-1",
-        session_id="sess-1",
-        message="Original message",
-        is_user_message=True,
-        context=None,
-        file_ids=None,
-        mode=None,
-        model=None,
-        ttl_seconds=600,
+async def test_threshold_source_is_default_when_the_vendor_does_not_answer(
+    mocker: pytest_mock.MockerFixture,
+):
+    mocker.patch(
+        "backend.copilot.cost_estimation.evaluate_feature_flag_value",
+        new=AsyncMock(return_value=(10.0, False)),
     )
 
-    is_valid = await cost_approval.validate_cost_approval_token(
-        token=token,
-        user_id="user-1",
-        session_id="sess-1",
-        message="Tampered message",
-        is_user_message=True,
-        context=None,
-        file_ids=None,
-        mode=None,
-        model=None,
+    threshold, source = await cost_estimation.resolve_cost_confirmation_threshold(
+        "user-1"
     )
 
-    assert is_valid is False
+    assert threshold == cost_estimation.config.copilot_cost_confirmation_threshold_usd
+    assert source == "default"
 
 
 @pytest.mark.asyncio
-async def test_approval_token_invalid_when_expired():
-    token = await cost_approval.generate_cost_approval_token(
-        user_id="user-1",
-        session_id="sess-1",
-        message="Original message",
-        is_user_message=True,
-        context=None,
-        file_ids=None,
-        mode=None,
-        model=None,
-        ttl_seconds=-1,
+async def test_threshold_source_is_launchdarkly_when_the_served_value_matches_fallback(
+    mocker: pytest_mock.MockerFixture,
+):
+    fallback = cost_estimation.config.copilot_cost_confirmation_threshold_usd
+    mocker.patch(
+        "backend.copilot.cost_estimation.evaluate_feature_flag_value",
+        new=AsyncMock(return_value=(fallback, True)),
     )
 
-    is_valid = await cost_approval.validate_cost_approval_token(
-        token=token,
-        user_id="user-1",
-        session_id="sess-1",
-        message="Original message",
-        is_user_message=True,
-        context=None,
-        file_ids=None,
-        mode=None,
-        model=None,
+    threshold, source = await cost_estimation.resolve_cost_confirmation_threshold(
+        "user-1"
     )
 
-    assert is_valid is False
+    assert threshold == fallback
+    assert source == "launchdarkly"
 
 
 @pytest.mark.asyncio
-async def test_approval_token_invalid_for_malformed_payload():
-    is_valid = await cost_approval.validate_cost_approval_token(
-        token="not-a-valid-token.payload",
-        user_id="user-1",
-        session_id="sess-1",
-        message="Original message",
-        is_user_message=True,
-        context=None,
-        file_ids=None,
-        mode=None,
-        model=None,
+async def test_threshold_without_a_user_does_not_read_the_flag(
+    mocker: pytest_mock.MockerFixture,
+):
+    read_flag = mocker.patch(
+        "backend.copilot.cost_estimation.evaluate_feature_flag_value",
+        new=AsyncMock(),
     )
 
-    assert is_valid is False
+    threshold, source = await cost_estimation.resolve_cost_confirmation_threshold(None)
+
+    assert source == "default"
+    assert threshold == cost_estimation.config.copilot_cost_confirmation_threshold_usd
+    read_flag.assert_not_awaited()

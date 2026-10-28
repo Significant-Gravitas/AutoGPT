@@ -772,6 +772,7 @@ SECRET_GENERATORS: dict[str, Callable[[], str]] = {
     "BETTER_AUTH_SECRET": lambda: secrets.token_urlsafe(48),
     "ENCRYPTION_KEY": _fernet_key,
     "UNSUBSCRIBE_SECRET_KEY": lambda: secrets.token_urlsafe(36),
+    "COST_APPROVAL_SIGNING_KEY": lambda: secrets.token_urlsafe(36),
     "GRAPHITI_FALKORDB_PASSWORD": lambda: secrets.token_urlsafe(36),
     "INTERNAL_API_KEY": lambda: secrets.token_urlsafe(32),
 }
@@ -825,6 +826,7 @@ BLANK_IN_ENV_DEFAULT: dict[str, tuple[str, ...]] = {
         "REDIS_PASSWORD",
         "ENCRYPTION_KEY",
         "UNSUBSCRIBE_SECRET_KEY",
+        "COST_APPROVAL_SIGNING_KEY",
         "INTERNAL_API_KEY",
         "GRAPHITI_FALKORDB_PASSWORD",
     ),
