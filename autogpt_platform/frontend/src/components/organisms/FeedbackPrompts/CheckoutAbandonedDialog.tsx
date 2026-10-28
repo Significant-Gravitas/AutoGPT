@@ -46,6 +46,7 @@ export function CheckoutAbandonedDialog({ kind, initialReason = null }: Props) {
             {copy.body}
           </Text>
           <ReasonFlow
+            label={copy.title}
             reasons={
               kind === "trial"
                 ? TRIAL_CHECKOUT_REASONS

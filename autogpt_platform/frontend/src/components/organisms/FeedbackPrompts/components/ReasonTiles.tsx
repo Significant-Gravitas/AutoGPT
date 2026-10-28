@@ -31,6 +31,7 @@ const TONES: Record<Tone, string> = {
 
 interface Props {
   reasons: Reason[];
+  label: string;
   selected: string | null;
   onSelect: (label: string) => void;
   columns?: 2 | 3 | 4;
@@ -42,6 +43,7 @@ const COLUMNS = { 2: "grid-cols-2", 3: "grid-cols-3", 4: "grid-cols-4" };
 
 export function ReasonTiles({
   reasons,
+  label,
   selected,
   onSelect,
   columns = 2,
@@ -52,15 +54,18 @@ export function ReasonTiles({
   const spanLast = layout === "row" && reasons.length % columns !== 0;
 
   return (
-    <div role="radiogroup" className={cn("grid gap-2 p-px", COLUMNS[columns])}>
+    <div
+      role="group"
+      aria-label={label}
+      className={cn("grid gap-2 p-px", COLUMNS[columns])}
+    >
       {reasons.map((reason, index) => {
         const isSelected = selected === reason.label;
         return (
           <motion.button
             key={reason.label}
             type="button"
-            role="radio"
-            aria-checked={isSelected}
+            aria-pressed={isSelected}
             whileTap={{ scale: 0.97 }}
             onClick={() => onSelect(reason.label)}
             className={cn(
@@ -84,7 +89,7 @@ export function ReasonTiles({
             </span>
             <span
               className={cn(
-                "whitespace-nowrap font-medium leading-5 text-foreground-emphasis",
+                "min-w-0 break-words font-medium leading-5 text-foreground-emphasis",
                 isCompact ? "text-caption leading-4" : "text-body",
               )}
             >

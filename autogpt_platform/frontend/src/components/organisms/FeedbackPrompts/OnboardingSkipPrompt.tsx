@@ -24,6 +24,7 @@ export function OnboardingSkipPrompt({ question, reasons }: Props) {
       <div className="w-full">
         <ReasonTiles
           reasons={reasons}
+          label={question}
           selected={reason}
           onSelect={setReason}
           columns={reasons.length === 4 ? 4 : 3}

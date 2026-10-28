@@ -18,11 +18,8 @@ export function OttoOfferCard({ starters }: Props) {
     <div className="flex flex-col gap-4 rounded-2xl bg-gradient-to-br from-accent-surface to-surface-muted p-5">
       <div className="flex items-start gap-3">
         <AutopilotAvatar size={40} className="ring-1 ring-border-base" />
-        <div className="rounded-2xl rounded-tl-sm bg-surface px-4 py-2.5 shadow-sm">
-          <Text
-            variant="body"
-            className="whitespace-nowrap !text-foreground-emphasis"
-          >
+        <div className="min-w-0 rounded-2xl rounded-tl-sm bg-surface px-4 py-2.5 shadow-sm">
+          <Text variant="body" className="!text-foreground-emphasis">
             {hasStarters
               ? "From what you told me, I'd start with one of these."
               : "Tell me one weekly task and I'll do it with you now."}
@@ -36,7 +33,7 @@ export function OttoOfferCard({ starters }: Props) {
               <button
                 key={starter}
                 type="button"
-                className="group flex items-center justify-between gap-3 whitespace-nowrap rounded-xl bg-surface/70 px-4 py-2.5 text-left text-body text-foreground-emphasis transition-colors hover:bg-surface hover:shadow-sm"
+                className="group flex items-center justify-between gap-3 rounded-xl bg-surface/70 px-4 py-2.5 text-left text-body text-foreground-emphasis transition-colors hover:bg-surface hover:shadow-sm"
               >
                 {starter}
                 <Icon

@@ -38,7 +38,11 @@ export function NpsCard({ initialScore = null, initialSent = false }: Props) {
         <ThanksLine />
       ) : (
         <div className="flex flex-col gap-3">
-          <div className="flex gap-1">
+          <div
+            role="group"
+            aria-label="How likely are you to recommend AutoGPT, from 0 (not likely) to 10 (very likely)"
+            className="flex gap-1"
+          >
             {SCORES.map((value) => (
               <button
                 key={value}
@@ -71,6 +75,7 @@ export function NpsCard({ initialScore = null, initialSent = false }: Props) {
                 rows={3}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
+                aria-label={followUpFor(score)}
                 placeholder="Optional"
                 className="resize-none"
               />

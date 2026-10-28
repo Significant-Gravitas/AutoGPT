@@ -35,6 +35,7 @@ export function OttoMistakeCard() {
       </div>
       <ReasonFlow
         reasons={MISTAKE_REASONS}
+        label="Which of these went wrong?"
         size="compact"
         thanks="Thanks. The team reads every one of these."
       />

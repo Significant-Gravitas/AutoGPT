@@ -118,6 +118,7 @@ export function WorkCheckCard({
       {rating === "bad" || rating === "okay" ? (
         <ReasonFlow
           reasons={WORK_REASONS}
+          label={`What should ${name} do better?`}
           size="compact"
           thanks={`Thanks. ${name} learns from this.`}
         />

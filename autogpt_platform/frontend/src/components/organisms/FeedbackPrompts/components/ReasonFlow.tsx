@@ -9,6 +9,7 @@ import { ThanksLine } from "./ThanksLine";
 
 interface Props {
   reasons: Reason[];
+  label: string;
   notePlaceholder?: string;
   size?: "default" | "compact";
   thanks?: string;
@@ -18,6 +19,7 @@ interface Props {
 
 export function ReasonFlow({
   reasons,
+  label,
   notePlaceholder = "Tell us a bit more (optional)",
   size = "default",
   thanks,
@@ -34,6 +36,7 @@ export function ReasonFlow({
     <div className="flex flex-col gap-3">
       <ReasonTiles
         reasons={reasons}
+        label={label}
         selected={reason}
         onSelect={setReason}
         size={size}
@@ -44,6 +47,7 @@ export function ReasonFlow({
           rows={2}
           value={note}
           onChange={(e) => setNote(e.target.value)}
+          aria-label={notePlaceholder}
           placeholder={notePlaceholder}
           className="min-h-0 resize-none"
         />

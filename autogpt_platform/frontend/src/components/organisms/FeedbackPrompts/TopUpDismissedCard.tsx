@@ -16,7 +16,11 @@ export function TopUpDismissedCard() {
       title="What would make topping up worth it?"
       onClose={() => setIsOpen(false)}
     >
-      <ReasonFlow reasons={TOP_UP_REASONS} size="compact" />
+      <ReasonFlow
+        reasons={TOP_UP_REASONS}
+        label="What would make topping up worth it?"
+        size="compact"
+      />
     </PromptCard>
   );
 }

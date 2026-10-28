@@ -55,6 +55,7 @@ export function CancelTrialFeedbackDialog({
             </Text>
             <ReasonTiles
               reasons={TRIAL_CANCEL_REASONS}
+              label={TITLES.reason}
               selected={reason}
               onSelect={setReason}
             />
@@ -63,6 +64,7 @@ export function CancelTrialFeedbackDialog({
                 rows={3}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
+                aria-label="What would have made you stay?"
                 placeholder="What would have made you stay?"
                 className="resize-none"
               />

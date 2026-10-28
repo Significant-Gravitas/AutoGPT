@@ -26,7 +26,7 @@ export function PromptCard({
     <section
       aria-label={title}
       className={cn(
-        "w-[28rem] rounded-2xl border border-border-base bg-surface p-4 shadow-lg",
+        "w-[28rem] max-w-[calc(100vw-3rem)] rounded-2xl border border-border-base bg-surface p-4 shadow-lg",
         className,
       )}
     >

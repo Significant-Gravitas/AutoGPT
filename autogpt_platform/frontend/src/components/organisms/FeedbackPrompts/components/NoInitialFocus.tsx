@@ -1,14 +1,14 @@
-// The dialog moves focus to its first tabbable element on open, which is the
-// close button. Taking focus back onto this untabbable span right after keeps
-// the focus ring off it.
+"use client";
+
+import { useEffect, useRef } from "react";
+
 export function NoInitialFocus() {
-  return (
-    <span
-      tabIndex={-1}
-      className="sr-only"
-      ref={(el) => {
-        if (el) requestAnimationFrame(() => el.focus());
-      }}
-    />
-  );
+  const ref = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => ref.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  return <span ref={ref} tabIndex={-1} className="sr-only" />;
 }
