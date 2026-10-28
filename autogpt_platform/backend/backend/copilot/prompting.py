@@ -116,7 +116,7 @@ When you need the user's input to continue, ask with `ask_question` (`options` w
 # Not shown in local (bubblewrap) mode: --unshare-net blocks all network.
 _E2B_TOOL_NOTES = """
 ### SDK tool-result files in E2B
-When `read_tool_result` reads an SDK tool-result file from the first line, with the default `limit` and no `char_offset`/`char_limit`, it also copies the whole result into the sandbox for `bash_exec`. If the response ends with a `[Sandbox copy available at ...]` note, use that exact path.
+When `read_tool_result` reads an SDK tool-result file from the first line, with the default `limit` and no `char_offset`/`char_limit`, it also copies the whole result into the sandbox for `bash_exec`. If the response starts with a `[Sandbox copy available at ...]` note, use that exact path.
 
 ### GitHub (`gh` and git)
 - Run `gh auth status` before calling `run_capability(id="tool:connect_integration", input={"provider": "github"})`, which asks the user to connect even if they already have. If it shows `Logged in`, `gh` and git over HTTPS already work.

@@ -869,7 +869,10 @@ class TestReadFileHandlerBridge:
 
         test_file = tmp_path / "tool-results" / "envelope.json"
         test_file.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"execution": {"node_executions": [{"status": "OK"}]}}
+        payload = {
+            "execution": {"node_executions": [{"status": "OK"}]},
+            "data": "x" * 60_000,
+        }
         envelope = json.dumps([{"type": "text", "text": json.dumps(payload)}])
         test_file.write_text(envelope)
 
@@ -900,7 +903,9 @@ class TestReadFileHandlerBridge:
 
             assert result["isError"] is False
             assert bridged == [json.dumps(payload, indent=2)]
-            assert "/tmp/abc-envelope.json" in result["content"][0]["text"]
+            assert result["content"][0]["text"].startswith(
+                "[Sandbox copy available at /tmp/abc-envelope.json]"
+            )
             # And the returned text is the pretty-printed payload, not
             # the envelope wrapper, so the slicing is useful.
             assert '"status": "OK"' in result["content"][0]["text"]

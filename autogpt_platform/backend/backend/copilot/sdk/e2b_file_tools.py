@@ -780,7 +780,8 @@ async def bridge_to_sandbox(
     try:
         expanded = os.path.realpath(os.path.expanduser(file_path))
         basename = os.path.basename(expanded)
-        source_id = hashlib.sha256(expanded.encode()).hexdigest()[:12]
+        source = f"{expanded}:transformed" if content is not None else expanded
+        source_id = hashlib.sha256(source.encode()).hexdigest()[:12]
         unique_name = f"{source_id}-{basename}"
         file_size = (
             os.path.getsize(expanded)

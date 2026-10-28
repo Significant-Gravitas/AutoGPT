@@ -581,7 +581,7 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
                 sandbox, resolved, offset, limit, navigable
             )
             if annotation:
-                text += annotation
+                text = f"{annotation.lstrip()}\n{text}"
         return _mcp_ok(text)
     except FileNotFoundError:
         return _mcp_err(f"File not found: {file_path}")
