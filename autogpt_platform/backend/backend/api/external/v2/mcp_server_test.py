@@ -32,6 +32,7 @@ from backend.api.external.v2.mcp_server import (
 )
 from backend.api.external.v2.rate_limit import file_upload_limiter
 from backend.copilot import usage_activation_fixtures
+from backend.copilot.gate import gate_active
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import RateLimitUnavailable
@@ -477,6 +478,9 @@ async def test_a_tool_called_over_mcp_runs_without_waiting_for_an_approval(
         new_callable=mock.AsyncMock,
         return_value=ErrorResponse(message="stub", session_id=None),
     )
+    # The control: the gate is on for a chat someone watches, so only the
+    # session's origin keeps it off the call, not the context the handler sets.
+    assert await gate_active("user-1", ChatSession.new("user-1", dry_run=False))
 
     await _call("delete_folder", {"folder_id": "folder-1"})
 
