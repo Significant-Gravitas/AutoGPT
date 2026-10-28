@@ -540,8 +540,11 @@ class ListWorkspaceFilesTool(BaseTool):
             if not include_all_sessions and folder_id is None:
                 lines.append(
                     "Only this chat's files are listed. For files the user "
-                    "uploaded or saved elsewhere (other chats, the Files page), "
-                    "list again with include_all_sessions=true."
+                    "uploaded or saved elsewhere, "
+                    "list again with include_all_sessions=true. In expert chats, "
+                    "this covers the expert's own and delegated chats and the "
+                    "Files page, not unrelated chats. Open those files in Otto "
+                    "or put them on the Files page."
                 )
 
             return WorkspaceFileListResponse(
