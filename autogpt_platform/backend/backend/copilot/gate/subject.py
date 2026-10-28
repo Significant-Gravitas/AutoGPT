@@ -4,6 +4,7 @@
 decides on that subject's effect, and the card's headline names it.
 """
 
+import logging
 import re
 from typing import TYPE_CHECKING, Any, Callable
 from urllib.parse import urlsplit
@@ -11,6 +12,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict
 
 from backend.blocks._base import Block, BlockEffect
+from backend.blocks._preview import ChangePreview
 from backend.copilot.constants import AUTOPILOT_NAME
 from backend.copilot.tree import MICRODOLLARS_PER_CREDIT
 from backend.executor.utils import block_usage_cost
@@ -21,6 +23,8 @@ from .policy import Effect
 
 if TYPE_CHECKING:
     from backend.data.graph import GraphModel
+
+logger = logging.getLogger(__name__)
 
 
 class Subject(BaseModel):
@@ -42,6 +46,9 @@ class Subject(BaseModel):
     # The call creates a schedule: no supervisor reads its runs, so a judge
     # rule cannot speak for it.
     schedules: bool = False
+    # What a block will create or change in a connected account, in the
+    # user's words, which the card shows in place of the raw inputs.
+    preview: ChangePreview | None = None
 
 
 # A schema lookup, ``validate_only``, a dry run, or a trigger workflow's details:
@@ -58,16 +65,38 @@ def block_subject(
     if type(block).__name__ in JUDGED_BLOCKS:
         # Judged like the shell: the supervisor's verdict is the reason.
         return Subject(key=f"block:{block.id}", name=name, effect=Effect.SHELL)
+    preview = _preview(block, inputs)
     return Subject(
         key=f"block:{block.id}",
         name=name,
         effect=_gate_effect(effect),
-        reason=_reason(effect, name, culprit=None),
+        # The preview says what changes, so the line under it needs no block name.
+        reason=_PREVIEWED if preview else _reason(effect, name, culprit=None),
         irreversible=_irreversible(effect, block),
         estimate=(
             _priced(effect, lambda: block_usage_cost(block, inputs)[0]) if priced else 0
         ),
+        preview=preview,
     )
+
+
+_PREVIEWED = "Nothing changes in your account until you approve."
+
+
+def _preview(block: Block, inputs: dict[str, Any]) -> ChangePreview | None:
+    """What the call will change, read with the block's defaults filled in so
+    an input the model left out still shows what it creates. A preview that
+    cannot be built leaves the card its raw inputs."""
+    try:
+        defaults = {
+            name: field.get_default(call_default_factory=True)
+            for name, field in block.input_schema.model_fields.items()
+            if not field.is_required()
+        }
+        return block.change_preview({**defaults, **inputs})
+    except Exception:
+        logger.warning(f"No change preview for {block.name}", exc_info=True)
+        return None
 
 
 def workflow_subject(

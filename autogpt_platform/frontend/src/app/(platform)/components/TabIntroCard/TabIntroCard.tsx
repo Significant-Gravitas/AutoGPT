@@ -29,9 +29,8 @@ interface Props {
   onDismiss: () => void;
 }
 
-// One-card, first-visit intro for a tab. Deliberately the same shell as the
-// copilot home's capability cards (OnboardingWelcomeDialog): tinted stage
-// carrying the icon, copy below, one way forward and one way out.
+// One-card, first-visit intro for a tab: a tinted stage carrying the icon,
+// copy below, one way forward and one way out.
 export function TabIntroCard({
   isOpen,
   icon,
