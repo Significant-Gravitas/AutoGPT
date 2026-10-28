@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime, timezone
-from unittest.mock import ANY, AsyncMock, Mock
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock
 
 import fastapi
 import fastapi.testclient
@@ -16,7 +16,12 @@ from pytest_snapshot.plugin import Snapshot
 from backend.api.features.billing.credits.routes import get_credit_history, router
 from backend.api.rest_api import app as real_app
 from backend.api.utils.exceptions import add_exception_handlers
-from backend.data.credit import AutoTopUpConfig, UserCreditBase
+from backend.data.credit import (
+    MAX_TOP_UP_AMOUNT,
+    AutoTopUpConfig,
+    UserCredit,
+    UserCreditBase,
+)
 from backend.data.model import TransactionHistory
 
 app = fastapi.FastAPI()
@@ -541,9 +546,8 @@ def test_request_top_up_rejects_a_missing_amount() -> None:
     assert response.status_code == 422
 
 
-# The credit-history route is exercised against its own app: it needs the
-# ValueError -> 400 handler the real app installs, which the module-level
-# client above does not carry.
+# Routes that answer through the ValueError -> 400 handler the real app installs
+# run against their own app; the module-level client above does not carry it.
 HISTORY_CONTEXT = RequestContext(
     user_id="user",
     org_id="org",
@@ -558,7 +562,7 @@ HISTORY_CONTEXT = RequestContext(
 
 
 @pytest.fixture
-def history_client():
+def handled_client():
     history_app = fastapi.FastAPI()
     history_app.include_router(router)
     add_exception_handlers(history_app)
@@ -569,8 +573,8 @@ def history_client():
 
 
 @pytest.mark.parametrize("limit", [0, -1, 1001])
-def test_invalid_history_limit_returns_400(history_client, limit):
-    response = history_client.get(
+def test_invalid_history_limit_returns_400(handled_client, limit):
+    response = handled_client.get(
         "/credits/transactions", params={"transaction_count_limit": limit}
     )
     assert response.status_code == 400
@@ -578,7 +582,7 @@ def test_invalid_history_limit_returns_400(history_client, limit):
     assert response.json()["message"] == "Failed to process GET /credits/transactions"
 
 
-def test_invalid_cursor_returns_400(history_client, monkeypatch):
+def test_invalid_cursor_returns_400(handled_client, monkeypatch):
     model = AsyncMock(spec=UserCreditBase)
     model.get_transaction_history.side_effect = ValueError(
         "Invalid credit history cursor"
@@ -587,10 +591,62 @@ def test_invalid_cursor_returns_400(history_client, monkeypatch):
         "backend.api.features.billing.credits.routes.get_credit_model",
         AsyncMock(return_value=model),
     )
-    response = history_client.get("/credits/transactions", params={"cursor": "invalid"})
+    response = handled_client.get("/credits/transactions", params={"cursor": "invalid"})
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid credit history cursor"
     assert response.json()["message"] == "Failed to process GET /credits/transactions"
+
+
+def test_top_up_at_stripes_ceiling_reaches_stripe(handled_client, mocker):
+    stripe_create, _ = _real_top_up_path(mocker)
+
+    response = handled_client.post(
+        "/credits", json={"credit_amount": MAX_TOP_UP_AMOUNT}
+    )
+
+    assert response.status_code == 200
+    line_item = stripe_create.call_args.kwargs["line_items"][0]
+    assert line_item["price_data"]["unit_amount"] == MAX_TOP_UP_AMOUNT
+
+
+@pytest.mark.parametrize("amount", [MAX_TOP_UP_AMOUNT + 100, 2_147_483_700])
+def test_top_up_beyond_stripes_ceiling_is_refused_before_stripe(
+    handled_client, mocker, amount
+):
+    stripe_create, add_transaction = _real_top_up_path(mocker)
+
+    response = handled_client.post("/credits", json={"credit_amount": amount})
+
+    assert response.status_code == 400
+    assert "at most $999,999" in response.json()["detail"]
+    stripe_create.assert_not_called()
+    add_transaction.assert_not_called()
+
+
+def _real_top_up_path(mocker: pytest_mock.MockFixture) -> tuple[AsyncMock, AsyncMock]:
+    """Run the real UserCredit.top_up_intent with Stripe and the ledger mocked."""
+    credit_model = UserCredit()
+    add_transaction = mocker.patch.object(
+        credit_model, "_add_transaction", new_callable=AsyncMock
+    )
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch("backend.api.features.billing.credits.routes.schedule_checkout_opened")
+    mocker.patch(
+        "backend.data.credit.get_stripe_customer_id",
+        AsyncMock(return_value="cus_123"),
+    )
+    mocker.patch(
+        "backend.data.credit.get_feature_flag_value", AsyncMock(return_value=None)
+    )
+    session = MagicMock(id="cs_test_topup", url="https://checkout.stripe.com/c/cs")
+    stripe_create = mocker.patch(
+        "backend.data.credit.stripe.checkout.Session.create_async",
+        AsyncMock(return_value=session),
+    )
+    return stripe_create, add_transaction
 
 
 @pytest.mark.asyncio

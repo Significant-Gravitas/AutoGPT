@@ -133,6 +133,9 @@ class InvoiceListItem(BaseModel):
 # best-effort: a malformed ID must never break Checkout.
 _STRIPE_METADATA_VALUE_MAX_LEN = 500
 
+# Stripe caps a USD charge at 8 digits, $999,999.99 (https://stripe.com/docs/currencies).
+MAX_TOP_UP_AMOUNT = 99_999_900
+
 
 def _sanitize_datafast_id(value: str | None) -> str | None:
     """Validate a client-supplied DataFast ID for use as Stripe metadata.
@@ -1252,6 +1255,10 @@ class UserCredit(UserCreditBase):
         if amount < 500 or amount % 100 != 0:
             raise ValueError(
                 f"Top up amount must be at least 500 credits and multiple of 100 but is {amount}"
+            )
+        if amount > MAX_TOP_UP_AMOUNT:
+            raise ValueError(
+                f"Top up amount must be at most ${MAX_TOP_UP_AMOUNT // 100:,} but is ${amount // 100:,}"
             )
 
         # Resolve the Stripe Product ID from LD; when unset (default), keep the

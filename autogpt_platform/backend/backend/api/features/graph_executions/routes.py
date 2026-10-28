@@ -28,6 +28,7 @@ from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN
 from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import utils as execution_utils
 from backend.util.exceptions import NotFoundError
+from backend.util.models import MAX_PAGE
 
 # No router-level auth dependency: the two /public/shared routes are
 # deliberately unauthenticated, so each route keeps its own.
@@ -143,7 +144,7 @@ async def list_graph_executions(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
-    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    page: int = Query(1, ge=1, le=MAX_PAGE, description="Page number (1-indexed)"),
     page_size: int = Query(
         25, ge=1, le=100, description="Number of executions per page"
     ),
