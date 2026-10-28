@@ -173,7 +173,7 @@ def _build_storage_supplement(
 - **Persistent workspace** (`read_workspace_file`/`write_workspace_file`): cloud storage that survives across sessions. Save files worth keeping here.
 - {file_move_name_1_to_2}: `write_workspace_file(filename="output.json", source_path="/path/to/local/file")`
 - {file_move_name_2_to_1}: `read_workspace_file(path="tool-outputs/data.json", save_to_path="{working_dir}/data.json")`
-- Large SDK tool outputs are saved under `~/.claude/projects/.../tool-results/` (or `tool-outputs/`); read them with `read_tool_result` (full path as `file_path`).
+- Large SDK tool outputs are saved on the host under `~/.claude/projects/.../tool-results/`; read them with `read_tool_result` (full absolute path as `file_path`). This is not the workspace `tool-outputs/` folder.
 - `<tool-output-truncated workspace_path="...">` means the full output is in the workspace, not on local disk. Read sections with `read_workspace_file(path="...", offset=..., length=50000)`; if a read returns less, continue from its returned end offset with the remaining length. Or copy it with `save_to_path="{working_dir}/file.json"` to process with `bash_exec`. {SHARED_TOOL_NOTES}{extra_notes}"""
 
 
