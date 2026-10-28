@@ -63,17 +63,11 @@ class TwitterUnfollowListBlock(Block):
 
     @staticmethod
     def unfollow_list(credentials: TwitterCredentials, list_id: str):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
 
-            client.unfollow_list(list_id=list_id, user_auth=False)
+        client.unfollow_list(list_id=list_id, user_auth=False)
 
-            return True
-
-        except tweepy.TweepyException:
-            raise
+        return True
 
     async def run(
         self,
@@ -126,17 +120,11 @@ class TwitterFollowListBlock(Block):
 
     @staticmethod
     def follow_list(credentials: TwitterCredentials, list_id: str):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
 
-            client.follow_list(list_id=list_id, user_auth=False)
+        client.follow_list(list_id=list_id, user_auth=False)
 
-            return True
-
-        except tweepy.TweepyException:
-            raise
+        return True
 
     async def run(
         self,
