@@ -588,7 +588,7 @@ describe("useChatMentions", () => {
     expect(result.current.isOpen).toBe(false);
     expect(setValue).not.toHaveBeenCalled();
 
-    act(() => result.current.resumeAfterConnect(request));
+    act(() => result.current.resumeAfterConnect(request, "cred-new"));
     expect(result.current.connectRequest).toBeNull();
     expect(result.current.isOpen).toBe(true);
     expect(textarea.setSelectionRange).toHaveBeenCalledWith(11, 11);
@@ -639,7 +639,7 @@ describe("useChatMentions", () => {
     const request = chooseConnect(result, textarea);
 
     textarea.value = "ask @sentry2";
-    act(() => result.current.resumeAfterConnect(request));
+    act(() => result.current.resumeAfterConnect(request, "cred-new"));
     expect(result.current.isOpen).toBe(false);
     expect(textarea.setSelectionRange).not.toHaveBeenCalled();
   });
@@ -666,7 +666,7 @@ describe("useChatMentions", () => {
 
     textarea.value = "ask @lin";
     rerender({ value: "ask @lin" });
-    act(() => result.current.resumeAfterConnect(request));
+    act(() => result.current.resumeAfterConnect(request, "cred-new"));
     expect(result.current.isOpen).toBe(false);
   });
 
@@ -693,9 +693,53 @@ describe("useChatMentions", () => {
     act(() => result.current.cancelConnect());
     const second = chooseConnect(result, textarea);
 
-    act(() => result.current.resumeAfterConnect(first));
+    act(() => result.current.resumeAfterConnect(first, "cred-new"));
     expect(result.current.connectRequest).toBe(second);
     expect(result.current.isOpen).toBe(false);
+  });
+
+  it("lists the account just connected even when the @query found it by its description", () => {
+    const SENTRY = {
+      credentialId: "cred-sentry",
+      providerName: "Sentry",
+      username: null,
+      provider: "mcp",
+      name: "mcp.sentry.dev",
+      token: "@mcp.sentry.dev",
+    };
+    const { result, rerender } = renderHook(
+      ({ integrations }) =>
+        useChatMentions({
+          enabled: true,
+          value: "ask @errors",
+          setValue: vi.fn(),
+          addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
+          includeWorkspaceFiles: false,
+          integrations,
+        }),
+      { wrapper: Wrapper, initialProps: { integrations: [GOOGLE] } },
+    );
+    const textarea = {
+      value: "ask @errors",
+      selectionStart: 11,
+      setSelectionRange: vi.fn(),
+    };
+    const request = chooseConnect(result, textarea);
+
+    rerender({ integrations: [GOOGLE, SENTRY] });
+    act(() => result.current.resumeAfterConnect(request, "cred-sentry"));
+    expect(result.current.options).toEqual([
+      { kind: "integration", integration: SENTRY },
+      { kind: "connect", query: "errors" },
+    ]);
+
+    // Only for that mention: the next one filters as usual.
+    act(() => result.current.close());
+    act(() => result.current.detect(fakeTextarea("ask @errors")));
+    expect(result.current.options).toEqual([
+      { kind: "connect", query: "errors" },
+    ]);
   });
 
   it("forgets a Connect highlight once the mention ends", () => {

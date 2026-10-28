@@ -137,9 +137,18 @@ export function useChatMentions({
     : [];
   const folders = matchFolders(allFolders, debouncedQuery);
 
-  const matchedIntegrations = filterIntegrationMentions(
-    integrations,
-    query,
+  // The connect dialog's search also matches service descriptions, so the
+  // account just connected may not match the `@query` it was found by
+  // (`@errors` finding Sentry); it is listed first for that mention anyway.
+  const [justConnectedId, setJustConnectedId] = useState<string | null>(null);
+  const justConnected = integrations.find(
+    (integration) => integration.credentialId === justConnectedId,
+  );
+  const matched = filterIntegrationMentions(integrations, query);
+  const matchedIntegrations = (
+    justConnected && !matched.includes(justConnected)
+      ? [justConnected, ...matched]
+      : matched
   ).slice(0, INTEGRATION_RESULT_LIMIT);
 
   // Integrations, then folders, then files, then the way to connect another
@@ -198,6 +207,7 @@ export function useChatMentions({
   function endMention() {
     setActive(null);
     setPointedAtQuery(null);
+    setJustConnectedId(null);
   }
 
   function detect(textarea: MentionInput) {
@@ -265,11 +275,13 @@ export function useChatMentions({
     setConnectRequest(null);
   }
 
-  function resumeAfterConnect(request: ActiveMention) {
+  function resumeAfterConnect(request: ActiveMention, credentialId: string) {
     if (latestConnectRef.current !== request) return;
     latestConnectRef.current = null;
     setConnectRequest(null);
-    if (returnToMention(request)) setActive(request);
+    if (!returnToMention(request)) return;
+    setActive(request);
+    setJustConnectedId(credentialId);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLElement>): boolean {

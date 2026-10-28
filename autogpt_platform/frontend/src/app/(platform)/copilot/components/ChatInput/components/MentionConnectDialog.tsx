@@ -16,7 +16,7 @@ interface Props {
   expertId?: string | null;
   expertName?: string | null;
   onCancel: () => void;
-  onConnected: (request: ActiveMention) => void;
+  onConnected: (request: ActiveMention, credentialId: string) => void;
 }
 
 /** The composer's own copy of the "Connect a service" dialog, opened from
@@ -43,7 +43,7 @@ export function MentionConnectDialog({
         });
       }
     }
-    onConnected(request);
+    onConnected(request, credential.id);
   }
 
   return (

@@ -203,6 +203,22 @@ describe("Connect an integration from the @ mention list", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("offers the new account even when the service was found by its description", async () => {
+    arrangeSentry();
+    render(<Composer onSend={vi.fn()} />);
+
+    await userEvent.type(screen.getByRole("textbox"), "Check @errors");
+    await screen.findByText("No connected integrations to mention.");
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    await connectSentry(
+      await screen.findByRole("dialog", { name: "Connect a service" }),
+    );
+
+    expect(
+      await screen.findByRole("option", { name: /mcp\.sentry\.dev/ }),
+    ).toBeDefined();
+  });
+
   it("gives the chat's expert the new account, so its @ list offers it", async () => {
     const state = arrangeSentry();
     render(<Composer expertId="expert-maria" onSend={vi.fn()} />);
