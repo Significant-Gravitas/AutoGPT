@@ -15,6 +15,7 @@ from backend.api.features.billing.client_country import ClientCountry
 from backend.api.model import RequestTopUp
 from backend.data.checkout_audience import schedule_checkout_opened
 from backend.data.credit import (
+    MAX_TOP_UP_AMOUNT,
     AutoTopUpConfig,
     InvoiceListItem,
     RefundRequest,
@@ -137,6 +138,11 @@ async def configure_user_auto_top_up(
     if request.amount != 0 and request.amount < request.threshold:
         raise HTTPException(
             status_code=422, detail="Amount must be greater than or equal to threshold"
+        )
+    if max(request.amount, request.threshold) > MAX_TOP_UP_AMOUNT:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Amount and threshold must be at most ${MAX_TOP_UP_AMOUNT // 100:,}",
         )
 
     credit_model = await get_credit_model(user_id, ctx.org_id)

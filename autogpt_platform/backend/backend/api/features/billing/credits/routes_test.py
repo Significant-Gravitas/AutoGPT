@@ -391,6 +391,56 @@ def test_configure_auto_top_up_validation_errors(
     assert response.status_code == 200  # Should succeed
 
 
+def test_configure_auto_top_up_at_stripes_ceiling_is_saved(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    set_auto_top_up = mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up"
+    )
+    credit_model = mocker.AsyncMock()
+    credit_model.get_credits.return_value = 0
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+
+    response = client.post(
+        "/credits/auto-top-up",
+        json={"threshold": MAX_TOP_UP_AMOUNT, "amount": MAX_TOP_UP_AMOUNT},
+    )
+
+    assert response.status_code == 200
+    assert credit_model.top_up_credits.await_args.args[1] == MAX_TOP_UP_AMOUNT
+    set_auto_top_up.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"threshold": 1000, "amount": MAX_TOP_UP_AMOUNT + 100},
+        {"threshold": 2_147_483_700, "amount": 0},
+    ],
+)
+def test_configure_auto_top_up_beyond_stripes_ceiling_is_refused(
+    mocker: pytest_mock.MockFixture, config: dict[str, int]
+) -> None:
+    set_auto_top_up = mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up"
+    )
+    credit_model = mocker.AsyncMock()
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+
+    response = client.post("/credits/auto-top-up", json=config)
+
+    assert response.status_code == 422
+    assert "at most $999,999" in response.json()["detail"]
+    credit_model.top_up_credits.assert_not_called()
+    set_auto_top_up.assert_not_called()
+
+
 def test_list_invoices_returns_mapped_payload(
     mocker: pytest_mock.MockFixture,
 ) -> None:
