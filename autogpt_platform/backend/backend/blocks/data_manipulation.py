@@ -830,8 +830,10 @@ def _make_hashable(item: Any):
     """
     Create a hashable representation of any item for deduplication.
     Converts unhashable types (dicts, lists) into deterministic tuple structures.
-    Dicts and bools are tagged so that they never share a key with a list of
-    pairs or an int (e.g. ``{}`` vs ``[]``, ``True`` vs ``1``).
+    Dicts, lists and bools are tagged with their kind, so values of different
+    kinds never share a key, whatever they contain (e.g. ``{}`` vs ``[]``,
+    ``True`` vs ``1``, ``{}`` vs ``["dict", []]``). Numbers aren't tagged, so
+    ``1`` and ``1.0`` still match.
     """
     if isinstance(item, dict):
         return (
@@ -844,7 +846,7 @@ def _make_hashable(item: Any):
             ),
         )
     if isinstance(item, (list, tuple)):
-        return tuple(_make_hashable(i) for i in item)
+        return ("list", tuple(_make_hashable(i) for i in item))
     if isinstance(item, set):
         return frozenset(_make_hashable(i) for i in item)
     if isinstance(item, bool):
