@@ -1,11 +1,8 @@
 import {
   NOTION_CATEGORIES,
   NOTION_PART_COUNTS,
-  VIEWBOX,
   type NotionCategory,
 } from "./metadata.generated";
-
-export { VIEWBOX };
 
 export type NotionParts = Record<NotionCategory, number>;
 
@@ -72,36 +69,6 @@ export const PICKABLE_CATEGORIES: NotionCategory[] = [
   "accessories",
   "details",
 ];
-
-export const CATEGORY_LABELS: Record<NotionCategory, string> = {
-  face: "Face",
-  nose: "Nose",
-  mouth: "Mouth",
-  eyes: "Eyes",
-  eyebrows: "Eyebrows",
-  glasses: "Glasses",
-  hair: "Hair",
-  accessories: "Accessories",
-  // Upstream calls these "details"; they are blush, freckles, moles and lines.
-  details: "Marks",
-  beard: "Beard",
-};
-
-export const DEFAULT_NOTION_CONFIG: NotionAvatarConfig = {
-  parts: {
-    face: 0,
-    nose: 0,
-    mouth: 0,
-    eyes: 0,
-    eyebrows: 0,
-    glasses: 0,
-    hair: 0,
-    accessories: 0,
-    details: 0,
-    beard: 0,
-  },
-  color: "violet",
-};
 
 export function findNotionColor(id: NotionColorId) {
   return NOTION_COLORS.find((color) => color.id === id) ?? NOTION_COLORS[0];

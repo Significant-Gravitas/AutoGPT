@@ -1,7 +1,7 @@
 "use client";
 
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-import { ConnectProviderRow } from "@/app/(platform)/copilot/components/OnboardingWelcomeDialog/ConnectProviderRow";
+import { ConnectProviderRow } from "@/app/(platform)/copilot/components/ConnectToolsDialog/ConnectProviderRow";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -125,7 +125,7 @@ export function UseExistingCredentialsDialog({
               <button
                 type="button"
                 onClick={() => setSelectedProvider(null)}
-                className="flex w-fit items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
+                className="flex w-fit items-center gap-1 text-sm text-foreground-tertiary hover:text-foreground-emphasis"
               >
                 <Icon icon={ArrowLeft02Icon} size={14} />
                 All connections
@@ -146,6 +146,7 @@ export function UseExistingCredentialsDialog({
                   return (
                     <li
                       key={credential.id}
+                      // TODO(tokens): no exact role: bg-neutral-100 #F5F5F5
                       className="flex items-center gap-3 rounded-xl bg-neutral-100 px-3 py-2.5"
                     >
                       <IntegrationLogo
@@ -223,7 +224,7 @@ export function UseExistingCredentialsDialog({
                   <div
                     aria-hidden="true"
                     className={cn(
-                      "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent transition-opacity duration-200",
+                      "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent transition-opacity duration-200",
 
                       hasMoreBelow ? "opacity-100" : "opacity-0",
                     )}

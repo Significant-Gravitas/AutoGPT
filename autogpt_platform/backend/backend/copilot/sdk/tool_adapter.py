@@ -38,12 +38,14 @@ from backend.copilot.gate.mcp_seam import (
     screen_non_registry_read,
 )
 from backend.copilot.gate.reads import model_view
+from backend.copilot.google_data_redaction import remember_cut_google_output
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
     expand_file_refs_in_args,
     read_file_bytes,
 )
+from backend.copilot.tool_image import truncate_mcp_result
 from backend.copilot.tools import (
     DEFERRED_TOOL_NAMES,
     TOOL_REGISTRY,
@@ -361,7 +363,8 @@ async def _execute_tool_sync(
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
     return {
-        "content": [{"type": "text", "text": text}],
+        "content": [{"type": "text", "text": text}]
+        + ([result.image.mcp()] if result.image is not None else []),
         "isError": not result.success,
     }
 
@@ -474,7 +477,7 @@ def _build_input_schema(base_tool: BaseTool) -> dict[str, Any]:
     """
     return {
         "type": "object",
-        "properties": base_tool.parameters.get("properties", {}),
+        "properties": base_tool.model_parameters.get("properties", {}),
     }
 
 
@@ -567,28 +570,18 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         #
         # When E2B is active, also copy the file into the sandbox so
         # bash_exec can process it (the model often uses Read then bash).
-        # CAVEAT: only bridge when the on-disk bytes and what the model
-        # just read are the same — i.e. when ``_navigable_tool_result_text``
-        # did *not* transform the content. If we pretty-printed an MCP
-        # envelope, the model sees a pretty-printed slice while the
-        # bridged sandbox file would hold the raw envelope; bash commands
-        # operating on the bridged copy would then see different content
-        # than the model just read, leading to silent format-mismatch
-        # bugs. Same constraint applies to char-mode slices. The new
-        # bash_exec SDK-path redirect (added in this PR) covers the
-        # alternative workflow when the bridge is skipped — the model
-        # can use ``read_tool_result`` again with offsets, or pipe a
+        # The copy holds ``navigable``, the unwrapped text the model's line
+        # offsets point into, not the raw MCP envelope on disk, so bash
+        # sees the same lines the model just read. Char-mode slices skip
+        # the bridge: the model can read again with offsets, or pipe a
         # slice via ``@@agptfile:<path>[<start>-<end>]``.
         sandbox = _current_sandbox.get(None)
-        if (
-            sandbox is not None
-            and navigable == raw
-            and char_offset is None
-            and char_limit is None
-        ):
-            annotation = await bridge_and_annotate(sandbox, resolved, offset, limit)
+        if sandbox is not None and char_offset is None and char_limit is None:
+            annotation = await bridge_and_annotate(
+                sandbox, resolved, offset, limit, navigable
+            )
             if annotation:
-                text += annotation
+                text = f"{annotation.lstrip()}\n{text}"
         return _mcp_ok(text)
     except FileNotFoundError:
         return _mcp_err(f"File not found: {file_path}")
@@ -862,7 +855,10 @@ def _make_truncating_wrapper(
                 return released
 
         result = await run(args)
-        truncated = truncate(result, _MCP_MAX_CHARS)
+        truncated = truncate_mcp_result(result, _MCP_MAX_CHARS)
+        remember_cut_google_output(
+            _text_from_mcp_result(result), _text_from_mcp_result(truncated)
+        )
         # Registry tools were judged inside ``BaseTool.execute`` on this cap.
         if session is not None and name not in TOOL_REGISTRY:
             truncated = await screen_non_registry_read(
@@ -1132,6 +1128,17 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 #   sdk_cwd is a per-session /tmp dir that is never restored.  Leaving them
 #   exposed lets the model promise unattended monitoring that silently never
 #   fires — `schedule_followup` is the primitive that actually persists.
+# ListAgents/SendMessage: reach other CLI sessions in the same pod.
+# NotebookEdit: writes files outside the MCP Write/Edit tools.
+# Skill: Claude Code's own skills; copilot skills go through read_skill.
+# Workflow: spawns multi-agent runs with no copilot budget or UI.  With
+#   slash commands disabled its description also grows from ~5K to ~20K
+#   chars on every request.
+# EnterWorktree/ExitWorktree/ReportFindings: Claude Code dev-loop tools.
+# TaskStop: unused here, and permissions cannot name it, so filtered sessions
+#   would drop it anyway.
+# A built-in in neither this list nor _SDK_BUILTIN_* is denied by
+# security_hooks and fails cli_builtin_tools_test.py.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
@@ -1146,6 +1153,13 @@ SDK_DISALLOWED_TOOLS = [
     "CronDelete",
     "ListAgents",
     "SendMessage",
+    "NotebookEdit",
+    "Skill",
+    "Workflow",
+    "EnterWorktree",
+    "ExitWorktree",
+    "ReportFindings",
+    "TaskStop",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
@@ -1159,33 +1173,9 @@ BLOCKED_TOOLS = {
     "command",
 }
 
-# Tools allowed only when their path argument stays within the SDK workspace.
-# The SDK uses these to handle oversized tool results (writes to tool-results/
-# files, then reads them back) and for workspace file operations.
-# Read is included because the SDK reads back oversized tool results from
-# tool-results/ and tool-outputs/ directories.  It is also in
-# SDK_DISALLOWED_TOOLS (which controls the SDK's disallowed_tools config),
-# but the security hooks check workspace scope BEFORE the blocked list
-# so that these internal reads are permitted.
-# Write and Edit are NOT included: they are fully replaced by MCP equivalents.
-WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep", "Read"}
-
-# Dangerous patterns in tool inputs
-DANGEROUS_PATTERNS = [
-    r"sudo",
-    r"rm\s+-rf",
-    r"dd\s+if=",
-    r"/etc/passwd",
-    r"/etc/shadow",
-    r"chmod\s+777",
-    r"curl\s+.*\|.*sh",
-    r"wget\s+.*\|.*sh",
-    r"eval\s*\(",
-    r"exec\s*\(",
-    r"__import__",
-    r"os\.system",
-    r"subprocess",
-]
+# Allowed Glob/Grep calls must also stay within the session's local paths.
+# Native Read/Write/Edit stay blocked; MCP handlers provide file access.
+WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep"}
 
 # Platform-tool names whose MCP wrappers must NOT be exposed to SDK mode.
 # Baseline ships an MCP ``TodoWrite`` for model-flexibility parity; SDK mode

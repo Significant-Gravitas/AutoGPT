@@ -14,10 +14,18 @@ export function getFilesFromClipboard(
   clipboardData: DataTransfer | null,
 ): File[] {
   if (!clipboardData) return [];
-  return Array.from(clipboardData.files).map(renameGenericImage);
+  return Array.from(clipboardData.files).map((file, index) =>
+    renameGenericImage(file, index, "pasted-image"),
+  );
 }
 
-function renameGenericImage(file: File, index: number): File {
+/** Mobile browsers hand every camera capture over as "image.jpg"; rename so
+ *  photos taken in a row stay distinguishable in the composer and workspace. */
+export function nameCapturedPhotos(files: File[]): File[] {
+  return files.map((file, index) => renameGenericImage(file, index, "photo"));
+}
+
+function renameGenericImage(file: File, index: number, prefix: string): File {
   if (
     !file.type.startsWith("image/") ||
     !GENERIC_CLIPBOARD_IMAGE_NAME.test(file.name)
@@ -27,7 +35,7 @@ function renameGenericImage(file: File, index: number): File {
   const extension = file.name.split(".").pop();
   const stamp = new Date().toISOString().slice(0, 23).replace(/[T:.]/g, "-");
   const suffix = index > 0 ? `-${index + 1}` : "";
-  return new File([file], `pasted-image-${stamp}${suffix}.${extension}`, {
+  return new File([file], `${prefix}-${stamp}${suffix}.${extension}`, {
     type: file.type,
     lastModified: file.lastModified,
   });
@@ -41,16 +49,18 @@ export function formatElapsedTime(ms: number): string {
 }
 
 export const CARD_ICON_BUTTON_CLASS =
-  "size-9 rounded-full border-transparent bg-zinc-950/[0.06] p-0 text-zinc-900 shadow-none transition-[background-color,transform] hover:border-transparent hover:bg-zinc-950/10 hover:text-zinc-900 active:scale-[0.98] aria-expanded:bg-zinc-950/[0.12]";
+  // TODO(tokens): no fitting role for bg-zinc-950/[0.06] #09090B; #09090B is foreground (a text colour) and card-foreground (a text colour); no fitting role for hover:bg-zinc-950/10 #09090B; #09090B is foreground (a text colour) and card-foreground (a text colour); no fitting role for aria-expanded:bg-zinc-950/[0.12] #09090B; #09090B is foreground (a text colour) and card-foreground (a text colour)
+  "size-9 rounded-full border-transparent bg-zinc-950/[0.06] p-0 text-foreground-strong shadow-none transition-[background-color,transform] hover:border-transparent hover:bg-zinc-950/10 hover:text-foreground-strong active:scale-[0.98] aria-expanded:bg-zinc-950/[0.12]";
 
 export const COMPACT_ICON_BUTTON_CLASS =
-  "size-8 rounded-lg border-transparent bg-transparent p-0 text-zinc-700 shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-zinc-900 aria-expanded:bg-zinc-100";
+  "size-8 rounded-lg border-transparent bg-transparent p-0 text-foreground-body shadow-none hover:border-transparent hover:bg-surface-hover hover:text-foreground-strong aria-expanded:bg-surface-hover";
 
 export const COMPACT_SEND_BUTTON_CLASS =
-  "size-8 rounded-lg border-zinc-900 bg-zinc-900 text-white hover:border-zinc-800 hover:bg-zinc-800 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100";
+  "size-8 rounded-lg border-action-hover bg-action-hover text-action-foreground hover:border-action hover:bg-action disabled:border-border-base disabled:bg-surface-active disabled:text-action-foreground disabled:opacity-100";
 
 export const CARD_SEND_BUTTON_CLASS =
-  "size-9 rounded-full border-transparent bg-zinc-950 text-white transition-[background-color,transform] hover:border-transparent hover:bg-zinc-800 active:scale-[0.98] disabled:border-transparent disabled:bg-zinc-950/[0.06] disabled:text-zinc-400";
+  // TODO(tokens): no fitting role for bg-zinc-950 #09090B; #09090B is foreground (a text colour) and card-foreground (a text colour); no fitting role for disabled:bg-zinc-950/[0.06] #09090B; #09090B is foreground (a text colour) and card-foreground (a text colour)
+  "size-9 rounded-full border-transparent bg-zinc-950 text-action-foreground transition-[background-color,transform] hover:border-transparent hover:bg-action active:scale-[0.98] disabled:border-transparent disabled:bg-zinc-950/[0.06] disabled:text-foreground-subtle";
 
 /** Shared by every path that sends a message. `recovery` is the lowercase
  *  clause telling the user where their text went, e.g. "your message is
@@ -141,4 +151,29 @@ export function insertIntegrationMention(
     value: value.slice(0, range.start) + integration.token + separator + rest,
     caret: range.start + integration.token.length + 1,
   };
+}
+
+/** Phone-sized send button: the default 32px target is too small for a thumb. */
+export const MOBILE_SEND_BUTTON_CLASS = "max-md:size-10";
+
+// Every focus the composer takes by itself goes through here, so none of
+// them can close a menu the user has open.
+export function focusComposer(inputId: string) {
+  const input = document.getElementById(inputId);
+  if (isFocusInOtherOverlay(input)) return;
+  input?.focus();
+}
+
+// One on its way out (a sheet closing after a chat is picked) still holds
+// focus through its exit animation, but no longer counts.
+const OVERLAY_SELECTOR = ["dialog", "alertdialog", "menu"]
+  .map((role) => `[role="${role}"]:not([data-state="closed"])`)
+  .join(", ");
+
+// Whether focus sits in a menu or dialog the composer is not part of: one
+// the user opened while the page was still loading. Taking focus from it
+// would close it (Radix dismisses on focus-out).
+function isFocusInOtherOverlay(input: HTMLElement | null) {
+  const overlay = document.activeElement?.closest(OVERLAY_SELECTOR);
+  return Boolean(overlay && input && !overlay.contains(input));
 }

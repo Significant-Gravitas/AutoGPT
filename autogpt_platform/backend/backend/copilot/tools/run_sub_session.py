@@ -28,7 +28,7 @@ import logging
 import time
 from typing import Any
 
-from backend.copilot.active_turns import running_turn_limit_message
+from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
@@ -45,6 +45,7 @@ from backend.copilot.sdk.session_waiter import (
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 from backend.copilot.tree import SpawnRequest
+from backend.data.workspace_internal import is_internal_workspace_file
 
 from .base import BaseTool
 from .expert_delegation import sent_from_metadata
@@ -55,6 +56,7 @@ from .models import (
     ToolResponseBase,
     WorkspaceFileInfoData,
 )
+from .workspace_files import AGENT_CREATED_METADATA
 
 logger = logging.getLogger(__name__)
 
@@ -98,11 +100,13 @@ class RunSubSessionTool(BaseTool):
                 "prompt": {
                     "type": "string",
                     "description": "The task for the child session to execute.",
+                    "title": "Task",
                 },
                 "system_context": {
                     "type": "string",
                     "description": "Optional context prepended to the prompt.",
                     "default": "",
+                    "title": "Background",
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
@@ -111,6 +115,8 @@ class RunSubSessionTool(BaseTool):
                         "Cheaper when the follow-up builds on what it read."
                     ),
                     "default": "",
+                    "title": "Continues",
+                    "entity": "chat_session",
                 },
                 "wait_for_result": {
                     "type": "integer",
@@ -119,6 +125,8 @@ class RunSubSessionTool(BaseTool):
                         f"Clamped to {MAX_SUB_SESSION_WAIT_SECONDS}."
                     ),
                     "default": 60,
+                    "title": "Waits up to",
+                    "format": "seconds",
                 },
             },
             "required": ["prompt"],
@@ -339,7 +347,8 @@ async def list_sub_workspace_files(
     The ``origin=agent-created`` filter means only files the sub persisted via
     ``write_workspace_file`` are listed — transient working-directory artefacts
     (e.g. a ``git clone`` the sub inspects but never persists) are not workspace
-    files and never appear here. When the sub persists more than
+    files and never appear here, and neither do the sub's own working files
+    (its build scratchpad). When the sub persists more than
     ``_WORKSPACE_FILE_MANIFEST_LIMIT`` files, the most recently written ones win
     (the listing is ordered ``createdAt`` descending).
 
@@ -350,7 +359,8 @@ async def list_sub_workspace_files(
         manager = await get_workspace_manager(user_id, inner_session_id)
         files = await manager.list_files(
             limit=_WORKSPACE_FILE_MANIFEST_LIMIT,
-            metadata_equals={"origin": "agent-created"},
+            metadata_equals=AGENT_CREATED_METADATA,
+            include_internal=False,
         )
     except Exception:
         logger.warning(
@@ -396,10 +406,17 @@ def _workspace_files_from_tool_calls(
         if not file_id or not path or file_id in seen_ids:
             continue
         seen_ids.add(file_id)
+        name = payload.get("name") or path.rsplit("/", 1)[-1]
+        # The log does not carry the mark, but this tool's writes are marked by
+        # name and path alone, so the same rule gives the same answer.
+        if is_internal_workspace_file(
+            name=name, path=path, metadata=AGENT_CREATED_METADATA
+        ):
+            continue
         files.append(
             WorkspaceFileInfoData(
                 file_id=file_id,
-                name=payload.get("name") or path.rsplit("/", 1)[-1],
+                name=name,
                 path=path,
                 mime_type=payload.get("mime_type") or "",
                 size_bytes=_coerce_size_bytes(payload.get("size_bytes")),
@@ -512,6 +529,22 @@ def response_from_outcome(
             elapsed_seconds=round(elapsed, 2),
         ).from_outside()
 
+    if outcome == "queued_for_slot":
+        return SubSessionStatusResponse(
+            message=(
+                f"{actor} is queued: the user's task slots for sub-work are all "
+                "taken, and it starts on its own when one frees. Call "
+                "tool:get_sub_session_result to wait for it or check on it"
+                f"{f', or watch at {link}' if link else ''}."
+            ),
+            session_id=parent_session_id,
+            status="queued",
+            sub_session_id=inner_session_id,
+            sub_autopilot_session_id=inner_session_id,
+            sub_autopilot_session_link=link,
+            elapsed_seconds=round(elapsed, 2),
+        ).from_outside()
+
     if outcome == "running":
         return SubSessionStatusResponse(
             message=(
@@ -546,7 +579,7 @@ def response_from_outcome(
         # Render the actionable message instead of a "see transcript"
         # pointer to nothing.
         return SubSessionStatusResponse(
-            message=running_turn_limit_message(),
+            message=spawn_limit_message(),
             session_id=parent_session_id,
             status="error",
             sub_session_id=inner_session_id,

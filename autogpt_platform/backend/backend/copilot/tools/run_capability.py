@@ -8,11 +8,13 @@ error hints all keep working; this module only adds the id resolution and
 the per-kind gates.
 """
 
+import json
 import logging
 from typing import Any
 from urllib.parse import urlsplit
 
 from backend.blocks import get_block
+from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.capabilities.mcp_review import (
     MCPReviewPayload,
     needs_review,
@@ -28,13 +30,26 @@ from backend.copilot.gate import METERED, gate_active
 from backend.copilot.gate.subject import NO_OP, Subject, block_subject, mcp_subject
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
+from backend.copilot.sdk.file_ref import (
+    FILE_REF_PREFIX,
+    FileRefExpansionError,
+    expand_file_refs_in_args,
+)
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.activity_event import ActivityEventDraft
 
-from .base import GATE_APPROVED, BaseTool
+from .ayrshare_managed import connect_for_block as ayrshare_connect_for_block
+from .ayrshare_managed import is_ayrshare
+from .base import ARGS_BOUND, GATE_APPROVED, GATE_DECIDED, BaseTool
 from .capability_gates import gate_denied, gate_denied_error
-from .describe_capability import MCP_RUN_PARAMETERS, UNKNOWN_ID_HINT, describe_skill
+from .describe_capability import (
+    MCP_RUN_PARAMETERS,
+    UNKNOWN_ID_HINT,
+    describe_expert,
+    describe_skill,
+)
 from .helpers import (
+    missing_picker_fields,
     prepare_block_for_execution,
     required_input_keys,
     resolve_block_credentials,
@@ -82,6 +97,7 @@ class RunCapabilityTool(BaseTool):
                 "id": {
                     "type": "string",
                     "description": "Capability id from find_capability, or an MCP server URL.",
+                    "entity": None,
                 },
                 "input": {
                     "type": "object",
@@ -125,8 +141,15 @@ class RunCapabilityTool(BaseTool):
         block = get_block(block_id)
         if block is None:
             return NO_OP
-        if not required_input_keys(block) <= set(payload or {}):
+        required = required_input_keys(block)
+        if not required <= set(payload or {}):
             return NO_OP  # a schema lookup: run_block answers with the schema
+        if missing_picker_fields(
+            block.input_schema.jsonschema(), required, payload or {}
+        ):
+            # The card asks for the pick first and nothing runs; the call
+            # that carries the pick is the one to approve.
+            return NO_OP
         # Priced once, below, with the credentials the run bills with.
         subject = block_subject(block, payload or {}, priced=False)
         if subject.effect not in METERED:
@@ -138,6 +161,35 @@ class RunCapabilityTool(BaseTool):
         creds = {field: meta.model_dump() for field, meta in matched.items()}
         # The run bills with the resolved credentials, whatever the model passed.
         return block_subject(block, {**(payload or {}), **creds})
+
+    async def bind_args(
+        self, user_id: str | None, session: ChatSession, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """A block's file references resolved with its own schema, as
+        ``run_block`` would, so the card previews and the approval binds the
+        content that runs rather than the reference to it."""
+        payload = args.get("input")
+        if not user_id or not isinstance(payload, dict) or not payload:
+            return args
+        if FILE_REF_PREFIX not in json.dumps(payload, default=str):
+            return args  # nothing to resolve, and no lookup spent finding out
+        entry = await resolve_session_entry(user_id, session, str(args.get("id") or ""))
+        if entry is None or entry.kind != "block":
+            return args
+        block = get_block(
+            next((i.ref for i in entry.implementations if i.kind == "block"), "")
+        )
+        if block is None:
+            return args
+        try:
+            resolved = await expand_file_refs_in_args(
+                payload, user_id, session, input_schema=block.input_schema.jsonschema()
+            )
+        except FileRefExpansionError:
+            # run_block resolves again and tells the model which reference
+            # failed; nothing runs either way.
+            return args
+        return {**args, "input": resolved}
 
     def activity_event(
         self, session: ChatSession, result: ToolResponseBase, **kwargs
@@ -163,6 +215,8 @@ class RunCapabilityTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         approved = bool(kwargs.pop(GATE_APPROVED, False))
+        decided = bool(kwargs.pop(GATE_DECIDED, False))
+        bound = bool(kwargs.pop(ARGS_BOUND, False))
         session_id = session.session_id
         if not user_id:
             return ErrorResponse(
@@ -197,12 +251,23 @@ class RunCapabilityTool(BaseTool):
             ).from_outside()
         if entry.kind == "block":
             return await _run_block(
-                entry, user_id, session, payload, validate_only, approved
+                entry,
+                user_id,
+                session,
+                payload,
+                validate_only,
+                approved,
+                decided,
+                bound,
             )
         if entry.kind == "tool":
             return await _describe_tool(entry, session)
         if entry.kind == "skill":
             return await _run_skill(entry, user_id, session, validate_only)
+        if entry.kind == "expert":
+            # The engines run an expert id as the hire or delegate call it is
+            # (``capabilities/dispatch.py``), so this answers validate_only.
+            return describe_expert(entry, session_id)
         if entry.kind == "mcp_server":
             server_url = entry.implementations[0].ref
             if not server_url:
@@ -226,6 +291,8 @@ async def _run_block(
     payload: dict[str, Any],
     validate_only: bool,
     approved: bool,
+    decided: bool = False,
+    refs_resolved: bool = False,
 ) -> ToolResponseBase:
     if gate_denied(BLOCK_GATE):
         return gate_denied_error("blocks", session.session_id)
@@ -245,6 +312,19 @@ async def _run_block(
                 ),
                 session_id=session.session_id,
             )
+        block = get_block(block_id)
+        # Connecting creates the user's real Ayrshare profile; neither mode may.
+        managed = block is not None and is_ayrshare(get_block_provider(block))
+        if managed and (validate_only or session.dry_run):
+            return CapabilityDetailsResponse(
+                message=(
+                    f"Connecting {entry.name} creates the user's Ayrshare profile, "
+                    "so validate_only and dry runs skip it. Nothing was created."
+                ),
+                capability=entry.listing(),
+                parameters={},
+                session_id=session.session_id,
+            )
         prep = await prepare_block_for_execution(
             block_id=block_id,
             input_data=payload,
@@ -260,6 +340,12 @@ async def _run_block(
         )
         if isinstance(prep, ToolResponseBase) and not picker_only:
             return prep
+        # Holding the managed Ayrshare credential says nothing about which
+        # networks are linked, so connecting shows the connect card.
+        if managed and block is not None:
+            return await ayrshare_connect_for_block(
+                user_id, block, block_id, session.session_id, session.expert_id
+            )
         return CapabilityDetailsResponse(
             message=(
                 f"The user is already connected for {entry.name}. "
@@ -276,6 +362,8 @@ async def _run_block(
         input_data=payload,
         validate_only=validate_only,
         gate_approved=approved,
+        gate_decided=decided,
+        refs_resolved=refs_resolved,
     )
 
 
@@ -308,7 +396,7 @@ async def _describe_tool(
     return CapabilityDetailsResponse(
         message=f"{tool.description} Call again without validate_only to run.",
         capability=entry.listing(),
-        parameters=tool.parameters,
+        parameters=tool.model_parameters,
         session_id=session.session_id,
     ).from_outside()
 

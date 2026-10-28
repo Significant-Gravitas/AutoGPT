@@ -1,7 +1,12 @@
 import { act, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LaunchDarklyProvider } from "../feature-flag-provider";
+
+// These read LaunchDarkly; `flag-backend` picks the vendor once, at load.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND = "launchdarkly";
+});
+import { FeatureFlagProvider } from "../feature-flag-provider";
 import { Flag, useFlagStatus } from "../use-get-flag";
 
 const ld = vi.hoisted(() => ({
@@ -49,7 +54,7 @@ vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
 }));
 
 function HireProbe() {
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+  const { enabled, ready } = useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS);
   return (
     <span>
       hire: {String(enabled)} ready: {String(ready)}
@@ -57,7 +62,7 @@ function HireProbe() {
   );
 }
 
-describe("LaunchDarklyProvider while the session loads", () => {
+describe("FeatureFlagProvider while the session loads", () => {
   beforeEach(() => {
     ld.props.length = 0;
     ld.flags = {};
@@ -66,9 +71,9 @@ describe("LaunchDarklyProvider while the session loads", () => {
 
   it("renders the page instead of a spinner, so server HTML carries it", () => {
     render(
-      <LaunchDarklyProvider>
+      <FeatureFlagProvider>
         <h1>Maria</h1>
-      </LaunchDarklyProvider>,
+      </FeatureFlagProvider>,
     );
 
     expect(screen.getByRole("heading", { name: "Maria" })).toBeDefined();
@@ -76,9 +81,9 @@ describe("LaunchDarklyProvider while the session loads", () => {
 
   it("defers LaunchDarkly until the context is known", () => {
     render(
-      <LaunchDarklyProvider>
+      <FeatureFlagProvider>
         <HireProbe />
-      </LaunchDarklyProvider>,
+      </FeatureFlagProvider>,
     );
 
     expect(ld.props.at(-1)).toEqual({
@@ -89,9 +94,9 @@ describe("LaunchDarklyProvider while the session loads", () => {
 
   it("keeps gated UI in the not-answered state rather than off", () => {
     render(
-      <LaunchDarklyProvider>
+      <FeatureFlagProvider>
         <HireProbe />
-      </LaunchDarklyProvider>,
+      </FeatureFlagProvider>,
     );
 
     expect(screen.getByText("hire: false ready: false")).toBeDefined();
@@ -99,17 +104,17 @@ describe("LaunchDarklyProvider while the session loads", () => {
 
   it("hands the resolved session to LaunchDarkly without remounting the page", () => {
     const { rerender } = render(
-      <LaunchDarklyProvider>
+      <FeatureFlagProvider>
         <HireProbe />
-      </LaunchDarklyProvider>,
+      </FeatureFlagProvider>,
     );
     const probe = screen.getByText(/^hire:/);
 
     auth.state = { user: { id: "user-1" }, isUserLoading: false };
     rerender(
-      <LaunchDarklyProvider>
+      <FeatureFlagProvider>
         <HireProbe />
-      </LaunchDarklyProvider>,
+      </FeatureFlagProvider>,
     );
 
     expect(ld.props.at(-1)?.context).toMatchObject({
@@ -126,9 +131,9 @@ describe("LaunchDarklyProvider while the session loads", () => {
 describe("flag resolution timeout while LaunchDarkly is deferred", () => {
   function renderProbe() {
     return render(
-      <LaunchDarklyProvider>
+      <FeatureFlagProvider>
         <HireProbe />
-      </LaunchDarklyProvider>,
+      </FeatureFlagProvider>,
     );
   }
 
@@ -161,20 +166,20 @@ describe("flag resolution timeout while LaunchDarkly is deferred", () => {
 
     auth.state = { user: { id: "user-1" }, isUserLoading: false };
     rerender(
-      <LaunchDarklyProvider>
+      <FeatureFlagProvider>
         <HireProbe />
-      </LaunchDarklyProvider>,
+      </FeatureFlagProvider>,
     );
     act(() => {
       vi.advanceTimersByTime(4_000);
     });
     expect(screen.getByText("hire: false ready: false")).toBeDefined();
 
-    ld.flags = { "hire-experts": true };
+    ld.flags = { "generic-trigger-agents": true };
     rerender(
-      <LaunchDarklyProvider>
+      <FeatureFlagProvider>
         <HireProbe />
-      </LaunchDarklyProvider>,
+      </FeatureFlagProvider>,
     );
 
     expect(screen.getByText("hire: true ready: true")).toBeDefined();
@@ -185,9 +190,9 @@ describe("flag resolution timeout while LaunchDarkly is deferred", () => {
 
     auth.state = { user: null, isUserLoading: false };
     rerender(
-      <LaunchDarklyProvider>
+      <FeatureFlagProvider>
         <HireProbe />
-      </LaunchDarklyProvider>,
+      </FeatureFlagProvider>,
     );
     act(() => {
       vi.advanceTimersByTime(4_999);

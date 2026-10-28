@@ -34,7 +34,11 @@ export function RevealGroup({
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={className}>{children}</div>;
+  return (
+    <div data-slot="reveal-group" className={className}>
+      {children}
+    </div>
+  );
 }
 
 // Each item drives its own reveal instead of inheriting a variant from the
@@ -55,6 +59,7 @@ export function RevealItem({
 
   return (
     <motion.div
+      data-slot="reveal-item"
       variants={
         prefersReducedMotion ? ITEM_REDUCED : blur ? ITEM : ITEM_UNBLURRED
       }

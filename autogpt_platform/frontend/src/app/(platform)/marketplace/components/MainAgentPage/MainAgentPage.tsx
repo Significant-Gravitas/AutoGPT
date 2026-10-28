@@ -1,6 +1,6 @@
 "use client";
 import { okData } from "@/app/api/helpers";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { Button } from "@/components/atoms/Button/Button";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -40,8 +40,8 @@ export function MainAgentPage({ params }: Props) {
           <div className="flex min-h-[400px] items-center justify-center">
             <ErrorCard
               isSuccess={false}
-              responseError={{ message: "Failed to load agent data" }}
-              context="agent page"
+              responseError={{ message: "Failed to load workflow data" }}
+              context="workflow page"
               onRetry={() => window.location.reload()}
               className="w-full max-w-md"
             />
@@ -59,8 +59,8 @@ export function MainAgentPage({ params }: Props) {
           <div className="flex min-h-[400px] items-center justify-center">
             <ErrorCard
               isSuccess={false}
-              responseError={{ message: "Agent not found" }}
-              context="agent page"
+              responseError={{ message: "Workflow not found" }}
+              context="workflow page"
             />
           </div>
         </main>
@@ -100,7 +100,6 @@ export function MainAgentPage({ params }: Props) {
           <div className="w-full lg:w-2/5">
             <AgentInfo
               user={user}
-              agentId={agentData.active_version_id ?? "–"}
               name={agentData.agent_name ?? ""}
               creator={agentData.creator ?? ""}
               creatorAvatar={agentData.creator_avatar ?? ""}

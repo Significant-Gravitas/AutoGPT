@@ -42,6 +42,7 @@ from pydantic_core import (
 from typing_extensions import TypedDict
 
 from backend.data.onboarding_steps import OnboardingStep
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import ExecutionFailureReason
 from backend.util.json import loads as json_loads
@@ -493,11 +494,6 @@ class OAuthState(BaseModel):
     initiated_by_api_key_id: Optional[str] = None
     """ID of the API key that initiated this OAuth flow"""
 
-    @property
-    def is_external(self) -> bool:
-        """Whether this OAuth flow was initiated via external API."""
-        return self.callback_url is not None
-
 
 class UserMetadata(BaseModel):
     integration_credentials: list[Credentials] = Field(default_factory=list)
@@ -783,7 +779,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         except KeyError:
             raise ValueError(
                 f"Model '{discriminator_value}' is not supported. "
-                "It may have been deprecated. Please update your agent configuration."
+                "It may have been deprecated. Please update your workflow configuration."
             )
 
         supported_types = self.supported_types
@@ -873,19 +869,22 @@ class AutoTopUpConfig(BaseModel):
     """Threshold to trigger auto top up."""
 
 
-class UserTransaction(BaseModel):
+class UserCreditTransaction(BaseModel):
     transaction_key: str = ""
     transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
     transaction_type: CreditTransactionType = CreditTransactionType.USAGE
     amount: int = 0
-    running_balance: int = 0
-    current_balance: int = 0
     description: str | None = None
     usage_graph_id: str | None = None
     usage_execution_id: str | None = None
     usage_node_count: int = 0
     usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
     user_id: str
+
+
+class UserCreditTransactionAdminView(UserCreditTransaction):
+    running_balance: int = 0
+    current_balance: int = 0
     user_email: str | None = None
     reason: str | None = None
     admin_email: str | None = None
@@ -909,21 +908,11 @@ class CreditHistoryRelatedExecution(BaseModel):
     amount: int | None = None
 
 
-class CreditTransactionItem(BaseModel):
+class CreditTransactionItem(UserCreditTransaction):
     id: str = ""
-    transaction_key: str = ""
-    transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
-    transaction_type: CreditTransactionType = CreditTransactionType.USAGE
-    amount: int = 0
-    description: str | None = None
-    usage_graph_id: str | None = None
-    usage_execution_id: str | None = None
     usage_chat_session_id: str | None = Field(
         default=None, description="The AutoPilot chat the usage came from"
     )
-    usage_node_count: int = 0
-    usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
-    user_id: str
     activity_type: Literal["agent_run", "copilot_tools", "block_usage", "other"] = (
         "other"
     )
@@ -1112,6 +1101,8 @@ class UserExecutionSummaryStats(BaseModel):
 
 class UserOnboarding(BaseModel):
     userId: str
+    wizardProgress: OnboardingWizardProgress | None = None
+    wizardRevision: int = 0
     # Steps are typed as ``OnboardingStep`` so the API exposes a typed enum to
     # the frontend (the DB stores plain strings). The rename migration keeps
     # existing rows within the enum, and writes are validated on the completion

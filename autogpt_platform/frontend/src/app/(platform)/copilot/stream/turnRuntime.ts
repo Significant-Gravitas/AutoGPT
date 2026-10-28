@@ -6,7 +6,11 @@ import type { FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
 import { streamRequestBody } from "../copilotStreamTransport";
-import { getCopilotAuthHeaders, isEngineSwitchPart } from "../helpers";
+import {
+  CopilotAuthError,
+  getCopilotAuthHeaders,
+  isEngineSwitchPart,
+} from "../helpers";
 import type { CopilotLlmModel } from "../store";
 import { isTokenDevtoolEnabled } from "../tokenDevtool/gate";
 import { createUsageCapturingFetch } from "../tokenDevtool/usageTap";
@@ -14,7 +18,7 @@ import { fetchSse, type SseFrame } from "./sseClient";
 import { TextReveal } from "./textReveal";
 import { applyEntry, type StreamEntry, type WireChunk } from "./turnConverter";
 import { seedTurnLog } from "./turnLog";
-import { diffRows, sha256Hex } from "./turnShadow";
+import { diffRows, formatDiffs, sha256Hex } from "./turnShadow";
 import {
   checkpointOf,
   closeBlocks,
@@ -47,12 +51,21 @@ export const LIVENESS_MS = 30_000;
 /** The load balancer cuts an SSE at 30 minutes; rotate before it does. */
 export const ROTATE_AFTER_MS = 25 * 60_000;
 const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 16_000];
+const TOKEN_RETRY_MS = 1_000;
 const ANOMALY_RETRY_MS = 30_000;
 const INDICATOR_AFTER_FAILURES = 2;
 const CATCHING_UP_AFTER_MS = 2_000;
 const TICK_MS = 5_000;
 const EMIT_THROTTLE_MS = 30;
 const FROZEN_POLL_MS = 10_000;
+const QUEUED_POLL_MS = 10_000;
+// A tab away this long re-reads an idle chat on return, as the flag-off chat does.
+const WAKE_REREAD_MS = 30_000;
+// A phone often wakes before its network does.
+const REREAD_RETRY_MS = [2_000, 4_000, 8_000];
+// The backend marks a queued turn running a moment before its stream exists;
+// past this, the stream is not coming.
+const QUEUE_START_GRACE_MS = 2 * 60_000;
 const FINISH_PROBE_MS = 500;
 // A server-started continuation (engine switch, approval wake) is dispatched
 // after the turn ends; its meta can lag the finish by a few seconds.
@@ -97,6 +110,7 @@ export interface RuntimeSnapshot {
 export interface SessionView {
   messages?: readonly unknown[] | null;
   has_more_messages?: boolean;
+  chat_status?: string | null;
   active_stream?: {
     turn_id: string;
     checkpoint?: TurnCheckpoint | null;
@@ -132,15 +146,28 @@ interface Connection {
   turnId: string | null;
   closedByClient: boolean;
   syntheticError: string | null;
+  /** A send's own prompt segment, by key. */
+  prompt: string | null;
+  /** The backend queued this send behind the session's running turn. */
+  followUp: boolean;
 }
 
 /** What the classification needs to know about a connection that is gone. */
-type Lost = Pick<Connection, "turnId" | "openedAt" | "syntheticError">;
+type Lost = Pick<
+  Connection,
+  "turnId" | "openedAt" | "syntheticError" | "prompt"
+>;
 
 type ConnectionEnd =
   | { kind: "closed" }
   | { kind: "refused"; status: number; body: unknown }
-  | { kind: "failed"; error: unknown };
+  | { kind: "failed"; error: unknown }
+  | { kind: "denied"; error: CopilotAuthError };
+
+interface QueueWatch {
+  timer: ReturnType<typeof setTimeout> | null;
+  claimedAt: number | null;
+}
 
 interface TurnBookkeeping {
   verified: number;
@@ -161,6 +188,8 @@ export class TurnRuntime {
   private slot: Connection | null = null;
   private rotating: Connection | null = null;
   private failures = 0;
+  // 401/403s since the last frame; the first gets a fresh token, the second ends the turn.
+  private denials = 0;
   private anomalyShown = false;
   private notice: RuntimeNotice = null;
   private error: Error | null = null;
@@ -178,6 +207,9 @@ export class TurnRuntime {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private frozenTimer: ReturnType<typeof setInterval> | null = null;
+  private queueWatch: QueueWatch | null = null;
+  // Stopped while queued: its turn is not followed until the queue lets go.
+  private queueDeclined = false;
   private emitTimer: ReturnType<typeof setTimeout> | null = null;
   private reveal = new TextReveal(
     () => this.segments,
@@ -188,6 +220,8 @@ export class TurnRuntime {
   private handlers: RuntimeHandlers = {};
   private boundFetchSession: (() => Promise<SessionView | null>) | null = null;
   private disposed = false;
+  private hiddenAt: number | null = null;
+  private rereadTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     readonly sessionId: string,
@@ -243,6 +277,7 @@ export class TurnRuntime {
     if (this.isPostPending()) return;
     this.stopped = false;
     this.suppressAttach = false;
+    this.queueDeclined = false;
     this.error = null;
     this.providerFailure = null;
     const message = userMessage(`local:${uuidv4({})}`, input);
@@ -254,6 +289,7 @@ export class TurnRuntime {
       method: "POST",
       body: JSON.stringify(body),
       extraHeaders: { "Content-Type": "application/json" },
+      prompt: message.id,
     });
   }
 
@@ -264,6 +300,8 @@ export class TurnRuntime {
     this.clearRetry();
     this.stopped = true;
     this.suppressAttach = true;
+    this.queueDeclined = true;
+    this.endQueueWatch();
     this.notice = null;
     this.reveal.clear();
     if (running) {
@@ -290,7 +328,10 @@ export class TurnRuntime {
     this.emit();
   }
 
-  /** The backend refused the send before persisting it (a 429). */
+  /**
+   * Drop the prompt drawn at send that will not be its own turn: the backend
+   * refused it (a 429) or queued it behind the running turn.
+   */
   dropUnsentUserRow() {
     const last = this.segments[this.segments.length - 1];
     if (last?.kind !== "user" || last.origin !== "sent") return;
@@ -324,6 +365,7 @@ export class TurnRuntime {
       this.ensureConnected();
     }
     if (!running && !this.isPostPending() && !active) this.settleTail(view);
+    this.followQueue(view);
     this.emitNow();
   }
 
@@ -344,11 +386,20 @@ export class TurnRuntime {
 
   /** An answered approval starts the chat's next turn on the server; attach to it. */
   followBackendTurn() {
+    // Like a send, it asks for a turn, so an earlier Stop no longer holds. A
+    // stopped turn may still run; the approval's starts after it ends.
+    if (this.stopped) this.followPending = true;
+    this.stopped = false;
+    this.suppressAttach = false;
+    this.queueDeclined = false;
     if (this.runningTurn() || this.isPostPending()) {
       this.followPending = true;
       return;
     }
-    void this.probe(null, CONTINUATION_PROBES, true);
+    const last = this.segments.findLast(
+      (s): s is TurnSegment => s.kind === "turn",
+    );
+    void this.probe(last?.log.turnId ?? null, CONTINUATION_PROBES, true);
   }
 
   dispose() {
@@ -356,10 +407,13 @@ export class TurnRuntime {
     this.abortConnections();
     this.clearRetry();
     this.reveal.dispose();
+    this.endQueueWatch();
     for (const timer of [this.tickTimer, this.frozenTimer]) {
       if (timer) clearInterval(timer);
     }
-    if (this.emitTimer) clearTimeout(this.emitTimer);
+    for (const timer of [this.emitTimer, this.rereadTimer]) {
+      if (timer) clearTimeout(timer);
+    }
     if (typeof window !== "undefined") {
       document.removeEventListener("visibilitychange", this.onVisible);
       window.removeEventListener("pageshow", this.onVisible);
@@ -399,7 +453,12 @@ export class TurnRuntime {
     kind: Connection["kind"],
     turnId: string | null,
     url: string,
-    init: { method?: string; body?: string; extraHeaders?: object } = {},
+    init: {
+      method?: string;
+      body?: string;
+      extraHeaders?: object;
+      prompt?: string;
+    } = {},
     asRotation = false,
   ) {
     const now = Date.now();
@@ -413,6 +472,8 @@ export class TurnRuntime {
       turnId,
       closedByClient: false,
       syntheticError: null,
+      prompt: init.prompt ?? null,
+      followUp: false,
     };
     if (asRotation) this.rotating = conn;
     else {
@@ -423,7 +484,7 @@ export class TurnRuntime {
     this.emit();
     let end: ConnectionEnd;
     try {
-      const headers = await this.deps.headers();
+      const headers = await this.authHeaders(conn);
       const result = await fetchSse(
         url,
         {
@@ -439,9 +500,25 @@ export class TurnRuntime {
         ? { kind: "closed" }
         : { kind: "refused", status: result.status, body: result.body };
     } catch (error) {
-      end = { kind: "failed", error };
+      end =
+        error instanceof CopilotAuthError
+          ? { kind: "denied", error }
+          : { kind: "failed", error };
     }
     this.onEnd(conn, end);
+  }
+
+  // The token action answers "no token" for a sign-out and for a failed lookup
+  // alike, so a connection asks once more before it counts as signed out.
+  private async authHeaders(conn: Connection) {
+    try {
+      return await this.deps.headers();
+    } catch (error) {
+      if (!(error instanceof CopilotAuthError)) throw error;
+      await sleep(TOKEN_RETRY_MS);
+      if (conn.controller.signal.aborted) throw error;
+      return this.deps.headers();
+    }
   }
 
   private onFrame(conn: Connection, frame: SseFrame) {
@@ -464,6 +541,11 @@ export class TurnRuntime {
       this.applyFrom(conn, frame.entry);
     } else if (frame.kind === "synthetic" && frame.chunk.type === "error") {
       conn.syntheticError = str(frame.chunk.errorText);
+    } else if (
+      frame.kind === "synthetic" &&
+      frame.chunk.type === "data-follow-up-queued"
+    ) {
+      conn.followUp = true;
     }
     this.emit();
   }
@@ -517,11 +599,18 @@ export class TurnRuntime {
     if (conn.closedByClient) return;
     const seg = conn.turnId ? this.turnFor(conn.turnId) : null;
     if (seg && (seg.ended || seg.stopped || seg.frozen)) return;
+    if (end.kind === "denied") {
+      this.giveUp(end.error);
+      return;
+    }
     if (end.kind === "refused" && conn.kind === "post") {
       this.refusedSend(end);
       return;
     }
     if (!seg) {
+      // The page shows a queued follow-up as a chip; the prompt drawn at
+      // send would sit above the running turn and take that turn's prompt row.
+      if (conn.followUp) this.dropUnsentUserRow();
       this.findLostTurn(conn, end);
       return;
     }
@@ -529,6 +618,8 @@ export class TurnRuntime {
       if (end.status === 409) void this.resync(seg.key, checkpointOf(end.body));
       else if (end.status === 410 || end.status === 204)
         void this.expire(seg.key);
+      else if (end.status === 401 || end.status === 403) this.denied(seg, end);
+      else if (end.status === 404) this.giveUp(new ChatUnavailableError());
       else this.retry(conn);
       return;
     }
@@ -555,7 +646,7 @@ export class TurnRuntime {
    * rotation-age cuts resume silently; only a run of failures while the tab
    * is visible and online reaches the one alarming toast.
    */
-  private retry(lost: Lost) {
+  private retry(lost: Lost, end: ConnectionEnd = { kind: "closed" }) {
     const running = this.runningTurn();
     if (!running && lost.turnId !== null) return;
     const offline =
@@ -564,7 +655,7 @@ export class TurnRuntime {
       lost.turnId === null &&
       (offline || document.visibilityState === "hidden")
     ) {
-      this.unresolvedPost = { lost, end: { kind: "closed" } };
+      this.unresolvedPost = { lost, end };
     }
     if (document.visibilityState === "hidden") return;
     if (offline) {
@@ -587,17 +678,63 @@ export class TurnRuntime {
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
       if (this.runningTurn()) this.ensureConnected();
-      else void this.recoverUnknownTurn(lost, { kind: "closed" });
+      else void this.recoverUnknownTurn(lost, end);
     }, delay);
     this.emitNow();
   }
 
   private refusedSend(end: Extract<ConnectionEnd, { kind: "refused" }>) {
-    const text =
-      typeof end.body === "string" ? end.body : JSON.stringify(end.body);
-    this.error = new Error(text || `Request failed with status ${end.status}`);
+    if (isMessageTooLong(end.body)) {
+      this.error = new MessageTooLongError(refusalText(end), end.status);
+    } else {
+      this.reportIfUnexpected(end);
+      this.error = new SendRefusedError(refusalText(end), end.status);
+    }
     this.emitNow();
     this.handlers.onError?.(this.error, null);
+  }
+
+  // The first refusal may be a token that expired in flight; refused again,
+  // a 401 means signed out and a 403 means no access.
+  private denied(
+    seg: TurnSegment,
+    end: Extract<ConnectionEnd, { kind: "refused" }>,
+  ) {
+    this.denials += 1;
+    if (this.denials === 1) this.resume(seg);
+    else if (end.status === 401) this.giveUp(new CopilotAuthError());
+    else {
+      this.reportIfUnexpected(end);
+      this.giveUp(new SendRefusedError(refusalText(end), end.status));
+    }
+  }
+
+  // The banner tells the user we were notified of these.
+  private reportIfUnexpected(end: Extract<ConnectionEnd, { kind: "refused" }>) {
+    if (!isUnexpectedRefusal(end.status)) return;
+    this.deps.report("refused", {
+      status: end.status,
+      body: reportableBody(end.body),
+    });
+  }
+
+  /** A refusal no retry can change: end the turn where it stands and say why. */
+  private giveUp(error: Error) {
+    const running = this.runningTurn();
+    this.abortConnections();
+    this.clearRetry();
+    this.unresolvedPost = null;
+    if (running) {
+      this.updateTurn(running.key, (seg) => ({
+        ...seg,
+        ended: true,
+        log: closeBlocks(seg.log),
+      }));
+    }
+    this.resetFailures();
+    this.error = error;
+    this.emitNow();
+    this.handlers.onError?.(error, null);
   }
 
   // A send whose stream ended before naming its turn: the session view says
@@ -605,6 +742,10 @@ export class TurnRuntime {
   private findLostTurn(lost: Lost, end: ConnectionEnd) {
     const offline =
       typeof navigator !== "undefined" && navigator.onLine === false;
+    if (offline) {
+      this.notice = "offline";
+      this.emitNow();
+    }
     if (document.visibilityState === "hidden" || offline)
       this.unresolvedPost = { lost, end };
     else void this.recoverUnknownTurn(lost, end);
@@ -616,7 +757,7 @@ export class TurnRuntime {
     for (let i = 0; i < CONTINUATION_PROBES; i++) {
       const view = await this.fetchView();
       if (!view) {
-        this.retry(lost);
+        this.retry(lost, end);
         return;
       }
       const attaching = this.wouldAttach(view);
@@ -626,15 +767,36 @@ export class TurnRuntime {
         return;
       }
       if (this.disposed || this.stopped) return;
+      // The session reads "running" from before the prompt row is written
+      // until the turn is released, so a landed prompt outside it is final.
+      if (
+        this.lostSendLanded(lost.prompt) &&
+        (this.runningTurn() || view.chat_status !== "running")
+      )
+        break;
       await sleep(FINISH_PROBE_MS);
     }
-    if (end.kind === "failed" || lost.syntheticError) {
+    this.resetFailures();
+    if (
+      !this.lostSendLanded(lost.prompt) &&
+      (end.kind === "failed" || lost.syntheticError)
+    ) {
       this.error =
         end.kind === "failed" && end.error instanceof Error
           ? end.error
           : new Error(lost.syntheticError ?? "The connection closed early.");
-      this.emitNow();
     }
+    this.emitNow();
+  }
+
+  // The send arrived: its prompt took a row, or the turn after it is followed.
+  private lostSendLanded(promptKey: string | null) {
+    const index = this.segments.findIndex((s) => s.key === promptKey);
+    const prompt = this.segments[index];
+    if (prompt?.kind !== "user") return false;
+    return (
+      prompt.sequence !== null || this.segments[index + 1]?.kind === "turn"
+    );
   }
 
   // ── The turn's lifecycle ───────────────────────────────────────────────
@@ -659,6 +821,7 @@ export class TurnRuntime {
       start,
     );
     this.segments.push(seg);
+    this.error = null;
     this.resume(seg);
   }
 
@@ -700,6 +863,53 @@ export class TurnRuntime {
     }
   }
 
+  // A turn queued behind the user's running cap starts when another of their
+  // turns ends, which nothing tells this tab; watch the view until it runs.
+  private followQueue(view: SessionView) {
+    const status = view.chat_status;
+    if (status !== "queued" && status !== "running") this.queueDeclined = false;
+    const queued = status === "queued" && !view.active_stream;
+    const claimed =
+      status === "running" && !view.active_stream && !!this.queueWatch;
+    if (this.queueDeclined || (!queued && !claimed)) {
+      this.endQueueWatch();
+      return;
+    }
+    const watch = this.queueWatch ?? this.startQueueWatch();
+    if (!claimed) {
+      watch.claimedAt = null;
+      return;
+    }
+    watch.claimedAt ??= Date.now();
+    const waited = Date.now() - watch.claimedAt;
+    if (waited < QUEUE_START_GRACE_MS) return;
+    this.deps.report("queue_start_stalled", { waitedMs: waited });
+    this.endQueueWatch();
+  }
+
+  private startQueueWatch() {
+    const watch: QueueWatch = { timer: null, claimedAt: null };
+    this.queueWatch = watch;
+    this.pollQueue(watch);
+    return watch;
+  }
+
+  // Scheduled after each read settles, so a slow read never overlaps the next.
+  private pollQueue(watch: QueueWatch) {
+    watch.timer = setTimeout(async () => {
+      watch.timer = null;
+      const view = await this.fetchView();
+      if (this.queueWatch !== watch || this.disposed) return;
+      if (view) this.observe(view);
+      if (this.queueWatch === watch) this.pollQueue(watch);
+    }, QUEUED_POLL_MS);
+  }
+
+  private endQueueWatch() {
+    if (this.queueWatch?.timer) clearTimeout(this.queueWatch.timer);
+    this.queueWatch = null;
+  }
+
   /**
    * Rebuild the turn from the DB rows at a checkpoint and tail the stream
    * from there: a trimmed stream, a protocol error, a digest mismatch. A
@@ -723,6 +933,7 @@ export class TurnRuntime {
         turnId: seg.log.turnId,
         openedAt: Date.now(),
         syntheticError: null,
+        prompt: null,
       });
       return;
     }
@@ -757,6 +968,7 @@ export class TurnRuntime {
         turnId: seg.log.turnId,
         openedAt: Date.now(),
         syntheticError: null,
+        prompt: null,
       });
       return;
     }
@@ -849,7 +1061,7 @@ export class TurnRuntime {
       this.deps.report("finish", {
         turnId: seg.log.turnId,
         cursor: seg.log.cursor,
-        diffs: drift,
+        diffs: formatDiffs(drift),
       });
     }
     this.updateTurn(seg.key, (s) => reconcileTurn(s, persisted));
@@ -948,7 +1160,13 @@ export class TurnRuntime {
   // ── Plumbing ───────────────────────────────────────────────────────────
 
   private onVisible = () => {
-    if (document.visibilityState === "visible") this.wake();
+    if (document.visibilityState === "hidden") {
+      this.hiddenAt ??= Date.now();
+      return;
+    }
+    const away = this.hiddenAt === null ? 0 : Date.now() - this.hiddenAt;
+    this.hiddenAt = null;
+    this.wake(away);
   };
 
   private onOnline = () => {
@@ -965,12 +1183,34 @@ export class TurnRuntime {
     }
   };
 
-  private wake() {
+  private wake(away = 0) {
     const unresolved = this.unresolvedPost;
     this.unresolvedPost = null;
     if (unresolved && !this.runningTurn())
       void this.recoverUnknownTurn(unresolved.lost, unresolved.end);
+    // A send still waiting for its turn is otherwise given up only at the next tick.
+    else if (this.isPostPending()) this.dropIfSilent();
+    else if (away > WAKE_REREAD_MS && this.isIdle() && !this.recovering)
+      void this.reread();
     else this.ensureConnected();
+  }
+
+  // Another tab, device or the server may have moved an idle chat on meanwhile.
+  private async reread(attempt = 0) {
+    if (this.rereadTimer) clearTimeout(this.rereadTimer);
+    this.rereadTimer = null;
+    const view = await this.fetchView();
+    if (this.disposed) return;
+    if (view) {
+      this.observe(view);
+      return;
+    }
+    const delay = REREAD_RETRY_MS[attempt];
+    if (delay === undefined) return;
+    this.rereadTimer = setTimeout(() => {
+      this.rereadTimer = null;
+      if (this.isIdle()) void this.reread(attempt + 1);
+    }, delay);
   }
 
   private ensureTicking() {
@@ -986,17 +1226,24 @@ export class TurnRuntime {
       this.tickTimer = null;
       return;
     }
-    if (!slot || document.visibilityState === "hidden") return;
-    const now = Date.now();
-    if (now - slot.lastFrameAt >= LIVENESS_MS) {
-      slot.closedByClient = true;
-      slot.controller.abort();
-      this.slot = null;
-      if (slot.turnId === null) this.findLostTurn(slot, { kind: "closed" });
-      else this.retry(slot);
-      return;
-    }
-    if (!this.rotating && now - slot.openedAt >= ROTATE_AFTER_MS) this.rotate();
+    if (!slot || this.dropIfSilent()) return;
+    if (document.visibilityState === "hidden") return;
+    if (!this.rotating && Date.now() - slot.openedAt >= ROTATE_AFTER_MS)
+      this.rotate();
+  }
+
+  // The slot is cleared before the recovery starts, so the tick and a wake
+  // never both recover one connection.
+  private dropIfSilent() {
+    const slot = this.slot;
+    if (!slot || document.visibilityState === "hidden") return false;
+    if (Date.now() - slot.lastFrameAt < LIVENESS_MS) return false;
+    slot.closedByClient = true;
+    slot.controller.abort();
+    this.slot = null;
+    if (slot.turnId === null) this.findLostTurn(slot, { kind: "closed" });
+    else this.retry(slot);
+    return true;
   }
 
   // Rebuilding from the DB view: no other trigger reconnects meanwhile, and
@@ -1079,6 +1326,7 @@ export class TurnRuntime {
 
   private resetFailures() {
     this.failures = 0;
+    this.denials = 0;
     this.anomalyShown = false;
     if (this.notice === "reconnecting" || this.notice === "offline") {
       this.notice = null;
@@ -1241,6 +1489,80 @@ function userMessage(id: string, input: SendInput): UIMessage {
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+// JSON stays as sent, since the error handler reads its detail; a proxy's
+// HTML page or an empty body is replaced by words.
+function refusalText({ status, body }: { status: number; body: unknown }) {
+  if (body !== null && typeof body !== "string") return JSON.stringify(body);
+  if (body && !body.trimStart().startsWith("<")) return body;
+  return `Couldn't reach the server (HTTP ${status}).`;
+}
+
+/**
+ * A 4xx the app never provokes on purpose: not a sign-in (401), a gone chat
+ * (404), a usage limit (429), or a timeout or busy session a resend can pass.
+ */
+export function isUnexpectedRefusal(status: number) {
+  return status >= 400 && status < 500 && !EXPECTED_4XX.has(status);
+}
+
+// 402: the account has no plan, a state the app expects and offers plans for.
+const EXPECTED_4XX = new Set([401, 402, 404, 408, 409, 425, 429]);
+
+/** A send the server refused; its status says whether a resend can help. */
+export class SendRefusedError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "SendRefusedError";
+  }
+}
+
+// Sentry flattens a 422's error objects to "[Object]"; keep each one's place and
+// reason as a line, and leave out its `input`, which can hold the user's message.
+function reportableBody(body: unknown) {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  if (!Array.isArray(detail)) return body;
+  return {
+    ...(body as object),
+    detail: detail.map(
+      (item: { loc?: unknown; msg?: unknown } | null) =>
+        `${Array.isArray(item?.loc) ? item.loc.join(".") : ""}: ${String(item?.msg)}`,
+    ),
+  };
+}
+
+// FastAPI's 422 for a message over the request model's max_length; the composer has no cap.
+function isMessageTooLong(body: unknown) {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  return (
+    Array.isArray(detail) &&
+    detail.some(
+      (item: { type?: unknown; loc?: unknown }) =>
+        item?.type === "string_too_long" &&
+        Array.isArray(item.loc) &&
+        item.loc.at(-1) === "message",
+    )
+  );
+}
+
+/** A send refused because the message is longer than the server takes. */
+export class MessageTooLongError extends SendRefusedError {
+  constructor(message: string, status: number) {
+    super(message, status);
+    this.name = "MessageTooLongError";
+  }
+}
+
+/** The session the chat follows is gone. */
+export class ChatUnavailableError extends Error {
+  constructor() {
+    super("This chat is no longer available.");
+    this.name = "ChatUnavailableError";
+  }
 }
 
 function sleep(ms: number) {

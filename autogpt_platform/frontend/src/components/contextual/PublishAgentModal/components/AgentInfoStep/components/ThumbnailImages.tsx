@@ -54,15 +54,15 @@ export function ThumbnailImages({
           <Text variant="body-medium" as="h3" className="text-textBlack">
             Media
           </Text>
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" className="text-foreground-tertiary">
             {images.length}/5 images
           </Text>
         </div>
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-foreground-tertiary">
           The selected image is submitted first and appears as the marketplace
           thumbnail.
         </Text>
-        {errorMessage && <p className="text-sm text-red-500">{errorMessage}</p>}
+        {errorMessage && <p className="text-sm text-error">{errorMessage}</p>}
       </div>
 
       <div
@@ -76,7 +76,8 @@ export function ThumbnailImages({
               aria-disabled={isUploading}
               data-testid="thumbnail-add-image-empty"
               className={cn(
-                "inline-flex h-[2.25rem] min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950",
+                // TODO(tokens): no exact role for border-zinc-700 #505057, hover:border-zinc-700 #505057; #505057 is foreground-body, a text colour
+                "inline-flex h-[2.25rem] min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-foreground-base transition-colors hover:border-zinc-700 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus",
                 isUploading && "pointer-events-none opacity-60",
               )}
             >
@@ -116,10 +117,11 @@ export function ThumbnailImages({
                     type="button"
                     onClick={() => handleImageSelect(src)}
                     className={cn(
+                      // TODO(tokens): no exact role for focus-visible:ring-zinc-900 #2C2C30; #2C2C30 is action-hover, the button fill
                       "relative aspect-video h-28 w-44 overflow-hidden rounded-[10px] border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2",
                       selectedImage === src
-                        ? "border-zinc-900"
-                        : "border-transparent hover:border-zinc-300",
+                        ? "border-action-hover"
+                        : "border-transparent hover:border-border-strong",
                     )}
                     aria-pressed={selectedImage === src}
                     aria-label={`Select thumbnail ${index + 1}`}
@@ -139,14 +141,14 @@ export function ThumbnailImages({
                       e.stopPropagation();
                       handleRemoveImage(index);
                     }}
-                    className="absolute right-1.5 top-1.5 z-30 inline-flex size-7 cursor-pointer items-center justify-center rounded-full bg-zinc-900/85 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-zinc-900"
+                    className="absolute right-1.5 top-1.5 z-30 inline-flex size-7 cursor-pointer items-center justify-center rounded-full bg-action-hover/85 text-action-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-action-hover"
                     aria-label={`Remove image ${index + 1}`}
                     data-testid={`thumbnail-remove-${index}`}
                   >
                     <Icon icon={Cancel01Icon} size={14} />
                   </button>
                   {index === 0 ? (
-                    <span className="mt-1 block text-center text-[11px] font-medium text-zinc-500">
+                    <span className="mt-1 block text-center text-caption-sm font-medium leading-inherit text-foreground-tertiary">
                       Thumbnail
                     </span>
                   ) : null}

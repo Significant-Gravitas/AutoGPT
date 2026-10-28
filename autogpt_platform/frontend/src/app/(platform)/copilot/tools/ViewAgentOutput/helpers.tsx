@@ -84,7 +84,7 @@ function getAgentIdentifierText(
 ): string | null {
   if (!input) return null;
   const libraryId = input.library_agent_id?.trim();
-  if (libraryId) return `Library agent ${libraryId}`;
+  if (libraryId) return `Library workflow ${libraryId}`;
   const slug = input.store_slug?.trim();
   if (slug) return slug;
   const name = input.agent_name?.trim();
@@ -104,22 +104,22 @@ export function getAnimationText(part: {
   switch (part.state) {
     case "input-streaming":
     case "input-available":
-      return `Retrieving agent output${agentText}`;
+      return `Retrieving workflow output${agentText}`;
     case "output-available": {
       const output = parseOutput(part.output);
-      if (!output) return `Retrieving agent output${agentText}`;
+      if (!output) return `Retrieving workflow output${agentText}`;
       if (isAgentOutputResponse(output)) {
         if (output.execution)
           return `Retrieved output (${output.execution.status})`;
-        return "Retrieved agent output";
+        return "Retrieved workflow output";
       }
       if (isNoResultsResponse(output)) return "No outputs found";
-      return "Error loading agent output";
+      return "Error loading workflow output";
     }
     case "output-error":
-      return "Error loading agent output";
+      return "Error loading workflow output";
     default:
-      return "Retrieving agent output";
+      return "Retrieving workflow output";
   }
 }
 
@@ -134,9 +134,10 @@ export function ToolIcon({
     <Icon
       icon={EyeIcon}
       size={14}
+      // TODO(tokens): no exact role for neutral-500 #737373, neutral-400 #A3A3A3
       className={
         isError
-          ? "text-red-500"
+          ? "text-error"
           : isStreaming
             ? "text-neutral-500"
             : "text-neutral-400"

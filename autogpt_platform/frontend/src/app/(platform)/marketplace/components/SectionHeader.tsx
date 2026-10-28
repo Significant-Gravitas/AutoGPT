@@ -38,19 +38,22 @@ export function SectionHeader({
     <div className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
       <div>
         {eyebrow ? (
-          <div className="mb-2.5 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-violet-600">
+          <div
+            // TODO(tokens): no exact role: text-violet-600 #7C3AED; no exact text token: tracking-[0.14em]
+            className="mb-2.5 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-violet-600"
+          >
             {eyebrowIcon}
             {eyebrow}
           </div>
         ) : null}
         <h2
           id={titleId}
-          className="text-3xl font-semibold tracking-[-0.02em] text-zinc-900"
+          className="text-3xl font-semibold tracking-heading text-foreground-strong"
         >
           {title}
         </h2>
         {subtitle ? (
-          <p className="mt-2 text-lg text-zinc-500">{subtitle}</p>
+          <p className="mt-2 text-lg text-foreground-tertiary">{subtitle}</p>
         ) : null}
       </div>
       {action || secondaryAction || filters || actions ? (
@@ -78,7 +81,7 @@ export function SectionHeader({
           {action ? (
             <Link
               href={action.href}
-              className="group flex items-center gap-1 pb-1 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
+              className="group flex items-center gap-1 pb-1 text-sm font-medium text-foreground-tertiary transition-colors hover:text-foreground-strong"
             >
               {action.label}
               <Icon

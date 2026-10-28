@@ -13,16 +13,12 @@ from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
 
 from .recording import saving_into
+from .scripted import UNSENT_MODEL_KEY
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def server():  # type: ignore[override]
     return None
-
-
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def graph_cleanup():  # type: ignore[override]
-    yield
 
 
 @pytest.fixture
@@ -45,7 +41,11 @@ def baseline_offline(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         baseline,
         "config",
         baseline.config.model_copy(
-            update={"use_e2b_sandbox": False, "use_local": False}
+            update={
+                "api_key": UNSENT_MODEL_KEY,
+                "use_e2b_sandbox": False,
+                "use_local": False,
+            }
         ),
     )
     for name, value in {
@@ -55,8 +55,8 @@ def baseline_offline(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         ),
         "_build_system_prompt": ("System prompt", None),
         "build_turn_budget_block": "",
-        "is_enabled_for_user": False,
-        "is_feature_enabled": False,
+        "_fetch_graphiti_context": "",
+        "enqueue_conversation_turn": None,
         "persist_and_record_usage": None,
         "download_transcript": None,
     }.items():

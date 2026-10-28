@@ -23,6 +23,8 @@ const meta = {
     },
     isCanceling: false,
     onCancel: function onCancel() {},
+    isResuming: false,
+    onResume: function onResume() {},
   },
 } satisfies Meta<typeof TrialStatus>;
 
@@ -30,6 +32,15 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Active: Story = {};
+
+export const CancelPending: Story = {
+  args: {
+    trial: {
+      ...meta.args.trial,
+      cancel_at_period_end: true,
+    },
+  },
+};
 
 export const Canceled: Story = {
   args: {

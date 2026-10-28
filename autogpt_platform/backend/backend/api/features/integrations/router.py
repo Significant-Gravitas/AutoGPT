@@ -2,13 +2,14 @@ import asyncio
 import logging
 import secrets
 from contextlib import suppress
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any, List, Literal, TypeGuard, get_args
 
 from autogpt_libs.auth import get_optional_user_id, get_user_id
 from fastapi import (
     APIRouter,
     Body,
+    Depends,
     HTTPException,
     Path,
     Query,
@@ -21,6 +22,10 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.copilot.rate_limit import enforce_payment_paywall, is_user_paywalled
+from backend.copilot.scheduled_chats.reconnect import (
+    resume_after_reconnect_in_background,
+)
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
@@ -33,7 +38,6 @@ from backend.data.integrations import (
     wait_for_webhook_event,
 )
 from backend.data.model import (
-    APIKeyCredentials,
     Credentials,
     CredentialsType,
     HostScopedCredentials,
@@ -42,8 +46,8 @@ from backend.data.model import (
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
+from backend.data.user import is_user_banned
 from backend.executor.utils import add_graph_execution
-from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
 from backend.integrations.codex.access import (
     enforce_codex_access_http,
     has_codex_access_for_discovery,
@@ -60,13 +64,13 @@ from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     create_mcp_oauth_handler,
 )
-from backend.integrations.managed_credentials import (
-    ensure_managed_credential,
-    ensure_managed_credentials,
-)
-from backend.integrations.managed_providers.ayrshare import AyrshareManagedProvider
+from backend.integrations.managed_credentials import ensure_managed_credentials
 from backend.integrations.managed_providers.ayrshare import (
-    settings_available as ayrshare_settings_available,
+    AyrshareNotConfiguredError,
+    AyrshareProvisioningError,
+)
+from backend.integrations.managed_providers.ayrshare import (
+    get_sso_link as get_ayrshare_sso_link,
 )
 from backend.integrations.mcp_catalog import get_mcp_catalog
 from backend.integrations.oauth import (
@@ -81,18 +85,18 @@ from backend.integrations.service_identity import (
     service_for_credential,
     service_for_provider,
 )
-from backend.integrations.webhooks import get_webhook_manager
+from backend.integrations.webhooks import get_webhook_manager, supports_webhooks
 from backend.util import product_analytics
 from backend.util.exceptions import (
     ExpertRunPausedError,
     GraphNotAccessibleError,
     GraphNotInLibraryError,
-    MissingConfigError,
     NeedConfirmation,
     NotFoundError,
 )
 from backend.util.settings import Settings
 
+from .airtable import router as airtable_router
 from .codex import (
     CODEX_LOGIN_STATE_KEY,
     build_device_login_cancel_url,
@@ -125,6 +129,7 @@ _THROTTLE_TIMEOUT_SECONDS = 1.0
 settings = Settings()
 router = APIRouter()
 router.include_router(codex_router, prefix="/codex")
+router.include_router(airtable_router, prefix="/airtable")
 
 creds_manager = IntegrationCredentialsManager()
 
@@ -135,7 +140,11 @@ class LoginResponse(BaseModel):
     cancel_url: str | None = None
 
 
-@router.get("/{provider}/login", summary="Initiate OAuth flow")
+@router.get(
+    "/{provider}/login",
+    summary="Initiate OAuth flow",
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def login(
     provider: Annotated[
         ProviderName, Path(title="The provider to initiate an OAuth flow for")
@@ -344,7 +353,11 @@ async def _complete_codex_login(
     return to_meta_response(credentials)
 
 
-@router.post("/{provider}/callback", summary="Exchange OAuth code for tokens")
+@router.post(
+    "/{provider}/callback",
+    summary="Exchange OAuth code for tokens",
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def callback(
     provider: Annotated[
         ProviderName, Path(title="The target provider for this OAuth exchange")
@@ -361,7 +374,10 @@ async def callback(
     if provider == ProviderName.CODEX:
         await enforce_codex_access_http(user_id)
         valid_state = await _verify_callback_state(user_id, state_token, provider)
-        return await _complete_codex_login(user_id, code, valid_state)
+        connected = await _complete_codex_login(user_id, code, valid_state)
+        # As every other connect: the fix for a chat paused on it.
+        resume_after_reconnect_in_background(user_id, provider.value)
+        return connected
 
     failure_class: product_analytics.OAuthExchangeFailureClass = "invalid_state"
     # Everything secret we send the provider, in case its error echoes it back.
@@ -403,6 +419,8 @@ async def callback(
         credential_type=credentials.type,
         method="oauth",
     )
+    # Reconnecting is the fix for a scheduled chat paused on this provider.
+    resume_after_reconnect_in_background(user_id, provider.value)
 
     return to_meta_response(credentials)
 
@@ -633,6 +651,7 @@ def _get_device_auth_handler(provider: ProviderName) -> BaseDeviceAuthHandler:
 
 @router.post(
     "/{provider}/device-auth/initiate",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Initiate device code OAuth flow",
 )
 async def device_auth_initiate(
@@ -711,6 +730,7 @@ async def device_auth_initiate(
 
 @router.post(
     "/{provider}/device-auth/poll",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Poll device code OAuth flow for completion",
 )
 async def device_auth_poll(
@@ -852,6 +872,7 @@ async def device_auth_poll(
             credential_type=credentials.type,
             method="device_code",
         )
+        resume_after_reconnect_in_background(user_id, provider.value)
         return DeviceAuthPollResponse(
             status="approved",
             credentials=to_meta_response(credentials),
@@ -1052,7 +1073,12 @@ async def get_picker_token(
     )
 
 
-@router.post("/{provider}/credentials", status_code=201, summary="Create Credentials")
+@router.post(
+    "/{provider}/credentials",
+    status_code=201,
+    summary="Create Credentials",
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def create_credentials(
     user_id: Annotated[str, Security(get_user_id)],
     provider: Annotated[
@@ -1093,6 +1119,7 @@ async def create_credentials(
         credential_type=credentials.type,
         method="manual",
     )
+    resume_after_reconnect_in_background(user_id, provider.value)
     return to_meta_response(credentials)
 
 
@@ -1154,15 +1181,43 @@ async def delete_credentials(
         )
 
     try:
-        await remove_all_webhooks_for_credentials(user_id, creds, force)
+        tokens_revoked = await delete_credentials_and_dependents(
+            request, user_id, creds, provider, force
+        )
     except NeedConfirmation as e:
         return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
 
+    return CredentialsDeletionResponse(revoked=tokens_revoked)
+
+
+async def delete_credentials_and_dependents(
+    request: Request,
+    user_id: str,
+    creds: Credentials,
+    provider: ProviderName,
+    force: bool,
+) -> bool | None:
+    """Delete a user's credentials with what hangs off them.
+
+    Removes the webhooks registered with them first, then the credentials,
+    then revokes OAuth tokens at the provider. The External API's delete
+    calls this too, so neither surface can leave a live webhook or token
+    behind. Returns whether the provider revoked the tokens (None when there
+    were none to revoke).
+
+    Raises:
+        NeedConfirmation: a webhook is still in use and ``force`` is False;
+            nothing has been deleted.
+    """
+    await remove_all_webhooks_for_credentials(user_id, creds, force)
+
     tokens_revoked = None
     if provider == ProviderName.CODEX:
-        tokens_revoked = await revoke_codex_credentials(creds_manager, user_id, cred_id)
+        tokens_revoked = await revoke_codex_credentials(
+            creds_manager, user_id, creds.id
+        )
     else:
-        await creds_manager.delete(user_id, cred_id)
+        await creds_manager.delete(user_id, creds.id)
 
     if isinstance(creds, OAuth2Credentials) and provider != ProviderName.CODEX:
         if provider_matches(provider.value, ProviderName.MCP.value):
@@ -1181,7 +1236,7 @@ async def delete_credentials(
             handler = _get_provider_oauth_handler(request, provider)
         tokens_revoked = await handler.revoke_tokens(creds)
 
-    return CredentialsDeletionResponse(revoked=tokens_revoked)
+    return tokens_revoked
 
 
 # ------------------------- WEBHOOK STUFF -------------------------- #
@@ -1199,6 +1254,12 @@ async def webhook_ingress_generic(
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
 ):
     logger.debug(f"Received {provider.value} webhook ingress for ID {webhook_id}")
+    if not supports_webhooks(provider):
+        # Worded like the unknown-webhook 404 below, so the two can't be told apart.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Webhook #{webhook_id} not found",
+        )
     webhook_manager = get_webhook_manager(provider)
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)
@@ -1224,15 +1285,6 @@ async def webhook_ingress_generic(
         )
 
     user_id = webhook.user_id
-    try:
-        credentials = (
-            await creds_manager.get(user_id, webhook.credentials_id)
-            if webhook.credentials_id
-            else None
-        )
-    except NotFoundError as e:
-        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
     # Run provider signature verification (no-op for providers whose protocol
     # has no signing scheme). 403 on failure; not 404 — that would leak
@@ -1250,6 +1302,22 @@ async def webhook_ingress_generic(
             detail="Invalid webhook signature",
         )
 
+    # Acknowledged so the provider doesn't retry; nothing runs for a banned owner.
+    if await is_user_banned(user_id):
+        logger.info(f"Dropping webhook #{webhook_id} delivery: owner is banned")
+        return
+
+    # Only after the signature: loading can refresh the owner's OAuth token.
+    try:
+        credentials = (
+            await creds_manager.get(user_id, webhook.credentials_id)
+            if webhook.credentials_id
+            else None
+        )
+    except NotFoundError as e:
+        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
     payload, event_type = await webhook_manager.validate_payload(
         webhook, request, credentials
     )
@@ -1264,10 +1332,15 @@ async def webhook_ingress_generic(
         event_type=event_type,
         payload=payload,
     )
+    has_triggers = bool(webhook.triggered_nodes or webhook.triggered_presets)
+    # Each run would refuse a paywalled owner anyway. Stop before publishing and
+    # the reward, so a retried delivery after a failed lookup repeats neither.
+    if has_triggers and await is_user_paywalled(user_id):
+        return
     await publish_webhook_event(webhook_event)
     logger.debug(f"Webhook event published: {webhook_event}")
 
-    if not (webhook.triggered_nodes or webhook.triggered_presets):
+    if not has_triggers:
         return
 
     await complete_onboarding_step(user_id, OnboardingStep.TRIGGER_WEBHOOK)
@@ -1289,7 +1362,9 @@ async def webhook_ingress_generic(
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-@router.post("/webhooks/{webhook_id}/ping")
+@router.post(
+    "/webhooks/{webhook_id}/ping", dependencies=[Depends(enforce_payment_paywall)]
+)
 async def webhook_ping(
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
     user_id: Annotated[str, Security(get_user_id)],  # require auth
@@ -1742,7 +1817,7 @@ async def remove_all_webhooks_for_credentials(
     )
     if any(w.triggered_nodes or w.triggered_presets for w in webhooks) and not force:
         raise NeedConfirmation(
-            "Some webhooks linked to these credentials are still in use by an agent"
+            "Some webhooks linked to these credentials are still in use by a workflow"
         )
     for webhook in webhooks:
         # Unlink all nodes & presets
@@ -1938,7 +2013,7 @@ def _get_provider_oauth_handler(
     )
 
 
-@router.get("/ayrshare/sso_url")
+@router.get("/ayrshare/sso_url", dependencies=[Depends(enforce_payment_paywall)])
 async def get_ayrshare_sso_url(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> AyrshareSSOResponse:
@@ -1951,82 +2026,13 @@ async def get_ayrshare_sso_url(
     hosted social-linking page; all profile lifecycle logic lives with the
     managed provider.
     """
-    if not ayrshare_settings_available():
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ayrshare integration is not configured",
-        )
-
     try:
-        client = AyrshareClient()
-    except MissingConfigError:
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ayrshare integration is not configured",
-        )
-
-    # On-demand provisioning: AyrshareManagedProvider opts out of the
-    # credentials sweep (profile quota is per-user subscription-bound).  This
-    # endpoint is the only trigger that provisions a profile — one Ayrshare
-    # profile per user who actually opens the connect flow, not one per
-    # every authenticated user.
-    provisioned = await ensure_managed_credential(
-        user_id, creds_manager.store, AyrshareManagedProvider()
-    )
-    if not provisioned:
-        raise HTTPException(
-            status_code=HTTP_502_BAD_GATEWAY,
-            detail="Failed to provision Ayrshare profile",
-        )
-
-    ayrshare_creds = [
-        c
-        for c in await creds_manager.store.get_creds_by_provider(user_id, "ayrshare")
-        if c.is_managed and isinstance(c, APIKeyCredentials)
-    ]
-    if not ayrshare_creds:
-        logger.error(
-            "Ayrshare credential provisioning did not produce a credential for user %s",
-            user_id,
-        )
-        raise HTTPException(
-            status_code=HTTP_502_BAD_GATEWAY,
-            detail="Failed to provision Ayrshare profile",
-        )
-    profile_key_str = ayrshare_creds[0].api_key.get_secret_value()
-
-    private_key = settings.secrets.ayrshare_jwt_key
-    # Ayrshare JWT max lifetime is 2880 minutes (48 h).
-    max_expiry_minutes = 2880
-    try:
-        jwt_response = await client.generate_jwt(
-            private_key=private_key,
-            profile_key=profile_key_str,
-            # `allowed_social` is the set of networks the Ayrshare-hosted
-            # social-linking page will *offer* the user to connect.  Blocks
-            # exist for more platforms than are listed here; the list is
-            # deliberately narrower so the rollout can verify each network
-            # end-to-end before widening the user-visible surface.  Keep
-            # in sync with tested platforms — extend as each is verified
-            # against the block + Ayrshare's network-specific quirks.
-            allowed_social=[
-                SocialPlatform.TWITTER,
-                SocialPlatform.LINKEDIN,
-                SocialPlatform.INSTAGRAM,
-                SocialPlatform.YOUTUBE,
-                SocialPlatform.TIKTOK,
-            ],
-            expires_in=max_expiry_minutes,
-            verify=True,
-        )
-    except Exception as exc:
-        logger.error("Error generating Ayrshare JWT for user %s: %s", user_id, exc)
-        raise HTTPException(
-            status_code=HTTP_502_BAD_GATEWAY, detail="Failed to generate JWT"
-        )
-
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=max_expiry_minutes)
-    return AyrshareSSOResponse(sso_url=jwt_response.url, expires_at=expires_at)
+        link = await get_ayrshare_sso_link(user_id, creds_manager.store)
+    except AyrshareNotConfiguredError as exc:
+        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+    except AyrshareProvisioningError as exc:
+        raise HTTPException(status_code=HTTP_502_BAD_GATEWAY, detail=str(exc))
+    return AyrshareSSOResponse(sso_url=link.url, expires_at=link.expires_at)
 
 
 # === PROVIDER DISCOVERY ENDPOINTS ===

@@ -42,11 +42,12 @@ export const COLOR_OPTIONS: ColorOption[] = [
     swatchClassName: "bg-red-300",
     coverClassName: "bg-red-200",
     washFromClassName: "from-red-100",
-    bubbleClassName: "border-red-300 bg-red-50",
-    textClassName: "text-red-700",
-    selectedCardClassName: "border-red-400 bg-red-50 ring-2 ring-red-200",
+    bubbleClassName: "border-red-300 bg-error-surface",
+    textClassName: "text-error-foreground",
+    selectedCardClassName:
+      "border-red-400 bg-error-surface ring-2 ring-red-200",
     interactiveCardClassName: "hover:border-red-300 focus-within:ring-red-200",
-    rowSelectedClassName: "bg-red-50 ring-1 ring-inset ring-red-300",
+    rowSelectedClassName: "bg-error-surface ring-1 ring-inset ring-red-300",
     ditherColors: ["#f87171", "#fca5a5", "#fee2e2", "#ffffff"],
   },
   {
@@ -70,12 +71,13 @@ export const COLOR_OPTIONS: ColorOption[] = [
     swatchClassName: "bg-amber-300",
     coverClassName: "bg-amber-200",
     washFromClassName: "from-amber-100",
-    bubbleClassName: "border-amber-300 bg-amber-50",
-    textClassName: "text-amber-700",
-    selectedCardClassName: "border-amber-400 bg-amber-50 ring-2 ring-amber-200",
+    bubbleClassName: "border-amber-300 bg-warning-surface",
+    textClassName: "text-warning-foreground",
+    selectedCardClassName:
+      "border-amber-400 bg-warning-surface ring-2 ring-warning-border",
     interactiveCardClassName:
-      "hover:border-amber-300 focus-within:ring-amber-200",
-    rowSelectedClassName: "bg-amber-50 ring-1 ring-inset ring-amber-300",
+      "hover:border-amber-300 focus-within:ring-warning-border",
+    rowSelectedClassName: "bg-warning-surface ring-1 ring-inset ring-amber-300",
     ditherColors: ["#fbbf24", "#fcd34d", "#fef3c7", "#ffffff"],
   },
   {
@@ -113,12 +115,13 @@ export const COLOR_OPTIONS: ColorOption[] = [
     swatchClassName: "bg-green-300",
     coverClassName: "bg-green-200",
     washFromClassName: "from-green-100",
-    bubbleClassName: "border-green-300 bg-green-50",
-    textClassName: "text-green-700",
-    selectedCardClassName: "border-green-400 bg-green-50 ring-2 ring-green-200",
+    bubbleClassName: "border-green-300 bg-success-surface",
+    textClassName: "text-success-foreground",
+    selectedCardClassName:
+      "border-green-400 bg-success-surface ring-2 ring-green-200",
     interactiveCardClassName:
       "hover:border-green-300 focus-within:ring-green-200",
-    rowSelectedClassName: "bg-green-50 ring-1 ring-inset ring-green-300",
+    rowSelectedClassName: "bg-success-surface ring-1 ring-inset ring-green-300",
     ditherColors: ["#4ade80", "#86efac", "#dcfce7", "#ffffff"],
   },
   {
@@ -183,12 +186,13 @@ export const COLOR_OPTIONS: ColorOption[] = [
     swatchClassName: "bg-blue-300",
     coverClassName: "bg-blue-200",
     washFromClassName: "from-blue-100",
-    bubbleClassName: "border-blue-300 bg-blue-50",
+    bubbleClassName: "border-blue-300 bg-info-surface",
     textClassName: "text-blue-700",
-    selectedCardClassName: "border-blue-400 bg-blue-50 ring-2 ring-blue-200",
+    selectedCardClassName:
+      "border-blue-400 bg-info-surface ring-2 ring-blue-200",
     interactiveCardClassName:
       "hover:border-blue-300 focus-within:ring-blue-200",
-    rowSelectedClassName: "bg-blue-50 ring-1 ring-inset ring-blue-300",
+    rowSelectedClassName: "bg-info-surface ring-1 ring-inset ring-blue-300",
     ditherColors: ["#60a5fa", "#93c5fd", "#dbeafe", "#ffffff"],
   },
   {
@@ -212,13 +216,13 @@ export const COLOR_OPTIONS: ColorOption[] = [
     swatchClassName: "bg-violet-300",
     coverClassName: "bg-violet-200",
     washFromClassName: "from-violet-100",
-    bubbleClassName: "border-violet-300 bg-violet-50",
-    textClassName: "text-violet-700",
+    bubbleClassName: "border-violet-300 bg-accent-surface",
+    textClassName: "text-accent-strong",
     selectedCardClassName:
-      "border-violet-400 bg-violet-50 ring-2 ring-violet-200",
+      "border-violet-400 bg-accent-surface ring-2 ring-violet-200",
     interactiveCardClassName:
       "hover:border-violet-300 focus-within:ring-violet-200",
-    rowSelectedClassName: "bg-violet-50 ring-1 ring-inset ring-violet-300",
+    rowSelectedClassName: "bg-accent-surface ring-1 ring-inset ring-violet-300",
     ditherColors: ["#a78bfa", "#c4b5fd", "#ede9fe", "#ffffff"],
   },
   {

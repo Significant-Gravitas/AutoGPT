@@ -12,7 +12,7 @@ interface Props {
   isOffline: boolean;
 }
 
-const OFFLINE_COPY = "You're offline — we'll send this when you're back.";
+const OFFLINE_COPY = "You're offline. We'll send this when you're back.";
 
 export function RecordingStatus({
   elapsedSeconds,
@@ -42,11 +42,11 @@ export function RecordingStatus({
       {/* A dropped connection is not a lost recording, and saying so is the
           whole point of writing every chunk to the device first. */}
       {isOffline && (
-        <div className="flex items-center gap-2 rounded-md bg-zinc-100 px-2.5 py-1">
+        <div className="flex items-center gap-2 rounded-md bg-surface-hover px-2.5 py-1">
           <Icon
             icon={CloudOffIcon}
             size={14}
-            className="shrink-0 text-zinc-400"
+            className="shrink-0 text-foreground-subtle"
           />
           <Text variant="small" tone="muted">
             {OFFLINE_COPY}
