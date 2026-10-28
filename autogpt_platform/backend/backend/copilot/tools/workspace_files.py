@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import json
 import logging
 import mimetypes
 import os
@@ -212,14 +213,15 @@ class WorkspaceFileListResponse(ToolResponseBase):
 
 
 class WorkspaceFileContentResponse(ToolResponseBase):
-    """Response containing workspace file content (legacy, for small text files)."""
+    """A file's content inline: text as ``content``, other bytes as ``content_base64``."""
 
     type: ResponseType = ResponseType.WORKSPACE_FILE_CONTENT
     file_id: str
     name: str
     path: str
     mime_type: str
-    content_base64: str
+    content: str | None = None
+    content_base64: str | None = None
 
 
 _MAX_LOCAL_TOOL_RESULT_BYTES = 10 * 1024 * 1024  # 10 MB
@@ -233,9 +235,10 @@ _MAX_RANGE_CHARS = 1_000_000
 # serves the whole file.
 _MAX_EXTERNAL_RANGE_END = 1_000_000
 
-# The most text one External API ranged read returns: its base64 has to fit in
-# the 100,000 characters a tool result keeps, or the slice would come back cut.
+# The most text one External API ranged read returns: escaped as JSON, it has
+# to fit in the 100,000 characters a tool result keeps, or it comes back cut.
 _MAX_EXTERNAL_RANGE_BYTES = 60_000
+_MAX_EXTERNAL_RANGE_ESCAPED = 80_000
 
 
 def _fit_utf8(text: str, max_bytes: int) -> str:
@@ -321,7 +324,7 @@ def _read_local_tool_result(
         name=os.path.basename(path),
         path=path,
         mime_type=mimetypes.guess_type(path)[0] or "text/plain",
-        content_base64=base64.b64encode(slice_text.encode("utf-8")).decode("ascii"),
+        content=slice_text,
         message=(
             f"Read chars {char_offset}\u2013{char_offset + len(slice_text)} "
             f"of {len(text_content):,} chars from local tool-result "
@@ -822,16 +825,17 @@ class ReadWorkspaceFileTool(BaseTool):
                 slice_text = text[char_offset:end]
                 per_read = f"{_MAX_RANGE_CHARS:,} chars"
                 if session.external_caller:
-                    slice_text = _fit_utf8(slice_text, _MAX_EXTERNAL_RANGE_BYTES)
+                    slice_text = _fit_escaped(
+                        _fit_utf8(slice_text, _MAX_EXTERNAL_RANGE_BYTES),
+                        _MAX_EXTERNAL_RANGE_ESCAPED,
+                    )
                     per_read = f"{_MAX_EXTERNAL_RANGE_BYTES:,} bytes"
                 return WorkspaceFileContentResponse(
                     file_id=file_info.id,
                     name=file_info.name,
                     path=file_info.path,
                     mime_type="text/plain",
-                    content_base64=base64.b64encode(slice_text.encode("utf-8")).decode(
-                        "utf-8"
-                    ),
+                    content=slice_text,
                     message=(
                         f"Read chars {char_offset}–"
                         f"{char_offset + len(slice_text)} "
@@ -854,12 +858,14 @@ class ReadWorkspaceFileTool(BaseTool):
                 )
                 if save_to_path:
                     msg += f" — also saved to {save_to_path}"
+                text, encoded = _inline(content)
                 return WorkspaceFileContentResponse(
                     file_id=file_info.id,
                     name=file_info.name,
                     path=file_info.path,
                     mime_type=file_info.mime_type,
-                    content_base64=base64.b64encode(content).decode("utf-8"),
+                    content=text,
+                    content_base64=encoded,
                     message=msg,
                     session_id=session_id,
                 ).with_google_data(google_data)
@@ -924,6 +930,29 @@ class ReadWorkspaceFileTool(BaseTool):
                 error=error_detail(e, session),
                 session_id=session_id,
             )
+
+
+def _fit_escaped(text: str, max_chars: int) -> str:
+    """The longest start of *text* whose JSON string is at most *max_chars* long."""
+
+    def fits(n: int) -> bool:
+        return len(json.dumps(text[:n], ensure_ascii=False)) - 2 <= max_chars
+
+    if fits(len(text)):
+        return text
+    low, high = 0, len(text)
+    while high - low > 1:
+        middle = (low + high) // 2
+        low, high = (middle, high) if fits(middle) else (low, middle)
+    return text[:low]
+
+
+def _inline(raw: bytes) -> tuple[str | None, str | None]:
+    """``(content, content_base64)``: the text of UTF-8 bytes, else their base64."""
+    try:
+        return raw.decode("utf-8"), None
+    except UnicodeDecodeError:
+        return None, base64.b64encode(raw).decode("ascii")
 
 
 # Paths under ``/skills/`` and ``/experts/<id>/skills/`` are managed by the
