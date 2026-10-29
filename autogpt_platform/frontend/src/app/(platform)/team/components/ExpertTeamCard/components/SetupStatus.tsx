@@ -13,14 +13,10 @@ export function SetupStatus({ expert, isRetrying, onRetry }: Props) {
     return (
       <div
         role="status"
-        // TODO(tokens): no exact role: bg-sky-50 #F0F9FF, ring-sky-200 #BAE6FD
-        className="mx-4 mb-3 rounded-lg bg-sky-50 px-3 py-2 ring-1 ring-inset ring-sky-200"
+        // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info would turn the cyan blue (deferred)
+        className="mx-4 mb-3 rounded-lg bg-sky-50 px-3 py-2 text-sky-800 ring-1 ring-inset ring-sky-200"
       >
-        <Text
-          // TODO(tokens): no exact role: text-sky-800 #075985
-          variant="body"
-          className="text-sky-800"
-        >
+        <Text variant="body" tone="inherit">
           Setting up {expert.name}&apos;s skills and workflows…
         </Text>
       </div>
@@ -33,7 +29,7 @@ export function SetupStatus({ expert, isRetrying, onRetry }: Props) {
       role="alert"
       className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-warning-surface px-3 py-2 ring-1 ring-inset ring-warning-border"
     >
-      <Text variant="body" className="text-warning-foreground">
+      <Text variant="body" tone="warning">
         {failures.length
           ? `Couldn't install: ${failures.join(", ")}`
           : "Setup didn't finish"}

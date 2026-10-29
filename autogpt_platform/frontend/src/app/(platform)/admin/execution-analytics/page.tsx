@@ -1,6 +1,3 @@
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// text-gray-500 #6B7280, text-gray-600 #4B5563.
-
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { Suspense } from "react";
 import { ExecutionAnalyticsForm } from "./components/ExecutionAnalyticsForm";
@@ -12,7 +9,7 @@ function ExecutionAnalyticsDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Execution Analytics</h1>
-            <p className="text-gray-500">
+            <p className="text-foreground-tertiary">
               Generate missing activity summaries and success scores for agent
               executions
             </p>
@@ -23,7 +20,7 @@ function ExecutionAnalyticsDashboard() {
           <h2 className="mb-4 text-xl font-semibold">
             Execution Analytics & Accuracy Monitoring
           </h2>
-          <p className="mb-6 text-gray-600">
+          <p className="mb-6 text-foreground-secondary">
             Generate missing activity summaries and success scores for agent
             executions. After generation, accuracy trends and alerts will
             automatically be displayed to help monitor agent health over time.
