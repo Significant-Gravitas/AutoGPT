@@ -315,6 +315,18 @@ export function clearImpersonationEverywhere(): void {
   );
 }
 
+/**
+ * Ends this admin's impersonation in every tab. The admin's other tabs reload
+ * onto their own account, as they reload onto a new target when one is chosen.
+ */
+export function stopImpersonationEverywhere(): void {
+  ImpersonationState.clear();
+  storage.set(
+    Key.IMPERSONATION_CHANGED,
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+}
+
 /** Whether anything is stored, without interpreting it. */
 export function hasImpersonation(): boolean {
   return Boolean(ImpersonationSession.getRaw() ?? ImpersonationCookie.getRaw());

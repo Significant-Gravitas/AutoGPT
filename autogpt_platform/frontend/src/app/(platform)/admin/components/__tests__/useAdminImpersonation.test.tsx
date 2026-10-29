@@ -194,4 +194,18 @@ describe("useAdminImpersonation", () => {
     await waitFor(() => expect(reloadMock).toHaveBeenCalled());
     expect(calls).toBe(1);
   });
+
+  test("stopping reloads this tab and tells the admin's other tabs", () => {
+    ImpersonationCookie.set({ target: TARGET_USER_ID, owner: "admin-1" });
+    localStorage.removeItem("impersonation-changed");
+    const { result } = renderHook(() => useAdminImpersonation(), { wrapper });
+
+    act(() => result.current.stopImpersonating());
+
+    expect(ImpersonationCookie.getRaw()).toBeNull();
+    // The write other tabs hear as a storage event.
+    expect(localStorage.getItem("impersonation-changed")).not.toBeNull();
+    expect(reloadMock).toHaveBeenCalledTimes(1);
+    localStorage.removeItem("impersonation-changed");
+  });
 });

@@ -2,6 +2,7 @@ import type BackendAPI from "@/lib/autogpt-server-api/client";
 import { IMPERSONATION_STORAGE_KEY } from "@/lib/constants";
 import {
   getSystemHeaders,
+  ImpersonationCookie,
   ImpersonationSession,
   ImpersonationState,
 } from "@/lib/impersonation";
@@ -452,6 +453,40 @@ describe("another tab starts impersonating someone else", () => {
     reloadPage.mockClear();
 
     changedInAnotherTab();
+
+    expect(reloadPage).not.toHaveBeenCalled();
+  });
+});
+
+describe("another tab stops impersonating", () => {
+  // That tab clears the shared cookie, then signals the change.
+  function stoppedInAnotherTab() {
+    ImpersonationCookie.clear();
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "impersonation-changed",
+        newValue: String(Math.random()),
+      }),
+    );
+  }
+
+  it("reloads the admin's tab onto their own account", async () => {
+    await signInTab(admin);
+    ImpersonationState.set("user-a", admin.id);
+    expect(getSystemHeaders()).toEqual({ [ACT_AS]: "user-a" });
+    reloadPage.mockClear();
+
+    stoppedInAnotherTab();
+
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+    expect(getSystemHeaders()).toEqual({});
+  });
+
+  it("leaves a tab signed in as someone else alone", async () => {
+    await signInTab(otherUser);
+    reloadPage.mockClear();
+
+    stoppedInAnotherTab();
 
     expect(reloadPage).not.toHaveBeenCalled();
   });

@@ -2,7 +2,10 @@
 
 import { useCallback, useRef } from "react";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
-import { ImpersonationState } from "@/lib/impersonation";
+import {
+  ImpersonationState,
+  stopImpersonationEverywhere,
+} from "@/lib/impersonation";
 import {
   beginImpersonation,
   type BeginImpersonationOutcome,
@@ -94,7 +97,7 @@ export function useAdminImpersonation(): AdminImpersonationHook {
 
   const stopImpersonating = useCallback(() => {
     try {
-      ImpersonationState.clear();
+      stopImpersonationEverywhere();
       window.location.reload();
     } catch (error) {
       console.error("Failed to stop impersonation:", error);

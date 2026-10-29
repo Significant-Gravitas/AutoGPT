@@ -471,10 +471,16 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       return;
     }
     if (isImpersonationChangedEvent(event)) {
-      // Another tab started impersonating someone else: this tab's page
-      // belongs to the old choice. Only the owning admin's tabs follow it.
+      // Another tab started impersonating someone else, or stopped: this
+      // tab's page belongs to the old choice. Only the owning admin's tabs
+      // follow a new target; once none is left, an admin's tab reloads onto
+      // their own account.
       const user = get().user;
-      if (user && isImpersonationUsableBy(user)) reloadPage();
+      if (!user) return;
+      const following = ImpersonationState.read()
+        ? isImpersonationUsableBy(user)
+        : user.role === "admin";
+      if (following) reloadPage();
       return;
     }
 
