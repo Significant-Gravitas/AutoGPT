@@ -66,15 +66,25 @@ export const BrainDumpEvent = {
   BRAIN_DUMP_RESTARTED: "brain_dump_restarted",
   BRAIN_DUMP_DOWNLOAD: "brain_dump_download",
   BRAIN_DUMP_PERMISSION_DENIED: "brain_dump_permission_denied",
+  // Every failure to open the microphone, a denial included, with the
+  // browser's `error_name` (NotFoundError, NotReadableError, …).
+  BRAIN_DUMP_MIC_FAILED: "brain_dump_mic_failed",
   BRAIN_DUMP_TYPED_FALLBACK: "brain_dump_typed_fallback",
-  // The welcome dialog shown on first copilot landing was closed — the
-  // greeting fetch and reveal animation start from this moment.
+  // The "Otto might ask" prompt moved on, by its timer (`via: auto`) or
+  // "Another question" (`click`), with the `screen`, the `prompt_index` now
+  // shown and the role's `prompt_set`. Never sent for the first prompt.
+  BRAIN_DUMP_PROMPT_ADVANCED: "brain_dump_prompt_advanced",
+  // A way back to Talk after the microphone was refused: `result` is what
+  // the browser answered (`granted`, `denied`, or `unavailable` for any
+  // other mic error), `via` is the link used or `permission_change` when
+  // the user allowed the site in its settings. `permission_state` is the
+  // Permissions API state when the retry began, or the one it changed to
+  // for `permission_change`; `unknown` where the API is missing.
+  BRAIN_DUMP_PERMISSION_RETRIED: "brain_dump_permission_retried",
+  // The first-run intro shown on the first copilot landing ended (finished
+  // or skipped). Since SECRT-3149 that intro is the guided walkthrough
+  // (first_run_tour_*); the name is kept so the funnel stays continuous.
   WELCOME_DIALOG_CLOSED: "welcome_dialog_closed",
-  // Capability-cards first-run funnel: which cards were reached and how
-  // the modal ended (finished the deck vs skipped at card_index).
-  CAPABILITY_CARD_VIEWED: "capability_card_viewed",
-  CAPABILITY_CARDS_COMPLETED: "capability_cards_completed",
-  CAPABILITY_CARDS_SKIPPED: "capability_cards_skipped",
   TRANSCRIPTION_FAILED: "transcription_failed",
   INTRO_PATH: "intro_path",
   // The user's first real message after seeing the intro card — the
@@ -95,6 +105,22 @@ export const BrainDumpEvent = {
   // were hired, so the funnel can tell "hired a team" from "skipped past it".
   // `via` says how. The hires themselves are the backend's `expert_hired`.
   HIRE_STEP_CONTINUED: "hire_step_continued",
+} as const;
+
+// The guided first run over the real UI (SECRT-3149), opened by itself after
+// onboarding (`source: auto`) or replayed from the profile menu
+// (`source: menu`), and the one-time tips that follow it.
+export const FirstRunEvent = {
+  FIRST_RUN_TOUR_SHOWN: "first_run_tour_shown",
+  // Each step reached, with the target it actually pointed at, so a step
+  // that keeps falling back (no wallet, no first tasks) shows up.
+  FIRST_RUN_TOUR_STEP_VIEWED: "first_run_tour_step_viewed",
+  // "Start here" on the last step.
+  FIRST_RUN_TOUR_COMPLETED: "first_run_tour_completed",
+  // Skip, Escape or the close button, at `step_id`.
+  FIRST_RUN_TOUR_SKIPPED: "first_run_tour_skipped",
+  CONTEXTUAL_TIP_SHOWN: "contextual_tip_shown",
+  CONTEXTUAL_TIP_DISMISSED: "contextual_tip_dismissed",
 } as const;
 
 export const TabIntroEvent = {
@@ -186,6 +212,7 @@ export const PostHogEvent = {
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
   ...BrainDumpEvent,
+  ...FirstRunEvent,
   ...TabIntroEvent,
   ...VoiceModeEvent,
   ...CredentialConnectionFailureEvent,

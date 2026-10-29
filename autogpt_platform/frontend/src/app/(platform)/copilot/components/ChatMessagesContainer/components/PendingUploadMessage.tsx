@@ -2,7 +2,10 @@
 
 import { CredentialMentionText } from "../../CredentialMention/CredentialMentionText";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  Message,
+  MessageContent,
+} from "@/components/organisms/Message/Message";
 import { cn } from "@/lib/utils";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import type {
@@ -16,6 +19,7 @@ import {
 import { useElapsedTimer } from "../../JobStatsBar/useElapsedTimer";
 import { PendingImageThumbnail } from "./MessageImageThumbnail";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   pendingSend: PendingUploadSend;
@@ -57,15 +61,15 @@ function PendingArtifactCard({ attachment }: CardProps) {
         className="shrink-0 text-foreground-subtle"
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground-strong">
+        <Text variant="body-medium-tight" tone="primary" className="truncate">
           {attachment.name}
-        </p>
-        <p className="text-xs text-foreground-subtle">
+        </Text>
+        <Text variant="small-tight" tone="subtle">
           <span className="inline-block rounded-full bg-info-surface px-1.5 py-0.5 text-xs font-medium text-info">
             {classification.label}
           </span>
           {attachment.sizeBytes ? ` • ${formatSize(attachment.sizeBytes)}` : ""}
-        </p>
+        </Text>
       </div>
       {attachment.isUploading && (
         <Icon
@@ -113,8 +117,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
               isCompact
                 ? "text-sm leading-6 group-[.is-user]:rounded-xl"
                 : "text-body-lg leading-relaxed group-[.is-user]:rounded-3xl",
-              // TODO(tokens): no fitting role for group-[.is-user]:text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a fill)
-              "group-[.is-user]:bg-action-hover group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
+              "group-[.is-user]:bg-action-hover group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-action-foreground",
             )}
           >
             <div className="whitespace-pre-wrap break-words">

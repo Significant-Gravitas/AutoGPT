@@ -1208,6 +1208,29 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="moonshotai/kimi-k3.1-pro",
+                display_name="Kimi K3.1 Pro",
+                provider="open_router",
+                creator="moonshot-ai",
+                context_window=1048576,
+                max_output_tokens=943718,
+                price_tier=3,
+                supports_tools=True,
+                supports_reasoning=True,
+                # Moonshot's K3 successor (multimodal reasoning). OpenRouter's
+                # default Moonshot AI route is $2/$10 per Mtok, cache read
+                # $0.20/1M -- live listing 2026-10-24. Kimi K3 is untouched.
+                cost=CatalogModelCost(
+                    run_credits=9,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=30.0,
+                    provider_input_usd_per_1m=2.00,
+                    provider_output_usd_per_1m=10.00,
+                    provider_cache_read_usd_per_1m=0.20,
+                ),
+            ),
+            CatalogModel(
                 slug="nousresearch/hermes-3-llama-3.1-405b",
                 display_name="Hermes 3 Llama 3.1 405B",
                 provider="open_router",
@@ -1855,6 +1878,24 @@ def _build_catalog() -> CatalogPayload:
                     input_credits_per_1m=300.0,
                     output_credits_per_1m=1500.0,
                     cache_read_credits_per_1m=15.0,
+                ),
+            ),
+            CatalogModel(
+                slug="gpt-6.1-terra",
+                display_name="GPT-6.1 Terra",
+                provider="openai",
+                creator="openai",
+                context_window=1050000,
+                max_output_tokens=128000,
+                # $1/1M in, $5/1M out, $0.05/1M cache read -- live
+                # OpenRouter rate as of 2026-10-27. Mid tier between
+                # gpt-6-luna and gpt-6.1-sol; gpt-5.6-terra stays listed.
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=2,
+                    input_credits_per_1m=150.0,
+                    output_credits_per_1m=750.0,
+                    cache_read_credits_per_1m=7.5,
                 ),
             ),
             CatalogModel(

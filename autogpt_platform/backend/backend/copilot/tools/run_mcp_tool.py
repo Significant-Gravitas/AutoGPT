@@ -500,12 +500,9 @@ class RunMCPToolTool(BaseTool):
         properties), so it must be expanded here using the tool's own schema —
         mirroring how RunBlockTool expands block inputs.
 
-        Parses the MCP content response into a plain Python value:
-        - text items: parsed as JSON when possible, kept as str otherwise
-        - image items: kept as {type, data, mimeType} dict for frontend rendering
-        - resource items: unwrapped to their resource payload dict
-        Single-item responses are unwrapped from the list; multiple items are
-        returned as a list; empty content returns None.
+        Parses the result into a plain Python value with ``parse_mcp_content``:
+        text items (as JSON when possible), image and resource items, and the
+        structured result when the tool sends no text.
         """
         input_schema: dict[str, Any] | None = None
         if _args_contain_file_ref(tool_arguments):
@@ -542,7 +539,7 @@ class RunMCPToolTool(BaseTool):
                 session_id=session_id,
             ).from_outside(error_text, listed)
 
-        result_value = parse_mcp_content(result.content)
+        result_value = parse_mcp_content(result.content, result.structured_content)
 
         return MCPToolOutputResponse(
             message=f"MCP tool '{tool_name}' executed successfully.",

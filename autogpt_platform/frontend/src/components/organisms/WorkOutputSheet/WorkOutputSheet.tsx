@@ -2,16 +2,17 @@
 
 import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { okData } from "@/app/api/helpers";
-import { MessageResponse } from "@/components/ai-elements/message";
+import { MessageResponse } from "@/components/organisms/Message/Message";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/components/molecules/Sheet/Sheet";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -73,6 +74,9 @@ export function WorkOutputSheet({
       >
         <SheetHeader className="text-left">
           <SheetTitle className="truncate">{title}</SheetTitle>
+          <SheetDescription className="sr-only">
+            This run&apos;s output.
+          </SheetDescription>
         </SheetHeader>
         <WorkOutputBody
           outputType={outputType}
@@ -234,7 +238,7 @@ function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
     >
       <table
         data-slot="work-output-sheet-table-grid"
-        className="w-full border-collapse text-sm"
+        className="w-full border-collapse"
       >
         <thead data-slot="work-output-sheet-table-head">
           <tr
@@ -245,9 +249,11 @@ function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
               <th
                 key={column}
                 data-slot="work-output-sheet-table-header-cell"
-                className="px-3 py-2 font-medium text-foreground-secondary"
+                className="px-3 py-2 text-foreground-secondary"
               >
-                {column}
+                <Text as="div" variant="body-medium-tight" tone="secondary">
+                  {column}
+                </Text>
               </th>
             ))}
           </tr>
@@ -263,9 +269,11 @@ function OutputTablePreview({ rows, columns }: OutputTablePreviewProps) {
                 <td
                   key={column}
                   data-slot="work-output-sheet-table-cell"
-                  className="px-3 py-2 text-foreground-body"
+                  className="px-3 py-2"
                 >
-                  {cellText(row[column])}
+                  <Text as="div" variant="body-tight" tone="body">
+                    {cellText(row[column])}
+                  </Text>
                 </td>
               ))}
             </tr>

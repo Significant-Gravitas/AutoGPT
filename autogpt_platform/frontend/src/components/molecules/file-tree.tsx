@@ -10,8 +10,8 @@ import React, {
 } from "react";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/atoms/Button/Button";
+import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
 import {
   FileEmpty02Icon,
   Folder01Icon,
@@ -400,7 +400,8 @@ const CollapseButton = forwardRef<
 
     return (
       <Button
-        variant={"ghost"}
+        variant="compact-ghost"
+        size="compact"
         data-slot="file-tree-collapse-button"
         className="absolute bottom-1 right-2 h-8 w-fit p-1"
         onClick={

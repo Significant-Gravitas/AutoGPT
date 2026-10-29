@@ -23,8 +23,7 @@ export function HeldPassage({ passage }: Props) {
       <blockquote
         id={id}
         className={cn(
-          // TODO(tokens): no exact role for border-amber-400
-          "whitespace-pre-wrap border-l-2 border-amber-400 bg-warning-surface/60 px-3 py-2 text-sm text-foreground-emphasis [overflow-wrap:anywhere]",
+          "whitespace-pre-wrap border-l-2 border-warning bg-warning-surface/60 px-3 py-2 text-sm text-foreground-emphasis [overflow-wrap:anywhere]",
           long &&
             !expanded &&
             "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]",
@@ -47,7 +46,7 @@ export function HeldPassage({ passage }: Props) {
           type="button"
           variant="link"
           size="small"
-          className="h-auto min-w-0 self-start px-0 py-0 text-body leading-5"
+          className="h-auto min-w-0 self-start"
           aria-expanded={expanded}
           aria-controls={id}
           onClick={() => setExpanded(!expanded)}

@@ -5,6 +5,7 @@ import { Download04Icon } from "@hugeicons/core-free-icons";
 import { classifyArtifact } from "../../../../ArtifactPanel/helpers";
 import { formatFileSize, formatFileTimestamp } from "../../FilesTab/helpers";
 import type { SessionFile } from "../../FilesTab/useSessionFiles";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   file: SessionFile;
@@ -30,20 +31,30 @@ export function ArtifactMiniCard({ file, onOpen, onDownload }: Props) {
           className="shrink-0 text-foreground-tertiary"
         />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-medium text-foreground-emphasis">
+          <Text
+            variant="body-medium-tight"
+            as="span"
+            tone="emphasis"
+            className="truncate"
+          >
             {item.name}
-          </span>
-          <span className="truncate text-xs text-foreground-subtle">
+          </Text>
+          <Text
+            variant="small-tight"
+            as="span"
+            tone="subtle"
+            className="truncate"
+          >
             {formatFileSize(item.size_bytes ?? 0)} ·{" "}
             {formatFileTimestamp(item.created_at)}
-          </span>
+          </Text>
         </span>
       </button>
       <button
         type="button"
         onClick={() => onDownload(file)}
         aria-label={`Download ${item.name}`}
-        className="shrink-0 rounded-full p-1 text-foreground-disabled opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100 hover:text-foreground-secondary focus-visible:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100"
+        className="shrink-0 rounded-full p-1 text-foreground-disabled opacity-0 transition-opacity duration-150 ease-out hover:text-foreground-secondary focus-visible:opacity-100 group-hover:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100"
       >
         <Icon icon={Download04Icon} size={16} />
       </button>

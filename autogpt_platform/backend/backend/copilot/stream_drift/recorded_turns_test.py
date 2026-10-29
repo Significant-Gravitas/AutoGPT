@@ -35,6 +35,8 @@ from backend.copilot.sdk.tool_adapter import cap_late_tool_result
 from backend.copilot.tools import base
 from backend.copilot.tools.models import (
     ApprovalRequiredResponse,
+    ClarificationNeededResponse,
+    ClarifyingQuestion,
     MCPToolInfo,
     MCPToolsDiscoveredResponse,
 )
@@ -143,6 +145,76 @@ async def test_sdk_late_tool_result_turn(user_id: str) -> None:
     )
 
     check_fixture("sdk-late-tool-result", recorded)
+
+
+async def test_sdk_question_turn(user_id: str) -> None:
+    """Prod session 7e992771's shape: clarifying questions, then the line
+    that points at them (SECRT-3135)."""
+    session = await persisted_session(user_id, "Set up my sticker listing pipeline")
+    questions = [
+        ClarifyingQuestion(
+            question="How should I spot new designs in your Drive folder?",
+            keyword="Drive trigger",
+            options=["Check the folder every 15 min", "I pick the file each run"],
+        ),
+        ClarifyingQuestion(
+            question="How should I make the mockups?",
+            keyword="Mockups",
+            options=["AI-generated mockups", "Printify draft products"],
+        ),
+    ]
+    asked = ClarificationNeededResponse(
+        message="; ".join(q.question for q in questions),
+        session_id=session.session_id,
+        questions=questions,
+    )
+    messages = [
+        SystemMessage(subtype="init", data={}),
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="find-1",
+                    name="find_capability",
+                    input={"query": "google drive new file trigger"},
+                )
+            ],
+            model="drift",
+        ),
+        UserMessage(content=[ToolResultBlock(tool_use_id="find-1", content="{}")]),
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="ask-1",
+                    name="ask_question",
+                    input={"questions": [q.model_dump() for q in questions]},
+                )
+            ],
+            model="drift",
+        ),
+        UserMessage(
+            content=[
+                ToolResultBlock(tool_use_id="ask-1", content=asked.model_dump_json())
+            ]
+        ),
+        AssistantMessage(
+            content=[TextBlock(text="Two quick choices for you above.")],
+            model="drift",
+        ),
+        ResultMessage(
+            subtype="success",
+            duration_ms=100,
+            duration_api_ms=50,
+            is_error=False,
+            num_turns=3,
+            session_id="drift",
+        ),
+    ]
+
+    recorded = await record_turn(
+        sdk_turn(session, messages), session=session, turn_id=str(uuid.uuid4())
+    )
+
+    check_fixture("sdk-question-turn", recorded)
 
 
 async def test_baseline_drain_turn(

@@ -25,6 +25,7 @@ import {
   safeHostname,
   str,
 } from "./resultHelpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface SearchResultsProps {
   items: Record<string, unknown>[];
@@ -55,13 +56,13 @@ function ResultFavicon({ domain }: { domain: string | null }) {
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
+    // eslint-disable-next-line @next/next/no-img-element -- an arbitrary site favicon next/image is not configured for
     <img
       src={`https://${encodeURIComponent(domain)}/favicon.ico`}
       alt=""
       width={14}
       height={14}
-      className="size-3.5 shrink-0 rounded-[3px]"
+      className="size-3.5 shrink-0 rounded-sm"
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
     />
@@ -127,9 +128,14 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
               </p>
             )}
             {domain && (
-              <span className="ml-auto shrink-0 text-xs text-foreground-subtle">
+              <Text
+                variant="small-tight"
+                as="span"
+                tone="subtle"
+                className="ml-auto shrink-0"
+              >
                 {domain}
-              </span>
+              </Text>
             )}
           </div>
         );
@@ -153,16 +159,13 @@ export function Terminal({ row }: RowProps) {
         </p>
       )}
       {stdout && (
-        <pre
-          // TODO(tokens): no fitting role for text-zinc-100 #EFEFF0; #EFEFF0 is surface-hover (a fill) and separator (a line colour)
-          className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-zinc-100 scrollbar-none"
-        >
+        <pre className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-action-foreground scrollbar-none">
           {stdout}
         </pre>
       )}
       {typeof exitCode === "number" && exitCode !== 0 && (
         <p
-          // TODO(tokens): no exact role for text-red-400
+          // oxlint-disable-next-line design-system/no-raw-colors -- on the dark terminal; error #EF4444 drops the exit code to 3.3:1
           className="mt-1.5 text-red-400"
         >
           exit {exitCode}
@@ -190,8 +193,7 @@ export function TodoList({ row }: RowProps) {
               <Icon
                 icon={CheckmarkCircle02Icon}
                 size={15}
-                // TODO(tokens): no exact role for text-green-500
-                className="shrink-0 text-green-500"
+                className="shrink-0 text-success"
               />
             ) : (
               <Icon
@@ -242,13 +244,23 @@ export function FileCard({ row }: RowProps) {
             className="text-foreground-secondary"
           />
         </div>
-        <p className="min-w-0 flex-1 truncate font-mono text-xs text-foreground-body">
+        <Text
+          variant="small-mono-tight"
+          as="p"
+          tone="body"
+          className="min-w-0 flex-1 truncate"
+        >
           {path}
-        </p>
+        </Text>
         {typeof size === "number" && (
-          <span className="shrink-0 text-xs text-foreground-subtle">
+          <Text
+            variant="small-tight"
+            as="span"
+            tone="subtle"
+            className="shrink-0"
+          >
             {formatBytes(size)}
-          </span>
+          </Text>
         )}
       </div>
       {preview && (

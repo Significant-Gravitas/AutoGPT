@@ -7,7 +7,7 @@ import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentSt
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -105,6 +105,17 @@ afterEach(() => {
 });
 
 describe("AppSidebar", () => {
+  it("marks chats, Team, Files and the Workspace group for the first-run walkthrough", () => {
+    const { container } = renderSidebar();
+    const target = (name: string) =>
+      container.querySelector(`[data-tour-target="${name}"]`);
+
+    expect(target("chats")?.textContent).toContain("Recent chats");
+    expect(target("team")?.textContent).toContain("Team");
+    expect(target("files")?.textContent).toContain("Files");
+    expect(target("workspace")?.textContent).toContain("Workspace");
+  });
+
   it("ignores a keydown with no key and preserves the new-task shortcut", () => {
     renderSidebar();
     const event = new KeyboardEvent("keydown", {
