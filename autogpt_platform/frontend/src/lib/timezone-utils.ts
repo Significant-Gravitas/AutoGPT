@@ -49,14 +49,14 @@ export function getTimezoneAbbreviation(timezone: string): string {
 
   try {
     const date = new Date();
-    const formatted = new Intl.DateTimeFormat("en-US", {
+    const tzAbbr = new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
       timeZoneName: "short",
-    }).format(date);
+    })
+      .formatToParts(date)
+      .find((part) => part.type === "timeZoneName")?.value;
 
-    // Extract the timezone abbreviation from the formatted string
-    const match = formatted.match(/[A-Z]{2,5}$/);
-    return match ? match[0] : timezone;
+    return tzAbbr || timezone;
   } catch {
     return timezone;
   }

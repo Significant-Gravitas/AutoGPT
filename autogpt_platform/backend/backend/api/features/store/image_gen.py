@@ -1,7 +1,9 @@
+import asyncio
 import io
 import logging
 from enum import Enum
 
+from PIL import Image
 from prisma.models import AgentGraph
 from replicate.client import Client as ReplicateClient
 from replicate.exceptions import ReplicateError
@@ -26,17 +28,33 @@ class ImageStyle(str, Enum):
 
 
 async def generate_agent_image(agent: GraphBaseMeta | AgentGraph) -> io.BytesIO:
+    """Generate a JPEG thumbnail, independent of the provider's image format."""
     if settings.config.use_agent_image_generation_v2:
-        return await generate_agent_image_v2(graph=agent)
+        image = await generate_agent_image_v2(graph=agent)
     else:
-        return await generate_agent_image_v1(agent=agent)
+        image = await generate_agent_image_v1(agent=agent)
+    return await asyncio.to_thread(_as_jpeg, image)
+
+
+def _as_jpeg(image: io.BytesIO) -> io.BytesIO:
+    content = image.getvalue()
+    with Image.open(io.BytesIO(content)) as generated:
+        if generated.format == "JPEG":
+            return io.BytesIO(content)
+        rgba = generated.convert("RGBA")
+        background = Image.new("RGB", generated.size, "white")
+        background.paste(rgba, mask=rgba.getchannel("A"))
+        output = io.BytesIO()
+        background.save(output, format="JPEG", quality=90)
+    output.seek(0)
+    return output
 
 
 async def generate_agent_image_v2(graph: GraphBaseMeta | AgentGraph) -> io.BytesIO:
     """
     Generate an image for an agent using Ideogram model.
     Returns:
-        str: The URL of the generated image
+        io.BytesIO: The image bytes in the provider's original format.
     """
     if not ideogram_credentials.api_key:
         raise ValueError("Missing Ideogram API key")

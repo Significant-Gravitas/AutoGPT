@@ -7,9 +7,10 @@ import {
   AccordionItem,
 } from "@/components/molecules/Accordion/Accordion";
 import { cn } from "@/lib/utils";
-import { CaretRightIcon, LightbulbIcon } from "@phosphor-icons/react";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { useState } from "react";
+import { ArrowRight01Icon, BulbIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   children: React.ReactNode;
@@ -37,25 +38,25 @@ export function ReasoningCollapse({ children, isActive = false }: Props) {
         <AccordionPrimitive.Header className="flex">
           <AccordionPrimitive.Trigger
             className={cn(
-              "group flex items-center gap-1.5 py-1 font-sans text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-700 focus-visible:outline-none",
+              "group flex items-center gap-1.5 py-1 font-sans text-sm font-medium text-foreground-tertiary transition-colors hover:text-foreground-body focus-visible:outline-none",
               isActive && "animate-pulse",
             )}
           >
             {isActive ? (
-              <LightbulbIcon size={14} weight="bold" className="shrink-0" />
+              <Icon icon={BulbIcon} size={14} className="shrink-0" />
             ) : (
               // Once reasoning has finished streaming, swap the bulb for a
               // caret that rotates to reflect the expanded/collapsed state.
-              <CaretRightIcon
+              <Icon
+                icon={ArrowRight01Icon}
                 size={14}
-                weight="bold"
                 className="shrink-0 transition-transform group-data-[state=open]:rotate-90"
               />
             )}
             Reasoning
           </AccordionPrimitive.Trigger>
         </AccordionPrimitive.Header>
-        <AccordionContent className="pb-1 pt-0 font-sans text-sm text-zinc-500 [&_pre]:m-0 [&_pre]:whitespace-pre-wrap [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:font-sans [&_pre]:text-sm [&_pre]:text-zinc-500">
+        <AccordionContent className="pb-1 pt-0 font-sans text-sm text-foreground-tertiary [&_pre]:m-0 [&_pre]:whitespace-pre-wrap [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:font-sans [&_pre]:text-sm [&_pre]:text-foreground-tertiary">
           {children}
           <Button
             variant="secondary"

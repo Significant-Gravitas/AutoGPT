@@ -1,33 +1,26 @@
 "use client";
 
-import { useFlags } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { Flag, useFlagStatus } from "./use-get-flag";
 
-export function withFeatureFlag<P extends object>(
+export function withFeatureFlag<P extends object, T extends Flag>(
   WrappedComponent: React.ComponentType<P>,
-  flagKey: string,
+  flag: T,
 ) {
   return function FeatureFlaggedComponent(props: P) {
-    const flags = useFlags();
+    const { enabled, answered } = useFlagStatus(flag);
     const router = useRouter();
-    const [hasFlagLoaded, setHasFlagLoaded] = useState(false);
 
+    // Navigating on the 5s timeout would send a user who has the flag to
+    // /404 whenever the vendor is slow or blocked, so only an answer moves.
     useEffect(() => {
-      // Only proceed if flags received
-      if (flags && flagKey in flags) {
-        setHasFlagLoaded(true);
-      }
-    }, [flags]);
-
-    useEffect(() => {
-      if (hasFlagLoaded && !flags[flagKey]) {
+      if (answered && !enabled) {
         router.push("/404");
       }
-    }, [hasFlagLoaded, flags, router]);
+    }, [answered, enabled, router]);
 
-    // Show loading state until flags loaded
-    if (!hasFlagLoaded) {
+    if (!answered) {
       return (
         <div className="flex min-h-screen items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -35,12 +28,10 @@ export function withFeatureFlag<P extends object>(
       );
     }
 
-    // If flag is loaded but false, return null (will redirect)
-    if (!flags[flagKey]) {
+    if (!enabled) {
       return null;
     }
 
-    // Flag is loaded and true, show component
     return <WrappedComponent {...props} />;
   };
 }

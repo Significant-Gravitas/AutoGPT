@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { useState } from "react";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
@@ -18,6 +17,8 @@ import {
   ToolIcon,
   type TriggerSetupOutput,
 } from "./helpers";
+import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   part: {
@@ -64,7 +65,7 @@ export function SetupTriggerTool({ part }: Props) {
             <ToolIcon isStreaming={isStreaming} isError={isError} />
             <MorphingTextAnimation
               text={text}
-              className={isError ? "text-red-500" : undefined}
+              className={isError ? "text-error" : undefined}
             />
           </div>
         )}
@@ -120,7 +121,7 @@ function TriggerSetupSuccessCard({ output }: { output: TriggerSetupOutput }) {
       <ContentMessage>{output.message}</ContentMessage>
       {output.manual_setup_required && output.webhook_url && (
         <div className="flex items-center gap-2 rounded-xl border bg-muted/40 p-2">
-          <code className="min-w-0 flex-1 break-all text-xs">
+          <code className="ph-no-capture min-w-0 flex-1 break-all text-xs">
             {output.webhook_url}
           </code>
           <Button
@@ -129,7 +130,11 @@ function TriggerSetupSuccessCard({ output }: { output: TriggerSetupOutput }) {
             onClick={handleCopy}
             aria-label={copied ? "Copied" : "Copy webhook URL"}
           >
-            {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+            {copied ? (
+              <Icon icon={Tick02Icon} size={14} />
+            ) : (
+              <Icon icon={Copy01Icon} size={14} />
+            )}
           </Button>
         </div>
       )}

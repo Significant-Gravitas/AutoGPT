@@ -1,7 +1,6 @@
 "use client";
 
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
-import { EnvelopeSimpleIcon, PhoneIcon } from "@phosphor-icons/react";
 import { getFilePreviewUrl } from "../helpers";
 
 // Whole file (kind is gated < 110KB) via the preview endpoint, which sets
@@ -14,6 +13,8 @@ import {
   type VcardPreview as VcardData,
 } from "../parsers";
 import { Fallback, LoadingPlaceholder, useFileText } from "./PreviewParts";
+import { CallIcon, Mail02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface PreviewProps {
   file: WorkspaceFileItem;
@@ -93,22 +94,22 @@ function EventCard({ event }: { event: IcsData }) {
   const date = parseDateTime(event.start);
   const timeRange = formatTimeRange(event.start, event.end);
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 bg-white p-3 text-center">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 bg-surface p-3 text-center">
       {date ? (
         <>
-          <span className="text-sm font-bold uppercase leading-none tracking-wide text-red-500">
+          <span className="text-sm font-bold uppercase leading-none tracking-wide text-error">
             {weekdayLabel(date)}
           </span>
-          <span className="text-4xl font-bold leading-none text-zinc-900">
+          <span className="text-4xl font-bold leading-none text-foreground-strong">
             {date.day}
           </span>
         </>
       ) : null}
-      <span className="mt-1.5 line-clamp-2 text-sm font-medium text-zinc-800">
+      <span className="mt-1.5 line-clamp-2 text-sm font-medium text-foreground-emphasis">
         {event.summary ?? "Event"}
       </span>
       {timeRange ? (
-        <span className="text-xs text-zinc-600">{timeRange}</span>
+        <span className="text-xs text-foreground-secondary">{timeRange}</span>
       ) : null}
     </div>
   );
@@ -136,7 +137,7 @@ function initials(name: string): string {
 
 function ContactCard({ contact }: { contact: VcardData }) {
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-white p-3 text-center">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-surface p-3 text-center">
       {contact.photo ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -145,27 +146,27 @@ function ContactCard({ contact }: { contact: VcardData }) {
           className="h-14 w-14 rounded-full object-cover"
         />
       ) : (
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-200 text-lg font-semibold text-zinc-600">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-active text-lg font-semibold text-foreground-secondary">
           {initials(contact.name ?? "")}
         </div>
       )}
-      <span className="truncate text-sm font-medium text-zinc-900">
+      <span className="truncate text-sm font-medium text-foreground-strong">
         {contact.name}
       </span>
       {contact.title || contact.org ? (
-        <span className="truncate text-xs text-zinc-500">
+        <span className="truncate text-xs text-foreground-tertiary">
           {[contact.title, contact.org].filter(Boolean).join(" · ")}
         </span>
       ) : null}
       {contact.tel ? (
-        <span className="flex items-center gap-1 text-xs text-zinc-500">
-          <PhoneIcon size={12} className="shrink-0" />
+        <span className="flex items-center gap-1 text-xs text-foreground-tertiary">
+          <Icon icon={CallIcon} size={12} className="shrink-0" />
           <span className="truncate">{contact.tel}</span>
         </span>
       ) : null}
       {contact.email ? (
-        <span className="flex items-center gap-1 text-xs text-zinc-500">
-          <EnvelopeSimpleIcon size={12} className="shrink-0" />
+        <span className="flex items-center gap-1 text-xs text-foreground-tertiary">
+          <Icon icon={Mail02Icon} size={12} className="shrink-0" />
           <span className="truncate">{contact.email}</span>
         </span>
       ) : null}

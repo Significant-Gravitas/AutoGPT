@@ -49,6 +49,7 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
       markerEnd: {
         type: MarkerType.ArrowClosed,
         strokeWidth: 2,
+        // TODO(tokens): no exact role: #555 #555555
         color: "#555",
       },
       ...edge,
@@ -121,8 +122,10 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
     get().edges.some(
       (e) =>
         e.source === nodeId &&
+        typeof e.sourceHandle === "string" &&
         (e.sourceHandle === handle ||
-          (e.sourceHandle && e.sourceHandle.startsWith(handle + "_#_"))),
+          (e.sourceHandle.startsWith(handle + "_#_") &&
+            e.sourceHandle.split("_#_").every(Boolean))),
     ),
 
   getBackendLinks: () => get().edges.map(customEdgeToLink),

@@ -1,12 +1,16 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { LinkSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 
 import { type LinkRow, MAX_LINKS } from "../../helpers";
+import {
+  Delete02Icon,
+  Link02Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   links: LinkRow[];
@@ -29,10 +33,10 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1 px-4">
-        <Text variant="body-medium" as="span" className="text-black">
+        <Text variant="body-medium" as="span" className="text-foreground-base">
           Your links
         </Text>
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-foreground-tertiary">
           Add up to {MAX_LINKS} links. Site, GitHub, X, anything you want
           visible.
         </Text>
@@ -55,11 +59,14 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
                 transition={{ duration: 0.18, ease: EASE_OUT }}
               >
                 <div className="flex items-center gap-2">
-                  <div className="flex flex-1 items-center gap-2 rounded-3xl border border-zinc-200 bg-white px-4 transition-colors duration-150 focus-within:border-purple-400 focus-within:ring-1 focus-within:ring-purple-400">
-                    <LinkSimpleIcon
+                  <div
+                    // TODO(tokens): no exact role (focus-within:border-purple-400 #925CF7, focus-within:ring-purple-400 #925CF7)
+                    className="flex flex-1 items-center gap-2 rounded-3xl border border-border-base bg-surface px-4 transition-colors duration-150 focus-within:border-purple-400 focus-within:ring-1 focus-within:ring-purple-400"
+                  >
+                    <Icon
+                      icon={Link02Icon}
                       size={16}
-                      weight="regular"
-                      className="text-zinc-400"
+                      className="text-foreground-subtle"
                     />
                     <input
                       type="url"
@@ -67,7 +74,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
                       placeholder="https://"
                       aria-label={`Link ${index + 1}`}
                       onChange={(e) => onChange(index, e.target.value)}
-                      className="h-[2.875rem] w-full border-none bg-transparent text-sm text-black placeholder:text-zinc-400 focus:outline-none"
+                      className="h-[2.875rem] w-full border-none bg-transparent text-sm text-foreground-base placeholder:text-foreground-subtle focus:outline-none"
                     />
                   </div>
                   <Button
@@ -76,7 +83,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
                     aria-label={`Remove link ${index + 1}`}
                     onClick={() => onRemove(index)}
                   >
-                    <TrashIcon size={16} />
+                    <Icon icon={Delete02Icon} size={16} />
                   </Button>
                 </div>
               </motion.div>
@@ -85,7 +92,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
         </div>
 
         {links.length === 0 ? (
-          <Text variant="small" className="px-4 text-zinc-400">
+          <Text variant="small" className="px-4 text-foreground-subtle">
             No links yet.
           </Text>
         ) : null}
@@ -94,7 +101,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
           <Button
             variant="ghost"
             size="small"
-            leftIcon={<PlusIcon size={16} />}
+            leftIcon={<Icon icon={PlusSignIcon} size={16} />}
             onClick={onAdd}
             disabled={!canAdd}
           >

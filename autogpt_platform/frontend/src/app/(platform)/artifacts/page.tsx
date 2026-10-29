@@ -1,16 +1,23 @@
 "use client";
 
-import { useEffect } from "react";
-import { notFound } from "next/navigation";
-import { motion, useReducedMotion } from "framer-motion";
-import type { Transition, Variants } from "framer-motion";
-import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { Text } from "@/components/atoms/Text/Text";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
-import { ArtifactsSearchBar } from "./components/ArtifactsSearchBar/ArtifactsSearchBar";
+import type { Transition, Variants } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import { useEffect } from "react";
 import { ArtifactsList } from "./components/ArtifactsList/ArtifactsList";
+import { getEmptyState } from "./components/ArtifactsList/helpers";
+import { ArtifactsSearchBar } from "./components/ArtifactsSearchBar/ArtifactsSearchBar";
+import { ExpertFilter } from "./components/ExpertFilter/ExpertFilter";
+import { NewMenu } from "./components/NewMenu/NewMenu";
 import { OriginFilter } from "./components/OriginFilter/OriginFilter";
-import { StorageUsage } from "./components/StorageUsage/StorageUsage";
+import { ViewToggle } from "./components/ViewToggle/ViewToggle";
+import { FolderBreadcrumb } from "./components/WorkspaceFolders/FolderBreadcrumb";
+import {
+  ancestorsOf,
+  childrenOf,
+} from "./components/WorkspaceFolders/folderTree";
+import { useArtifactsFolders } from "./useArtifactsFolders";
 import { useArtifactsPage } from "./useArtifactsPage";
 
 const EASE_OUT_SOFT: Transition["ease"] = [0.16, 1, 0.3, 1];
@@ -30,11 +37,17 @@ const REDUCED_SECTION_VARIANTS: Variants = {
   show: { opacity: 1, transition: { duration: 0.2 } },
 };
 
+const MAIN_CLASS_NAME =
+  "mx-auto min-h-screen w-full max-w-7xl space-y-6 px-6 pb-20 pt-2 md:px-8";
+
 export default function ArtifactsPage() {
-  const { enabled: isEnabled, ready: flagReady } = useFlagStatus(
-    Flag.ARTIFACTS_PAGE,
-  );
   const reduceMotion = useReducedMotion();
+  const {
+    folders,
+    isLoading: isFoldersLoading,
+    isError: isFoldersError,
+    error: foldersError,
+  } = useArtifactsFolders();
   const {
     files,
     isLoading,
@@ -45,41 +58,67 @@ export default function ArtifactsPage() {
     debouncedSearch,
     originFilter,
     setOriginFilter,
+    selectedFolderId,
+    openFolder,
+    closeFolder,
+    expertFilter,
+    setExpertFilter,
+    view,
+    setView,
     hasMore,
     isLoadingMore,
     loadMore,
-  } = useArtifactsPage();
+  } = useArtifactsPage({ folders, isFoldersLoading, isFoldersError });
+  const { activeExperts, expertsById } = useExpertMap();
+
+  const isSearching = searchTerm.length > 0;
+  const isInFolder = selectedFolderId !== null;
+  const selectedFolder = folders.find((f) => f.id === selectedFolderId);
+  // Folders are the container an expert filter narrows inside, so only a
+  // search — which spans every folder — replaces them with a flat list.
+  const showFolders = !isSearching;
+  const hasFolders =
+    showFolders && childrenOf(folders, selectedFolderId).length > 0;
+  // The empty state depends on whether child folders exist, so hold the
+  // loading state until both queries have settled.
+  const isListLoading = isLoading || (showFolders && isFoldersLoading);
+  // Until the folders query settles the open folder's name is unknown, so the
+  // crumb stands in with the generic label rather than flickering a wrong one.
+  const breadcrumbItems = isInFolder
+    ? selectedFolder
+      ? ancestorsOf(folders, selectedFolder.id).map((folder) => ({
+          id: folder.id,
+          name: folder.name,
+        }))
+      : [{ id: selectedFolderId, name: "Folder" }]
+    : [];
 
   useEffect(() => {
     document.title = "Files – AutoGPT Platform";
   }, []);
 
-  if (!flagReady) {
-    return <ArtifactsPageSkeleton />;
-  }
-  if (!isEnabled) {
-    notFound();
-  }
-
   const variants = reduceMotion ? REDUCED_SECTION_VARIANTS : SECTION_VARIANTS;
 
   return (
-    <main className="container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+    <main className={MAIN_CLASS_NAME}>
+      {/* The chrome's inset header owns the title row and shows storage usage
+          beside it (see InsetHeaderActions). */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <motion.div
-          className="flex flex-col gap-1"
           variants={variants}
           initial="hidden"
           animate="show"
           transition={{ delay: 0 }}
         >
-          <Text variant="h3">Files</Text>
-          <Text variant="body" className="max-w-prose text-zinc-600">
-            Every file your agents generate or use in the Builder lives here —
-            ready to reuse, download, or share.
+          <Text
+            variant="large"
+            className="max-w-prose text-foreground-secondary"
+          >
+            Find here every file generated by your team or uploaded by you.
           </Text>
         </motion.div>
         <motion.div
+          className="flex items-center gap-3"
           variants={variants}
           initial="hidden"
           animate="show"
@@ -89,62 +128,85 @@ export default function ArtifactsPage() {
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
           />
+          <NewMenu
+            selectedFolderId={selectedFolderId}
+            selectedFolderName={selectedFolder?.name}
+          />
         </motion.div>
       </div>
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <motion.div
-          className="flex w-full md:w-2/5"
+          className="flex flex-wrap items-center gap-x-32 gap-y-2"
           variants={variants}
           initial="hidden"
           animate="show"
           transition={{ delay: reduceMotion ? 0 : 0.16 }}
         >
-          <StorageUsage />
+          <OriginFilter value={originFilter} onChange={setOriginFilter} />
+          <ExpertFilter
+            experts={activeExperts}
+            value={expertFilter}
+            onChange={setExpertFilter}
+          />
         </motion.div>
+        <motion.div
+          variants={variants}
+          initial="hidden"
+          animate="show"
+          transition={{ delay: reduceMotion ? 0 : 0.2 }}
+        >
+          <ViewToggle value={view} onChange={setView} />
+        </motion.div>
+      </div>
+      {isInFolder ? (
         <motion.div
           variants={variants}
           initial="hidden"
           animate="show"
           transition={{ delay: reduceMotion ? 0 : 0.24 }}
         >
-          <OriginFilter value={originFilter} onChange={setOriginFilter} />
+          <FolderBreadcrumb
+            items={breadcrumbItems}
+            onNavigate={(folderId) =>
+              folderId === null ? closeFolder() : openFolder(folderId)
+            }
+          />
         </motion.div>
-      </div>
+      ) : null}
       <motion.div
         variants={variants}
         initial="hidden"
         animate="show"
-        transition={{ delay: reduceMotion ? 0 : 0.32 }}
+        transition={{ delay: reduceMotion ? 0 : 0.28 }}
       >
         <ArtifactsList
           files={files}
-          isLoading={isLoading}
-          isError={isError}
-          error={error}
-          hasSearchTerm={searchTerm.length > 0}
+          isLoading={isListLoading}
+          isError={isError || (showFolders && isFoldersError)}
+          error={isError ? error : showFolders ? foldersError : undefined}
+          emptyState={getEmptyState({
+            hasSearchTerm: isSearching,
+            isInFolder,
+            hasFolders,
+            folderId: selectedFolderId,
+            expert: expertFilter
+              ? {
+                  id: expertFilter,
+                  name: expertsById.get(expertFilter)?.name ?? null,
+                }
+              : null,
+          })}
+          compactEmpty={hasFolders}
           hasMore={hasMore}
           isLoadingMore={isLoadingMore}
           onLoadMore={loadMore}
-          listKey={`${originFilter}|${debouncedSearch}`}
+          listKey={`${originFilter}|${expertFilter ?? "everyone"}|${debouncedSearch}|${selectedFolderId ?? "root"}`}
+          view={view}
+          showFolders={showFolders}
+          folderParentId={selectedFolderId}
+          onSelectFolder={openFolder}
         />
       </motion.div>
-    </main>
-  );
-}
-
-function ArtifactsPageSkeleton() {
-  return (
-    <main
-      className="container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12"
-      data-testid="artifacts-flag-loading"
-    >
-      <Skeleton className="h-8 w-48 rounded-md" />
-      <Skeleton className="h-4 w-80 rounded-md" />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-64 w-full rounded-2xl" />
-        ))}
-      </div>
     </main>
   );
 }

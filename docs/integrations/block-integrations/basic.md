@@ -31,7 +31,7 @@ The block accepts either plain text or structured message objects (like those fr
 | error | Error message if the operation failed | str |
 | action | Action of the operation | str |
 | memory | Memory created | str |
-| results | List of all results from the operation | List[Dict[str, str]] |
+| results | List of all results from the operation | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -1496,7 +1496,12 @@ The search is performed against the Mem0 memory store and returns memories ranke
 ## Store Value
 
 ### What it is
-A basic block that stores and forwards a value throughout workflows, allowing it to be reused without changes across multiple blocks.
+Holds or receives a value and outputs it statically so that it can be used multiple
+times within the same agent run. Whenever consumed, the output value reflects the
+last input value that was received.
+
+NOTE: The value is NOT persisted across runs. To store data that survives between
+runs, use PersistInformationBlock and RetrieveInformationBlock instead.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

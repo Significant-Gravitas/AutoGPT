@@ -1,7 +1,20 @@
+from unittest.mock import MagicMock
+from urllib.parse import urlparse
+
 import pytest
 from aiohttp import web
 
-from backend.util.request import _is_ip_blocked, pin_url, validate_url_host
+from backend.util.request import (
+    Requests,
+    ResponseTooLargeError,
+    _is_ip_blocked,
+    _read_body,
+    _remove_insecure_headers,
+    pin_url,
+    resolve_and_check_blocked,
+    validate_url_host,
+)
+from backend.util.settings import Config
 
 
 @pytest.mark.parametrize(
@@ -197,9 +210,22 @@ async def test_large_header_handling():
         ("1.1.1.1", False),
         ("::ffff:8.8.8.8", False),  # IPv4-mapped but public
         # Native IPv6 blocked ranges
+        ("::", True),  # Unspecified; Linux connects it to ::1
         ("::1", True),  # Loopback
         ("fe80::1", True),  # Link-local
         ("fc00::1", True),  # ULA
+        # Other IPv6 encodings of a blocked IPv4 address
+        ("2002:a9fe:a9fe::", True),  # 6to4 of 169.254.169.254
+        ("2001:0:4136:e378:8000:63bf:80ff:fffe", True),  # Teredo, client 127.0.0.1
+        ("64:ff9b::a9fe:a9fe", True),  # NAT64 of 169.254.169.254
+        ("64:ff9b:1::a00:1", True),  # Local-use NAT64 of 10.0.0.1
+        ("64:ff9b:1::808:808", True),  # Local-use NAT64 is blocked whatever it embeds
+        ("::ffff:0:7f00:1", True),  # SIIT of 127.0.0.1
+        ("::7f00:1", True),  # IPv4-compatible 127.0.0.1
+        # The same encodings of a public IPv4 address (should NOT be blocked)
+        ("2002:808:808::", False),  # 6to4 of 8.8.8.8
+        ("2001:0:4136:e378:8000:63bf:f7f7:f7f7", False),  # Teredo, client 8.8.8.8
+        ("64:ff9b::808:808", False),  # NAT64 of 8.8.8.8, as DNS64 networks resolve
         # Public IPv6 (should NOT be blocked)
         ("2607:f8b0:4004:800::200e", False),  # Google
     ],
@@ -221,17 +247,21 @@ def test_is_ip_blocked(ip: str, expected_blocked: bool):
         ("cgnat.example.com", ["100.64.0.1"], True),
         # Mixed: one public, one mapped-private — must be blocked (any blocked = reject)
         ("mixed.example.com", ["8.8.8.8", "::ffff:192.168.1.1"], True),
+        # A lone AAAA record of :: — Linux connects it to ::1, so must be blocked
+        ("unspecified.example.com", ["::"], True),
+        # NAT64 of the cloud metadata address — must be blocked
+        ("nat64-metadata.example.com", ["64:ff9b::a9fe:a9fe"], True),
         # All public — should pass
         ("public.example.com", ["8.8.8.8", "9.9.9.9"], False),
     ],
 )
-async def test_ipv4_mapped_ipv6_bypass(
+async def test_ipv6_encoded_blocked_ip_bypass(
     monkeypatch,
     raw_url: str,
     resolved_ips: list[str],
     should_raise: bool,
 ):
-    """Ensures IPv4-mapped IPv6 addresses are checked against IPv4 blocklist."""
+    """Ensures a host that resolves to a blocked address in any IPv6 form is rejected."""
 
     def mock_getaddrinfo(host, port, *args, **kwargs):
         return [(None, None, None, None, (ip, port)) for ip in resolved_ips]
@@ -244,3 +274,596 @@ async def test_ipv4_mapped_ipv6_bypass(
     else:
         url, _, ip_addresses = await validate_url_host(raw_url)
         assert ip_addresses  # Should have resolved IPs
+
+
+@pytest.mark.parametrize("host", ["::", "::1", "::ffff:127.0.0.1", "0.0.0.0"])
+async def test_literal_blocked_host_is_rejected(host: str):
+    """The SQL and email blocks pass a user's host to resolve_and_check_blocked
+    as typed, without validate_url_host's hostname check, so an IP literal must
+    be rejected here. getaddrinfo returns a literal as is, so no DNS is involved."""
+    with pytest.raises(ValueError):
+        await resolve_and_check_blocked(host)
+
+
+@pytest.mark.parametrize(
+    "header_name",
+    [
+        "Authorization",
+        "authorization",
+        "AUTHORIZATION",
+        "Proxy-Authorization",
+        "proxy-authorization",
+        "PROXY-AUTHORIZATION",
+        "Cookie",
+        "cookie",
+        "CoOkIe",
+    ],
+)
+@pytest.mark.parametrize(
+    "new_url, expect_stripped",
+    [
+        ("https://example.com/b", False),
+        ("https://other.example.com/b", True),
+        ("http://example.com/b", True),
+        ("https://example.com:8443/b", True),
+    ],
+)
+def test_sensitive_headers_are_stripped_regardless_of_case(
+    header_name: str, new_url: str, expect_stripped: bool
+):
+    headers = {header_name: "secret", "X-Keep": "kept"}
+
+    result = _remove_insecure_headers(
+        headers, urlparse("https://example.com/a"), urlparse(new_url)
+    )
+
+    assert (header_name not in result) is expect_stripped
+    assert result["X-Keep"] == "kept"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("header_name", ["Authorization", "authorization"])
+async def test_authorization_is_not_replayed_across_a_cross_origin_redirect(
+    header_name: str,
+):
+    """A redirect to a different origin must not carry the caller's bearer token.
+
+    ``_remove_insecure_headers`` strips it for the next hop, but the recursive
+    call re-merged ``extra_headers`` afterwards and put it straight back — so
+    a hostile MCP server could harvest a token just by answering 302.
+
+    Header names are case-insensitive over the wire, so the lower-cased spelling
+    has to be stripped too: matching on the exact key would let a caller passing
+    ``{"authorization": ...}`` leak.
+    """
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # aiohttp matches header names case-insensitively.
+        seen["authorization"] = request.headers.get("Authorization")
+        return aiohttp_web.json_response({"ok": True})
+
+    attacker = aiohttp_web.Application()
+    attacker.router.add_get("/collect", collect)
+    attacker_runner = aiohttp_web.AppRunner(attacker)
+    await attacker_runner.setup()
+    attacker_site = aiohttp_web.TCPSite(attacker_runner, "127.0.0.1", 0)
+    await attacker_site.start()
+    attacker_port = attacker_runner.addresses[0][1]
+
+    async def redirect(_request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # Pinned so the test can't pass by ``extra_headers`` never being
+        # attached in the first place.
+        seen["origin_authorization"] = _request.headers.get("Authorization")
+        raise aiohttp_web.HTTPFound(
+            f"http://127.0.0.1:{attacker_port}/collect",
+        )
+
+    origin = aiohttp_web.Application()
+    origin.router.add_get("/mcp", redirect)
+    origin_runner = aiohttp_web.AppRunner(origin)
+    await origin_runner.setup()
+    origin_site = aiohttp_web.TCPSite(origin_runner, "127.0.0.1", 0)
+    await origin_site.start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(
+            trusted_origins=["127.0.0.1"],
+            extra_headers={header_name: "Bearer dft_secret_token"},
+        )
+        await requests.get(f"http://127.0.0.1:{origin_port}/mcp")
+    finally:
+        await origin_runner.cleanup()
+        await attacker_runner.cleanup()
+
+    assert seen["origin_authorization"] == "Bearer dft_secret_token"
+    assert seen["authorization"] is None
+
+
+@pytest.mark.asyncio
+async def test_basic_auth_is_not_replayed_across_a_cross_origin_redirect():
+    """``auth=`` has to be dropped with the header it generates.
+
+    aiohttp synthesises ``Authorization`` from ``auth=`` itself, downstream of
+    the header strip, so ``auth`` never appears in the dict ``_drop_headers``
+    sees. Dropping only the header would still hand BasicAuth to the redirect
+    target.
+    """
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["authorization"] = request.headers.get("Authorization")
+        return aiohttp_web.json_response({"ok": True})
+
+    attacker = aiohttp_web.Application()
+    attacker.router.add_get("/collect", collect)
+    attacker_runner = aiohttp_web.AppRunner(attacker)
+    await attacker_runner.setup()
+    await aiohttp_web.TCPSite(attacker_runner, "127.0.0.1", 0).start()
+    attacker_port = attacker_runner.addresses[0][1]
+
+    async def redirect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # Pinned, so the test cannot pass by ``auth`` never being applied.
+        seen["origin_authorization"] = request.headers.get("Authorization")
+        raise aiohttp_web.HTTPFound(f"http://127.0.0.1:{attacker_port}/collect")
+
+    origin = aiohttp_web.Application()
+    origin.router.add_get("/start", redirect)
+    origin_runner = aiohttp_web.AppRunner(origin)
+    await origin_runner.setup()
+    await aiohttp_web.TCPSite(origin_runner, "127.0.0.1", 0).start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"])
+        await requests.get(
+            f"http://127.0.0.1:{origin_port}/start", auth=("user", "pass")
+        )
+    finally:
+        await origin_runner.cleanup()
+        await attacker_runner.cleanup()
+
+    # "user:pass" base64-encoded — proves auth was applied on the first hop.
+    assert seen["origin_authorization"] == "Basic dXNlcjpwYXNz"
+    assert seen["authorization"] is None
+
+
+@pytest.mark.asyncio
+async def test_authorization_stays_dropped_across_a_three_hop_redirect_chain():
+    """A→B→C: the drop set has to accumulate, not be rebuilt per hop.
+
+    At hop 2 the header is already gone from ``req_headers``, so the
+    set-difference term ``req_headers.keys() - new_headers.keys()`` is empty
+    and contributes nothing. Only the union with the incoming ``drop_headers``
+    keeps ``extra_headers`` from re-injecting the token for hop 3 — which is
+    why rebuilding the set each hop passes a 2-hop test and still leaks here.
+    """
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    seen: dict[str, str | None] = {}
+
+    async def final(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["hop3"] = request.headers.get("Authorization")
+        return aiohttp_web.json_response({"ok": True})
+
+    hop3 = aiohttp_web.Application()
+    hop3.router.add_get("/collect", final)
+    hop3_runner = aiohttp_web.AppRunner(hop3)
+    await hop3_runner.setup()
+    await aiohttp_web.TCPSite(hop3_runner, "127.0.0.1", 0).start()
+    hop3_port = hop3_runner.addresses[0][1]
+
+    async def bounce(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["hop2"] = request.headers.get("Authorization")
+        raise aiohttp_web.HTTPFound(f"http://127.0.0.1:{hop3_port}/collect")
+
+    hop2 = aiohttp_web.Application()
+    hop2.router.add_get("/bounce", bounce)
+    hop2_runner = aiohttp_web.AppRunner(hop2)
+    await hop2_runner.setup()
+    await aiohttp_web.TCPSite(hop2_runner, "127.0.0.1", 0).start()
+    hop2_port = hop2_runner.addresses[0][1]
+
+    async def start(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["hop1"] = request.headers.get("Authorization")
+        raise aiohttp_web.HTTPFound(f"http://127.0.0.1:{hop2_port}/bounce")
+
+    hop1 = aiohttp_web.Application()
+    hop1.router.add_get("/start", start)
+    hop1_runner = aiohttp_web.AppRunner(hop1)
+    await hop1_runner.setup()
+    await aiohttp_web.TCPSite(hop1_runner, "127.0.0.1", 0).start()
+    hop1_port = hop1_runner.addresses[0][1]
+
+    try:
+        requests = Requests(
+            trusted_origins=["127.0.0.1"],
+            extra_headers={"Authorization": "Bearer dft_secret_token"},
+        )
+        await requests.get(f"http://127.0.0.1:{hop1_port}/start")
+    finally:
+        await hop1_runner.cleanup()
+        await hop2_runner.cleanup()
+        await hop3_runner.cleanup()
+
+    assert seen["hop1"] == "Bearer dft_secret_token"
+    assert seen["hop2"] is None
+    assert seen["hop3"] is None
+
+
+def test_drop_headers_lower_cases_the_names_it_is_given():
+    """``drop_headers`` is public, so a capitalised name must not be a no-op.
+
+    Callers reach it through ``get``/``post``/…, where writing
+    ``frozenset({"Authorization"})`` is the natural spelling. Requiring
+    pre-lower-cased input made that silently send the header anyway.
+    """
+    from backend.util.request import _drop_headers
+
+    headers = {"Authorization": "Bearer t", "X-Keep": "1"}
+    _drop_headers(headers, frozenset({"Authorization"}))
+    assert headers == {"X-Keep": "1"}
+
+    headers = {"authorization": "Bearer t", "X-Keep": "1"}
+    _drop_headers(headers, frozenset({"AUTHORIZATION"}))
+    assert headers == {"X-Keep": "1"}
+
+
+@pytest.mark.asyncio
+async def test_cookies_kwarg_is_not_replayed_across_a_cross_origin_redirect():
+    """``cookies=`` is the sibling of ``auth=``: same mechanism, same hole.
+
+    aiohttp synthesises the ``Cookie`` header from it downstream of
+    ``_remove_insecure_headers``, so it rides ``**kwargs`` into the new origin
+    even though ``cookie`` is in ``SENSITIVE_HEADERS`` — only the header
+    spelling was covered.
+    """
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["cookie"] = request.headers.get("Cookie")
+        return aiohttp_web.json_response({"ok": True})
+
+    attacker = aiohttp_web.Application()
+    attacker.router.add_get("/collect", collect)
+    attacker_runner = aiohttp_web.AppRunner(attacker)
+    await attacker_runner.setup()
+    await aiohttp_web.TCPSite(attacker_runner, "127.0.0.1", 0).start()
+    attacker_port = attacker_runner.addresses[0][1]
+
+    async def redirect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # Pinned, so the test cannot pass by the cookie never being applied.
+        seen["origin_cookie"] = request.headers.get("Cookie")
+        raise aiohttp_web.HTTPFound(f"http://127.0.0.1:{attacker_port}/collect")
+
+    origin = aiohttp_web.Application()
+    origin.router.add_get("/start", redirect)
+    origin_runner = aiohttp_web.AppRunner(origin)
+    await origin_runner.setup()
+    await aiohttp_web.TCPSite(origin_runner, "127.0.0.1", 0).start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"])
+        await requests.get(
+            f"http://127.0.0.1:{origin_port}/start",
+            cookies={"session": "secret_session_value"},
+        )
+    finally:
+        await origin_runner.cleanup()
+        await attacker_runner.cleanup()
+
+    assert seen["origin_cookie"] == "session=secret_session_value"
+    assert seen["cookie"] is None
+
+
+@pytest.mark.asyncio
+async def test_credentials_survive_a_same_origin_redirect():
+    """The cross-origin guard has to be a guard, not an unconditional drop.
+
+    Dropping ``auth=``/``cookies=`` on *every* hop would also break ordinary
+    authenticated same-origin redirects, and nothing else in the suite would
+    notice: every other test here crosses an origin.
+    """
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    seen: dict[str, str | None] = {}
+
+    async def final(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["authorization"] = request.headers.get("Authorization")
+        seen["cookie"] = request.headers.get("Cookie")
+        return aiohttp_web.json_response({"ok": True})
+
+    async def redirect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # Same scheme, host and port — only the path changes.
+        raise aiohttp_web.HTTPFound("/final")
+
+    app = aiohttp_web.Application()
+    app.router.add_get("/start", redirect)
+    app.router.add_get("/final", final)
+    runner = aiohttp_web.AppRunner(app)
+    await runner.setup()
+    await aiohttp_web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"])
+        await requests.get(
+            f"http://127.0.0.1:{port}/start",
+            auth=("user", "pass"),
+            cookies={"session": "secret_session_value"},
+        )
+    finally:
+        await runner.cleanup()
+
+    assert seen["authorization"] == "Basic dXNlcjpwYXNz"
+    assert seen["cookie"] == "session=secret_session_value"
+
+
+@pytest.mark.asyncio
+async def test_post_follows_redirect_to_trailing_slash_without_looping():
+    from backend.util.request import Requests
+
+    seen: list[str] = []
+
+    async def redirect(request: web.Request) -> web.Response:
+        seen.append(request.path)
+        raise web.HTTPTemporaryRedirect("/mcp/")
+
+    async def endpoint(request: web.Request) -> web.Response:
+        seen.append(request.path)
+        assert await request.json() == {"method": "initialize"}
+        return web.json_response({"error": "unauthorized"}, status=401)
+
+    app = web.Application()
+    app.router.add_post("/mcp", redirect)
+    app.router.add_post("/mcp/", endpoint)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    try:
+        response = await Requests(
+            trusted_origins=["127.0.0.1"], raise_for_status=False
+        ).post(
+            f"http://127.0.0.1:{port}/mcp",
+            json={"method": "initialize"},
+            max_redirects=2,
+        )
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 401
+    assert response.json() == {"error": "unauthorized"}
+    assert seen == ["/mcp", "/mcp/"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("compressed", [False, True], ids=["plain", "gzip"])
+async def test_a_capped_read_stops_at_the_cap(compressed: bool):
+    """A capped caller holds at most the cap, however much the server sends.
+
+    Counted after decompression, so a short gzip body that expands is cut too.
+    """
+    import gzip
+
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    body = b"x" * (5 * 1024 * 1024)
+
+    async def big(_request: aiohttp_web.Request) -> aiohttp_web.Response:
+        if compressed:
+            return aiohttp_web.Response(
+                body=gzip.compress(body),
+                headers={"Content-Encoding": "gzip", "Content-Type": "text/plain"},
+            )
+        return aiohttp_web.Response(body=body, content_type="text/plain")
+
+    app = aiohttp_web.Application()
+    app.router.add_get("/big", big)
+    runner = aiohttp_web.AppRunner(app)
+    await runner.setup()
+    site = aiohttp_web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"], raise_for_status=False)
+        capped = await requests.get(f"http://127.0.0.1:{port}/big", max_body_bytes=1024)
+        whole = await requests.get(f"http://127.0.0.1:{port}/big")
+    finally:
+        await runner.cleanup()
+
+    assert capped.content == b"x" * 1025
+    assert whole.content == body
+
+
+async def test_untrusted_request_connects_only_to_the_pinned_address(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The SSRF check's IPs are the ones the request connects to.
+
+    ``validate_url_host`` resolves and vets the host once; the request must then
+    go to those addresses and never resolve the name again, or DNS rebinding gets
+    past the check. That rests on aiohttp's ``TCPConnector`` asking our
+    ``HostResolver`` for the host, so this drives the real connector: ``.invalid``
+    never resolves, and the request can only reach the local server through the pin.
+    """
+    from backend.util import request as request_module
+    from backend.util.request import Requests
+
+    vetted: list[str] = []
+
+    async def resolve_and_check_blocked(hostname: str) -> list[str]:
+        vetted.append(hostname)
+        return ["127.0.0.1"]
+
+    monkeypatch.setattr(
+        request_module, "resolve_and_check_blocked", resolve_and_check_blocked
+    )
+
+    seen: list[str | None] = []
+
+    async def endpoint(request: web.Request) -> web.Response:
+        seen.append(request.headers.get("Host"))
+        return web.json_response({"ok": True})
+
+    app = web.Application()
+    app.router.add_get("/pinned", endpoint)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    try:
+        response = await Requests().get(f"http://pinned.invalid:{port}/pinned")
+    finally:
+        await runner.cleanup()
+
+    assert response.json() == {"ok": True}
+    assert vetted == ["pinned.invalid"]
+    assert seen == ["pinned.invalid"]
+
+
+# --- Response bodies are read under a size limit ---
+
+
+async def _serve(app: web.Application) -> tuple[web.AppRunner, str]:
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    return runner, f"http://127.0.0.1:{runner.addresses[0][1]}"
+
+
+def _local_requests(**kwargs) -> Requests:
+    return Requests(trusted_origins=["127.0.0.1"], **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_a_body_at_the_limit_is_read_in_full():
+    async def exactly_at_limit(request: web.Request) -> web.Response:
+        return web.Response(body=b"x" * 4096)
+
+    app = web.Application()
+    app.router.add_get("/", exactly_at_limit)
+    runner, base = await _serve(app)
+
+    try:
+        response = await _local_requests(max_response_bytes=4096).get(base)
+    finally:
+        await runner.cleanup()
+
+    assert response.content == b"x" * 4096
+
+
+@pytest.mark.asyncio
+async def test_a_body_over_the_limit_is_refused():
+    async def one_byte_over(request: web.Request) -> web.Response:
+        return web.Response(body=b"x" * 4097)
+
+    app = web.Application()
+    app.router.add_get("/", one_byte_over)
+    runner, base = await _serve(app)
+
+    try:
+        with pytest.raises(ResponseTooLargeError):
+            await _local_requests(max_response_bytes=4096).get(base)
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_stream_without_a_declared_length_stops_at_the_limit():
+    async def stream(request: web.Request) -> web.StreamResponse:
+        response = web.StreamResponse()
+        await response.prepare(request)
+        for _ in range(64):
+            await response.write(b"x" * 1024)
+        return response
+
+    app = web.Application()
+    app.router.add_get("/", stream)
+    runner, base = await _serve(app)
+
+    try:
+        with pytest.raises(ResponseTooLargeError):
+            await _local_requests(max_response_bytes=16 * 1024).get(base)
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_error_body_over_the_limit_is_refused_too():
+    async def failing_with_a_long_body(request: web.Request) -> web.Response:
+        return web.Response(status=500, body=b"x" * 4097)
+
+    app = web.Application()
+    app.router.add_get("/", failing_with_a_long_body)
+    runner, base = await _serve(app)
+
+    try:
+        with pytest.raises(ResponseTooLargeError):
+            await _local_requests(max_response_bytes=4096, retry_max_attempts=1).get(
+                base
+            )
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_declared_length_over_the_limit_is_refused_before_any_read():
+    class NeverRead:
+        def iter_chunked(self, size: int):
+            raise AssertionError("the body was read")
+
+    response = MagicMock(
+        method="GET", status=200, content_length=10**12, content=NeverRead()
+    )
+
+    with pytest.raises(ResponseTooLargeError):
+        await _read_body(response, 1024)
+
+    response.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_a_head_response_is_not_refused_for_the_size_of_the_resource():
+    async def big(request: web.Request) -> web.Response:
+        return web.Response(body=b"x" * 4097)
+
+    app = web.Application()
+    app.router.add_get("/", big)  # aiohttp answers HEAD for it too
+    runner, base = await _serve(app)
+
+    try:
+        response = await _local_requests(max_response_bytes=4096).head(base)
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert response.headers.get("Content-Length") == "4097"
+    assert response.content == b""
+
+
+def test_the_default_limit_follows_the_file_size_setting():
+    assert Requests().max_response_bytes == Config().max_file_size_mb * 1024 * 1024

@@ -2,50 +2,80 @@
 
 Walks a user's recent memory window through the consolidate → recombine
 → sanitize pipeline, then applies the sanitizer's ``DreamOperations``
-to Graphiti + Postgres.
+(clamped by ``clamp.py``) to Graphiti + Postgres.
 
-Slice 1 of P-0 deliberately bypasses Anthropic batch — every phase
-calls the OpenRouter-fronted OpenAI-compat client. The batch path
-slots in below this layer (`routing.py` returns ``"batch"``) in a
-future PR.
+Each phase here is one ``inference.complete.structured_complete`` call
+on the chat transport's provider, traced and recorded through the
+inference package. When ``routing.resolve_dream_execution_path``
+picks ``anthropic_batch``, ``batch_handoff.submit_dream_pass_batch``
+submits the first phase to Anthropic's Message Batches API instead and
+``batch_callbacks`` runs the later phases and the apply step as the
+results land.
+
+Every pass, on either route, gets a durable ``DreamPass`` row
+(``store.py``): inserted with its lease at the start, advanced after each
+step, and closed with how the pass ended, a write attempted before the pass
+releases its lock. Like every record write it is best-effort: one that fails
+leaves the row open behind a free lock until a later pass's guard or the
+reaper (``reaper.py``) closes it. A pass holding the lock runs ``guard.py``
+first, then before each phase and apply checks for a stop (``cancel.py``) and
+renews its lease (``lease.py``); the batch route checks before its submit.
 
 The orchestrator never raises out — every failure becomes a
-``DreamPassResult`` with ``error`` set, so the admin trigger always
-gets a structured response back.
+``DreamPassResult`` with ``error`` set and, on the sync route, the usage
+of every phase billed before it (a phase whose charge failed included),
+so the admin trigger always gets a structured response back.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import uuid as uuidlib
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
+from typing import TypeVar
+
+from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.inference.complete import structured_complete
+from backend.copilot.inference.context import (
+    InferenceContext,
+    InferenceError,
+    InferenceScope,
+)
+from backend.copilot.inference.routing import resolve_route
+from backend.copilot.inference.trace import trace
+from backend.copilot.trial_cost_context import attributed_usage
 from backend.util.feature_flag import Flag, is_feature_enabled
 
-from .apply import apply_operations
-from .billing import check_dream_budget, record_phase_cost
-from .fetch import DreamInput, gather_dream_input
-from .llm import (
-    CompletionUsage,
-    DreamLLMError,
-    StructuredCompletion,
-    structured_completion,
+from .apply import apply_operations, drain_status_from_stats
+from .batch_handoff import submit_dream_pass_batch
+from .billing import PhaseChargeError, check_dream_budget, record_phase_cost
+from .cancel import stopped_error
+from .citations import fact_scopes
+from .clamp import clamp_pass_operations
+from .fetch import (
+    DreamInput,
+    EpisodeRow,
+    gather_dream_input,
+    is_dream_authored_episode,
+    parse_episode_timestamp,
 )
+from .guard import GUARD_BUDGET_SECONDS, guard_dream_pass
+from .lease import admit_sync_apply, checkpoint
 from .locks import (
-    BATCH_LOCK_TTL_SECONDS,
-    DEFAULT_LOCK_TTL_SECONDS,
-    LOCAL_LOCK_TTL_SECONDS,
+    LOCK_CHECK_TIMEOUT_SECONDS,
     DreamLockHandle,
     DreamLockHeld,
+    DreamLockLostError,
     dream_lock,
 )
-from .model_pricing import compute_cost_usd, execution_path_discount
+from .pass_errors import pass_error
+from .pass_record import DreamTrigger
+from .pass_run import DreamPassRun, PassEnded
+from .phase_jobs import phase_job
 from .prompts import (
-    MAX_DEMOTIONS_PER_PASS,
-    MAX_PROPOSALS_PER_PASS,
-    MAX_WRITES_PER_PASS,
     build_consolidate_prompt,
     build_recombine_prompt,
     build_sanitize_prompt,
@@ -56,10 +86,20 @@ from .schemas import (
     DreamOperations,
     DreamOperationsSnapshot,
     DreamPassResult,
-    DreamPassUsage,
+    DreamPhase,
+    IngestionDrainStatus,
     PhaseUsage,
     RecombinationOutput,
 )
+from .store import (
+    RECORD_WRITE_TIMEOUT_SECONDS,
+    record_applying,
+    record_gathered,
+    record_phase_output,
+    record_sync_outcome,
+    start_pass,
+)
+from .usage import phase_usage
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +111,13 @@ logger = logging.getLogger(__name__)
 CONSOLIDATE_TEMP = 0.2
 RECOMBINE_TEMP = 0.9
 SANITIZE_TEMP = 0.0
-CONSOLIDATE_MAX_TOKENS = 4096
+# The budget covers thinking as well as the JSON, and the standard slot can
+# run a model that thinks unasked. Sonnet 5 through OpenRouter spent all of
+# 4096 on reasoning over a 31-fact, 31-episode window (a 22.5K-token prompt)
+# and answered nothing, failing every pass of that account at this phase;
+# given 16384, the same call answered in 5,912 tokens, 5,068 of them
+# reasoning. Budget a model does not spend costs nothing.
+CONSOLIDATE_MAX_TOKENS = 16384
 # Recombine + sanitize emit list-heavy JSON (up to 30 writes + 20
 # proposals + 10 demotions, each with uuid arrays). At 8192 the
 # response truncates mid-array and the JSON-balanced-brace extractor
@@ -80,579 +126,625 @@ CONSOLIDATE_MAX_TOKENS = 4096
 RECOMBINE_MAX_TOKENS = 16384
 SANITIZE_MAX_TOKENS = 16384
 
-# Entity invalidation is the most destructive op the sanitizer can emit:
-# each one single-hop demotes EVERY :RELATES_TO edge on the entity, so a
-# hub entity multiplies the blast radius far past the demotion caps. We
-# cap the *count* of invalidations per pass here; the per-entity edge
-# blast radius is bounded by the ``DREAM_PASS_INVALIDATE_ENTITY`` LD flag
-# (staged rollout, off by default) plus the single-hop-only guarantee in
-# ``invalidate_entity_direct_neighbors`` (no multi-hop propagation).
-# Deliberately NOT degree-aware — fetching entity degrees is async graph
-# work that doesn't belong in this sync clamp.
-MAX_ENTITY_INVALIDATIONS_PER_PASS = 2
+# Per-phase LLM wall-clock ceilings, passed on each phase's inference job
+# → call_provider. These exist because a single shared default can't fit
+# every phase: recombine/sanitize carry 16384-token output budgets precisely
+# because real responses exceed 8192 tokens, and at real decode speeds
+# (Opus-class ~40-60 tok/s via OpenRouter) an 8-16K response takes 150-400s,
+# so a ceiling under that truncates exactly the responses the token-cap
+# budgets above exist to produce.
+#
+# A conservative ~20 tok/s decode floor would ask for max_output_tokens/20
+# ≈ 205s / 819s / 819s per phase, but that sums to 1843s of LLM budget
+# alone — past both SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS (1800s,
+# scheduler.py) and DEFAULT_LOCK_TTL_SECONDS (1800s, locks.py) before
+# fetch/apply even run. So the phases get values that fit the envelope
+# instead. Budget math (three explicit line items, with real slack):
+#
+#   consolidate 240s + recombine 600s + sanitize 480s   = 1320s LLM ceiling
+#   + apply.INGESTION_DRAIN_TIMEOUT_SECONDS 300s          drain cap
+#   + DREAM_NON_LLM_HEADROOM_SECONDS 120s (budget check + fetch + enqueue
+#     + demotions + summary + cost logging, EXCLUDING the drain)
+#   = 1740s <= 1800s SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS  (60s slack)
+#
+# The pass's own bounded round trips to its record, its guard and its lock
+# come on top: DREAM_STORE_IO_SECONDS, 179s should every one of them run to
+# its deadline (a stalled DatabaseManager or Redis). Then a pass whose phases
+# also run to their ceilings outlasts the scheduler's wait. That wait is not
+# a kill: ``run_async`` stops waiting and leaves the pass running, and its
+# lease renewals keep its lock and its row's lease fresh, so neither a newer
+# pass's guard nor the reaper takes it for dead, and it finishes.
+#
+# The drain no longer counts against the lock TTL: apply renews the dream
+# lock to a fresh budget right before the drain (see
+# apply.LOCK_DRAIN_RENEWAL_SECONDS), so the lock only has to cover
+# LLM + non-drain headroom + store I/O = 1619s <= 0.9 * DEFAULT_LOCK_TTL_SECONDS
+# (1620s), even with every store round trip at its deadline (and a lease
+# renewal before each phase shortens that stretch further), and the drain
+# itself runs under the renewed lock. Both invariants are pinned by
+# test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope —
+# bumping any value here fails that test until the budget is re-balanced.
+#
+# Recombine (fast_advanced_model, Opus-class — the slowest decoder) gets
+# the largest share: 600s covers 16384 tokens at ~27 tok/s. Sanitize runs
+# on the faster fast_standard_model: 480s covers 16384 at ~34 tok/s.
+# Consolidate's 240s covers its whole 16384 at ~68 tok/s, and a thinking
+# answer the size measured above (5,912 tokens) at ~25 tok/s.
+CONSOLIDATE_TIMEOUT_SECONDS = 240
+RECOMBINE_TIMEOUT_SECONDS = 600
+SANITIZE_TIMEOUT_SECONDS = 480
+# Reserved for the non-LLM segments of the pass OTHER than the ingestion
+# drain and the store round trips below (budget check, fetch, enqueue,
+# demotions, summary write, cost logging). The drain is budgeted separately
+# as apply.INGESTION_DRAIN_TIMEOUT_SECONDS and covered by a lock renewal.
+DREAM_NON_LLM_HEADROOM_SECONDS = 120
+# The sync pass's bounded round trips to its record and its lock, each at
+# its own deadline. Record reads and writes: the RUNNING insert, the
+# gathered window, before each phase a stop check, a lease write and the
+# phase's output, the APPLYING write, apply's admission (a stop check and a
+# lease write), and the outcome. Lock round trips: the lease extend before
+# each phase, apply's admission (a lock read and an extend), and apply's own
+# renewals, before its first write and before its drain. Plus the guard's
+# whole budget.
+_RECORD_ROUND_TRIPS = 2 + 3 * 3 + 1 + 2 + 1
+_LOCK_ROUND_TRIPS = 3 + 2 + 2
+DREAM_STORE_IO_SECONDS = (
+    GUARD_BUDGET_SECONDS
+    + _RECORD_ROUND_TRIPS * RECORD_WRITE_TIMEOUT_SECONDS
+    + _LOCK_ROUND_TRIPS * LOCK_CHECK_TIMEOUT_SECONDS
+)
+
+# Per-user marker stamped after a successful (non-skipped) sync apply so
+# the next nightly pass can skip all three LLM phases when no new episode
+# landed since. Single key — prod Redis runs in cluster mode (see
+# locks.py), so no multi-key primitives. The 35-day TTL comfortably
+# outlives the 14-day episode window; an expired or missing marker just
+# means one extra full pass (fail-open). The batch path does NOT stamp
+# this marker yet — batch users simply never benefit from the skip.
+# The key is ``MemoryScope.redis_key("last_completed")``.
+LAST_COMPLETED_TTL_SECONDS = 35 * 24 * 60 * 60
 
 
-def _resolve_lock_ttl(transport_is_local: bool) -> int:
-    return LOCAL_LOCK_TTL_SECONDS if transport_is_local else DEFAULT_LOCK_TTL_SECONDS
+_Output = TypeVar("_Output", bound=BaseModel)
 
 
-def _clamp_operations(
-    ops: DreamOperations,
-    active_fact_count: int,
-    known_fact_uuids: set[str] | None = None,
-) -> DreamOperations:
-    """Hard-trim oversized phase 3 outputs.
+class _PassInference(BaseModel):
+    """What the phases of one sync pass share when they call the model: who
+    the pass runs for, its id (every phase's correlation id) and the config
+    whose fast models the phases run on."""
 
-    Phase 3's prompt asks for these caps but the model can still
-    over-emit. The orchestrator enforces them in code so apply.py
-    never writes more than the policy allows.
+    model_config = ConfigDict(frozen=True)
 
-    Demotions carry a second ceiling — 5% of the active fact set — so a
-    single pass can never wipe a meaningful fraction of a user's memory
-    even if the absolute ``MAX_DEMOTIONS_PER_PASS`` cap would allow it.
-    The 5% ceiling floors at 1 when there is at least one active fact:
-    small graphs (< 20 facts) would otherwise round to a cap of 0 and
-    never get even a single contradicted fact demoted.
-    ``active_fact_count < 0`` means the count is unknown (the batch path
-    lost its persisted input bundle); fall back to the absolute cap only
-    rather than silently dropping every demotion.
-
-    When ``known_fact_uuids`` is provided, demotions targeting uuids
-    outside it are dropped BEFORE the cap slice — otherwise a
-    hallucinated uuid at the head of the model's list consumes a cap
-    slot (the entire budget on a floor-of-1 small graph) and displaces
-    a valid demotion that apply.py would have accepted. ``None`` skips
-    the pre-filter; apply.py's idempotent known-uuid filter remains the
-    security chokepoint either way.
-
-    Entity invalidations are count-capped at
-    ``MAX_ENTITY_INVALIDATIONS_PER_PASS``; see the constant's comment
-    for why the per-entity edge blast radius is bounded elsewhere (LD
-    flag + single-hop guarantee), not here.
-    """
-    demotions = ops.demotions
-    if known_fact_uuids is not None:
-        demotions = [d for d in demotions if d.edge_uuid in known_fact_uuids]
-        dropped = len(ops.demotions) - len(demotions)
-        if dropped:
-            logger.warning(
-                "Dream clamp: dropped %d demotion(s) targeting edge uuids "
-                "outside known_fact_uuids before applying the demotion cap",
-                dropped,
-            )
-    demotion_cap = MAX_DEMOTIONS_PER_PASS
-    if active_fact_count == 0:
-        demotion_cap = 0
-    elif active_fact_count > 0:
-        demotion_cap = min(MAX_DEMOTIONS_PER_PASS, max(1, active_fact_count * 5 // 100))
-    return DreamOperations(
-        writes=ops.writes[:MAX_WRITES_PER_PASS],
-        proposals=ops.proposals[:MAX_PROPOSALS_PER_PASS],
-        demotions=demotions[:demotion_cap],
-        entity_invalidations=ops.entity_invalidations[
-            :MAX_ENTITY_INVALIDATIONS_PER_PASS
-        ],
-        summary_for_user=ops.summary_for_user,
-    )
+    scope: InferenceScope
+    pass_id: str
+    config: ChatConfig
 
 
 async def _run_consolidate(
-    config: ChatConfig, input_bundle: DreamInput
-) -> StructuredCompletion[ConsolidationOutput]:
+    run: _PassInference, input_bundle: DreamInput
+) -> tuple[ConsolidationOutput, PhaseUsage]:
     """First step: merge near-duplicate recent facts into canonical statements."""
-    messages = build_consolidate_prompt(input_bundle)
-    return await structured_completion(
-        model=config.fast_standard_model,
-        messages=messages,
-        response_model=ConsolidationOutput,
+    return await _run_phase(
+        run,
+        "consolidate",
+        build_consolidate_prompt(input_bundle),
+        ConsolidationOutput,
         temperature=CONSOLIDATE_TEMP,
         max_output_tokens=CONSOLIDATE_MAX_TOKENS,
+        timeout_seconds=CONSOLIDATE_TIMEOUT_SECONDS,
     )
 
 
 async def _run_recombine(
-    config: ChatConfig,
+    run: _PassInference,
     input_bundle: DreamInput,
     consolidated: ConsolidationOutput,
-) -> StructuredCompletion[RecombinationOutput]:
+) -> tuple[RecombinationOutput, PhaseUsage]:
     """Second step: propose novel connections + weak-link findings."""
-    messages = build_recombine_prompt(input_bundle, consolidated.model_dump_json())
-    return await structured_completion(
-        model=config.fast_advanced_model,
-        messages=messages,
-        response_model=RecombinationOutput,
+    return await _run_phase(
+        run,
+        "recombine",
+        build_recombine_prompt(input_bundle, consolidated.model_dump_json()),
+        RecombinationOutput,
         temperature=RECOMBINE_TEMP,
         max_output_tokens=RECOMBINE_MAX_TOKENS,
+        timeout_seconds=RECOMBINE_TIMEOUT_SECONDS,
     )
 
 
 async def _run_sanitize(
-    config: ChatConfig,
+    run: _PassInference,
     input_bundle: DreamInput,
     consolidated: ConsolidationOutput,
     recombined: RecombinationOutput,
-) -> StructuredCompletion[DreamOperations]:
+) -> tuple[DreamOperations, PhaseUsage]:
     """Third step: gate writes/proposals/demotions before apply.py runs."""
-    messages = build_sanitize_prompt(
-        input_bundle,
-        consolidated.model_dump_json(),
-        recombined.model_dump_json(),
-    )
-    return await structured_completion(
-        model=config.fast_standard_model,
-        messages=messages,
-        response_model=DreamOperations,
+    return await _run_phase(
+        run,
+        "sanitize",
+        build_sanitize_prompt(
+            input_bundle,
+            consolidated.model_dump_json(),
+            recombined.model_dump_json(),
+        ),
+        DreamOperations,
         temperature=SANITIZE_TEMP,
         max_output_tokens=SANITIZE_MAX_TOKENS,
+        timeout_seconds=SANITIZE_TIMEOUT_SECONDS,
     )
 
 
-def _phase_usage_from_completion(
-    phase: str, completion_usage: CompletionUsage, execution_path: ExecutionPath
-) -> PhaseUsage:
-    """Build a ``PhaseUsage`` from a raw ``CompletionUsage``, computing
-    cost from the rate card when the provider didn't supply one.
+async def _run_phase(
+    run: _PassInference,
+    phase: DreamPhase,
+    messages: list[dict[str, str]],
+    response_model: type[_Output],
+    *,
+    temperature: float,
+    max_output_tokens: int,
+    timeout_seconds: float,
+) -> tuple[_Output, PhaseUsage]:
+    """One phase's call on the pass's route, traced, with its cost recorded.
 
-    Provider-supplied cost (OpenRouter ``usage.cost``) wins when
-    present; otherwise we fall back to ``model_pricing.compute_cost_usd``.
-    Either way the execution-path discount has been applied: OpenRouter
-    spot prices are already post-discount (they ARE the rate we paid),
-    and the rate-card fallback explicitly multiplies the discount in.
+    The usage comes back priced: the provider's cost when it reported one
+    (OpenRouter's ``usage.cost``, what we were billed), else the model's
+    catalog list rate; unknown when the response reported no usage at all.
+
+    Raises ``InferenceError`` when the phase got no usable answer. Failed
+    phases are absorbed; their usage remains on the error for tracing.
     """
-    cost = completion_usage.cost_usd
-    if cost is None:
-        cost = compute_cost_usd(
-            model=completion_usage.model,
-            input_tokens=completion_usage.input_tokens,
-            output_tokens=completion_usage.output_tokens,
-            cache_read_tokens=completion_usage.cache_read_tokens,
-            cache_creation_tokens=completion_usage.cache_creation_tokens,
-            execution_path=execution_path,
+    job = phase_job(phase, run.pass_id, timeout_seconds=timeout_seconds)
+    route = resolve_route(run.scope, job, config=run.config)
+    ctx = InferenceContext(scope=run.scope, job=job, route=route)
+    async with trace(ctx) as call:
+        completion = await structured_complete(
+            call.ctx,
+            messages,
+            response_model,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
         )
-    return PhaseUsage(
-        phase=phase,  # type: ignore[arg-type]
-        model=completion_usage.model,
-        input_tokens=completion_usage.input_tokens,
-        output_tokens=completion_usage.output_tokens,
-        cache_read_tokens=completion_usage.cache_read_tokens,
-        cache_creation_tokens=completion_usage.cache_creation_tokens,
-        cost_usd=cost,
-    )
+        usage = await record_phase_cost(call.ctx, completion.usage)
+        call.usage = usage
+    return completion.value, phase_usage(phase, usage)
 
 
-def _aggregate_usage(
-    phases: list[PhaseUsage], execution_path: ExecutionPath
-) -> DreamPassUsage:
-    """Roll up per-phase usage into a ``DreamPassUsage``.
+async def _read_last_completed_marker(scope: MemoryScope) -> datetime | None:
+    """When the user's last dream pass completed, or ``None``.
 
-    ``total_cost_usd`` is None when any single phase had unknown cost
-    so we never silently bill at a partial figure.
+    Best-effort: a Redis error or an unparseable value fails open
+    (``None`` ⇒ the pass runs) — the marker only exists to save LLM
+    spend, so it must never block a dream.
     """
-    total_cost: float | None = 0.0
-    for p in phases:
-        if p.cost_usd is None:
-            total_cost = None
-            break
-        total_cost += p.cost_usd
-    return DreamPassUsage(
-        phases=phases,
-        total_input_tokens=sum(p.input_tokens for p in phases),
-        total_output_tokens=sum(p.output_tokens for p in phases),
-        total_cache_read_tokens=sum(p.cache_read_tokens for p in phases),
-        total_cache_creation_tokens=sum(p.cache_creation_tokens for p in phases),
-        total_cost_usd=total_cost,
-        discount_applied=execution_path_discount(execution_path),
+    # Lazy import matching locks.py — keeps the module cheap to import
+    # in tests that mock redis.
+    from backend.data.redis_client import get_redis_async
+
+    user_id = scope.owner_user_id
+    try:
+        redis = await get_redis_async()
+        raw = await redis.get(scope.redis_key("last_completed"))
+    except Exception:
+        logger.warning(
+            "Failed to read dream last-completed marker for user %s — "
+            "running the pass",
+            user_id[:12],
+            exc_info=True,
+        )
+        return None
+    if raw is None:
+        return None
+    try:
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        marker = datetime.fromisoformat(str(raw))
+    except (UnicodeDecodeError, ValueError):
+        logger.warning(
+            "Unparseable dream last-completed marker for user %s — running the pass",
+            user_id[:12],
+        )
+        return None
+    return marker if marker.tzinfo else marker.replace(tzinfo=timezone.utc)
+
+
+async def _stamp_last_completed_marker(scope: MemoryScope, as_of: datetime) -> None:
+    """Record the upper bound of the episode window the pass consolidated.
+
+    ``as_of`` must be the gather snapshot time (``DreamInput.window_end``),
+    NOT apply-completion time: the three LLM phases + apply take minutes,
+    and an episode enqueued in that window was absent from the bundle —
+    stamping "now" would mark it as already consolidated and skip it until
+    the next genuinely-new episode (or the marker TTL).
+
+    Best-effort: a failed stamp only costs one extra full pass on the
+    next nightly tick.
+    """
+    from backend.data.redis_client import get_redis_async
+
+    try:
+        redis = await get_redis_async()
+        await redis.set(
+            scope.redis_key("last_completed"),
+            as_of.isoformat(),
+            ex=LAST_COMPLETED_TTL_SECONDS,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to stamp dream last-completed marker for user %s",
+            scope.owner_user_id[:12],
+            exc_info=True,
+        )
+
+
+def _has_new_episodes_since(episodes: list[EpisodeRow], marker: datetime) -> bool:
+    """True when any *user* episode is newer than the last-completed marker.
+
+    Dream-authored episodes are excluded: a productive pass enqueues its
+    own writes with ``valid_at = now()`` (after the stamped ``window_end``),
+    so counting them would make every subsequent nightly run a paid no-op
+    that only re-reads its own output.
+
+    An episode with no parseable timestamp counts as new — we can't
+    prove it's old, and skipping a pass we owed the user is worse than
+    running one we didn't.
+    """
+    for episode in episodes:
+        if is_dream_authored_episode(episode):
+            continue
+        episode_at = parse_episode_timestamp(episode)
+        if episode_at is None or episode_at > marker:
+            return True
+    return False
+
+
+async def execute_dream_pass(
+    user_id: str,
+    *,
+    status_id: str | None = None,
+    expert_id: str | None = None,
+    trigger: DreamTrigger = "cron",
+    force: bool = False,
+) -> DreamPassResult:
+    """Public async entry point used by the scheduler + admin trigger.
+
+    ``status_id`` is the JobStatus row id when the caller is the polling
+    admin trigger: it lets the trigger re-run a pass the last-completed
+    marker would skip, and on the batch route the callbacks advance that
+    row as each phase lands. Which route a pass takes depends on the batch
+    flag and the deployment's Anthropic key, not on the caller, so a pass
+    without a ``status_id`` can take the batch route too; its callbacks
+    then skip the JobStatus writes.
+
+    ``trigger`` is what started the pass, as its ``DreamPass`` row records
+    it: ``cron`` for the nightly job, ``admin`` for the admin triggers,
+    ``eval`` for an eval run. ``force`` is the admin trigger's, see ``guard.py``.
+    """
+    return await _execute_dream_pass_async(
+        user_id, status_id=status_id, expert_id=expert_id, trigger=trigger, force=force
     )
 
 
+@attributed_usage
 async def _execute_dream_pass_async(
     user_id: str,
     *,
-    transport_is_local: bool = False,
+    expert_id: str | None,
     config: ChatConfig | None = None,
     status_id: str | None = None,
+    trigger: DreamTrigger = "cron",
+    force: bool = False,
 ) -> DreamPassResult:
     config = config or ChatConfig()
-    pass_id = str(uuidlib.uuid4())
-    started_at = datetime.now(timezone.utc)
-    monotonic_start = asyncio.get_event_loop().time()
+    run = DreamPassRun.begin(user_id, await _route_for(user_id, config), force=force)
+    try:
+        scope = MemoryScope.build(user_id, expert_id)
+        if not await start_pass(run, scope, trigger=trigger):
+            # A hard forget finds only passes whose rows it can read: one
+            # whose row may not be there must not read the graph.
+            result = run.failure(pass_error("pass", "record_unconfirmed"))
+            await record_sync_outcome(result)
+            return result
+        async with dream_lock(scope, token=run.lease_token) as handle:
+            run.hold(handle)
+            return await _run_locked(
+                run, scope, handle, config=config, status_id=status_id
+            )
+    except DreamLockHeld:
+        result = run.skipped("lock_held")
+    except Exception as exc:  # pragma: no cover — last-resort guard
+        logger.exception("Dream pass crashed for user %s: %s", user_id[:12], exc)
+        result = run.failure(pass_error("pass", "crashed"))
+    await record_sync_outcome(result)
+    return result
 
-    has_anthropic_key = bool(config.direct_anthropic_api_key)
-    # Step 5: the async Anthropic batch path is gated by the
-    # ``DREAM_PASS_BATCH_ENABLED`` LD flag AND a direct Anthropic key (the
-    # native Batch API can't be reached via OpenRouter/subscription, so the
-    # key is a hard requirement). When the flag is off, dreams run on the
-    # synchronous baseline regardless of key presence — the flag lets the
-    # batch path ship dark and roll out per-cohort. When on, phase 1 submits
-    # via call_provider(execution_mode="batch"); the BatchExecutor polls and
-    # dream's batch_callbacks chain phases 2 → 3 + apply when results land
-    # (~50% off the rate card, see model_pricing.execution_path_discount).
-    #
-    # ``transport_name`` short-circuits to sync_baseline for transports that
-    # can't honour a batch path (local backends have no batch API;
-    # subscription mode shouldn't dual-bill the user's Anthropic key when the
-    # chat layer is on Claude Code OAuth).
+
+async def _route_for(user_id: str, config: ChatConfig) -> ExecutionPath:
+    """The route a pass takes.
+
+    The async Anthropic batch path is gated by the
+    ``DREAM_PASS_BATCH_ENABLED`` LD flag AND a direct Anthropic key (the
+    native Batch API can't be reached via OpenRouter/subscription, so the
+    key is a hard requirement). When the flag is off, dreams run on the
+    synchronous baseline regardless of key presence — the flag lets the
+    batch path ship dark and roll out per-cohort. When on, phase 1 submits
+    via call_provider(execution_mode="batch"); the BatchExecutor polls and
+    dream's batch_callbacks chain phases 2 → 3 + apply when results land
+    (half the list price, see routing.batch_discount).
+
+    ``transport_name`` short-circuits to sync_baseline for transports that
+    can't honour a batch path (local backends have no batch API;
+    subscription mode shouldn't dual-bill the user's Anthropic key when the
+    chat layer is on Claude Code OAuth).
+    """
     batch_enabled = await is_feature_enabled(Flag.DREAM_PASS_BATCH_ENABLED, user_id)
-    execution_path: ExecutionPath = resolve_dream_execution_path(
-        has_anthropic_key=has_anthropic_key,
+    return resolve_dream_execution_path(
+        has_anthropic_key=bool(config.direct_anthropic_api_key),
         batch_processing_enabled=batch_enabled,
         transport_name=config.transport.name,
     )
 
-    ttl = _resolve_lock_ttl(transport_is_local)
-    try:
-        async with dream_lock(user_id, ttl_seconds=ttl) as dream_lock_handle:
-            # Pre-flight billing check. Runs inside the lock so a
-            # paywalled user doesn't burn the slot for an eligible
-            # concurrent pass on a shared FalkorDB.
-            budget_ok, budget_skip = await check_dream_budget(user_id, config=config)
-            if not budget_ok:
-                if budget_skip == "rate_limit_unavailable":
-                    return _failure_result(
-                        user_id,
-                        pass_id,
-                        started_at,
-                        monotonic_start,
-                        execution_path,
-                        f"billing: {budget_skip}",
-                    )
-                return DreamPassResult(
-                    user_id=user_id,
-                    pass_id=pass_id,
-                    started_at=started_at,
-                    completed_at=datetime.now(timezone.utc),
-                    elapsed_seconds=(asyncio.get_event_loop().time() - monotonic_start),
-                    execution_path=execution_path,
-                    skipped=True,
-                    skip_reason=budget_skip or "insufficient_credits",
-                )
 
-            input_bundle = await gather_dream_input(user_id)
-
-            if not input_bundle.episodes and not input_bundle.facts:
-                # Nothing to consolidate — early-return as skipped so the
-                # admin UI can render "nothing to dream about yet".
-                return DreamPassResult(
-                    user_id=user_id,
-                    pass_id=pass_id,
-                    started_at=started_at,
-                    completed_at=datetime.now(timezone.utc),
-                    elapsed_seconds=(asyncio.get_event_loop().time() - monotonic_start),
-                    execution_path=execution_path,
-                    skipped=True,
-                    skip_reason="no_input",
-                )
-
-            # ---- Anthropic batch path -----------------------------------
-            #
-            # When routing picks ``anthropic_batch`` we persist the
-            # input bundle, submit phase 1 to Anthropic's Messages
-            # Batches API with forced tool_use structured output, and
-            # return ``status="submitted"`` immediately. The BatchExecutor
-            # polls; dream's batch_callbacks chain phases 2 → 3 + apply
-            # when each phase result lands. Total latency is provider-
-            # driven (typically <30min, hard cap 24h via
-            # BatchExecutor.MAX_BATCH_LIFETIME_SECONDS); the user sees
-            # JobStatus.current_phase advance through consolidate →
-            # recombine → sanitize → complete.
-            if execution_path == "anthropic_batch":
-                return await _submit_dream_pass_batch(
-                    user_id=user_id,
-                    pass_id=pass_id,
-                    started_at=started_at,
-                    monotonic_start=monotonic_start,
-                    execution_path=execution_path,
-                    config=config,
-                    input_bundle=input_bundle,
-                    status_id=status_id,
-                    dream_lock_handle=dream_lock_handle,
-                )
-
-            step_usages: list[PhaseUsage] = []
-
-            try:
-                consolidate_completion = await _run_consolidate(config, input_bundle)
-            except DreamLLMError as exc:
-                return _failure_result(
-                    user_id,
-                    pass_id,
-                    started_at,
-                    monotonic_start,
-                    execution_path,
-                    f"consolidate: {exc}",
-                    usage=_aggregate_usage(step_usages, execution_path),
-                )
-            step_usages.append(
-                _phase_usage_from_completion(
-                    "consolidate", consolidate_completion.usage, execution_path
-                )
-            )
-            await record_phase_cost(
-                user_id=user_id,
-                pass_id=pass_id,
-                phase_usage=step_usages[-1],
-                execution_path=execution_path,
-            )
-            consolidated = consolidate_completion.value
-
-            try:
-                recombine_completion = await _run_recombine(
-                    config, input_bundle, consolidated
-                )
-            except DreamLLMError as exc:
-                return _failure_result(
-                    user_id,
-                    pass_id,
-                    started_at,
-                    monotonic_start,
-                    execution_path,
-                    f"recombine: {exc}",
-                    usage=_aggregate_usage(step_usages, execution_path),
-                )
-            step_usages.append(
-                _phase_usage_from_completion(
-                    "recombine", recombine_completion.usage, execution_path
-                )
-            )
-            await record_phase_cost(
-                user_id=user_id,
-                pass_id=pass_id,
-                phase_usage=step_usages[-1],
-                execution_path=execution_path,
-            )
-            recombined = recombine_completion.value
-
-            try:
-                sanitize_completion = await _run_sanitize(
-                    config, input_bundle, consolidated, recombined
-                )
-            except DreamLLMError as exc:
-                return _failure_result(
-                    user_id,
-                    pass_id,
-                    started_at,
-                    monotonic_start,
-                    execution_path,
-                    f"sanitize: {exc}",
-                    usage=_aggregate_usage(step_usages, execution_path),
-                )
-            step_usages.append(
-                _phase_usage_from_completion(
-                    "sanitize", sanitize_completion.usage, execution_path
-                )
-            )
-            await record_phase_cost(
-                user_id=user_id,
-                pass_id=pass_id,
-                phase_usage=step_usages[-1],
-                execution_path=execution_path,
-            )
-            sanitized = sanitize_completion.value
-
-            ops = _clamp_operations(
-                sanitized,
-                len(input_bundle.facts),
-                known_fact_uuids=input_bundle.known_fact_uuids,
-            )
-            apply_stats = await apply_operations(
-                user_id,
-                pass_id,
-                ops,
-                known_fact_uuids=input_bundle.known_fact_uuids,
-            )
-
-            completed_at = datetime.now(timezone.utc)
-            snapshot = apply_stats.get("snapshot")
-
-            def _as_int(key: str) -> int:
-                v = apply_stats.get(key, 0)
-                return int(v) if isinstance(v, (int, str)) and v else 0
-
-            return DreamPassResult(
-                user_id=user_id,
-                pass_id=pass_id,
-                started_at=started_at,
-                completed_at=completed_at,
-                elapsed_seconds=(asyncio.get_event_loop().time() - monotonic_start),
-                execution_path=execution_path,
-                consolidated_count=_as_int("consolidated_count"),
-                proposal_count=_as_int("proposal_count"),
-                demotion_count=_as_int("demotion_count"),
-                entity_invalidation_count=_as_int("entity_invalidation_count"),
-                summary_for_user=ops.summary_for_user,
-                dream_session_id=str(apply_stats.get("session_id") or ""),
-                operations=(
-                    snapshot if isinstance(snapshot, DreamOperationsSnapshot) else None
-                ),
-                usage=_aggregate_usage(step_usages, execution_path),
-            )
-
-    except DreamLockHeld:
-        return DreamPassResult(
-            user_id=user_id,
-            pass_id=pass_id,
-            started_at=started_at,
-            completed_at=datetime.now(timezone.utc),
-            elapsed_seconds=(asyncio.get_event_loop().time() - monotonic_start),
-            execution_path=execution_path,
-            skipped=True,
-            skip_reason="lock_held",
-        )
-    except Exception as exc:  # pragma: no cover — last-resort guard
-        logger.exception("Dream pass crashed for user %s: %s", user_id[:12], exc)
-        return _failure_result(
-            user_id,
-            pass_id,
-            started_at,
-            monotonic_start,
-            execution_path,
-            str(exc),
-        )
-
-
-def _failure_result(
-    user_id: str,
-    pass_id: str,
-    started_at: datetime,
-    monotonic_start: float,
-    execution_path: ExecutionPath,
-    error: str,
-    usage: DreamPassUsage | None = None,
-) -> DreamPassResult:
-    """Build a failure ``DreamPassResult`` that still carries usage for
-    the phases that completed before the error — billing has to charge
-    for tokens we already paid for, even on partial failure."""
-    return DreamPassResult(
-        user_id=user_id,
-        pass_id=pass_id,
-        started_at=started_at,
-        completed_at=datetime.now(timezone.utc),
-        elapsed_seconds=asyncio.get_event_loop().time() - monotonic_start,
-        execution_path=execution_path,
-        error=error,
-        usage=usage,
-    )
-
-
-async def execute_dream_pass(
-    user_id: str, *, status_id: str | None = None
-) -> DreamPassResult:
-    """Public async entry point used by the scheduler + admin trigger.
-
-    ``status_id`` is the optional JobStatus row id when the caller is
-    the polling admin trigger (Step 2). The orchestrator threads it
-    into the batch path so the BatchExecutor callbacks can update the
-    user-visible status row as each phase lands. AgentProbe + other
-    sync callers pass ``None`` and never hit the batch path.
-    """
-    return await _execute_dream_pass_async(user_id, status_id=status_id)
-
-
-async def _submit_dream_pass_batch(
+async def _run_locked(
+    run: DreamPassRun,
+    scope: MemoryScope,
+    lock_handle: DreamLockHandle,
     *,
-    user_id: str,
-    pass_id: str,
-    started_at: datetime,
-    monotonic_start: float,
-    execution_path: ExecutionPath,
     config: ChatConfig,
+    status_id: str | None,
+) -> DreamPassResult:
+    """The pass while it holds its scope's lock. Never raises: an unexpected
+    error becomes a failure carrying the usage the pass has run up.
+
+    The outcome write is attempted here, inside the lock, so the next pass
+    to take the lock normally finds this one's row closed. It is best-effort
+    like every record write: one that fails or times out is dropped and the
+    lock is released anyway, so a free lock can still have an open row
+    (APPLYING, say) behind it until a later pass's guard or the reaper
+    closes it."""
+    try:
+        result = await _dream(
+            run, scope, lock_handle, config=config, status_id=status_id
+        )
+    except DreamLockLostError:
+        logger.exception("Dream pass lost its lock for user %s", run.user_id[:12])
+        result = run.failure(pass_error("apply", "lock_lost"))
+    except PhaseChargeError:
+        logger.exception(
+            "Dream pass could not be charged for user %s", run.user_id[:12]
+        )
+        result = run.failure(pass_error("billing", "charge_failed"))
+    except Exception as exc:
+        logger.exception("Dream pass crashed for user %s: %s", run.user_id[:12], exc)
+        result = run.failure(pass_error("pass", "crashed"))
+    await record_sync_outcome(result)
+    return result
+
+
+async def _dream(
+    run: DreamPassRun,
+    scope: MemoryScope,
+    lock_handle: DreamLockHandle,
+    *,
+    config: ChatConfig,
+    status_id: str | None,
+) -> DreamPassResult:
+    """Guard, gather, then hand the pass to the batch route or run its three
+    phases and apply them. A pass that ends early (a skip, a stop, a billing
+    or phase failure) comes back as the result it ended with."""
+    try:
+        await guard_dream_pass(run, scope)
+        input_bundle = await _gather(run, scope, config=config, status_id=status_id)
+        if run.execution_path == "anthropic_batch":
+            # Phase 1 goes to Anthropic's Messages Batches API with the
+            # output tool, and the pass returns at once. The BatchExecutor
+            # polls; dream's batch_callbacks chain phases 2 → 3 + apply as
+            # each result lands. Total latency is provider-driven (typically
+            # <30min, hard cap 24h per phase batch via
+            # BatchExecutor.MAX_BATCH_LIFETIME_SECONDS).
+            return await submit_dream_pass_batch(
+                run,
+                config=config,
+                input_bundle=input_bundle,
+                status_id=status_id,
+                lock_handle=lock_handle,
+            )
+        inference = _PassInference(
+            scope=InferenceScope(user_id=run.user_id, expert_id=scope.expert_id),
+            pass_id=run.pass_id,
+            config=config,
+        )
+        sanitized = await _run_phases(run, inference, input_bundle)
+        return await _apply(run, scope, lock_handle, sanitized, input_bundle)
+    except PassEnded as ended:
+        return ended.result
+
+
+async def _gather(
+    run: DreamPassRun,
+    scope: MemoryScope,
+    *,
+    config: ChatConfig,
+    status_id: str | None,
+) -> DreamInput:
+    """Check the budget, gather the input, and end a pass with nothing to do.
+
+    The billing check runs inside the lock so a paywalled user doesn't burn
+    the slot for an eligible concurrent pass on a shared FalkorDB. Raises
+    ``PassEnded`` with the skip or failure that ends the pass early.
+    """
+    budget_ok, budget_skip = await check_dream_budget(run.user_id, config=config)
+    if not budget_ok:
+        if budget_skip == "rate_limit_unavailable":
+            raise PassEnded(
+                run.failure(pass_error("billing", "rate_limit_unavailable"))
+            )
+        raise PassEnded(run.skipped(budget_skip or "insufficient_credits"))
+    input_bundle = await gather_dream_input(scope)
+    if not input_bundle.episodes and not input_bundle.facts:
+        # Nothing to consolidate — skipped so the admin UI can render
+        # "nothing to dream about yet".
+        raise PassEnded(run.skipped("no_input"))
+    if await _nothing_new_since_last_pass(run, scope, input_bundle, status_id):
+        raise PassEnded(run.skipped("no_new_activity"))
+    if not await record_gathered(run.pass_id, input_bundle):
+        # What the pass read must be on its row before any model call: a
+        # hard forget marks a closed pass by it. A row that refused it was
+        # closed by a stop, whose error the pass ends with.
+        stopped = await stopped_error(run.pass_id)
+        raise PassEnded(run.failure(stopped or pass_error("gather", "record_failed")))
+    return input_bundle
+
+
+async def _nothing_new_since_last_pass(
+    run: DreamPassRun,
+    scope: MemoryScope,
     input_bundle: DreamInput,
     status_id: str | None,
-    dream_lock_handle: DreamLockHandle,
-) -> DreamPassResult:
-    """Submit phase 1 of the dream pass via Anthropic batch + return.
+) -> bool:
+    """No NEW activity since the last completed pass: every episode in the
+    bundle predates the marker, so re-running all three LLM phases would
+    only re-chew already-consolidated material (and, before the empty-pass
+    guard in apply.py, manufacture an empty dream chat). Marker read is
+    best-effort: missing, unparseable, or Redis-down all mean "run the pass".
 
-    The orchestrator hands control to the BatchExecutor here: phase 1
-    (consolidate) is enqueued; phases 2 (recombine) and 3 (sanitize)
-    fire from dream's batch_callbacks as each prior phase's result
-    lands. Apply + cost log + JobStatus complete run when sanitize
-    lands. This function only does the kickoff.
-
-    The job_id link to JobStatus comes from the scheduler's
-    ``execute_dream_pass_with_status`` wrapper (Step 2). When the
-    orchestrator is invoked outside that path (e.g. AgentProbe eval),
-    ``job_id`` is empty and the callback skips the JobStatus updates —
-    apply still runs, cost still logs.
+    Manual admin triggers (the only callers that set status_id) bypass the
+    marker: "dream now" is the memory-debugging tool for re-running a pass
+    after prompt/flag/model changes, and a silent no_new_activity skip
+    would neuter it for up to the marker's 35-day TTL.
     """
-    from .batch_submit import (
-        persist_input_bundle,
-        phase_models_for_config,
-        submit_phase,
+    last_completed = (
+        await _read_last_completed_marker(scope) if status_id is None else None
     )
-
-    api_key = config.direct_anthropic_api_key
-    if not api_key:
-        # Shouldn't happen — routing.py only picks anthropic_batch when
-        # the key is present. Guard for type-narrowing + future safety.
-        return _failure_result(
-            user_id,
-            pass_id,
-            started_at,
-            monotonic_start,
-            execution_path,
-            "anthropic_batch: no Anthropic API key (routing bug)",
-        )
-
-    # Persist DreamInput so the per-phase callbacks can rebuild the
-    # next phase's prompt without re-fetching from Postgres + FalkorDB.
-    try:
-        await persist_input_bundle(
-            pass_id, input_bundle, lock_token=dream_lock_handle.token
-        )
-    except Exception as exc:
-        return _failure_result(
-            user_id,
-            pass_id,
-            started_at,
-            monotonic_start,
-            execution_path,
-            f"anthropic_batch: input persist failed: {exc}",
-        )
-
-    # ``status_id`` ties the per-phase callback updates back to the
-    # JobStatus row the admin trigger created. Empty string when no
-    # caller wired it (AgentProbe eval, ad-hoc invocation) — the
-    # callback skips status writes in that case but apply still runs.
-    try:
-        submission = await submit_phase(
-            user_id=user_id,
-            pass_id=pass_id,
-            job_id=status_id or "",
-            phase="consolidate",
-            phase_models=phase_models_for_config(config),
-            api_key=api_key,
-            input_bundle=input_bundle,
-        )
-    except Exception as exc:
-        return _failure_result(
-            user_id,
-            pass_id,
-            started_at,
-            monotonic_start,
-            execution_path,
-            f"anthropic_batch: phase 1 submit failed: {exc}",
-        )
-
-    completed_at = datetime.now(timezone.utc)
+    if last_completed is None or _has_new_episodes_since(
+        input_bundle.episodes, last_completed
+    ):
+        return False
     logger.info(
-        "Dream pass %s submitted via Anthropic batch=%s (phase=consolidate)",
-        pass_id,
-        submission.provider_batch_id,
+        "Dream pass %s skipped for user %s — no episodes newer "
+        "than last completed pass at %s",
+        run.pass_id,
+        run.user_id[:12],
+        last_completed.isoformat(),
     )
-    # Phase 1 is enqueued — hand the dream lock to the batch callback so it
-    # spans the full async lifetime (apply runs hours later). Extend the TTL
-    # to the batch window first; the callback releases it on terminal/failure.
-    await dream_lock_handle.extend(BATCH_LOCK_TTL_SECONDS)
-    dream_lock_handle.disown()
+    return True
+
+
+async def _run_phases(
+    run: DreamPassRun, inference: _PassInference, input_bundle: DreamInput
+) -> DreamOperations:
+    """Consolidate, recombine and sanitize in turn, recording each phase's
+    usage on the run and its output on the record as it lands."""
+    consolidated = await _phase(
+        run, "consolidate", lambda: _run_consolidate(inference, input_bundle)
+    )
+    recombined = await _phase(
+        run, "recombine", lambda: _run_recombine(inference, input_bundle, consolidated)
+    )
+    return await _phase(
+        run,
+        "sanitize",
+        lambda: _run_sanitize(inference, input_bundle, consolidated, recombined),
+    )
+
+
+async def _phase(
+    run: DreamPassRun,
+    phase: DreamPhase,
+    call: Callable[[], Awaitable[tuple[_Output, PhaseUsage]]],
+) -> _Output:
+    """One phase's output. A phase with no usable answer ends the pass
+    (``PassEnded``) with the completed phases' usage. Failed inference
+    attempts are absorbed. A completed phase whose charge failed
+    (``PhaseChargeError``) joins that usage too, then its error ends the
+    pass as a crash does."""
+    await checkpoint(run, phase)
+    try:
+        output, usage = await call()
+    except InferenceError as exc:
+        logger.warning("Dream pass %s: %s failed: %s", run.pass_id, phase, exc)
+        raise PassEnded(run.failure(pass_error(phase, exc.code))) from exc
+    except PhaseChargeError as exc:
+        run.phases.append(phase_usage(phase, exc.usage))
+        raise
+    run.phases.append(usage)
+    await record_phase_output(run.pass_id, phase, output)
+    return output
+
+
+async def _apply(
+    run: DreamPassRun,
+    scope: MemoryScope,
+    lock_handle: DreamLockHandle,
+    sanitized: DreamOperations,
+    input_bundle: DreamInput,
+) -> DreamPassResult:
+    """Clamp the operations, make the last checks, apply and stamp the marker."""
+    ops = clamp_pass_operations(sanitized, input_bundle)
+    await record_applying(run.pass_id, ops)
+    lease = await admit_sync_apply(run, scope, lock_handle)
+    apply_stats = await apply_operations(
+        scope,
+        run.pass_id,
+        ops,
+        known_fact_uuids=input_bundle.known_fact_uuids,
+        known_episode_uuids=input_bundle.known_episode_uuids,
+        fact_scopes=fact_scopes(input_bundle),
+        lock_handle=lock_handle,
+        lease=lease,
+    )
+    # Apply succeeded (even as a no-op) — stamp the marker so the next nightly
+    # pass can skip when nothing new has landed. Stamped with the gather-window
+    # end so episodes that arrived mid-pass still count as new next time. Sync
+    # path only: batch apply runs hours later in batch_callbacks, which doesn't
+    # stamp yet.
+    await _stamp_last_completed_marker(scope, input_bundle.window_end)
+    return _applied_result(run, apply_stats, ops)
+
+
+def _applied_result(
+    run: DreamPassRun,
+    apply_stats: dict[str, int | str | IngestionDrainStatus | DreamOperationsSnapshot],
+    ops: DreamOperations,
+) -> DreamPassResult:
+    snapshot = apply_stats.get("snapshot")
+    raw_session_id = apply_stats.get("session_id")
+
+    def _as_int(key: str) -> int:
+        v = apply_stats.get(key, 0)
+        return int(v) if isinstance(v, (int, str)) and v else 0
+
     return DreamPassResult(
-        user_id=user_id,
-        pass_id=pass_id,
-        started_at=started_at,
-        completed_at=completed_at,
-        elapsed_seconds=asyncio.get_event_loop().time() - monotonic_start,
-        execution_path=execution_path,
-        skipped=False,
-        # The pass is async-pending — no usage / ops / session_id yet.
-        # The BatchExecutor + dream callbacks deliver those when phase
-        # 3 lands and apply runs.
+        user_id=run.user_id,
+        pass_id=run.pass_id,
+        started_at=run.started_at,
+        completed_at=datetime.now(timezone.utc),
+        elapsed_seconds=run.elapsed_seconds(),
+        execution_path=run.execution_path,
+        dropped_forgotten=_as_int("dropped_forgotten"),
+        pending_writes=_as_int("pending_writes"),
+        failed_writes=_as_int("failed_writes"),
+        consolidated_count=_as_int("consolidated_count"),
+        proposal_count=_as_int("proposal_count"),
+        demotion_count=_as_int("demotion_count"),
+        entity_invalidation_count=_as_int("entity_invalidation_count"),
+        provenance_pending=_as_int("provenance_pending"),
+        uncited_writes_dropped=_as_int("uncited_writes_dropped"),
+        cross_scope_citations_dropped=_as_int("cross_scope_citations_dropped"),
+        protected_demotions=_as_int("protected_demotions"),
+        indeterminate_demotion_writes=_as_int("indeterminate_demotion_writes"),
+        # Only apply's own False marks the count unconfirmed.
+        demotion_accounting_complete=(
+            apply_stats.get("demotion_accounting_complete") is not False
+        ),
+        summary_for_user=ops.summary_for_user,
+        # Fail-closed: a missing/malformed drain flag reads as
+        # ``timed_out`` (writes at risk), never a confirmed drain.
+        ingestion_drain_status=drain_status_from_stats(apply_stats),
+        # ``None`` (key absent) on an empty pass — apply skipped the
+        # dream session entirely, so there is no id to surface.
+        dream_session_id=(raw_session_id if isinstance(raw_session_id, str) else None),
+        operations=(
+            snapshot if isinstance(snapshot, DreamOperationsSnapshot) else None
+        ),
+        usage=run.usage(),
     )

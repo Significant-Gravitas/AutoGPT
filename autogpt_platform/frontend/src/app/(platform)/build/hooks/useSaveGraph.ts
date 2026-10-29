@@ -10,6 +10,8 @@ import {
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { Graph } from "@/app/api/__generated__/models/graph";
+import { UpdateGraphResponse } from "@/app/api/__generated__/models/updateGraphResponse";
+import { notifySkippedWebhookPresets } from "../helpers/skippedWebhookPresets";
 import { useNodeStore } from "../stores/nodeStore";
 import { useEdgeStore } from "../stores/edgeStore";
 import { graphsEquivalent } from "../components/NewControlPanel/NewSaveControl/helpers";
@@ -20,6 +22,11 @@ import {
   clearTempFlowId,
   getTempFlowId,
 } from "@/services/builder-draft/draft-service";
+import { retryUnlessClientError } from "../helpers/graphLoadError";
+import {
+  describeSaveError,
+  markInvalidFields,
+} from "../helpers/saveGraphError";
 
 export type SaveGraphOptions = {
   showToast?: boolean;
@@ -50,6 +57,7 @@ export const useSaveGraph = ({
       query: {
         select: (res) => res.data as GraphModel,
         enabled: !!flowID,
+        retry: retryUnlessClientError,
       },
     },
   );
@@ -73,20 +81,11 @@ export const useSaveGraph = ({
           onSuccess?.(data);
           if (showToast) {
             toast({
-              title: "Graph saved successfully",
-              description: "The graph has been saved successfully.",
+              title: "Workflow saved successfully",
+              description: "The workflow has been saved successfully.",
               variant: "default",
             });
           }
-        },
-        onError: (error) => {
-          onError?.(error);
-          toast({
-            title: "Error saving graph",
-            description:
-              (error as any).message ?? "An unexpected error occurred.",
-            variant: "destructive",
-          });
         },
       },
     });
@@ -95,7 +94,7 @@ export const useSaveGraph = ({
     usePutV1UpdateGraphVersion({
       mutation: {
         onSuccess: async (response) => {
-          const data = response.data as GraphModel;
+          const data = (response.data as UpdateGraphResponse).graph;
           setQueryStates({
             flowID: data.id,
             flowVersion: data.version,
@@ -109,25 +108,16 @@ export const useSaveGraph = ({
           onSuccess?.(data);
           if (showToast) {
             toast({
-              title: "Graph saved successfully",
-              description: "The graph has been saved successfully.",
+              title: "Workflow saved successfully",
+              description: "The workflow has been saved successfully.",
               variant: "default",
             });
           }
         },
-        onError: (error) => {
-          onError?.(error);
-          toast({
-            title: "Error saving graph",
-            description:
-              (error as any).message ?? "An unexpected error occurred.",
-            variant: "destructive",
-          });
-        },
       },
     });
 
-  const saveGraph = useCallback(
+  const persistGraph = useCallback(
     async (values?: { name?: string; description?: string }) => {
       const graphNodes = useNodeStore.getState().getBackendNodes();
       const graphLinks = useEdgeStore.getState().getBackendLinks();
@@ -138,7 +128,7 @@ export const useSaveGraph = ({
           name:
             values?.name ||
             graph.name ||
-            `New Agent ${new Date().toISOString()}`,
+            `New Workflow ${new Date().toISOString()}`,
           description: values?.description ?? graph.description ?? "",
           nodes: graphNodes,
           links: graphLinks,
@@ -148,23 +138,26 @@ export const useSaveGraph = ({
           if (showToast) {
             toast({
               title: "No changes to save",
-              description: "The graph is the same as the saved version.",
+              description: "The workflow is the same as the saved version.",
               variant: "default",
             });
           }
-          return;
+          return graph;
         }
 
         const response = await updateGraph({ graphId: graph.id, data: data });
-        const graphData = response.data as GraphModel;
+        const result = response.data as UpdateGraphResponse;
+        const graphData = result.graph;
         setGraphSchemas(
           graphData.input_schema,
           graphData.credentials_input_schema,
           graphData.output_schema,
         );
+        notifySkippedWebhookPresets(toast, result.skipped_webhook_presets);
+        return graphData;
       } else {
         const data: Graph = {
-          name: values?.name || `New Agent ${new Date().toISOString()}`,
+          name: values?.name || `New Workflow ${new Date().toISOString()}`,
           description: values?.description || "",
           nodes: graphNodes,
           links: graphLinks,
@@ -179,9 +172,28 @@ export const useSaveGraph = ({
           graphData.credentials_input_schema,
           graphData.output_schema,
         );
+        return graphData;
       }
     },
     [graph, toast, createNewGraph, updateGraph],
+  );
+
+  // Resolves to null when the save fails; the user has been told why.
+  const saveGraph = useCallback(
+    async (values?: { name?: string; description?: string }) => {
+      let saved: GraphModel;
+      try {
+        saved = await persistGraph(values);
+      } catch (error) {
+        onError?.(error);
+        markInvalidFields(error);
+        toast(describeSaveError(error));
+        return null;
+      }
+      useNodeStore.getState().clearAllNodeErrors();
+      return saved;
+    },
+    [persistGraph, onError, toast],
   );
 
   return {

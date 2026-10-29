@@ -32,6 +32,10 @@ interface Props {
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onTriggerSetup?: (preset: LibraryAgentPreset) => void;
   onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
+  /** Hosts that call agents something else (the expert page's workflows)
+   *  override the dialog title. */
+  title?: string;
+  dialogVariant?: "default" | "compact";
 }
 
 export function RunAgentModal({
@@ -42,6 +46,8 @@ export function RunAgentModal({
   onRunCreated,
   onTriggerSetup,
   onScheduleCreated,
+  title = "Run Workflow",
+  dialogVariant = "default",
 }: Props) {
   const {
     // UI state
@@ -201,6 +207,8 @@ export function RunAgentModal({
   return (
     <>
       <Dialog
+        title={title}
+        variant={dialogVariant}
         controlled={{ isOpen, set: handleSetOpen }}
         styling={{ maxWidth: "600px", maxHeight: "90vh" }}
       >
@@ -237,9 +245,11 @@ export function RunAgentModal({
             </div>
 
             <Dialog.Footer
-              className={`sticky bottom-0 z-10 bg-white pt-4 ${
+              // oxlint-disable-next-line design-system/no-restyle -- a sticky footer over scrolling content needs its own fill and gap
+              className={`sticky bottom-0 z-10 bg-surface pt-4 ${
                 hasOverflow
-                  ? "border-t border-neutral-100 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]"
+                  ? // oxlint-disable-next-line design-system/no-restyle, design-system/no-arbitrary-values -- the overflow divider and its soft top shadow have no Dialog.Footer variant or shadow token
+                    "border-t border-separator shadow-[0_-2px_8px_rgba(0,0,0,0.04)]"
                   : ""
               }`}
             >

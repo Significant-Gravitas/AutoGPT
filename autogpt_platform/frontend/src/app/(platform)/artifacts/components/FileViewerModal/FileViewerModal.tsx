@@ -7,9 +7,16 @@ import type { ArtifactRef } from "@/app/(platform)/copilot/store";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { CodeIcon, DownloadSimpleIcon, EyeIcon } from "@phosphor-icons/react";
 import { useState } from "react";
-import { downloadFileBlob, getFileDownloadUrl } from "../ArtifactsList/helpers";
+import {
+  downloadFileBlob,
+  getFileDownloadUrl,
+  getPreviewKind,
+} from "../ArtifactsList/helpers";
+import { CodeIcon, Download04Icon, EyeIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { DownloadOnly } from "./components/DownloadOnly";
+import { OfficePreview } from "./components/OfficePreview";
 
 interface Props {
   file: WorkspaceFileItem | null;
@@ -35,7 +42,13 @@ export function FileViewerModal({ file, onClose }: Props) {
     file.name,
     file.size_bytes,
   );
+  const previewKind = getPreviewKind(
+    file.mime_type,
+    file.size_bytes,
+    file.name,
+  );
   const artifact = toArtifactRef(file);
+  const downloadUrl = getFileDownloadUrl(file.id);
 
   return (
     <Dialog
@@ -58,17 +71,16 @@ export function FileViewerModal({ file, onClose }: Props) {
     >
       <Dialog.Content>
         <div className="flex h-full min-h-0 flex-col" data-testid="file-viewer">
-          {classification.openable ? (
+          {previewKind === "office" ? (
+            <OfficePreview file={file} downloadUrl={downloadUrl} />
+          ) : classification.openable ? (
             <ArtifactContent
               artifact={artifact}
               isSourceView={isSourceView}
               classification={classification}
             />
           ) : (
-            <DownloadOnly
-              name={file.name}
-              downloadUrl={getFileDownloadUrl(file.id)}
-            />
+            <DownloadOnly name={file.name} downloadUrl={downloadUrl} />
           )}
         </div>
       </Dialog.Content>
@@ -114,7 +126,7 @@ function Header({
   return (
     // pr-12 leaves room for the Dialog's absolute close button.
     <div className="flex w-full flex-col gap-2 pr-12">
-      <span className="min-w-0 truncate text-base font-medium text-zinc-900">
+      <span className="min-w-0 truncate text-base font-medium text-foreground-strong">
         {name}
       </span>
       <div className="flex items-center gap-2">
@@ -124,7 +136,11 @@ function Header({
             size="small"
             onClick={onToggleSource}
             leftIcon={
-              isSourceView ? <EyeIcon size={14} /> : <CodeIcon size={14} />
+              isSourceView ? (
+                <Icon icon={EyeIcon} size={14} />
+              ) : (
+                <Icon icon={CodeIcon} size={14} />
+              )
             }
           >
             {isSourceView ? "Preview" : "Source"}
@@ -135,36 +151,12 @@ function Header({
           size="small"
           onClick={handleDownload}
           loading={isDownloading}
-          leftIcon={<DownloadSimpleIcon size={14} />}
+          leftIcon={<Icon icon={Download04Icon} size={14} />}
           data-testid="file-viewer-download"
         >
           {isDownloading ? "Downloading…" : "Download"}
         </Button>
       </div>
-    </div>
-  );
-}
-
-function DownloadOnly({
-  name,
-  downloadUrl,
-}: {
-  name: string;
-  downloadUrl: string;
-}) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-      <p className="text-sm text-zinc-500">
-        This file type can&apos;t be previewed.
-      </p>
-      <a
-        href={downloadUrl}
-        download={name}
-        className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
-      >
-        <DownloadSimpleIcon size={16} />
-        Download
-      </a>
     </div>
   );
 }

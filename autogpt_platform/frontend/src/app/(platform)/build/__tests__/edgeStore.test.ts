@@ -368,6 +368,40 @@ describe("edgeStore", () => {
   });
 
   describe("isOutputConnected", () => {
+    it.each(
+      [null, undefined, 42, {}, [], "response_#_", "response_#__#_child"].map(
+        (value) => [value],
+      ),
+    )("ignores invalid nested handles: %j", (sourceHandle) => {
+      useEdgeStore.setState({
+        edges: [
+          makeEdge({
+            id: "bad",
+            sourceHandle: sourceHandle as unknown as string,
+          }),
+        ],
+      });
+      expect(
+        useEdgeStore.getState().isOutputConnected("node-a", "response"),
+      ).toBe(false);
+    });
+
+    it("matches complete path segments on the correct node", () => {
+      useEdgeStore.setState({
+        edges: [
+          makeEdge({
+            id: "nested",
+            sourceHandle: "response_#_reviews_#_author",
+          }),
+        ],
+      });
+      const { isOutputConnected } = useEdgeStore.getState();
+      expect(isOutputConnected("node-a", "response_#_reviews")).toBe(true);
+      expect(isOutputConnected("node-a", "res")).toBe(false);
+      expect(isOutputConnected("node-a", "response_#_review")).toBe(false);
+      expect(isOutputConnected("node-b", "response")).toBe(false);
+    });
+
     it("returns true when source handle is connected", () => {
       useEdgeStore.setState({
         edges: [
@@ -415,7 +449,9 @@ describe("edgeStore", () => {
         useEdgeStore.getState().isOutputConnected("node-a", "response"),
       ).toBe(true);
       expect(
-        useEdgeStore.getState().isOutputConnected("node-a", "response_#_has_new_reviews"),
+        useEdgeStore
+          .getState()
+          .isOutputConnected("node-a", "response_#_has_new_reviews"),
       ).toBe(true);
       expect(
         useEdgeStore.getState().isOutputConnected("node-a", "response_#_other"),
@@ -753,7 +789,7 @@ describe("edgeStore", () => {
             id: "e1",
             data: {
               isStatic: true,
-              edgeColorClass: "text-red-500",
+              edgeColorClass: "text-error",
               beadUp: 3,
               beadDown: 2,
               beadData: new Map(),
@@ -766,7 +802,7 @@ describe("edgeStore", () => {
 
       const edge = useEdgeStore.getState().edges[0];
       expect(edge.data?.isStatic).toBe(true);
-      expect(edge.data?.edgeColorClass).toBe("text-red-500");
+      expect(edge.data?.edgeColorClass).toBe("text-error");
       expect(edge.data?.beadUp).toBe(0);
     });
   });

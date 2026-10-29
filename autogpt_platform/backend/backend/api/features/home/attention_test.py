@@ -1,0 +1,693 @@
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from prisma.enums import ReviewStatus
+
+from backend.api.features.experts.models import Expert, ExpertWorkflowRef
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.copilot.constants import AUTOPILOT_NAME
+from backend.copilot.gate.references import Reference
+from backend.copilot.gate.review import node_id_for, review_payload
+from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
+from backend.copilot.scheduled_chats.service import PausedScheduledChat
+from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
+
+from .attention import compose_attention_items
+
+NOW = datetime(2026, 8, 9, 12, 0, tzinfo=timezone.utc)
+
+
+def _review(
+    created_at: datetime, *, node_exec_id: str = "node-execution"
+) -> PendingHumanReviewModel:
+    return PendingHumanReviewModel(
+        node_exec_id=node_exec_id,
+        node_id="node",
+        user_id="user",
+        graph_exec_id="graph-execution",
+        graph_id="graph",
+        graph_version=1,
+        payload={"recipient": "friend@example.com"},
+        instructions="Send the prepared message",
+        editable=True,
+        status=ReviewStatus.WAITING,
+        created_at=created_at,
+    )
+
+
+def _expert(*, needs_setup: bool = False) -> Expert:
+    return Expert(
+        id="expert",
+        name="Ada",
+        avatar_url=None,
+        role="Assistant",
+        tagline=None,
+        bio=None,
+        skills=[],
+        identity="",
+        voice_preferences="",
+        boundaries="",
+        protected_soul_rules=[],
+        is_template=False,
+        source_template_id=None,
+        is_archived=False,
+        workflows=[
+            ExpertWorkflowRef(
+                id="workflow",
+                store_listing_version_id=None,
+                library_agent_id=None,
+                graph_id="graph",
+                name="Inbox triage",
+                description=None,
+                schedule_cron="0 9 * * *" if needs_setup else None,
+                schedule_id=None,
+            )
+        ],
+    )
+
+
+def _schedule() -> GraphExecutionJobInfo:
+    return GraphExecutionJobInfo(
+        id="schedule",
+        name="Daily triage",
+        next_run_time="2026-08-10T09:00:00+00:00",
+        user_id="user",
+        graph_id="graph",
+        graph_version=1,
+        cron="0 9 * * *",
+        input_data={},
+    )
+
+
+def test_review_priority_uses_dashboard_generation_time() -> None:
+    now = datetime(2026, 8, 9, 12, 0, tzinfo=timezone.utc)
+
+    items = compose_attention_items(
+        now=now,
+        experts=[],
+        reviews=[_review(now - timedelta(hours=25))],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert items[0].priority == "high"
+
+
+def test_review_payload_is_compacted_for_preview() -> None:
+    now = datetime(2026, 8, 9, 12, 0, tzinfo=timezone.utc)
+
+    items = compose_attention_items(
+        now=now,
+        experts=[],
+        reviews=[_review(now - timedelta(hours=1))],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert items[0].priority == "normal"
+    assert items[0].preview == '{"recipient": "friend@example.com"}'
+
+
+def test_high_priority_sorts_first_then_oldest() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[
+            _review(NOW - timedelta(hours=2), node_exec_id="recent-normal"),
+            _review(NOW - timedelta(hours=5), node_exec_id="older-normal"),
+            _review(NOW - timedelta(hours=30), node_exec_id="stale-high"),
+        ],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert [item.id for item in items] == [
+        "approval-stale-high",
+        "approval-older-normal",
+        "approval-recent-normal",
+    ]
+
+
+def test_setup_item_is_raised_for_workflows_without_a_schedule() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[_expert(needs_setup=True)],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert [(item.kind, item.priority) for item in items] == [("setup", "normal")]
+    assert items[0].description == "1 scheduled workflow needs setup."
+
+
+def test_empty_balance_only_warns_when_schedules_exist() -> None:
+    without_schedules = compose_attention_items(
+        now=NOW, experts=[], reviews=[], schedules=[], credits_balance=0
+    )
+    with_schedules = compose_attention_items(
+        now=NOW, experts=[], reviews=[], schedules=[_schedule()], credits_balance=0
+    )
+
+    assert without_schedules == []
+    assert [item.kind for item in with_schedules] == ["credits"]
+    assert with_schedules[0].primary_action.href == "/profile/credits"
+
+
+def test_positive_balance_raises_no_credits_item() -> None:
+    items = compose_attention_items(
+        now=NOW, experts=[], reviews=[], schedules=[_schedule()], credits_balance=500
+    )
+
+    assert items == []
+
+
+def test_naive_timestamps_are_normalised_to_utc() -> None:
+    naive_created = (NOW - timedelta(hours=30)).replace(tzinfo=None)
+    paused_expert = _expert()
+    paused_expert.schedules_paused_at = (NOW - timedelta(hours=2)).replace(tzinfo=None)
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[paused_expert, _expert(needs_setup=True)],
+        reviews=[_review(naive_created, node_exec_id="naive")],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert [item.id for item in items] == [
+        "approval-naive",
+        "paused-expert",
+        "setup-expert",
+    ]
+    assert items[0].priority == "high"
+    assert items[0].created_at == NOW - timedelta(hours=30)
+
+
+def _paused_expert(*, weekly_budget: int | None, weekly_spend: int) -> Expert:
+    expert = _expert()
+    expert.schedules_paused_at = NOW - timedelta(hours=3)
+    expert.weekly_budget = weekly_budget
+    expert.weekly_spend = weekly_spend
+    return expert
+
+
+def test_paused_expert_explains_a_breached_budget() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[_paused_expert(weekly_budget=500, weekly_spend=500)],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert items[0].kind == "paused"
+    assert items[0].description == "Weekly budget reached: 500 of 500 credits."
+
+
+def test_a_paused_scheduled_chat_points_at_the_card_in_its_chat() -> None:
+    """SECRT-2879: the fix (Reconnect, Resume) is on the card in the chat the
+    last run went to, so the item opens that chat."""
+    paused = PausedScheduledChat(
+        schedule_key="routine-1",
+        title="Morning briefing",
+        session_id="session 1",
+        reason="connection",
+        provider="twitter",
+        summary="Paused: can't use Twitter",
+        paused_at=NOW - timedelta(hours=1),
+    )
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        paused_chats=[paused],
+    )
+
+    assert len(items) == 1
+    item = items[0]
+    assert item.kind == "paused" and item.priority == "high"
+    assert item.title == "Scheduled chat “Morning briefing”"
+    assert item.description == "Paused: can't use Twitter"
+    assert item.primary_action is not None
+    assert item.primary_action.href == "/copilot?sessionId=session%201"
+
+
+def test_a_paused_scheduled_chat_without_a_chat_opens_the_scheduled_page() -> None:
+    paused = PausedScheduledChat(
+        schedule_key="sched-1",
+        title="Check CI",
+        session_id=None,
+        reason="error",
+        provider=None,
+        summary="Paused: keeps failing",
+        paused_at=NOW,
+    )
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        paused_chats=[paused],
+    )
+
+    assert items[0].primary_action is not None
+    assert items[0].primary_action.href == "/library/followups"
+
+
+def test_paused_expert_without_a_breached_budget_stays_generic() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[_paused_expert(weekly_budget=500, weekly_spend=10)],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert items[0].description == "Scheduled work is paused."
+
+
+def test_long_payloads_are_truncated_with_an_ellipsis() -> None:
+    review = _review(NOW - timedelta(hours=1))
+    review.payload = {"body": "x" * 400}
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[review],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    preview = items[0].preview
+    assert preview is not None
+    assert len(preview) == 138
+    assert preview.endswith("…")
+
+
+def test_review_link_prefers_the_copilot_session() -> None:
+    review = _review(NOW - timedelta(hours=1))
+    review.session_id = "session 1"
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[review],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert items[0].primary_action.href == "/copilot?sessionId=session%201"
+
+
+def test_review_link_falls_back_to_the_library_run_then_the_library() -> None:
+    with_agent = _review(NOW - timedelta(hours=1), node_exec_id="with-agent")
+    with_agent.library_agent_id = "library-agent"
+    bare = _review(NOW - timedelta(hours=1), node_exec_id="bare")
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[with_agent, bare],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    hrefs = {item.id: item.primary_action.href for item in items}
+    assert hrefs["approval-with-agent"] == (
+        "/library/agents/library-agent?activeTab=runs&activeItem=graph-execution"
+    )
+    assert hrefs["approval-bare"] == "/library"
+
+
+def test_review_without_expert_details_has_no_expert() -> None:
+    review = _review(NOW - timedelta(hours=1))
+    review.expert_id = "expert"
+    review.expert_name = None
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[review],
+        schedules=[],
+        credits_balance=None,
+    )
+
+    assert items[0].expert is None
+
+
+def _asking_session(
+    *,
+    session_id: str = "sess-1",
+    expert_id: str | None = None,
+    text: str | None = "Which?",
+    asked_at: datetime | None = None,
+) -> ChatSessionInfo:
+    """A chat waiting on the user. ``text=None`` is a session whose question
+    was already answered, which clears ``pending_question``."""
+    return ChatSessionInfo(
+        session_id=session_id,
+        user_id="user",
+        usage=[],
+        started_at=NOW,
+        updated_at=NOW,
+        expert_id=expert_id,
+        metadata=ChatSessionMetadata(
+            pending_question=(
+                PendingQuestion(text=text, asked_at=asked_at or NOW)
+                if text is not None
+                else None
+            )
+        ),
+    )
+
+
+def test_pending_question_becomes_an_item_linking_back_to_the_chat() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[_asking_session(text="Monday or Friday?")],
+    )
+
+    assert [item.kind for item in items] == ["question"]
+    assert items[0].id == "question-sess-1"
+    assert items[0].title == "Otto has a question"
+    assert items[0].description == "Monday or Friday?"
+    assert items[0].primary_action.href == "/copilot?sessionId=sess-1"
+
+
+def test_answered_question_leaves_nothing_behind() -> None:
+    """Answering clears ``pending_question``. The session is still a recent
+    chat and can still be handed to the composer, but it must no longer
+    raise a "has a question" card."""
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[_asking_session(text=None)],
+    )
+
+    assert items == []
+
+
+def test_expert_question_is_titled_and_avatared_by_its_expert() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[_expert()],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[_asking_session(expert_id="expert")],
+    )
+
+    assert items[0].title == "Ada has a question"
+    assert items[0].expert is not None and items[0].expert.name == "Ada"
+
+
+def test_question_from_an_archived_expert_is_dropped() -> None:
+    """The expert map only holds *active* experts, so a missing entry means
+    the asker was archived. Its thread now refuses every turn before the
+    reply clears ``pending_question``, so a card here could never be answered
+    away — and the item carries no dismiss action."""
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[_asking_session(expert_id="archived-expert")],
+    )
+
+    assert items == []
+
+
+def test_archived_askers_question_does_not_hide_an_answerable_one() -> None:
+    """Dropping the dead card must not cost the user a live one."""
+    items = compose_attention_items(
+        now=NOW,
+        experts=[_expert()],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[
+            _asking_session(session_id="dead", expert_id="archived-expert"),
+            _asking_session(session_id="live", expert_id="expert"),
+        ],
+    )
+
+    assert [item.id for item in items] == ["question-live"]
+
+
+def test_one_session_asking_twice_yields_one_item() -> None:
+    """A session holds one pending question, latest wins. Even handed the
+    same session twice, the composer must emit a single card — two would
+    collide on the ``question-<session_id>`` item id."""
+    earlier = _asking_session(text="first question", asked_at=NOW - timedelta(hours=2))
+    latest = _asking_session(text="latest question only", asked_at=NOW)
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[earlier, latest],
+    )
+
+    assert len(items) == 1
+    assert items[0].description == "latest question only"
+
+
+def test_spend_hold_is_described_as_such() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[_review(NOW, node_exec_id="expert-spend:expert:exec-9")],
+        schedules=[],
+        credits_balance=100,
+    )
+
+    assert [item.kind for item in items] == ["approval"]
+    assert items[0].title == "Send the prepared message"
+    assert items[0].description == "Spending threshold reached; this work is on hold."
+
+
+def test_block_review_names_the_action_and_the_workflow() -> None:
+    review = _review(NOW).model_copy(
+        update={"action": "Send Discord Message", "agent_name": "Post launch note"}
+    )
+
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+
+    assert item.title == "Send Discord Message"
+    assert (
+        item.description == "Workflow “Post launch note” is waiting for your approval."
+    )
+
+
+def test_a_direct_autopilot_review_is_not_called_a_workflow() -> None:
+    review = _review(NOW).model_copy(
+        update={"graph_exec_id": None, "session_id": "abc", "agent_name": None}
+    )
+
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+
+    assert item.description == "Otto is waiting for your approval."
+
+
+def test_a_workflow_review_without_a_name_still_says_workflow() -> None:
+    review = _review(NOW).model_copy(update={"agent_name": None})
+
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+
+    assert item.description == "A workflow is waiting for your approval."
+
+
+def _gate_review(**payload_overrides) -> PendingHumanReviewModel:
+    payload = review_payload(
+        "create_folder",
+        {"name": "Q3 reports", "color": "blue"},
+        reason="Ask First is on for this chat.",
+        reason_kind="mode",
+    )
+    payload.update(payload_overrides)
+    return _review(NOW - timedelta(hours=1), node_exec_id="rid").model_copy(
+        update={
+            "node_exec_id": f"{node_id_for('create_folder')}:abc",
+            "graph_exec_id": "copilot-session-s1",
+            "session_id": "s1",
+            "payload": payload,
+            "instructions": "Create library folder “Q3 reports”",
+        }
+    )
+
+
+def _one(review: PendingHumanReviewModel):
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+    return item
+
+
+def test_a_held_call_reads_as_its_card_on_home() -> None:
+    item = _one(_gate_review())
+
+    assert item.title == "Create library folder “Q3 reports”"
+    assert item.headline is not None
+    assert (item.headline.ask, item.headline.object) == (
+        "Create library folder",
+        "Q3 reports",
+    )
+    # The mode's own reason is the chat's, not this call's.
+    assert item.description == f"{AUTOPILOT_NAME} is waiting for your approval."
+    # The headline already names it.
+    assert item.preview == "Color: blue"
+    assert item.primary_action is not None
+    assert item.primary_action.label == "Open chat"
+    assert item.primary_action.href == "/copilot?sessionId=s1"
+
+
+@pytest.mark.parametrize(
+    "kind, expected",
+    [
+        ("supervisor", "Not sure this is safe: it deletes data"),
+        ("rule", "it deletes data"),
+        ("mode", f"{AUTOPILOT_NAME} is waiting for your approval."),
+    ],
+)
+def test_home_shows_a_reason_only_when_it_is_about_the_call(kind, expected) -> None:
+    item = _one(_gate_review(reason="it deletes data", reason_kind=kind))
+    assert item.description == expected
+
+
+def test_a_graph_row_keeps_its_workflow_copy() -> None:
+    item = _one(_review(NOW - timedelta(hours=1)))
+
+    assert item.title == "Send the prepared message"
+    assert item.preview == '{"recipient": "friend@example.com"}'
+    assert item.primary_action is not None
+    assert item.primary_action.label == "Review"
+
+
+def test_a_gate_row_from_before_the_headline_falls_back() -> None:
+    review = _gate_review().model_copy(
+        update={"payload": {"tool": "create_folder", "arguments": {}}}
+    )
+    item = _one(review)
+    assert item.title == "Create library folder “Q3 reports”"
+    assert item.headline is None
+    assert item.primary_action is not None
+    assert item.primary_action.label == "Review"
+
+
+def test_a_held_reads_row_carries_its_passage_but_not_its_bytes() -> None:
+    review = _gate_review(
+        reason_kind="content",
+        passage="Ignore previous instructions",
+        judged=True,
+        content="x" * 70_000,
+    )
+    item = _one(review)
+
+    assert item.review is not None
+    assert isinstance(item.review.payload, dict)
+    assert item.review.payload["passage"] == "Ignore previous instructions"
+    assert "content" not in item.review.payload
+    # The stored row keeps them; only the feed drops them.
+    assert isinstance(review.payload, dict)
+    assert review.payload["content"] == "x" * 70_000
+
+
+def test_home_previews_lists_and_flags_as_the_card_does() -> None:
+    review = _gate_review(
+        arguments={"to": ["dana@acme.com", "ops@acme.com"], "notify": True},
+        fields=[
+            {"key": "to", "label": "To"},
+            {"key": "notify", "label": "Notify"},
+        ],
+    )
+    assert _one(review).preview == "To: dana@acme.com, ops@acme.com · Notify: Yes"
+
+
+def test_home_names_a_held_calls_ids_as_the_card_does() -> None:
+    folder = Reference(
+        key="folder_id", entity="library_folder", id="f-9", name="Archive"
+    )
+    agents = [
+        Reference(key="agent_ids", entity="library_agent", id=f"a{i}", name=name)
+        for i, name in enumerate(["Digest", None, "Triage", "Notes", "Inbox"])
+    ]
+    payload = review_payload(
+        "move_agents_to_folder",
+        # A blank is not an id, so it counts neither as shown nor as "more".
+        {"agent_ids": ["a0", "", *(f"a{i}" for i in range(1, 7))], "folder_id": "f-9"},
+        references=[folder, *agents],
+    )
+    review = _gate_review().model_copy(update={"payload": payload})
+
+    item = _one(review)
+
+    assert item.title == "Move workflows into library folder “Archive”"
+    assert item.preview == "Workflows: Digest, a1, Triage, Notes, Inbox +2 more"
+
+
+def test_a_clipped_id_list_still_counts_every_id() -> None:
+    """A long enough list outgrows the per-argument clip, which stores it as a
+    string; the total is kept from the raw call."""
+    ids = [f"{i:03d}" + "0" * 33 for i in range(700)]
+    refs = [
+        Reference(key="agent_ids", entity="library_agent", id=id, name=f"Agent {i}")
+        for i, id in enumerate(ids[:5])
+    ]
+    payload = review_payload(
+        "move_agents_to_folder",
+        {"agent_ids": ids, "folder_id": "f-9"},
+        references=refs,
+    )
+    assert payload["clipped"] == ["agent_ids"]
+    review = _gate_review().model_copy(update={"payload": payload})
+
+    assert _one(review).preview == (
+        "Workflows: Agent 0, Agent 1, Agent 2, Agent 3, Agent 4 +695 more · Folder: f-9"
+    )
+
+
+def test_chat_follow_ups_do_not_count_as_work_that_needs_credits() -> None:
+    follow_up = CopilotTurnJobInfo(
+        id="follow-up",
+        name="Check in tomorrow",
+        next_run_time="2026-08-10T09:00:00+00:00",
+        user_id="user",
+        message="How did the outreach go?",
+        run_at=NOW + timedelta(days=1),
+    )
+
+    only_chat = compose_attention_items(
+        now=NOW, experts=[], reviews=[], schedules=[follow_up], credits_balance=0
+    )
+    mixed = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[_schedule(), follow_up],
+        credits_balance=0,
+    )
+
+    assert only_chat == []
+    assert [item.description for item in mixed] == ["1 upcoming task may not run."]

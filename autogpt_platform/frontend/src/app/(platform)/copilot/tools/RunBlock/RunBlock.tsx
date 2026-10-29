@@ -1,5 +1,7 @@
 "use client";
 
+import { useGetV1ListAvailableBlocks } from "@/app/api/__generated__/endpoints/blocks/blocks";
+import { HIDDEN_FROM_REPLAY } from "@/lib/replay-privacy";
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -15,6 +17,7 @@ import {
 import {
   getAccordionMeta,
   getAnimationText,
+  getBlockNamesById,
   getRunBlockToolOutput,
   isRunBlockBlockOutput,
   isRunBlockDetailsOutput,
@@ -24,6 +27,7 @@ import {
   ToolIcon,
 } from "./helpers";
 import type { RunBlockInput } from "./helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 export interface RunBlockToolPart {
   type: string;
@@ -38,12 +42,23 @@ interface Props {
 }
 
 export function RunBlockTool({ part }: Props) {
-  const text = getAnimationText(part);
+  const input = part.input as RunBlockInput | undefined;
+  // The LLM's input only carries a block_id; resolve it to a name so the
+  // in-flight state doesn't show a raw UUID (outputs carry the name already)
+  const needsBlockNameLookup =
+    !input?.block_name?.trim() && !!input?.block_id?.trim();
+  const { data: blocksResponse } = useGetV1ListAvailableBlocks({
+    query: { enabled: needsBlockNameLookup, staleTime: 5 * 60 * 1000 },
+  });
+  const text = getAnimationText(
+    part,
+    needsBlockNameLookup ? getBlockNamesById(blocksResponse) : undefined,
+  );
   const isStreaming =
     part.state === "input-streaming" || part.state === "input-available";
 
   const output = getRunBlockToolOutput(part);
-  const inputData = (part.input as RunBlockInput | undefined)?.input_data;
+  const inputData = input?.input_data;
   const hasInputData = inputData != null && Object.keys(inputData).length > 0;
   const isCorrupted =
     part.state === "output-available" &&
@@ -80,15 +95,15 @@ export function RunBlockTool({ part }: Props) {
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={isCorrupted ? "Block result could not be displayed" : text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 
       {isCorrupted && (
-        <p className="mt-1 text-sm text-red-500">
+        <Text variant="body-tight" tone="error" className="mt-1">
           The result data arrived corrupted, so any sign-in or setup card it
-          contained can&apos;t be shown. Ask AutoPilot to retry this step.
-        </p>
+          contained can&apos;t be shown. Ask your expert to retry this step.
+        </Text>
       )}
 
       {setupRequirementsOutput && (
@@ -98,7 +113,10 @@ export function RunBlockTool({ part }: Props) {
       )}
 
       {hasExpandableContent && output && (
-        <ToolAccordion {...getAccordionMeta(output)}>
+        <ToolAccordion
+          {...getAccordionMeta(output)}
+          className={HIDDEN_FROM_REPLAY}
+        >
           {hasInputData && <BlockInputCard inputData={inputData} />}
 
           {isRunBlockBlockOutput(output) && <BlockOutputCard output={output} />}

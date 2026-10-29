@@ -1,8 +1,9 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { UploadSimple } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
+import { Upload03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   children: React.ReactNode;
@@ -63,14 +64,12 @@ export function FileDropZone({ children, onFilesDropped, className }: Props) {
       {children}
       <div
         className={cn(
-          "pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-violet-400 bg-violet-500/10 transition-opacity duration-150",
+          "pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-brand/60 bg-brand/10 transition-opacity duration-150",
           isDragging ? "opacity-100" : "opacity-0",
         )}
       >
-        <UploadSimple className="h-10 w-10 text-violet-500" weight="bold" />
-        <span className="text-lg font-medium text-violet-600">
-          Drop files here
-        </span>
+        <Icon icon={Upload03Icon} className="h-10 w-10 text-brand" />
+        <span className="text-lg font-medium text-brand">Drop files here</span>
       </div>
     </div>
   );

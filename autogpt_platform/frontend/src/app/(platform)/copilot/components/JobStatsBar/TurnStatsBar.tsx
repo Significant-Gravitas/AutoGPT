@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { TurnStats } from "../../helpers/convertChatSessionToUiMessages";
 import { formatElapsed } from "./formatElapsed";
 import { getWorkDoneCounters } from "./useWorkDoneCounters";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   turnMessages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -20,17 +21,17 @@ function formatLocalDate(iso: string): string {
 }
 
 /**
- * Prefer live elapsedSeconds while streaming; fall back to the persisted
- * whole-turn durationMs afterwards.
+ * The saved whole-turn durationMs once present, so a reload reads the same;
+ * the live count, which runs long while a background tab types, until then.
  */
 function resolveDisplaySeconds(
   elapsedSeconds: number | undefined,
   stats: TurnStats | undefined,
 ): number | undefined {
-  if (elapsedSeconds !== undefined && elapsedSeconds > 0) return elapsedSeconds;
-  if (stats?.durationMs && stats.durationMs > 0) {
+  if (stats?.durationMs !== undefined) {
     return Math.round(stats.durationMs / 1000);
   }
+  if (elapsedSeconds !== undefined && elapsedSeconds > 0) return elapsedSeconds;
   return undefined;
 }
 
@@ -50,7 +51,7 @@ function TimeLabel({
 
   if (!localDate) {
     return (
-      <span className="text-[11px] tabular-nums text-neutral-500">
+      <span className="text-caption-sm tabular-nums leading-inherit text-foreground-tertiary">
         {labelText}
       </span>
     );
@@ -60,7 +61,7 @@ function TimeLabel({
     <span
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="cursor-default text-[11px] tabular-nums text-neutral-500 transition-colors hover:text-neutral-700"
+      className="cursor-default text-caption-sm tabular-nums leading-inherit text-foreground-tertiary transition-colors hover:text-foreground-body"
     >
       <span
         key={hovered ? "date" : "label"}
@@ -91,9 +92,11 @@ export function TurnStatsBar({ turnMessages, elapsedSeconds, stats }: Props) {
         return (
           <span key={counter.category} className="flex items-center gap-1">
             {needsDot && (
-              <span className="text-xs text-neutral-300">&middot;</span>
+              <Text variant="small-tight" as="span" tone="disabled">
+                &middot;
+              </Text>
             )}
-            <span className="text-[11px] tabular-nums text-neutral-500">
+            <span className="text-caption-sm tabular-nums leading-inherit text-foreground-tertiary">
               {counter.count} {counter.label}
             </span>
           </span>

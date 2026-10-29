@@ -183,7 +183,7 @@ export function CustomStyled() {
   return (
     <Accordion type="single" collapsible className="w-96">
       <AccordionItem value="item-1" className="border-none">
-        <AccordionTrigger className="rounded-lg bg-zinc-100 px-4 hover:bg-zinc-200 hover:no-underline">
+        <AccordionTrigger className="rounded-lg bg-surface-hover px-4 hover:bg-surface-active hover:no-underline">
           Custom styled trigger
         </AccordionTrigger>
         <AccordionContent className="px-4 pt-2">
@@ -191,10 +191,10 @@ export function CustomStyled() {
         </AccordionContent>
       </AccordionItem>
       <AccordionItem value="item-2" className="mt-2 border-none">
-        <AccordionTrigger className="rounded-lg bg-blue-50 px-4 text-blue-700 hover:bg-blue-100 hover:no-underline">
+        <AccordionTrigger className="rounded-lg bg-info-surface px-4 text-blue-700 hover:bg-blue-100 hover:no-underline">
           Blue themed
         </AccordionTrigger>
-        <AccordionContent className="px-4 pt-2 text-blue-600">
+        <AccordionContent className="px-4 pt-2 text-info-foreground">
           Each item can have different styles.
         </AccordionContent>
       </AccordionItem>

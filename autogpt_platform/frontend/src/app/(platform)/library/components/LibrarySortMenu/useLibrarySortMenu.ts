@@ -15,6 +15,8 @@ export function useLibrarySortMenu({ setLibrarySort }: Props) {
         return "Creation Date";
       case LibraryAgentSort.updatedAt:
         return "Last Modified";
+      case LibraryAgentSort.lastRunAt:
+        return "Last Run";
       default:
         return "Last Modified";
     }

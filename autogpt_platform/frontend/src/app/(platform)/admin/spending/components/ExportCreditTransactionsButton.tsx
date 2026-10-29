@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DownloadSimpleIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
@@ -10,7 +9,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "@/components/atoms/Select/components/SelectPrimitives";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getV2ExportCreditTransactions } from "@/app/api/__generated__/endpoints/admin/admin";
 import { okData } from "@/app/api/helpers";
@@ -24,6 +23,8 @@ import {
   defaultStartDate,
   downloadCsv,
 } from "../helpers";
+import { Download04Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type TypeFilter = "ALL" | CreditTransactionType;
 
@@ -131,7 +132,7 @@ export function ExportCreditTransactionsButton() {
         <Button
           variant="secondary"
           size="small"
-          leftIcon={<DownloadSimpleIcon weight="bold" />}
+          leftIcon={<Icon icon={Download04Icon} />}
         >
           Export CSV
         </Button>

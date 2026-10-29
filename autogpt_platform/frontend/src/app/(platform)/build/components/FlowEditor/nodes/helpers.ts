@@ -96,7 +96,9 @@ export const getTypeDisplayInfo = (schema: any) => {
   ) {
     return {
       displayType: "table",
+      // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
       colorClass: "!text-indigo-500",
+      // TODO(tokens): no exact role: literal #6366F1
       hexColor: "#6366f1",
     };
   }
@@ -108,32 +110,38 @@ export const getTypeDisplayInfo = (schema: any) => {
     > = {
       file: {
         displayType: "file",
-        colorClass: "!text-green-500",
+        colorClass: "!text-success",
+        // TODO(tokens): no exact role: literal #22C55E
         hexColor: "#22c55e",
       },
       date: {
         displayType: "date",
-        colorClass: "!text-blue-500",
+        colorClass: "!text-info",
+        // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         hexColor: "#3b82f6",
       },
       time: {
         displayType: "time",
-        colorClass: "!text-blue-500",
+        colorClass: "!text-info",
+        // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         hexColor: "#3b82f6",
       },
       "date-time": {
         displayType: "datetime",
-        colorClass: "!text-blue-500",
+        colorClass: "!text-info",
+        // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         hexColor: "#3b82f6",
       },
       "long-text": {
         displayType: "text",
-        colorClass: "!text-green-500",
+        colorClass: "!text-success",
+        // TODO(tokens): no exact role: literal #22C55E
         hexColor: "#22c55e",
       },
       "short-text": {
         displayType: "text",
-        colorClass: "!text-green-500",
+        colorClass: "!text-success",
+        // TODO(tokens): no exact role: literal #22C55E
         hexColor: "#22c55e",
       },
     };
@@ -157,28 +165,39 @@ export const getTypeDisplayInfo = (schema: any) => {
   const displayType = typeMap[schema?.type] || schema?.type || "any";
 
   const colorMap: Record<string, string> = {
-    string: "!text-green-500",
-    number: "!text-blue-500",
-    integer: "!text-blue-500",
+    string: "!text-success",
+    number: "!text-info",
+    integer: "!text-info",
+    // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
     boolean: "!text-yellow-500",
-    object: "!text-purple-500",
+    object: "!text-brand",
+    // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
     array: "!text-indigo-500",
-    null: "!text-gray-500",
-    any: "!text-gray-500",
+    null: "!text-foreground-tertiary",
+    any: "!text-foreground-tertiary",
   };
 
   const hexColorMap: Record<string, string> = {
+    // TODO(tokens): no exact role: literal #22C55E
     string: "#22c55e",
+    // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
     number: "#3b82f6",
+    // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
     integer: "#3b82f6",
+    // TODO(tokens): no exact role: literal #EAB308
     boolean: "#eab308",
+    // TODO(tokens): no exact role: literal #A855F7
     object: "#a855f7",
+    // TODO(tokens): no exact role: literal #6366F1
     array: "#6366f1",
+    // TODO(tokens): no exact role: literal #6B7280
     null: "#6b7280",
+    // TODO(tokens): no exact role: literal #6B7280
     any: "#6b7280",
   };
 
-  const colorClass = colorMap[schema?.type] || "!text-gray-500";
+  const colorClass = colorMap[schema?.type] || "!text-foreground-tertiary";
+  // TODO(tokens): no exact role: literal #6B7280
   const hexColor = hexColorMap[schema?.type] || "#6b7280";
 
   return {
@@ -188,12 +207,25 @@ export const getTypeDisplayInfo = (schema: any) => {
   };
 };
 
+// Whole class names, so Tailwind finds each stroke colour in the source.
+const EDGE_STROKE_CLASSES: Record<string, string> = {
+  "!text-success": "stroke-success",
+  "!text-info": "stroke-info",
+  // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
+  "!text-yellow-500": "stroke-yellow-500",
+  "!text-brand": "stroke-brand",
+  // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
+  "!text-indigo-500": "stroke-indigo-500",
+  "!text-foreground-tertiary": "stroke-foreground-tertiary",
+};
+
 export function getEdgeColorFromOutputType(
   outputSchema: RJSFSchema | undefined,
   sourceHandle: string,
 ): { colorClass: string; hexColor: string } {
   const defaultColor = {
-    colorClass: "stroke-zinc-500/50",
+    colorClass: "stroke-edge/50",
+    // TODO(tokens): no exact role: literal #6B7280
     hexColor: "#6b7280",
   };
 
@@ -210,7 +242,10 @@ export function getEdgeColorFromOutputType(
 
     if (i === handleParts.length - 1) {
       const { hexColor, colorClass } = getTypeDisplayInfo(fieldSchema);
-      return { colorClass: colorClass.replace("!text-", "stroke-"), hexColor };
+      return {
+        colorClass: EDGE_STROKE_CLASSES[colorClass] ?? defaultColor.colorClass,
+        hexColor,
+      };
     }
 
     if (fieldSchema.properties) {
@@ -221,45 +256,4 @@ export function getEdgeColorFromOutputType(
   }
 
   return defaultColor;
-}
-
-export function augmentOutputSchemaWithEdges(
-  outputSchema: RJSFSchema | undefined,
-  nodeId: string,
-  edges: any[],
-): Record<string, RJSFSchema> {
-  const properties = JSON.parse(JSON.stringify(outputSchema?.properties || {}));
-
-  // Filter for outgoing edges from this node that have a source handle
-  const outgoingEdges = edges.filter(
-    (e) => e.source === nodeId && e.sourceHandle,
-  );
-
-  outgoingEdges.forEach((edge) => {
-    const handleId = edge.sourceHandle!;
-    const segments = handleId.split("_#_");
-    if (segments.length <= 1) return; // Only process dynamic nested properties
-
-    let current = properties;
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i];
-      const isLast = i === segments.length - 1;
-
-      if (!current[segment]) {
-        current[segment] = isLast
-          ? { title: segment } // Default to any type (displays as 'any')
-          : { type: "object", title: segment, properties: {} };
-      } else {
-        if (!isLast) {
-          current[segment].properties = current[segment].properties || {};
-        }
-      }
-
-      if (!isLast) {
-        current = current[segment].properties;
-      }
-    }
-  });
-
-  return properties;
 }

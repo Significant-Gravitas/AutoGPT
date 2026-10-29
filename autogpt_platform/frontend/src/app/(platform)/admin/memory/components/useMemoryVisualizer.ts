@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import {
   getGetV2GetCommunityRebuildStatusQueryKey,
   getGetV2GetDreamPassStatusQueryKey,
@@ -10,6 +10,8 @@ import {
   getGetV2GetNightlyBatchStatusQueryKey,
   useGetV2GetCommunityRebuildStatus,
   useGetV2GetDreamPassStatus,
+  useGetV2GetExpertGraph,
+  useGetV2GetExpertMemoryOverview,
   useGetV2GetGraph,
   useGetV2GetMemoryOverview,
   useGetV2GetNightlyBatchStatus,
@@ -18,24 +20,14 @@ import {
   usePostV2TriggerNightlyBatch,
   usePostV2TriggerRatificationPass,
 } from "@/app/api/__generated__/endpoints/admin/admin";
-import type { CommunityRebuildJobStatus } from "@/app/api/__generated__/models/communityRebuildJobStatus";
-import type { DreamJobStatus } from "@/app/api/__generated__/models/dreamJobStatus";
 import type { DreamJobStatusState } from "@/app/api/__generated__/models/dreamJobStatusState";
 import type { GraphResponse } from "@/app/api/__generated__/models/graphResponse";
 import type { JobTriggerResponse } from "@/app/api/__generated__/models/jobTriggerResponse";
 import type { MemoryOverview } from "@/app/api/__generated__/models/memoryOverview";
-import type { NightlyJobStatus } from "@/app/api/__generated__/models/nightlyJobStatus";
 import type { RatificationResult } from "@/app/api/__generated__/models/ratificationResult";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-
-// Polling envelope shared across all three job kinds — they're
-// structurally identical except for the typed ``result`` payload, so
-// the polling hook walks them as a union. Narrowing to a specific
-// kind happens at the view layer that reads ``status.result``.
-type AnyJobStatus =
-  | DreamJobStatus
-  | NightlyJobStatus
-  | CommunityRebuildJobStatus;
+import { getDreamResult } from "./helpers";
+import type { AnyJobStatus } from "./memoryJobStatus";
 
 // The state enum is identical across all three concrete envelopes
 // (same underlying Pydantic Literal). Pick the dream variant as the
@@ -55,12 +47,28 @@ function isTerminal(state: JobStateValue | undefined): state is TerminalState {
   return state === "complete" || state === "errored";
 }
 
-export function useMemoryVisualizer() {
+function invalidateAutoPilotMemoryQueries(queryClient: QueryClient) {
+  // Account and expert scopes are separate endpoints (and therefore
+  // separate query-key URLs), so a prefix invalidation of the account
+  // keys can never touch an expert cache.
+  queryClient.invalidateQueries({
+    queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
+  });
+  queryClient.invalidateQueries({
+    queryKey: getGetV2GetGraphQueryKey(USER_ID),
+  });
+}
+
+export function useMemoryVisualizer(expertID?: string) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [force, setForce] = useState(false);
   const [includeEpisodes, setIncludeEpisodes] = useState(false);
   const [includeCommunities, setIncludeCommunities] = useState(true);
+  // Normalize "" to undefined so read-only state and the fetch scope
+  // can never disagree about whether an expert is selected.
+  const scopedExpertID = expertID || undefined;
+  const readOnly = scopedExpertID !== undefined;
 
   // Track the in-flight job per kind so the polling hooks know what
   // to watch. ``undefined`` means no job in flight for that kind.
@@ -73,14 +81,41 @@ export function useMemoryVisualizer() {
   const [activeRebuildJobId, setActiveRebuildJobId] = useState<
     string | undefined
   >();
+  // The last dream job that finished. Ending a job clears its active id,
+  // which also drops its polled status, so the result panel reads this.
+  const [finishedDreamStatus, setFinishedDreamStatus] = useState<
+    AnyJobStatus | undefined
+  >();
 
-  const overview = useGetV2GetMemoryOverview(USER_ID);
-  const graph = useGetV2GetGraph(USER_ID, {
+  const baseGraphParams = {
     include_episodes: includeEpisodes,
     include_communities: includeCommunities,
     node_limit: 10000,
     edge_limit: 20000,
+  };
+
+  // Account and expert scopes are separate (path-scoped) endpoints.
+  // Hooks can't be mounted conditionally, so both pairs are always
+  // called and exactly one pair is enabled for the current scope.
+  const accountOverview = useGetV2GetMemoryOverview(USER_ID, {
+    query: { enabled: !readOnly },
   });
+  const accountGraph = useGetV2GetGraph(USER_ID, baseGraphParams, {
+    query: { enabled: !readOnly },
+  });
+  const expertOverview = useGetV2GetExpertMemoryOverview(
+    USER_ID,
+    scopedExpertID ?? "",
+    { query: { enabled: readOnly } },
+  );
+  const expertGraph = useGetV2GetExpertGraph(
+    USER_ID,
+    scopedExpertID ?? "",
+    baseGraphParams,
+    { query: { enabled: readOnly } },
+  );
+  const overview = readOnly ? expertOverview : accountOverview;
+  const graph = readOnly ? expertGraph : accountGraph;
 
   // --- Triggers (POST → 202 + job_id) ---------------------------------------
 
@@ -104,6 +139,7 @@ export function useMemoryVisualizer() {
     mutation: {
       onSuccess: (res) => {
         const result = res.data as JobTriggerResponse;
+        setFinishedDreamStatus(undefined);
         setActiveDreamJobId(result.job_id);
       },
       onError: (error: Error) => {
@@ -153,12 +189,7 @@ export function useMemoryVisualizer() {
               `superseded=${result.superseded_count}`,
           });
         }
-        queryClient.invalidateQueries({
-          queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getGetV2GetGraphQueryKey(USER_ID),
-        });
+        invalidateAutoPilotMemoryQueries(queryClient);
       },
       onError: (error: Error) => {
         toast({
@@ -217,17 +248,16 @@ export function useMemoryVisualizer() {
     activeDreamJobId,
     dreamStatus.data?.data as AnyJobStatus | undefined,
     dreamStatus.error,
-    () => {
+    (finishedStatus) => {
+      setFinishedDreamStatus(finishedStatus);
       setActiveDreamJobId(undefined);
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetDreamPassStatusQueryKey(USER_ID, activeDreamJobId),
+        queryKey: getGetV2GetDreamPassStatusQueryKey(
+          USER_ID,
+          activeDreamJobId ?? "",
+        ),
       });
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
-      });
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetGraphQueryKey(USER_ID),
-      });
+      invalidateAutoPilotMemoryQueries(queryClient);
     },
     toast,
   );
@@ -242,15 +272,10 @@ export function useMemoryVisualizer() {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetNightlyBatchStatusQueryKey(
           USER_ID,
-          activeNightlyJobId,
+          activeNightlyJobId ?? "",
         ),
       });
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
-      });
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetGraphQueryKey(USER_ID),
-      });
+      invalidateAutoPilotMemoryQueries(queryClient);
     },
     toast,
   );
@@ -265,15 +290,10 @@ export function useMemoryVisualizer() {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetCommunityRebuildStatusQueryKey(
           USER_ID,
-          activeRebuildJobId,
+          activeRebuildJobId ?? "",
         ),
       });
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
-      });
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetGraphQueryKey(USER_ID),
-      });
+      invalidateAutoPilotMemoryQueries(queryClient);
     },
     toast,
   );
@@ -281,23 +301,75 @@ export function useMemoryVisualizer() {
   // --- Action callbacks ---------------------------------------------------
 
   function triggerRebuild() {
+    if (readOnly) return;
     rebuild.mutate({ userId: USER_ID, params: { force } });
   }
 
   function triggerDream() {
+    if (readOnly) return;
     dream.mutate({ userId: USER_ID });
   }
 
   function triggerRatification() {
+    if (readOnly) return;
     ratification.mutate({ userId: USER_ID });
   }
 
   function triggerNightly() {
+    if (readOnly) return;
     nightly.mutate({ userId: USER_ID });
   }
 
-  const overviewData = overview.data?.data as MemoryOverview | undefined;
-  const graphData = graph.data?.data as GraphResponse | undefined;
+  function dismissDreamResult() {
+    setFinishedDreamStatus(undefined);
+  }
+
+  // --- Scope tripwire -----------------------------------------------------
+  //
+  // Overview + graph responses echo the expert_id they were computed
+  // for (null/absent = account scope). If the echo ever disagrees with
+  // the scope we requested, never render that payload as the requested
+  // scope — surface it as an error instead.
+
+  function matchesRequestedScope(
+    payload: { expert_id?: string | null } | undefined,
+  ): boolean {
+    return (
+      payload === undefined ||
+      (payload.expert_id ?? undefined) === scopedExpertID
+    );
+  }
+
+  const rawOverviewData = overview.data?.data as MemoryOverview | undefined;
+  const rawGraphData = graph.data?.data as GraphResponse | undefined;
+  const overviewData = matchesRequestedScope(rawOverviewData)
+    ? rawOverviewData
+    : undefined;
+  const graphData = matchesRequestedScope(rawGraphData)
+    ? rawGraphData
+    : undefined;
+  const scopeMismatch =
+    overviewData !== rawOverviewData || graphData !== rawGraphData;
+  const scopeMismatchError = scopeMismatch
+    ? new Error(
+        "Memory scope mismatch: the server returned memory for a " +
+          "different scope than requested",
+      )
+    : undefined;
+
+  useEffect(() => {
+    if (!scopeMismatch) return;
+    toast({
+      title: "Memory scope mismatch",
+      description:
+        "The server returned memory for a different scope than " +
+        "requested. The mismatched data was not rendered.",
+      variant: "destructive",
+    });
+    // ``toast`` changes identity every render; the mismatch flag is the
+    // signal we react to.
+  }, [scopeMismatch]);
+
   const dreamStatusData = dreamStatus.data?.data as AnyJobStatus | undefined;
   const nightlyStatusData = nightlyStatus.data?.data as
     | AnyJobStatus
@@ -313,10 +385,13 @@ export function useMemoryVisualizer() {
     dream,
     ratification,
     nightly,
+    readOnly,
     triggerRebuild,
     triggerDream,
     triggerRatification,
     triggerNightly,
+    dreamResult: getDreamResult(finishedDreamStatus),
+    dismissDreamResult,
     force,
     setForce,
     includeEpisodes,
@@ -325,6 +400,7 @@ export function useMemoryVisualizer() {
     setIncludeCommunities,
     overviewData,
     graphData,
+    scopeMismatchError,
     // Polling status + active flags consumed by MemoryVisualizer to
     // render phase-aware button text.
     dreamStatusData,
@@ -345,7 +421,7 @@ function useTerminalEffect(
   activeJobId: string | undefined,
   status: AnyJobStatus | undefined,
   queryError: unknown,
-  onTerminal: () => void,
+  onTerminal: (finishedStatus?: AnyJobStatus) => void,
   toast: ReturnType<typeof useToast>["toast"],
 ) {
   // Reacts to ``status`` transitioning to a terminal state OR the
@@ -387,12 +463,11 @@ function useTerminalEffect(
         variant: "destructive",
       });
     }
-    onTerminal();
+    onTerminal(status);
     // ``onTerminal`` and ``toast`` are intentionally omitted — they
     // change on every render and would cause infinite re-runs. The
     // job_id + state transition + query error are what we want to
     // react to.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeJobId, status?.state, queryError]);
 }
 

@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import logging
 import platform
@@ -5,79 +6,113 @@ from enum import Enum
 from typing import Any, Optional
 
 import fastapi
-import fastapi.responses
-import pydantic
 import starlette.middleware.cors
 import uvicorn
 from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
-from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
-from prisma.errors import PrismaError
+from mcp.shared.auth import ProtectedResourceMetadata
 
+import backend.api.features.admin.access_block_admin_routes
 import backend.api.features.admin.block_cost_admin_routes
 import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.diagnostics_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.impersonation_admin_routes
 import backend.api.features.admin.memory_admin_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
+import backend.api.features.admin.test_data_routes
+import backend.api.features.admin.user_admin_routes
+import backend.api.features.api_keys.routes as api_keys_routes
+import backend.api.features.auth_email.routes as auth_email_routes
+import backend.api.features.billing.credits.routes as credits_routes
+import backend.api.features.billing.subscriptions.routes as subscriptions_routes
+import backend.api.features.blocks.routes as blocks_routes
+import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
+import backend.api.features.chat.at_reset as chat_at_reset
+import backend.api.features.chat.continuation as chat_continuation
+import backend.api.features.chat.feedback as chat_feedback
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
-import backend.api.features.executions.review.routes
+import backend.api.features.chat.speech as chat_speech
+import backend.api.features.desktop_preview
+import backend.api.features.experiments
+import backend.api.features.experts.routes as experts_routes
+import backend.api.features.feature_flags.routes as feature_flags_routes
+import backend.api.features.graph_executions.review.routes
+import backend.api.features.graph_executions.routes as graph_executions_routes
+import backend.api.features.graphs.routes as graphs_routes
+import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
+import backend.api.features.mailerlite.routes as mailerlite_routes
 import backend.api.features.mcp.routes as mcp_routes
+import backend.api.features.memory.routes as memory_routes
 import backend.api.features.oauth
+import backend.api.features.onboarding.routes as onboarding_routes
+import backend.api.features.onboarding_dump.routes as onboarding_dump_routes
+import backend.api.features.orgs.invitation_routes
+import backend.api.features.orgs.routes as org_routes
+import backend.api.features.orgs.team_routes
 import backend.api.features.otto.routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
+import backend.api.features.schedules.routes as schedules_routes
 import backend.api.features.search.routes as search_routes
+import backend.api.features.skill_learning.routes as skill_learning_routes
+import backend.api.features.skills.routes as skills_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
-import backend.api.features.v1
-import backend.api.features.workspace.routes as workspace_routes
+import backend.api.features.store.skill_routes
+import backend.api.features.subscription_activation_routes as subscription_activation_routes
+import backend.api.features.subscription_trial_routes as subscription_trial_routes
+import backend.api.features.transfers.routes as transfer_routes
+import backend.api.features.user.routes as user_routes
+import backend.api.features.workspace.folder_routes as workspace_folder_routes
+import backend.api.features.workspace.routes as team_routes
+import backend.data.autopilot_migrate
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.llm_registry
+import backend.data.org_migration
 import backend.data.redis_client
 import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
-from backend.api.features.library.exceptions import (
-    FolderAlreadyExistsError,
-    FolderValidationError,
-)
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.blocks.llm import DEFAULT_LLM_MODEL
-from backend.copilot.rate_limit import UserPaywalledError
+from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.webhook_routes import register_webhook_adapters
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
-from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
-from backend.monitoring.instrumentation import instrument_fastapi
-from backend.util import json
+from backend.monitoring.instrumentation import instrument_fastapi, start_metrics_server
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
-from backend.util.exceptions import (
-    MissingConfigError,
-    NotAuthorizedError,
-    NotFoundError,
-    PreconditionFailed,
-)
-from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
+from backend.util.process import freeze_startup_heap
 from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
+from .external.v2.app import v2_app
+from .external.v2.mcp_server import (
+    WELL_KNOWN_PROTECTED_RESOURCE_PATH,
+    mcp_mount,
+    protected_resource_metadata,
+)
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
+from .middleware.analytics import AnalyticsContextMiddleware
 from .middleware.security import SecurityHeadersMiddleware
+from .utils.auth_before_body import check_token_before_body
 from .utils.cors import build_cors_params
 from .utils.openapi import sort_openapi
 
@@ -86,17 +121,10 @@ logger = logging.getLogger(__name__)
 
 logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 
-
-@contextlib.contextmanager
-def launch_darkly_context():
-    if settings.config.app_env != backend.util.settings.AppEnvironment.LOCAL:
-        initialize_launchdarkly()
-        try:
-            yield
-        finally:
-            shutdown_launchdarkly()
-    else:
-        yield
+# Backing client for webhook chat adapters (Slack Events API, etc.) whose routes
+# mount on this API. Owned at module level so `lifespan_context` can close it on
+# shutdown; the routes themselves are mounted further down once `app` exists.
+_webhook_bot_backend = BotBackend()
 
 
 @contextlib.asynccontextmanager
@@ -143,9 +171,35 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.fix_llm_provider_credentials()
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
+    await backend.data.org_migration.run_migration()
 
-    with launch_darkly_context():
+    # Guarded, unlike its neighbours above: this backfill only corrects what
+    # the builder displays for Otto nodes saved before `transport`
+    # existed. The block honours the connection either way, so a failure here
+    # changes nothing about which account pays — and refusing to boot the
+    # platform over a cosmetic migration would be the worse outcome.
+    try:
+        await asyncio.wait_for(
+            backend.data.autopilot_migrate.migrate_autopilot_transport(apply=True),
+            timeout=30,
+        )
+    except Exception:
+        logger.error("Otto transport backfill failed", exc_info=True)
+
+    # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
+    backend.data.llm_registry.load_catalog()
+
+    freeze_startup_heap()
+
+    async with mcp_mount.running():
         yield
+
+    try:
+        from backend.api.features.integrations.codex import codex_login_coordinator
+
+        await codex_login_coordinator.shutdown()
+    except Exception:
+        logger.warning("Codex login coordinator shutdown failed", exc_info=True)
 
     try:
         await shutdown_cloud_storage_handler()
@@ -160,6 +214,11 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Each cleanup is wrapped so one failure doesn't block the rest. The
     # Redis close in particular silences asyncio's "Unclosed ClusterNode"
     # GC warning at interpreter shutdown.
+    try:
+        await _webhook_bot_backend.close()
+    except Exception:
+        logger.warning("webhook BotBackend.close() failed", exc_info=True)
+
     try:
         await backend.data.redis_client.disconnect_async()
     except Exception:
@@ -217,6 +276,9 @@ app = fastapi.FastAPI(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+# Marks the PostHog events of an admin acting as a user, and joins a request's
+# events to the browser's PostHog session.
+app.add_middleware(AnalyticsContextMiddleware)
 
 # Add GZip compression middleware for large responses (like /api/blocks)
 app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
@@ -227,104 +289,73 @@ add_auth_responses_to_openapi(app)
 # Sort OpenAPI schema to eliminate diff on refactors
 sort_openapi(app)
 
-# Add Prometheus instrumentation
-instrument_fastapi(
-    app,
-    service_name="rest-api",
-    expose_endpoint=True,
-    endpoint="/metrics",
-    include_in_schema=settings.config.app_env
-    == backend.util.settings.AppEnvironment.LOCAL,
+# Add Prometheus instrumentation. The metrics are served by AgentServer.run on
+# their own port, never on this public app.
+instrument_fastapi(app, service_name="rest-api", expose_endpoint=False)
+
+
+add_exception_handlers(app)
+
+app.include_router(
+    backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
 )
-
-
-def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
-    def handler(request: fastapi.Request, exc: Exception):
-        if log_error:
-            if status_code >= 500:
-                logger.exception(
-                    "%s %s failed. Investigate and resolve the underlying issue: %s",
-                    request.method,
-                    request.url.path,
-                    exc,
-                    exc_info=exc,
-                )
-            else:
-                logger.warning(
-                    "%s %s failed with %d: %s",
-                    request.method,
-                    request.url.path,
-                    status_code,
-                    exc,
-                )
-
-        hint = (
-            "Adjust the request and retry."
-            if status_code < 500
-            else "Check server logs and dependent services."
-        )
-        return fastapi.responses.JSONResponse(
-            content={
-                "message": f"Failed to process {request.method} {request.url.path}",
-                "detail": str(exc),
-                "hint": hint,
-            },
-            status_code=status_code,
-        )
-
-    return handler
-
-
-async def validation_error_handler(
-    request: fastapi.Request, exc: Exception
-) -> fastapi.responses.Response:
-    logger.error(
-        "Validation failed for %s %s: %s. Fix the request payload and try again.",
-        request.method,
-        request.url.path,
-        exc,
-    )
-    errors: list | str
-    if hasattr(exc, "errors"):
-        errors = exc.errors()  # type: ignore[call-arg]
-    else:
-        errors = str(exc)
-
-    response_content = {
-        "message": f"Invalid data for {request.method} {request.url.path}",
-        "detail": errors,
-        "hint": "Ensure the request matches the API schema.",
-    }
-
-    content_json = json.dumps(response_content)
-
-    return fastapi.responses.Response(
-        content=content_json,
-        status_code=422,
-        media_type="application/json",
-    )
-
-
-app.add_exception_handler(PrismaError, handle_internal_http_error(500))
-app.add_exception_handler(FolderAlreadyExistsError, handle_internal_http_error(409))
-app.add_exception_handler(FolderValidationError, handle_internal_http_error(400))
-app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
-app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
-app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403))
-app.add_exception_handler(RequestValidationError, validation_error_handler)
-app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
-app.add_exception_handler(MissingConfigError, handle_internal_http_error(503))
-app.add_exception_handler(ValueError, handle_internal_http_error(400))
-# UserPaywalledError raised at deep enqueue paths (e.g. add_graph_execution)
-# maps to HTTP 402. log_error=False because it's not an error from the
-# server's perspective — the user just lacks entitlement.
-app.add_exception_handler(
-    UserPaywalledError, handle_internal_http_error(402, log_error=False)
+app.include_router(subscription_trial_routes.router, prefix="/api")
+app.include_router(subscription_activation_routes.router, prefix="/api")
+app.include_router(
+    api_keys_routes.router,
+    tags=["v1", "api-keys"],
+    prefix="/api/api-keys",
 )
-app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
-app.add_exception_handler(Exception, handle_internal_http_error(500))
-
-app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
+app.include_router(
+    skills_routes.router,
+    tags=["v1", "skills"],
+    prefix="/api/skills",
+)
+app.include_router(
+    schedules_routes.router,
+    tags=["v1", "schedules"],
+    prefix="/api",
+)
+app.include_router(
+    graph_executions_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
+app.include_router(
+    graphs_routes.router,
+    tags=["v1", "graphs"],
+    prefix="/api",
+)
+app.include_router(
+    credits_routes.router,
+    tags=["v1", "credits"],
+    prefix="/api",
+)
+app.include_router(
+    subscriptions_routes.router,
+    tags=["v1", "credits"],
+    prefix="/api",
+)
+app.include_router(
+    blocks_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
+app.include_router(
+    onboarding_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
+app.include_router(
+    user_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
+app.include_router(
+    auth_email_routes.auth_email_router,
+    prefix="/api/auth/email",
+    tags=["auth-email"],
+)
 app.include_router(
     integrations_router,
     prefix="/api/integrations",
@@ -336,7 +367,17 @@ app.include_router(
     tags=["analytics"],
 )
 app.include_router(
+    backend.api.features.experiments.router,
+    prefix="/api/experiments",
+    tags=["experiments"],
+)
+app.include_router(
     backend.api.features.store.routes.router, tags=["v2"], prefix="/api/store"
+)
+app.include_router(
+    backend.api.features.store.skill_routes.router,
+    tags=["v2"],
+    prefix="/api/store/skills",
 )
 app.include_router(
     backend.api.features.builder.routes.router, tags=["v2"], prefix="/api/builder"
@@ -360,6 +401,11 @@ app.include_router(
     backend.api.features.admin.execution_analytics_routes.router,
     tags=["v2", "admin"],
     prefix="/api/executions",
+)
+app.include_router(
+    backend.api.features.admin.impersonation_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
 )
 app.include_router(
     backend.api.features.admin.rate_limit_admin_routes.router,
@@ -387,25 +433,86 @@ app.include_router(
     prefix="/api",
 )
 app.include_router(
-    backend.api.features.executions.review.routes.router,
+    backend.api.features.admin.user_admin_routes.router,
+    tags=["admin"],
+    prefix="/api",
+)
+app.include_router(
+    backend.api.features.admin.access_block_admin_routes.router,
+    tags=["admin"],
+    prefix="/api",
+)
+# Dev-only surface: the test-data seeder is never mounted outside a local
+# app_env, matching how docs_url is gated above. The runtime
+# `_guard_local_only` check stays as defense-in-depth for LOCAL+CLOUD drift.
+if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL:
+    app.include_router(
+        backend.api.features.admin.test_data_routes.router,
+        tags=["v2", "admin"],
+        prefix="/api",
+    )
+app.include_router(
+    backend.api.features.graph_executions.review.routes.router,
     tags=["v2", "executions", "review"],
     prefix="/api/review",
 )
 app.include_router(
+    backend.api.features.briefings.routes.router,
+    prefix="/api",
+)
+app.include_router(
     backend.api.features.library.routes.router, tags=["v2"], prefix="/api/library"
 )
+app.include_router(experts_routes.public_router, tags=["v2", "experts"], prefix="/api")
+app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
+app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api")
+app.include_router(
+    skill_learning_routes.router, tags=["v2", "skill-learning"], prefix="/api"
+)
+app.include_router(home_routes.router, prefix="/api")
+app.include_router(feature_flags_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
 
+app.include_router(
+    onboarding_dump_routes.router,
+    tags=["v1", "onboarding"],
+    prefix="/api",
+)
 app.include_router(
     backend.api.features.postmark.postmark.router,
     tags=["v1", "email"],
     prefix="/api/email",
 )
 app.include_router(
+    mailerlite_routes.router,
+    tags=["v1", "email"],
+    prefix="/api/email",
+)
+app.include_router(
     chat_routes.router,
     tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_feedback.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_at_reset.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_continuation.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_speech.router,
+    tags=["chat"],
     prefix="/api/chat",
 )
 app.include_router(
@@ -419,7 +526,12 @@ app.include_router(
     prefix="/api/public/shared/chats",
 )
 app.include_router(
-    workspace_routes.router,
+    team_routes.router,
+    tags=["workspace"],
+    prefix="/api/workspace",
+)
+app.include_router(
+    workspace_folder_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
 )
@@ -432,6 +544,31 @@ app.include_router(
     backend.api.features.oauth.router,
     tags=["oauth"],
     prefix="/api/oauth",
+)
+app.include_router(
+    org_routes.router,
+    tags=["v2", "orgs"],
+    prefix="/api/orgs",
+)
+app.include_router(
+    backend.api.features.orgs.team_routes.router,
+    tags=["v2", "orgs", "workspaces"],
+    prefix="/api/orgs/{org_id}/workspaces",
+)
+app.include_router(
+    backend.api.features.orgs.invitation_routes.org_router,
+    tags=["v2", "orgs", "invitations"],
+    prefix="/api/orgs/{org_id}/invitations",
+)
+app.include_router(
+    backend.api.features.orgs.invitation_routes.router,
+    tags=["v2", "invitations"],
+    prefix="/api/invitations",
+)
+app.include_router(
+    transfer_routes.router,
+    tags=["v2", "transfers"],
+    prefix="/api/transfers",
 )
 app.include_router(
     push_routes.router,
@@ -449,7 +586,26 @@ app.include_router(
     prefix="/api/platform-linking",
 )
 
+# Mount inbound routes for webhook-driven chat adapters (Slack Events API, …).
+# No-op when no webhook platform is configured; errors surface at startup.
+register_webhook_adapters(app, _webhook_bot_backend)
+
 app.mount("/external-api", external_api)
+# No route of this app may start with /api/v<n>; rest_api_test.py checks it.
+app.mount("/api/v2", v2_app)
+
+
+@app.get(
+    path=WELL_KNOWN_PROTECTED_RESOURCE_PATH,
+    tags=["mcp"],
+    dependencies=[],
+    include_in_schema=False,
+)
+async def mcp_protected_resource_metadata() -> ProtectedResourceMetadata:
+    """RFC 9728 discovery for the MCP server, which must answer at the origin
+    root — FastMCP serves its copy inside the `/mcp` mount, where no client
+    looks."""
+    return protected_resource_metadata()
 
 
 @app.get(path="/health", tags=["health"], dependencies=[])
@@ -457,6 +613,10 @@ async def health():
     if not backend.data.db.is_connected():
         raise UnhealthyServiceError("Database is not connected")
     return {"status": "healthy"}
+
+
+# After the last route: a route added below this wouldn't check its token first.
+check_token_before_body(app)
 
 
 class AgentServer(backend.util.service.AppProcess):
@@ -481,6 +641,9 @@ class AgentServer(backend.util.service.AppProcess):
             # Enable asyncio debug mode via environment variable
             os.environ["PYTHONASYNCIODEBUG"] = "1"
 
+        # This process's metrics, the mounted external API's included.
+        start_metrics_server(settings.config.agent_api_metrics_port)
+
         # Configure uvicorn with performance optimizations from Kludex FastAPI tips
         uvicorn.run(
             app=server_app,
@@ -502,8 +665,26 @@ class AgentServer(backend.util.service.AppProcess):
         graph_version: Optional[int] = None,
         node_input: Optional[dict[str, Any]] = None,
     ):
-        return await backend.api.features.v1.execute_graph(
+        from autogpt_libs.auth.models import RequestContext
+
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
             user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+        return await graphs_routes.execute_graph(
+            user_id=user_id,
+            ctx=ctx,
             graph_id=graph_id,
             graph_version=graph_version,
             inputs=node_input or {},
@@ -517,16 +698,50 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         for_export: bool = False,
     ):
-        return await backend.api.features.v1.get_graph(
-            graph_id, user_id, graph_version, for_export
+        from autogpt_libs.auth.models import RequestContext
+
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+        return await graphs_routes.get_graph(
+            graph_id, user_id, ctx, graph_version, for_export
         )
 
     @staticmethod
     async def test_create_graph(
-        create_graph: backend.api.features.v1.CreateGraph,
+        create_graph: graphs_routes.CreateGraph,
         user_id: str,
     ):
-        return await backend.api.features.v1.create_new_graph(create_graph, user_id)
+        from autogpt_libs.auth.models import RequestContext
+
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+        return await graphs_routes.create_new_graph(create_graph, user_id, ctx)
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
@@ -542,10 +757,27 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
         """Used for clean-up after a test run"""
+        from autogpt_libs.auth.models import RequestContext
+
         await backend.api.features.library.db.delete_library_agent_by_graph_id(
             graph_id=graph_id, user_id=user_id
         )
-        return await backend.api.features.v1.delete_graph(graph_id, user_id)
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+        return await graphs_routes.delete_graph(graph_id, user_id, ctx)
 
     @staticmethod
     async def test_get_presets(user_id: str, page: int = 1, page_size: int = 10):
@@ -590,9 +822,23 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         inputs: Optional[dict[str, Any]] = None,
     ):
+        from autogpt_libs.auth.models import RequestContext
+
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
         return await backend.api.features.library.routes.presets.execute_preset(
             preset_id=preset_id,
             user_id=user_id,
+            ctx=ctx,
             inputs=inputs or {},
             credential_inputs={},
         )

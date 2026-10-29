@@ -1,240 +1,152 @@
-import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
-import {
-  getV1OnboardingState,
-  postV1CompleteOnboardingStep,
-  postV1SubmitOnboardingProfile,
-} from "@/app/api/__generated__/endpoints/onboarding/onboarding";
-import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
-import { resolveResponse } from "@/app/api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { postV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { trackAdsConversion } from "@/services/analytics/google-ads";
+import { trackTrialCheckoutAbandoned } from "@/services/analytics/monetization-analytics";
 import { environment } from "@/services/environment";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useLDClient } from "launchdarkly-react-client-sdk";
+import { useTrialCheckoutReturn } from "@/services/trials/useTrialCheckoutReturn";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { normalizeOnboardingProfile } from "./helpers";
-import {
-  NO_PAYWALL_STEPS,
-  PAYWALL_FIRST_STEPS,
-  Step,
-  useOnboardingWizardStore,
-} from "./store";
-
-const LD_INIT_TIMEOUT_SECONDS = 5;
-
-// SessionStorage ceiling for the wizard. The backend's `completedSteps`
-// only records VISIT_COPILOT at the very end (the 5 in-wizard steps aren't
-// tracked individually), so resume / fast-forward guardrails are enforced
-// client-side: the user can only land on a step they've previously reached.
-const STEP_STORAGE_KEY = "autogpt:onboarding-highest-step";
-
-function parseStepParam(value: string | null, maxStep: number): Step | null {
-  const n = Number(value);
-  if (Number.isInteger(n) && n >= 1 && n <= maxStep) return n as Step;
-  return null;
-}
-
-function readHighestStep(): number {
-  if (typeof window === "undefined") return 1;
-  const raw = window.sessionStorage.getItem(STEP_STORAGE_KEY);
-  const n = Number(raw);
-  return Number.isInteger(n) && n >= 1 ? n : 1;
-}
-
-function writeHighestStep(step: number) {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(STEP_STORAGE_KEY, String(step));
-}
-
-function clearHighestStep() {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(STEP_STORAGE_KEY);
-}
+import { stepKey } from "./progress";
+import { Step, useOnboardingWizardStore } from "./store";
+import { onboardingStepKey, trackOnboardingStep } from "./tracking";
+import { useOnboardingLayout } from "./useOnboardingLayout";
+import { useOnboardingProfile } from "./useOnboardingProfile";
+import { useWizardProgress } from "./useWizardProgress";
 
 export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isLoggedIn, isUserLoading } = useSupabase();
-  const currentStep = useOnboardingWizardStore((s) => s.currentStep);
+  const { isLoggedIn, isUserLoading, user } = useAuth();
+  const trialConfirmation = useTrialCheckoutReturn();
+  const storedStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
 
-  // Wait for LaunchDarkly before initialising the wizard from the URL.
-  // Without this, the init effect runs against the default flag value
-  // (false) on first render and clamps e.g. ?step=5 down to step 1; once
-  // the flag resolves to true, the hasInitialized guard blocks re-init
-  // and the user is stuck on step 1.
-  const ldClient = useLDClient();
-  const ldEnabled = environment.areFeatureFlagsEnabled();
-  const [areFlagsReady, setAreFlagsReady] = useState(!ldEnabled);
-  useEffect(() => {
-    if (!ldEnabled || !ldClient || areFlagsReady) return;
-    let cancelled = false;
-    // Use the same 5s timeout as LDProvider so the wizard never hangs
-    // when LaunchDarkly is unreachable; on timeout we fall back to the
-    // default flag values that useGetFlag already returns.
-    ldClient
-      .waitForInitialization(LD_INIT_TIMEOUT_SECONDS)
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setAreFlagsReady(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [ldClient, ldEnabled, areFlagsReady]);
-
-  // Snapshot the flag once LaunchDarkly resolves so an admin toggling
-  // ENABLE_PLATFORM_PAYMENT mid-session can't shuffle steps under a user
-  // who is already inside the wizard.
-  const livePaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const paymentEnabledSnapshot = useRef<boolean | null>(null);
-  if (paymentEnabledSnapshot.current === null && areFlagsReady) {
-    paymentEnabledSnapshot.current = livePaymentEnabled;
-  }
-
-  // Skip the paywall for users already on a paid tier (admin grants or
-  // pre-VISIT_COPILOT accounts) so they aren't asked to pay again to escape.
-  const { data: tier, isLoading: isTierLoading } = useGetSubscriptionStatus({
-    query: {
-      enabled: isLoggedIn,
-      select: (res) =>
-        res.status === 200
-          ? (res.data as SubscriptionStatusResponse).tier
-          : null,
-    },
+  const {
+    steps,
+    preparingStep,
+    totalSteps,
+    isReady,
+    isPaymentEnabled,
+    isSelfHostConnectEnabled,
+    paidConfirmation,
+  } = useOnboardingLayout({
+    userID: user?.id ?? null,
+    isLoggedIn,
+    isUserLoading,
+    trialConfirmation,
   });
-  const userHasActivePlan = !!tier && tier !== "NO_TIER";
 
-  const isPaymentEnabled =
-    (paymentEnabledSnapshot.current ?? false) && !userHasActivePlan;
-  const steps = isPaymentEnabled ? PAYWALL_FIRST_STEPS : NO_PAYWALL_STEPS;
-  const preparingStep: Step = steps.preparing;
-  const totalSteps = isPaymentEnabled ? 4 : 3;
+  const progress = useWizardProgress({
+    userID: user?.id ?? null,
+    ready: isReady,
+    steps,
+  });
+  const currentStep =
+    isPaymentEnabled && !environment.isLocal()
+      ? (Math.min(storedStep, steps.subscription!) as Step)
+      : storedStep;
+  const profile = useOnboardingProfile({
+    user,
+    enabled: progress.isReady && currentStep === preparingStep,
+  });
+  const completion = useRef<{ userID: string | undefined } | null>(null);
+  const activeUserID = useRef(user?.id);
+  activeUserID.current = user?.id;
+  const [completionError, setCompletionError] = useState<{
+    userID: string | undefined;
+    message: string;
+  } | null>(null);
 
-  // Wait for auth too — without !isUserLoading, LD can resolve while
-  // isLoggedIn is transiently false, the tier query stays disabled
-  // (isTierLoading=false), and init fires with the wrong preparingStep.
-  const isReady =
-    areFlagsReady && !isUserLoading && (!isLoggedIn || !isTierLoading);
-
-  const [isOnboardingStateLoading, setIsOnboardingStateLoading] =
-    useState(true);
-  const hasSubmitted = useRef(false);
-  const hasInitialized = useRef(false);
-
-  // Initialise store from URL on mount, clamp ?step= to the highest step
-  // the user has actually reached. No-step URL resumes from the highest
-  // reached so refreshes don't drop the user back to step 1. Form data is
-  // persisted (zustand persist), so we no longer reset on mount — that
-  // would defeat the point of persistence by wiping the user's name/role
-  // every time they refresh mid-wizard.
   useEffect(() => {
-    if (!isReady || hasInitialized.current) return;
-    hasInitialized.current = true;
-    const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
-    // The paywall is the first step, so a successful Stripe checkout return is
-    // a trusted intent to advance past it onto Welcome and start the actual
-    // onboarding — without this, the highestStep ceiling (capped at the
-    // subscription step before redirect) would clamp the user back onto the
-    // paywall they just paid through.
-    const isSubscriptionSuccess =
-      searchParams.get("subscription") === "success";
-    const ceiling = isSubscriptionSuccess
-      ? steps.welcome
-      : (Math.min(readHighestStep(), preparingStep) as Step);
-    const target = (
-      urlStep === null ? ceiling : Math.min(urlStep, ceiling)
-    ) as Step;
-    goToStep(target);
-  }, [isReady, searchParams, goToStep, preparingStep, steps]);
+    return () => {
+      completion.current = null;
+    };
+  }, [user?.id]);
 
-  // Sync store → URL when step changes; record the new ceiling.
   useEffect(() => {
-    if (!isReady) return;
-    const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
-    if (currentStep !== urlStep) {
-      router.replace(`/onboarding?step=${currentStep}`, { scroll: false });
+    if (!progress.isReady) return;
+    if (currentStep !== storedStep) goToStep(currentStep);
+    if (searchParams.get("trial") === "cancelled") {
+      trackTrialCheckoutAbandoned("onboarding");
     }
-    if (currentStep > readHighestStep()) {
-      writeHighestStep(currentStep);
+    const key = stepKey(steps, currentStep);
+    if (searchParams.get("step") !== key) {
+      router.replace(`/onboarding?step=${key}`, { scroll: false });
     }
-  }, [isReady, currentStep, router, searchParams, preparingStep]);
+  }, [
+    progress.isReady,
+    currentStep,
+    storedStep,
+    goToStep,
+    steps,
+    searchParams,
+    router,
+  ]);
 
-  // Check if onboarding already completed
+  const trackingKey = onboardingStepKey(steps, currentStep);
   useEffect(() => {
-    if (!isLoggedIn) return;
-
-    async function checkCompletion() {
-      try {
-        const onboarding = await resolveResponse(getV1OnboardingState());
-        if (onboarding.completedSteps.includes("VISIT_COPILOT")) {
-          clearHighestStep();
-          // Clear the persisted form data without touching in-memory state.
-          // `reset()` would set currentStep=1 and trip the URL-sync effect
-          // into racing with the /copilot redirect (the spurious
-          // /onboarding?step=1 replace wins, stranding the user on Welcome
-          // until they refresh).
-          useOnboardingWizardStore.persist.clearStorage();
-          router.replace("/copilot");
-          return;
-        }
-      } catch {
-        // If we can't check, show onboarding anyway
-      }
-      setIsOnboardingStateLoading(false);
-    }
-
-    checkCompletion();
-  }, [isLoggedIn, router]);
-
-  // Submit profile when entering the Preparing step
-  useEffect(() => {
-    if (currentStep !== preparingStep || hasSubmitted.current) return;
-    hasSubmitted.current = true;
-
-    const { name, role, painPoints } = normalizeOnboardingProfile(
-      useOnboardingWizardStore.getState(),
-    );
-
-    // The paywall now runs first (before any profile data is collected), so
-    // the profile is only ever submitted here, once, on reaching Preparing.
-    // Guard against an empty name so a stray Preparing visit can't blank a
-    // previously-saved profile.
-    if (!name.trim()) return;
-
-    postV1SubmitOnboardingProfile({
-      user_name: name,
-      user_role: role,
-      pain_points: painPoints,
-    }).catch(() => {
-      // Best effort — profile data is non-critical for accessing copilot
-    });
-  }, [currentStep, preparingStep]);
+    if (progress.isReady && trackingKey) trackOnboardingStep(trackingKey);
+  }, [progress.isReady, trackingKey]);
 
   async function handlePreparingComplete() {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        await postV1CompleteOnboardingStep({ step: "VISIT_COPILOT" });
-        clearHighestStep();
-        useOnboardingWizardStore.persist.clearStorage();
-        router.replace("/copilot");
-        return;
-      } catch {
-        if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
-      }
+    if (
+      !progress.isReady ||
+      completion.current?.userID === user?.id ||
+      (isPaymentEnabled && !environment.isLocal())
+    )
+      return;
+    const attempt = { userID: user?.id };
+    completion.current = attempt;
+    function isCurrent() {
+      return (
+        completion.current === attempt && activeUserID.current === user?.id
+      );
     }
-    clearHighestStep();
-    useOnboardingWizardStore.persist.clearStorage();
-    router.replace("/copilot");
+    setCompletionError(null);
+    try {
+      await useOnboardingWizardStore.getState().flushProgress?.();
+      if (!isCurrent()) return;
+      await profile.ensureSaved();
+      if (!isCurrent()) return;
+      const result = await postV1CompleteOnboardingStep({
+        step: "ONBOARDING_COMPLETE",
+      });
+      if (!isCurrent()) return;
+      if (result.status !== 200) throw new Error("Completion failed");
+      trackAdsConversion("onboarding_complete", {
+        transactionID: user?.id,
+        email: user?.email,
+      });
+      progress.finish();
+      router.replace("/home");
+    } catch {
+      if (!isCurrent()) return;
+      setCompletionError({
+        userID: user?.id,
+        message:
+          "We couldn't finish setting up your account. Your progress is saved; please retry.",
+      });
+    } finally {
+      if (completion.current === attempt) completion.current = null;
+    }
   }
 
   return {
     currentStep,
-    isLoading: isOnboardingStateLoading || !isReady,
+    isLoading: !progress.isReady || !isReady,
+    progressError: progress.error,
+    progressConflict: progress.conflict,
+    retryProgress: progress.retry,
+    completionError:
+      profile.error ??
+      (completionError?.userID === user?.id ? completionError?.message : null),
     handlePreparingComplete,
     isPaymentEnabled,
+    isSelfHostConnectEnabled,
     steps,
     preparingStep,
     totalSteps,
+    trialConfirmation,
+    paidConfirmation,
   };
 }

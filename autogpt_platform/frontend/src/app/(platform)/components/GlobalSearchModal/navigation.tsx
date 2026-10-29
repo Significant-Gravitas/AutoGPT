@@ -1,14 +1,15 @@
+import { createIconComponent } from "@/components/atoms/Icon/Icon";
 import type { SearchCommandBucket } from "@/components/organisms/SearchCommandModal/helpers";
-import {
-  ChatCircleIcon,
-  CreditCardIcon,
-  GearIcon,
-  HammerIcon,
-  StackIcon,
-  StorefrontIcon,
-  UserIcon,
-} from "@phosphor-icons/react";
 import type { ComponentType } from "react";
+import {
+  BubbleChatIcon,
+  CreditCardIcon,
+  HammerIcon,
+  Layers01Icon,
+  Settings01Icon,
+  Store01Icon,
+  UserIcon,
+} from "@hugeicons/core-free-icons";
 
 export const NAV_BUCKET_KEY = "navigation";
 export const NAV_BUCKET_LABEL = "Navigate";
@@ -35,49 +36,49 @@ const NAV_TARGETS: NavTarget[] = [
     title: "Builder",
     href: "/build",
     keywords: ["build", "editor", "graph", "workflow", "create"],
-    icon: HammerIcon,
+    icon: createIconComponent(HammerIcon),
   },
   {
     id: "nav:library",
     title: "Library",
     href: "/library",
-    keywords: ["agents", "my agents"],
-    icon: StackIcon,
+    keywords: ["agents", "my agents", "workflows", "my workflows"],
+    icon: createIconComponent(Layers01Icon),
   },
   {
     id: "nav:marketplace",
     title: "Marketplace",
     href: "/marketplace",
     keywords: ["store", "explore", "templates"],
-    icon: StorefrontIcon,
+    icon: createIconComponent(Store01Icon),
   },
   {
     id: "nav:chat",
     title: "Chat",
     href: "/copilot",
     keywords: ["copilot", "home", "assistant"],
-    icon: ChatCircleIcon,
+    icon: createIconComponent(BubbleChatIcon),
   },
   {
     id: "nav:settings",
     title: "Settings",
     href: "/settings",
     keywords: ["preferences", "account"],
-    icon: GearIcon,
+    icon: createIconComponent(Settings01Icon),
   },
   {
     id: "nav:billing",
     title: "Billing",
     href: "/settings/billing",
     keywords: ["credits", "payment", "wallet", "subscription"],
-    icon: CreditCardIcon,
+    icon: createIconComponent(CreditCardIcon),
   },
   {
     id: "nav:profile",
     title: "Profile",
     href: "/settings/profile",
     keywords: ["account", "me"],
-    icon: UserIcon,
+    icon: createIconComponent(UserIcon),
   },
 ];
 
@@ -126,6 +127,7 @@ function matchesQuery(target: NavTarget, query: string): boolean {
 export function buildNavigationBucket(
   query: string,
   currentPath: string | null,
+  isBillingEnabled = true,
 ): {
   bucket: SearchCommandBucket | null;
   isExactMatch: boolean;
@@ -133,7 +135,9 @@ export function buildNavigationBucket(
   const normalized = query.trim().toLocaleLowerCase();
 
   const available = NAV_TARGETS.filter(
-    (target) => !isCurrentDestination(target, currentPath),
+    (target) =>
+      !isCurrentDestination(target, currentPath) &&
+      (isBillingEnabled || target.id !== "nav:billing"),
   );
   const matches = normalized
     ? available.filter((target) => matchesQuery(target, normalized))

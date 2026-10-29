@@ -1,9 +1,11 @@
 "use client";
 
-import { MessageAction } from "@/components/ai-elements/message";
+import { credentialMentionDisplayText } from "../../CredentialMention/helpers";
+import { MessageAction } from "@/components/organisms/Message/Message";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { Check, CopySimple } from "@phosphor-icons/react";
 import { useState } from "react";
+import { Copy02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   text: string;
@@ -16,7 +18,7 @@ export function CopyButton({ text }: Props) {
 
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(credentialMentionDisplayText(text));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -36,7 +38,11 @@ export function CopyButton({ text }: Props) {
       variant="ghost"
       size="icon-sm"
     >
-      {copied ? <Check size={16} /> : <CopySimple size={16} weight="regular" />}
+      {copied ? (
+        <Icon icon={Tick02Icon} size={16} />
+      ) : (
+        <Icon icon={Copy02Icon} size={16} />
+      )}
     </MessageAction>
   );
 }

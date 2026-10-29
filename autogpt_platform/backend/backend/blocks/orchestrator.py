@@ -1,5 +1,7 @@
 import asyncio
+import contextvars
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -25,7 +27,11 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.agent import AgentExecutorBlock
+from backend.copilot.sdk.cli_version import require_verbatim_prompts_cli
+from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text
 from backend.copilot.sdk.env import config as copilot_config
+from backend.copilot.sdk.env import without_url_credentials
+from backend.copilot.sdk.launch_env import launch_options
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
@@ -37,6 +43,7 @@ from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.llm.prompt_refusal import PromptRefusedError
 from backend.util.prompt import MAIN_OBJECTIVE_PREFIX
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.tool_call_loop import (
@@ -255,9 +262,23 @@ def _convert_raw_response_to_dict(
         # OpenAI Responses API: extract individual output items.
         # Strip 'status' — it's a response-only field that OpenAI rejects
         # when the item is sent back as input on the next API call.
-        items = [
+        converted = [
             {k: v for k, v in json.to_dict(item).items() if k != "status"}
             for item in raw_response.output
+        ]
+        # A reasoning item (gpt-5*, o3*) is only replayable on the next turn
+        # when it carries encrypted_content (we request it via
+        # include=["reasoning.encrypted_content"] with store=false). If the
+        # blob is ever absent — API edge case or behaviour change — re-sending
+        # the rs_... id triggers a server-side lookup that 404s and kills the
+        # loop. Drop such items: losing prior reasoning context degrades
+        # gracefully, a 404 does not. See OPEN-3187.
+        items = [
+            item
+            for item in converted
+            if not (
+                item.get("type") == "reasoning" and not item.get("encrypted_content")
+            )
         ]
         return items if items else [{"role": "assistant", "content": ""}]
     else:
@@ -391,6 +412,23 @@ def _select_final_answer_parts(
     return current
 
 
+def sdk_disallowed_tools() -> list[str]:
+    """Disable ALL known SDK built-in tools — only graph MCP tools available.
+
+    This blocklist is the ONLY thing that removes a built-in: per the SDK,
+    ``allowed_tools`` merely auto-approves without prompting, and the base set
+    is controlled by ``tools`` (unset here, so every Claude Code default stays
+    in the model's context).  A built-in missing from this list is therefore
+    callable, not blocked — which is why it is derived from the copilot's own
+    inventory rather than kept in sync by hand.
+    """
+    # Local import: tool_adapter pulls in the whole copilot tool registry,
+    # which every block load should not have to pay for.
+    from backend.copilot.sdk.tool_adapter import get_sdk_builtin_tools
+
+    return get_sdk_builtin_tools()
+
+
 class OrchestratorBlock(Block):
     """A block that uses a language model to orchestrate tool calls.
 
@@ -419,7 +457,7 @@ class OrchestratorBlock(Block):
             description="The prompt to send to the language model.",
             placeholder="Enter your prompt here...",
         )
-        model: llm.LlmModel = SchemaField(
+        model: llm.LLMModel = SchemaField(
             title="LLM Model",
             default=llm.DEFAULT_LLM_MODEL,
             description="The language model to use for answering the prompt.",
@@ -864,10 +902,11 @@ class OrchestratorBlock(Block):
 
     async def _attempt_llm_call_with_validation(
         self,
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         input_data: Input,
         current_prompt: list[dict[str, Any]],
         tool_functions: list[dict[str, Any]],
+        execution_context: "ExecutionContext | None" = None,
     ) -> Any:
         """
         Attempt a single LLM call with tool validation.
@@ -877,6 +916,7 @@ class OrchestratorBlock(Block):
         resp = await llm.llm_call(
             compress_prompt_to_fit=input_data.conversation_compaction,
             credentials=credentials,
+            execution_context=execution_context,
             llm_model=input_data.model,
             prompt=current_prompt,
             max_tokens=input_data.max_tokens,
@@ -1134,9 +1174,13 @@ class OrchestratorBlock(Block):
             block_id=target_node.block_id,
             inputs=final_input_data or {},
             execution_context=execution_params.execution_context,
+            # Nothing has been collected for this node yet. Without an explicit
+            # baseline, reconciliation re-derives the catalogue pre-flight and
+            # refunds it (minus actual usage) although it was never charged.
+            pre_flight_charge=0,
         )
 
-        # Apply node input overrides (credential masks from Library/AutoPilot).
+        # Apply node input overrides (credential masks from Library/Otto).
         # Mirrors the normal queue-based path in _on_graph_execution, which
         # merges nodes_input_masks[node_id] into queued_node_exec.inputs
         # before execution so credential fields are present for the block run.
@@ -1152,6 +1196,41 @@ class OrchestratorBlock(Block):
 
         # Use the execution manager to execute the tool node
         try:
+            # Charge the pre-flight cost BEFORE running the tool, as the main
+            # execution queue does. Tools spawned by the orchestrator bypass
+            # that queue, so we must charge here to avoid free tool execution.
+            # charge_node_usage pins node_exec_entry.pre_flight_charge to the
+            # amount spent, so the reconciliation inside on_node_execution
+            # settles against what was actually collected: a failed tool call
+            # is refunded down to its tracked usage, never below what was paid.
+            # Skipped for dry runs.
+            if not execution_params.execution_context.dry_run:
+                try:
+                    cost, _ = await execution_processor.charge_node_usage(
+                        node_exec_entry
+                    )
+                    # Count it in the run's cost, as the main queue does for
+                    # every node it charges: the tool node's own stats only
+                    # carry its reconciliation delta.
+                    with execution_processor.execution_stats_lock:
+                        execution_processor.execution_stats.cost += cost
+                except InsufficientBalanceError:
+                    # IBE must propagate — see OrchestratorBlock class docstring.
+                    logger.warning(
+                        "Insufficient balance charging for tool node %s; "
+                        "agent loop will be aborted",
+                        sink_node_id,
+                    )
+                    raise
+                except Exception:
+                    # Non-billing charge failures (DB outage, network, etc.)
+                    # are logged, not surfaced as a tool error. The baseline
+                    # holds only what was collected (0 if the spend never
+                    # landed), so reconciliation never refunds unpaid credit.
+                    logger.exception(
+                        "Unexpected error charging for tool node %s", sink_node_id
+                    )
+
             # Get NodeExecutionProgress from the execution manager's running nodes
             node_exec_progress = execution_processor.running_node_execution[
                 sink_node_id
@@ -1204,54 +1283,6 @@ class OrchestratorBlock(Block):
                 node_exec_future.set_exception(exec_err)
                 raise
 
-            # Charge user credits AFTER successful tool execution. Tools
-            # spawned by the orchestrator bypass the main execution queue
-            # (where _charge_usage is called), so we must charge here to
-            # avoid free tool execution. Charging post-completion (vs.
-            # pre-execution) avoids billing users for failed tool calls.
-            # Skipped for dry runs.
-            #
-            # `error is None` intentionally excludes both Exception and
-            # BaseException subclasses (e.g. CancelledError) so cancelled
-            # or terminated tool runs are not billed.
-            #
-            # Billing errors (including non-balance exceptions) are kept
-            # in a separate try/except so they are never silently swallowed
-            # by the generic tool-error handler below.
-            if (
-                not execution_params.execution_context.dry_run
-                and tool_node_stats.error is None
-            ):
-                # Charge the sub-block for telemetry / wallet debit. The
-                # return value is intentionally discarded: on_node_execution
-                # above ran the sub-block against this graph's own
-                # graph_stats_pair (manager.py:659-668), so its cost already
-                # lands in graph_stats.cost on the sub-block's completion.
-                # Re-merging here would double-count in telemetry / UI / audit.
-                try:
-                    await execution_processor.charge_node_usage(node_exec_entry)
-                except InsufficientBalanceError:
-                    # IBE must propagate — see OrchestratorBlock class docstring.
-                    # Log the billing failure here so the discarded tool result
-                    # is traceable before the loop aborts.
-                    logger.warning(
-                        "Insufficient balance charging for tool node %s after "
-                        "successful execution; agent loop will be aborted",
-                        sink_node_id,
-                    )
-                    raise
-                except Exception:
-                    # Non-billing charge failures (DB outage, network, etc.)
-                    # must NOT propagate to the outer except handler because
-                    # the tool itself succeeded. Re-raising would mark the
-                    # tool as failed (_is_error=True), causing the LLM to
-                    # retry side-effectful operations. Log and continue.
-                    logger.exception(
-                        "Unexpected error charging for tool node %s; "
-                        "tool execution was successful",
-                        sink_node_id,
-                    )
-
             # Get outputs from database after execution completes using database manager client
             node_outputs = await db_client.get_execution_outputs_by_node_exec_id(
                 node_exec_result.node_exec_id
@@ -1289,7 +1320,7 @@ class OrchestratorBlock(Block):
         messages: list[dict[str, Any]],
         tools: Sequence[Any],
         *,
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         input_data: "OrchestratorBlock.Input",
     ) -> LLMLoopResponse:
         """LLM caller callback for agent mode: wraps _attempt_llm_call_with_validation."""
@@ -1429,7 +1460,7 @@ class OrchestratorBlock(Block):
     async def _execute_tools_agent_mode(
         self,
         input_data: "OrchestratorBlock.Input",
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         tool_functions: list[dict[str, Any]],
         prompt: list[dict[str, Any]],
         graph_exec_id: str,
@@ -1624,7 +1655,7 @@ class OrchestratorBlock(Block):
     async def _execute_tools_sdk_mode(
         self,
         input_data: "OrchestratorBlock.Input",
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         tool_functions: list[dict[str, Any]],
         prompt: list[dict[str, Any]],
         execution_params: ExecutionParams,
@@ -1658,35 +1689,13 @@ class OrchestratorBlock(Block):
             f"{MCP_PREFIX}{tf['function']['name']}" for tf in tool_functions
         ]
 
-        # Disable ALL known SDK built-in tools — only graph MCP tools available.
-        # `allowed_tools` (above) is the primary restriction: the SDK only
-        # enables tools explicitly listed there.  This blocklist is a
-        # defense-in-depth measure in case the SDK's allowlist logic changes.
-        # IMPORTANT: Keep this list in sync with the Claude Agent SDK.
-        # If a new built-in tool is added in a future SDK version, it will
-        # still be blocked by `allowed_tools` (only MCP-prefixed names are
-        # allowed), but adding it here provides an extra safety layer.
-        disallowed_tools = [
-            "Bash",
-            "WebFetch",
-            "AskUserQuestion",
-            "Read",
-            "Write",
-            "Edit",
-            "Glob",
-            "Grep",
-            "Task",
-            "WebSearch",
-            "TodoWrite",
-            "NotebookEdit",
-        ]
+        disallowed_tools = sdk_disallowed_tools()
 
         # Build SDK env — provider-aware credential routing.
         # Extended thinking does not support subscription-mode (platform-managed credits).
         # Use *credential* provider for routing (not model metadata provider),
         # because a user may select an Anthropic model but route through OpenRouter.
-        provider = credentials.provider
-        if not credentials.api_key:
+        if credentials is None or not credentials.api_key:
             yield (
                 "error",
                 (
@@ -1695,6 +1704,7 @@ class OrchestratorBlock(Block):
                 ),
             )
             return
+        provider = credentials.provider
         api_key = credentials.api_key.get_secret_value()
         if provider == "open_router":
             # Route through OpenRouter proxy: point ``ANTHROPIC_BASE_URL`` at
@@ -1732,8 +1742,13 @@ class OrchestratorBlock(Block):
                 "ANTHROPIC_API_KEY": api_key,
             }
         else:
-            # Direct Anthropic key
+            # Direct Anthropic key, sent wherever the deployment points
+            # Anthropic traffic: the launch keeps nothing else of the
+            # backend's environment (``launch_env.py``), nor a user name and
+            # password the deployment embedded in that URL.
             sdk_env = {"ANTHROPIC_API_KEY": api_key}
+            if base_url := os.environ.get("ANTHROPIC_BASE_URL"):
+                sdk_env["ANTHROPIC_BASE_URL"] = without_url_credentials(base_url)
 
         # Use an execution-specific working directory to prevent concurrent
         # SDK executions from colliding.  tempfile.mkdtemp() respects TMPDIR
@@ -1773,6 +1788,15 @@ class OrchestratorBlock(Block):
                 cwd=sdk_cwd,
                 env=sdk_env,
                 model=input_data.model.value or None,
+                # No settings files or MCP servers from the CLI's config dir:
+                # every run on this host shares it.
+                setting_sources=[],
+                extra_args={
+                    "strict-mcp-config": None,
+                    DISABLE_SLASH_COMMANDS_FLAG: None,
+                },
+                # The CLI hands every prompt to the model exactly as written.
+                verbatim_prompts=True,
             )
 
             # Strip system messages from prompt — they're already passed via
@@ -1799,20 +1823,29 @@ class OrchestratorBlock(Block):
                 for p in sdk_prompt:
                     if p.get("role") == "user" and p.get("content"):
                         user_parts.append(str(p["content"]))
-                user_message = (
+                user_message = cli_prompt_text(
                     "\n\n".join(user_parts) if user_parts else input_data.prompt
                 )
 
             # Run SDK client with heartbeat-safe message iteration.
             # We must NOT cancel __anext__() mid-flight — doing so corrupts
             # the SDK's internal anyio memory stream (same pattern as
-            # copilot/sdk/service.py:_iter_sdk_messages).
+            # copilot/sdk/service.py:_iter_sdk_messages).  Every fetch task
+            # runs in one shared context: once configure_claude_agent_sdk()
+            # has wrapped the client, langsmith's tracing wrapper keeps the
+            # conversation run in a ContextVar set during the first fetch,
+            # and a fresh context per task would drop every later reply's
+            # span from the trace.
 
             _HEARTBEAT_INTERVAL = 10.0  # seconds
-            async with ClaudeSDKClient(options=options) as client:
+            options.cli_path = await asyncio.to_thread(
+                require_verbatim_prompts_cli, options.cli_path
+            )
+            async with ClaudeSDKClient(options=launch_options(options)) as client:
                 await client.query(user_message)
 
                 msg_iter = client.receive_response().__aiter__()
+                fetch_context = contextvars.copy_context()
                 pending_task: asyncio.Task[Any] | None = None
 
                 async def _next_msg() -> Any:
@@ -1821,7 +1854,9 @@ class OrchestratorBlock(Block):
                 try:
                     while True:
                         if pending_task is None:
-                            pending_task = asyncio.create_task(_next_msg())
+                            pending_task = asyncio.create_task(
+                                _next_msg(), context=fetch_context
+                            )
 
                         done, _ = await asyncio.wait(
                             {pending_task}, timeout=_HEARTBEAT_INTERVAL
@@ -1967,7 +2002,7 @@ class OrchestratorBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None = None,
         graph_id: str,
         node_id: str,
         graph_exec_id: str,
@@ -2145,10 +2180,17 @@ class OrchestratorBlock(Block):
         for _ in range(max_attempts):
             try:
                 response = await self._attempt_llm_call_with_validation(
-                    credentials, input_data, current_prompt, tool_functions
+                    credentials,
+                    input_data,
+                    current_prompt,
+                    tool_functions,
+                    execution_context,
                 )
                 break
 
+            except PromptRefusedError:
+                # Not a tool-call mistake the model can fix on a retry.
+                raise
             except ValueError as e:
                 last_error = e
                 error_feedback = (

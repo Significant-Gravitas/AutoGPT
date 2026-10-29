@@ -1,25 +1,25 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import {
-  CaretLeftIcon,
-  CaretRightIcon,
-  CheckCircleIcon,
-  PlusIcon,
-  WarningCircleIcon,
-} from "@phosphor-icons/react";
-
 import { Text } from "../../../../atoms/Text/Text";
 import { Button } from "../../../../atoms/Button/Button";
 import { Select } from "../../../../atoms/Select/Select";
 import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { StepHeader } from "../StepHeader";
 import { StepFooter } from "../StepFooter";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useAgentSelectStep } from "./useAgentSelectStep";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import { MyAgentsSortBy } from "@/app/api/__generated__/models/myAgentsSortBy";
+import {
+  AlertCircleIcon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  CheckmarkCircle02Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onSelect: (agentId: string, agentVersion: number) => void;
@@ -77,20 +77,16 @@ export function AgentSelectStep({
     return (
       <div className="mx-auto flex w-full flex-col">
         <StepHeader
-          title="Choose an agent"
-          description="Pick the saved agent version you want to send to marketplace review."
+          title="Choose a workflow"
+          description="Pick the saved workflow version you want to send to marketplace review."
           currentStep="select"
         />
-        <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[18px] border border-rose-100 bg-rose-50 px-6 py-8 text-center">
-          <WarningCircleIcon
-            size={32}
-            weight="duotone"
-            className="text-rose-600"
-          />
-          <Text variant="large-medium" className="text-rose-900">
-            We could not load your agents
+        <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-2xl border border-error/10 bg-error-surface px-6 py-8 text-center">
+          <Icon icon={AlertCircleIcon} size={32} className="text-error-hover" />
+          <Text variant="large-medium" className="text-error-foreground">
+            We could not load your workflows
           </Text>
-          <Text variant="body" className="max-w-[420px] text-rose-700">
+          <Text variant="body" className="max-w-[420px] text-error-foreground">
             Refresh the list and try again. Your current marketplace submissions
             are unchanged.
           </Text>
@@ -114,22 +110,20 @@ export function AgentSelectStep({
   return (
     <div className="mx-auto flex w-full flex-col">
       <StepHeader
-        title="Choose an agent"
-        description="Pick the saved agent version you want to send to marketplace review."
+        title="Choose a workflow"
+        description="Pick the saved workflow version you want to send to marketplace review."
         currentStep="select"
       />
 
       {showLibraryEmpty ? (
-        <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[18px] border border-dashed border-zinc-300 bg-zinc-50 px-6 py-8 text-center">
-          <div className="flex size-11 items-center justify-center rounded-full bg-white text-zinc-700 shadow-[0_1px_2px_rgba(15,15,20,0.06)]">
-            <PlusIcon size={20} weight="bold" />
+        <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border-strong bg-surface-muted px-6 py-8 text-center">
+          <div className="flex size-11 items-center justify-center rounded-full bg-surface text-foreground-body shadow-subtle">
+            <Icon icon={PlusSignIcon} size={20} />
           </div>
-          <Text variant="large-medium" className="text-textBlack">
-            No publishable agents yet
-          </Text>
-          <Text variant="body" className="max-w-[460px] text-zinc-600">
-            Create and save an agent in the builder. It will appear here when a
-            version is ready to submit.
+          <Text variant="large-medium">No publishable workflows yet</Text>
+          <Text variant="body" tone="secondary" className="max-w-[460px]">
+            Create and save a workflow in the builder. It will appear here when
+            a version is ready to submit.
           </Text>
           <Button onClick={onOpenBuilder}>Open builder</Button>
         </div>
@@ -140,8 +134,8 @@ export function AgentSelectStep({
               <SearchInput
                 value={searchInput}
                 onChange={setSearchInput}
-                placeholder="Search your agents"
-                aria-label="Search your agents"
+                placeholder="Search your workflows"
+                aria-label="Search your workflows"
                 maxLength={100}
                 loading={isFetching || isDebouncingSearch}
                 size="small"
@@ -150,7 +144,7 @@ export function AgentSelectStep({
             <div className="w-full sm:w-[220px]">
               <Select
                 id="agent-sort"
-                label="Sort agents"
+                label="Sort workflows"
                 hideLabel
                 size="small"
                 value={sortBy}
@@ -162,7 +156,7 @@ export function AgentSelectStep({
           </div>
 
           <div className="mt-1 flex-grow overflow-hidden pb-3">
-            <h3 className="sr-only">List of agents</h3>
+            <h3 className="sr-only">List of workflows</h3>
             <div
               className={cn(
                 scrollbarStyles,
@@ -173,14 +167,14 @@ export function AgentSelectStep({
               aria-busy={isFetching}
             >
               <div id="agentListHeading" className="sr-only">
-                Scrollable list of agents
+                Scrollable list of workflows
               </div>
               {isLoading ? (
                 <div className="grid grid-cols-1 gap-2 p-1 sm:grid-cols-2">
                   {Array.from({ length: 6 }).map((_, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-3 rounded-[12px] border border-zinc-200 bg-white p-3"
+                      className="flex items-center gap-3 rounded-xl border border-border-base bg-surface p-3"
                     >
                       <div className="flex flex-1 flex-col gap-2">
                         <Skeleton className="h-4 w-1/3" />
@@ -194,10 +188,10 @@ export function AgentSelectStep({
                   className="flex min-h-[200px] flex-col items-center justify-center gap-2 px-6 py-10 text-center"
                   data-testid="agent-search-no-matches"
                 >
-                  <Text variant="body-medium" className="text-textBlack">
-                    No agents match &ldquo;{debouncedSearch}&rdquo;
+                  <Text variant="body-medium">
+                    No workflows match &ldquo;{debouncedSearch}&rdquo;
                   </Text>
-                  <Text variant="small" className="text-zinc-500">
+                  <Text variant="small" tone="muted">
                     Try a different name or clear the search.
                   </Text>
                   <Button
@@ -255,10 +249,11 @@ export function AgentSelectStep({
                           key={agent.id}
                           data-testid="agent-card"
                           className={cn(
-                            "group flex w-full cursor-pointer select-none items-center gap-3 rounded-[12px] border bg-white p-3 text-left transition-[border-color,box-shadow] duration-150 hover:border-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2",
+                            "group flex w-full cursor-pointer select-none items-center gap-3 rounded-xl border bg-surface p-3 text-left transition-[border-color,box-shadow] duration-150 hover:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2",
                             isSelected
-                              ? "border-purple-500 bg-purple-50/40 shadow-[0_0_0_3px_rgba(119,51,245,0.12)]"
-                              : "border-zinc-200",
+                              ? // oxlint-disable-next-line design-system/no-arbitrary-values -- brand-tinted selection halo, no shadow token for it
+                                "border-brand bg-accent-surface/40 shadow-[0_0_0_3px_rgba(119,51,245,0.12)]"
+                              : "border-border-base",
                           )}
                           onClick={() =>
                             handleAgentClick(
@@ -274,18 +269,19 @@ export function AgentSelectStep({
                               <Text
                                 variant="body-medium"
                                 as="span"
-                                className="truncate text-textBlack"
+                                className="truncate"
                               >
                                 {agent.name}
                               </Text>
-                              <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
+                              <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm font-medium leading-inherit text-foreground-secondary">
                                 v{agent.version}
                               </span>
                             </div>
                             <Text
                               variant="small"
                               as="span"
-                              className="truncate text-zinc-500"
+                              tone="muted"
+                              className="truncate"
                             >
                               {agent.description
                                 ? agent.description
@@ -293,13 +289,13 @@ export function AgentSelectStep({
                             </Text>
                           </div>
                           {isSelected ? (
-                            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white">
-                              <CheckCircleIcon size={14} weight="fill" />
+                            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-action-foreground">
+                              <Icon icon={CheckmarkCircle02Icon} size={14} />
                             </span>
                           ) : (
                             <span
                               aria-hidden
-                              className="size-5 shrink-0 rounded-full border border-zinc-300"
+                              className="size-5 shrink-0 rounded-full border border-border-strong"
                             />
                           )}
                         </button>
@@ -369,8 +365,8 @@ function PaginationBar({
   const pages = buildPageRange(page, totalPages);
 
   return (
-    <div className="flex flex-col items-center justify-between gap-3 pb-3 pt-1 text-zinc-500 sm:flex-row">
-      <Text variant="small" className="text-zinc-500">
+    <div className="flex flex-col items-center justify-between gap-3 pb-3 pt-1 text-foreground-tertiary sm:flex-row">
+      <Text variant="small" tone="muted">
         {start}–{end} of {totalItems}
       </Text>
       <div className="flex items-center gap-2">
@@ -379,19 +375,22 @@ function PaginationBar({
           aria-label="Previous page"
           disabled={page <= 1}
           onClick={() => onChange(page - 1)}
-          className="flex size-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex size-9 items-center justify-center rounded-full border border-border-base text-foreground-tertiary transition hover:border-border-strong hover:text-foreground-body disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <CaretLeftIcon size={14} weight="bold" />
+          <Icon icon={ArrowLeft01Icon} size={14} />
         </button>
         {pages.map((entry, idx) =>
           entry === "…" ? (
-            <span
+            <Text
+              variant="body-tight"
+              as="span"
+              tone="subtle"
               key={`gap-${idx}`}
-              className="px-1 text-sm text-zinc-400"
+              className="px-1"
               aria-hidden
             >
               …
-            </span>
+            </Text>
           ) : (
             <button
               key={entry}
@@ -399,21 +398,29 @@ function PaginationBar({
               onClick={() => onChange(entry)}
               aria-current={entry === page ? "page" : undefined}
               className={cn(
-                "relative flex size-9 items-center justify-center rounded-full text-sm font-medium transition",
+                "relative flex size-9 items-center justify-center rounded-full transition",
                 entry === page
-                  ? "text-white"
-                  : "border border-zinc-200 text-zinc-700 hover:border-zinc-300",
+                  ? "text-action-foreground"
+                  : "border border-border-base text-foreground-body hover:border-border-strong",
               )}
             >
               {entry === page ? (
                 <motion.span
                   layoutId="pagination-active-pill"
                   aria-hidden
-                  className="absolute inset-0 rounded-full bg-purple-500 shadow-[0_4px_10px_-4px_rgba(119,51,245,0.55)]"
+                  // oxlint-disable-next-line design-system/no-arbitrary-values -- brand-tinted glow, no shadow token for it
+                  className="absolute inset-0 rounded-full bg-brand shadow-[0_4px_10px_-4px_rgba(119,51,245,0.55)]"
                   transition={{ type: "spring", stiffness: 420, damping: 32 }}
                 />
               ) : null}
-              <span className="relative">{entry}</span>
+              <Text
+                as="span"
+                variant="body-medium-tight"
+                tone="inherit"
+                className="relative"
+              >
+                {entry}
+              </Text>
             </button>
           ),
         )}
@@ -422,9 +429,9 @@ function PaginationBar({
           aria-label="Next page"
           disabled={page >= totalPages}
           onClick={() => onChange(page + 1)}
-          className="flex size-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex size-9 items-center justify-center rounded-full border border-border-base text-foreground-tertiary transition hover:border-border-strong hover:text-foreground-body disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <CaretRightIcon size={14} weight="bold" />
+          <Icon icon={ArrowRight01Icon} size={14} />
         </button>
       </div>
     </div>

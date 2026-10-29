@@ -66,8 +66,8 @@ def get_user_message_for_error(
     elif error_type == "validation_error":
         base_message = (
             validation_message
-            or "The generated agent failed validation. "
-            "This usually happens when the agent structure doesn't match "
+            or "The generated workflow failed validation. "
+            "This usually happens when the workflow structure doesn't match "
             "what the platform expects. Please try simplifying your goal "
             "or breaking it into smaller parts."
         )
@@ -79,7 +79,7 @@ def get_user_message_for_error(
     elif error_type in ("timeout", "llm_timeout"):
         base_message = (
             "The request took too long to process. This can happen with "
-            "complex agents. Please try again or simplify your goal."
+            "complex workflows. Please try again or simplify your goal."
         )
     elif error_type in ("rate_limit", "llm_rate_limit"):
         base_message = "The service is currently busy. Please try again in a moment."

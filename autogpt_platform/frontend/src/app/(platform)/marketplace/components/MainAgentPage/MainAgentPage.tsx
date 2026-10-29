@@ -1,10 +1,9 @@
 "use client";
 import { okData } from "@/app/api/helpers";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { Button } from "@/components/atoms/Button/Button";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { MarketplaceAgentPageParams } from "../../agent/[creator]/[slug]/page";
 import { AgentImages } from "../AgentImages/AgentImage";
 import { AgentInfo } from "../AgentInfo/AgentInfo";
@@ -12,6 +11,8 @@ import { AgentPageLoading } from "../AgentPageLoading";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { useMainAgentPage } from "./useMainAgentPage";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   params: MarketplaceAgentPageParams;
@@ -39,8 +40,8 @@ export function MainAgentPage({ params }: Props) {
           <div className="flex min-h-[400px] items-center justify-center">
             <ErrorCard
               isSuccess={false}
-              responseError={{ message: "Failed to load agent data" }}
-              context="agent page"
+              responseError={{ message: "Failed to load workflow data" }}
+              context="workflow page"
               onRetry={() => window.location.reload()}
               className="w-full max-w-md"
             />
@@ -58,8 +59,8 @@ export function MainAgentPage({ params }: Props) {
           <div className="flex min-h-[400px] items-center justify-center">
             <ErrorCard
               isSuccess={false}
-              responseError={{ message: "Agent not found" }}
-              context="agent page"
+              responseError={{ message: "Workflow not found" }}
+              context="workflow page"
             />
           </div>
         </main>
@@ -86,7 +87,7 @@ export function MainAgentPage({ params }: Props) {
             as="NextLink"
             href="/marketplace"
             className="relative -left-2 lg:!-left-4"
-            leftIcon={<ArrowLeftIcon size={16} />}
+            leftIcon={<Icon icon={ArrowLeft02Icon} size={16} />}
           >
             Go back
           </Button>
@@ -99,7 +100,6 @@ export function MainAgentPage({ params }: Props) {
           <div className="w-full lg:w-2/5">
             <AgentInfo
               user={user}
-              agentId={agentData.active_version_id ?? "–"}
               name={agentData.agent_name ?? ""}
               creator={agentData.creator ?? ""}
               creatorAvatar={agentData.creator_avatar ?? ""}
@@ -156,14 +156,14 @@ export function MainAgentPage({ params }: Props) {
         {otherAgents && (
           <AgentsSection
             agents={otherAgents.agents}
-            sectionTitle={`Other agents by ${agentData.creator ?? ""}`}
+            sectionTitle={`Other AI workflows by ${agentData.creator ?? ""}`}
           />
         )}
         <Separator className="mb-[25px] mt-[60px] bg-transparent" />
         {similarAgents && similarAgents.agents.length > 0 ? (
           <AgentsSection
             agents={similarAgents.agents}
-            sectionTitle="Similar agents"
+            sectionTitle="Similar AI workflows"
           />
         ) : null}
         <BecomeACreator />

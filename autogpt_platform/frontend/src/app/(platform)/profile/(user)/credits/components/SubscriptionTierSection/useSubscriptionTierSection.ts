@@ -7,8 +7,13 @@ import {
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { getTierLabel } from "./helpers";
+import {
+  getSubscriptionValue,
+  trackAdsConversionBeforeNavigation,
+} from "@/services/analytics/google-ads";
 
 export type SubscriptionStatus = SubscriptionStatusResponse;
 
@@ -25,6 +30,9 @@ export function useSubscriptionTierSection() {
   const [pendingUpgradeTier, setPendingUpgradeTier] = useState<string | null>(
     null,
   );
+  // The mutation settles before the Checkout redirect starts; this keeps the
+  // tier buttons busy across the wait for the Ads conversion too.
+  const [isChangingTier, setIsChangingTier] = useState(false);
 
   const {
     data: subscription,
@@ -39,9 +47,12 @@ export function useSubscriptionTierSection() {
 
   const {
     mutateAsync: doUpdateTier,
-    isPending,
+    isPending: isUpdatePending,
     variables,
   } = useUpdateSubscriptionTier();
+  const checkoutRedirect = useCheckoutRedirect();
+  const isPending =
+    isUpdatePending || isChangingTier || checkoutRedirect.isRedirecting;
 
   useEffect(() => {
     if (subscriptionStatus === "success") {
@@ -61,15 +72,20 @@ export function useSubscriptionTierSection() {
     ) {
       router.replace(pathname);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch and toast
-    // are new references each render but are stable in practice; the effect must
-    // only re-run when subscriptionStatus/pathname changes.
+    // refetch and toast are new references each render but are stable in
+    // practice; the effect must only re-run when subscriptionStatus/pathname
+    // changes.
   }, [subscriptionStatus, refetch, toast, router, pathname]);
 
   async function changeTier(tier: string) {
+    if (isPending) return;
     setTierError(null);
+    setIsChangingTier(true);
     try {
-      const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success`;
+      // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
+      // report the subscription to Google Ads. This surface has no cycle
+      // toggle, so the backend default (monthly) is what gets charged.
+      const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${tier}&cycle=monthly`;
       const cancelUrl = `${window.location.origin}${window.location.pathname}?subscription=cancelled`;
       const result = await doUpdateTier({
         data: {
@@ -79,7 +95,11 @@ export function useSubscriptionTierSection() {
         },
       });
       if (result.status === 200 && result.data.url) {
+        await trackAdsConversionBeforeNavigation("begin_checkout", {
+          value: getSubscriptionValue(tier, "monthly"),
+        });
         window.location.href = result.data.url;
+        checkoutRedirect.markRedirecting();
         return;
       }
       await refetch();
@@ -101,6 +121,8 @@ export function useSubscriptionTierSection() {
       const msg =
         e instanceof Error ? e.message : "Failed to change subscription tier";
       setTierError(msg);
+    } finally {
+      setIsChangingTier(false);
     }
   }
 
@@ -166,8 +188,10 @@ export function useSubscriptionTierSection() {
     }
   }
 
+  const isPendingHere =
+    isUpdatePending || isChangingTier || checkoutRedirect.isRedirectingHere;
   const pendingTier =
-    isPending && variables?.data?.tier ? variables.data.tier : null;
+    isPendingHere && variables?.data?.tier ? variables.data.tier : null;
 
   return {
     subscription: subscription ?? null,

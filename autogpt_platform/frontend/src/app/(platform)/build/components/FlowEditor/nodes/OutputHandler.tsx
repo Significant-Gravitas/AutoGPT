@@ -1,8 +1,8 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CaretDownIcon, CaretRightIcon, InfoIcon } from "@phosphor-icons/react";
 import { RJSFSchema } from "@rjsf/utils";
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
+import { useUpdateNodeInternals } from "@xyflow/react";
 
 import { OutputNodeHandle } from "../handlers/NodeHandle";
 import {
@@ -12,21 +12,30 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
-import { getTypeDisplayInfo, augmentOutputSchemaWithEdges } from "./helpers";
+import { getTypeDisplayInfo } from "./helpers";
+import {
+  augmentOutputSchemaWithEdges,
+  getOutputProperties,
+  type OutputProperties,
+} from "./outputSchema";
 import { BlockUIType } from "../../types";
 import { cn } from "@/lib/utils";
 import { useBrokenOutputs } from "./useBrokenOutputs";
+import {
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  InformationCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
-export const OutputHandler = ({
-  outputSchema,
-  nodeId,
-  uiType,
-}: {
+interface Props {
   outputSchema: RJSFSchema;
   nodeId: string;
   uiType: BlockUIType;
-}) => {
-  const { isOutputConnected } = useEdgeStore();
+}
+
+export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
+  const isOutputConnected = useEdgeStore((state) => state.isOutputConnected);
   const edges = useEdgeStore((state) => state.edges);
   const properties = augmentOutputSchemaWithEdges(outputSchema, nodeId, edges);
   const [isOutputVisible, setIsOutputVisible] = useState(true);
@@ -36,157 +45,167 @@ export const OutputHandler = ({
   >({});
 
   const showHandles = uiType !== BlockUIType.OUTPUT;
+  const updateNodeInternals = useUpdateNodeInternals();
+
+  useLayoutEffect(() => {
+    updateNodeInternals(nodeId);
+  }, [
+    nodeId,
+    outputSchema,
+    edges,
+    isOutputVisible,
+    expandedObjects,
+    brokenOutputs,
+    showHandles,
+    updateNodeInternals,
+  ]);
 
   function toggleObjectExpanded(key: string) {
-    setExpandedObjects((prev) => ({ ...prev, [key]: !prev[key] }));
+    setExpandedObjects((prev) => ({
+      ...prev,
+      [key]: !(Object.hasOwn(prev, key) && prev[key]),
+    }));
   }
 
   function hasConnectedOrBrokenDescendant(
-    schema: RJSFSchema,
+    schema: OutputProperties,
     keyPrefix: string,
   ): boolean {
     if (!schema) return false;
-    return Object.entries(schema).some(
-      ([key, fieldSchema]: [string, RJSFSchema]) => {
-        const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
-        if (isOutputConnected(nodeId, fullKey) || brokenOutputs.has(fullKey))
-          return true;
-        if (fieldSchema?.properties)
-          return hasConnectedOrBrokenDescendant(
-            fieldSchema.properties,
-            fullKey,
-          );
-        return false;
-      },
-    );
+    return Object.entries(schema).some(([key, fieldSchema]) => {
+      const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
+      if (isOutputConnected(nodeId, fullKey) || brokenOutputs.has(fullKey))
+        return true;
+      const nestedProperties = getOutputProperties(fieldSchema);
+      if (Object.keys(nestedProperties).length)
+        return hasConnectedOrBrokenDescendant(nestedProperties, fullKey);
+      return false;
+    });
   }
 
-  const renderOutputHandles = (
-    schema: RJSFSchema,
+  function renderOutputHandles(
+    schema: OutputProperties,
     keyPrefix: string = "",
     titlePrefix: string = "",
     connectedOnly: boolean = false,
-  ): React.ReactNode[] => {
-    return Object.entries(schema).map(
-      ([key, fieldSchema]: [string, RJSFSchema]) => {
-        const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
-        const fieldTitle = titlePrefix + (fieldSchema?.title || key);
+  ): React.ReactNode[] {
+    return Object.entries(schema).map(([key, definition]) => {
+      const fieldSchema =
+        typeof definition === "object" &&
+        definition !== null &&
+        !Array.isArray(definition)
+          ? definition
+          : {};
+      const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
+      const fieldTitle = titlePrefix + (fieldSchema?.title || key);
 
-        const isConnected = isOutputConnected(nodeId, fullKey);
-        const isBroken = brokenOutputs.has(fullKey);
-        const hasNestedProperties = !!fieldSchema?.properties;
-        const selfIsRelevant = isConnected || isBroken;
-        const descendantIsRelevant =
-          hasNestedProperties &&
-          hasConnectedOrBrokenDescendant(fieldSchema.properties!, fullKey);
+      const isConnected = isOutputConnected(nodeId, fullKey);
+      const isBroken = brokenOutputs.has(fullKey);
+      const nestedProperties = getOutputProperties(fieldSchema);
+      const hasNestedProperties = Object.keys(nestedProperties).length > 0;
+      const selfIsRelevant = isConnected || isBroken;
+      const descendantIsRelevant =
+        hasNestedProperties &&
+        hasConnectedOrBrokenDescendant(nestedProperties, fullKey);
 
-        const shouldShow = connectedOnly
-          ? selfIsRelevant || descendantIsRelevant
-          : isOutputVisible || selfIsRelevant || descendantIsRelevant;
+      const shouldShow = connectedOnly
+        ? selfIsRelevant || descendantIsRelevant
+        : isOutputVisible || selfIsRelevant || descendantIsRelevant;
 
-        const { displayType, colorClass, hexColor } =
-          getTypeDisplayInfo(fieldSchema);
-        const isExpanded = expandedObjects[fullKey] ?? false;
+      const { displayType, colorClass, hexColor } =
+        // oxlint-disable-next-line design-system/require-static-classes -- getTypeDisplayInfo returns whole, static class strings
+        getTypeDisplayInfo(fieldSchema);
+      const isExpanded =
+        Object.hasOwn(expandedObjects, fullKey) && expandedObjects[fullKey];
 
-        // User expanded → show all children; auto-expanded → filter to connected only
-        const shouldRenderChildren = isExpanded || descendantIsRelevant;
+      // User expanded → show all children; auto-expanded → filter to connected only
+      const shouldRenderChildren = isExpanded || descendantIsRelevant;
 
-        return shouldShow ? (
-          <div
-            key={fullKey}
-            className="flex flex-col items-end gap-2"
-            data-tutorial-id={`output-handler-${nodeId}-${fieldTitle}`}
-          >
-            <div className="relative flex items-center gap-2">
-              {hasNestedProperties && (
-                <button
-                  onClick={() => toggleObjectExpanded(fullKey)}
-                  className="flex items-center text-slate-500 hover:text-slate-700"
-                  aria-label={isExpanded ? "Collapse" : "Expand"}
-                >
-                  {isExpanded ? (
-                    <CaretDownIcon size={12} weight="bold" />
-                  ) : (
-                    <CaretRightIcon size={12} weight="bold" />
-                  )}
-                </button>
-              )}
-              {fieldSchema?.description && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span
-                        style={{ marginLeft: 6, cursor: "pointer" }}
-                        aria-label="info"
-                        tabIndex={0}
-                      >
-                        <InfoIcon />
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>{fieldSchema?.description}</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-              <Text
-                variant="body"
-                className={cn(
-                  "text-slate-700",
-                  isBroken && "text-red-500 line-through",
-                )}
+      return shouldShow ? (
+        <div
+          key={fullKey}
+          className="flex flex-col items-end gap-2"
+          data-tutorial-id={`output-handler-${nodeId}-${fieldTitle}`}
+        >
+          <div className="relative flex items-center gap-2">
+            {hasNestedProperties && (
+              <button
+                onClick={() => toggleObjectExpanded(fullKey)}
+                className="flex items-center text-foreground-tertiary hover:text-foreground-body"
+                aria-label={isExpanded ? "Collapse" : "Expand"}
               >
-                {fieldTitle}
-              </Text>
-              <Text
-                variant="small"
-                as="span"
-                className={cn(
-                  colorClass,
-                  isBroken && "!text-red-500 line-through",
+                {isExpanded ? (
+                  <Icon icon={ArrowDown01Icon} size={12} />
+                ) : (
+                  <Icon icon={ArrowRight01Icon} size={12} />
                 )}
-              >
-                ({displayType})
-              </Text>
+              </button>
+            )}
+            {fieldSchema?.description && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="ml-1.5 cursor-pointer"
+                      aria-label="info"
+                      tabIndex={0}
+                    >
+                      <Icon icon={InformationCircleIcon} />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{fieldSchema?.description}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            <Text
+              variant={isBroken ? "body-line-through" : "body"}
+              className={cn("text-foreground-body", isBroken && "text-error")}
+            >
+              {fieldTitle}
+            </Text>
+            <Text
+              variant={isBroken ? "small-line-through" : "small"}
+              as="span"
+              className={cn(colorClass, isBroken && "!text-error")}
+            >
+              ({displayType})
+            </Text>
 
-              {showHandles && (
-                <OutputNodeHandle
-                  isBroken={isBroken}
-                  field_name={fullKey}
-                  nodeId={nodeId}
-                  hexColor={hexColor}
-                />
-              )}
-            </div>
-
-            {/* Nested properties */}
-            {hasNestedProperties &&
-              shouldRenderChildren &&
-              renderOutputHandles(
-                fieldSchema.properties!,
-                fullKey,
-                "",
-                !isExpanded,
-              )}
+            {showHandles && (
+              <OutputNodeHandle
+                isBroken={isBroken}
+                field_name={fullKey}
+                nodeId={nodeId}
+                hexColor={hexColor}
+              />
+            )}
           </div>
-        ) : null;
-      },
-    );
-  };
+
+          {/* Nested properties */}
+          {hasNestedProperties &&
+            shouldRenderChildren &&
+            renderOutputHandles(nestedProperties, fullKey, "", !isExpanded)}
+        </div>
+      ) : null;
+    });
+  }
 
   return (
-    <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-zinc-200 bg-white py-3.5">
+    <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-border-base bg-surface py-3.5">
       <Button
         variant="ghost"
         className="mr-4 h-fit min-w-0 p-0 hover:border-transparent hover:bg-transparent"
         onClick={() => setIsOutputVisible(!isOutputVisible)}
       >
         <Text
-          variant="body"
-          className="flex items-center gap-2 !font-semibold text-slate-700"
+          variant="body-semibold"
+          tone="body"
+          className="flex items-center gap-2"
         >
           Output{" "}
-          <CaretDownIcon
+          <Icon
+            icon={ArrowDown01Icon}
             size={16}
-            weight="bold"
             className={`transition-transform ${isOutputVisible ? "rotate-180" : ""}`}
           />
         </Text>
@@ -197,4 +216,4 @@ export const OutputHandler = ({
       </div>
     </div>
   );
-};
+}
