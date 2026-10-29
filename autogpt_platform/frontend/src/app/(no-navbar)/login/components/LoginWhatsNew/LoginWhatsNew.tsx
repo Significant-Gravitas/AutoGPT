@@ -1,6 +1,4 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Link } from "@/components/atoms/Link/Link";
-import { Text } from "@/components/atoms/Text/Text";
 import { CHANGELOG_BASE_URL } from "@/components/molecules/ChangelogPopup/changelog-constants";
 import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { useId } from "react";
@@ -21,26 +19,23 @@ export function LoginWhatsNew() {
       className="flex max-w-lg flex-col gap-3"
     >
       <div className="flex items-center justify-between gap-4">
-        <Text
-          as="h2"
+        <h2
           id={headingID}
-          variant="small-medium"
-          tone="secondary"
-          // TODO(tokens): no exact text token for tracking-[0.14em]
-          className="uppercase tracking-[0.14em]"
+          className="font-sans text-caption font-medium uppercase tracking-caps text-foreground-secondary"
         >
           What&apos;s new
-        </Text>
+        </h2>
         {isUnavailable ? null : (
-          <Link
+          <a
             href={CHANGELOG_BASE_URL}
-            isExternal
-            className="inline-flex items-center gap-1 text-caption leading-4 text-foreground-secondary hover:text-foreground-strong"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-sm font-sans text-caption font-medium leading-4 text-foreground-secondary hover:text-foreground-strong hover:underline focus:outline-none focus:ring-2 focus:ring-info focus:ring-offset-2"
           >
             Full changelog
             <span className="sr-only">(opens in a new tab)</span>
             <Icon icon={ArrowUpRight01Icon} size={14} aria-hidden />
-          </Link>
+          </a>
         )}
       </div>
       <WhatsNewBody isLoading={isLoading} releases={releases} />

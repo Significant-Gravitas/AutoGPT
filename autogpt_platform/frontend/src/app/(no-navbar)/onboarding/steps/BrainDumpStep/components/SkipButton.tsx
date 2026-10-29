@@ -23,13 +23,7 @@ export function SkipButton({ isHidden, isProcessing, onSkip }: Props) {
           behind the finalize that is already in flight, landing past
           the last step on a blank screen. */}
       {!isProcessing && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          onClick={onSkip}
-          className="text-foreground-subtle hover:text-foreground-body"
-        >
+        <Button type="button" variant="toggle" size="xs" onClick={onSkip}>
           Skip for now
         </Button>
       )}
