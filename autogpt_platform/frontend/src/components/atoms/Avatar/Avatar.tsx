@@ -46,6 +46,7 @@ export function Avatar({
   return (
     <AvatarContext.Provider value={value}>
       <div
+        data-slot="avatar"
         className={cn(
           "relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full",
           className,
@@ -128,8 +129,9 @@ export function AvatarImage({
     }
 
     return (
-      // eslint-disable-next-line @next/next/no-img-element
+      // eslint-disable-next-line @next/next/no-img-element -- avatar URLs come from any host, so next/image does not fit
       <img
+        data-slot="avatar-image"
         src={normalizedSrc}
         alt={alt ?? "Avatar image"}
         className={cn("h-full w-full object-cover", className)}
@@ -152,6 +154,7 @@ export function AvatarImage({
 
   return (
     <Image
+      data-slot="avatar-image"
       {...rest}
       src={normalizedSrc}
       alt={alt ?? "Avatar image"}
@@ -200,9 +203,10 @@ export function AvatarFallback({
   if (hasImage) {
     return (
       <span
+        data-slot="avatar-fallback"
         aria-hidden="true"
         className={cn(
-          "absolute inset-0 rounded-full bg-zinc-100",
+          "absolute inset-0 rounded-full bg-surface-hover",
           square && "rounded-none",
           className,
         )}
@@ -217,6 +221,7 @@ export function AvatarFallback({
     typeof children === "string" && children.trim() ? children.trim() : "User";
   return (
     <span
+      data-slot="avatar-fallback"
       // decorative gradient — hide from AT so the marble's unnamed role="img"
       // svg doesn't surface as an axe violation, unless the caller named it
       role={accessibleLabel ? "img" : undefined}
@@ -224,8 +229,9 @@ export function AvatarFallback({
       aria-hidden={accessibleLabel ? undefined : "true"}
       className={cn(
         // absolute so the fallback overlays (not flows beside) the image while it loads;
-        // svg stretched to fill so the marble always matches the avatar size
-        "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-lg text-neutral-600",
+        // svg stretched to fill so the marble always matches the avatar size.
+        // TODO(tokens): no text role is 18px/28px (text-lg).
+        "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-lg text-foreground-secondary",
         !hasCustomFallback && "[&>svg]:h-full [&>svg]:w-full",
         className,
       )}

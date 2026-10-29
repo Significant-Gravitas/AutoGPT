@@ -16,7 +16,9 @@ from backend.copilot.bot.adapters.discord.adapter import (
     _resolve_mentions,
 )
 from backend.copilot.bot.adapters.discord.choice_ui import _ChoiceButton
+from backend.copilot.bot.adapters.discord.location import Location, location_of
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.options import TurnOptions
 from backend.copilot.bot.turn_stream import _clarification_message
 
 
@@ -190,6 +192,104 @@ class TestMessageText:
 
 
 # ── _channel_type ──────────────────────────────────────────────────────
+
+
+class TestLocationFields:
+    def test_dm_has_no_names(self):
+        msg = MagicMock()
+        msg.guild = None
+        msg.channel = MagicMock(spec=discord.DMChannel)
+        assert location_of(msg.guild, msg.channel) == Location()
+
+    def test_channel_gives_names_and_its_own_id_to_post_to(self):
+        msg = MagicMock()
+        msg.guild = MagicMock(spec=discord.Guild)
+        msg.guild.name = "Significant Gravitas"
+        msg.channel = MagicMock(spec=discord.TextChannel)
+        msg.channel.name = "eng-general"
+        msg.channel.id = 222
+        assert location_of(msg.guild, msg.channel) == Location(
+            server_name="Significant Gravitas",
+            channel_name="eng-general",
+            public_channel_id="222",
+            post_channel_id="222",
+        )
+
+    def test_thread_gives_parent_channel_and_posts_to_the_thread(self):
+        msg = MagicMock()
+        msg.guild = MagicMock(spec=discord.Guild)
+        msg.guild.name = "SG"
+        thread = MagicMock(spec=discord.Thread)
+        thread.id = 333
+        thread.name = "Bug triage"
+        thread.parent_id = 222
+        thread.parent = MagicMock(spec=discord.TextChannel)
+        thread.parent.name = "eng-general"
+        msg.channel = thread
+        assert location_of(msg.guild, msg.channel) == Location(
+            server_name="SG",
+            channel_name="eng-general",
+            public_channel_id="222",
+            thread_name="Bug triage",
+            public_thread_id="333",
+            post_channel_id="333",
+        )
+
+    def test_thread_with_an_uncached_parent(self):
+        msg = MagicMock()
+        msg.guild = MagicMock(spec=discord.Guild)
+        msg.guild.name = "SG"
+        thread = MagicMock(spec=discord.Thread)
+        thread.id = 333
+        thread.name = "t"
+        thread.parent_id = None
+        thread.parent = None
+        msg.channel = thread
+        location = location_of(msg.guild, msg.channel)
+        assert location.public_channel_id is None
+        assert location.channel_name is None
+        assert location.post_channel_id == "333"
+
+
+class TestRepliedToBot:
+    def _reply_to(self, author_id: int) -> MagicMock:
+        msg = MagicMock()
+        msg.message_snapshots = []
+        replied = MagicMock(spec=discord.Message)
+        replied.author = MagicMock(id=author_id)
+        msg.reference = MagicMock(resolved=replied)
+        return msg
+
+    @pytest.mark.asyncio
+    async def test_reply_to_the_bot_counts(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        assert await adapter._replied_to_bot(self._reply_to(1000)) is True
+
+    @pytest.mark.asyncio
+    async def test_reply_to_someone_else_does_not(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        assert await adapter._replied_to_bot(self._reply_to(5)) is False
+
+    @pytest.mark.asyncio
+    async def test_no_reply_does_not(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = MagicMock()
+        msg.reference = None
+        assert await adapter._replied_to_bot(msg) is False
+
+    @pytest.mark.asyncio
+    async def test_an_unresolved_reply_is_fetched(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = MagicMock()
+        msg.message_snapshots = []
+        msg.channel = MagicMock(spec=discord.TextChannel)
+        replied = MagicMock(spec=discord.Message)
+        replied.author = MagicMock(id=1000)
+        msg.channel.fetch_message = AsyncMock(return_value=replied)
+        msg.reference = MagicMock(resolved=None, message_id=77)
+        assert await adapter._replied_to_bot(msg) is True
+        msg.channel.fetch_message.assert_awaited_once_with(77)
+        assert msg.reference.resolved is replied
 
 
 class TestChannelType:
@@ -1221,6 +1321,72 @@ class TestLockedThread:
 
         callback.assert_awaited_once()
 
+    def _channel_message(self, replied_author_id: int | None) -> MagicMock:
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = 222
+        channel.name = "general"
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = MagicMock(id=111)
+        msg.guild.name = "SG"
+        msg.channel = channel
+        msg.content = "and now?"
+        msg.mentions = []
+        msg.attachments = []
+        msg.message_snapshots = []
+        if replied_author_id is None:
+            msg.reference = None
+        else:
+            replied = MagicMock(spec=discord.Message)
+            replied.author = MagicMock(id=replied_author_id)
+            msg.reference = MagicMock(resolved=replied)
+        return msg
+
+    @pytest.mark.asyncio
+    async def test_a_channel_reply_to_the_bot_is_processed(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        await handlers["on_message"](self._channel_message(replied_author_id=1000))
+
+        callback.assert_awaited_once()
+        assert callback.await_args.args[0].replied_to_bot is True
+
+    @pytest.mark.asyncio
+    async def test_a_channel_message_neither_mentioning_nor_replying_is_dropped(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        await handlers["on_message"](self._channel_message(replied_author_id=None))
+        await handlers["on_message"](self._channel_message(replied_author_id=3000))
+
+        callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_thread_reply_to_the_bot_carries_the_thread_history(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+        msg = self._channel_message(replied_author_id=1000)
+        thread = _thread(555)
+        thread.locked = False
+        msg.channel = thread
+        history = (MagicMock(),)
+
+        with patch.object(
+            adapter, "_thread_history", new=AsyncMock(return_value=history)
+        ) as fetch:
+            await handlers["on_message"](msg)
+
+        fetch.assert_awaited_once_with(msg)
+        assert callback.await_args.args[0].thread_history == history
+
     @pytest.mark.asyncio
     async def test_on_message_rewrites_referenced_links_in_text(self):
         # End-to-end through on_message: a channel @mention linking another
@@ -1306,6 +1472,22 @@ class TestReplyContext:
         channel.fetch_message.assert_awaited_once_with(42)
 
     @pytest.mark.asyncio
+    async def test_a_reply_to_a_deleted_message_is_not_fetched(self):
+        # Discord marks a deleted target with ``DeletedReferencedMessage``; a
+        # fetch can only 404, and it would run for every such channel reply.
+        adapter, _ = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.fetch_message = AsyncMock()
+        msg = MagicMock()
+        msg.message_snapshots = []
+        msg.reference = MagicMock(
+            resolved=MagicMock(spec=discord.DeletedReferencedMessage), message_id=42
+        )
+        msg.channel = channel
+        assert await adapter._resolve_reply(msg) is None
+        channel.fetch_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_with_reply_context_prepends_quoted_message(self):
         adapter, _ = _bare_adapter()
         replied = self._replied("fact about space", author_name="AutoBoostBot")
@@ -1350,6 +1532,33 @@ class TestReplyContext:
         ctx = callback.await_args.args[0]
         assert "fact about space" in ctx.text
         assert "can you tell me?" in ctx.text
+
+    @pytest.mark.asyncio
+    async def test_options_in_a_reply_are_read_before_the_reply_context(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        replied = self._replied("fact about space", author_name="AutoBoostBot")
+        guild = MagicMock(id=111)
+        guild.get_member = MagicMock(return_value=MagicMock(spec=discord.Member))
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = guild
+        msg.channel = MagicMock(id=555)
+        msg.content = "<@1000> expert=Bolt mode=smart can you tell me?"
+        msg.mentions = [_mention(1000, "AutoGPT")]
+        msg.message_snapshots = []
+        msg.reference = MagicMock(resolved=replied)
+
+        await handlers["on_message"](msg)
+
+        ctx = callback.await_args.args[0]
+        assert ctx.options == TurnOptions(expert_name="Bolt", model="advanced")
+        assert "expert=" not in ctx.text and "mode=" not in ctx.text
+        assert ctx.text.endswith("can you tell me?")
 
     @pytest.mark.asyncio
     async def test_links_inside_replied_message_are_not_fetched(self):

@@ -1,4 +1,4 @@
-import { IconType } from "@/components/__legacy__/ui/icons";
+import { IconType } from "@/components/layout/Navbar/helpers";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AccountMenu } from "../AccountMenu";
@@ -24,10 +24,6 @@ vi.mock("@/lib/auth/actions", () => ({
   getCurrentUser: vi.fn().mockResolvedValue({ user: null }),
 }));
 
-vi.mock("@sentry/nextjs", () => ({
-  getReplay: vi.fn(),
-}));
-
 vi.mock("@/components/molecules/Popover/Popover", () => {
   function Popover({ children }: { children: React.ReactNode }) {
     return <div>{children}</div>;
@@ -38,7 +34,10 @@ vi.mock("@/components/molecules/Popover/Popover", () => {
   function PopoverContent({ children }: { children: React.ReactNode }) {
     return <div>{children}</div>;
   }
-  return { Popover, PopoverTrigger, PopoverContent };
+  function PopoverClose({ children }: { children: React.ReactNode }) {
+    return <>{children}</>;
+  }
+  return { Popover, PopoverTrigger, PopoverContent, PopoverClose };
 });
 
 const baseGroups: MenuItemGroup[] = [
@@ -84,6 +83,16 @@ const baseGroups: MenuItemGroup[] = [
 describe("AccountMenu", () => {
   beforeEach(() => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+  });
+
+  // Opening the walkthrough from it is covered with the real app chrome in
+  // PlatformChrome/__tests__/firstRunGuidance.test.tsx.
+  test("offers Show me around beside Log out", () => {
+    render(<AccountMenu userName="Ada Lovelace" menuItemGroups={baseGroups} />);
+
+    const row = screen.getByRole("button", { name: "Show me around" });
+    const logOut = screen.getByText("Log out");
+    expect(row.closest("ul")).toBe(logOut.closest("ul"));
   });
 
   afterEach(() => {
@@ -173,26 +182,24 @@ describe("AccountMenu", () => {
     expect(getFallbackSVG(trigger)).toBe(getFallbackSVG(reference.container));
   });
 
-  test("new layout renders the organization switcher header trigger", () => {
+  test("renders the organization switcher header trigger", () => {
     render(
       <AccountMenu
         userName="Ada"
         userEmail="ada@example.com"
         menuItemGroups={baseGroups}
-        newLayout
       />,
     );
 
     expect(screen.getByTestId("account-menu-org-trigger")).toBeDefined();
   });
 
-  test("new layout renders the agent activity row trigger", () => {
+  test("renders the agent activity row trigger", () => {
     render(
       <AccountMenu
         userName="Ada"
         userEmail="ada@example.com"
         menuItemGroups={baseGroups}
-        newLayout
       />,
     );
 
@@ -200,13 +207,12 @@ describe("AccountMenu", () => {
     expect(screen.getByText("Activity")).toBeDefined();
   });
 
-  test("new layout renders Give feedback right after Activity", () => {
+  test("renders Give feedback right after Activity", () => {
     render(
       <AccountMenu
         userName="Ada"
         userEmail="ada@example.com"
         menuItemGroups={baseGroups}
-        newLayout
       />,
     );
 
@@ -218,13 +224,12 @@ describe("AccountMenu", () => {
     );
   });
 
-  test("new layout does not load the Tally script before feedback is asked for", () => {
+  test("does not load the Tally script before feedback is asked for", () => {
     render(
       <AccountMenu
         userName="Ada"
         userEmail="ada@example.com"
         menuItemGroups={baseGroups}
-        newLayout
       />,
     );
 
@@ -234,32 +239,17 @@ describe("AccountMenu", () => {
     );
   });
 
-  test("new layout leaves Give feedback out when not running in the cloud", () => {
+  test("leaves Give feedback out when not running in the cloud", () => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
     render(
       <AccountMenu
         userName="Ada"
         userEmail="ada@example.com"
         menuItemGroups={baseGroups}
-        newLayout
       />,
     );
 
     expect(screen.getByTestId("account-menu-activity-trigger")).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Give feedback" })).toBeNull();
-  });
-
-  test("classic layout does not render org, activity or feedback triggers", () => {
-    render(
-      <AccountMenu
-        userName="Ada"
-        userEmail="ada@example.com"
-        menuItemGroups={baseGroups}
-      />,
-    );
-
-    expect(screen.queryByTestId("account-menu-org-trigger")).toBeNull();
-    expect(screen.queryByTestId("account-menu-activity-trigger")).toBeNull();
     expect(screen.queryByRole("button", { name: "Give feedback" })).toBeNull();
   });
 });

@@ -2,6 +2,8 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
+import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
 import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
 import {
   Alert01Icon,
@@ -93,22 +95,30 @@ export function ScheduledChatNoticeCard({ notice, sessionID = null }: Props) {
   }
 
   return (
-    <div
-      className="max-w-md rounded-2xl bg-white p-4 ring-1 ring-inset ring-zinc-200/60"
+    <AttentionCard.Root
+      variant="outline"
+      density="comfortable"
+      className="max-w-md"
       data-testid="scheduled-chat-notice"
     >
-      <div className="flex items-start gap-3">
-        <Icon icon={icon} size={18} className="mt-0.5 shrink-0 text-zinc-400" />
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-zinc-900">{notice.headline}</p>
-          <p className="mt-1 text-sm text-zinc-500">{notice.body}</p>
+      <AttentionCard.Row align="start">
+        <AttentionCard.Icon nudge>
+          <Icon icon={icon} size={18} />
+        </AttentionCard.Icon>
+        <AttentionCard.Content>
+          <Text variant="body-medium" tone="primary" className="leading-5">
+            {notice.headline}
+          </Text>
+          <Text variant="body" tone="muted" className="mt-1 leading-5">
+            {notice.body}
+          </Text>
           {showActions ? (
-            <div className="mt-3 flex flex-wrap gap-2">
+            <AttentionCard.Actions placement="below">
               {notice.actions.map(renderAction)}
-            </div>
+            </AttentionCard.Actions>
           ) : null}
-        </div>
-      </div>
+        </AttentionCard.Content>
+      </AttentionCard.Row>
       {notice.scheduleKey && card.lessOftenOpen ? (
         <RunLessOftenDialog
           scheduleKey={notice.scheduleKey}
@@ -126,6 +136,6 @@ export function ScheduledChatNoticeCard({ notice, sessionID = null }: Props) {
           onConnected={card.handleConnected}
         />
       ) : null}
-    </div>
+    </AttentionCard.Root>
   );
 }

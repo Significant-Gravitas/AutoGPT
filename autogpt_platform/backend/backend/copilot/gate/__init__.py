@@ -15,12 +15,13 @@ a run into a question, never the reverse.
 """
 
 import logging
-from typing import Any, Awaitable, Callable, Literal
+from typing import Any, Awaitable, Callable, Literal, TypeGuard
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.context import get_current_envelope
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
 from backend.copilot.trial_cost_context import capture_cost_context
@@ -126,13 +127,17 @@ DECIDED = Decision(allowed=True, decided=True)
 
 
 async def gate_active(user_id: str | None, session: ChatSession) -> bool:
-    """The gate runs only where a signed-in user can answer; sessions nobody
-    is watching stay ungated until they get their own path."""
-    if not user_id or session.metadata.origin != "interactive":
-        return False
-    if session.metadata.source_platform in CARDLESS_PLATFORMS:
+    if not answerable(user_id, session):
         return False
     return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
+
+
+def answerable(user_id: str | None, session: ChatSession) -> TypeGuard[str]:
+    """Whether a signed-in user can answer a card here; sessions nobody is
+    watching stay unchecked until they get their own path."""
+    if not user_id or session.metadata.origin != "interactive":
+        return False
+    return session.metadata.source_platform not in CARDLESS_PLATFORMS
 
 
 async def unified_approvals(user_id: str) -> bool:
@@ -177,10 +182,13 @@ async def check_action(
     tool_call_id: str = "",
     subject_of: Callable[[], Awaitable[Subject | None]] | None = None,
     context_of: Callable[[], Awaitable[dict[str, str | None] | None]] | None = None,
+    args_bound: bool = False,
 ) -> Decision:
     """``subject_of`` resolves what the call acts on; it runs only once no
     approval answers the call, so an approved call is never re-derived.
-    ``context_of`` reads the files the call runs, for the supervisor only."""
+    ``context_of`` reads the files the call runs, for the supervisor only.
+    ``args_bound``: the tool already resolved ``args``, which a held call keeps
+    so its replay does not resolve them again."""
     if not await gate_active(user_id, session):
         return ALLOW
     assert user_id is not None
@@ -278,6 +286,7 @@ async def check_action(
         tool_name=tool_name,
         tool_call_id=tool_call_id,
         args=args,
+        args_bound=args_bound,
         rule_key=rule_key,
         envelope=get_current_envelope(),
         cost_context=await capture_cost_context(user_id),
@@ -452,7 +461,7 @@ def _typed_messages(session: ChatSession, upto: int | None = None) -> list[str]:
 
     typed = [
         strip_injected_context_for_display(message.content)
-        for message in session.messages[:upto]
+        for message in without_stored_first_turn_memory(session.messages[:upto])
         if message.role == "user"
         and message.content
         and not held.is_answer_row(message)
@@ -467,6 +476,7 @@ __all__ = [
     "Ruling",
     "LINKED_CHAT_PLATFORMS",
     "active_mode",
+    "answerable",
     "check_action",
     "child_autopilot_mode",
     "gate_active",

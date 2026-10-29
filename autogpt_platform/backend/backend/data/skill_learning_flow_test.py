@@ -24,7 +24,8 @@ import pytest
 from prisma.models import User
 
 from backend.copilot import db as chats
-from backend.copilot.dream.llm import CompletionUsage, StructuredCompletion
+from backend.copilot.inference.complete import StructuredCompletion
+from backend.copilot.inference.context import InferenceUsage
 from backend.copilot.learning import nightly, publish
 from backend.copilot.learning.chat_source import record_chat_turn
 from backend.copilot.learning.owner_actions import apply_owner_edit, restore_version
@@ -131,8 +132,13 @@ def _proposal(
             verification="Validator exited successfully and reported three checked rows",
             private_values_replaced=True,
         ),
-        usage=CompletionUsage(
-            model="fixture-model", input_tokens=10, output_tokens=10, cost_usd=0
+        usage=InferenceUsage(
+            model="fixture-model",
+            input_tokens=10,
+            output_tokens=10,
+            cost_usd=0,
+            cost_source="provider",
+            payer="platform_allowance",
         ),
     )
 

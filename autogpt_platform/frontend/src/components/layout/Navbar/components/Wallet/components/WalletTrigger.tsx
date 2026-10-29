@@ -22,6 +22,7 @@ interface Props {
   completedCount: number | null;
   totalCount: number;
   flash: boolean;
+  unseen: boolean;
 }
 
 export function WalletTrigger({
@@ -34,6 +35,7 @@ export function WalletTrigger({
   completedCount,
   totalCount,
   flash,
+  unseen,
 }: Props) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
 
@@ -52,10 +54,10 @@ export function WalletTrigger({
               data-state={open ? "open" : "closed"}
               onClick={onClick}
               className={cn(
-                "group relative flex flex-nowrap items-center gap-2 rounded-md px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2",
+                "group relative flex flex-nowrap items-center gap-2 rounded-md px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-action-hover focus-visible:ring-offset-2",
                 compact
-                  ? "size-8 justify-center rounded-lg p-0 text-zinc-700 transition-colors data-[state=open]:bg-zinc-100 data-[state=open]:text-zinc-900 hover:bg-zinc-100"
-                  : "bg-zinc-50",
+                  ? "size-8 justify-center rounded-lg p-0 text-foreground-body transition-colors hover:bg-surface-hover data-[state=open]:bg-surface-hover data-[state=open]:text-foreground-strong"
+                  : "bg-surface-muted",
               )}
             >
               <Icon
@@ -64,6 +66,13 @@ export function WalletTrigger({
                 aria-hidden
                 className={cn("inline-block", !compact && "xl:hidden")}
               />
+              {compact && unseen && (
+                <span
+                  aria-hidden
+                  data-testid="wallet-unseen-dot"
+                  className="absolute right-0.5 top-0.5 size-2 rounded-full bg-brand ring-2 ring-sidebar"
+                />
+              )}
               {!compact && (
                 <ClassicBalance
                   formattedCredits={formattedCredits}
@@ -77,7 +86,7 @@ export function WalletTrigger({
         <div
           aria-hidden
           className={cn(
-            "pointer-events-none absolute inset-0 bg-violet-400 duration-2000 ease-in-out",
+            "pointer-events-none absolute inset-0 bg-brand/60 duration-2000 ease-in-out",
             compact ? "rounded-lg" : "rounded-md",
             flash ? "opacity-50 duration-0" : "opacity-0",
           )}
@@ -96,11 +105,13 @@ function ClassicBalance({
   return (
     <div>
       <span className="mr-1 hidden xl:inline-block">Earn credits </span>
-      <span className="text-sm font-semibold">{formattedCredits}</span>
+      <Text variant="body-semibold-tight" as="span" tone="inherit">
+        {formattedCredits}
+      </Text>
       {completedCount !== null && completedCount < totalCount && (
-        <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600" />
+        <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-brand" />
       )}
-      <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
+      <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-surface px-4 py-2 shadow-md group-hover:block">
         <Text variant="body-medium">
           {completedCount} of {totalCount} rewards claimed
         </Text>

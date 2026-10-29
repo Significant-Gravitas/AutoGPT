@@ -35,8 +35,8 @@ export function CheckYourInbox({
 
   return (
     <div className="flex w-full flex-col items-center text-center">
-      <div className="mb-6 flex size-14 items-center justify-center rounded-full bg-violet-50">
-        <Icon icon={Mail01Icon} className="size-7 text-violet-600" />
+      <div className="mb-6 flex size-14 items-center justify-center rounded-full bg-accent-surface">
+        <Icon icon={Mail01Icon} className="size-7 text-brand" />
       </div>
 
       <Text
@@ -44,15 +44,17 @@ export function CheckYourInbox({
         tabIndex={-1}
         variant="h3"
         as="h1"
-        className="!text-slate-950 outline-none"
+        className="outline-none"
       >
         {copy.title}
       </Text>
 
       <Text variant="body" tone="secondary" className="mt-3">
         We sent an email to{" "}
-        <span className="break-all font-medium text-slate-950">{email}</span>.
-        Open the link in it to {copy.action}.
+        <span className="break-all font-medium text-foreground-base">
+          {email}
+        </span>
+        . Open the link in it to {copy.action}.
       </Text>
 
       <Text variant="small" tone="muted" className="mt-2">
@@ -71,7 +73,7 @@ export function CheckYourInbox({
       </Button>
 
       <div className="mt-6 inline-flex items-center justify-center gap-1">
-        <Text variant="body-medium" className="!text-slate-500">
+        <Text variant="body-medium" tone="muted">
           {copy.backPrompt}
         </Text>
         <Button

@@ -1,6 +1,5 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import * as Sentry from "@sentry/nextjs";
 import {
   FEEDBACK_TALLY_FORM_ID,
   getFeedbackHiddenFields,
@@ -9,8 +8,6 @@ import {
 } from "./helpers";
 
 export function useTallyPageContext() {
-  const [sentryReplayId, setSentryReplayId] = useState("");
-  const [replayUrl, setReplayUrl] = useState("");
   const [pageUrl, setPageUrl] = useState("");
   const [userAgent, setUserAgent] = useState("");
   const pathname = usePathname();
@@ -20,22 +17,10 @@ export function useTallyPageContext() {
     if (typeof window !== "undefined") {
       setPageUrl(window.location.href);
       setUserAgent(window.navigator.userAgent);
-
-      const replay = Sentry.getReplay();
-
-      if (replay) {
-        const replayId = replay.getReplayId();
-
-        if (replayId) {
-          setSentryReplayId(replayId);
-          const orgSlug = "significant-gravitas";
-          setReplayUrl(`https://${orgSlug}.sentry.io/replays/${replayId}/`);
-        }
-      }
     }
   }, [pathname]);
 
-  return { sentryReplayId, replayUrl, pageUrl, userAgent };
+  return { pageUrl, userAgent };
 }
 
 export function useTallyFeedback(isAuthenticated: boolean | null) {
@@ -45,7 +30,6 @@ export function useTallyFeedback(isAuthenticated: boolean | null) {
 
   function handleFormOpen() {
     setIsFormVisible(true);
-    Sentry.getReplay()?.flush();
   }
 
   function handleFormClose() {

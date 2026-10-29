@@ -1,11 +1,13 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Text } from "@/components/atoms/Text/Text";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore, type ContextPanelExpert } from "../../store";
 import { ComputerIcon, LicenseDraftIcon } from "@hugeicons/core-free-icons";
@@ -26,7 +28,7 @@ interface Props {
 // Sized and stroked like the sidebar's nav icons so the chat's top-right
 // controls read as the same family.
 const toggleClass =
-  "shrink-0 rounded-full transition-[background-color,transform] duration-150 ease-out hover:bg-zinc-100 active:scale-[0.97] motion-reduce:transition-none";
+  "shrink-0 rounded-full transition-[background-color,transform] duration-150 ease-out hover:bg-surface-hover active:scale-[0.97] motion-reduce:transition-none";
 
 /** The chat's top-right controls: the expert's integrations, the files
  *  toggle and the Computer toggle, each opening its face of the side panel. The
@@ -75,17 +77,17 @@ export function ContextPanelToggle({
   return (
     // The same translucent pill as the thread chip on the left (ThreadHeader),
     // level with it and as tall, so the two corners read as one header.
-    <div className="mr-4 mt-3 flex shrink-0 items-center gap-1 rounded-full border border-zinc-200/70 bg-white/75 p-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md">
+    <div className="mr-4 mt-3 flex shrink-0 items-center gap-1 rounded-full border border-border-base/70 bg-surface/75 p-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md">
       {showIntegrations && expert && (
         <IntegrationsToggle expert={expert} className={toggleClass} />
       )}
       {showFilesToggle && (
-        <Tooltip>
+        <Tooltip inheritDelay>
           <TooltipTrigger asChild>
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
+              variant="compact-ghost"
+              size="compact-icon"
               onClick={() => toggleContextPanelTab("files")}
               aria-label={`${isFilesOpen ? "Hide" : "Open"} files${
                 documentCount > 0
@@ -96,8 +98,8 @@ export function ContextPanelToggle({
               className={cn(
                 toggleClass,
                 "h-8",
-                documentCount > 0 ? "w-auto gap-1 px-2" : "w-8",
-                isFilesOpen && "bg-zinc-100",
+                documentCount > 0 ? "w-auto gap-1 px-2 tabular-nums" : "w-8",
+                isFilesOpen && "bg-surface-hover",
               )}
             >
               <Icon
@@ -105,31 +107,37 @@ export function ContextPanelToggle({
                 className="!size-4 text-sidebar-foreground/90"
               />
               {documentCount > 0 && (
-                <span className="text-xs font-medium tabular-nums text-sidebar-foreground/90">
+                <Text
+                  variant="small-medium-tight"
+                  as="span"
+                  className="text-sidebar-foreground/90"
+                >
                   {documentCount}
-                </span>
+                </Text>
               )}
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {isFilesOpen ? "Hide files" : "Files"}
-          </TooltipContent>
+          <TooltipPortal>
+            <TooltipContent side="bottom">
+              {isFilesOpen ? "Hide files" : "Files"}
+            </TooltipContent>
+          </TooltipPortal>
         </Tooltip>
       )}
       {showComputerToggle && (
-        <Tooltip>
+        <Tooltip inheritDelay>
           <TooltipTrigger asChild>
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
+              variant="compact-ghost"
+              size="compact-icon"
               onClick={handleComputerToggle}
               aria-label={isComputerOpen ? "Hide computer" : "Open computer"}
               aria-pressed={isComputerOpen}
               className={cn(
                 toggleClass,
                 "size-8",
-                isComputerOpen && "bg-zinc-100",
+                isComputerOpen && "bg-surface-hover",
               )}
             >
               <Icon
@@ -138,9 +146,11 @@ export function ContextPanelToggle({
               />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {isComputerOpen ? "Hide computer" : "Computer"}
-          </TooltipContent>
+          <TooltipPortal>
+            <TooltipContent side="bottom">
+              {isComputerOpen ? "Hide computer" : "Computer"}
+            </TooltipContent>
+          </TooltipPortal>
         </Tooltip>
       )}
     </div>

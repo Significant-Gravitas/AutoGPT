@@ -13,7 +13,6 @@ import { useNodeStore } from "../../../stores/nodeStore";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { useTutorialStore } from "../../../stores/tutorialStore";
 
-let isTutorialLoading = false;
 let tutorialLoadingCallback: ((loading: boolean) => void) | null = null;
 
 export const setTutorialLoadingCallback = (
@@ -22,10 +21,7 @@ export const setTutorialLoadingCallback = (
   tutorialLoadingCallback = callback;
 };
 
-export const getTutorialLoadingState = () => isTutorialLoading;
-
 export const startTutorial = async () => {
-  isTutorialLoading = true;
   tutorialLoadingCallback?.(true);
 
   useNodeStore.getState().setNodes([]);
@@ -35,7 +31,6 @@ export const startTutorial = async () => {
   try {
     await prefetchTutorialBlocks();
   } finally {
-    isTutorialLoading = false;
     tutorialLoadingCallback?.(false);
   }
 

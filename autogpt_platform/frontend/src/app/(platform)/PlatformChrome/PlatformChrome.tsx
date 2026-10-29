@@ -5,18 +5,20 @@ import { CSSProperties, ReactNode } from "react";
 import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/TourSidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
 import { AppSidebarToggleProvider } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
-import { cn } from "@/lib/utils";
-import { Navbar } from "@/components/layout/Navbar/Navbar";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
+import { ChangelogPopup } from "@/components/molecules/ChangelogPopup/ChangelogPopup";
 import {
   getPersistedSidebarOpen,
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
+import { cn } from "@/lib/utils";
 
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
+import { ContextualTips } from "../components/ContextualTips/ContextualTips";
+import { FirstRunTour } from "../components/FirstRunTour/FirstRunTour";
+import { useFirstRunTourStore } from "../components/FirstRunTour/store";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
@@ -34,17 +36,19 @@ interface Props {
 
 export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
   const {
-    showNewLayout,
-    isNewLayoutActive,
+    showAppSidebar,
+    showChangelog,
     showTourSidebar,
     overlayInsetHeader,
     hasInsetHeaderTitle,
-    isSettingsRoute,
-    isAdminRoute,
     isBuilderRoute,
   } = usePlatformChrome();
-  // The collapsed-by-default sidebar ships with the brain-dump experience.
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  // Not mounted under the walkthrough: on a phone it lands inside the
+  // walkthrough's window, over what it points at. It mounts, with its own
+  // reveal timer, once the walkthrough ends.
+  const isFirstRunTourOpen = useFirstRunTourStore(
+    (state) => state.source !== null,
+  );
 
   const content = (
     <TopUpPromptProvider>
@@ -57,7 +61,7 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
     return (
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
         <TourSidebar variant="marketplace" />
-        <SidebarInset className="bg-[#f9f9f9]">
+        <SidebarInset className="bg-surface-muted">
           <div className="flex shrink-0 items-center px-4 pt-4 md:hidden">
             <SidebarTrigger />
           </div>
@@ -67,10 +71,11 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
     );
   }
 
-  if (showNewLayout) {
+  if (showAppSidebar) {
     // The browser's cookie stays current across client navigation; the layout's does not.
+    // Expanded until the user collapses it, so a new user can see their chats.
     const openOutsideBuilder =
-      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? !isBrainDumpEnabled;
+      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? true;
     return (
       <SidebarProvider
         persistState
@@ -80,7 +85,10 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
         <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
         <ArtifactsPanelNavCollapse />
         <AppSidebar />
-        <SidebarInset className="bg-[#f9f9f9]">
+        {showChangelog && !isFirstRunTourOpen ? <ChangelogPopup /> : null}
+        <FirstRunTour />
+        <ContextualTips />
+        <SidebarInset className="bg-surface-muted">
           <header
             className={cn(
               "flex shrink-0 items-center pb-4 pt-6",
@@ -109,23 +117,10 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
     );
   }
 
-  // Settings and admin render their own sidebar shells (with a Back link) —
-  // no top Navbar. Only the new layout drops the Navbar here; classic users
-  // keep it below so they don't lose global nav (wallet, account menu) or a
-  // way back on mobile.
-  if ((isSettingsRoute || isAdminRoute) && isNewLayoutActive) {
-    return (
-      <main className="flex h-screen w-full flex-col">
-        <AdminImpersonationBanner />
-        <GlobalSearchOverlay />
-        <section className="flex-1">{content}</section>
-      </main>
-    );
-  }
-
+  // Settings and admin render their own sidebar shells (with a Back link);
+  // the unauthenticated routes (reset-password, auth errors) get a bare frame.
   return (
     <main className="flex h-screen w-full flex-col">
-      <Navbar />
       <AdminImpersonationBanner />
       <GlobalSearchOverlay />
       <section className="flex-1">{content}</section>

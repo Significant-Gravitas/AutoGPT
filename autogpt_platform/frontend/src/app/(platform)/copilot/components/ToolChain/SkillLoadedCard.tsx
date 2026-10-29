@@ -6,6 +6,7 @@ import { BookBookmarkIcon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { CARD, HALF } from "./ResultCards";
 import { str } from "./resultHelpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   output: Record<string, unknown>;
@@ -26,20 +27,28 @@ export function SkillLoadedCard({ output }: Props) {
       className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}
       data-testid="skill-loaded-card"
     >
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-        <Icon icon={BookBookmarkIcon} size={15} className="text-zinc-600" />
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
+        <Icon
+          icon={BookBookmarkIcon}
+          size={15}
+          className="text-foreground-secondary"
+        />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-zinc-800">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="truncate"
+        >
           Skill loaded: {name} v{version} · {origin}
-        </p>
-        <p className="truncate text-xs text-zinc-500">
+        </Text>
+        <Text variant="small-tight" tone="muted" className="truncate">
           Loaded for this task; loading is not a success record.
-        </p>
+        </Text>
       </div>
       <Link
         href={href}
-        className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-600 hover:bg-zinc-200"
+        className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-secondary hover:bg-surface-active"
       >
         View change
       </Link>

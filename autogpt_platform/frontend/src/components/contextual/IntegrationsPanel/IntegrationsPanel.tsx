@@ -12,8 +12,8 @@ import { IntegrationsList } from "./components/IntegrationsList/IntegrationsList
 import { AvailableIntegrations } from "./components/AvailableIntegrations/AvailableIntegrations";
 
 const SURFACE_BACKGROUND = {
-  page: "bg-[#F9F9FA]",
-  dialog: "bg-white",
+  page: "bg-surface-muted",
+  dialog: "bg-surface",
 } as const;
 
 interface Props {
@@ -53,7 +53,8 @@ export function IntegrationsPanel({
           variant="small-medium"
           as="h2"
           id="tool-connections-heading"
-          className="pb-3 pl-4 uppercase tracking-[0.06em] text-[#505057]"
+          tone="body"
+          className="pb-3 pl-4 uppercase tracking-eyebrow"
         >
           Tools your experts and workflows use
         </Text>

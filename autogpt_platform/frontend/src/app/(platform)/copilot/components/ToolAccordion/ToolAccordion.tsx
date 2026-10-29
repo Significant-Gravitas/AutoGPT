@@ -6,6 +6,7 @@ import { useId } from "react";
 import { useToolAccordion } from "./useToolAccordion";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   icon: React.ReactNode;
@@ -41,7 +42,7 @@ export function ToolAccordion({
   return (
     <div
       className={cn(
-        "mt-2 w-full rounded-xl border border-zinc-200/70 bg-white px-3 py-2 shadow-sm",
+        "mt-2 w-full rounded-xl border border-border-base/70 bg-surface px-3 py-2 shadow-sm",
         "duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both",
         className,
       )}
@@ -54,27 +55,29 @@ export function ToolAccordion({
         className="flex w-full items-center justify-between gap-3 py-1 text-left"
       >
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex shrink-0 items-center text-gray-800">
+          <span className="flex shrink-0 items-center text-foreground-emphasis">
             {icon}
           </span>
           <div className="min-w-0">
             <p
               className={cn(
-                "truncate text-sm font-medium text-gray-800",
+                "truncate text-sm font-medium text-foreground-emphasis",
                 titleClassName,
               )}
             >
               {title}
             </p>
             {description && (
-              <p className="truncate text-xs text-slate-800">{description}</p>
+              <Text variant="small-tight" tone="body" className="truncate">
+                {description}
+              </Text>
             )}
           </div>
         </div>
         <Icon
           icon={ArrowDown01Icon}
           className={cn(
-            "h-4 w-4 shrink-0 text-slate-500 transition-transform",
+            "h-4 w-4 shrink-0 text-foreground-tertiary transition-transform",
             isExpanded && "rotate-180",
           )}
         />

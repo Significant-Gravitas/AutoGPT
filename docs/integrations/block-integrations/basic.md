@@ -31,7 +31,7 @@ The block accepts either plain text or structured message objects (like those fr
 | error | Error message if the operation failed | str |
 | action | Action of the operation | str |
 | memory | Memory created | str |
-| results | List of all results from the operation | List[Dict[str, str]] |
+| results | List of all results from the operation | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

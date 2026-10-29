@@ -25,15 +25,15 @@ interface Props {
 }
 
 const sizeStyles = {
-  xsmall: "h-7 rounded-md pl-8 pr-7 text-xs leading-5",
-  small: "h-[36px] pl-10 pr-9 text-sm leading-[22px]",
-  medium: "h-[46px] pl-12 pr-10 text-sm leading-[22px]",
+  xsmall: "h-7 rounded-md pl-8 pr-7 text-caption leading-5",
+  small: "h-[36px] pl-10 pr-9 text-body leading-5.5",
+  medium: "h-[46px] pl-12 pr-10 text-body leading-5.5",
 } as const;
 
-const iconOffset = {
-  xsmall: { left: "left-2.5", right: "right-1" },
-  small: { left: "left-3", right: "right-2" },
-  medium: { left: "left-4", right: "right-3" },
+const iconRightOffset = {
+  xsmall: "right-1",
+  small: "right-2",
+  medium: "right-3",
 } as const;
 
 export const SearchInput = forwardRef<HTMLInputElement, Props>(
@@ -56,18 +56,25 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
   ) {
     const hasValue = value.length > 0;
     return (
-      <div className={cn("relative w-full", className)}>
+      <div
+        data-slot="search-input"
+        className={cn("relative w-full", className)}
+      >
         <Icon
           icon={Search01Icon}
+          data-slot="search-input-icon"
           size={size === "medium" ? 20 : size === "small" ? 16 : 14}
           className={cn(
             "pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground",
-            iconOffset[size].left,
+            size === "xsmall" && "left-2.5",
+            size === "small" && "left-3",
+            size === "medium" && "left-4",
           )}
         />
         <input
           ref={ref}
           type="search"
+          data-slot="search-input-control"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
@@ -87,13 +94,15 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           <span
             role="status"
             aria-label="Searching"
+            data-slot="search-input-spinner"
             className={cn(
               "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center text-muted-foreground",
-              iconOffset[size].right,
+              iconRightOffset[size],
             )}
           >
             <Icon
               icon={Loading03Icon}
+              data-slot="search-input-spinner-icon"
               size={size === "medium" ? 16 : 14}
               className="animate-spin"
             />
@@ -103,12 +112,17 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
             type="button"
             onClick={() => onChange("")}
             aria-label="Clear search"
+            data-slot="search-input-clear"
             className={cn(
               "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              iconOffset[size].right,
+              iconRightOffset[size],
             )}
           >
-            <Icon icon={Cancel01Icon} size={size === "medium" ? 14 : 12} />
+            <Icon
+              data-slot="search-input-clear-icon"
+              icon={Cancel01Icon}
+              size={size === "medium" ? 14 : 12}
+            />
           </button>
         ) : null}
       </div>

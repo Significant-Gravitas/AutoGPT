@@ -20,7 +20,7 @@ export default function ExternalWorkflowTab({
 }: ExternalWorkflowTabProps) {
   return (
     <TabsLineContent value="platform">
-      <p className="mb-4 text-sm text-neutral-500">
+      <p className="mb-4 text-sm text-foreground-tertiary">
         Upload a workflow exported from n8n, Make.com, Zapier, or any other
         platform. Otto will convert it into an AutoGPT workflow for you.
       </p>
@@ -43,7 +43,7 @@ export default function ExternalWorkflowTab({
       >
         {importWorkflow.submittingMode === "file" ? (
           <div className="flex items-center gap-2">
-            <LoadingSpinner size="small" className="text-white" />
+            <LoadingSpinner size="small" />
             <span>Importing...</span>
           </div>
         ) : (
@@ -52,9 +52,11 @@ export default function ExternalWorkflowTab({
       </Button>
 
       <div className="my-5 flex items-center gap-3">
-        <div className="h-px flex-1 bg-neutral-200" />
-        <span className="text-xs text-neutral-400">or import from URL</span>
-        <div className="h-px flex-1 bg-neutral-200" />
+        <div className="h-px flex-1 bg-surface-active" />
+        <span className="text-xs text-foreground-subtle">
+          or import from URL
+        </span>
+        <div className="h-px flex-1 bg-surface-active" />
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
@@ -64,7 +66,7 @@ export default function ExternalWorkflowTab({
             type="button"
             disabled={importWorkflow.isSubmitting}
             onClick={() => importWorkflow.setUrlValue(p.url)}
-            className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-600 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50"
+            className="rounded-full border border-border-base px-3 py-1 text-xs text-foreground-secondary hover:border-brand hover:text-brand-hover disabled:opacity-50"
           >
             {p.label}
           </button>
@@ -76,7 +78,7 @@ export default function ExternalWorkflowTab({
         onChange={(e) => importWorkflow.setUrlValue(e.target.value)}
         label="Workflow URL"
         placeholder="https://n8n.io/workflows/1234"
-        className="mb-4 w-full rounded-[10px]"
+        className="mb-4 w-full"
       />
       <Button
         type="button"
@@ -87,7 +89,7 @@ export default function ExternalWorkflowTab({
       >
         {importWorkflow.submittingMode === "url" ? (
           <div className="flex items-center gap-2">
-            <LoadingSpinner size="small" className="text-white" />
+            <LoadingSpinner size="small" />
             <span>Importing...</span>
           </div>
         ) : (

@@ -4,7 +4,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
 import { BubbleChatIcon } from "@hugeicons/core-free-icons";
 import { useNavItemClassName } from "../../useNavItemClassName";
 
