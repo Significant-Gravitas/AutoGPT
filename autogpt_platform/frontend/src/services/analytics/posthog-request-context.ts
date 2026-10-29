@@ -29,12 +29,34 @@ export function markImpersonatedEvent(event: CaptureResult | null) {
 // consent, and not while an admin acts as a user: the session is the admin's,
 // and the backend's events are the user's.
 export function getPostHogSessionHeader(): Record<string, string> {
-  if (typeof window === "undefined" || !posthog.__loaded) return {};
-  if (!hasConsentFor("analytics") || ImpersonationState.get()) return {};
+  if (!isOwnSessionShareable()) return {};
   try {
     const sessionID = posthog.get_session_id();
     return sessionID ? { [POSTHOG_SESSION_HEADER_NAME]: sessionID } : {};
   } catch {
     return {};
   }
+}
+
+// A link to the replay of this session, from a few seconds before now, for a
+// bug report to show what the person did. Empty unless the session is being
+// recorded, under the same rules as the session header.
+export function getPostHogReplayUrl(): string {
+  if (!isOwnSessionShareable()) return "";
+  try {
+    if (!posthog.sessionRecordingStarted()) return "";
+    return posthog.get_session_replay_url({
+      withTimestamp: true,
+      timestampLookBack: REPLAY_LOOK_BACK_SECONDS,
+    });
+  } catch {
+    return "";
+  }
+}
+
+const REPLAY_LOOK_BACK_SECONDS = 30;
+
+function isOwnSessionShareable() {
+  if (typeof window === "undefined" || !posthog.__loaded) return false;
+  return hasConsentFor("analytics") && !ImpersonationState.get();
 }

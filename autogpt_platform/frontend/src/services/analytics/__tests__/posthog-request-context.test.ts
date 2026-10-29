@@ -11,12 +11,17 @@ const { posthog } = vi.hoisted(() => ({
   posthog: {
     __loaded: true,
     get_session_id: vi.fn(() => "0192f0c4-5f4e-7b4c-9d6e-1a2b3c4d5e6f"),
+    sessionRecordingStarted: vi.fn(() => true),
+    get_session_replay_url: vi.fn(
+      () => "https://eu.posthog.com/project/1/replay/session-1?t=10",
+    ),
   },
 }));
 
 vi.mock("posthog-js", () => ({ default: posthog }));
 
 import {
+  getPostHogReplayUrl,
   getPostHogSessionHeader,
   markImpersonatedEvent,
 } from "../posthog-request-context";
@@ -34,6 +39,7 @@ function event(): CaptureResult {
 beforeEach(() => {
   configureCookiebot();
   posthog.__loaded = true;
+  posthog.sessionRecordingStarted.mockReturnValue(true);
   ImpersonationState.clear();
 });
 
@@ -87,5 +93,39 @@ describe("getPostHogSessionHeader", () => {
     posthog.__loaded = false;
 
     expect(getPostHogSessionHeader()).toEqual({});
+  });
+});
+
+describe("getPostHogReplayUrl", () => {
+  const REPLAY = "https://eu.posthog.com/project/1/replay/session-1?t=10";
+
+  it("links the recorded session from just before now, with analytics consent", () => {
+    installCookiebot({ statistics: true });
+
+    expect(getPostHogReplayUrl()).toBe(REPLAY);
+    expect(posthog.get_session_replay_url).toHaveBeenCalledWith({
+      withTimestamp: true,
+      timestampLookBack: 30,
+    });
+  });
+
+  it("gives nothing without analytics consent", () => {
+    installCookiebot({ statistics: false });
+
+    expect(getPostHogReplayUrl()).toBe("");
+  });
+
+  it("gives nothing while an admin acts as a user", () => {
+    installCookiebot({ statistics: true });
+    ImpersonationState.set("user-1");
+
+    expect(getPostHogReplayUrl()).toBe("");
+  });
+
+  it("gives nothing when the session isn't being recorded", () => {
+    installCookiebot({ statistics: true });
+    posthog.sessionRecordingStarted.mockReturnValue(false);
+
+    expect(getPostHogReplayUrl()).toBe("");
   });
 });
