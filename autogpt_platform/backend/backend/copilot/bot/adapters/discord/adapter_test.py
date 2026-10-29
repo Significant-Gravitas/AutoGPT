@@ -677,6 +677,14 @@ class TestRenameThread:
 # ── properties ─────────────────────────────────────────────────────────
 
 
+def _history_channel(*, can_read: bool) -> MagicMock:
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.permissions_for = MagicMock(
+        return_value=MagicMock(view_channel=True, read_message_history=can_read)
+    )
+    return channel
+
+
 class TestThreadHistory:
     @pytest.mark.asyncio
     async def test_thread_started_from_a_post_includes_that_post_first(self):
@@ -751,17 +759,19 @@ class TestThreadHistory:
         bot_msg.author = MagicMock(bot=True, id=1000, display_name="AutoGPT")
         latest = _message("yeah, one link is enough", [])
         latest.author = MagicMock(bot=False, id=3000, display_name="Nick")
-        channel = MagicMock(spec=discord.TextChannel)
+        channel = _history_channel(can_read=True)
         channel.history.return_value = _AsyncHistory([latest, bot_msg, earlier])
         message = _message("<@1000> update the automation for that", [bot])
         message.channel = channel
+        requester = MagicMock(spec=discord.Member)
 
         with patch(
             "backend.copilot.bot.adapters.discord.adapter.budget_history",
             wraps=budget_history,
         ) as budget:
-            history = await adapter._channel_history(message)
+            history = await adapter._channel_history(message, requester)
 
+        channel.permissions_for.assert_called_once_with(requester)
         channel.history.assert_called_once_with(
             limit=CHANNEL_HISTORY_LIMIT, before=message, oldest_first=False
         )
@@ -771,12 +781,36 @@ class TestThreadHistory:
 
     async def test_channel_history_error_returns_nothing(self):
         adapter, _ = _bare_adapter(bot_id=1000)
-        channel = MagicMock(spec=discord.TextChannel)
+        channel = _history_channel(can_read=True)
         channel.history.side_effect = discord.Forbidden(MagicMock(status=403), "no")
         message = _message("<@1000> hi", [_mention(1000, "AutoGPT")])
         message.channel = channel
 
-        assert await adapter._channel_history(message) == ()
+        requester = MagicMock(spec=discord.Member)
+        assert await adapter._channel_history(message, requester) == ()
+
+    async def test_channel_history_is_withheld_from_a_member_who_cannot_read_it(
+        self,
+    ):
+        # The member may post here but not read earlier messages; the bot can,
+        # so reading as the bot would put that history in front of them.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        channel = _history_channel(can_read=False)
+        message = _message("<@1000> sum up the above", [_mention(1000, "AutoGPT")])
+        message.channel = channel
+
+        requester = MagicMock(spec=discord.Member)
+        assert await adapter._channel_history(message, requester) == ()
+        channel.history.assert_not_called()
+
+    async def test_channel_history_without_a_requester_reads_nothing(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        channel = _history_channel(can_read=True)
+        message = _message("<@1000> hi", [_mention(1000, "AutoGPT")])
+        message.channel = channel
+
+        assert await adapter._channel_history(message, None) == ()
+        channel.history.assert_not_called()
 
     async def test_fetches_user_thread_history_chronological(self):
         # Discord returns history newest-first; the adapter reverses it back to
@@ -1413,6 +1447,7 @@ class TestLockedThread:
         adapter.on_message(callback)
         handlers = _register_events_with_mocked_decorator(adapter)
         msg = self._channel_message(replied_author_id=1000)
+        msg.author = MagicMock(spec=discord.Member, id=2000, bot=False)
         history = (MagicMock(),)
 
         with patch.object(
@@ -1420,7 +1455,7 @@ class TestLockedThread:
         ) as fetch:
             await handlers["on_message"](msg)
 
-        fetch.assert_awaited_once_with(msg)
+        fetch.assert_awaited_once_with(msg, msg.author)
         assert callback.await_args.args[0].thread_history == history
 
     @pytest.mark.asyncio
