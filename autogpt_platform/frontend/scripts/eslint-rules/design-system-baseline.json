@@ -2778,7 +2778,6 @@
     "no-raw-colors": 24
   },
   "src/components/atoms/Button/helpers.ts": {
-    "no-arbitrary-values": 5,
     "no-dark-variant": 13,
     "no-raw-colors": 22,
     "no-unknown-classes": 7
@@ -2870,8 +2869,7 @@
     "no-unknown-classes": 1
   },
   "src/components/atoms/Text/helpers.ts": {
-    "no-arbitrary-values": 6,
-    "no-raw-colors": 3
+    "no-raw-colors": 1
   },
   "src/components/atoms/Tooltip/Tooltip.stories.tsx": {
     "no-dark-variant": 1
