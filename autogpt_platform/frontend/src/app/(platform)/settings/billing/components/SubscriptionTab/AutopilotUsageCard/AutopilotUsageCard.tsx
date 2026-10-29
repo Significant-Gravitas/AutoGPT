@@ -114,7 +114,7 @@ function UsageBar({
               variant="h2"
               as="span"
               // oxlint-disable-next-line design-system/no-restyle -- the usage figure is a sans display number; no Text variant has it
-              className="leading-12 font-sans text-display font-semibold tracking-display"
+              className="font-sans text-display font-semibold leading-12 tracking-display"
             >
               {label}
             </Text>
