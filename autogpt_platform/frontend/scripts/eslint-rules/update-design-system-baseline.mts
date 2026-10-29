@@ -18,8 +18,14 @@ const FRONTEND_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const RULE_CODE = /^design-system\((.+)\)$/;
 
 interface Diagnostic {
-  code?: string;
+  code?: string | null;
   filename: string;
+  message?: string;
+}
+
+/** Diagnostics without a rule code: oxlint could not parse the file. */
+export function parseFailures(diagnostics: Diagnostic[]) {
+  return diagnostics.filter((diagnostic) => !diagnostic.code);
 }
 
 export function countDiagnostics(diagnostics: Diagnostic[]) {
@@ -58,6 +64,16 @@ function main() {
   const { diagnostics } = JSON.parse(result.stdout) as {
     diagnostics: Diagnostic[];
   };
+  // A file oxlint cannot parse gets no design-system diagnostics, so writing
+  // now would drop its allowances from the baseline.
+  const unparsed = parseFailures(diagnostics);
+  if (unparsed.length > 0) {
+    for (const { filename, message } of unparsed)
+      console.error(`${filename}: ${message}`);
+    throw new Error(
+      "oxlint could not parse the files above; fix them and run again. The baseline was not changed.",
+    );
+  }
   const baseline = countDiagnostics(diagnostics);
   // Written beside the target and renamed, so lint never reads half a file.
   const partial = `${DESIGN_SYSTEM_BASELINE_FILE}.${process.pid}.tmp`;

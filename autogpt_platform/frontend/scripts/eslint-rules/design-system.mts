@@ -90,16 +90,24 @@ type Rewrite = (message: string, report: Report) => string;
 // against the baseline: the baseline is written from oxlint's output, which
 // already leaves suppressed reports out.
 interface Suppressions {
-  lines: Map<number, string[] | null>;
-  ranges: { from: number; to: number; rules: string[] | null }[];
+  // Per line, the rule lists of the -line and -next-line directives on it
+  // (null: every rule).
+  lines: Map<number, (string[] | null)[]>;
+  // disable/enable block directives in source order.
+  blocks: {
+    kind: "disable" | "enable";
+    line: number;
+    rules: string[] | null;
+  }[];
 }
 
 const DIRECTIVE_PARTS =
   /^\s*(?:eslint|oxlint)-(disable-next-line|disable-line|disable|enable)(?:\s+(.*))?$/s;
 
 function parseSuppressions(sourceCode: Rule.RuleContext["sourceCode"]) {
-  const found: Suppressions = { lines: new Map(), ranges: [] };
-  const open: { from: number; rules: string[] | null }[] = [];
+  const found: Suppressions = { lines: new Map(), blocks: [] };
+  const addLine = (line: number, rules: string[] | null) =>
+    found.lines.set(line, [...(found.lines.get(line) ?? []), rules]);
   for (const comment of sourceCode.getAllComments()) {
     const directive = comment.value.split(/\s--\s/)[0];
     const match = DIRECTIVE_PARTS.exec(directive);
@@ -111,21 +119,14 @@ function parseSuppressions(sourceCode: Rule.RuleContext["sourceCode"]) {
       .filter(Boolean);
     const rules = names.length > 0 ? names : null;
     const { start, end } = comment.loc;
-    if (kind === "disable-next-line") found.lines.set(end.line + 1, rules);
+    if (kind === "disable-next-line") addLine(end.line + 1, rules);
     else if (kind === "disable-line")
       for (let line = start.line; line <= end.line; line++)
-        found.lines.set(line, rules);
-    else if (kind === "disable") open.push({ from: end.line, rules });
-    else
-      for (let i = open.length - 1; i >= 0; i--) {
-        const range = open[i];
-        if (rules && range.rules && !range.rules.some((r) => rules.includes(r)))
-          continue;
-        found.ranges.push({ ...range, to: start.line });
-        open.splice(i, 1);
-      }
+        addLine(line, rules);
+    else if (kind === "disable")
+      found.blocks.push({ kind, line: end.line, rules });
+    else found.blocks.push({ kind: "enable", line: start.line, rules });
   }
-  for (const range of open) found.ranges.push({ ...range, to: Infinity });
   return found;
 }
 
@@ -149,11 +150,21 @@ function isSuppressed(context: Rule.RuleContext, rule: string, report: Report) {
   const id = `${PLUGIN_NAME}/${rule}`;
   const covers = (rules: string[] | null) => !rules || rules.includes(id);
   const line = reportLine(report);
-  if (suppressions.lines.has(line) && covers(suppressions.lines.get(line)!))
-    return true;
-  return suppressions.ranges.some(
-    (range) => line > range.from && line < range.to && covers(range.rules),
-  );
+  if (suppressions.lines.get(line)?.some(covers)) return true;
+  // Walk the block directives for this rule alone, so that enabling one rule
+  // leaves the others a directive disabled still off.
+  let disabledFrom: number | null = null;
+  for (const block of suppressions.blocks) {
+    if (!covers(block.rules)) continue;
+    if (block.kind === "disable") {
+      disabledFrom ??= block.line;
+      continue;
+    }
+    if (disabledFrom !== null && line > disabledFrom && line < block.line)
+      return true;
+    disabledFrom = null;
+  }
+  return disabledFrom !== null && line > disabledFrom;
 }
 
 /**

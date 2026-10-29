@@ -12,7 +12,10 @@ import path from "node:path";
 import { RuleTester } from "oxlint/plugins-dev";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import plugin, { colorAdvice } from "./design-system.mjs";
-import { countDiagnostics } from "./update-design-system-baseline.mjs";
+import {
+  countDiagnostics,
+  parseFailures,
+} from "./update-design-system-baseline.mjs";
 
 // The rules read their baseline when first used, so point them at a fixture
 // before the plugin is imported: the real baseline shrinks to nothing as the
@@ -259,6 +262,19 @@ tester.run("no-dark-variant (baseline)", rule("no-dark-variant"), {
   ],
 });
 
+describe("parseFailures", () => {
+  it("finds the files oxlint could not parse, which have no rule code", () => {
+    expect(
+      parseFailures([
+        { code: null, filename: "src/Bad.tsx", message: "Unexpected token" },
+        { code: "design-system(no-raw-colors)", filename: "src/Ok.tsx" },
+      ]),
+    ).toEqual([
+      { code: null, filename: "src/Bad.tsx", message: "Unexpected token" },
+    ]);
+  });
+});
+
 describe("countDiagnostics", () => {
   it("counts design-system errors per file and rule, sorted", () => {
     expect(
@@ -401,6 +417,29 @@ describe("the ratchet, end to end", () => {
     expect(overBaseline.output).toMatch(/"text-red-500".*now has 2/);
     expect(overBaseline.output).not.toMatch(/text-rose-700|text-sky-500/);
     expect(overBaseline.status).toBe(1);
+  });
+
+  it("keeps a rule disabled when an enable names only another rule", () => {
+    write(
+      "src/Block.tsx",
+      [
+        `export const Z = () => <div className="text-sky-500" />;`,
+        `/* oxlint-disable design-system/no-dark-variant, design-system/no-raw-colors -- vendored markup */`,
+        `export const A = () => <div className="dark:block" />;`,
+        `/* oxlint-enable design-system/no-dark-variant */`,
+        `export const B = () => <div className="text-zinc-500 dark:hidden" />;`,
+        "",
+      ].join("\n"),
+    );
+    const { status, output } = lint({
+      [key("src/Old.tsx")]: { "no-raw-colors": 1, "no-dark-variant": 1 },
+      // The grandfathered raw colour is text-sky-500, outside the block;
+      // text-zinc-500 is still disabled and must not push the count over.
+      [key("src/Block.tsx")]: { "no-raw-colors": 1, "no-dark-variant": 1 },
+    });
+    rmSync(path.join(root, "src/Block.tsx"));
+    expect(output).not.toMatch(/design-system/);
+    expect(status).toBe(0);
   });
 
   it("passes with a warning when a file has fewer than its baseline", () => {
