@@ -100,7 +100,7 @@ export function EditAgentForm({
                 <Icon icon={InformationCircleIcon} size={18} />
               </div>
               <div className="flex min-w-0 flex-col gap-1">
-                <Text variant="body-medium" as="h3" tone="warning">
+                <Text variant="body-medium" as="h3" tone="warning-strong">
                   Update note
                 </Text>
                 <Text variant="small" tone="warning">
