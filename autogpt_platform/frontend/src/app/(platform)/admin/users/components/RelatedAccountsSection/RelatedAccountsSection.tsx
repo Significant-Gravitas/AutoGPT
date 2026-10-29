@@ -11,6 +11,7 @@ import { BanAllDialog } from "../AccessDialogs/BanAllDialog/BanAllDialog";
 import { ReportError, ReportLoading } from "../ReportStates";
 import { DomainLine } from "./components/DomainLine";
 import { RelatedAccountRow } from "./components/RelatedAccountRow";
+import { getNoRelatedMessage } from "./helpers";
 
 const SHOWN_AT_FIRST = 10;
 
@@ -42,9 +43,7 @@ export function RelatedAccountsSection({ user }: Props) {
           <DomainLine report={report} signedInUserId={signedInUser?.id} />
           {report.related.length === 0 ? (
             <Text variant="small" tone="muted">
-              {report.ips.length === 0
-                ? "No addresses on record, so related accounts are matched by email domain only: none."
-                : "No other accounts share this account's addresses or email domain."}
+              {getNoRelatedMessage(report)}
             </Text>
           ) : (
             <>
