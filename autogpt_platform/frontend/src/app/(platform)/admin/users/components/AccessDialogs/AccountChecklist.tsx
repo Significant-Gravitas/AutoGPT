@@ -94,7 +94,7 @@ function ResultMark({ result }: { result: BanAccountResult }) {
     return (
       <span className="flex items-center gap-1 text-success-foreground">
         <Icon icon={Tick01Icon} size={14} />
-        <Text variant="small" as="span" tone="success-strong">
+        <Text variant="small" as="span" tone="inherit">
           banned
         </Text>
       </span>
@@ -103,7 +103,7 @@ function ResultMark({ result }: { result: BanAccountResult }) {
   return (
     <span className="flex items-center gap-1 text-error-foreground">
       <Icon icon={Alert02Icon} size={14} />
-      <Text variant="small" as="span" tone="danger">
+      <Text variant="small" as="span" tone="inherit">
         {result.error ?? "failed"}
       </Text>
     </span>
