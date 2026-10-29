@@ -60,6 +60,11 @@ describe("AccessStep", () => {
         name: "Also connect Microsoft 365?",
       }),
     ).toBeDefined();
+    // Signing up with Microsoft and connecting it are separate, and the step
+    // says why it asks again.
+    expect(
+      screen.getByText(/Signing in with Microsoft only proves who you are\./),
+    ).toBeDefined();
     expect(
       await screen.findByRole("button", { name: "Sign in with Microsoft" }),
     ).toBeDefined();

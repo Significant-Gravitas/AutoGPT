@@ -23,7 +23,7 @@ export const ACCESS_PROVIDERS: Record<string, AccessProvider> = {
   microsoft: {
     title: "Also connect Microsoft 365?",
     description:
-      "Otto can then help with your mail, calendar and files. You can change this anytime in Settings.",
+      "Signing in with Microsoft only proves who you are. Connecting is what lets Otto work with your Microsoft 365. You can change this anytime in Settings.",
     Connect: MicrosoftAccess,
   },
 };
