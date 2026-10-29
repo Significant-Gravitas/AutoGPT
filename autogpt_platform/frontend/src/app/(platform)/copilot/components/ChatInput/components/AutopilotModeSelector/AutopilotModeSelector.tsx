@@ -57,7 +57,7 @@ export function AutopilotModeSelector({
               mode === "ask_first" &&
                 "bg-surface-hover text-foreground-body hover:bg-surface-active",
               mode === "unsupervised" &&
-                "bg-warning-surface text-warning-foreground hover:bg-warning-surface",
+                "bg-warning-surface text-warning-foreground hover:bg-warning-border/40",
               disabled && "opacity-40",
             )}
           >
