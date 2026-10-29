@@ -301,8 +301,8 @@ importers:
         specifier: 1.1.6
         version: 1.1.6(react@19.3.1)
       uuid:
-        specifier: 11.1.1
-        version: 11.1.1
+        specifier: 14.0.3
+        version: 14.0.3
       vaul:
         specifier: 1.1.2
         version: 1.1.2(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -9897,8 +9897,8 @@ packages:
   utila@0.4.0:
     resolution: {integrity: sha512-Z0DbgELS9/L/75wZbro8xAnT50pBVFQZ+hUEueGDU5FN51YSCYM+jdxsfCiHjwNP/4LCDD0i/graKpeBnOXKRA==}
 
-  uuid@11.1.1:
-    resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
+  uuid@14.0.3:
+    resolution: {integrity: sha512-Sc5u1VVln93y1Xnz4R+CunOZc7R9LUcTmhj7Rc7Eg3HVcf7rVn2FOoa812fe0W8p3jD7xeoGSYbfqCGGH2B6xw==}
     hasBin: true
 
   uuid@9.0.1:
@@ -17997,7 +17997,7 @@ snapshots:
       roughjs: 4.6.6
       stylis: 4.4.0
       ts-dedent: 2.3.0
-      uuid: 11.1.1
+      uuid: 14.0.3
 
   micromark-core-commonmark@2.0.3:
     dependencies:
@@ -20574,7 +20574,7 @@ snapshots:
 
   utila@0.4.0: {}
 
-  uuid@11.1.1: {}
+  uuid@14.0.3: {}
 
   uuid@9.0.1: {}
 
