@@ -32,12 +32,14 @@ Write None if no agents were used, or unknown for unavailable model details. -->
   - [ ] Edit an agent from monitor, and confirm it executes correctly
 </details>
 
-#### For frontend UI changes (design system):
+#### For frontend changes (design system, see `docs/engineering/design-system.md`):
 
-- [ ] I used design-system components from `src/components` (atoms, molecules, organisms), not `src/components/__legacy__` or `LegacyButton` / `legacy-*` Button variants
-- [ ] I used colour role tokens (`bg-surface`, `text-foreground-secondary`, `border-border-base`...), not raw palette classes (`bg-zinc-200`), arbitrary colours (`bg-[#fff]`) or `dark:` classes
-- [ ] `pnpm ds:guard` passes; if I lowered counts, I ran `pnpm ds:guard:update` and committed `scripts/ds-guard/baseline.json`
-- [ ] Any baseline increase is explained in the description (e.g. a moved or split file)
+- [ ] `pnpm lint` passes, including the `design-system/*` rules; I did not raise any count in `scripts/eslint-rules/design-system-baseline.json` except for a moved or split file (explained under **Changes**)
+- [ ] No `dark:`/`light:` classes, raw palette classes (`bg-zinc-200`) or hex/`rgb()` colours (`bg-[#fff]`); colours use role tokens (`bg-surface`, `text-foreground-secondary`)
+- [ ] No imports from `src/components/__legacy__`, `legacy/` paths or `@/components/ui`, and no `LegacyButton` / `legacy-*` Button variants
+- [ ] Copy uses the `Text` atom with a `variant`/`tone`; primitives get a `variant`/`size`, and `className` only for layout
+- [ ] Before/after screenshots at 1440 and 390 px are attached for changes to `src/components/**`, `globals.css` or `tailwind*.ts`, or I wrote "no pixel change" and how I checked
+- [ ] User-facing copy says workflow and Otto, never agent or graph (root `AGENTS.md`, "User-facing copy")
 
 #### For configuration changes:
 

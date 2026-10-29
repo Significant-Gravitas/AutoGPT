@@ -52,6 +52,8 @@ gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews
 
 **Code quality:** apply rules from backend/frontend CLAUDE.md files and root `AGENTS.md`, including its "User-facing copy" section (text a person reads says workflow, never agent or graph).
 
+**Design system (frontend):** hold changed code under `autogpt_platform/frontend/src/**/*.{tsx,ts,css}` to the rules in `docs/engineering/design-system.md`. `pnpm lint` already fails raw palette classes, hex colours, `dark:` classes, legacy imports, restyled primitives and reason-less suppressions; review what lint cannot see: a raised count in `scripts/eslint-rules/design-system-baseline.json` that is not a moved file, a colour swapped to a role with a different value (pixels change), global CSS for DOM we render as JSX, a repeated class string that should be a variant, and missing before/after screenshots for changes to `src/components/**`, `globals.css` or `tailwind*.ts`.
+
 **Architecture:** DRY, single responsibility, modular functions. `Security()` vs `Depends()` for FastAPI auth. `data:` for SSE events, `: comment` for heartbeats. `transaction=True` for Redis pipelines.
 
 **Testing:** edge cases covered, colocated `*_test.py` (backend) / `__tests__/` (frontend), mocks target where symbol is **used** not defined, `AsyncMock` for async.

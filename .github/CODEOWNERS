@@ -5,17 +5,23 @@ classic/benchmark/ @Significant-Gravitas/benchmark-maintainers
 classic/frontend/ @Significant-Gravitas/frontend-maintainers
 autogpt_platform/infra @Significant-Gravitas/devops
 
-# Frontend design system (SECRT-3097). Maintainers stay listed so existing
-# approvers can still approve; any one listed owner is enough.
-# TODO(design-system): confirm the owning team (a dedicated design-system team,
-# or @Significant-Gravitas/design once it has members) and replace these.
-autogpt_platform/frontend/src/components/atoms/ @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
-autogpt_platform/frontend/src/components/molecules/ @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
-autogpt_platform/frontend/src/components/styles/ @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
-autogpt_platform/frontend/src/components/tokens/ @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
-autogpt_platform/frontend/src/app/globals.css @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
-autogpt_platform/frontend/tailwind.config.ts @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
-autogpt_platform/frontend/tailwind.v3-preset.ts @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
-autogpt_platform/frontend/scripts/ds-guard/ @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
+# Frontend design system (SECRT-3097): tokens, primitives, Tailwind and the
+# design-system lint rules and their baseline. See docs/engineering/design-system.md.
+autogpt_platform/frontend/src/components/atoms/ @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/src/components/molecules/ @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/src/components/organisms/ @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/src/components/tokens/ @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/src/components/styles/ @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/src/app/globals.css @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/src/app/tailwind-*.css @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/tailwind*.ts @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/components.json @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/.oxlintrc*.json @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/.eslintrc.json @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/scripts/eslint-rules/ @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/scripts/codemod-tokens.ts @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/scripts/check-token-equivalence.ts @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+autogpt_platform/frontend/scripts/screenshot-pages.ts @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
+docs/engineering/design-system.md @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
 
 .github/CODEOWNERS @Significant-Gravitas/admins
