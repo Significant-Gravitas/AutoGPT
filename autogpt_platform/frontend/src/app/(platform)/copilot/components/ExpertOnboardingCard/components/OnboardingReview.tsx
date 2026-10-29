@@ -30,7 +30,7 @@ export function OnboardingReview({ steps, answers, labelId, onEdit }: Props) {
             <button
               type="button"
               onClick={() => onEdit(index)}
-              className="group flex w-full items-start gap-3 rounded-md bg-surface-muted px-3 py-2.5 text-left outline-none ring-1 ring-separator transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:ring-offset-1 [@media(hover:none)]:min-h-11"
+              className="group flex w-full items-start gap-3 rounded-md bg-surface-muted px-3 py-2.5 text-left outline-none ring-1 ring-separator transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:ring-offset-1 [@media(hover:none)]:min-h-11"
             >
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="sr-only">Change your answer to </span>

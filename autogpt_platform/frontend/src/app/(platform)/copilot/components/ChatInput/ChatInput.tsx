@@ -474,7 +474,7 @@ export const ChatInput = memo(function ChatInput({
             // oxlint-disable-next-line design-system/no-arbitrary-values -- the card composer's shallow two-layer drop; no shadow token has it
             "gap-3 !rounded-3xl border-border-base px-3.5 pb-3.5 pt-3 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
           isCompact &&
-            "!rounded-xl border-border-base shadow-message-table has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
+            "!rounded-xl border-border-base shadow-message-table has-[[data-slot=input-group-control]:focus-visible]:border-foreground-subtle",
           isRecording &&
             "border-error ring-1 ring-error has-[[data-slot=input-group-control]:focus-visible]:border-error has-[[data-slot=input-group-control]:focus-visible]:ring-error",
         )}
