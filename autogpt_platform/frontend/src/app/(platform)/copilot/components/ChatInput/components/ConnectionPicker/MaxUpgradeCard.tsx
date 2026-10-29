@@ -6,6 +6,7 @@ import {
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   label: string;
@@ -17,7 +18,7 @@ interface Props {
 
 export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
   return (
-    <div className="mt-3 rounded-xl border border-purple-200/40 bg-purple-50 p-4">
+    <div className="mt-3 rounded-xl border border-brand/20 bg-accent-surface p-4">
       <div
         role="radio"
         aria-checked={false}
@@ -26,36 +27,46 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
         tabIndex={-1}
         className="flex items-start gap-3"
       >
-        <span className="flex size-8 flex-none items-center justify-center rounded-lg border border-purple-200/60 bg-white text-purple-600">
+        <span className="flex size-8 flex-none items-center justify-center rounded-lg border border-brand/30 bg-surface text-brand-hover">
           <Icon icon={AiBrain01Icon} size={18} aria-hidden />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-zinc-900">
+          <Text
+            variant="body-medium-tight"
+            as="span"
+            tone="primary"
+            className="block"
+          >
             {name}
-          </span>
+          </Text>
           {model && (
-            <span className="mt-0.5 block break-words text-xs text-zinc-600">
+            <Text
+              variant="small-tight"
+              as="span"
+              tone="secondary"
+              className="mt-0.5 block break-words"
+            >
               {model}
-            </span>
+            </Text>
           )}
         </span>
-        <span className="inline-flex items-center gap-1 rounded bg-white px-1.5 py-1 text-[10px] font-semibold tracking-wide text-purple-700">
+        <span className="inline-flex items-center gap-1 rounded bg-surface px-1.5 py-1 text-tiny font-semibold leading-inherit tracking-wide text-accent-strong">
           <Icon icon={LockIcon} size={10} aria-hidden />
           MAX
         </span>
       </div>
-      <p className="mb-2 mt-5 text-lg font-medium leading-snug tracking-tight text-zinc-900">
+      <p className="mb-2 mt-5 text-lg font-medium leading-snug tracking-tight text-foreground-strong">
         Unlock {name} with Max.
       </p>
-      <p className="text-xs leading-relaxed text-zinc-600">{reason}</p>
+      <Text variant="small-relaxed" tone="secondary">
+        {reason}
+      </Text>
       <Button
         as="NextLink"
         href={href}
         variant="primary"
         size="small"
-        className="mt-5 h-11 w-full rounded-lg border-purple-600 bg-purple-600 text-white hover:border-purple-700 hover:bg-purple-700"
-        data-fast-goal="subscription_upgrade_intent"
-        data-fast-goal-surface="model_picker"
+        className="mt-5 h-11 w-full rounded-lg border-brand-hover bg-brand-hover text-action-foreground hover:border-accent-strong hover:bg-accent-strong"
       >
         Upgrade to Max
         <Icon icon={ArrowRight02Icon} size={16} aria-hidden />

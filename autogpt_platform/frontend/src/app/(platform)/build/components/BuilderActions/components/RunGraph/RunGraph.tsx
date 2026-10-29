@@ -66,7 +66,7 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
               data-id="simulate-graph-button"
               onClick={() => void handleRunGraph({ dryRun: true })}
               disabled={!flowID || isLoading}
-              className="group text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+              className="group text-warning-foreground hover:bg-warning-surface"
             >
               <Icon
                 icon={FlaskConicalIcon}
@@ -75,7 +75,7 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            Simulate agent (no real execution — LLM-generated outputs)
+            Simulate workflow (no real execution — LLM-generated outputs)
           </TooltipContent>
         </Tooltip>
       )}
@@ -100,8 +100,8 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
           {isLoading
             ? "Processing..."
             : isGraphRunning
-              ? "Stop agent"
-              : "Run agent"}
+              ? "Stop workflow"
+              : "Run workflow"}
         </TooltipContent>
       </Tooltip>
       <RunInputDialog

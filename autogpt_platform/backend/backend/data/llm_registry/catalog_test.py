@@ -10,8 +10,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from backend.blocks.llm import MODEL_METADATA, LLMModel
-from backend.data.block_cost_config import MODEL_COST, TOKEN_COST
+import pytest
+
+from backend.blocks.llm import MODEL_METADATA, AITextGeneratorBlock, LLMModel
+from backend.data.block_cost_config import BLOCK_COSTS, MODEL_COST, TOKEN_COST
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CATALOG_SCHEMA_VERSION
 
@@ -155,6 +157,27 @@ def test_kimi_k3_bills_at_authored_rates():
     }
 
 
+def test_kimi_k3_1_pro_bills_at_authored_rates():
+    """Kimi K3.1 Pro (OpenRouter, $2/$10 per 1M, $0.20/1M cached input) —
+    flat tier and per-1M projections must match the authored entry."""
+    k31 = LLMModel("moonshotai/kimi-k3.1-pro")
+    assert k31 is LLMModel.KIMI_K3_1_PRO
+    assert MODEL_COST[k31] == 9
+    assert TOKEN_COST[k31].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 30.0,
+        "cache_creation": 0.0,
+    }
+    entry = next(m for m in CATALOG.models if m.slug == "moonshotai/kimi-k3.1-pro")
+    assert entry.cost.provider_cache_read_usd_per_1m == 0.20
+    assert entry.price_tier == 3
+    assert entry.context_window == 1048576
+    assert entry.max_output_tokens == 943718
+    assert entry.supports_tools is True
+    assert entry.supports_reasoning is True
+
+
 def test_deepseek_chat_display_rate_tracks_openrouter():
     """SECRT-2701 regression pin: deepseek-chat's shown price had drifted to
     ~3x understated ($0.14/$0.28 displayed against a live $0.32/$0.89) and
@@ -164,21 +187,23 @@ def test_deepseek_chat_display_rate_tracks_openrouter():
     ``poetry run python scripts/check_openrouter_prices.py`` and move both
     sides together when OpenRouter reprices.
 
-    OpenRouter repriced again to $0.2574/$1.0287 live; these pins were moved
-    to match on 2026-09-28.
+    OpenRouter moved back to $0.32/$0.89 live; these pins were moved to
+    match on 2026-10-17.
     """
     chat = LLMModel("deepseek/deepseek-chat")
     assert TOKEN_COST[chat].model_dump() == {
-        "input": 38.61,  # $0.2574/1M x 150 cr/$
-        "output": 154.305,  # $1.0287/1M x 150 cr/$
+        "input": 48.0,  # $0.32/1M x 150 cr/$
+        "output": 133.5,  # $0.89/1M x 150 cr/$
         "cache_read": 0.0,
         "cache_creation": 0.0,
     }
 
 
 def test_claude_sonnet_5_bills_at_authored_rates():
-    """Sonnet 5 (sticker $3/$15; intro pricing ends 2026-08-31) — flat tier
-    and per-1M projections must match the authored catalog entry."""
+    """Sonnet 5 bills credits set against a $3/$15 sticker (Anthropic's
+    list price stayed $2/$10 when the rise was cancelled; credits are the
+    platform's rate) — flat tier and per-1M projections must match the
+    authored catalog entry."""
     s5 = LLMModel("claude-sonnet-5")
     assert MODEL_COST[s5] == 9
     assert TOKEN_COST[s5].model_dump() == {
@@ -197,16 +222,38 @@ def test_claude_sonnet_5_5_bills_at_authored_rates():
     model, so a silent repricing here moves every standard chat."""
     s55 = LLMModel("claude-sonnet-5-5")
     assert MODEL_COST[s55] == 9
+    # Cache reads at 1.5x Anthropic's $0.10/1M (5% of input on Sonnet 5.5).
     assert TOKEN_COST[s55].model_dump() == {
         "input": 300.0,
         "output": 1500.0,
-        "cache_read": 30.0,
+        "cache_read": 15.0,
         "cache_creation": 375.0,
     }
     assert MODEL_METADATA[s55].max_output_tokens == 128000
     s55_entry = next(m for m in CATALOG.models if m.slug == "claude-sonnet-5-5")
     assert s55_entry.price_tier == 3
     assert s55_entry.context_window == 200000
+
+
+def test_claude_haiku_5_5_bills_at_authored_rates():
+    """Claude Haiku 5.5 (OpenRouter live base tier $0.10/$0.50 per 1M) —
+    flat tier and per-1M projections must match the authored catalog entry."""
+    haiku = LLMModel("claude-haiku-5-5")
+    assert haiku is LLMModel.CLAUDE_5_5_HAIKU
+    assert MODEL_COST[haiku] == 1
+    assert TOKEN_COST[haiku].model_dump() == {
+        "input": 15.0,
+        "output": 75.0,
+        "cache_read": 1.5,
+        "cache_creation": 18.75,
+    }
+    assert MODEL_METADATA[haiku].max_output_tokens == 128000
+    haiku_entry = next(m for m in CATALOG.models if m.slug == "claude-haiku-5-5")
+    assert haiku_entry.price_tier == 2
+    # Capped at the 100K base price tier (flat-rate billing).
+    assert haiku_entry.context_window == 100000
+    # OpenRouter's dotted slug resolves to the enum member.
+    assert LLMModel("anthropic/claude-haiku-5.5") is haiku
 
 
 def test_claude_opus_5_bills_at_authored_rates():
@@ -292,6 +339,25 @@ def test_gpt6_1_sol_bills_at_authored_rates():
     assert sol_entry.context_window == 1050000
 
 
+def test_gpt6_1_terra_bills_at_authored_rates():
+    """GPT-6.1 Terra (OpenAI list price $1/$5 per 1M, $0.05/1M cached
+    input) — flat tier and per-1M projections must match the authored
+    catalog entry."""
+    terra = LLMModel("gpt-6.1-terra")
+    assert terra is LLMModel.GPT6_1_TERRA
+    assert MODEL_COST[terra] == 2
+    assert TOKEN_COST[terra].model_dump() == {
+        "input": 150.0,
+        "output": 750.0,
+        "cache_read": 7.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[terra].max_output_tokens == 128000
+    terra_entry = next(m for m in CATALOG.models if m.slug == "gpt-6.1-terra")
+    assert terra_entry.price_tier == 2
+    assert terra_entry.context_window == 1050000
+
+
 def test_gpt6_luna_bills_at_authored_rates():
     """GPT-6 Luna (OpenAI list price $0.10/$0.50 per 1M, the fast/cheapest
     GPT-6 tier) — flat tier and per-1M projections must match the
@@ -328,15 +394,37 @@ def test_claude_fable_5_1_bills_at_authored_rates():
     assert fable_entry.context_window == 200000
 
 
+def test_gemini_4_argon_bills_at_authored_rates():
+    """Gemini 4 Argon (OpenRouter, $2/$10 per 1M, $0.10/1M cached read,
+    $0.1875/1M cache write) — flat tier and per-1M projections must match
+    the authored catalog entry."""
+    argon = LLMModel("google/gemini-4-argon")
+    assert argon is LLMModel.GEMINI_4_ARGON
+    assert MODEL_COST[argon] == 5
+    assert TOKEN_COST[argon].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 15.0,
+        "cache_creation": 28.125,
+    }
+    assert MODEL_METADATA[argon].max_output_tokens == 65536
+    entry = next(m for m in CATALOG.models if m.slug == "google/gemini-4-argon")
+    assert entry.price_tier == 2
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
+
+
 def test_gemini_3_8_flash_bills_at_authored_rates():
-    """Gemini 3.8 Flash (OpenRouter, Google intro list price $0.75/$3.75
-    per 1M through 2026-12-31) — flat tier and per-1M projections must
+    """Gemini 3.8 Flash (OpenRouter, live rate $0.825/$4.125
+    per 1M as of 2026-10-17) — flat tier and per-1M projections must
     match the authored catalog entry."""
     flash = LLMModel("google/gemini-3.8-flash")
     assert MODEL_COST[flash] == 3
     assert TOKEN_COST[flash].model_dump() == {
-        "input": 112.5,
-        "output": 562.5,
+        "input": 123.75,
+        "output": 618.75,
         "cache_read": 0.0,
         "cache_creation": 0.0,
     }
@@ -454,6 +542,50 @@ def test_muse_spark_1_3_contributor_bills_at_authored_rates():
     assert contributor_entry.supports_reasoning is True
 
 
+def test_muse_spark_open_bills_at_authored_rates():
+    """Muse Spark Open (OpenRouter, Meta list price $1.25/$4.25 per 1M, $0.15/1M
+    cached input) — flat tier and per-1M projections must match the authored
+    catalog entry."""
+    spark_open = LLMModel("meta/muse-spark-open")
+    assert spark_open is LLMModel.META_MUSE_SPARK_OPEN
+    assert MODEL_COST[spark_open] == 3
+    assert TOKEN_COST[spark_open].model_dump() == {
+        "input": 187.5,
+        "output": 637.5,
+        "cache_read": 22.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[spark_open].max_output_tokens == 943718
+    entry = next(m for m in CATALOG.models if m.slug == "meta/muse-spark-open")
+    assert entry.price_tier == 1
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
+
+
+def test_muse_wonder_bills_at_authored_rates():
+    """Muse Wonder (OpenRouter, Meta list price $4/$20 per 1M, $0.20/1M
+    cached input) — flat tier and per-1M projections must match the
+    authored catalog entry."""
+    wonder = LLMModel("meta/muse-wonder")
+    assert wonder is LLMModel.META_MUSE_WONDER
+    assert MODEL_COST[wonder] == 11
+    assert TOKEN_COST[wonder].model_dump() == {
+        "input": 600.0,
+        "output": 3000.0,
+        "cache_read": 30.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[wonder].max_output_tokens == 943718
+    entry = next(m for m in CATALOG.models if m.slug == "meta/muse-wonder")
+    assert entry.price_tier == 3
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
+
+
 def test_qwen3_8_max_0902_bills_at_authored_rates():
     """Qwen 3.8 Max (0902) (OpenRouter, Alibaba list price $2.00/$6.00 per
     1M) — flat tier and per-1M projections must match the authored catalog
@@ -496,15 +628,15 @@ def test_qwen3_8_flash_bills_at_authored_rates():
 
 
 def test_deepseek_v4_1_flash_bills_at_authored_rates():
-    """DeepSeek V4.1 Flash (OpenRouter live rate $0.03/$0.75 per 1M,
-    $0.00375/1M cached input as of 2026-10-02 — this route reprices
+    """DeepSeek V4.1 Flash (OpenRouter live rate $0.0472/$0.12 per 1M,
+    $0.00375/1M cached input as of 2026-10-19 — this route reprices
     continuously by design) — flat tier and per-1M projections must
     match the authored catalog entry."""
     flash = LLMModel("deepseek/deepseek-v4.1-flash")
     assert MODEL_COST[flash] == 1
     assert TOKEN_COST[flash].model_dump() == {
-        "input": 4.5,
-        "output": 112.5,
+        "input": 7.08,
+        "output": 18.0,
         "cache_read": 0.5625,
         "cache_creation": 0.0,
     }
@@ -599,15 +731,14 @@ def test_pareto_bills_at_authored_rates():
 
 
 def test_ling_3_0_flash_vl_bills_at_authored_rates():
-    """InclusionAI Ling 3.0 Flash VL (OpenRouter live rate $0.021/$0.0616
-    per 1M, $0.0042/1M cached input as of 2026-09-25 — dropped from
-    $0.06/$0.18) — flat tier and per-1M projections must match the
+    """InclusionAI Ling 3.0 Flash VL (OpenRouter live rate $0.06/$0.18
+    per 1M, $0.0042/1M cached input as of 2026-10-17) — flat tier and per-1M projections must match the
     authored catalog entry."""
     ling = LLMModel("inclusionai/ling-3.0-flash-vl")
     assert MODEL_COST[ling] == 1
     assert TOKEN_COST[ling].model_dump() == {
-        "input": 3.15,
-        "output": 9.24,
+        "input": 9.0,
+        "output": 27.0,
         "cache_read": 0.63,
         "cache_creation": 0.0,
     }
@@ -623,14 +754,14 @@ def test_ling_3_0_flash_vl_bills_at_authored_rates():
 
 
 def test_gemma_4_31b_it_bills_at_authored_rates():
-    """Google Gemma 4 31B (OpenRouter live rate $0.09/$0.34 per 1M,
-    $0.05/1M cached input as of 2026-09-23) — flat tier and per-1M
+    """Google Gemma 4 31B (OpenRouter live rate $0.20/$0.40 per 1M,
+    $0.05/1M cached input as of 2026-10-17) — flat tier and per-1M
     projections must match the authored catalog entry."""
     gemma = LLMModel("google/gemma-4-31b-it")
     assert MODEL_COST[gemma] == 1
     assert TOKEN_COST[gemma].model_dump() == {
-        "input": 13.5,
-        "output": 51.0,
+        "input": 30.0,
+        "output": 60.0,
         "cache_read": 7.5,
         "cache_creation": 0.0,
     }
@@ -640,11 +771,41 @@ def test_gemma_4_31b_it_bills_at_authored_rates():
     assert gemma_entry.context_window == 262144
 
 
+@pytest.mark.parametrize(
+    "slug, usd_in, usd_out, context_window, max_output_tokens",
+    [
+        ("mistralai/mistral-medium-3-5", 1.50, 7.50, 262144, 209715),
+        ("mistralai/mistral-small-2603", 0.15, 0.60, 262144, 209715),
+        ("mistralai/ministral-14b-2512", 0.20, 0.20, 262144, 209715),
+        ("mistralai/ministral-8b-2512", 0.15, 0.15, 262144, 209715),
+        ("mistralai/ministral-3b-2512", 0.10, 0.10, 131072, 104857),
+    ],
+)
+def test_mistral_lineup_matches_openrouter_listing(
+    slug: str,
+    usd_in: float,
+    usd_out: float,
+    context_window: int,
+    max_output_tokens: int,
+):
+    """The builder's per-1M label shows OpenRouter's USD price (read
+    2026-10-06), and blocks budget against OpenRouter's window and output cap."""
+    model = LLMModel(slug)
+    entry = next(
+        c
+        for c in BLOCK_COSTS[AITextGeneratorBlock]
+        if c.cost_filter.get("model") == model
+    )
+    assert entry.token_rate is not None
+    assert entry.token_rate.input_usd_per_1m == pytest.approx(usd_in)
+    assert entry.token_rate.output_usd_per_1m == pytest.approx(usd_out)
+    assert MODEL_METADATA[model].context_window == context_window
+    assert MODEL_METADATA[model].max_output_tokens == max_output_tokens
+
+
 def test_provider_usd_prices_are_all_or_nothing():
     """A half-authored provider USD price must refuse to construct — it
     would silently underprice against the transport family default."""
-    import pytest
-
     from backend.data.llm_registry.catalog_model import CatalogModelCost
 
     with pytest.raises(ValueError, match="must be set together"):
@@ -683,3 +844,23 @@ def test_routing_cells_use_transport_ready_spellings():
                         f"{where}: dash-form anthropic/ cells exist on no "
                         "transport — use the dot form (anthropic/claude-…4.6)"
                     )
+
+
+def test_mistral_large_4_bills_at_authored_rates():
+    """Mistral Large 4 (OpenRouter live rate $1.36/$4.18 per 1M, $0.07/1M
+    cached input as of 2026-10-21) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    large = LLMModel("mistralai/mistral-large-4-0")
+    assert MODEL_COST[large] == 2
+    assert TOKEN_COST[large].model_dump() == {
+        "input": 204.0,
+        "output": 627.0,
+        "cache_read": 10.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[large].max_output_tokens == 262144
+    large_entry = next(
+        m for m in CATALOG.models if m.slug == "mistralai/mistral-large-4-0"
+    )
+    assert large_entry.price_tier == 2
+    assert large_entry.context_window == 524288

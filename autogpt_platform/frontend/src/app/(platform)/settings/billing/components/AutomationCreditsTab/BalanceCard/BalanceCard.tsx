@@ -33,6 +33,7 @@ export function BalanceCard({ index = 0 }: Props) {
     setAmount,
     isValid,
     isAdding,
+    isRedirecting,
     handleSubmit,
   } = useBalanceCard();
 
@@ -41,7 +42,7 @@ export function BalanceCard({ index = 0 }: Props) {
   if (isLoading) {
     return (
       <motion.div {...sectionMotion}>
-        <Skeleton className="h-[120px] rounded-[18px]" />
+        <Skeleton className="h-[120px] rounded-2xl" />
       </motion.div>
     );
   }
@@ -59,14 +60,14 @@ export function BalanceCard({ index = 0 }: Props) {
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="flex items-center gap-1 px-4">
-        <Text variant="body-medium" as="span" className="text-textBlack">
+        <Text variant="body-medium" as="span">
           Automation credits
         </Text>
         <InformationTooltip description={BALANCE_EXPLAINER} iconSize={22} />
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-        <Text variant="h2" as="span" className="text-textBlack">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-large border border-border-base bg-surface p-5 shadow-message-table">
+        <Text variant="h2" as="span">
           {formatCents(balanceCents)}
         </Text>
         <Dialog
@@ -81,7 +82,7 @@ export function BalanceCard({ index = 0 }: Props) {
           </Dialog.Trigger>
           <Dialog.Content>
             <div className="flex flex-col gap-3">
-              <Text variant="small" as="span" className="text-zinc-500">
+              <Text variant="small" as="span" tone="muted">
                 We&apos;ll redirect you to Stripe to complete your purchase.
               </Text>
               <Input
@@ -109,11 +110,9 @@ export function BalanceCard({ index = 0 }: Props) {
                 type="button"
                 variant="primary"
                 size="small"
-                disabled={!isValid || isAdding}
+                disabled={!isValid || isAdding || isRedirecting}
                 loading={isAdding}
                 onClick={handleSubmit}
-                data-fast-goal="credit_topup_checkout"
-                data-fast-goal-surface="settings_billing"
               >
                 Continue to checkout
               </Button>

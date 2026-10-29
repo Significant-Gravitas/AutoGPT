@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { SentryUserTracker } from "@/components/monitor/SentryUserTracker";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import { useClearOnAccountChange } from "@/lib/react-query/useClearOnAccountChange";
 import CredentialsProvider from "@/providers/agent-credentials/credentials-provider";
 import OnboardingProvider from "@/providers/onboarding/onboarding-provider";
 import OrgTeamProvider from "@/providers/org-team/OrgTeamProvider";
@@ -14,7 +15,7 @@ import {
 } from "@/providers/posthog/posthog-provider";
 import { AdsConversionTracker } from "@/services/analytics/AdsConversionTracker";
 import { AttributionReporter } from "@/services/analytics/AttributionReporter";
-import { LaunchDarklyProvider } from "@/services/feature-flags/feature-flag-provider";
+import { FeatureFlagProvider } from "@/services/feature-flags/feature-flag-provider";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider, ThemeProviderProps } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
@@ -22,12 +23,13 @@ import { Suspense } from "react";
 
 export function Providers({ children, ...props }: ThemeProviderProps) {
   const queryClient = getQueryClient();
+  useClearOnAccountChange(queryClient);
   return (
     <QueryClientProvider client={queryClient}>
       <NuqsAdapter>
         <PostHogProvider>
           <BackendAPIProvider>
-            {/* All four read useSearchParams (directly or via useAuth), which
+            {/* All of these read useSearchParams (directly or via useAuth), which
                 bails out of static rendering unless it sits under Suspense. */}
             <Suspense fallback={null}>
               <SentryUserTracker />
@@ -38,13 +40,13 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
             </Suspense>
             <CredentialsProvider>
               <OrgTeamProvider>
-                <LaunchDarklyProvider>
+                <FeatureFlagProvider>
                   <OnboardingProvider>
                     <ThemeProvider forcedTheme="light" {...props}>
                       <TooltipProvider>{children}</TooltipProvider>
                     </ThemeProvider>
                   </OnboardingProvider>
-                </LaunchDarklyProvider>
+                </FeatureFlagProvider>
               </OrgTeamProvider>
             </CredentialsProvider>
           </BackendAPIProvider>

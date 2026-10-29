@@ -25,12 +25,13 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
           variant="small-medium"
           as="h2"
           id="available-integrations-heading"
-          className="uppercase tracking-[0.06em] text-zinc-600"
+          tone="secondary"
+          className="uppercase tracking-eyebrow"
         >
           Available integrations
         </Text>
-        <Text variant="small" className="text-zinc-500">
-          Connect your services, including official MCP integrations. Some
+        <Text variant="small" tone="muted">
+          Connect your services, including official vendor integrations. Some
           services need additional setup.
         </Text>
       </div>
@@ -59,7 +60,7 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
               </li>
             ))}
           </ul>
-          <Text variant="small" className="px-4 text-zinc-500" role="status">
+          <Text variant="small" tone="muted" className="px-4" role="status">
             {catalog.total === 0
               ? query.trim()
                 ? "No available services match your search."

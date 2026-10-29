@@ -36,11 +36,13 @@ from scripts.feature_flag_sync import (
     map_flag,
     map_segment,
     plan_sync,
+    redact,
     resolve_cohort_refs,
 )
 
 LD_API = "https://app.launchdarkly.com/api/v2"
 DEFAULT_POSTHOG_HOST = "https://eu.posthog.com"
+_SHOWN_CHARS = 2000
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -267,8 +269,18 @@ class _Client:
             headers={**self.headers, "Content-Type": "application/json"},
             data=json.dumps(body).encode() if body is not None else None,
         )
-        with urllib.request.urlopen(request, timeout=60) as response:
-            return json.load(response)
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")
+            print(
+                f"HTTP {e.code} on {method} {url}\n"
+                f"  response: {redact(detail)[:_SHOWN_CHARS]}\n"
+                f"  request: {redact(json.dumps(body))[:_SHOWN_CHARS]}",
+                file=sys.stderr,
+            )
+            raise
 
 
 def _env(name: str) -> str:

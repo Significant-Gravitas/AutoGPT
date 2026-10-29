@@ -1,10 +1,16 @@
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import orjson
 import pytest
 
-from backend.data.execution import ExecutionStatus
+from backend.copilot.context import set_turn_unattended
+from backend.data.execution import (
+    ExecutionStatus,
+    GraphExecutionMeta,
+    GraphExecutionWithNodes,
+)
 from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.executor.utils import is_credential_validation_error_message
@@ -531,7 +537,7 @@ async def test_run_agent_rejects_unknown_input_fields(setup_test_data):
         "unknown_field",
     }
     assert "inputs" in result_data  # Contains the valid schema
-    assert "Agent was not executed" in result_data["message"]
+    assert "Workflow was not executed" in result_data["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -1198,7 +1204,10 @@ async def test_run_agent_attributes_execution_to_session_org(mocker, expert_id):
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
     default_team = AsyncMock(return_value=("personal-org", "personal-team"))
-    mocker.patch("backend.api.features.orgs.db.get_user_default_team", default_team)
+    mocker.patch(
+        "backend.copilot.tools.run_agent.orgs_db",
+        return_value=MagicMock(get_user_default_team=default_team),
+    )
 
     captured: dict = {}
 
@@ -1287,6 +1296,54 @@ async def test_run_agent_pauses_irreversible_actions_for_attended_chats(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("external_caller", [False, True])
+async def test_a_run_an_api_caller_starts_names_no_chat(mocker, external_caller):
+    """An MCP call's session is never saved: a run pointing at it would ask its
+    approvals there, and pause irreversible blocks on resume for want of it."""
+    from backend.data.execution import ExecutionTrigger
+
+    tool = RunAgentTool()
+    session = make_session(user_id="user-1")
+    session.organization_id = "org-1"
+    session.external_caller = external_caller
+
+    lib = MagicMock(graph_id="graph-1", graph_version=1, id="lib-1")
+    lib.name = "Test Agent"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_or_create_library_agent",
+        AsyncMock(return_value=lib),
+    )
+    mocker.patch("backend.copilot.tools.run_agent.track_chat_outcome")
+    mocker.patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
+    )
+    add = mocker.patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        AsyncMock(return_value=MagicMock(id="exec-1")),
+    )
+    graph = MagicMock(id="graph-1", version=1)
+    graph.name = "Test Agent"
+
+    await tool._run_agent(
+        user_id="user-1",
+        session=session,
+        graph=graph,
+        graph_credentials={},
+        inputs={},
+        dry_run=False,
+        gate_approved=False,
+    )
+
+    kwargs = add.await_args.kwargs
+    if external_caller:
+        assert kwargs["trigger"] == ExecutionTrigger.API
+        assert kwargs["trigger_ref"] != session.session_id
+    else:
+        assert kwargs["trigger"] == ExecutionTrigger.COPILOT
+        assert kwargs["trigger_ref"] == session.session_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocker):
     """Sessions created before org tagging carry no org — the run must fall
     back to the user's default team instead of executing tenant-blind."""
@@ -1309,7 +1366,10 @@ async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocke
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
     default_team = AsyncMock(return_value=("personal-org", "personal-team"))
-    mocker.patch("backend.api.features.orgs.db.get_user_default_team", default_team)
+    mocker.patch(
+        "backend.copilot.tools.run_agent.orgs_db",
+        return_value=MagicMock(get_user_default_team=default_team),
+    )
 
     captured: dict = {}
 
@@ -1655,13 +1715,10 @@ def _completed_run_mocks(
     outputs: dict,
     node_executions: list | None = None,
     detailed_fetch_error: Exception | None = None,
+    node_error_count: int = 0,
 ):
     """Wire the waited-COMPLETED path: library agent, execution, waiter,
     outputs, and the detailed per-node trace fetch."""
-    from unittest.mock import MagicMock
-
-    from backend.data.execution import GraphExecutionWithNodes
-
     lib = MagicMock()
     lib.graph_id = "graph-1"
     lib.graph_version = 1
@@ -1675,8 +1732,10 @@ def _completed_run_mocks(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
     mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
-        AsyncMock(return_value=("org-1", "team-1")),
+        "backend.copilot.tools.run_agent.orgs_db",
+        return_value=MagicMock(
+            get_user_default_team=AsyncMock(return_value=("org-1", "team-1"))
+        ),
     )
     execution = MagicMock()
     execution.id = "exec-1"
@@ -1688,6 +1747,7 @@ def _completed_run_mocks(
     completed.status = ExecutionStatus.COMPLETED
     completed.started_at = None
     completed.ended_at = None
+    completed.stats = GraphExecutionMeta.Stats(node_error_count=node_error_count)
     mocker.patch(
         "backend.copilot.tools.run_agent.wait_for_execution",
         AsyncMock(return_value=completed),
@@ -1836,6 +1896,22 @@ async def test_detailed_fetch_failure_degrades_to_summary(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_detailed_fetch_failure_still_reports_the_runs_failed_nodes(mocker):
+    """Without the per-node trace, the run's own failed-node count still keeps
+    a COMPLETED run with a failed node from reading as success."""
+    _completed_run_mocks(
+        mocker,
+        outputs={"result": ["ok"]},
+        detailed_fetch_error=RuntimeError("db down"),
+        node_error_count=1,
+    )
+    response = await _run_waited(mocker, dry_run=False)
+
+    assert "1 node(s) FAILED despite the COMPLETED" in response.message
+    assert "completed successfully" not in response.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_preset_refuses_uninstalled_workflow_for_expert():
     from backend.copilot.tools.run_agent import RunAgentInput
 
@@ -1909,3 +1985,38 @@ async def test_validation_error_card_carries_expert_grants(
     assert all(
         entry["expert_grant"]["expert_id"] == "expert-a" for entry in missing.values()
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_validation_race_on_a_scheduled_turn_fails_instead_of_asking():
+    """A preset's stale credential reaches the race handler without the
+    prerequisite check; on a turn nobody watches, a setup card would never
+    be answered, so the step must fail naming the provider (SECRT-2804)."""
+    graph = MagicMock(id="graph-1", version=1)
+    graph.name = "Daily Scraper"
+    error = GraphValidationError(
+        message="Graph is invalid",
+        node_errors={"some-node-id": {"credentials": "These credentials are required"}},
+    )
+    session = make_session("test-user")
+    session.metadata.origin = "automation"
+
+    async def turn():
+        set_turn_unattended(session, scheduled=False)
+        return await RunAgentTool()._handle_graph_validation_race(
+            error=error,
+            graph=graph,
+            user_id="test-user",
+            session_id=session.session_id,
+            action_verb="running",
+        )
+
+    with patch(
+        "backend.copilot.tools.run_agent.build_missing_credentials_from_graph",
+        return_value={"credentials": {"provider": "firecrawl"}},
+    ):
+        response = await asyncio.create_task(turn())
+
+    assert isinstance(response, ErrorResponse)
+    assert response.error == "missing_credentials"
+    assert "firecrawl" in response.message

@@ -39,7 +39,8 @@ export function IntegrationLogo({
         size={size}
         role="img"
         aria-label={alt ?? provider}
-        className={cn("text-zinc-400", className)}
+        data-slot="integration-logo"
+        className={cn("text-foreground-subtle", className)}
       />
     );
   }
@@ -50,6 +51,7 @@ export function IntegrationLogo({
       alt={alt ?? provider}
       width={size}
       height={size}
+      data-slot="integration-logo"
       className={cn("rounded-sm object-contain", className)}
       onError={() => setFailed(true)}
     />

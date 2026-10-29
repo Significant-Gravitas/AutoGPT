@@ -28,7 +28,6 @@ vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
 
 const posthog = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("@posthog/react", () => ({
-  useFeatureFlagVariantKey: () => undefined,
   usePostHog: () => posthog,
 }));
 
@@ -165,9 +164,11 @@ test.each([
       offer_token: trialOffer.token,
       return_to: "billing",
     });
-    expect(posthog.capture).toHaveBeenCalledWith(
+    // The backend sends checkout_started (checkout_kind: trial) once the
+    // Checkout session exists, so the browser sends no checkout event.
+    expect(posthog.capture).not.toHaveBeenCalledWith(
       "subscription_trial_checkout_started",
-      { trial_offer_version: trialOffer.version, surface: "billing" },
+      expect.anything(),
     );
   },
 );
@@ -184,18 +185,13 @@ test("reports the offer impression against the billing surface", async () => {
   );
 });
 
-test("keeps paid checkout reporting against the upgrade_modal surface", async () => {
+test("labels paid signup Start Max", async () => {
   server.use(getGetTrialsGetTrialStatusMockHandler200(eligible()));
 
   render(<PaywallModal />);
 
   const max = within(await screen.findByRole("region", { name: "Max plan" }));
-  const paid = max.getByRole("button", { name: "Upgrade to Max" });
-  expect(paid.getAttribute("data-fast-goal")).toBe("plan_cta_click");
-  expect(paid.getAttribute("data-fast-goal-surface")).toBe("upgrade_modal");
-
-  const toggle = screen.getByRole("button", { name: /yearly/i });
-  expect(toggle.getAttribute("data-fast-goal-surface")).toBe("upgrade_modal");
+  expect(max.getByRole("button", { name: "Start Max" })).toBeDefined();
 });
 
 test("leaves the paid CTAs alone when the user is not eligible", async () => {
@@ -208,7 +204,7 @@ test("leaves the paid CTAs alone when the user is not eligible", async () => {
   render(<PaywallModal />);
 
   const pro = within(await screen.findByRole("region", { name: "Pro plan" }));
-  expect(pro.getByRole("button", { name: "Upgrade to Pro" })).toBeDefined();
+  expect(pro.getByRole("button", { name: "Start Pro" })).toBeDefined();
   expect(screen.queryByRole("button", { name: /Start .*trial/ })).toBeNull();
 });
 
@@ -222,7 +218,7 @@ test("leaves the paid CTAs alone when the trial status fails to load", async () 
   render(<PaywallModal />);
 
   const pro = within(await screen.findByRole("region", { name: "Pro plan" }));
-  expect(pro.getByRole("button", { name: "Upgrade to Pro" })).toBeDefined();
+  expect(pro.getByRole("button", { name: "Start Pro" })).toBeDefined();
   expect(screen.queryByRole("button", { name: /Start .*trial/ })).toBeNull();
 });
 
@@ -239,7 +235,7 @@ test("hides an offer for a tier the backend isn't pricing on this paywall", asyn
   render(<PaywallModal />);
 
   const pro = within(await screen.findByRole("region", { name: "Pro plan" }));
-  expect(pro.getByRole("button", { name: "Upgrade to Pro" })).toBeDefined();
+  expect(pro.getByRole("button", { name: "Start Pro" })).toBeDefined();
   expect(screen.queryByRole("button", { name: /Start .*trial/ })).toBeNull();
 });
 
@@ -261,4 +257,70 @@ test("offers to switch billing cycle when the trial is priced on the other one",
   expect(
     await pro.findByRole("button", { name: "Start 7-day trial" }),
   ).toBeDefined();
+});
+
+test("a plan checkout keeps the trial button disabled until the page leaves", async () => {
+  const updateTier = vi.fn().mockResolvedValue({
+    status: 200,
+    data: { url: "https://checkout.stripe.com/pay/cs_plan" },
+  });
+  mockUseUpdateSubscriptionTier.mockReturnValue({
+    mutateAsync: updateTier,
+    isPending: false,
+  });
+  const trialCheckout = vi.fn(() => ({
+    url: "https://checkout.stripe.com/trial",
+  }));
+  server.use(
+    getGetTrialsGetTrialStatusMockHandler200(eligible()),
+    getPostTrialsStartTrialCheckoutMockHandler200(trialCheckout),
+  );
+
+  render(<PaywallModal />);
+
+  const max = within(await screen.findByRole("region", { name: "Max plan" }));
+  fireEvent.click(max.getByRole("button", { name: "Start Max" }));
+  await waitFor(() =>
+    expect(checkoutLocation.href).toBe(
+      "https://checkout.stripe.com/pay/cs_plan",
+    ),
+  );
+
+  const trial = screen.getByRole("button", { name: "Start 7-day trial" });
+  expect(trial.hasAttribute("disabled")).toBe(true);
+  fireEvent.click(trial);
+  expect(trialCheckout).not.toHaveBeenCalled();
+  expect(checkoutLocation.assign).not.toHaveBeenCalled();
+  expect(updateTier).toHaveBeenCalledOnce();
+});
+
+test("a trial checkout keeps the plan buttons disabled until the page leaves", async () => {
+  const updateTier = vi.fn();
+  mockUseUpdateSubscriptionTier.mockReturnValue({
+    mutateAsync: updateTier,
+    isPending: false,
+  });
+  server.use(
+    getGetTrialsGetTrialStatusMockHandler200(eligible()),
+    getPostTrialsStartTrialCheckoutMockHandler200({
+      url: "https://checkout.stripe.com/trial",
+    }),
+  );
+
+  render(<PaywallModal />);
+
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Start 7-day trial" }),
+  );
+  await waitFor(() =>
+    expect(checkoutLocation.assign).toHaveBeenCalledWith(
+      "https://checkout.stripe.com/trial",
+    ),
+  );
+
+  const max = within(screen.getByRole("region", { name: "Max plan" }));
+  const plan = max.getByRole("button", { name: "Start Max" });
+  expect(plan.hasAttribute("disabled")).toBe(true);
+  fireEvent.click(plan);
+  expect(updateTier).not.toHaveBeenCalled();
 });

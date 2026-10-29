@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Literal, Optional
 from pydantic import BaseModel
 
 from backend.data.redis_client import get_redis_async
+from backend.platform_linking.models import CardTurn
 
 if TYPE_CHECKING:
     from .bot_backend import BotBackend
@@ -68,13 +69,19 @@ class ResolvedChoice(BaseModel):
 class ButtonAnswer(BaseModel):
     """A click on either kind of button.
 
-    ``reply`` is what the click says as the clicker's next message, or None
-    when it answered nothing. ``text`` replaces the buttons when it answered,
-    and is otherwise shown to the clicker alone.
+    ``reply`` is what a question's click says as the clicker's next message;
+    ``follow`` is the turn a card's click woke, which the bot carries here.
+    ``text`` replaces the buttons when the click answered, and is otherwise
+    shown to the clicker alone.
     """
 
     reply: Optional[str]
     text: str
+    follow: Optional[CardTurn] = None
+
+    @property
+    def answered(self) -> bool:
+        return self.reply is not None or self.follow is not None
 
 
 async def answer_button(
@@ -90,7 +97,7 @@ async def answer_button(
     try:
         if kind == CARD_KIND:
             card = await api.answer_card(platform, server_id, clicker_id, token, index)
-            return ButtonAnswer(reply=card.follow_up, text=card.text)
+            return ButtonAnswer(reply=None, follow=card.follow, text=card.text)
         resolved = await resolve_choice(platform, token, index, clicker_id)
     except Exception:
         logger.exception(f"A {kind} click on {platform} could not be answered")

@@ -35,12 +35,12 @@ export const Basic: Story = {
 
     return (
       <div className="flex flex-col items-center gap-4">
-        <SwapFade swapKey={label} className="text-base text-zinc-900">
+        <SwapFade swapKey={label} className="text-base text-foreground-strong">
           {label}
         </SwapFade>
         <button
           type="button"
-          className="rounded-full border border-zinc-300 px-3 py-1 text-sm"
+          className="rounded-full border border-border-strong px-3 py-1 text-sm"
           onClick={() =>
             setLabel(label === "Tap to talk" ? "Listening..." : "Tap to talk")
           }

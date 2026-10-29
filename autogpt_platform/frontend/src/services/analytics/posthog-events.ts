@@ -1,6 +1,6 @@
 // Every PostHog event name the browser sends, in one place. What each one
 // means, who sends it and which properties it carries is in
-// docs/platform/tracking-plan.md; the backend's list is
+// docs/engineering/tracking-plan.md; the backend's list is
 // backend/util/posthog_events.py.
 //
 // The names follow the product analytics plan ("Every Second Counts"). Never
@@ -23,6 +23,15 @@ export const FeatureFlagEvent = {
   FEATURE_FLAG_MISMATCHED: "feature_flag_mismatched",
 } as const;
 
+// Marketing email refusals made in the app. `surface` says where; the
+// refusal itself is stored on the user (`marketingOptOutAt`).
+export const MarketingConsentEvent = {
+  // `surface: "signup"`: "opt out" in the legal line under the signup buttons
+  // was clicked (not Undo). Nothing else rides along: there is no user yet,
+  // so it only measures the opt-out rate.
+  MARKETING_OPTED_OUT: "marketing_opted_out",
+} as const;
+
 export const ExpertsFunnelEvent = {
   EXPERTS_SECTION_VIEWED: "experts_section_viewed",
   HOME_VIEWED: "home_viewed",
@@ -33,6 +42,10 @@ export const ExpertsFunnelEvent = {
   BRIEFING_OUTCOME_CLICKED: "briefing_outcome_clicked",
   HOME_ATTENTION_ACTIONED: "home_attention_actioned",
   HOME_TEAM_MEMBER_CLICKED: "home_team_member_clicked",
+  // The greeting's suggested first tasks, on the greeting (`surface: intro`)
+  // or under the Home composer (`surface: home`).
+  HOME_SUGGESTION_CLICKED: "home_suggestion_clicked",
+  HOME_SUGGESTION_DISMISSED: "home_suggestion_dismissed",
 } as const;
 
 export const HireFlowEvent = {
@@ -53,15 +66,25 @@ export const BrainDumpEvent = {
   BRAIN_DUMP_RESTARTED: "brain_dump_restarted",
   BRAIN_DUMP_DOWNLOAD: "brain_dump_download",
   BRAIN_DUMP_PERMISSION_DENIED: "brain_dump_permission_denied",
+  // Every failure to open the microphone, a denial included, with the
+  // browser's `error_name` (NotFoundError, NotReadableError, …).
+  BRAIN_DUMP_MIC_FAILED: "brain_dump_mic_failed",
   BRAIN_DUMP_TYPED_FALLBACK: "brain_dump_typed_fallback",
-  // The welcome dialog shown on first copilot landing was closed — the
-  // greeting fetch and reveal animation start from this moment.
+  // The "Otto might ask" prompt moved on, by its timer (`via: auto`) or
+  // "Another question" (`click`), with the `screen`, the `prompt_index` now
+  // shown and the role's `prompt_set`. Never sent for the first prompt.
+  BRAIN_DUMP_PROMPT_ADVANCED: "brain_dump_prompt_advanced",
+  // A way back to Talk after the microphone was refused: `result` is what
+  // the browser answered (`granted`, `denied`, or `unavailable` for any
+  // other mic error), `via` is the link used or `permission_change` when
+  // the user allowed the site in its settings. `permission_state` is the
+  // Permissions API state when the retry began, or the one it changed to
+  // for `permission_change`; `unknown` where the API is missing.
+  BRAIN_DUMP_PERMISSION_RETRIED: "brain_dump_permission_retried",
+  // The first-run intro shown on the first copilot landing ended (finished
+  // or skipped). Since SECRT-3149 that intro is the guided walkthrough
+  // (first_run_tour_*); the name is kept so the funnel stays continuous.
   WELCOME_DIALOG_CLOSED: "welcome_dialog_closed",
-  // Capability-cards first-run funnel: which cards were reached and how
-  // the modal ended (finished the deck vs skipped at card_index).
-  CAPABILITY_CARD_VIEWED: "capability_card_viewed",
-  CAPABILITY_CARDS_COMPLETED: "capability_cards_completed",
-  CAPABILITY_CARDS_SKIPPED: "capability_cards_skipped",
   TRANSCRIPTION_FAILED: "transcription_failed",
   INTRO_PATH: "intro_path",
   // The user's first real message after seeing the intro card — the
@@ -75,10 +98,29 @@ export const BrainDumpEvent = {
   // through, or skip straight to the builder.
   EXPERT_RECOMMENDED: "expert_recommended",
   EXPERT_RECOMMENDATION_CLICKED: "expert_recommendation_clicked",
+  // The hire step's primary was clicked to hire every expert still unhired
+  // (or, with `retry`, the ones a batch failed to hire).
+  HIRE_ALL_CLICKED: "hire_all_clicked",
   // The wizard's hire step was left, with how many of the proposed experts
   // were hired, so the funnel can tell "hired a team" from "skipped past it".
-  // The hires themselves are the backend's `expert_hired`.
+  // `via` says how. The hires themselves are the backend's `expert_hired`.
   HIRE_STEP_CONTINUED: "hire_step_continued",
+} as const;
+
+// The guided first run over the real UI (SECRT-3149), opened by itself after
+// onboarding (`source: auto`) or replayed from the profile menu
+// (`source: menu`), and the one-time tips that follow it.
+export const FirstRunEvent = {
+  FIRST_RUN_TOUR_SHOWN: "first_run_tour_shown",
+  // Each step reached, with the target it actually pointed at, so a step
+  // that keeps falling back (no wallet, no first tasks) shows up.
+  FIRST_RUN_TOUR_STEP_VIEWED: "first_run_tour_step_viewed",
+  // "Start here" on the last step.
+  FIRST_RUN_TOUR_COMPLETED: "first_run_tour_completed",
+  // Skip, Escape or the close button, at `step_id`.
+  FIRST_RUN_TOUR_SKIPPED: "first_run_tour_skipped",
+  CONTEXTUAL_TIP_SHOWN: "contextual_tip_shown",
+  CONTEXTUAL_TIP_DISMISSED: "contextual_tip_dismissed",
 } as const;
 
 export const TabIntroEvent = {
@@ -140,34 +182,49 @@ export const CredentialConnectionFailureEvent = {
 
 export const TrialEvent = {
   TRIAL_OFFER_VIEWED: "trial_offer_viewed",
-  SUBSCRIPTION_TRIAL_CHECKOUT_STARTED: "subscription_trial_checkout_started",
+  TRIAL_CANCEL_POPUP_VIEWED: "trial_cancel_popup_viewed",
+  TRIAL_RESUME_CLICKED: "trial_resume_clicked",
+  TRIAL_SUBSCRIBE_NOW_CLICKED: "trial_subscribe_now_clicked",
 } as const;
 
-export const PostHogEvent = {
-  ...PageEvent,
-  ...FeatureFlagEvent,
-  ...ExpertsFunnelEvent,
-  ...HireFlowEvent,
-  ...BrainDumpEvent,
-  ...TabIntroEvent,
-  ...VoiceModeEvent,
-  ...CredentialConnectionFailureEvent,
-  ...TrialEvent,
-} as const;
-
-// In the tracking plan and NOT sent yet (SECRT-2723). Move a name into its
-// group above in the change that starts sending it.
-export const PlannedPostHogEvent = {
-  ONBOARDING_STEP_VIEWED: "onboarding_step_viewed",
-  PAYWALL_VIEWED: "paywall_viewed",
-  PLAN_SELECTED: "plan_selected",
-  BILLING_PORTAL_OPENED: "billing_portal_opened",
-  CHECKOUT_ABANDONED: "checkout_abandoned",
+export const TourEvent = {
   TOUR_STARTED: "tour_started",
   TOUR_SCENARIO_STARTED: "tour_scenario_started",
   TOUR_SCENARIO_COMPLETED: "tour_scenario_completed",
   TOUR_CTA_CLICKED: "tour_cta_clicked",
 } as const;
+
+export const OnboardingEvent = {
+  ONBOARDING_STEP_VIEWED: "onboarding_step_viewed",
+} as const;
+
+export const MonetizationEvent = {
+  PAYWALL_VIEWED: "paywall_viewed",
+  PLAN_SELECTED: "plan_selected",
+  BILLING_PORTAL_OPENED: "billing_portal_opened",
+  CHECKOUT_ABANDONED: "checkout_abandoned",
+} as const;
+
+export const PostHogEvent = {
+  ...PageEvent,
+  ...FeatureFlagEvent,
+  ...MarketingConsentEvent,
+  ...ExpertsFunnelEvent,
+  ...HireFlowEvent,
+  ...BrainDumpEvent,
+  ...FirstRunEvent,
+  ...TabIntroEvent,
+  ...VoiceModeEvent,
+  ...CredentialConnectionFailureEvent,
+  ...TrialEvent,
+  ...TourEvent,
+  ...OnboardingEvent,
+  ...MonetizationEvent,
+} as const;
+
+// In the tracking plan and NOT sent yet. Move a name into its group above in
+// the change that starts sending it.
+export const PlannedPostHogEvent: Record<string, string> = {};
 
 export type EventName<Group extends Record<string, string>> =
   Group[keyof Group];

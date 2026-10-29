@@ -33,8 +33,8 @@ describe("Transaction history activity and states", () => {
       render(<TransactionHistoryCard />);
       await screen.findByText(name);
       const money = screen.getByText(formatted);
-      expect(money.classList.contains("text-red-600")).toBe(false);
-      expect(money.classList.contains("text-green-700")).toBe(
+      expect(money.classList.contains("text-error-hover")).toBe(false);
+      expect(money.closest(".text-success-foreground") !== null).toBe(
         Number(amount) > 0,
       );
     },
@@ -59,12 +59,12 @@ describe("Transaction history activity and states", () => {
     );
     render(<TransactionHistoryCard />);
     expect(await screen.findByText("Direct block usage")).toBeDefined();
-    expect(screen.getByText("Outside an agent run")).toBeDefined();
+    expect(screen.getByText("Outside a workflow run")).toBeDefined();
     fireEvent.click(
       screen.getByRole("button", { name: /details for Direct block usage/i }),
     );
     expect(
-      screen.getByText("A paid block call without an associated agent run."),
+      screen.getByText("A paid block call without an associated workflow run."),
     ).toBeDefined();
   });
 

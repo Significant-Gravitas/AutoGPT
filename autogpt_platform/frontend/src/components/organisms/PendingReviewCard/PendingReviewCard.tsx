@@ -3,6 +3,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Input } from "@/components/atoms/Input/Input";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { useEffect, useState } from "react";
+import { JsonDataInput } from "./components/JsonDataInput/JsonDataInput";
 import { ReviewInputFields } from "./components/ReviewInputFields/ReviewInputFields";
 import { reviewFields } from "./components/ReviewInputFields/helpers";
 import { useReviewBlockSchema } from "./components/ReviewInputFields/useReviewBlockSchema";
@@ -100,8 +101,14 @@ export function PendingReviewCard({
       );
     } else if (typeof data === "boolean") {
       return (
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">
+        <div
+          data-slot="pending-review-card-toggle"
+          className="flex items-center gap-3"
+        >
+          <span
+            data-slot="pending-review-card-toggle-label"
+            className="text-sm text-foreground-tertiary"
+          >
             {data ? "Enabled" : "Disabled"}
           </span>
           <Switch
@@ -113,22 +120,13 @@ export function PendingReviewCard({
       );
     } else {
       return (
-        <Input
-          id="data-json"
-          label="Value"
-          hideLabel
-          size="small"
-          type="textarea"
-          rows={6}
-          value={JSON.stringify(data, null, 2)}
-          onChange={(e) => {
-            try {
-              const parsed = JSON.parse(e.target.value);
-              handleDataChange(parsed);
-            } catch {}
-          }}
-          placeholder="Edit JSON data"
-          className="font-mono text-sm"
+        <JsonDataInput
+          value={data}
+          initialText={externalDataValue}
+          onChange={(value) => handleDataChange(value as ReviewPayload)}
+          onInvalidDraft={(text) =>
+            onReviewDataChange(review.node_exec_id, text)
+          }
         />
       );
     }
@@ -140,27 +138,26 @@ export function PendingReviewCard({
   };
 
   return (
-    <div className="space-y-4">
+    <div data-slot="pending-review-card" className="space-y-4">
       {nodeId && (
-        <Text variant="small" className="text-gray-500">
+        <Text variant="small" tone="muted">
           Node #{getShortenedNodeId(nodeId)}
         </Text>
       )}
 
-      <div className="space-y-3">
-        {instructions && (
-          <Text variant="body" className="font-semibold text-gray-900">
-            {instructions}
-          </Text>
-        )}
+      <div data-slot="pending-review-card-body" className="space-y-3">
+        {instructions && <Text variant="body-semibold">{instructions}</Text>}
 
         {isPlainObject(currentData) ? (
           renderFields(!isDataEditable || autoApproveFuture)
         ) : isDataEditable && !autoApproveFuture ? (
           renderDataInput()
         ) : (
-          <div className="rounded-lg border border-gray-200 bg-white p-3">
-            <Text variant="small" className="text-gray-600">
+          <div
+            data-slot="pending-review-card-readonly"
+            className="rounded-lg border border-border-base bg-surface p-3"
+          >
+            <Text variant="small" tone="secondary">
               {JSON.stringify(currentData, null, 2)}
             </Text>
           </div>
@@ -169,20 +166,26 @@ export function PendingReviewCard({
 
       {/* Auto-approve toggle for this review */}
       {showAutoApprove && onAutoApproveFutureChange && (
-        <div className="space-y-2 pt-2">
-          <div className="flex items-center gap-3">
+        <div
+          data-slot="pending-review-card-auto-approve"
+          className="space-y-2 pt-2"
+        >
+          <div
+            data-slot="pending-review-card-auto-approve-row"
+            className="flex items-center gap-3"
+          >
             <Switch
               checked={autoApproveFuture}
               onCheckedChange={(enabled: boolean) =>
                 onAutoApproveFutureChange(review.node_exec_id, enabled)
               }
             />
-            <Text variant="small" className="text-gray-700">
+            <Text variant="small" tone="body">
               Auto-approve future executions of this block
             </Text>
           </div>
           {autoApproveFuture && (
-            <Text variant="small" className="pl-11 text-gray-500">
+            <Text variant="small" tone="muted" className="pl-11">
               Original data will be used for this and all future reviews from
               this block.
             </Text>

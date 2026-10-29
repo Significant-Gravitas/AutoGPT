@@ -4,7 +4,7 @@ import { Download01Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import type { SessionFile } from "../../ContextPanel/components/FilesTab/useSessionFiles";
 import { WorkspaceFileCard } from "./WorkspaceFileCard";
 import { WorkspaceFileRow } from "./WorkspaceFileRow";
@@ -43,7 +43,7 @@ export function WorkspaceFilesContent({
     <>
       {showHeader && (
         <div className="flex items-center justify-between gap-2 pb-1.5">
-          <span className="text-[15px] text-zinc-400">
+          <span className="text-body-md leading-inherit text-foreground-subtle">
             Files{files.length > 0 && ` (${files.length})`}
           </span>
           {files.length > 0 && (
@@ -53,7 +53,7 @@ export function WorkspaceFilesContent({
               onClick={onDownloadAll}
               loading={isZipping}
               aria-label="Download all"
-              className="size-7 rounded-lg !p-0 text-zinc-500"
+              className="size-7 rounded-lg !p-0 text-foreground-tertiary"
             >
               <Icon icon={Download01Icon} size={15} />
             </Button>
@@ -102,21 +102,23 @@ function Body({
   if (isLoading) {
     return (
       <div className="grid gap-2.5 py-1">
-        <Skeleton className="h-5 w-full rounded-lg" />
-        <Skeleton className="h-5 w-2/3 rounded-lg" />
+        <Skeleton variant="translucent" className="h-5 w-full rounded-lg" />
+        <Skeleton variant="translucent" className="h-5 w-2/3 rounded-lg" />
       </div>
     );
   }
 
   if (isError) {
     return (
-      <p className="py-2 text-[13px] text-zinc-400">Failed to load files.</p>
+      <p className="py-2 text-body-sm leading-inherit text-foreground-subtle">
+        Failed to load files.
+      </p>
     );
   }
 
   if (files.length === 0) {
     return (
-      <p className="py-2 text-[13px] text-zinc-400">
+      <p className="py-2 text-body-sm leading-inherit text-foreground-subtle">
         {emptyMessage ??
           "No files yet. Upload one or ask an expert to create something."}
       </p>
@@ -129,7 +131,7 @@ function Body({
   return (
     <>
       {rowStyle === "detailed" ? (
-        <div className="-mx-3 grid max-h-80 divide-y divide-zinc-200/70 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+        <div className="-mx-3 grid max-h-80 divide-y divide-border-base/70 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active">
           {visibleFiles.map((file) => (
             <WorkspaceFileRow
               key={file.item.id}
@@ -143,7 +145,7 @@ function Body({
       ) : (
         // Rows bleed their hover highlight past the text with negative
         // margins, so the scroller widens to match — otherwise it clips them.
-        <div className="-mx-2.5 grid max-h-72 gap-0.5 overflow-y-auto px-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+        <div className="-mx-2.5 grid max-h-72 gap-0.5 overflow-y-auto px-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active">
           {visibleFiles.map((file) => (
             <WorkspaceFileCard
               key={file.item.id}
@@ -159,7 +161,7 @@ function Body({
         <button
           type="button"
           onClick={() => setShowAll(!showAll)}
-          className="w-full pb-0.5 pt-1.5 text-left text-[13px] text-zinc-500 transition-colors hover:text-zinc-800"
+          className="w-full pb-0.5 pt-1.5 text-left text-body-sm leading-inherit text-foreground-tertiary transition-colors hover:text-foreground-emphasis"
         >
           {showAll ? "Show less" : `View more (${hiddenCount})`}
         </button>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Dialog,
   DialogContent,
@@ -9,10 +9,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/__legacy__/ui/dialog";
-import { Label } from "@/components/__legacy__/ui/label";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
-import { Input } from "@/components/__legacy__/ui/input";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
+import { Label } from "@/components/atoms/Label/Label";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { useRouter } from "next/navigation";
 import { addDollars } from "@/app/(platform)/admin/spending/actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -63,8 +63,8 @@ export function AdminAddMoneyButton({
   return (
     <>
       <Button
-        size="sm"
-        variant="default"
+        size="xs"
+        variant="primary"
         onClick={(e) => {
           e.stopPropagation();
           setIsAddMoneyDialogOpen(true);
@@ -81,7 +81,7 @@ export function AdminAddMoneyButton({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Dollars</DialogTitle>
-            <DialogDescription className="pt-2">
+            <DialogDescription className="mt-2">
               <div className="mb-2">
                 <span className="font-medium">User:</span> {userEmail}
               </div>
@@ -104,13 +104,14 @@ export function AdminAddMoneyButton({
               <div className="grid gap-2">
                 <Label htmlFor="dollarAmount">Amount (in dollars)</Label>
                 <div className="flex">
-                  <div className="flex items-center justify-center rounded-l-md border border-r-0 bg-gray-50 px-3 text-gray-500">
+                  <div className="flex items-center justify-center rounded-l-md border border-r-0 bg-surface-muted px-3 text-foreground-tertiary">
                     $
                   </div>
-                  <Input
+                  <BaseInput
                     id="dollarAmount"
                     type="number"
                     step="0.01"
+                    // oxlint-disable-next-line design-system/no-restyle -- BaseInput has no attached-addon variant (src/components is P9's)
                     className="rounded-l-none"
                     value={dollarAmount}
                     onChange={(e) => setDollarAmount(e.target.value)}
@@ -135,13 +136,19 @@ export function AdminAddMoneyButton({
             <DialogFooter>
               <Button
                 type="button"
-                variant="outline"
+                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
+                variant="legacy-outline"
                 onClick={() => setIsAddMoneyDialogOpen(false)}
                 disabled={isSubmitting}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button
+                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
+                variant="legacy-default"
+                type="submit"
+                disabled={isSubmitting}
+              >
                 {isSubmitting ? "Adding..." : "Add Dollars"}
               </Button>
             </DialogFooter>

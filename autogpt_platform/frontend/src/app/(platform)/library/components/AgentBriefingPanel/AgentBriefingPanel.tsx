@@ -19,9 +19,9 @@ export function AgentBriefingPanel({ summary, agents }: Props) {
 
   return (
     <div
-      className={`min-h-[14.75rem] rounded-large bg-gradient-to-br from-indigo-50/30 via-white/90 to-purple-50/25 px-5 pb-5 pt-[1.125rem] shadow-sm backdrop-blur-md`}
+      className={`min-h-[14.75rem] rounded-large bg-gradient-to-br from-info-surface/30 via-surface/90 to-accent-surface/25 px-5 pb-5 pt-4.5 shadow-sm backdrop-blur-md`}
     >
-      <Text variant="h5">Agent Briefing</Text>
+      <Text variant="h5">Workflow Briefing</Text>
       <div className="mt-4 space-y-5">
         <StatsGrid
           summary={summary}

@@ -161,6 +161,12 @@ class TurnEnvelope(BaseModel):
     deadline_at: datetime | None = None
     # The chat whose spend ceiling this tree's paid calls count against.
     spend_session_id: str | None = None
+    # Not limits: where a spawned turn sits in PostHog (``copilot.ai_spans``).
+    # The trace of the turn that spawned it and the span of the tool call that
+    # did, recorded when the child is derived. A queued child and an approval
+    # wake start under the stored envelope, so they keep both. None for a root.
+    ai_trace_id: str | None = None
+    ai_parent_span_id: str | None = None
 
     def permits(self, tool_name: str) -> bool:
         return self.tools is None or tool_name in self.tools
@@ -277,6 +283,18 @@ def derive_child_envelope(
     )
 
 
+def narrowed_by(
+    envelope: TurnEnvelope, permissions: CopilotPermissions | None
+) -> TurnEnvelope:
+    """A stored envelope under today's permissions: a tool revoked since it was
+    stored stays out, though the envelope still lists it."""
+    if permissions is None:
+        return envelope
+    allowed = permissions.effective_allowed_tools(ALL_TOOL_NAMES)
+    tools = allowed if envelope.tools is None else envelope.tools & allowed
+    return envelope.model_copy(update={"tools": frozenset(tools)})
+
+
 class TreeLedger:
     """One Redis hash per tree: ``ceiling``, ``spent``, ``nodes``, ``max_nodes``.
 
@@ -346,9 +364,28 @@ class TreeLedger:
 
     async def admit(self, envelope: TurnEnvelope) -> None:
         key = self.key(envelope.tree_id)
+        max_nodes = await self._admissible(envelope)
+        nodes = await self._hincrby(key, "nodes", 1)
+        if nodes > int(max_nodes):
+            await self._hincrby(key, "nodes", -1)
+            raise TreeRefusal(
+                f"This task has already used its {max_nodes} agents — that is a "
+                "lifetime budget for this request, not a concurrency limit, so "
+                "waiting will not free one. Finish the remaining work yourself."
+            )
+
+    async def recheck(self, envelope: TurnEnvelope) -> None:
+        """Refuse a turn admitted earlier whose tree has since closed or spent
+        its ceiling, without counting it as a node again."""
+        await self._admissible(envelope)
+
+    async def _admissible(self, envelope: TurnEnvelope) -> int:
+        """The tree's node cap, once its open state and spend allow the turn."""
         ceiling, spent, max_nodes = await cast(
             Awaitable[list[str | None]],
-            self._redis.hmget(key, ["ceiling", "spent", "max_nodes"]),
+            self._redis.hmget(
+                self.key(envelope.tree_id), ["ceiling", "spent", "max_nodes"]
+            ),
         )
         if ceiling is None or spent is None or max_nodes is None:
             raise TreeRefusal("This task's tree has closed; nothing more can start.")
@@ -358,14 +395,7 @@ class TreeLedger:
         # the module docstring; the node cap is the bound that holds.
         if envelope.depth > 0 and int(spent) >= int(ceiling):
             raise TreeRefusal(_spend_refusal(int(spent), int(ceiling)))
-        nodes = await self._hincrby(key, "nodes", 1)
-        if nodes > int(max_nodes):
-            await self._hincrby(key, "nodes", -1)
-            raise TreeRefusal(
-                f"This task has already used its {max_nodes} agents — that is a "
-                "lifetime budget for this request, not a concurrency limit, so "
-                "waiting will not free one. Finish the remaining work yourself."
-            )
+        return int(max_nodes)
 
     async def release(self, tree_id: str) -> None:
         """Undo an admit whose dispatch never happened."""
@@ -490,7 +520,7 @@ async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
         # handing out the full cap is the one fail-open branch this module
         # would otherwise contain.
         return 0
-    daily, weekly, _ = await get_global_rate_limits(
+    daily, weekly, usage_tier = await get_global_rate_limits(
         user_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
@@ -498,7 +528,11 @@ async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
     ceiling = _plan_ceiling_microdollars(daily)
 
     remaining_usd = await get_remaining_usd_budget(
-        user_id=user_id, daily_cost_limit=daily, weekly_cost_limit=weekly, floor_usd=0.0
+        user_id=user_id,
+        daily_cost_limit=daily,
+        weekly_cost_limit=weekly,
+        floor_usd=0.0,
+        expected_tier=usage_tier,
     )
     if remaining_usd == float("inf"):
         return max(0, ceiling)
@@ -574,6 +608,25 @@ async def admit_turn(
         raise
     except Exception as e:
         logger.warning(f"Tree ledger unavailable; refusing spawn: {e}")
+        raise TreeRefusal(
+            "Could not account for this work right now; try again shortly."
+        ) from e
+
+
+async def readmit_turn(envelope: TurnEnvelope, *, user_id: str | None) -> None:
+    """Re-check a turn admitted earlier — a queued child, an approval wake —
+    before it starts, without a second node. Raises :class:`TreeRefusal`."""
+    if envelope.depth == 0:
+        await admit_turn(envelope, user_id=user_id)
+        return
+    if envelope.deadline_at is not None and envelope.deadline_at <= datetime.now(UTC):
+        raise TreeRefusal("This task's deadline passed before it could start.")
+    try:
+        await (await get_tree_ledger()).recheck(envelope)
+    except TreeRefusal:
+        raise
+    except Exception as e:
+        logger.warning(f"Tree ledger unavailable; refusing queued turn: {e}")
         raise TreeRefusal(
             "Could not account for this work right now; try again shortly."
         ) from e

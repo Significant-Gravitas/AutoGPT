@@ -25,6 +25,7 @@ export function useWallet() {
   const [flash, setFlash] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
   const [topUpOpen, setTopUpOpen] = useState(false);
+  const [explainerOpen, setExplainerOpen] = useState(false);
 
   const walletRef = useRef<HTMLButtonElement | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,6 +58,20 @@ export function useWallet() {
 
   function onTopUpClose() {
     setTopUpOpen(false);
+    requestAnimationFrame(() => walletRef.current?.focus());
+  }
+
+  function onOpenExplainer() {
+    setWalletOpen(false);
+    setExplainerOpen(true);
+  }
+
+  // The explainer opens from a button inside the popover, which is gone by
+  // the time it closes, so focus is sent back to the wallet button the way
+  // the top-up dialog does.
+  function onExplainerOpenChange(open: boolean) {
+    setExplainerOpen(open);
+    if (!open) requestAnimationFrame(() => walletRef.current?.focus());
   }
 
   // React to onboarding notifications emitted by the provider
@@ -174,5 +189,8 @@ export function useWallet() {
     topUpOpen,
     onAddCredits,
     onTopUpClose,
+    explainerOpen,
+    onOpenExplainer,
+    onExplainerOpenChange,
   };
 }

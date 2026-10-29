@@ -2,7 +2,6 @@ import { cn } from "@/lib/utils";
 import { nodeStyleBasedOnStatus } from "../helpers";
 
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { useShallow } from "zustand/react/shallow";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 
 export const NodeContainer = ({
@@ -16,14 +15,12 @@ export const NodeContainer = ({
   selected: boolean;
   hasErrors?: boolean;
 }) => {
-  const status = useNodeStore(
-    useShallow((state) => state.getNodeStatus(nodeId)),
-  );
+  const status = useNodeStore((state) => state.getNodeStatus(nodeId));
   return (
     <div
       className={cn(
-        "z-12 w-[350px] rounded-xlarge ring-1 ring-slate-200/60",
-        selected && "shadow-lg ring-2 ring-slate-200",
+        "w-[350px] rounded-xlarge ring-1 ring-node-border/60",
+        selected && "shadow-lg ring-2 ring-node-selected",
         status && nodeStyleBasedOnStatus[status],
         hasErrors ? nodeStyleBasedOnStatus[AgentExecutionStatus.FAILED] : "",
       )}
