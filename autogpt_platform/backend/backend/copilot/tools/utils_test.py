@@ -1,5 +1,6 @@
 """Tests for chat tools utility functions."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -9,7 +10,12 @@ from backend.api.features.library.exceptions import (
     LibraryAgentInAnotherOrganizationError,
 )
 from backend.blocks.http import SendAuthenticatedWebRequestBlock
-from backend.copilot.tools.utils import get_or_create_library_agent
+from backend.copilot.credential_selection import CredentialPin, set_turn_credential_pins
+from backend.copilot.tools.helpers import unattended_missing_credentials_error
+from backend.copilot.tools.utils import (
+    find_matching_credential,
+    get_or_create_library_agent,
+)
 from backend.data.model import CredentialsFieldInfo, HostScopedCredentials
 
 
@@ -257,6 +263,31 @@ def test_the_credential_the_user_picked_wins():
     assert picked is not None and picked.id == "personal"
 
 
+def test_http_hosts_keep_their_own_account_picks():
+    credentials = [
+        HostScopedCredentials(id=f"{host}-{account}", provider="http", host=host)
+        for host in ("api.linear.app", "api.github.com")
+        for account in ("work", "personal")
+    ]
+    selected = {
+        "http:api.linear.app": "api.linear.app-work",
+        "http:api.github.com": "api.github.com-personal",
+    }
+    for host, account in (("api.linear.app", "work"), ("api.github.com", "personal")):
+        field = CredentialsFieldInfo.model_validate(
+            {
+                "credentials_provider": ["http"],
+                "credentials_types": ["host_scoped"],
+                "discriminator_values": [f"https://{host}/v1"],
+            },
+            by_alias=True,
+        )
+        picked = find_matching_credential(
+            credentials, field, selected, ask_when_ambiguous=True
+        )
+        assert picked is not None and picked.id == f"{host}-{account}"
+
+
 def test_a_chat_tool_asks_rather_than_choosing_between_two_accounts():
     # None surfaces as a missing credential, which is the card with a picker.
     assert _find([_key_cred("work"), _key_cred("personal")], ask=True) is None
@@ -384,6 +415,64 @@ async def test_a_pin_for_one_host_leaves_the_credentials_for_other_hosts():
         {"http": CredentialPin(id="example-host", title="example-host")},
     )
     assert matched["credentials"].id == "other-host"
+
+
+async def test_a_deleted_host_pin_never_switches_to_another_key():
+    field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["http"],
+            "credentials_types": ["host_scoped"],
+            "discriminator_values": ["https://api.linear.app/graphql"],
+        },
+        by_alias=True,
+    )
+    matched, missing = await _match_with_pins(
+        [HostScopedCredentials(id="personal", provider="http", host="api.linear.app")],
+        {"credentials": field},
+        {"http:api.linear.app": CredentialPin(id="deleted-work")},
+    )
+    assert matched == {}
+    assert len(missing) == 1
+
+
+@pytest.mark.parametrize(
+    "host, expected",
+    [
+        ("api.linear.app", "pinned_credential_missing"),
+        ("api.github.com", "missing_credentials"),
+    ],
+)
+async def test_a_missing_host_account_names_only_its_own_pin(host, expected):
+    async def turn():
+        set_turn_credential_pins(
+            {
+                "http:api.linear.app": CredentialPin(
+                    id="deleted-work", title="Linear work"
+                )
+            }
+        )
+        with patch(
+            "backend.copilot.tools.helpers.get_user_credentials",
+            AsyncMock(return_value=[]),
+        ):
+            return await unattended_missing_credentials_error(
+                "HTTP request",
+                {
+                    "credentials": {
+                        "provider": "http",
+                        "types": ["host_scoped"],
+                        "discriminator_values": [f"https://{host}/v1"],
+                    }
+                },
+                "s1",
+                "test-user",
+                None,
+            )
+
+    result = await asyncio.create_task(turn())
+    assert result.error == expected
+    assert ("Linear work" in result.message) is (host == "api.linear.app")
+    assert result.details == {"provider": "http"}
 
 
 async def test_the_error_names_a_pinned_account_that_cannot_do_the_step():

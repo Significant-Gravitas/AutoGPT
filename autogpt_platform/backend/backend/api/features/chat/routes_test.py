@@ -27,7 +27,7 @@ from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
-from backend.data.model import OAuth2Credentials
+from backend.data.model import HostScopedCredentials, OAuth2Credentials
 from backend.data.workspace_scope import WorkspaceScope
 from backend.integrations.codex.auth_bundle import (
     CodexAuthBundleV1,
@@ -5201,6 +5201,87 @@ def test_credential_selection_rejects_a_provider_named_twice(
 
     assert response.status_code == 422
     assert response.json()["detail"] == "duplicate_provider"
+    remember.assert_not_awaited()
+
+
+@pytest.mark.parametrize("host", ["api.linear.app", "api.github.com"])
+def test_credential_selection_keeps_host_scoped_picks(mocker, host):
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=MagicMock()),
+    )
+    store = MagicMock()
+    store.get_creds_by_id = AsyncMock(
+        return_value=HostScopedCredentials(
+            id="work-key",
+            provider="http",
+            host=host,
+        )
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    )
+    remember = mocker.patch(
+        "backend.api.features.chat.routes.remember_selection", new=AsyncMock()
+    )
+    response = client.put(
+        "/sessions/sess-1/credential-selection",
+        json={"selections": {f"http:{host}": "work-key"}},
+    )
+    assert response.status_code == 200
+    store.get_creds_by_id.assert_awaited_once_with(TEST_USER_ID, "work-key")
+    remember.assert_awaited_once_with("sess-1", {f"http:{host}": "work-key"})
+
+
+def test_credential_selection_rejects_a_pick_for_another_host(mocker):
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=MagicMock()),
+    )
+    store = MagicMock()
+    store.get_creds_by_id = AsyncMock(
+        return_value=HostScopedCredentials(
+            id="work-key",
+            provider="http",
+            host="api.github.com",
+        )
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    )
+    remember = mocker.patch(
+        "backend.api.features.chat.routes.remember_selection", new=AsyncMock()
+    )
+    response = client.put(
+        "/sessions/sess-1/credential-selection",
+        json={"selections": {"http:api.linear.app": "work-key"}},
+    )
+    assert response.status_code == 404
+    remember.assert_not_awaited()
+
+
+@pytest.mark.parametrize("missing", ["session", "credential"])
+def test_host_credential_selection_rejects_inaccessible_resources(mocker, missing):
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=None if missing == "session" else MagicMock()),
+    )
+    store = MagicMock()
+    store.get_creds_by_id = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.api.features.chat.routes.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    )
+    remember = mocker.patch(
+        "backend.api.features.chat.routes.remember_selection", new=AsyncMock()
+    )
+    response = client.put(
+        "/sessions/sess-1/credential-selection",
+        json={"selections": {"http:api.linear.app": "another-users-key"}},
+    )
+    assert response.status_code == 404
     remember.assert_not_awaited()
 
 
