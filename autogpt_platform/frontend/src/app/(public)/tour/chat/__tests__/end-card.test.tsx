@@ -9,7 +9,7 @@ import {
 
 // DotDistortionShader paints a canvas/WebGL frame that happy-dom cannot run and
 // that is purely decorative — stub it so the real chat tree can render.
-vi.mock("@/components/ui/dot-distortion-shader", () => ({
+vi.mock("../components/DotDistortionShader/DotDistortionShader", () => ({
   DotDistortionShader: () => null,
 }));
 
@@ -77,7 +77,7 @@ describe("Tour demo end state", () => {
     expect(screen.queryByText(/Simulated demo/i)).toBeNull();
 
     const pricingCta = screen
-      .getByText("Make this agent yours")
+      .getByText("Make this workflow yours")
       .closest("a") as HTMLAnchorElement;
     expect(pricingCta.href).toContain(
       "agpt.co/pricing?utm_source=tour&utm_medium=end_card",

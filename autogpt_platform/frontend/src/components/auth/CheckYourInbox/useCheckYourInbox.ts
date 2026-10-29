@@ -1,6 +1,11 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { authClient } from "@/lib/auth/client";
 import { getEmailVerificationCallbackURL } from "@/lib/auth/email-verification";
+import {
+  UNDELIVERABLE_EMAIL_CODE,
+  UNDELIVERABLE_EMAIL_HINT,
+  UNDELIVERABLE_EMAIL_TITLE,
+} from "@/lib/auth/undeliverable-email";
 import { useEffect, useState } from "react";
 import {
   CHECK_YOUR_INBOX_HEADING_ID,
@@ -37,6 +42,14 @@ export function useCheckYourInbox({ email, next, marketingOptOut }: Args) {
         email,
         callbackURL: getEmailVerificationCallbackURL({ next, marketingOptOut }),
       });
+      if (error?.code === UNDELIVERABLE_EMAIL_CODE) {
+        toast({
+          title: UNDELIVERABLE_EMAIL_TITLE,
+          description: UNDELIVERABLE_EMAIL_HINT,
+          variant: "destructive",
+        });
+        return;
+      }
       if (error) {
         showResendFailed(error.status === 429);
         return;

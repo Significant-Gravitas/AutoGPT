@@ -19,6 +19,8 @@ import stripe
 from prisma.enums import SubscriptionTier
 
 from backend.data import credit as worker_a
+from backend.data import subscription_payment_failure as payment_failure
+from backend.data import subscription_wallet_payment as wallet_payment
 from backend.data import versioned_cache
 from backend.data.redis_client import get_redis_async
 from backend.data.subscription_pending_cache import PENDING_CHANGES
@@ -203,11 +205,34 @@ async def test_a_renewal_the_balance_cant_cover_clears_the_pending_change(
     user_id, fake_stripe, worker_b
 ):
     """A cancellation is scheduled, then the renewal fails and the balance
-    can't cover it, so we end the plan in Stripe now: the "cancels on" badge
-    must go on every worker, not linger until it expires."""
+    can't cover it. The plan stops giving access (Stripe keeps it past_due
+    and retries the invoice), so the "cancels on" badge must go on every
+    worker, not linger until it expires."""
     fake_stripe.subscription["cancel_at_period_end"] = True
     pending = await worker_b.get_pending_subscription_change(user_id)
     assert pending is not None and pending[0] == SubscriptionTier.NO_TIER
+
+    fake_stripe.subscription = {
+        **fake_stripe.subscription,
+        "status": "past_due",
+        "latest_invoice": "in_renewal",
+    }
+    customer_id = fake_stripe.subscription["customer"]
+    renewal = {
+        "id": "in_renewal",
+        "object": "invoice",
+        "customer": customer_id,
+        "status": "open",
+        "amount_due": 5000,
+        "billing_reason": "subscription_cycle",
+        "subscription": "sub_pro",
+    }
+
+    async def retrieve_invoice(invoice_id: str, **params):
+        return stripe.Invoice.construct_from(renewal, "test-key")
+
+    async def retrieve_subscription(subscription_id: str, **params):
+        return fake_stripe.current()
 
     users = MagicMock()
     users.prisma.return_value.find_first = AsyncMock(
@@ -217,20 +242,29 @@ async def test_a_renewal_the_balance_cant_cover_clears_the_pending_change(
     balance._add_transaction = AsyncMock(
         side_effect=InsufficientBalanceError("no balance", user_id, 0, 5000)
     )
-    renewal = {
-        "id": "in_renewal",
-        "customer": fake_stripe.subscription["customer"],
-        "amount_due": 5000,
-        "billing_reason": "subscription_cycle",
-        "subscription": "sub_pro",
-    }
     with (
-        patch.object(worker_a, "User", users),
-        patch.object(worker_a, "UserCredit", MagicMock(return_value=balance)),
-        patch.object(worker_a, "set_subscription_tier", AsyncMock()) as set_tier,
+        patch.object(stripe.Invoice, "retrieve_async", retrieve_invoice),
+        patch.object(stripe.Subscription, "retrieve_async", retrieve_subscription),
+        patch.object(payment_failure, "User", users),
+        patch.object(
+            payment_failure, "find_wallet_payment", AsyncMock(return_value=None)
+        ),
+        patch.object(
+            payment_failure, "payment_in_progress", AsyncMock(return_value=False)
+        ),
+        patch.object(
+            wallet_payment, "find_wallet_payment", AsyncMock(return_value=None)
+        ),
+        patch.object(wallet_payment, "UserCredit", MagicMock(return_value=balance)),
+        patch.object(
+            payment_failure, "get_subscription_trial", AsyncMock(return_value=None)
+        ),
     ):
-        await worker_a.handle_subscription_payment_failure(renewal)
+        await payment_failure.handle_subscription_payment_failure(renewal)
 
-    assert fake_stripe.subscription["status"] == "canceled"
-    set_tier.assert_awaited_once_with(user_id, SubscriptionTier.NO_TIER)
+    assert fake_stripe.subscription["status"] == "past_due"
+    sync_tier = worker_a._sync_subscription_tier_from_stripe
+    assert isinstance(sync_tier, AsyncMock)
+    sync_tier.assert_awaited_once()
+    assert sync_tier.await_args.args[0]["status"] == "past_due"
     assert await worker_b.get_pending_subscription_change(user_id) is None

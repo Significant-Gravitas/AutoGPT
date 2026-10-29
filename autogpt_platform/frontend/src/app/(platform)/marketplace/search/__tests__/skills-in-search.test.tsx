@@ -20,7 +20,6 @@ import { MainSearchResultPage } from "../components/MainSearchResultPage/MainSea
 configure({ asyncUtilTimeout: 10000 });
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
-const flag = vi.hoisted(() => ({ enabled: true, ready: true }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -38,14 +37,6 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({ useAuth: mockUseAuth }));
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return { ...actual, useFlagStatus: () => flag };
-});
-
 const outreach: MarketplaceSkill = {
   slug: "outreach-playbook",
   name: "outreach-playbook",
@@ -60,8 +51,6 @@ const outreach: MarketplaceSkill = {
 
 describe("Skills in marketplace search", () => {
   beforeEach(() => {
-    flag.enabled = true;
-    flag.ready = true;
     mockUseAuth.mockReturnValue({ user: { id: "user-1" }, isLoggedIn: true });
     server.use(
       getGetV2ListStoreAgentsMockHandler(),
@@ -98,8 +87,9 @@ describe("Skills in marketplace search", () => {
     expect(screen.getByRole("button", { name: /Skills/ })).toBeDefined();
   });
 
-  test("asks for no skills and offers no chip outside the beta", async () => {
-    flag.enabled = false;
+  test("offers public skill search to signed-out visitors", async () => {
+    mockUseAuth.mockReturnValue({ user: null, isLoggedIn: false });
+
     let requested = false;
     server.use(
       getGetV2ListMarketplaceSkillsMockHandler200(() => {
@@ -121,7 +111,9 @@ describe("Skills in marketplace search", () => {
     await screen.findByText(/Showing results for/, undefined, {
       timeout: 10000,
     });
-    await waitFor(() => expect(requested).toBe(false));
-    expect(screen.queryByRole("heading", { name: "Skills" })).toBeNull();
+    await waitFor(() => expect(requested).toBe(true));
+    expect(
+      await screen.findByRole("heading", { name: "Skills" }),
+    ).toBeDefined();
   });
 });

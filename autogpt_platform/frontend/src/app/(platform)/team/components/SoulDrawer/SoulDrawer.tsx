@@ -109,7 +109,8 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-name"
         label="Name"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        // oxlint-disable-next-line design-system/no-restyle -- Input has no label tone prop (src/components is P9's)
+        labelClassName="!text-foreground-body"
         value={soul.name}
         maxLength={100}
         required
@@ -119,7 +120,8 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-identity"
         label="Identity and personality"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        // oxlint-disable-next-line design-system/no-restyle -- Input has no label tone prop (src/components is P9's)
+        labelClassName="!text-foreground-body"
         type="textarea"
         rows={6}
         value={soul.identity}
@@ -131,7 +133,8 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-voice"
         label="Voice"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        // oxlint-disable-next-line design-system/no-restyle -- Input has no label tone prop (src/components is P9's)
+        labelClassName="!text-foreground-body"
         type="textarea"
         rows={3}
         value={soul.voice_preferences}
@@ -145,7 +148,8 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-boundaries"
         label="Boundaries"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        // oxlint-disable-next-line design-system/no-restyle -- Input has no label tone prop (src/components is P9's)
+        labelClassName="!text-foreground-body"
         type="textarea"
         rows={4}
         value={soul.boundaries}
@@ -159,23 +163,21 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
 
 function ProtectedRules({ rules }: { rules: string[] }) {
   return (
-    <section className="border-t border-zinc-200 pt-6">
+    <section className="border-t border-border-base pt-6">
       <div className="mb-3 flex items-center gap-2">
-        <Icon icon={LockIcon} size={16} className="text-zinc-500" />
+        <span className="flex text-foreground-tertiary">
+          <Icon icon={LockIcon} size={16} />
+        </span>
         <SoulSectionTitle>Protected rules</SoulSectionTitle>
       </div>
-      <div className="space-y-2 rounded-xl bg-zinc-50 p-4">
+      <div className="space-y-2 rounded-xl bg-surface-muted p-4">
         {rules.map((rule) => (
-          <Text
-            key={rule}
-            variant="body"
-            as="div"
-            tone="secondary"
-            className="flex gap-2 leading-5"
-          >
+          <div key={rule} className="flex gap-2 text-foreground-secondary">
             <Icon icon={LockIcon} size={14} className="mt-0.5 shrink-0" />
-            <span>{rule}</span>
-          </Text>
+            <Text variant="body-tight" as="span" tone="secondary">
+              {rule}
+            </Text>
+          </div>
         ))}
       </div>
       <Text variant="small" tone="muted" className="mt-3">

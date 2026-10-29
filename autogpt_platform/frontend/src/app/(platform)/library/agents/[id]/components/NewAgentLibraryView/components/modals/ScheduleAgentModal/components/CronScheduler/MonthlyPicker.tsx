@@ -25,34 +25,34 @@ export function MonthlyPicker({
 
   return (
     <div className="mb-6 space-y-2">
-      <Text variant="body-medium" as="span" className="text-black">
+      <Text variant="body-medium" as="span">
         Days of Month
       </Text>
       <div className="flex gap-2">
         <button
           type="button"
-          className={`h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-[16px] text-black hover:bg-zinc-100`}
+          className="h-[2.25rem] rounded-full border border-foreground-body px-4 py-2 text-sm font-medium leading-4 text-foreground-base hover:bg-surface-hover"
           onClick={allDays}
         >
           All Days
         </button>
         <button
           type="button"
-          className={`h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-[16px] text-black hover:bg-zinc-100`}
+          className="h-[2.25rem] rounded-full border border-foreground-body px-4 py-2 text-sm font-medium leading-4 text-foreground-base hover:bg-surface-hover"
           onClick={customize}
         >
           Customize
         </button>
         <button
           type="button"
-          className="h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-[16px] text-black hover:bg-zinc-100"
+          className="h-[2.25rem] rounded-full border border-foreground-body px-4 py-2 text-sm font-medium leading-4 text-foreground-base hover:bg-surface-hover"
           onClick={() => onChange([15])}
         >
           15th
         </button>
         <button
           type="button"
-          className="h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-[16px] text-black hover:bg-zinc-100"
+          className="h-[2.25rem] rounded-full border border-foreground-body px-4 py-2 text-sm font-medium leading-4 text-foreground-base hover:bg-surface-hover"
           onClick={() => onChange([31])}
         >
           Last Day

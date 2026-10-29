@@ -331,6 +331,16 @@ class TestLogPlatformCost:
         assert data["provider"] == "openai"
         # metadata must be wrapped in SafeJson (a prisma.Json subclass), not a plain dict
         assert isinstance(data["metadata"], Json)
+        # The account's own spend: no expert on the row.
+        assert data["expertId"] is None
+
+    @pytest.mark.asyncio
+    async def test_expert_id_lands_in_its_column(self):
+        mock_create = AsyncMock()
+        with patch("backend.data.platform_cost.PrismaLog.prisma") as mock_prisma:
+            mock_prisma.return_value.create = mock_create
+            await log_platform_cost(_make_entry(expert_id="expert-1"))
+        assert mock_create.call_args[1]["data"]["expertId"] == "expert-1"
 
     @pytest.mark.asyncio
     async def test_metadata_none_passes_none(self):

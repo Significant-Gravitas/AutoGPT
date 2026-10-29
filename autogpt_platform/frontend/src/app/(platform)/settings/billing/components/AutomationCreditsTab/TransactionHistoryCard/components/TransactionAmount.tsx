@@ -1,22 +1,24 @@
 import { Text } from "@/components/atoms/Text/Text";
-import { cn } from "@/lib/utils";
 import { formatAmount } from "../helpers";
 
-type Props = { amount: number; className?: string };
+type Props = {
+  amount: number;
+  variant?: "body-medium" | "small-medium" | "small";
+};
 
-export function TransactionAmount({ amount, className }: Props) {
+export function TransactionAmount({ amount, variant = "body-medium" }: Props) {
+  const isCredit = amount > 0;
   return (
-    <Text
-      variant="body-medium"
-      as="span"
-      unmask={false}
-      className={cn(
-        "whitespace-nowrap tabular-nums",
-        amount > 0 ? "text-green-700" : "text-textBlack",
-        className,
-      )}
+    <span
+      className={
+        isCredit
+          ? "whitespace-nowrap tabular-nums text-success-foreground"
+          : "whitespace-nowrap tabular-nums"
+      }
     >
-      {formatAmount(amount)}
-    </Text>
+      <Text variant={variant} as="span" tone={isCredit ? "inherit" : undefined}>
+        {formatAmount(amount)}
+      </Text>
+    </span>
   );
 }

@@ -5,7 +5,7 @@ import { FullscreenDialog } from "@/components/molecules/FullscreenDialog/Fullsc
 import { Text } from "@/components/atoms/Text/Text";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ReactNode, useEffect, useState } from "react";
+import { CSSProperties, ReactNode, useEffect, useState } from "react";
 import { PanelResizeHandle } from "@/app/(platform)/copilot/components/PanelResizeHandle";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
 import { IdentityAvatar, PanelIdentity } from "./IdentityAvatar";
@@ -60,6 +60,10 @@ export function ExpertSidePanel({
           closeLabel={closeLabel}
           actions={headerActions}
           showIdentity={showIdentity}
+          // The dialog focuses the close button on open. A hover tooltip on
+          // that button would open on focus and then swallow every Escape,
+          // so the phone layout keeps the label without the tooltip.
+          closeTooltip={false}
           onClose={onClose}
         />
         {children}
@@ -94,8 +98,8 @@ export function ExpertSidePanel({
           />
           <div className="h-full overflow-hidden">
             <div
-              style={{ width: renderedWidth }}
-              className="flex h-full min-h-0 flex-col"
+              style={{ "--panel-width": `${renderedWidth}px` } as CSSProperties}
+              className="flex h-full min-h-0 w-[var(--panel-width)] flex-col"
             >
               <PanelHeader
                 identity={identity}
@@ -140,6 +144,7 @@ interface HeaderProps {
   closeLabel: string;
   actions?: ReactNode;
   showIdentity: boolean;
+  closeTooltip?: boolean;
   onClose: () => void;
 }
 
@@ -149,6 +154,7 @@ function PanelHeader({
   closeLabel,
   actions,
   showIdentity,
+  closeTooltip = true,
   onClose,
 }: HeaderProps) {
   return (
@@ -158,7 +164,7 @@ function PanelHeader({
           <IdentityAvatar
             identity={identity}
             className="h-7 w-7"
-            imageSize={56}
+            imageSize={28}
           />
           <Text
             variant="body-medium"
@@ -179,6 +185,7 @@ function PanelHeader({
         size="icon-xs"
         leadingIcon={Cancel01Icon}
         aria-label={closeLabel}
+        withTooltip={closeTooltip}
         onClick={onClose}
       />
     </div>

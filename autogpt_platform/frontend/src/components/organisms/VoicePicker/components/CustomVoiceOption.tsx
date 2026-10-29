@@ -31,12 +31,14 @@ export function CustomVoiceOption({
 
   return (
     <div
+      data-slot="custom-voice-option"
       className={selectableCardClassName(isSelected, false, colors, compact)}
     >
       <label
         htmlFor={`${textareaId}-choice`}
+        data-slot="custom-voice-option-label"
         className={cn(
-          "mb-2 block cursor-pointer text-xs font-semibold uppercase tracking-[0.12em]",
+          "mb-2 block cursor-pointer text-xs font-semibold uppercase tracking-caps",
           labelClassName ?? "text-accent",
         )}
       >
@@ -47,11 +49,16 @@ export function CustomVoiceOption({
           value="custom"
           checked={isSelected}
           onChange={onFocus}
+          data-slot="custom-voice-option-radio"
           className="sr-only"
         />
         Paste your own
       </label>
-      <label htmlFor={textareaId} className="sr-only">
+      <label
+        htmlFor={textareaId}
+        data-slot="custom-voice-option-textarea-label"
+        className="sr-only"
+      >
         Custom voice sample
       </label>
       <textarea
@@ -63,6 +70,7 @@ export function CustomVoiceOption({
         maxLength={MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS}
         aria-describedby={characterCountId}
         placeholder="Paste a few sentences written the way you'd like this expert to sound."
+        data-slot="custom-voice-option-textarea"
         className={cn(
           "w-full resize-none border bg-background text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring",
           compact ? "rounded-md px-3 py-2" : "rounded-xl px-4 py-2.5",
@@ -71,6 +79,7 @@ export function CustomVoiceOption({
       />
       <p
         id={characterCountId}
+        data-slot="custom-voice-option-count"
         className="mt-1.5 text-right text-xs text-muted-foreground"
       >
         {customText.length.toLocaleString()} /{" "}

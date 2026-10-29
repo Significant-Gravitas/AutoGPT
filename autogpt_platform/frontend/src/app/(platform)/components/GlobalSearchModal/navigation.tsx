@@ -42,7 +42,7 @@ const NAV_TARGETS: NavTarget[] = [
     id: "nav:library",
     title: "Library",
     href: "/library",
-    keywords: ["agents", "my agents"],
+    keywords: ["agents", "my agents", "workflows", "my workflows"],
     icon: createIconComponent(Layers01Icon),
   },
   {

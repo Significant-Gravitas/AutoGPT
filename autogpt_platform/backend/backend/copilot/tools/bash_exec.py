@@ -9,6 +9,13 @@ runs directly on the remote E2B cloud environment.  This means:
 - **Full internet access**: E2B sandboxes have unrestricted outbound network.
 - **Execution isolation**: E2B provides a fresh, containerised Linux environment.
 
+Connected accounts reach the box as environment variables (``GH_TOKEN`` and
+``GITHUB_TOKEN`` for GitHub).  When the box's egress goes through the
+credential swap proxy (``backend.util.e2b_network``), those variables hold a
+placeholder and the proxy puts the real value in on the way out, so no stored
+credential is ever in the box.  Without the proxy they hold the real token,
+as they always have.
+
 When E2B is *not* configured the tool falls back to **bubblewrap** (bwrap):
 OS-level isolation with a whitelist-only filesystem, no network, and resource
 limits.  Requires bubblewrap to be installed (Linux only).
@@ -26,6 +33,8 @@ from pydantic import BaseModel
 from backend.copilot.constants import HUNG_TOOL_CAP_SECONDS
 from backend.copilot.context import (
     E2B_WORKDIR,
+    get_bash_command_as_written,
+    get_current_permissions,
     get_current_sandbox,
     looks_like_sdk_tool_result_path,
     sdk_tool_result_redirect_hint,
@@ -38,10 +47,14 @@ from backend.copilot.gate.subject import Subject
 from backend.copilot.integration_creds import (
     get_github_user_git_identity,
     get_integration_env_vars,
+    grant_to_box,
+    placeholder_env,
+    placeholder_grants,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import allowed_providers
 from backend.copilot.sdk.env import config as chat_config
-from backend.util.e2b_network import reattach_command
+from backend.util.e2b_network import proxy_address, reattach_command
 from backend.util.sandbox_login import (
     changed_login_files,
     judged_text,
@@ -137,6 +150,14 @@ def _build_completion_response(
     secret_values: list[str],
     session_id: str | None,
 ) -> BashExecResponse:
+    """The command's result, with any injected token replaced by [REDACTED].
+
+    Not a security control: a literal match on one command's output, beaten by
+    base64, ``rev`` or a newline, blind to files read back and to anything sent
+    over the network.  It only keeps an accidental ``env`` from printing a
+    token into the chat.  Behind the swap proxy there is no token in the box
+    and nothing to redact.
+    """
     out = stdout or ""
     err = stderr or ""
     for secret in secret_values:
@@ -167,10 +188,11 @@ class BashExecTool(BaseTool):
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
             "Killed after `timeout` seconds. Anything that should persist belongs "
-            "in ~/workspace (a durable volume); other paths are scratch. The "
+            "in ~/workspace (a durable folder; the user's uploads are not in it, "
+            "see list_workspace_files); other paths are scratch. The "
             "desktop (start_desktop) is this same machine, all paths included. "
             "Expert sessions: ~/workspace is the expert's own machine, ~/shared "
-            "is the user's workspace."
+            "is the user's folder."
         )
 
     @property
@@ -195,9 +217,11 @@ class BashExecTool(BaseTool):
 
     @property
     def requires_auth(self) -> bool:
-        # True because _execute_on_e2b injects user tokens (GH_TOKEN etc.)
-        # when user_id is present.  Defense-in-depth: ensures only authenticated
-        # users reach the token injection path.
+        # True because _execute_on_e2b hands the box the user's connected
+        # accounts (GH_TOKEN etc.): the tokens themselves without the swap
+        # proxy, placeholders the proxy turns into them with it.  Either way
+        # the command acts with the user's accounts, so only an authenticated
+        # user may run one.
         return True
 
     async def gate_subject(
@@ -262,9 +286,16 @@ class BashExecTool(BaseTool):
         # Pre-flight redirect: bash sandbox can't reach host-side SDK
         # tool-result paths. Without this the model burns turns retrying
         # `cat /root/.claude/projects/...` after `Permission denied`.
-        if looks_like_sdk_tool_result_path(command):
+        # Checks the command as written, minus its ``@@agptfile:`` refs, so
+        # neither a ref nor the file content it expands to trips the check.
+        # A command that is only refs is unset, and its expanded script is
+        # checked instead.
+        as_written = get_bash_command_as_written()
+        if as_written is None:
+            as_written = command
+        if looks_like_sdk_tool_result_path(as_written):
             return ErrorResponse(
-                message=sdk_tool_result_redirect_hint(command),
+                message=sdk_tool_result_redirect_hint(as_written),
                 error="sdk_tool_result_path_in_bash_command",
                 session_id=session_id,
             ).from_outside()
@@ -326,9 +357,10 @@ class BashExecTool(BaseTool):
     ) -> ToolResponseBase:
         """Execute *command* on the E2B sandbox via commands.run().
 
-        Integration tokens (e.g. GH_TOKEN) are injected into the sandbox env
-        for any user with connected accounts. E2B has full internet access, so
-        CLI tools like ``gh`` work without manual authentication.
+        Connected accounts go into the command's env (e.g. GH_TOKEN), so CLI
+        tools like ``gh`` work without manual authentication: as placeholders
+        when the box egresses through the swap proxy, as the real tokens when
+        it does not.
         """
         # The turn stops following a tool after the hung-tool cap and pauses
         # the box, so a longer timeout only keeps an unwatched box billing.
@@ -336,23 +368,50 @@ class BashExecTool(BaseTool):
         envs: dict[str, str] = {
             "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         }
-        # Collect injected secret values so we can scrub them from output.
+        # Injected token values, redacted from the output (see
+        # _build_completion_response).  Placeholders are not secret.
         secret_values: list[str] = []
         if user_id is not None:
             selected = await selected_credentials(session_id)
-            integration_env = await get_integration_env_vars(
-                user_id, required_scopes, selected
-            )
-            secret_values = [v for v in integration_env.values() if v]
-            envs.update(integration_env)
+            # The run's ceiling on connected accounts.  Without the proxy,
+            # leaving a provider's token out is what keeps it from the box.
+            # Behind it, a provider outside the ceiling gets no grant (and so
+            # empty variables); the ceiling recorded when the box's egress was
+            # pinned, enforced by the swap service, is what holds.
+            providers = allowed_providers(get_current_permissions())
+            if proxy_address() is not None:
+                grants = await placeholder_grants(
+                    user_id, required_scopes, selected, providers
+                )
+                try:
+                    # Before the command runs: its placeholders resolve only
+                    # for credentials granted to this box.
+                    await grant_to_box(sandbox.sandbox_id, grants)
+                except Exception:
+                    # The command still runs; its placeholders go out as they
+                    # are and fail at the provider, which is the safe side.
+                    logger.warning(
+                        "[E2B] Could not grant credentials to %.12s",
+                        sandbox.sandbox_id,
+                        exc_info=True,
+                    )
+                envs.update(placeholder_env(grants))
+            else:
+                integration_env = await get_integration_env_vars(
+                    user_id, required_scopes, selected, providers
+                )
+                secret_values = [v for v in integration_env.values() if v]
+                envs.update(integration_env)
 
             # Set git author/committer identity from the user's GitHub profile
-            # so commits made in the sandbox are attributed correctly.
-            git_identity = await get_github_user_git_identity(
-                user_id, selected.get("github")
-            )
-            if git_identity:
-                envs.update(git_identity)
+            # so commits made in the sandbox are attributed correctly; not for
+            # a run whose ceiling leaves GitHub out, which may not use it.
+            if providers is None or "github" in providers:
+                git_identity = await get_github_user_git_identity(
+                    user_id, selected.get("github")
+                )
+                if git_identity:
+                    envs.update(git_identity)
 
         # The box's running-time limit was armed when this turn connected;
         # E2B pauses the box at it, breaking the command's stream mid-run.

@@ -5,7 +5,7 @@ run) or produce no outputs; the response message must surface that instead
 of reading as success.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.data.execution import (
     ExecutionStatus,
@@ -15,6 +15,8 @@ from backend.data.execution import (
 )
 
 from .agent_output import AgentOutputTool
+
+_MODULE = "backend.copilot.tools.agent_output"
 
 
 def _agent() -> MagicMock:
@@ -116,3 +118,70 @@ def test_healthy_completed_has_no_warning():
     )
     assert "WARNING" not in response.message
     assert response.execution.nodes_failed is None
+
+
+def _library(**methods) -> MagicMock:
+    lib = MagicMock()
+    for name, mock in methods.items():
+        setattr(lib, name, mock)
+    return lib
+
+
+async def _resolve(lib: MagicMock, **kwargs) -> tuple:
+    args = {"agent_name": None, "library_agent_id": None, "store_slug": None}
+    args.update(kwargs)
+    with patch(f"{_MODULE}.library_db", return_value=lib):
+        return await AgentOutputTool()._resolve_agent(user_id="user-1", **args)
+
+
+async def test_resolve_unknown_library_id_names_the_workflow():
+    lib = _library(get_library_agent=AsyncMock(side_effect=ValueError("missing")))
+    agent, error = await _resolve(lib, library_agent_id="lib-9")
+    assert agent is None
+    assert error == "Library workflow 'lib-9' not found"
+
+
+async def test_resolve_unknown_store_slug_names_the_workflow():
+    with patch(
+        f"{_MODULE}.fetch_graph_from_store_slug",
+        AsyncMock(return_value=(None, None)),
+    ):
+        agent, error = await _resolve(_library(), store_slug="alice/digest")
+    assert agent is None
+    assert error == "Workflow 'alice/digest' not found in marketplace"
+
+
+async def test_resolve_store_workflow_missing_from_library_says_add_it():
+    graph = MagicMock()
+    graph.id = "graph-7"
+    lib = _library(get_library_agent_by_graph_id=AsyncMock(return_value=None))
+    with patch(
+        f"{_MODULE}.fetch_graph_from_store_slug",
+        AsyncMock(return_value=(graph, None)),
+    ):
+        agent, error = await _resolve(lib, store_slug="alice/digest")
+    assert agent is None
+    assert error == (
+        "Workflow 'alice/digest' is not in your library. "
+        "Add it first to see outputs."
+    )
+
+
+async def test_resolve_name_with_no_match_names_workflows():
+    lib = _library(list_library_agents=AsyncMock(return_value=MagicMock(agents=[])))
+    agent, error = await _resolve(lib, agent_name="Digest")
+    assert agent is None
+    assert error == "No workflows matching 'Digest' found in your library"
+
+
+async def test_resolve_name_search_failure_names_the_workflow():
+    lib = _library(list_library_agents=AsyncMock(side_effect=RuntimeError("db down")))
+    agent, error = await _resolve(lib, agent_name="Digest")
+    assert agent is None
+    assert error == "Error searching for workflow: db down"
+
+
+async def test_resolve_with_no_identifier_asks_for_a_workflow_name():
+    agent, error = await _resolve(_library())
+    assert agent is None
+    assert error == "Please specify a workflow name, library_agent_id, or store_slug"

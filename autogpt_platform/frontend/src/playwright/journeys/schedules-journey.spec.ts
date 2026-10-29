@@ -26,7 +26,7 @@ test.describe("schedules journey", () => {
 
     await new LibraryPage(page).openSavedAgent(agentName);
     await page
-      .getByRole("button", { name: /Setup your task|New agent task/i })
+      .getByRole("button", { name: /Setup your task|New workflow task/i })
       .first()
       .click();
     await page.getByRole("button", { name: "Schedule Task" }).click();

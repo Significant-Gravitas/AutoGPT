@@ -108,19 +108,19 @@ export const DifferentWidths: Story = {
     return (
       <div className="flex flex-col gap-8">
         <div className="flex flex-col gap-2">
-          <span className="text-xs text-zinc-500">Width: 200px</span>
+          <span className="text-xs text-foreground-tertiary">Width: 200px</span>
           <div className="w-[200px]">
             <OverflowText value={longText} variant="body" />
           </div>
         </div>
         <div className="flex flex-col gap-2">
-          <span className="text-xs text-zinc-500">Width: 300px</span>
+          <span className="text-xs text-foreground-tertiary">Width: 300px</span>
           <div className="w-[300px]">
             <OverflowText value={longText} variant="body" />
           </div>
         </div>
         <div className="flex flex-col gap-2">
-          <span className="text-xs text-zinc-500">Width: 400px</span>
+          <span className="text-xs text-foreground-tertiary">Width: 400px</span>
           <div className="w-[400px]">
             <OverflowText value={longText} variant="body" />
           </div>
@@ -150,7 +150,7 @@ export const URLExample: Story = {
   render: function URLExampleStory(args) {
     return (
       <div className="w-64">
-        <OverflowText {...args} className="text-blue-600" />
+        <OverflowText {...args} className="text-info-foreground" />
       </div>
     );
   },

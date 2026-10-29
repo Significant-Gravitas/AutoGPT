@@ -74,8 +74,8 @@ async def test_a_single_id_resolves_to_its_name_and_page():
         name="Q3 reports",
         href="/library?folder=f-111",
         kind="Library folder",
-        meta=[Fact(text="0 agents"), Fact(text="0 subfolders")],
-        summary="0 agents · 0 subfolders",
+        meta=[Fact(text="0 workflows"), Fact(text="0 subfolders")],
+        summary="0 workflows · 0 subfolders",
     )
     lib.get_folder.assert_awaited_once_with("f-111", "user-1")
 
@@ -246,6 +246,81 @@ async def test_a_pending_team_change_is_named_only_in_its_own_chat(
     redis.delete.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "hand_off, name, kind",
+    [
+        (
+            True,
+            "Ada to take on the Printify order pipeline",
+            "New hire with a first task",
+        ),
+        (False, "Ada", "New hire"),
+    ],
+)
+async def test_a_held_hire_names_the_task_its_confirm_would_start(hand_off, name, kind):
+    """Confirming a hire's hand-off id also starts the task, so a held confirm
+    must say so; the hire-only id of the same hire reads as the plain hire
+    (#16101 review)."""
+    from backend.copilot.tools.expert_proposal import ExpertChangeProposal
+    from backend.copilot.tools.models import ExpertChangePreview, ExpertHandoffTask
+
+    session = _session()
+    proposal = ExpertChangeProposal(
+        user_id="user-1",
+        session_id=session.session_id,
+        preview=ExpertChangePreview(kind="hire", name="Ada"),
+        handoff=ExpertHandoffTask(
+            title="the Printify order pipeline", brief="Move Etsy orders."
+        ),
+        hand_off=hand_off,
+        sibling_confirmation_id="c-2",
+    )
+    redis = MagicMock(get=AsyncMock(return_value=proposal.model_dump_json()))
+    with patch.object(references, "get_redis_async", AsyncMock(return_value=redis)):
+        [ref] = await resolve_references(
+            "confirm_expert_change", {"confirmation_id": "c-1"}, "user-1", session
+        )
+
+    assert ref.name == name
+    assert ref.kind == kind
+
+
+async def test_a_held_hire_is_named_however_slow_the_whole_roster_is():
+    """Prod timed out listing every template inside the budget and showed the
+    raw id instead of the name (2026-09-30); the template is read by id now."""
+    from backend.copilot.tools.expert_proposal import ExpertChangeProposal
+    from backend.copilot.tools.models import ExpertChangePreview
+
+    session = _session()
+    proposal = ExpertChangeProposal(
+        user_id="user-1",
+        session_id=session.session_id,
+        preview=ExpertChangePreview(kind="hire", name="Ada", template_id="tpl-ada"),
+    )
+    redis = MagicMock(get=AsyncMock(return_value=proposal.model_dump_json()))
+    template = MagicMock(id="tpl-ada", categories=["Finance"])
+    template.bundled_skills = [MagicMock(title="Payroll")]
+
+    async def list_the_roster():
+        await asyncio.sleep(references.LOOKUP_SECONDS * 10)
+        return [template]
+
+    experts = MagicMock()
+    experts.list_templates = AsyncMock(side_effect=list_the_roster)
+    experts.get_template = AsyncMock(return_value=template)
+    experts.with_bundled_skills = AsyncMock(side_effect=lambda ts, _: ts)
+    with (
+        patch.object(references, "get_redis_async", AsyncMock(return_value=redis)),
+        patch.object(references, "experts_db", return_value=experts),
+    ):
+        [ref] = await resolve_references(
+            "confirm_expert_change", {"confirmation_id": "c-1"}, "user-1", session
+        )
+
+    assert ref.name == "Ada"
+    assert ref.skills == ["Payroll"]
+
+
 def _session() -> ChatSession:
     return ChatSession.new(user_id="user-1", dry_run=False)
 
@@ -308,7 +383,7 @@ async def test_a_resolved_agent_carries_its_card_for_the_hover():
     ref = await _resolved_agent(description="Sends the morning digest")
 
     assert (ref.kind, ref.name, ref.description) == (
-        "Agent",
+        "Workflow",
         "Digest",
         "Sends the morning digest",
     )

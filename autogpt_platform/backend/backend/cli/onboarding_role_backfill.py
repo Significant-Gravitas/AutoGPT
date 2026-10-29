@@ -7,20 +7,23 @@ import click
 if TYPE_CHECKING:
     from backend.notifications.role_backfill import RolePlan, RoleRecord
 
-# Every account with a role on record: the pick the wizard kept, or the copy
-# in its business understanding. Only the role is read from the
-# understanding, which can hold whole brain dump transcripts.
+# Every account with a role on record: the pick the wizard kept, the wizard
+# draft of someone who moved on from the role step, or the copy in its
+# business understanding. Only the role is read from the understanding, which
+# can hold whole brain dump transcripts.
 _ROLE_RECORDS = """
     SELECT u."id" AS user_id, u."email", u."timezone",
            u."marketingOptOutAt" AS marketing_opt_out_at,
            u."stripeCustomerId" AS stripe_customer_id,
            u."marketingExcludedCountry" AS excluded_country,
            o."role" AS choice, o."roleOther" AS other,
+           o."wizardProgress"::text AS wizard_progress,
            c."data"->'business'->>'user_role' AS understanding_role
     FROM {schema_prefix}"User" u
     LEFT JOIN {schema_prefix}"UserOnboarding" o ON o."userId" = u."id"
     LEFT JOIN {schema_prefix}"CoPilotUnderstanding" c ON c."userId" = u."id"
     WHERE o."role" IS NOT NULL
+       OR o."wizardProgress"->'completedSteps' @> '["role"]'::jsonb
        OR c."data"->'business'->>'user_role' IS NOT NULL
 """
 
@@ -31,11 +34,13 @@ _ROLE_RECORDS = """
 def onboarding_role_backfill_command(apply: bool, yes: bool):
     """Give existing accounts their onboarding role in PostHog and MailerLite.
 
-    Reliable roles only: the pick the wizard kept, which the profile step has
-    sent itself since SECRT-2852, or an exact option ID in the business
-    understanding, the only value there that can only have come from the
-    wizard. Any other value is Other's typed text or an AutoPilot rewrite, and
-    is counted and skipped.
+    Reliable roles only: the pick the wizard kept, which the wizard has sent
+    itself since SECRT-2852 (at its end) and SECRT-3036 (at the role step);
+    the pick in the wizard draft of someone who moved on from the role step
+    before that, such as everyone who stopped at the paywall; or an exact
+    option ID in the business understanding, the only value there that can
+    only have come from the wizard. Any other value is Other's typed text or
+    an AutoPilot rewrite, and is counted and skipped.
 
     PostHog gets onboarding_role and onboarding_role_other with $set_once, so
     a role it already holds stays. MailerLite gets role and role_other only on
@@ -43,9 +48,12 @@ def onboarding_role_backfill_command(apply: bool, yes: bool):
     opted out of marketing or whom a signal places in Iran or Russia, their
     Stripe billing country included, is left out.
 
-    Dry run by default, with counts only. Idempotent, so a repeated --apply
-    resumes an interrupted one; run the dry run again afterwards to confirm
-    nothing is left.
+    Dry run by default, with counts only. A run that PostHog or MailerLite
+    didn't take in full fails after reporting. Idempotent, so a repeated
+    --apply resumes an interrupted or failed one. A dry run afterwards shows
+    whether any MailerLite subscribers are left to fill in. It can't read
+    PostHog, so it lists every reliable role there again; a run that finished
+    without failing sent them all.
     """
     # Keep Prisma and client chatter out of the report.
     logging.disable(logging.INFO)
@@ -60,10 +68,10 @@ async def _run(*, apply: bool, yes: bool) -> None:
     from backend.notifications import mailerlite_field_backfill as field_backfill
     from backend.notifications import role_backfill
     from backend.notifications.mailerlite import MailerLiteNotConfigured
-    from backend.util.posthog_client import get_posthog_client
     from backend.util.settings import Settings
 
-    if not Settings().secrets.stripe_api_key:
+    settings = Settings()
+    if not settings.secrets.stripe_api_key:
         raise click.ClickException("STRIPE_API_KEY is not set.")
     try:
         current = await field_backfill.read_current()
@@ -85,7 +93,7 @@ async def _run(*, apply: bool, yes: bool) -> None:
     if not plan.posthog and not plan.mailerlite:
         click.echo("\nNothing to write.")
         return
-    if get_posthog_client() is None:
+    if not settings.secrets.posthog_api_key:
         raise click.ClickException("POSTHOG_API_KEY is not set.")
     if not yes:
         click.confirm(
@@ -93,8 +101,10 @@ async def _run(*, apply: bool, yes: bool) -> None:
             f"{len(plan.mailerlite)} MailerLite subscribers?",
             abort=True,
         )
-    await role_backfill.send_to_posthog(plan.posthog)
-    click.echo(f"PostHog: {len(plan.posthog)} sent")
+    posthog_failed = await role_backfill.send_to_posthog(plan.posthog)
+    click.echo(
+        f"PostHog: {len(plan.posthog) - posthog_failed} sent, {posthog_failed} failed"
+    )
     if plan.mailerlite:
         await mailerlite.ensure_fields()
         # Connected again for the writes: each subscriber is checked against
@@ -107,6 +117,11 @@ async def _run(*, apply: bool, yes: bool) -> None:
         finally:
             await disconnect()
         _finish(ok, failed, skipped)
+    if posthog_failed:
+        raise click.ClickException(
+            f"{posthog_failed} PostHog persons were not sent (the log says why); "
+            "run again to retry them"
+        )
 
 
 async def _records() -> "list[RoleRecord]":
@@ -140,10 +155,17 @@ def _report(plan: "RolePlan") -> None:
     )
     click.echo(f"Accounts with a role on record: {plan.accounts}")
     click.echo(f"  reliable, kept by the wizard: {plan.kept}")
+    click.echo(f"  reliable, in the wizard draft: {plan.drafted}")
     click.echo(f"  reliable, an exact option in the understanding: {plan.exact}")
-    click.echo(f"  skipped, Other's text or an AutoPilot rewrite: {plan.skipped}")
+    click.echo(
+        "  skipped, no reliable pick (Other's text, an AutoPilot rewrite, "
+        f"or a draft not past the role step): {plan.skipped}"
+    )
     click.echo(f"Roles: {roles}")
-    click.echo(f"\nPostHog: {len(plan.posthog)} persons ($set_once)")
+    click.echo(
+        f"\nPostHog: {len(plan.posthog)} persons ($set_once; PostHog can't be "
+        "read, so every run sends them all)"
+    )
     click.echo(f"MailerLite: {len(plan.mailerlite)} subscribers to fill in")
     click.echo(f"  already have a role (kept): {plan.already_set}")
     click.echo(f"  not subscribers (never created): {plan.not_subscribers}")
@@ -170,4 +192,7 @@ def _finish(ok: int, failed: int, skipped: int) -> None:
             f"{failed} MailerLite subscribers were not written (the log says "
             "why); run again to retry them"
         )
-    click.echo("Run the dry run again to confirm nothing is left.")
+    click.echo(
+        "Run the dry run again to confirm no MailerLite subscriber is left to "
+        "fill in."
+    )

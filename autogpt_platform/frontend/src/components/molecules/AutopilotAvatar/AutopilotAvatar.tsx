@@ -28,6 +28,7 @@ export function AutopilotAvatar({
         width={size}
         height={size}
         sizes={`${size}px`}
+        data-slot="autopilot-avatar"
         className={cn("shrink-0 object-contain", className)}
       />
     );

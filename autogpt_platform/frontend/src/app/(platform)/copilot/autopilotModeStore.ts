@@ -14,6 +14,10 @@ interface AutopilotModeStore {
   choices: Record<string, AutopilotMode>;
   choose: (sessionId: string | null, mode: AutopilotMode) => void;
   bindNewChatToSession: (sessionId: string) => void;
+  /** Drop a pick left over from a new chat that was never sent, so it cannot
+   *  follow the user into the next new chat (and override that expert's
+   *  default). */
+  clearNewChatChoice: () => void;
 }
 
 export const useAutopilotModeStore = create<AutopilotModeStore>((set) => ({
@@ -28,6 +32,14 @@ export const useAutopilotModeStore = create<AutopilotModeStore>((set) => ({
       const mode = state.choices[NEW_CHAT];
       if (!mode) return state;
       const choices = { ...state.choices, [sessionId]: mode };
+      delete choices[NEW_CHAT];
+      return { choices };
+    });
+  },
+  clearNewChatChoice() {
+    set((state) => {
+      if (!(NEW_CHAT in state.choices)) return state;
+      const choices = { ...state.choices };
       delete choices[NEW_CHAT];
       return { choices };
     });

@@ -95,12 +95,21 @@ export function connectionBadge(
 ): ConnectionBadge | null {
   if (item.connected === undefined || item.connected === null) return null;
   if (item.connected === "needs_expert_grant") {
-    return { label: "grant needed", className: "bg-amber-100 text-amber-800" };
+    return {
+      label: "grant needed",
+      className: "bg-warning-surface text-warning-foreground",
+    };
   }
   if (item.connected) {
-    return { label: "connected", className: "bg-green-100 text-green-800" };
+    return {
+      label: "connected",
+      className: "bg-success-surface text-success-foreground",
+    };
   }
-  return { label: "sign in", className: "bg-zinc-100 text-zinc-500" };
+  return {
+    label: "sign in",
+    className: "bg-surface-hover text-foreground-tertiary",
+  };
 }
 
 export function kindLabel(item: CapabilityListing): string {

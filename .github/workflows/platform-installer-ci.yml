@@ -90,3 +90,27 @@ jobs:
 
       - name: Test macOS installer paths, ACLs, and mocked Docker handoff with system Bash
         run: /bin/bash autogpt_platform/installer/test-single-container-handoff.sh
+
+  windows:
+    name: PowerShell installer (Windows)
+    runs-on: windows-2025
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check that install.ps1 is ASCII
+        shell: pwsh
+        run: |
+          # Windows PowerShell reads a script without a byte-order mark as ANSI.
+          $bytes = [IO.File]::ReadAllBytes('autogpt_platform/installer/install.ps1')
+          if (@($bytes | Where-Object { $_ -gt 127 }).Count -gt 0) { throw 'install.ps1 must be ASCII' }
+
+      - name: Test paths, ACLs, bootstrap, and mocked Docker handoff with Windows PowerShell 5.1
+        shell: cmd
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File autogpt_platform\installer\test-windows-installer.ps1
+
+      - name: Test paths, ACLs, bootstrap, and mocked Docker handoff with PowerShell 7
+        shell: cmd
+        run: pwsh.exe -NoProfile -File autogpt_platform\installer\test-windows-installer.ps1

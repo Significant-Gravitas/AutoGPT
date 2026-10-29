@@ -166,6 +166,72 @@ describe("§1.7 — every disconnect cause is expected but one", () => {
     expect(snapshot().stopped).toBe(true);
   });
 
+  it("an approval answered after a stop follows the turn it starts", async () => {
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(0);
+    runtime.stop();
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    runtime.followBackendTurn();
+    await advance(2_000);
+    expect(snapshot().phase).toBe("live");
+    expect(snapshot().stopped).toBe(false);
+  });
+
+  it("an approval answered while a stopped send's turn still runs is followed after it", async () => {
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(0);
+    runtime.stop();
+    // The cancel came before the turn existed, so it runs on.
+    backend.publish(FIRST_BLOCK_DONE);
+    let approvalStarted = false;
+    runtime.bind({}, async () => {
+      const view = backend.view();
+      if (!approvalStarted || view.active_stream) return view;
+      return {
+        ...view,
+        chat_status: "running",
+        active_stream: { turn_id: "approval-turn", checkpoint: null },
+      };
+    });
+    runtime.followBackendTurn();
+    await advance(1_000);
+    backend.publish();
+    // The approval's turn starts once that turn has released the session.
+    await advance(700);
+    approvalStarted = true;
+    await advance(5_000);
+    expect(
+      backend.requests.some(
+        (r) => r.url.searchParams.get("turn") === "approval-turn",
+      ),
+    ).toBe(true);
+  });
+
+  it("an approval answered while a stopped turn drains is followed once it has", async () => {
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    runtime.stop();
+    let approvalStarted = false;
+    runtime.bind({}, async () => {
+      const view = backend.view();
+      if (!approvalStarted) return view;
+      return {
+        ...view,
+        chat_status: "running",
+        active_stream: { turn_id: "approval-turn", checkpoint: null },
+      };
+    });
+    runtime.followBackendTurn();
+    await advance(1_200);
+    approvalStarted = true;
+    await advance(5_000);
+    expect(
+      backend.requests.some(
+        (r) => r.url.searchParams.get("turn") === "approval-turn",
+      ),
+    ).toBe(true);
+  });
+
   it("a connection silent for 30 s is replaced without a toast", async () => {
     await sendAndPublish(FIRST_BLOCK_DONE);
     backend.connections[0].silence();
@@ -1063,7 +1129,7 @@ describe("the end-of-turn reconcile", () => {
     expect(textsOf(render())).toEqual([PROMPT, `${FIRST_TEXT}It says Other.`]);
     expect(report).toHaveBeenCalledWith(
       "finish",
-      expect.objectContaining({ diffs: [{ index: 2, fields: ["content"] }] }),
+      expect.objectContaining({ diffs: ["2: content"] }),
     );
   });
 });

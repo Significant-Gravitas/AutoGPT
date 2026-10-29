@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from backend.copilot.tool_image import ImageCarrier
 from backend.util.json import dumps as json_dumps
 from backend.util.truncate import truncate
 
@@ -71,6 +72,9 @@ class ResponseType(str, Enum):
     # ``context_compaction`` tool row's JSON output.
     COMPACTION = "data-compaction"
     PROVIDER_FAILURE = "data-provider-failure"
+    # The turn stopped on purpose at a budget or step limit; the client shows
+    # a Paused card with ways to pick the task back up.
+    TURN_PAUSED = "data-turn-paused"
     CHECKPOINT = "data-checkpoint"
 
 
@@ -221,7 +225,7 @@ class StreamToolDisplayAvailable(StreamBaseResponse):
 _MAX_TOOL_OUTPUT_SIZE = 100_000  # ~100 KB; truncate to avoid bloating SSE/DB
 
 
-class StreamToolOutputAvailable(StreamBaseResponse):
+class StreamToolOutputAvailable(StreamBaseResponse, ImageCarrier):
     """Tool execution result."""
 
     type: ResponseType = ResponseType.TOOL_OUTPUT_AVAILABLE
@@ -404,6 +408,23 @@ class StreamProviderFailure(StreamBaseResponse):
         return f"data: {json_dumps(data)}\n\n"
 
 
+class StreamTurnPaused(StreamBaseResponse):
+    """The turn landed at a budget or step limit instead of failing.
+
+    Sent in place of the error frame those limits used to produce, just
+    before ``StreamFinish``. The same payload is stored on a marker row so
+    the card survives the stream (see ``backend.copilot.turn_pause``).
+    """
+
+    type: ResponseType = ResponseType.TURN_PAUSED
+    pause: dict[str, Any] = Field(..., description="TurnPause.as_part() payload")
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part."""
+        data = {"type": self.type.value, "data": self.pause}
+        return f"data: {json_dumps(data)}\n\n"
+
+
 class StreamStatus(StreamBaseResponse):
     """Transient status notification shown to the user during long operations.
 
@@ -482,6 +503,9 @@ class StreamPendingDrainedMessage(BaseModel):
 
     id: str = Field(description="Stable id of the drained pending message")
     content: str = Field(description="Raw text the user typed mid-turn")
+    metadata: dict[str, Any] | None = Field(
+        default=None, description="The metadata persisted on the row's user message"
+    )
 
 
 class StreamPendingDrained(StreamBaseResponse):
@@ -520,7 +544,7 @@ class StreamPendingDrained(StreamBaseResponse):
             "type": self.type.value,
             "data": {
                 "drainedCount": self.drainedCount,
-                "messages": [m.model_dump() for m in self.messages],
+                "messages": [m.model_dump(exclude_none=True) for m in self.messages],
             },
         }
         return f"data: {json.dumps(data)}\n\n"

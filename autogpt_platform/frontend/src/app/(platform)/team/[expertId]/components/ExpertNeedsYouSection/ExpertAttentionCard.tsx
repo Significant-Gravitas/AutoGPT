@@ -47,46 +47,38 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
   }
 
   return (
-    <article className="flex flex-col gap-3 rounded-2xl bg-white px-3.5 py-2.5 smooth-shadow-ring-sm sm:flex-row sm:items-center">
+    <article className="flex flex-col gap-3 rounded-2xl bg-surface px-3.5 py-2.5 smooth-shadow-ring-sm sm:flex-row sm:items-center">
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
         {item.expert ? (
           <ExpertAvatar
             name={item.expert.name}
             avatarUrl={item.expert.avatar_url}
             size={32}
+            // oxlint-disable-next-line design-system/no-restyle -- ExpertAvatar has no bordered variant (src/components is P9's)
+            className="rounded-full border border-border-base"
           />
         ) : (
-          <Icon
-            icon={ICONS[item.kind]}
-            size={18}
-            className="shrink-0 text-zinc-500"
-            aria-hidden="true"
-          />
+          <span className="inline-flex shrink-0 text-foreground-tertiary">
+            <Icon icon={ICONS[item.kind]} size={18} aria-hidden="true" />
+          </span>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex flex-wrap items-center gap-2">
             <Text
               variant="body-medium"
               as="span"
-              className="break-words !text-zinc-800"
+              tone="emphasis"
+              className="break-words"
             >
               {item.title}
             </Text>
             {item.priority === "high" ? (
-              <Text
-                variant="small-medium"
-                as="span"
-                className="rounded bg-amber-50 px-1.5 py-px text-amber-700 ring-1 ring-inset ring-amber-600/10"
-              >
+              <span className="rounded bg-warning-surface px-1.5 py-px font-sans text-caption font-medium text-warning-foreground ring-1 ring-inset ring-warning-foreground/10">
                 Waiting
-              </Text>
+              </span>
             ) : null}
           </div>
-          <Text
-            variant="small"
-            as="span"
-            className="break-words !text-zinc-400"
-          >
+          <Text variant="small" as="span" tone="subtle" className="break-words">
             {reason?.line ?? item.description}
           </Text>
           {reason?.passage ? (

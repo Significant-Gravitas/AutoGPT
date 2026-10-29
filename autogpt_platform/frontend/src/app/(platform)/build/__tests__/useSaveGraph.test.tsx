@@ -228,7 +228,7 @@ describe("useSaveGraph", () => {
     });
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: "Couldn't save your agent",
+        title: "Couldn't save your workflow",
         description: expect.stringContaining(
           "Agent Output › Name: This field is required",
         ),
@@ -252,7 +252,7 @@ describe("useSaveGraph", () => {
     expect(mockSetNodeErrorsForBackendId).not.toHaveBeenCalled();
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: "Error saving graph",
+        title: "Error saving workflow",
         description: "Network unreachable",
       }),
     );

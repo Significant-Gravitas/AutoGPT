@@ -236,6 +236,12 @@ class TestConfigDefaults:
         cfg = _make_config()
         assert cfg.agent_max_turns == 100
 
+    def test_sdk_step_checkin_default(self):
+        # The SDK path checks in after a long run instead of stopping at
+        # ``agent_max_turns``; "Keep going" starts a fresh count.
+        cfg = _make_config()
+        assert cfg.sdk_step_checkin == 450
+
     def test_max_budget_usd_default(self):
         cfg = _make_config()
         assert cfg.claude_agent_max_budget_usd == 10.0
@@ -272,8 +278,12 @@ class TestBuildSdkEnv:
         assert env["ANTHROPIC_AUTH_TOKEN"] == ""
         assert env["ANTHROPIC_BASE_URL"] == ""
 
-    def test_direct_anthropic_inherits_api_key(self):
-        """Mode 2: direct Anthropic doesn't set ANTHROPIC_* keys (inherits from parent)."""
+    def test_direct_anthropic_carries_the_parents_api_key(self, monkeypatch):
+        """Mode 2: direct Anthropic states the deployment's key, which the
+        launch no longer inherits with the rest of the parent's environment."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-deployment-key")
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
         cfg = _make_config(
             use_claude_code_subscription=False,
             use_openrouter=False,
@@ -283,7 +293,7 @@ class TestBuildSdkEnv:
 
             env = build_sdk_env()
 
-        assert "ANTHROPIC_API_KEY" not in env
+        assert env["ANTHROPIC_API_KEY"] == "sk-ant-deployment-key"
         assert "ANTHROPIC_AUTH_TOKEN" not in env
         assert "ANTHROPIC_BASE_URL" not in env
 
@@ -339,7 +349,7 @@ class TestBuildSdkEnv:
         assert env["CLAUDE_CODE_REFRESH_TOKEN"] == ""
 
     def test_direct_anthropic_clears_oauth_tokens(self):
-        """Mode 2: OAuth tokens are cleared so CLI uses ANTHROPIC_API_KEY from parent env."""
+        """Mode 2: OAuth tokens are cleared so CLI uses the deployment's ANTHROPIC_API_KEY."""
         cfg = _make_config(
             use_claude_code_subscription=False,
             use_openrouter=False,

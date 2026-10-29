@@ -5,6 +5,7 @@ place, and ``recordingId`` identifies the current one so ``finalize`` can
 be retried safely.
 """
 
+from datetime import datetime
 from typing import Any
 
 from prisma import Json
@@ -28,18 +29,21 @@ async def owns_dump(user_id: str, recording_id: str) -> bool:
     return dump is not None and dump.recordingId == recording_id
 
 
-# A take that has reached any of these is being processed, or is already
-# done. Re-claiming it would knock it back to the start of the pipeline.
-# ``failed`` is deliberately absent: retrying a failed take must reset it.
-_IN_FLIGHT_STATUSES = frozenset(
+# A take still being processed. A new typed or skipped take cannot displace
+# one: unlike part 0 of a voice upload, they carry no earlier server-side
+# event that can establish which tab's request is newer.
+_PROCESSING_STATUSES = frozenset(
     {
         BrainDumpStatus.recording_uploaded,
         BrainDumpStatus.transcribing,
         BrainDumpStatus.transcribed,
         BrainDumpStatus.extracting,
-        BrainDumpStatus.completed,
     }
 )
+
+# Re-claiming the same take in any of these would knock it back to the start
+# of the pipeline. ``failed`` is deliberately absent: retrying it must reset it.
+_IN_FLIGHT_STATUSES = _PROCESSING_STATUSES | {BrainDumpStatus.completed}
 
 # Everything a single take owns. One row per user means a new take
 # inherits whatever the last one left here, so unless these are cleared
@@ -77,20 +81,20 @@ async def start_dump(
     """Claim the row for ``recording_id``, resetting any prior take's state.
 
     A take already moving through the pipeline is returned untouched when
-    recovery replays part 0 or finalize is retried. Typed and skipped
-    finalizes also cannot displace an active take with a different id: unlike
-    part 0 of a voice upload, they carry no earlier server-side event that can
-    establish which tab's request is newer. A different voice recording id is
-    a deliberate new take and claims the row, taking every take-owned column
-    with it.
+    recovery replays part 0 or finalize is retried, and a typed or skipped
+    take with a different id cannot displace one still being processed. Any
+    other new id is a deliberate new take, a re-take after a finished one
+    included, and claims the row, taking every take-owned column with it.
     """
     existing = await get_dump(user_id)
-    if (
-        existing
-        and existing.status in _IN_FLIGHT_STATUSES
-        and (
+    if existing and (
+        (
             existing.recordingId == recording_id
-            or input_mode != BrainDumpInputMode.voice
+            and existing.status in _IN_FLIGHT_STATUSES
+        )
+        or (
+            input_mode != BrainDumpInputMode.voice
+            and existing.status in _PROCESSING_STATUSES
         )
     ):
         return existing
@@ -101,6 +105,7 @@ async def start_dump(
         "status": BrainDumpStatus.recording_uploaded,
         "inputMode": input_mode,
         "errorCode": None,
+        "errorReason": None,
         **(_TAKE_OWNED_RESET if is_new_take else {}),
     }
     return await OnboardingBrainDump.prisma().upsert(
@@ -160,10 +165,20 @@ async def claim_transition(
     return updated == 1
 
 
-async def mark_failed(user_id: str, recording_id: str, error_code: str) -> None:
-    """Record a terminal failure without ever dropping the stored audio."""
+async def mark_failed(
+    user_id: str, recording_id: str, error_code: str, reason: str | None = None
+) -> None:
+    """Record a terminal failure without ever dropping the stored audio.
+
+    ``reason`` says what decided a quality-gate rejection; any other failure
+    clears the one an earlier attempt left.
+    """
     await update_dump(
-        user_id, recording_id, status=BrainDumpStatus.failed, errorCode=error_code
+        user_id,
+        recording_id,
+        status=BrainDumpStatus.failed,
+        errorCode=error_code,
+        errorReason=reason,
     )
 
 
@@ -177,14 +192,65 @@ async def mark_greeting_seen(user_id: str) -> None:
     await OnboardingBrainDump.prisma().upsert(
         where={"userId": user_id},
         data={
-            "create": {
-                "userId": user_id,
-                **_TAKE_OWNED_RESET,
-                "recordingId": "greeting-only",
-                "status": BrainDumpStatus.completed,
-                "inputMode": BrainDumpInputMode.skipped,
-                "greetingSeen": True,
-            },
+            "create": {**_greeting_only_row(user_id), "greetingSeen": True},
             "update": {"greetingSeen": True},
         },
     )
+
+
+async def ensure_dump(user_id: str) -> OnboardingBrainDump:
+    """The user's row, creating the same stub as ``mark_greeting_seen`` if absent."""
+    return await OnboardingBrainDump.prisma().upsert(
+        where={"userId": user_id},
+        data={"create": _greeting_only_row(user_id), "update": {}},
+    )
+
+
+def _greeting_only_row(user_id: str) -> dict[str, Any]:
+    return {
+        "userId": user_id,
+        **_TAKE_OWNED_RESET,
+        "recordingId": "greeting-only",
+        "status": BrainDumpStatus.completed,
+        "inputMode": BrainDumpInputMode.skipped,
+    }
+
+
+async def replace_suggested_prompts(
+    user_id: str, read_at: datetime, prompts: list[dict[str, Any]]
+) -> bool:
+    """Write the prompt list, unless the row changed since it was read at ``read_at``.
+
+    Returns ``False`` when another write landed first, so the caller can
+    re-read rather than overwrite a dismiss or a send from another tab.
+    """
+    updated = await OnboardingBrainDump.prisma().update_many(
+        where={"userId": user_id, "updatedAt": read_at},
+        data={"suggestedPrompts": Json(prompts)},
+    )
+    return updated == 1
+
+
+# Postgres caps a statement at 32,767 bind parameters, and the first sweep
+# after this shipped clears every recording ever stored.
+_CLEAR_AUDIO_BATCH = 1000
+
+
+async def clear_audio_paths(audio_paths: list[str]) -> int:
+    """Forget recordings that are about to be deleted from storage.
+
+    Only ``audioPath`` goes: the transcript is kept while the account
+    exists, and the size and duration say nothing about what was said.
+    Returns how many rows pointed at one of ``audio_paths``.
+    """
+    batches = [
+        audio_paths[start : start + _CLEAR_AUDIO_BATCH]
+        for start in range(0, len(audio_paths), _CLEAR_AUDIO_BATCH)
+    ]
+    cleared = 0
+    for batch in batches:
+        cleared += await OnboardingBrainDump.prisma().update_many(
+            where={"audioPath": {"in": batch}},
+            data={"audioPath": None},
+        )
+    return cleared

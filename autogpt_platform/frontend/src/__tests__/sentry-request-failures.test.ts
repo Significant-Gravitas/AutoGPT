@@ -1,3 +1,4 @@
+import { getV2ListLibraryAgents } from "@/app/api/__generated__/endpoints/library/library";
 import { listCopilotFollowupSchedules } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { resetClientRequestFailureLog } from "@/app/api/mutators/request-failure-log";
 import { server } from "@/mocks/mock-server";
@@ -84,6 +85,19 @@ describe("a failed API request in Sentry", () => {
     expect(sent.map((event) => event.message)).toEqual([
       "Request failed on client: GET /api/schedules/followups 500",
     ]);
+  });
+
+  it("is reported once when its URL carries a query", async () => {
+    server.use(
+      http.get("*/api/proxy/api/library/agents", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+
+    await expect(getV2ListLibraryAgents({ page: 2 })).rejects.toThrow("boom");
+    await Sentry.flush(2000);
+
+    expect(sent).toHaveLength(1);
   });
 
   it("is still reported once when the request bypassed the generated client", async () => {

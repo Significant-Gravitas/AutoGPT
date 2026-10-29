@@ -5,6 +5,7 @@ tests patch ``backend.copilot.active_turns.chat_db`` to return an
 :class:`unittest.mock.AsyncMock`.
 """
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -49,6 +50,39 @@ async def test_release_flips_running_to_idle_with_userid_guard() -> None:
         expect_status="running",
         status="idle",
         user_id="user-1",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flipped", [True, False], ids=["released", "not-running"])
+async def test_a_released_slot_is_logged_only_when_it_was_held(
+    caplog: pytest.LogCaptureFixture, flipped: bool
+) -> None:
+    """A turn's end and a parallel cancel can both release; only the one that
+    flipped the row says so."""
+    db = _mock_db()
+    db.update_chat_session_status = AsyncMock(return_value=flipped)
+    with (
+        patch.object(active_turns, "chat_db", return_value=db),
+        caplog.at_level(logging.INFO, logger=active_turns.logger.name),
+    ):
+        await release_turn_slot("user-1", "session-a")
+
+    released = [
+        (r.levelno, r.getMessage())
+        for r in caplog.records
+        if r.name == active_turns.logger.name
+    ]
+    assert released == (
+        [
+            (
+                logging.INFO,
+                "release_turn_slot: session=session-a user=user-1 "
+                "gave its running slot back",
+            )
+        ]
+        if flipped
+        else []
     )
 
 
@@ -165,3 +199,28 @@ def test_schema_default_concurrent_turn_limit_is_15() -> None:
     from backend.util.settings import Config
 
     assert Config.model_fields["max_inflight_copilot_turns_per_user"].default == 15
+
+
+@pytest.mark.asyncio
+async def test_a_failed_release_never_hides_the_error_that_caused_it() -> None:
+    """On a failure path the release is cleanup: if it fails too, the error
+    the caller must act on is still the one raised in the block (a publish
+    that may have reached the broker must not turn into a Redis error that
+    reads as "nothing was sent")."""
+    db = _mock_db()
+    db.update_chat_session_status = AsyncMock(side_effect=ConnectionError("db blip"))
+    with patch.object(active_turns, "chat_db", return_value=db):
+        with pytest.raises(RuntimeError, match="publish may have landed"):
+            async with acquire_turn_slot("user-1", "session-a"):
+                raise RuntimeError("publish may have landed")
+    db.update_chat_session_status.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_release_on_a_clean_exit_still_raises() -> None:
+    db = _mock_db()
+    db.update_chat_session_status = AsyncMock(side_effect=ConnectionError("db blip"))
+    with patch.object(active_turns, "chat_db", return_value=db):
+        with pytest.raises(ConnectionError, match="db blip"):
+            async with acquire_turn_slot("user-1", "session-a"):
+                pass
