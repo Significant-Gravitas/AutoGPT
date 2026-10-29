@@ -50,6 +50,9 @@ MAX_SUMMARY_LINE_BYTES = 16 * 1024
 MAX_DIAGNOSTICS = 128
 DIAGNOSTIC_PREFIX = "DESKTOP_SMOKE_DIAGNOSTIC "
 RUNTIME_DIAGNOSTIC_PREFIX = "DESKTOP_SMOKE_RUNTIME_DIAGNOSTIC "
+CHECK_FAILURE_PREFIX = "DESKTOP_SMOKE_CHECK_FAILURE "
+MAX_CHECK_FAILURE_RECORDS = 4
+MAX_CHECK_FAILURE_BYTES = 8192
 MAX_RUNTIME_DIAGNOSTICS = 8
 MAX_RUNTIME_DIAGNOSTIC_BYTES = 2048
 MAX_STARTUP_TRACE_BYTES = 1024 * 1024
@@ -666,7 +669,64 @@ def safe_runtime_diagnostic(payload: str) -> dict | None:
     return value
 
 
-def lifecycle_summary(log: Path, *, runtime_diagnostics: dict | None = None) -> dict:
+def safe_check_failure(payload: str) -> dict | None:
+    def unique(pairs):
+        record = {}
+        for key, value in pairs:
+            if key in record:
+                raise ValueError("duplicate check failure key")
+            record[key] = value
+        return record
+
+    try:
+        if len(payload.encode("utf-8")) > MAX_CHECK_FAILURE_BYTES:
+            return None
+        value = json.loads(payload, object_pairs_hook=unique)
+    except (ValueError, TypeError, RecursionError):
+        return None
+    if type(value) is not dict or set(value) != {
+        "version",
+        "start",
+        "failures",
+        "checks",
+        "truncated",
+    }:
+        return None
+    for name, lower, upper in (
+        ("version", 1, 1),
+        ("start", 1, 4),
+        ("failures", 1, 65535),
+    ):
+        if type(value[name]) is not int or not lower <= value[name] <= upper:
+            return None
+    if type(value["truncated"]) is not bool:
+        return None
+    if type(value["checks"]) is not list or len(value["checks"]) > 32:
+        return None
+    for check in value["checks"]:
+        if type(check) is not dict or set(check) != {"line", "memory_mib", "limit_mib"}:
+            return None
+        for name, lower, upper in (
+            ("line", 1, 1000000),
+            ("memory_mib", 0, 1048576),
+            ("limit_mib", 0, 1048576),
+        ):
+            number = check[name]
+            if number is not None and (
+                type(number) is not int or not lower <= number <= upper
+            ):
+                return None
+        if (check["memory_mib"] is None) != (check["limit_mib"] is None):
+            return None
+    return value
+
+
+def lifecycle_summary(
+    log: Path,
+    *,
+    runtime_diagnostics: dict | None = None,
+    check_failures: dict | None = None,
+) -> dict:
     starts = []
     diagnostics = []
     success = False
@@ -676,12 +736,16 @@ def lifecycle_summary(log: Path, *, runtime_diagnostics: dict | None = None) -> 
     skipping_line = False
     runtime = {"records": [], "rejected": False, "truncated": False}
     runtime_seen = False
+    checks = {"records": [], "rejected": False, "truncated": False}
+    checks_seen = False
+    check_starts = set()
     with log.open("rb") as stream:
         while raw := stream.readline(MAX_SUMMARY_LINE_BYTES + 1):
             consumed += len(raw)
             if consumed > MAX_SUMMARY_BYTES:
                 truncated = True
                 runtime["truncated"] = True
+                checks["truncated"] = True
                 break
             if skipping_line or len(raw) > MAX_SUMMARY_LINE_BYTES:
                 if not skipping_line and raw.startswith(DIAGNOSTIC_PREFIX.encode()):
@@ -691,9 +755,30 @@ def lifecycle_summary(log: Path, *, runtime_diagnostics: dict | None = None) -> 
                 ):
                     runtime_seen = True
                     runtime["rejected"] = True
+                if not skipping_line and raw.startswith(CHECK_FAILURE_PREFIX.encode()):
+                    checks_seen = True
+                    checks["rejected"] = True
                 skipping_line = not raw.endswith(b"\n")
                 continue
             line = raw.decode("utf-8", errors="replace")
+            if line.startswith(CHECK_FAILURE_PREFIX):
+                checks_seen = True
+                record = safe_check_failure(
+                    line[len(CHECK_FAILURE_PREFIX) :].rstrip("\r\n")
+                )
+                if record is None:
+                    checks["rejected"] = True
+                else:
+                    if (
+                        record["truncated"]
+                        or len(checks["records"]) >= MAX_CHECK_FAILURE_RECORDS
+                    ):
+                        checks["truncated"] = True
+                    if record["start"] in check_starts:
+                        checks["rejected"] = True
+                    elif len(checks["records"]) < MAX_CHECK_FAILURE_RECORDS:
+                        check_starts.add(record["start"])
+                        checks["records"].append(record)
             if line.startswith(RUNTIME_DIAGNOSTIC_PREFIX):
                 runtime_seen = True
                 record = safe_runtime_diagnostic(line[len(RUNTIME_DIAGNOSTIC_PREFIX) :])
@@ -710,6 +795,7 @@ def lifecycle_summary(log: Path, *, runtime_diagnostics: dict | None = None) -> 
                 elif len(diagnostics) >= MAX_DIAGNOSTICS:
                     truncated = True
                     runtime["truncated"] = True
+                    checks["truncated"] = True
                     break
                 else:
                     diagnostics.append(diagnostic)
@@ -723,10 +809,13 @@ def lifecycle_summary(log: Path, *, runtime_diagnostics: dict | None = None) -> 
                 success = True
     if runtime_diagnostics is not None and (runtime_seen or runtime["truncated"]):
         runtime_diagnostics.update(runtime)
+    if check_failures is not None and (checks_seen or checks["truncated"]):
+        check_failures.update(checks)
     return {
         "starts": starts,
         "completed": starts == [1, 2, 3, 4]
         and success
+        and not checks_seen
         and not truncated
         and not rejected,
         "diagnostics": diagnostics,
@@ -1002,7 +1091,9 @@ def _parse_startup_failure_trace(raw: bytes) -> dict:
                 re.fullmatch(
                     logger_prefix + r"(?:DEBUG|INFO|WARNING|ERROR|CRITICAL) .*", line
                 )
-                or line.startswith((DIAGNOSTIC_PREFIX, RUNTIME_DIAGNOSTIC_PREFIX))
+                or line.startswith(
+                    (DIAGNOSTIC_PREFIX, RUNTIME_DIAGNOSTIC_PREFIX, CHECK_FAILURE_PREFIX)
+                )
                 or line in starts
             ):
                 state = "trailing"
@@ -1160,11 +1251,13 @@ def main(argv: list[str] | None = None) -> int:
             )
             lifecycle_failed = False
         finally:
+            check_failures = {}
             try:
                 runtime_diagnostics = {}
                 result["lifecycle"] = lifecycle_summary(
                     private / "logs/lifecycle.log",
                     runtime_diagnostics=runtime_diagnostics,
+                    check_failures=check_failures,
                 )
                 if runtime_diagnostics:
                     result["runtime_diagnostics"] = runtime_diagnostics
@@ -1175,6 +1268,8 @@ def main(argv: list[str] | None = None) -> int:
                     "summary_unavailable": True,
                 }
             if lifecycle_failed or not result["lifecycle"]["completed"]:
+                if check_failures:
+                    result["check_failures"] = check_failures
                 result["startup_failure_trace"] = startup_failure_trace(
                     private / "logs/lifecycle.log"
                 )

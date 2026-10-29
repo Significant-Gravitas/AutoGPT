@@ -5,6 +5,7 @@ directory, a leftover of an earlier run and a refused write are each seen,
 and that the temporary data directory really goes.
 """
 
+import ast
 import importlib
 import io
 import json
@@ -31,6 +32,267 @@ smoke_test = importlib.import_module("smoke_test")
 SAFE_PREFIX = "DESKTOP_SMOKE_DIAGNOSTIC "
 RUNTIME_PREFIX = "DESKTOP_SMOKE_RUNTIME_DIAGNOSTIC "
 PRIVATE_CANARY = "secret-token C:/private/settings.env bearer=do-not-upload"
+
+
+def check_failure_records(output):
+    records = [
+        json.loads(line.removeprefix("DESKTOP_SMOKE_CHECK_FAILURE "))
+        for line in output.splitlines()
+        if line.startswith("DESKTOP_SMOKE_CHECK_FAILURE ")
+    ]
+    assert PRIVATE_CANARY not in json.dumps(records)
+    return records
+
+
+@pytest.mark.parametrize("used", [3800, 3800.25, 4200])
+def test_check_failure_real_memory_assertion_is_identified(used, tmp_path, capsys):
+    tree = ast.parse(Path(smoke_test.__file__).read_text("utf-8"))
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "work_the_stack"
+    )
+    assertion = next(
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and node.value.args
+        and isinstance(node.value.args[0], ast.JoinedStr)
+        and any(
+            isinstance(part, ast.Constant)
+            and str(part.value).startswith("memory within the")
+            for part in node.value.args[0].values
+        )
+    )
+    code = compile(
+        ast.Module(body=[assertion], type_ignores=[]), smoke_test.__file__, "exec"
+    )
+    install = smoke_test.Install(False)
+    install.profile = "compact"
+    install.start_number = 1
+    report = smoke_test.Report()
+
+    def checks(*args):
+        exec(  # noqa: S102 - checked-in assertion only, with mocked inputs.
+            code, {"report": report, "install": install, "used": used, "budget": 3800}
+        )
+        return report.failures
+
+    failures = smoke_test.checked(checks, "unused", tmp_path, install)
+    output = capsys.readouterr().out
+    records = check_failure_records(output)
+    log = tmp_path / "lifecycle.log"
+    log.write_text(output, encoding="utf-8")
+    packet = {}
+    driver = importlib.import_module("installed_smoke_windows")
+    assert not driver.lifecycle_summary(log, check_failures=packet)["completed"]
+    assert len(failures) == int(used > 3800)
+    if used <= 3800:
+        assert records == []
+        assert packet == {}
+    else:
+        assert packet == {"records": records, "rejected": False, "truncated": False}
+        assert records == [
+            {
+                "version": 1,
+                "start": 1,
+                "failures": 1,
+                "truncated": False,
+                "checks": [
+                    {
+                        "line": assertion.lineno,
+                        "memory_mib": 3801 if used < 3801 else 4200,
+                        "limit_mib": 3800,
+                    }
+                ],
+            }
+        ]
+
+
+def test_check_failure_private_values_and_foreign_frames_are_not_exported(
+    tmp_path, capsys
+):
+    install = smoke_test.Install(False)
+    install.start_number = 2
+
+    def checks(*args):
+        report = smoke_test.Report()
+        report.expect(PRIVATE_CANARY, PRIVATE_CANARY, False)
+        return report.failures
+
+    failures = smoke_test.checked(checks, "unused", tmp_path, install)
+    assert PRIVATE_CANARY in failures[0]
+    records = check_failure_records(capsys.readouterr().out)
+    assert records == [
+        {
+            "version": 1,
+            "start": 2,
+            "failures": 1,
+            "truncated": False,
+            "checks": [{"line": None, "memory_mib": None, "limit_mib": None}],
+        }
+    ]
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_check_failure_opaque_failures_are_explicitly_unlocated(
+    tmp_path, capsys, raises
+):
+    install = smoke_test.Install(False)
+    install.start_number = 1
+
+    def checks(*args):
+        if raises:
+            raise ValueError(PRIVATE_CANARY)
+        return [PRIVATE_CANARY]
+
+    assert len(smoke_test.checked(checks, "unused", tmp_path, install)) == 1
+    assert check_failure_records(capsys.readouterr().out) == [
+        {
+            "version": 1,
+            "start": 1,
+            "failures": 1,
+            "truncated": False,
+            "checks": [],
+        }
+    ]
+
+
+def test_check_failure_locations_bounded_and_invocations_isolated(tmp_path, capsys):
+    install = smoke_test.Install(False)
+    install.start_number = 3
+
+    def checks(*args):
+        report = smoke_test.Report()
+        for _ in range(40):
+            report.expect("fixed", False, True)
+        return report.failures
+
+    assert len(smoke_test.checked(checks, "unused", tmp_path, install)) == 40
+    records = check_failure_records(capsys.readouterr().out)
+    assert len(records) == 1 and len(records[0]["checks"]) == 32
+    assert records[0]["truncated"] is True and records[0]["failures"] == 40
+    install.start_number = 4
+    assert smoke_test.checked(
+        lambda *args: ["opaque"], "unused", tmp_path, install
+    ) == ["opaque"]
+    records = check_failure_records(capsys.readouterr().out)
+    assert records[0]["start"] == 4 and records[0]["checks"] == []
+    assert records[0]["truncated"] is False
+
+
+def test_check_failure_direct_probe_has_location(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(smoke_test, "fetch_status", lambda _: 503)
+    monkeypatch.setattr(smoke_test, "caches_put_to_work", lambda _: [])
+    install = smoke_test.Install(False)
+    install.start_number = 1
+    failures = smoke_test.checked(
+        lambda url, *args: smoke_test.probe(url), "unused", tmp_path, install
+    )
+    record = check_failure_records(capsys.readouterr().out)[0]
+    assert record["failures"] == len(failures) > 0
+    assert len(record["checks"]) == len(failures)
+    assert all(type(check["line"]) is int for check in record["checks"])
+
+
+@pytest.mark.parametrize("error", [KeyboardInterrupt, SystemExit])
+def test_check_failure_interrupt_resets_collection(error, tmp_path, capsys):
+    install = smoke_test.Install(False)
+    install.start_number = 1
+    original = error(PRIVATE_CANARY)
+
+    def interrupted(*args):
+        smoke_test.Report().expect("fixed", False, True)
+        raise original
+
+    with pytest.raises(error) as raised:
+        smoke_test.checked(interrupted, "unused", tmp_path, install)
+    assert raised.value is original
+    assert smoke_test._check_failures.get() is None
+    install.start_number = 2
+    smoke_test.checked(lambda *args: ["opaque"], "unused", tmp_path, install)
+    records = check_failure_records(capsys.readouterr().out)
+    assert len(records) == 1 and records[0]["start"] == 2
+    assert records[0]["checks"] == []
+
+
+def test_check_failure_nested_invocations_keep_separate_locations(tmp_path, capsys):
+    outer, inner = smoke_test.Install(False), smoke_test.Install(False)
+    outer.start_number, inner.start_number = 1, 2
+
+    def checks(*args):
+        report = smoke_test.Report()
+        report.expect("fixed", False, True)
+        smoke_test.checked(lambda *args: ["opaque"], "unused", tmp_path, inner)
+        report.expect("fixed again", False, True)
+        return report.failures
+
+    smoke_test.checked(checks, "unused", tmp_path, outer)
+    inner_record, outer_record = check_failure_records(capsys.readouterr().out)
+    assert inner_record["start"] == 2 and inner_record["checks"] == []
+    assert outer_record["start"] == 1 and len(outer_record["checks"]) == 2
+    assert smoke_test._check_failures.get() is None
+
+
+@pytest.mark.parametrize(
+    "memory", [(float("nan"), 3800), (True, 3800), (-1, 3800), (1048577, 3800)]
+)
+def test_check_failure_invalid_measurements_are_omitted(memory, tmp_path, capsys):
+    install = smoke_test.Install(False)
+    install.start_number = 1
+
+    def checks(*args):
+        report = smoke_test.Report()
+        report.expect("fixed", False, True, memory=memory)
+        return report.failures
+
+    assert len(smoke_test.checked(checks, "unused", tmp_path, install)) == 1
+    record = check_failure_records(capsys.readouterr().out)[0]["checks"][0]
+    assert record["memory_mib"] is None and record["limit_mib"] is None
+
+
+@pytest.mark.parametrize("operation", ["write", "flush"])
+def test_check_failure_io_loss_preserves_runtime_cleanup(
+    operation, diagnostic_runtime, tmp_path, monkeypatch
+):
+    saved = io.StringIO()
+
+    class Sink:
+        failing_flush = False
+
+        def write(self, text):
+            if text.startswith("DESKTOP_SMOKE_CHECK_FAILURE "):
+                self.failing_flush = operation == "flush"
+                if operation == "write":
+                    raise BrokenPipeError(PRIVATE_CANARY)
+            return saved.write(text)
+
+        def flush(self):
+            if self.failing_flush:
+                self.failing_flush = False
+                raise OSError(PRIVATE_CANARY)
+
+    monkeypatch.setattr(sys, "stdout", Sink())
+    install = smoke_test.Install(False)
+    install.start_number = 1
+    failures = smoke_test.run(
+        tmp_path, tmp_path, 600, lambda *args: [PRIVATE_CANARY], install
+    )
+    assert PRIVATE_CANARY in failures
+    diagnostic_runtime[2].assert_called_once()
+    events = [
+        json.loads(line.removeprefix(SAFE_PREFIX))
+        for line in saved.getvalue().splitlines()
+        if line.startswith(SAFE_PREFIX)
+    ]
+    checks = next(
+        event
+        for event in events
+        if event["stage"] == "runtime_checks" and event["status"] != "started"
+    )
+    assert checks["status"] == "error" and checks["exception"] == "os_error"
+    assert events[-1]["stage"] == "runtime_cleanup"
 
 
 @pytest.mark.parametrize(

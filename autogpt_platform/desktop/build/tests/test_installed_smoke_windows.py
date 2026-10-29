@@ -481,6 +481,278 @@ def runtime_record(**updates):
     }
 
 
+def check_failure_record(**updates):
+    return {
+        "version": 1,
+        "start": 1,
+        "failures": 1,
+        "checks": [{"line": 2490, "memory_mib": None, "limit_mib": None}],
+        "truncated": False,
+        **updates,
+    }
+
+
+class TestCheckFailureSummary:
+    @pytest.mark.parametrize(
+        "checks",
+        [
+            [],
+            [{"line": None, "memory_mib": None, "limit_mib": None}],
+            [{"line": 1, "memory_mib": 0, "limit_mib": 1048576}],
+            [{"line": 1000000, "memory_mib": 1048576, "limit_mib": 0}] * 32,
+        ],
+    )
+    def test_exact_numeric_records_are_accepted(self, driver, checks):
+        record = check_failure_record(checks=checks)
+        assert driver.safe_check_failure(json.dumps(record)) == record
+
+    @pytest.mark.parametrize(
+        "updates",
+        [
+            {"version": True},
+            {"version": 2},
+            {"version": 1.0},
+            {"start": True},
+            {"start": 0},
+            {"start": 5},
+            {"failures": True},
+            {"failures": 0},
+            {"failures": 65536},
+            {"truncated": 1},
+            {"checks": {}},
+            {"checks": [None]},
+            {"checks": [{"line": None, "memory_mib": None}]},
+            {"checks": [{"line": None, "memory_mib": None, "limit_mib": None}] * 33},
+            {"message": "PRIVATE-SENTINEL"},
+        ],
+    )
+    def test_invalid_event_is_not_serialized(self, driver, updates):
+        assert (
+            driver.safe_check_failure(json.dumps(check_failure_record(**updates)))
+            is None
+        )
+
+    @pytest.mark.parametrize(
+        "updates",
+        [
+            {"line": True},
+            {"line": 0},
+            {"line": 1000001},
+            {"line": 2.5},
+            {"line": "PRIVATE-SENTINEL"},
+            {"memory_mib": True, "limit_mib": 1},
+            {"memory_mib": -1, "limit_mib": 1},
+            {"memory_mib": 1048577, "limit_mib": 1},
+            {"memory_mib": 1.0, "limit_mib": 1},
+            {"memory_mib": 1},
+            {"limit_mib": 1},
+            {"memory_mib": 1, "limit_mib": True},
+            {"memory_mib": 1, "limit_mib": -1},
+            {"memory_mib": 1, "limit_mib": 1048577},
+            {"message": "PRIVATE-SENTINEL"},
+        ],
+    )
+    def test_invalid_check_is_not_serialized(self, driver, updates):
+        check = {"line": 1, "memory_mib": None, "limit_mib": None, **updates}
+        assert (
+            driver.safe_check_failure(json.dumps(check_failure_record(checks=[check])))
+            is None
+        )
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "{",
+            "[]",
+            "null",
+            "[" * 2000 + "]" * 2000,
+            json.dumps(check_failure_record()).replace(
+                '"start": 1', '"start": 1, "start": 2'
+            ),
+            json.dumps(check_failure_record()).replace(
+                '"line": 2490', '"line": 2490, "line": 2491'
+            ),
+            json.dumps(check_failure_record()) + " PRIVATE-SENTINEL",
+            json.dumps(check_failure_record()) + " " * 8192,
+            "\ud800",
+        ],
+    )
+    def test_malformed_duplicate_deep_or_oversized_event_is_rejected(
+        self, driver, payload
+    ):
+        assert driver.safe_check_failure(payload) is None
+
+    def test_exact_utf8_payload_bound(self, driver):
+        payload = json.dumps(check_failure_record())
+        payload += " " * (8192 - len(payload.encode("utf-8")))
+        assert driver.safe_check_failure(payload) == check_failure_record()
+        assert driver.safe_check_failure(payload + " ") is None
+
+    @pytest.mark.parametrize("ending", ["\n", "\r\n"])
+    def test_payload_byte_bound_excludes_line_framing(self, driver, tmp_path, ending):
+        payload = json.dumps(check_failure_record())
+        payload += " " * (8192 - len(payload.encode("utf-8")))
+        log = tmp_path / "lifecycle.log"
+        log.write_bytes(("DESKTOP_SMOKE_CHECK_FAILURE " + payload + ending).encode())
+        packet = {}
+        driver.lifecycle_summary(log, check_failures=packet)
+        assert packet == {
+            "records": [check_failure_record()],
+            "rejected": False,
+            "truncated": False,
+        }
+
+    @pytest.mark.parametrize(
+        "payload", [json.dumps(check_failure_record()), "PRIVATE-SENTINEL"]
+    )
+    def test_check_event_overrides_apparent_success(self, driver, tmp_path, payload):
+        log = tmp_path / "lifecycle.log"
+        log.write_text(
+            "\n".join(
+                f"== start {i} of 4: {name}" for i, name in enumerate(driver.STARTS, 1)
+            )
+            + "\nOK in 1s\nDESKTOP_SMOKE_CHECK_FAILURE "
+            + payload
+            + "\n",
+            encoding="utf-8",
+        )
+        packet = {}
+        lifecycle = driver.lifecycle_summary(log, check_failures=packet)
+        assert not lifecycle["completed"]
+        assert "check_failures" not in lifecycle
+        assert packet == {
+            "records": (
+                [] if payload == "PRIVATE-SENTINEL" else [check_failure_record()]
+            ),
+            "rejected": payload == "PRIVATE-SENTINEL",
+            "truncated": False,
+        }
+        assert "PRIVATE-SENTINEL" not in json.dumps(packet)
+        assert not driver.lifecycle_summary(log)["completed"]
+
+    def test_duplicate_starts_and_record_cap_are_flagged(self, driver, tmp_path):
+        log = tmp_path / "lifecycle.log"
+        records = [check_failure_record(start=start) for start in [1, 1, 2, 3, 4, 4]]
+        log.write_text(
+            "".join(
+                "DESKTOP_SMOKE_CHECK_FAILURE " + json.dumps(record) + "\n"
+                for record in records
+            )
+        )
+        packet = {}
+        driver.lifecycle_summary(log, check_failures=packet)
+        assert packet == {
+            "records": [check_failure_record(start=start) for start in range(1, 5)],
+            "rejected": True,
+            "truncated": True,
+        }
+
+    def test_producer_truncation_is_preserved(self, driver, tmp_path):
+        log = tmp_path / "lifecycle.log"
+        record = check_failure_record(truncated=True)
+        log.write_text("DESKTOP_SMOKE_CHECK_FAILURE " + json.dumps(record) + "\n")
+        packet = {}
+        driver.lifecycle_summary(log, check_failures=packet)
+        assert packet == {"records": [record], "rejected": False, "truncated": True}
+
+    def test_overlong_line_cannot_smuggle_a_continuation(self, driver, tmp_path):
+        log = tmp_path / "lifecycle.log"
+        line = "DESKTOP_SMOKE_CHECK_FAILURE " + json.dumps(check_failure_record())
+        log.write_text(
+            "DESKTOP_SMOKE_CHECK_FAILURE " + "x" * 17000 + line + "\n" + line + "\n"
+        )
+        packet = {}
+        driver.lifecycle_summary(log, check_failures=packet)
+        assert packet == {
+            "records": [check_failure_record()],
+            "rejected": True,
+            "truncated": False,
+        }
+
+    def test_input_bound_preserves_truncation(self, driver, tmp_path, monkeypatch):
+        log = tmp_path / "lifecycle.log"
+        log.write_text("PRIVATE-SENTINEL\n" * 10)
+        monkeypatch.setattr(driver, "MAX_SUMMARY_BYTES", 1)
+        packet = {}
+        lifecycle = driver.lifecycle_summary(log, check_failures=packet)
+        assert lifecycle["truncated"] and not lifecycle["completed"]
+        assert packet == {"records": [], "rejected": False, "truncated": True}
+
+    def test_existing_diagnostic_cap_cannot_hide_check_failures(
+        self, driver, tmp_path, monkeypatch
+    ):
+        log = tmp_path / "lifecycle.log"
+        record = "DESKTOP_SMOKE_DIAGNOSTIC " + json.dumps(diagnostic_record()) + "\n"
+        log.write_text(
+            record * 2
+            + "DESKTOP_SMOKE_CHECK_FAILURE "
+            + json.dumps(check_failure_record())
+            + "\n"
+        )
+        monkeypatch.setattr(driver, "MAX_DIAGNOSTICS", 1)
+        packet = {}
+        lifecycle = driver.lifecycle_summary(log, check_failures=packet)
+        assert lifecycle["truncated"] and not lifecycle["completed"]
+        assert packet == {"records": [], "rejected": False, "truncated": True}
+
+    def test_rejected_event_keeps_zero_exit_main_from_passing(self, trace_wrapper):
+        code, result = trace_wrapper(
+            None, "DESKTOP_SMOKE_CHECK_FAILURE PRIVATE-SENTINEL\n"
+        )
+        assert code == 1 and not result["ok"]
+        assert result["error"] == "incomplete_lifecycle"
+        assert result["stages"][-1]["exit_code"] == 0
+        assert result["check_failures"] == {
+            "records": [],
+            "rejected": True,
+            "truncated": False,
+        }
+
+    @pytest.mark.parametrize(
+        "failure", [None, "lifecycle_exit", "lifecycle_timeout", "driver", "interrupt"]
+    )
+    def test_failed_main_preserves_original_exit_and_cleanup(
+        self, driver, processes, trace_wrapper, failure
+    ):
+        original = (
+            RuntimeError("PRIVATE-ORIGINAL")
+            if failure == "driver"
+            else (
+                KeyboardInterrupt("PRIVATE-ORIGINAL")
+                if failure == "interrupt"
+                else driver.SmokeError(failure) if failure else None
+            )
+        )
+        text = (
+            "DESKTOP_SMOKE_CHECK_FAILURE " + json.dumps(check_failure_record()) + "\n"
+        )
+        code, result = trace_wrapper(original, text)
+        assert code == 1 and not result["ok"]
+        assert result["error"] == (
+            "incomplete_lifecycle"
+            if failure is None
+            else (
+                "driver_exception_private_logs_only"
+                if failure in {"driver", "interrupt"}
+                else failure
+            )
+        )
+        assert result["stages"][-1]["exit_code"] == (37 if failure else 0)
+        assert result["check_failures"] == {
+            "records": [check_failure_record()],
+            "rejected": False,
+            "truncated": False,
+        }
+        assert not result["lifecycle"]["completed"]
+        assert processes.killed == ([55] if failure else [])
+        assert result["cleanup"]["surviving_owned_pids"] == []
+
+    def test_success_packet_is_unchanged(self, trace_wrapper):
+        code, result = trace_wrapper(None, "")
+        assert code == 0 and result["ok"]
+        assert "check_failures" not in result
+
+
 def test_runtime_context_summary_is_separate_and_never_completes(driver, tmp_path):
     log = tmp_path / "raw.log"
     log.write_text(

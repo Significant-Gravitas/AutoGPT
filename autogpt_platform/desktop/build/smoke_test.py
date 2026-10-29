@@ -115,6 +115,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
@@ -1413,15 +1414,27 @@ def phases_of(start: Start) -> str:
     return listed or "the runtime reported none"
 
 
+_check_failures: ContextVar[CheckFailures | None] = ContextVar(
+    "check_failures", default=None
+)
+
+
 def checked(checks: Checks, url: str, data: Path, install: Install) -> list[str]:
     """A check that blows up is a failure, and the runtime is still stopped."""
     with Diagnostic("runtime_checks", install.start_number) as diagnostic:
+        locations = CheckFailures(install.start_number)
+        token = _check_failures.set(locations)
         try:
-            failures = checks(url, data, install)
-        except Exception as exc:
-            diagnostic.exception = diagnostic_exception(exc)
-            failures = [f"{checks.__name__} raised {type(exc).__name__}: {exc}"]
+            try:
+                failures = checks(url, data, install)
+            except Exception as exc:
+                diagnostic.exception = diagnostic_exception(exc)
+                failures = [f"{checks.__name__} raised {type(exc).__name__}: {exc}"]
+        finally:
+            _check_failures.reset(token)
         diagnostic.failures = len(failures)
+        if failures:
+            locations.emit(len(failures))
         return failures
 
 
@@ -2317,6 +2330,7 @@ def work_the_stack(
         used <= budget,
         True,
         shown=f"{used:.0f} MB",
+        memory=(used, budget),
     )
     open_files(install, report)
 
@@ -3193,16 +3207,73 @@ def restart_after_runs_were_stopped(
     return report.failures
 
 
+class CheckFailures:
+    """Failure locations in the source-hashed smoke driver, without private values."""
+
+    def __init__(self, start: int) -> None:
+        self.start = start
+        self.checks: list[dict] = []
+        self.truncated = False
+
+    def record(self, line: int | None, memory: tuple[float, float] | None) -> None:
+        if len(self.checks) >= 32:
+            self.truncated = True
+            return
+        measured = limit = None
+        if (
+            type(memory) is tuple
+            and len(memory) == 2
+            and all(
+                type(value) in (int, float) and 0 <= value <= 1048576
+                for value in memory
+            )
+        ):
+            measured, limit = (math.ceil(value) for value in memory)
+        self.checks.append(
+            {
+                "line": line if type(line) is int and 1 <= line <= 1000000 else None,
+                "memory_mib": measured,
+                "limit_mib": limit,
+            }
+        )
+
+    def emit(self, failures: int) -> None:
+        write_diagnostic(
+            "DESKTOP_SMOKE_CHECK_FAILURE "
+            + json.dumps(
+                {
+                    "version": 1,
+                    "start": self.start,
+                    "failures": min(failures, 65535),
+                    "checks": self.checks,
+                    "truncated": self.truncated or failures > 65535,
+                },
+                separators=(",", ":"),
+            )
+        )
+
+
 class Report:
     def __init__(self) -> None:
         self.failures: list[str] = []
 
     def expect(
-        self, what: str, actual: object, expected: object, shown: object = None
+        self,
+        what: str,
+        actual: object,
+        expected: object,
+        shown: object = None,
+        *,
+        memory: tuple[float, float] | None = None,
     ) -> None:
         print(f"  {what} -> {actual if shown is None else shown}")
         if actual != expected:
             self.failures.append(f"{what}: got {actual!r}, expected {expected!r}")
+            locations = _check_failures.get()
+            if locations is not None:
+                frame = sys._getframe(1)
+                line = frame.f_lineno if frame.f_code.co_filename == __file__ else None
+                locations.record(line, memory)
 
     def note(self, what: str, observed: object) -> None:
         """Printed for the record; not a pass or a fail."""
@@ -3369,6 +3440,9 @@ def probe(url: str) -> list[str]:
         print(f"  {path} -> {status}")
         if status != expected:
             failures.append(f"{path} returned {status}, expected {expected}")
+            locations = _check_failures.get()
+            if locations is not None:
+                locations.record(sys._getframe().f_lineno, None)
     return failures + caches_put_to_work(url)
 
 
