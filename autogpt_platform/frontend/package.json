@@ -88,7 +88,7 @@
     "cmdk": "1.1.1",
     "date-fns": "4.4.0",
     "dexie": "4.4.6",
-    "dotenv": "17.2.3",
+    "dotenv": "18.0.8",
     "embla-carousel-react": "8.6.0",
     "eventsource-parser": "3.0.6",
     "flatbush": "4.6.2",

@@ -51,17 +51,21 @@ _AWAITING_THE_USER = frozenset(
     {ResponseType.APPROVAL_REQUIRED.value, ResponseType.NEED_LOGIN.value}
 )
 
-# Persist full tool output to workspace when it exceeds this threshold.
-# Must be below _MAX_TOOL_OUTPUT_SIZE (100K) in response_model.py so we
-# capture the data before model_post_init middle-out truncation discards it.
-_LARGE_OUTPUT_THRESHOLD = 80_000
+# The Claude CLI saves any tool result longer than 50,000 characters (it
+# counts characters, not tokens) to a ``tool-results/`` folder on the executor
+# host and shows the model a 2 KB preview.  bash_exec runs in the sandbox and
+# can't open that folder, so anything that long has to reach the workspace
+# first, where ``read_workspace_file(save_to_path=...)`` can copy it over.
+_CLI_SPILL_CHARS = 50_000
 
-# Character budget for the middle-out preview.  The total preview + wrapper
-# must stay below BOTH:
-#   - _MAX_TOOL_OUTPUT_SIZE (100K) in response_model.py (our own truncation)
-#   - Claude SDK's ~100 KB tool-result spill-to-disk threshold
-# to avoid double truncation/spilling.  95K + ~300 wrapper = ~95.3K, under both.
-_PREVIEW_CHARS = 95_000
+# Persist full tool output to workspace when it exceeds this threshold.
+# Must be below _CLI_SPILL_CHARS (see above) and _MAX_TOOL_OUTPUT_SIZE (100K)
+# in response_model.py, so we keep the data before either discards it.
+_LARGE_OUTPUT_THRESHOLD = 45_000
+
+# Character budget for the middle-out preview.  Preview + wrapper (under 1K)
+# must stay below _CLI_SPILL_CHARS, or the CLI spills the preview itself.
+_PREVIEW_CHARS = 40_000
 
 # Threshold and budget for the digest, which fires when the tool opts in.  The
 # budget is derived from the trigger so a digest can never be larger than the
@@ -165,7 +169,9 @@ async def _persist_and_summarize(
             f"output, not a literal prefix of it. Each `@offset+length` is that "
             f"node's exact window in the file: "
             f'read_workspace_file(path="{file_path}", offset=<offset>, '
-            f"length=<length>) returns it and nothing else."
+            f"length=<length>) starts that window. Reads may return less than "
+            f"requested; continue from the returned end offset with the "
+            f"remaining length until the node's window is complete."
             f"\n{sandbox}"
         )
     else:
@@ -174,7 +180,8 @@ async def _persist_and_summarize(
             f"\nFull output ({total:,} chars) saved to workspace. "
             f"Use read_workspace_file("
             f'path="{file_path}", offset=<char_offset>, length=50000) '
-            f"to read any section. "
+            f"to read any section. If a read returns less than requested, "
+            f"continue from the returned end offset with the remaining length. "
             f"{sandbox}"
         )
     return (
@@ -696,6 +703,11 @@ class BaseTool:
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=raw_output,
+                # An MCP client reads a refusal from the call's status; chat's
+                # engines hand it to the model as the tool's result.
+                success=not (
+                    session.external_caller and result.type == ResponseType.ERROR
+                ),
             ).with_image(result.image)
             # Remembered as the model gets it, previews and caps included, so
             # the traces can redact it even where it no longer parses.
