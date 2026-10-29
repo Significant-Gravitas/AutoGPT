@@ -1,8 +1,8 @@
 import { AuthMarketingPanel } from "@/components/auth/AuthSplitLayout/AuthMarketingPanel";
 import {
-  FlashIcon,
-  HammerIcon,
+  BrainIcon,
   SecurityCheckIcon,
+  UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -10,33 +10,36 @@ export function SignupMarketingPanel() {
   return (
     <AuthMarketingPanel
       headingLines={[
-        "AI agents",
+        "Your ambition",
         <span key="line-2">
-          that work{" "}
+          deserves{" "}
           <span
             // TODO(tokens): no exact role for text-violet-600 (#7C3AED)
             className="text-violet-600"
           >
-            for you.
+            a team.
           </span>
         </span>,
       ]}
-      description="Discover, build, and deploy AI agents that automate real work — no code required. Start building agents in minutes."
+      description="Hire AI experts who research, write, sell and take work off your plate. Otto, your Head of AI, hands out the jobs and reports back to you."
       items={[
         {
-          icon: <Icon icon={FlashIcon} size={20} />,
-          title: "Run in minutes",
-          description: "Get started quickly and see results fast.",
+          icon: <Icon icon={UserGroupIcon} size={20} />,
+          title: "A specialist for every job",
+          description:
+            "Experts for research, content, sales and more, ready to work in minutes.",
         },
         {
-          icon: <Icon icon={HammerIcon} size={20} />,
-          title: "Built for real work",
-          description: "Powerful blocks that handle tasks across your stack.",
+          icon: <Icon icon={BrainIcon} size={20} />,
+          title: "They learn your way",
+          description:
+            "Show them how you like things done once. They remember.",
         },
         {
           icon: <Icon icon={SecurityCheckIcon} size={20} />,
-          title: "Secure & private",
-          description: "Enterprise-grade security to keep your data safe.",
+          title: "You stay in charge",
+          description:
+            "You decide when they check with you first, and their work stays yours.",
         },
       ]}
     />
