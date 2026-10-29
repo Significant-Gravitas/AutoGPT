@@ -336,39 +336,23 @@ export function PendingReviewsList({
                         <Icon
                           icon={ArrowRight01Icon}
                           size={20}
-                          // TODO(tokens): no role for Tailwind's default gray-600;
-                          // the zinc roles are a different grey.
-                          className="text-gray-600"
+                          className="text-foreground-secondary"
                         />
                       ) : (
                         <Icon
                           icon={ArrowDown01Icon}
                           size={20}
-                          // TODO(tokens): no role for Tailwind's default gray-600;
-                          // the zinc roles are a different grey.
-                          className="text-gray-600"
+                          className="text-foreground-secondary"
                         />
                       )}
                       <div
                         data-slot="pending-reviews-list-group-heading"
                         className="flex-1"
                       >
-                        <Text
-                          // TODO(tokens): no role for Tailwind's default gray-900; the
-                          // zinc roles are a different grey.
-                          variant="body"
-                          className="font-semibold text-gray-900"
-                        >
-                          {reviewTitle}
-                        </Text>
+                        <Text variant="body-semibold">{reviewTitle}</Text>
                         {(workflowName ||
                           (!firstReview?.action && !isGateReview(nodeId))) && (
-                          <Text
-                            // TODO(tokens): no role for Tailwind's default gray-500;
-                            // the zinc roles are a different grey.
-                            variant="small"
-                            className="text-gray-500"
-                          >
+                          <Text variant="small" tone="muted">
                             {workflowName
                               ? `In workflow “${workflowName}”`
                               : `Node #${getShortenedNodeId(nodeId)}`}
@@ -410,12 +394,7 @@ export function PendingReviewsList({
                               handleAutoApproveFutureToggle(nodeId, enabled)
                             }
                           />
-                          <Text
-                            // TODO(tokens): no role for Tailwind's default gray-700;
-                            // the zinc roles are a different grey.
-                            variant="small"
-                            className="text-gray-700"
-                          >
+                          <Text variant="small" tone="body">
                             Auto-approve future executions of this node
                           </Text>
                         </div>

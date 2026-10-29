@@ -13,6 +13,7 @@ import { SkillCard } from "../../../components/SkillsSection/components/SkillCar
 import { SkillTopicChips } from "../../../components/SkillTopicChips/SkillTopicChips";
 import { useSkillsBrowsePage } from "./useSkillsBrowsePage";
 
+// oxlint-disable-next-line design-system/no-restyle -- the skills grid's gutter; InfiniteList has no gap prop
 const GRID_CLASS = "grid grid-cols-1 gap-5 md:grid-cols-2";
 
 export function SkillsBrowsePage() {
@@ -136,15 +137,10 @@ function EmptyResult({
       className="flex flex-col items-center justify-center gap-3 rounded-large border border-dashed border-border-base px-6 py-16 text-center"
       data-testid="skills-browse-empty"
     >
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-surface">
-        <Icon
-          icon={BookOpen01Icon}
-          size={24}
-          className="text-accent-strong"
-          aria-hidden
-        />
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-surface text-accent-strong">
+        <Icon icon={BookOpen01Icon} size={24} aria-hidden />
       </div>
-      <Text variant="h4" className="text-foreground-strong">
+      <Text variant="h4" tone="primary">
         {category
           ? `No ${categoryLabel ?? category} skills yet`
           : "Nothing published yet"}

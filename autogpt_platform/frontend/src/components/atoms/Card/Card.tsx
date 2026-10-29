@@ -4,9 +4,7 @@ import { HTMLAttributes, ReactNode } from "react";
 
 const variants = {
   default: "rounded-large bg-surface p-6 shadow-md",
-  // TODO(tokens): text-neutral-950 #0A0A0A is the `focus` role, a ring
-  // colour, not a text colour (SECRT-3154).
-  outlined: "agpt-card text-neutral-950",
+  outlined: "agpt-card text-foreground-base",
 } as const;
 
 interface Props {
@@ -60,9 +58,8 @@ export function CardDescription({
       variant="body-tight"
       as="p"
       data-slot="card-description"
-      // TODO(tokens): no exact role: text-neutral-500 #737373. The dark: class
-      // is the legacy card's, kept verbatim.
-      className={cn("text-neutral-500 dark:text-neutral-400", className)}
+      tone="muted"
+      className={className}
       {...props}
     />
   );

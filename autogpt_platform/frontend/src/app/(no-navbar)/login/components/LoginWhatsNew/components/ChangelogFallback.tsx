@@ -27,12 +27,12 @@ export function ChangelogFallback() {
           <span className="sr-only"> (opens in a new tab)</span>
         </Text>
       </span>
-      <Icon
-        icon={ArrowUpRight01Icon}
-        size={16}
+      <span
         aria-hidden
         className="shrink-0 text-foreground-tertiary transition-[color,transform] duration-150 group-hover:-translate-y-px group-hover:translate-x-px group-hover:text-foreground-strong motion-reduce:transition-none motion-reduce:group-hover:transform-none"
-      />
+      >
+        <Icon icon={ArrowUpRight01Icon} size={16} />
+      </span>
     </a>
   );
 }
