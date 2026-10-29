@@ -8,7 +8,10 @@ import {
 import { getClientIPToken } from "@/lib/auth/client-ip-token";
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
-import { getServerSession } from "@/lib/auth/server/getServerSession";
+import {
+  isSessionRejection,
+  readServerSession,
+} from "@/lib/auth/server/getServerSession";
 import { ImpersonationState } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
@@ -150,7 +153,14 @@ async function keepImpersonationOnlyForItsOwner(
   const allowed = await ImpersonationState.getServerSide(
     async (name) => req.cookies.get(name)?.value ?? null,
     async () => {
-      const session = await getServerSession();
+      const session = await readServerSession().catch((error) => {
+        if (isSessionRejection(error)) return null;
+        // Without the session there's no telling whose target this is, and
+        // dropping the header would run the request on the admin's account.
+        throw new Error("Couldn't check the impersonation session", {
+          cause: error,
+        });
+      });
       if (!session?.user) return null;
       return {
         id: session.user.id,

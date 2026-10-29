@@ -21,14 +21,18 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
-vi.mock("@/lib/auth/server/getServerSession", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth/server/getServerSession", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/lib/auth/server/getServerSession")
+  >()),
+  readServerSession: vi.fn(),
 }));
 
 import { getClientIPToken } from "@/lib/auth/client-ip-token";
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
-import { getServerSession } from "@/lib/auth/server/getServerSession";
+import { readServerSession } from "@/lib/auth/server/getServerSession";
+import { APIError } from "better-auth/api";
 import { encodeImpersonation } from "@/lib/impersonation";
 import { GET, POST } from "../route";
 
@@ -705,7 +709,7 @@ describe("proxy: admin impersonation header", () => {
   });
 
   function sessionAs(id: string, role: string) {
-    vi.mocked(getServerSession).mockResolvedValue({
+    vi.mocked(readServerSession).mockResolvedValue({
       user: { id, role },
     } as never);
   }
@@ -746,6 +750,37 @@ describe("proxy: admin impersonation header", () => {
   it("drops a header no impersonation cookie backs", async () => {
     sessionAs("admin-1", "admin");
     expect(await forwardedActAs(null)).toBeNull();
+  });
+
+  it("drops the target when the auth backend rejects the session", async () => {
+    vi.mocked(readServerSession).mockRejectedValue(
+      new APIError("UNAUTHORIZED"),
+    );
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("fails the request rather than send it as the admin when the session can't be read", async () => {
+    vi.mocked(readServerSession).mockRejectedValue(
+      new APIError("INTERNAL_SERVER_ERROR"),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      method: "POST",
+      headers: { [ACT_AS]: "target-a" },
+    });
+    req.cookies.set(
+      "admin-impersonate-user-id",
+      encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+    );
+
+    const response = await POST(req, makeParams(["api", "v1", "items"]));
+
+    expect(response.status).toBe(502);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("drops a target the owner's cookie doesn't name", async () => {
