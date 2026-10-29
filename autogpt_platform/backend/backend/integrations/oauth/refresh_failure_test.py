@@ -352,20 +352,26 @@ def test_dead_token_wording_is_final_only_for_its_provider(
 
 @pytest.mark.asyncio
 async def test_a_dead_token_is_not_replayed_on_the_unlocked_path(sentry):
-    # Linear now always refreshes under the lock; GitHub does not rotate its
-    # refresh token, so lock=False still takes the unlocked path.
-    endpoint = FakeTokenEndpoint(200, {"error": "bad_refresh_token"})
-    dead = expiring("github", ["repo"])
-    manager, store = manager_with(GitHubOAuthHandler(*CLIENT), dead)
+    # Rotating providers (Linear, GitHub, X) always refresh under the lock;
+    # Google does not rotate its refresh token, so lock=False stays unlocked.
+    google_response = MagicMock(
+        status=400, headers={}, data=json.dumps({"error": "invalid_grant"}).encode()
+    )
+    manager, store = manager_with(
+        GoogleOAuthHandler(*CLIENT), expiring("google", ["openid"])
+    )
     manager._refresh_locked = AsyncMock()
 
-    with endpoint.patch("backend.integrations.oauth.github"):
+    with patch(
+        "google.auth.transport.requests.Request.__call__",
+        return_value=google_response,
+    ) as token_endpoint:
         for _ in range(2):
             with pytest.raises(CredentialsNeedReconnectError):
                 await manager.refresh_if_needed("user-1", store.creds, lock=False)
 
     assert reconnect_required(store.creds) is not None
-    assert len(endpoint.calls) == 1
+    assert token_endpoint.call_count == 1
     manager._refresh_locked.assert_not_awaited()
 
 
