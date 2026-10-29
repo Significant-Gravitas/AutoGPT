@@ -198,9 +198,7 @@ class TurnStreamer:
             # buffered workspace artifacts resolve instead of falling back to
             # the "no session" plain-text note.
             active_session_id = session_id
-            card_key = setup_card_key(
-                ctx.platform, target_id, session_id, setup_output
-            )
+            card_key = setup_card_key(ctx.platform, target_id, session_id, setup_output)
             card_token = uuid4().hex
             if not await claim_setup_card(redis, card_key, card_token, target_id):
                 # The same card is already up in this conversation and its
