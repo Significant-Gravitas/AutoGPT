@@ -35,12 +35,6 @@ export function workIQToAllow(
   );
 }
 
-export function needsAdmin(check?: MicrosoftAccessCheck): boolean {
-  return Boolean(
-    check?.capabilities.some((item) => item.status === "admin_required"),
-  );
-}
-
 export function needsWorkIQSetup(check?: MicrosoftAccessCheck): boolean {
   return Boolean(
     check?.capabilities.some(

@@ -23,7 +23,6 @@ interface Props {
   /** Adds the scopes to this connection instead of making a new one. */
   credentialID?: string;
   onError?: (error: unknown) => void;
-  onTrouble?: () => void;
 }
 
 export function DeviceAuthConnectButton({
@@ -33,7 +32,6 @@ export function DeviceAuthConnectButton({
   scopes,
   credentialID,
   onError,
-  onTrouble,
 }: Props) {
   const { connect, cancel, phase, userCode, verificationUrl } =
     useDeviceAuthConnect({
@@ -71,11 +69,6 @@ export function DeviceAuthConnectButton({
         <Button type="button" variant="primary" size="large" onClick={connect}>
           Connect {providerName}
         </Button>
-        {onTrouble && (
-          <Button variant="ghost" onClick={onTrouble}>
-            Having trouble signing in?
-          </Button>
-        )}
       </div>
     );
   }
@@ -131,11 +124,6 @@ export function DeviceAuthConnectButton({
           Cancel
         </Button>
       </div>
-      {onTrouble && (
-        <Button variant="ghost" onClick={onTrouble}>
-          Having trouble signing in?
-        </Button>
-      )}
     </div>
   );
 }
