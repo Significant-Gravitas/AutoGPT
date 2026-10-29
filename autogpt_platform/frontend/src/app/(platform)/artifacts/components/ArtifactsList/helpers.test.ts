@@ -2,12 +2,17 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   deriveFileOrigin,
+  downloadFileBlob,
+  formatDayLabel,
   formatFileSize,
   formatRelativeDate,
+  getEmptyMessage,
   getFileDownloadUrl,
+  getFilePreviewUrl,
   getFileTypeIcon,
   getFileTypeLabel,
   getPreviewKind,
+  isCodeFile,
 } from "./helpers";
 
 describe("deriveFileOrigin", () => {
@@ -55,6 +60,70 @@ describe("getFileDownloadUrl", () => {
     expect(getFileDownloadUrl("a/b c")).toBe(
       "/api/proxy/api/workspace/files/a%2Fb%20c/download",
     );
+  });
+});
+
+describe("getFilePreviewUrl", () => {
+  test("returns the base url with no query when no opts are given", () => {
+    expect(getFilePreviewUrl("f1", {})).toBe(
+      "/api/proxy/api/workspace/files/f1/preview",
+    );
+  });
+
+  test("adds the width param", () => {
+    expect(getFilePreviewUrl("f1", { width: 400 })).toBe(
+      "/api/proxy/api/workspace/files/f1/preview?w=400",
+    );
+  });
+
+  test("adds the bytes param", () => {
+    expect(getFilePreviewUrl("f1", { bytes: 4096 })).toBe(
+      "/api/proxy/api/workspace/files/f1/preview?bytes=4096",
+    );
+  });
+
+  test("combines width and bytes and url-encodes the id", () => {
+    expect(getFilePreviewUrl("a b", { width: 400, bytes: 4096 })).toBe(
+      "/api/proxy/api/workspace/files/a%20b/preview?w=400&bytes=4096",
+    );
+  });
+});
+
+describe("downloadFileBlob", () => {
+  const realCreate = URL.createObjectURL;
+  const realRevoke = URL.revokeObjectURL;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    URL.createObjectURL = realCreate;
+    URL.revokeObjectURL = realRevoke;
+  });
+
+  test("fetches the download url and triggers an anchor click", async () => {
+    URL.createObjectURL = vi.fn(() => "blob:mock");
+    URL.revokeObjectURL = vi.fn();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(new Blob(["hi"]), { status: 200 }));
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+
+    await downloadFileBlob("file 1", "out.txt");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/proxy/api/workspace/files/file%201/download",
+    );
+    expect(clickSpy).toHaveBeenCalled();
+    expect(URL.createObjectURL).toHaveBeenCalled();
+  });
+
+  test("throws when the response is not ok", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("nope", { status: 404 }),
+    );
+
+    await expect(downloadFileBlob("f", "n")).rejects.toThrow(/404/);
   });
 });
 
@@ -158,6 +227,43 @@ describe("getFileTypeLabel + getFileTypeIcon", () => {
       expect(typeof Icon).toBe("object");
     }
   });
+
+  test.each([
+    [
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      undefined,
+      "Presentation",
+    ],
+    ["application/vnd.ms-powerpoint", undefined, "Presentation"],
+    [
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      undefined,
+      "Document",
+    ],
+    ["application/msword", undefined, "Document"],
+    ["text/plain", "deck.pptx", "Presentation"],
+    ["application/octet-stream", "deck.ppt", "Presentation"],
+    [undefined, "report.docx", "Document"],
+    ["application/octet-stream", "report.doc", "Document"],
+    ["application/octet-stream", "sheet.xlsx", "Spreadsheet"],
+    [undefined, "sheet.xls", "Spreadsheet"],
+  ])("getFileTypeLabel(%s, %s) === %s", (mime, name, expected) => {
+    expect(getFileTypeLabel(mime, name)).toBe(expected);
+  });
+
+  test("office files get their own icons, by MIME or by extension", () => {
+    const presentation = getFileTypeIcon(
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    );
+    expect(getFileTypeIcon("text/plain", "deck.pptx")).toBe(presentation);
+    expect(getFileTypeIcon(undefined, "report.docx")).toBe(
+      getFileTypeIcon("text/plain"),
+    );
+    expect(getFileTypeIcon("application/octet-stream", "sheet.xlsx")).toBe(
+      getFileTypeIcon("text/csv"),
+    );
+    expect(presentation).not.toBe(getFileTypeIcon("application/octet-stream"));
+  });
 });
 
 describe("getPreviewKind", () => {
@@ -181,12 +287,19 @@ describe("getPreviewKind", () => {
     "text/plain",
     "text/html",
     "application/xml",
-    "text/markdown",
     "application/javascript",
     "application/typescript",
     "application/yaml",
   ])("text-like mime '%s' under cap previews as 'text'", (mt) => {
     expect(getPreviewKind(mt, 1_000)).toBe("text");
+  });
+
+  test("markdown previews as 'markdown' so the card renders its content", () => {
+    expect(getPreviewKind("text/markdown", 1_000)).toBe("markdown");
+    expect(getPreviewKind("text/plain", 1_000, "README.md")).toBe("markdown");
+    expect(getPreviewKind("application/octet-stream", 1_000, "notes.mdx")).toBe(
+      "markdown",
+    );
   });
 
   test("csv previews as 'csv'", () => {
@@ -249,5 +362,182 @@ describe("getPreviewKind", () => {
 
   test("undefined mime returns 'none'", () => {
     expect(getPreviewKind(undefined, 100)).toBe("none");
+  });
+});
+
+describe("source code files (`.ts` → video/mp2t MIME)", () => {
+  test("isCodeFile matches code extensions, not media", () => {
+    expect(isCodeFile("main.ts")).toBe(true);
+    expect(isCodeFile("App.tsx")).toBe(true);
+    expect(isCodeFile("script.py")).toBe(true);
+    expect(isCodeFile("style.css")).toBe(true);
+    expect(isCodeFile("clip.mp4")).toBe(false);
+    expect(isCodeFile("photo.png")).toBe(false);
+    expect(isCodeFile("notes.txt")).toBe(false);
+    expect(isCodeFile(undefined)).toBe(false);
+  });
+
+  test("a .ts file with video/mp2t MIME previews as text, not video", () => {
+    expect(getPreviewKind("video/mp2t", 1_000, "main.ts")).toBe("text");
+  });
+
+  test("a .ts file labels as Code, not Video", () => {
+    expect(getFileTypeLabel("video/mp2t", "main.ts")).toBe("Code");
+  });
+
+  test("a .ts file uses the code icon, not the video-camera icon", () => {
+    const codeIcon = getFileTypeIcon("video/mp2t", "main.ts");
+    const videoIcon = getFileTypeIcon("video/mp4", "clip.mp4");
+    expect(codeIcon).not.toBe(videoIcon);
+  });
+});
+
+describe("formatDayLabel", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-15T12:00:00"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("returns a dash for invalid dates", () => {
+    expect(formatDayLabel("not-a-date")).toBe("—");
+  });
+
+  test("labels the current day as Today", () => {
+    expect(formatDayLabel("2026-06-15T00:30:00")).toBe("Today");
+  });
+
+  test("labels the previous day as Yesterday, even late at night", () => {
+    expect(formatDayLabel("2026-06-14T23:59:00")).toBe("Yesterday");
+  });
+
+  test("falls back to a short date within the current year", () => {
+    const out = formatDayLabel("2026-03-02T10:00:00");
+    expect(out).toMatch(/Mar/);
+    expect(out).toContain("2");
+    expect(out).not.toContain("2026");
+  });
+
+  test("includes the year for older dates", () => {
+    expect(formatDayLabel("2025-03-02T10:00:00")).toContain("2025");
+  });
+
+  test("accepts Date instances", () => {
+    expect(formatDayLabel(new Date("2026-06-15T09:00:00"))).toBe("Today");
+  });
+});
+
+describe("getEmptyMessage", () => {
+  test("prefers the search message", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: true,
+        isInFolder: true,
+        hasFolders: true,
+      }),
+    ).toBe("No files match your search");
+  });
+
+  test("describes an empty folder", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+      }),
+    ).toBe("This folder is empty");
+  });
+
+  test("describes a root that only holds folders", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: true,
+      }),
+    ).toBe("No files at the root yet");
+  });
+
+  test("describes an empty workspace", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: false,
+      }),
+    ).toBe("No files yet");
+  });
+});
+
+describe("getEmptyMessage - nested folders and the expert filter", () => {
+  test("a folder with subfolders but no direct files says so", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: true,
+      }),
+    ).toBe("No files directly in this folder");
+  });
+
+  test("a folder with neither is simply empty", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+      }),
+    ).toBe("This folder is empty");
+  });
+
+  test("an expert filter inside a folder names the expert and says 'here'", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+        hasExpertFilter: true,
+        expertName: "Maria",
+      }),
+    ).toBe("No files from Maria here");
+  });
+
+  test("an expert filter at a root with folders says 'here' too", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: true,
+        hasExpertFilter: true,
+        expertName: "Maria",
+      }),
+    ).toBe("No files from Maria here");
+  });
+
+  test("an expert filter with nowhere else to look keeps 'yet'", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: false,
+        hasExpertFilter: true,
+        expertName: "Maria",
+      }),
+    ).toBe("No files from this expert yet");
+  });
+
+  test("falls back to 'this expert' when the name is unknown", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+        hasExpertFilter: true,
+        expertName: null,
+      }),
+    ).toBe("No files from this expert here");
   });
 });

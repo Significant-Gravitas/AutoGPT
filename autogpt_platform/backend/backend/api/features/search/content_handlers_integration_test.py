@@ -24,13 +24,30 @@ from backend.api.features.search.embeddings import (
 )
 
 
+async def _first_db_call(coro_factory):
+    """Run the test's first DB call, retrying once on a transient
+    ``Event loop is closed``.
+
+    Same pattern as conftest's ``_create_user_with_loop_retry``: fire-and-forget
+    background tasks elsewhere can leave the Prisma pool bound to a now-closed
+    test function loop; the first session-loop DB call after that surfaces as
+    ``RuntimeError: Event loop is closed`` and the pool re-establishes on retry.
+    """
+    try:
+        return await coro_factory()
+    except RuntimeError as e:
+        if "Event loop is closed" not in str(e):
+            raise
+        return await coro_factory()
+
+
 @pytest.mark.asyncio(loop_scope="session")
-async def test_store_agent_handler_real_db():
+async def test_store_agent_handler_real_db(server):
     """Test StoreAgentHandler with real database queries."""
     handler = StoreAgentHandler()
 
     # Get stats from real DB
-    stats = await handler.get_stats()
+    stats = await _first_db_call(handler.get_stats)
 
     # Stats should have correct structure
     assert "total" in stats
@@ -55,7 +72,7 @@ async def test_store_agent_handler_real_db():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_block_handler_real_db():
+async def test_block_handler_real_db(server):
     """Test BlockHandler with real database queries."""
     handler = BlockHandler()
 
@@ -85,7 +102,7 @@ async def test_block_handler_real_db():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_documentation_handler_real_fs():
+async def test_documentation_handler_real_fs(server):
     """Test DocumentationHandler with real filesystem."""
     handler = DocumentationHandler()
 
@@ -115,7 +132,7 @@ async def test_documentation_handler_real_fs():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_embedding_stats_all_types():
+async def test_get_embedding_stats_all_types(server):
     """Test get_embedding_stats aggregates all content types."""
     stats = await get_embedding_stats()
 
@@ -139,7 +156,7 @@ async def test_get_embedding_stats_all_types():
 
 @pytest.mark.asyncio(loop_scope="session")
 @patch("backend.api.features.search.embeddings.generate_embedding")
-async def test_ensure_content_embedding_blocks(mock_generate):
+async def test_ensure_content_embedding_blocks(mock_generate, server):
     """Test creating embeddings for blocks (mocked OpenAI)."""
     # Mock OpenAI to return fake embedding
     mock_generate.return_value = [0.1] * EMBEDDING_DIM
@@ -169,7 +186,7 @@ async def test_ensure_content_embedding_blocks(mock_generate):
 
 @pytest.mark.asyncio(loop_scope="session")
 @patch("backend.api.features.search.embeddings.generate_embedding")
-async def test_backfill_all_content_types_dry_run(mock_generate):
+async def test_backfill_all_content_types_dry_run(mock_generate, server):
     """Test backfill_all_content_types processes all handlers in order."""
     # Mock OpenAI to return fake embedding
     mock_generate.return_value = [0.1] * EMBEDDING_DIM

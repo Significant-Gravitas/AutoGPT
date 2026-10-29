@@ -2,7 +2,9 @@ import React from "react";
 import { getGetV2GetChatShareStateMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { ChatShareStateResponse } from "@/app/api/__generated__/models/chatShareStateResponse";
 import { server } from "@/mocks/mock-server";
+import { getUsageExperience } from "@/services/usageExperience/helpers";
 import {
+  act,
   render,
   screen,
   cleanup,
@@ -14,8 +16,13 @@ import { ChatContainer } from "../ChatContainer";
 import { useCopilotUIStore } from "../../../store";
 
 const mockIsUsageLimitReached = vi.fn();
-const mockArtifactsEnabled = vi.fn(() => false);
 const clipboardWrite = vi.fn(async (_text: string) => {});
+const toast = vi.hoisted(() => vi.fn());
+
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast,
+  useToast: () => ({ toast, dismiss: vi.fn() }),
+}));
 
 const ARTIFACT_A_ID = "11111111-0000-0000-0000-000000000000";
 const ARTIFACT_B_ID = "22222222-0000-0000-0000-000000000000";
@@ -35,11 +42,13 @@ function resetCopilotStore() {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: false,
-      isMinimized: false,
-      isMaximized: false,
-      width: 600,
       activeArtifact: null,
       history: [],
+      activeTab: "files",
+      lastArtifact: null,
+      mode: "artifact",
+      computer: null,
+      isComputerOpen: false,
     },
   });
 }
@@ -60,70 +69,85 @@ function mockShareState(state: Partial<ChatShareStateResponse>) {
   );
 }
 
-vi.mock("framer-motion", () => ({
-  LayoutGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  motion: {
-    div: React.forwardRef(function MotionDiv(
+vi.mock("framer-motion", () => {
+  const MOTION_PROPS = [
+    "initial",
+    "animate",
+    "exit",
+    "transition",
+    "layout",
+    "layoutId",
+    "whileHover",
+    "whileTap",
+    "style",
+  ];
+  function makeMotion(Tag: string) {
+    return React.forwardRef(function MotionComponent(
       props: Record<string, unknown>,
-      ref: React.Ref<HTMLDivElement>,
+      ref: React.Ref<unknown>,
     ) {
-      const {
-        children,
-        initial: _initial,
-        animate: _animate,
-        transition: _transition,
-        ...rest
-      } = props as {
-        children?: React.ReactNode;
-        initial?: unknown;
-        animate?: unknown;
-        transition?: unknown;
-        [key: string]: unknown;
-      };
-
-      return (
-        <div ref={ref} {...rest}>
-          {children}
-        </div>
-      );
-    }),
-  },
-}));
+      const rest: Record<string, unknown> = {};
+      let children: React.ReactNode = null;
+      for (const [key, value] of Object.entries(props)) {
+        if (key === "children") children = value as React.ReactNode;
+        else if (!MOTION_PROPS.includes(key)) rest[key] = value;
+      }
+      return React.createElement(Tag, { ref, ...rest }, children);
+    });
+  }
+  return {
+    LayoutGroup: ({ children }: { children: React.ReactNode }) => (
+      <>{children}</>
+    ),
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => (
+      <>{children}</>
+    ),
+    useReducedMotion: () => false,
+    motion: {
+      div: makeMotion("div"),
+      span: makeMotion("span"),
+      button: makeMotion("button"),
+    },
+  };
+});
 
 vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
-  ChatInput: () => <div data-testid="chat-input" />,
-}));
-
-vi.mock("@/components/atoms/Tooltip/BaseTooltip", () => ({
-  TooltipProvider: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  TooltipContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  TooltipTrigger: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
+  ChatInput: ({
+    disabled,
+    sendDisabled,
+  }: {
+    disabled?: boolean;
+    sendDisabled?: boolean;
+  }) => (
+    <input
+      data-testid="chat-input"
+      disabled={disabled}
+      data-send-disabled={String(!!sendDisabled)}
+    />
   ),
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ARTIFACTS: "ARTIFACTS",
-  },
-  useGetFlag: () => mockArtifactsEnabled(),
+  Flag: { TASK_PROGRESS_BAR: "TASK_PROGRESS_BAR" },
+  useGetFlag: () => false,
 }));
 
 vi.mock("../../ChatMessagesContainer/ChatMessagesContainer", () => ({
   ChatMessagesContainer: ({
     bottomContentPadding,
+    onRetry,
   }: {
     bottomContentPadding?: number;
+    onRetry?: () => void;
   }) => (
     <div
       data-testid="chat-messages-container"
       data-bottom-padding={bottomContentPadding ?? 0}
-    />
+    >
+      <button type="button" onClick={onRetry}>
+        Retry message
+      </button>
+    </div>
   ),
 }));
 
@@ -182,10 +206,25 @@ const baseProps = {
   historicalDurations: new Map<string, number>(),
 };
 
+// A platform chat whose daily budget is out and resets: the composer offers
+// Send at reset in place of the paused notice.
+const sendAtResetProps = {
+  chatAuthProvider: "platform",
+  usage: {
+    budget: {
+      state: "exhausted" as const,
+      window: "daily" as const,
+      resetsAt: new Date("2026-10-16T00:00:00Z"),
+      percentUsed: 100,
+    },
+    usage: undefined,
+    experience: getUsageExperience(),
+  },
+};
+
 describe("ChatContainer", () => {
   beforeEach(() => {
     mockIsUsageLimitReached.mockReturnValue(false);
-    mockArtifactsEnabled.mockReturnValue(false);
     mockShareState({ is_shared: false });
     resetCopilotStore();
     Object.defineProperty(navigator, "clipboard", {
@@ -200,20 +239,145 @@ describe("ChatContainer", () => {
     cleanup();
     resetCopilotStore();
     vi.clearAllMocks();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
-  it("renders the blurred usage-limit backdrop only when the limit is reached", () => {
+  // Radix opens a tooltip on a timer and arms its Escape handler a render
+  // after the tooltip appears. Run the delay on a fake clock inside act() so
+  // the tooltip is fully mounted before the next interaction, however slow
+  // the machine.
+  async function hoverUsageTooltipTrigger(trigger: HTMLElement) {
+    fireEvent.pointerMove(trigger, { pointerType: "mouse" });
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
+  }
+
+  it("keeps usage tooltips hoverable and dismissible as the limit changes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { rerender } = render(<ChatContainer {...baseProps} />);
+    const input = screen.getByTestId("chat-input");
+    fireEvent.change(input, { target: { value: "Unsent draft" } });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
     mockIsUsageLimitReached.mockReturnValue(true);
+    rerender(<ChatContainer {...baseProps} />);
+    expect(screen.getByTestId("chat-input")).toBe(input);
+    expect((input as HTMLInputElement).value).toBe("Unsent draft");
+    expect(screen.queryByRole("tooltip")).toBeNull();
 
+    await hoverUsageTooltipTrigger(input.parentElement!);
+    expect(screen.getByRole("tooltip")).toBeDefined();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    mockIsUsageLimitReached.mockReturnValue(false);
+    rerender(<ChatContainer {...baseProps} />);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(consoleWarn.mock.calls.flat().join(" ")).not.toMatch(
+      /controlled|uncontrolled/,
+    );
+    consoleWarn.mockRestore();
+  });
+
+  it("opens the usage tooltip only for a hover made while the limit is reached", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { rerender } = render(<ChatContainer {...baseProps} />);
+    const trigger = screen.getByTestId("chat-input").parentElement!;
+
+    // Hovering the composer before the limit is reached.
+    await hoverUsageTooltipTrigger(trigger);
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    mockIsUsageLimitReached.mockReturnValue(true);
+    rerender(<ChatContainer {...baseProps} />);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    // The limit lifting while the tooltip shows.
+    await hoverUsageTooltipTrigger(trigger);
+    expect(screen.getByRole("tooltip")).toBeDefined();
+    mockIsUsageLimitReached.mockReturnValue(false);
+    rerender(<ChatContainer {...baseProps} />);
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    mockIsUsageLimitReached.mockReturnValue(true);
+    rerender(<ChatContainer {...baseProps} />);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("doesn't pop the usage tooltip open when a turn starts after Send at reset hid it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const atReset = { ...baseProps, ...sendAtResetProps };
+    const { rerender } = render(<ChatContainer {...atReset} />);
+    const trigger = screen.getByTestId("chat-input").parentElement!;
+
+    await hoverUsageTooltipTrigger(trigger);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    // A running turn ends Send at reset while the limit still holds.
+    rerender(<ChatContainer {...atReset} status="streaming" />);
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("doesn't reopen a usage tooltip Send at reset closed once a turn starts", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const { rerender } = render(<ChatContainer {...baseProps} />);
+    const trigger = screen.getByTestId("chat-input").parentElement!;
+    await hoverUsageTooltipTrigger(trigger);
+    expect(screen.getByRole("tooltip")).toBeDefined();
+
+    const atReset = { ...baseProps, ...sendAtResetProps };
+    rerender(<ChatContainer {...atReset} />);
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    rerender(<ChatContainer {...atReset} status="streaming" />);
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("keeps the draft editable while the usage notice pauses sending", () => {
+    mockIsUsageLimitReached.mockReturnValue(true);
     render(<ChatContainer {...baseProps} />);
-
-    const backdrop = screen.getByTestId("usage-limit-backdrop");
-
     expect(screen.getByRole("alert")).toBeDefined();
-    expect(backdrop.className).toContain("backdrop-blur-lg");
-    expect(backdrop.className).toContain("[mask-image:linear-gradient");
-    expect(backdrop.className).toContain("radial-gradient");
+    const input = screen.getByTestId("chat-input") as HTMLInputElement;
+    expect(input.disabled).toBe(false);
+    expect(input.getAttribute("data-send-disabled")).toBe("true");
+    fireEvent.change(input, { target: { value: "Keep this draft" } });
+    expect(input.value).toBe("Keep this draft");
+    expect(screen.queryByTestId("usage-limit-backdrop")).toBeNull();
+  });
+
+  it("still sends a retry while the limit pauses the composer, so the server can refuse it", () => {
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const onSend = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        messages={[
+          {
+            id: "question",
+            role: "user",
+            parts: [{ type: "text", text: "Summarize the launch notes" }],
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByTestId("chat-input").getAttribute("data-send-disabled"),
+    ).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "Summarize the launch notes",
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 
   it("does not render the usage-limit backdrop while usage is still available", () => {
@@ -221,6 +385,188 @@ describe("ChatContainer", () => {
 
     expect(screen.queryByTestId("usage-limit-backdrop")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the session composer disabled while expert kickoff is starting", () => {
+    render(<ChatContainer {...baseProps} isKickoffStarting />);
+
+    expect(
+      (screen.getByTestId("chat-input") as HTMLInputElement).disabled,
+    ).toBe(true);
+  });
+
+  it("preserves expert kickoff metadata when retrying its hidden prompt", () => {
+    const onSend = vi.fn();
+    const expertId = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
+    const attemptToken = "attempt-1";
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        messages={[
+          {
+            id: "kickoff",
+            role: "user",
+            parts: [{ type: "text", text: "private kickoff prompt" }],
+            metadata: { kind: "expert_kickoff", expertId, attemptToken },
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "private kickoff prompt",
+      undefined,
+      undefined,
+      { kind: "expert_kickoff", expertId, attemptToken },
+    );
+  });
+
+  it("resumes a failed turn an answered card started instead of re-sending a request", () => {
+    const onSend = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        messages={[
+          {
+            id: "ask",
+            role: "user",
+            parts: [{ type: "text", text: "make two folders" }],
+          },
+          {
+            id: "result",
+            role: "user",
+            parts: [
+              {
+                type: "text",
+                text: "<held_call_result>made</held_call_result>",
+              },
+            ],
+            metadata: { held_call: { review_id: "r1" } },
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend.mock.calls[0][0]).toBe("Continue from where you left off.");
+  });
+
+  it.each([false, true])(
+    "shows an error when retrying fails (held call: %s)",
+    async (isHeldCall) => {
+      const failure = Promise.reject(new Error("Could not reach the server"));
+      void failure.catch(() => undefined);
+      const onSend = vi.fn((_message: string) => failure);
+      render(
+        <ChatContainer
+          {...baseProps}
+          error={new Error("The model returned an empty response.")}
+          onSend={onSend}
+          messages={[
+            {
+              id: "failed-request",
+              role: "user",
+              parts: [{ type: "text", text: "Try this request" }],
+              ...(isHeldCall
+                ? { metadata: { held_call: { review_id: "r1" } } }
+                : {}),
+            },
+          ]}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith({
+          title: "Couldn't retry message",
+          description:
+            "Could not reach the server — your previous message is still in the chat.",
+          variant: "destructive",
+        }),
+      );
+      expect(toast).toHaveBeenCalledTimes(1);
+      expect(onSend).toHaveBeenCalledTimes(1);
+      expect(onSend.mock.calls[0][0]).toBe(
+        isHeldCall ? "Continue from where you left off." : "Try this request",
+      );
+    },
+  );
+
+  it("shows an error when retrying throws before dispatch", async () => {
+    const onSend = vi.fn(() => {
+      throw new Error("Could not start the request");
+    });
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        messages={[
+          {
+            id: "failed-request",
+            role: "user",
+            parts: [{ type: "text", text: "Try this request" }],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: "Couldn't retry message",
+        description:
+          "Could not start the request — your previous message is still in the chat.",
+        variant: "destructive",
+      }),
+    );
+    expect(toast).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores repeated retry clicks until the attempt settles and allows retrying again after failure", async () => {
+    let rejectSend: (error: Error) => void = () => {};
+    const pendingSend = new Promise<void>((_resolve, reject) => {
+      rejectSend = reject;
+    });
+    const onSend = vi
+      .fn()
+      .mockReturnValueOnce(pendingSend)
+      .mockResolvedValue(undefined);
+    render(
+      <ChatContainer
+        {...baseProps}
+        error={new Error("The model returned an empty response.")}
+        onSend={onSend}
+        messages={[
+          {
+            id: "failed-request",
+            role: "user",
+            parts: [{ type: "text", text: "Try this request" }],
+          },
+        ]}
+      />,
+    );
+    const retryButton = screen.getByRole("button", { name: "Retry message" });
+
+    fireEvent.click(retryButton);
+    fireEvent.click(retryButton);
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    await act(async () => rejectSend(new Error("Could not reach the server")));
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(retryButton);
+
+    expect(onSend).toHaveBeenCalledTimes(2);
+    expect(onSend.mock.calls[1][0]).toBe("Try this request");
   });
 
   it("does not render the shared-chat notice for unshared chats", async () => {
@@ -259,33 +605,30 @@ describe("ChatContainer", () => {
   });
 
   describe("auto-open artifact panel behavior", () => {
-    it("does not auto-open the artifact panel on initial render", () => {
-      mockArtifactsEnabled.mockReturnValue(true);
+    // The chat column itself runs full width; the reading-width cap lives on
+    // the message list and the composer, so anchor the check on the composer.
+    function expectChatColumnIsCapped() {
+      expect(screen.getByTestId("chat-input").closest(".max-w-3xl")).not.toBe(
+        null,
+      );
+    }
 
+    it("does not auto-open the artifact panel on initial render", () => {
       render(<ChatContainer {...baseProps} />);
 
       expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
+      expectChatColumnIsCapped();
     });
 
     it("does not auto-open when rerendering within the same session", () => {
-      mockArtifactsEnabled.mockReturnValue(true);
-
       const { rerender } = render(<ChatContainer {...baseProps} />);
       rerender(<ChatContainer {...baseProps} />);
 
       expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
+      expectChatColumnIsCapped();
     });
 
-    it("resets the panel state when sessionId changes", () => {
-      mockArtifactsEnabled.mockReturnValue(true);
+    it("clears the artifact preview when sessionId changes", () => {
       useCopilotUIStore
         .getState()
         .openArtifact(makeArtifact(ARTIFACT_A_ID, "a.txt"));
@@ -297,22 +640,22 @@ describe("ChatContainer", () => {
         <ChatContainer {...baseProps} sessionId="s1" />,
       );
 
-      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+      // The preview drawer is driven by activeArtifact, not `isOpen`.
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
+      ).toBe(ARTIFACT_B_ID);
 
       rerender(<ChatContainer {...baseProps} sessionId="s2" />);
 
+      // `isOpen` is shared with ContextPanel and intentionally left alone
+      // on session switches; the drawer hides via activeArtifact being null.
       const panel = useCopilotUIStore.getState().artifactPanel;
-      expect(panel.isOpen).toBe(false);
       expect(panel.activeArtifact).toBeNull();
       expect(panel.history).toEqual([]);
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
+      expectChatColumnIsCapped();
     });
 
     it("does not carry a stale back stack into the next session", () => {
-      mockArtifactsEnabled.mockReturnValue(true);
       useCopilotUIStore
         .getState()
         .openArtifact(makeArtifact(ARTIFACT_A_ID, "a.txt"));
@@ -332,32 +675,36 @@ describe("ChatContainer", () => {
       expect(panel.history).toEqual([]);
     });
 
-    it("closes the panel on unmount so nav-away cannot resurrect it (SECRT-2254)", () => {
-      mockArtifactsEnabled.mockReturnValue(true);
+    it("clears artifact preview on unmount so nav-away cannot resurrect it (SECRT-2254)", () => {
       useCopilotUIStore
         .getState()
         .openArtifact(makeArtifact(ARTIFACT_A_ID, "a.txt"));
-      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
+      ).toBe(ARTIFACT_A_ID);
 
       const { unmount } = render(<ChatContainer {...baseProps} />);
       unmount();
 
+      // The drawer's visibility is gated on activeArtifact, so clearing it
+      // is what prevents a resurrection on nav-away. `isOpen` belongs to
+      // ContextPanel and must not be flipped here.
       const panel = useCopilotUIStore.getState().artifactPanel;
-      expect(panel.isOpen).toBe(false);
       expect(panel.activeArtifact).toBeNull();
       expect(panel.history).toEqual([]);
     });
 
     it("does not re-open a panel whose store state is stale on fresh mount (SECRT-2220)", () => {
-      mockArtifactsEnabled.mockReturnValue(true);
       useCopilotUIStore.setState({
         artifactPanel: {
           isOpen: true,
-          isMinimized: false,
-          isMaximized: false,
-          width: 600,
           activeArtifact: makeArtifact(ARTIFACT_A_ID, "stale.txt"),
           history: [],
+          activeTab: "files",
+          lastArtifact: null,
+          mode: "artifact",
+          computer: null,
+          isComputerOpen: false,
         },
       });
 
@@ -366,11 +713,13 @@ describe("ChatContainer", () => {
 
       render(<ChatContainer {...baseProps} />);
 
-      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
+      // The drawer is gated on activeArtifact — clearing it is enough to
+      // suppress the stale preview. `isOpen` is owned by ContextPanel and
+      // is no longer flipped by the unmount cleanup.
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact,
+      ).toBeNull();
+      expectChatColumnIsCapped();
     });
   });
 });

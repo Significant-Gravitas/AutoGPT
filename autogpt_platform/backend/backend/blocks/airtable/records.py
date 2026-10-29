@@ -8,6 +8,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -24,7 +25,7 @@ from ._api import (
     normalize_records,
     update_multiple_records,
 )
-from ._config import airtable
+from ._config import airtable, base_id_field
 
 
 class AirtableListRecordsBlock(Block):
@@ -36,7 +37,7 @@ class AirtableListRecordsBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = SchemaField(description="The Airtable base ID")
+        base_id: str = base_id_field(access="read")
         table_id_or_name: str = SchemaField(description="Table ID or name")
         filter_formula: str = SchemaField(
             description="Airtable formula to filter records", default=""
@@ -83,6 +84,7 @@ class AirtableListRecordsBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -142,7 +144,7 @@ class AirtableGetRecordBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = SchemaField(description="The Airtable base ID")
+        base_id: str = base_id_field(access="read")
         table_id_or_name: str = SchemaField(description="Table ID or name")
         record_id: str = SchemaField(description="The record ID to retrieve")
         normalize_output: bool = SchemaField(
@@ -170,6 +172,7 @@ class AirtableGetRecordBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -222,7 +225,7 @@ class AirtableCreateRecordsBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = SchemaField(description="The Airtable base ID")
+        base_id: str = base_id_field(access="edit")
         table_id_or_name: str = SchemaField(description="Table ID or name")
         records: list[dict] = SchemaField(
             description="Array of records to create (each with 'fields' object)"
@@ -251,6 +254,7 @@ class AirtableCreateRecordsBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -295,7 +299,7 @@ class AirtableUpdateRecordsBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = SchemaField(description="The Airtable base ID")
+        base_id: str = base_id_field(access="edit")
         table_id_or_name: str = SchemaField(
             description="Table ID or name - It's better to use the table ID instead of the name"
         )
@@ -317,6 +321,7 @@ class AirtableUpdateRecordsBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -344,7 +349,7 @@ class AirtableDeleteRecordsBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = SchemaField(description="The Airtable base ID")
+        base_id: str = base_id_field(access="edit")
         table_id_or_name: str = SchemaField(
             description="Table ID or name - It's better to use the table ID instead of the name"
         )
@@ -362,6 +367,8 @@ class AirtableDeleteRecordsBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

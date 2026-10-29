@@ -1,10 +1,25 @@
+from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_mock
-from prisma.enums import OnboardingStep
 
-from backend.data.onboarding import _reward_user, format_onboarding_for_extraction
+from backend.data.onboarding import (
+    OnboardingStep,
+    _reward_user,
+    complete_onboarding_step,
+    ensure_user_onboarding,
+    format_onboarding_for_extraction,
+    get_user_onboarding,
+)
+
+
+@pytest.fixture(autouse=True)
+def no_trial_enrollment(mocker: pytest_mock.MockFixture):
+    mocker.patch(
+        "backend.data.onboarding.get_subscription_trial",
+        AsyncMock(return_value=None),
+    )
 
 
 def test_format_onboarding_for_extraction_basic():
@@ -37,10 +52,10 @@ def test_format_onboarding_for_extraction_with_other():
 @pytest.mark.parametrize(
     "step,expected_reward",
     [
-        (OnboardingStep.VISIT_COPILOT, 300),
+        (OnboardingStep.ONBOARDING_COMPLETE, 300),
         (OnboardingStep.AGENT_NEW_RUN, 300),
         (OnboardingStep.MARKETPLACE_ADD_AGENT, 100),
-        (OnboardingStep.MARKETPLACE_RUN_AGENT, 100),
+        (OnboardingStep.LIBRARY_RUN_AGENT, 100),
         (OnboardingStep.SCHEDULE_AGENT, 100),
         (OnboardingStep.RUN_3_DAYS, 100),
         (OnboardingStep.TRIGGER_WEBHOOK, 100),
@@ -89,3 +104,171 @@ async def test_reward_user_skips_if_already_rewarded(
     await _reward_user("user-1", onboarding, OnboardingStep.RUN_14_DAYS)
 
     credit_model.onboarding_reward.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_reward_user_noop_for_zero_reward_step(
+    mocker: pytest_mock.MockFixture,
+):
+    # Steps without a configured reward (e.g. WELCOME) must never touch the
+    # credit model — they are pure progress markers.
+    onboarding = Mock()
+    onboarding.rewardedFor = []
+
+    credit_model = Mock()
+    credit_model.onboarding_reward = AsyncMock()
+    mocker.patch(
+        "backend.data.onboarding.get_user_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+
+    await _reward_user("user-1", onboarding, OnboardingStep.WELCOME)
+
+    credit_model.onboarding_reward.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_reward_user_accepts_plain_string_step(
+    mocker: pytest_mock.MockFixture,
+):
+    # The completion endpoint validates against ``FrontendOnboardingStep``
+    # (a ``Literal[OnboardingStep, ...]``), which can hand the data layer a
+    # plain ``str`` rather than an enum instance. The persist path must coerce
+    # with ``str()``, not ``.value`` (which would AttributeError on a str).
+    onboarding = Mock()
+    onboarding.rewardedFor = []
+
+    credit_model = Mock()
+    credit_model.onboarding_reward = AsyncMock()
+    mocker.patch(
+        "backend.data.onboarding.get_user_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mock_prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
+    mock_prisma.return_value.update = AsyncMock()
+
+    # Pass a raw string typed as OnboardingStep to mimic the endpoint boundary.
+    await _reward_user(
+        "user-1", onboarding, cast(OnboardingStep, "ONBOARDING_COMPLETE")
+    )
+
+    credit_model.onboarding_reward.assert_called_once()
+    persisted = mock_prisma.return_value.update.call_args.kwargs["data"]["rewardedFor"]
+    assert persisted == ["ONBOARDING_COMPLETE"]
+
+
+def test_onboarding_step_values_are_plain_strings():
+    # StrEnum members must round-trip through ``str`` unchanged so they can be
+    # written directly into the ``String[]`` columns on UserOnboarding.
+    assert str(OnboardingStep.ONBOARDING_COMPLETE) == "ONBOARDING_COMPLETE"
+    assert OnboardingStep.ONBOARDING_COMPLETE == "ONBOARDING_COMPLETE"
+    # Legacy values that have been retired (e.g. VISIT_COPILOT) must not appear
+    # in the active set — existing rows containing them remain inert strings.
+    assert "VISIT_COPILOT" not in {step.value for step in OnboardingStep}
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_get_user_onboarding_does_not_write_for_unprovisioned_user(
+    mocker: pytest_mock.MockerFixture,
+):
+    # A valid session can outrun the platform User row it hangs off. This read
+    # runs on every page load, so it has to answer from what is already there:
+    # creating a row for a user that does not exist yet trips the FK to User
+    # and 500s the request instead.
+    mock_prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
+    mock_prisma.return_value.find_unique = AsyncMock(return_value=None)
+    mock_prisma.return_value.upsert = AsyncMock()
+
+    onboarding = await get_user_onboarding("user-1")
+
+    mock_prisma.return_value.upsert.assert_not_called()
+    assert onboarding.userId == "user-1"
+    assert onboarding.completedSteps == []
+    assert onboarding.agentRuns == 0
+    assert OnboardingStep.ONBOARDING_COMPLETE not in onboarding.completedSteps
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_get_user_onboarding_returns_the_stored_row(
+    mocker: pytest_mock.MockerFixture,
+):
+    stored = Mock(userId="user-1", completedSteps=["ONBOARDING_COMPLETE"])
+    mock_prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
+    mock_prisma.return_value.find_unique = AsyncMock(return_value=stored)
+    mock_prisma.return_value.upsert = AsyncMock()
+
+    assert await get_user_onboarding("user-1") is stored
+    mock_prisma.return_value.upsert.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_ensure_user_onboarding_creates_the_row(
+    mocker: pytest_mock.MockerFixture,
+):
+    # Write paths still need the row to exist: each one follows up with an
+    # `update`, which has nothing to target if the row was never created.
+    mock_prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
+    mock_prisma.return_value.upsert = AsyncMock(return_value=Mock())
+
+    await ensure_user_onboarding("user-1")
+
+    assert mock_prisma.return_value.upsert.call_args.kwargs["where"] == {
+        "userId": "user-1"
+    }
+
+
+@pytest.fixture
+def onboarding_writes(mocker: pytest_mock.MockFixture) -> Mock:
+    mocker.patch("backend.data.onboarding._reward_user", AsyncMock())
+    mocker.patch("backend.data.onboarding._send_onboarding_notification", AsyncMock())
+    prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
+    prisma.return_value.update = AsyncMock()
+    return mocker.patch("backend.data.onboarding.track_onboarding_completed")
+
+
+def _onboarding(completed: list[str]) -> Mock:
+    onboarding = Mock()
+    onboarding.completedSteps = completed
+    return onboarding
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_completing_onboarding_sends_onboarding_completed(
+    mocker: pytest_mock.MockFixture, onboarding_writes: Mock
+):
+    mocker.patch(
+        "backend.data.onboarding.ensure_user_onboarding",
+        AsyncMock(return_value=_onboarding([])),
+    )
+
+    await complete_onboarding_step("user-1", OnboardingStep.ONBOARDING_COMPLETE)
+
+    onboarding_writes.assert_called_once_with(user_id="user-1")
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_onboarding_completed_is_sent_once_per_user(
+    mocker: pytest_mock.MockFixture, onboarding_writes: Mock
+):
+    mocker.patch(
+        "backend.data.onboarding.ensure_user_onboarding",
+        AsyncMock(return_value=_onboarding([OnboardingStep.ONBOARDING_COMPLETE])),
+    )
+
+    await complete_onboarding_step("user-1", OnboardingStep.ONBOARDING_COMPLETE)
+
+    onboarding_writes.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_other_onboarding_steps_send_no_onboarding_completed(
+    mocker: pytest_mock.MockFixture, onboarding_writes: Mock
+):
+    mocker.patch(
+        "backend.data.onboarding.ensure_user_onboarding",
+        AsyncMock(return_value=_onboarding([])),
+    )
+
+    await complete_onboarding_step("user-1", OnboardingStep.MARKETPLACE_ADD_AGENT)
+
+    onboarding_writes.assert_not_called()

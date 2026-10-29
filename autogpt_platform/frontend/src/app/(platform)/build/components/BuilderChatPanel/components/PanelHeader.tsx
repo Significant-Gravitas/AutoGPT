@@ -1,5 +1,11 @@
 import { Button } from "@/components/atoms/Button/Button";
-import { ArrowCounterClockwise, ChatCircle, X } from "@phosphor-icons/react";
+import {
+  BubbleChatIcon,
+  Cancel01Icon,
+  RefreshIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   onClose: () => void;
@@ -15,12 +21,12 @@ export function PanelHeader({
   onRevert,
 }: Props) {
   return (
-    <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+    <div className="flex items-center justify-between border-b border-separator px-4 py-3">
       <div className="flex items-center gap-2">
-        <ChatCircle size={18} weight="fill" className="text-violet-600" />
-        <span className="text-sm font-semibold text-slate-800">
+        <Icon icon={BubbleChatIcon} size={18} className="text-brand" />
+        <Text variant="body-semibold-tight" tone="body" as="span">
           Chat with Builder
-        </span>
+        </Text>
       </div>
       <div className="flex items-center gap-1">
         {canRevert && (
@@ -28,13 +34,13 @@ export function PanelHeader({
             variant="ghost"
             size="small"
             onClick={onRevert}
-            leftIcon={<ArrowCounterClockwise size={14} />}
+            leftIcon={<Icon icon={RefreshIcon} size={14} />}
             aria-label={
               revertTargetVersion != null
                 ? `Revert to version ${revertTargetVersion}`
                 : "Revert to previous version"
             }
-            title="Revert to the graph version that was active before the last edit"
+            title="Revert to the workflow version that was active before the last edit"
           >
             Revert
           </Button>
@@ -45,7 +51,7 @@ export function PanelHeader({
           onClick={onClose}
           aria-label="Close"
         >
-          <X size={16} />
+          <Icon icon={Cancel01Icon} size={16} />
         </Button>
       </div>
     </div>

@@ -2,10 +2,12 @@ import { BlockCost } from "@/app/api/__generated__/models/blockCost";
 import { BlockCostType } from "@/app/api/__generated__/models/blockCostType";
 import { Text } from "@/components/atoms/Text/Text";
 import useCredits from "@/hooks/useCredits";
-import { CoinIcon } from "@phosphor-icons/react";
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { isCostFilterMatch } from "../../../../helper";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";
+import { Coins02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type CostDisplay =
   | { kind: "free" }
@@ -111,6 +113,7 @@ export const NodeCost = ({
   nodeId: string;
 }) => {
   const { formatCredits } = useCredits();
+  const isBillingEnabled = useIsBillingEnabled();
   const hardcodedValues = useNodeStore(
     useShallow((state) => state.getHardCodedValues(nodeId)),
   );
@@ -121,17 +124,15 @@ export const NodeCost = ({
       isCostFilterMatch(cost.cost_filter, hardcodedValues),
     );
 
-  if (!blockCost) return null;
+  if (!isBillingEnabled || !blockCost) return null;
 
   const display = getDisplay(blockCost, formatCredits);
 
   if (display.kind === "free") {
     return (
-      <div className="mr-3 flex items-center gap-1 text-base font-light">
-        <CoinIcon className="h-3 w-3" />
-        <Text variant="small" className="!font-medium">
-          Free
-        </Text>
+      <div className="mr-3 flex items-center gap-1">
+        <Icon icon={Coins02Icon} className="h-3 w-3" />
+        <Text variant="small-medium">Free</Text>
       </div>
     );
   }
@@ -139,11 +140,11 @@ export const NodeCost = ({
   if (display.kind === "token-rate") {
     return (
       <div
-        className="mr-3 flex items-center gap-1 text-base font-light"
+        className="mr-3 flex items-center gap-1"
         title={tokenRateTooltip(display)}
       >
-        <CoinIcon className="h-3 w-3" />
-        <Text variant="small" className="!font-medium">
+        <Icon icon={Coins02Icon} className="h-3 w-3" />
+        <Text variant="small-medium">
           {`${formatUsd(display.input)} in / ${formatUsd(display.output)} out`}
         </Text>
         <Text variant="small">{" per 1M tokens"}</Text>
@@ -154,24 +155,19 @@ export const NodeCost = ({
   if (display.kind === "by-usd") {
     return (
       <div
-        className="mr-3 flex items-center gap-1 text-base font-light"
+        className="mr-3 flex items-center gap-1"
         title="Pay-as-you-go pricing. Final charge matches the provider's per-token rate plus a 1.5× margin."
       >
-        <CoinIcon className="h-3 w-3" />
+        <Icon icon={Coins02Icon} className="h-3 w-3" />
         <Text variant="small">Pay-as-you-go</Text>
       </div>
     );
   }
 
   return (
-    <div
-      className="mr-3 flex items-center gap-1 text-base font-light"
-      title={display.note}
-    >
-      <CoinIcon className="h-3 w-3" />
-      <Text variant="small" className="!font-medium">
-        {display.amountText}
-      </Text>
+    <div className="mr-3 flex items-center gap-1" title={display.note}>
+      <Icon icon={Coins02Icon} className="h-3 w-3" />
+      <Text variant="small-medium">{display.amountText}</Text>
       <Text variant="small">{` ${display.suffix}`}</Text>
     </div>
   );

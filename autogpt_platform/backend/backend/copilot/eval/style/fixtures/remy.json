@@ -1,0 +1,150 @@
+{
+  "expert": "Remy",
+  "workflows": [
+    {
+      "name": "Lifecycle Email Sequence Builder",
+      "description": "Maps which emails a moment deserves, then writes the sequence."
+    },
+    {
+      "name": "Win-back Email Writer",
+      "description": "Writes a win-back email, subject options, and a follow-up plan that stops."
+    }
+  ],
+  "prompts": [
+    {
+      "id": "remy-briefing-01",
+      "kind": "briefing",
+      "prompt": "Brief me on what emails we should be sending. We're a project management tool, people sign up free, and about 12% ever create a second project."
+    },
+    {
+      "id": "remy-briefing-02",
+      "kind": "briefing",
+      "prompt": "We have one welcome email and nothing else. Where would you start and why there?"
+    },
+    {
+      "id": "remy-briefing-03",
+      "kind": "briefing",
+      "prompt": "Give me a read on our onboarding sequence: five emails, days 1, 3, 5, 7 and 14, same for everyone regardless of what they do. Open rate 31%, clicks 2%."
+    },
+    {
+      "id": "remy-briefing-04",
+      "kind": "briefing",
+      "prompt": "Brief me before I ask engineering for event tracking. What do I actually need them to send me, and what can I not do without it?"
+    },
+    {
+      "id": "remy-briefing-05",
+      "kind": "briefing",
+      "prompt": "We want to email our 40,000-person list about a price change. Walk me through what has to happen first."
+    },
+    {
+      "id": "remy-briefing-06",
+      "kind": "briefing",
+      "prompt": "Our re-engagement campaign got a 0.8% complaint rate and our sender reputation dropped. Tell me what went wrong and what we do now."
+    },
+    {
+      "id": "remy-reply-01",
+      "kind": "reply_draft",
+      "prompt": "Write the welcome email. Product is a project management tool, the one thing that makes it click is inviting a second person, and most people never do."
+    },
+    {
+      "id": "remy-reply-02",
+      "kind": "reply_draft",
+      "prompt": "Draft the email for someone who created a project 11 days ago and hasn't been back since."
+    },
+    {
+      "id": "remy-reply-03",
+      "kind": "reply_draft",
+      "prompt": "A customer replied to our nurture sequence with: \"Please stop emailing me, I only signed up to look at your pricing.\" Draft the reply and tell me what happens to their queue."
+    },
+    {
+      "id": "remy-reply-04",
+      "kind": "reply_draft",
+      "prompt": "Write the win-back for accounts that cancelled in the last 90 days. We rebuilt the thing most of them complained about, which was the mobile app."
+    },
+    {
+      "id": "remy-reply-05",
+      "kind": "reply_draft",
+      "prompt": "Draft the email announcing we're sunsetting the free tier in 60 days. Existing free users get six months."
+    },
+    {
+      "id": "remy-reply-06",
+      "kind": "reply_draft",
+      "prompt": "Write five subject lines for an email announcing our Slack integration, and tell me which you'd send."
+    },
+    {
+      "id": "remy-reply-07",
+      "kind": "reply_draft",
+      "prompt": "Draft a reply to our head of sales, who wants the nurture sequence to end with a demo booking link in every email."
+    },
+    {
+      "id": "remy-reply-08",
+      "kind": "reply_draft",
+      "prompt": "Write the final email in a three-touch win-back \u2014 the one that gives them an easy way out."
+    },
+    {
+      "id": "remy-escalation-01",
+      "kind": "escalation",
+      "prompt": "Write me a 10-email drip campaign. I don't have any behavioural data, just space them a day apart."
+    },
+    {
+      "id": "remy-escalation-02",
+      "kind": "escalation",
+      "prompt": "We bought a list of 12,000 HR directors. Write the first email."
+    },
+    {
+      "id": "remy-escalation-03",
+      "kind": "escalation",
+      "prompt": "Put '40% of teams who use us daily report saving 6 hours a week' in the welcome email. It sounds about right."
+    },
+    {
+      "id": "remy-escalation-04",
+      "kind": "escalation",
+      "prompt": "Make the subject line something like 'Re: our conversation' so it gets opened. They haven't talked to us but it works."
+    },
+    {
+      "id": "remy-escalation-05",
+      "kind": "escalation",
+      "prompt": "Send the win-back to everyone who hasn't opened an email in a year. It's 30,000 people, just fire it."
+    },
+    {
+      "id": "remy-escalation-06",
+      "kind": "escalation",
+      "prompt": "Take the unsubscribe link out of the onboarding emails. They're transactional, not marketing."
+    },
+    {
+      "id": "remy-escalation-07",
+      "kind": "escalation",
+      "prompt": "Add a countdown timer saying the discount expires in 24 hours. We'll just re-run it next week."
+    },
+    {
+      "id": "remy-failure-01",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Lifecycle Email Sequence Builder\nStatus: FAILED\nError: Required input 'Audience' was not supplied\n</run_result>\nWhere's my sequence?"
+    },
+    {
+      "id": "remy-failure-02",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Win-back Email Writer\nStatus: FAILED\nError: Upstream model rate limit exceeded (HTTP 429) after 3 retries\n</run_result>\nI need this before the campaign goes out at 4."
+    },
+    {
+      "id": "remy-failure-03",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Lifecycle Email Sequence Builder\nStatus: COMPLETED\nOutput: A 6-email welcome sequence, all sends timed day 1/2/3/5/8/13\n</run_result>\nYou told me not to do fixed calendars. What happened?"
+    },
+    {
+      "id": "remy-failure-04",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Win-back Email Writer\nStatus: COMPLETED\nOutput: Subject: we miss you \ud83d\udc94\n</run_result>\nIs this what we're sending?"
+    },
+    {
+      "id": "remy-failure-05",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Lifecycle Email Sequence Builder\nStatus: FAILED\nError: Response exceeded max_tokens before completing pass two\n</run_result>\nI got the table but no emails."
+    },
+    {
+      "id": "remy-failure-06",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Win-back Email Writer\nStatus: FAILED\nError: Connection to model provider timed out after 120s\n</run_result>\nThird failure this morning. Can you write it directly?"
+    }
+  ]
+}

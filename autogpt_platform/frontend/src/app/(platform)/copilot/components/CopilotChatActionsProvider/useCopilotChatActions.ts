@@ -20,6 +20,8 @@ export type CopilotChatSurface = "copilot" | "builder" | "share";
 
 interface CopilotChatActions {
   onSend: (message: string) => void | Promise<void>;
+  /** Follow a turn the server started, e.g. after an approval card is answered. */
+  onBackendTurn?: () => void;
   chatSurface: CopilotChatSurface;
   /**
    * Optional: maps execution_id → public share_token for the executions
@@ -29,6 +31,10 @@ interface CopilotChatActions {
    * auth-gated ``/library/agents/...`` link.
    */
   getExecutionShareToken?: (executionId: string) => string | null | undefined;
+  /** The chat a card acts on. Absent where the surface has none to act on. */
+  sessionId?: string | null;
+  /** What the chat calls its assistant: the expert's name, or Otto. */
+  assistantName?: string;
 }
 
 const CopilotChatActionsContext = createContext<CopilotChatActions | null>(

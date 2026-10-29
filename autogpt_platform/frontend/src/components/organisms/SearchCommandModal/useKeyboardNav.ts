@@ -17,7 +17,7 @@ export function useKeyboardNav(totalCount: number, resetKey: unknown) {
 
   useEffect(() => {
     setHighlightedIndex(0);
-  }, [resetKey, totalCount]);
+  }, [resetKey]);
 
   useEffect(() => {
     if (highlightedIndex >= totalCount) {

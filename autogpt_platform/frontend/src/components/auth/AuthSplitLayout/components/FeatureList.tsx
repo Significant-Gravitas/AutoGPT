@@ -12,12 +12,13 @@ export function FeatureList({ itemsTitle, items }: Props) {
       {itemsTitle ? (
         <Text
           variant="small-medium"
-          className="uppercase tracking-[0.14em] !text-slate-400"
+          tone="muted"
+          className="uppercase tracking-caps"
         >
           {itemsTitle}
         </Text>
       ) : null}
-      <ul className="flex flex-col gap-3">
+      <ul className="flex max-w-lg flex-col gap-3">
         {items.map((item) => (
           <FeatureListItem key={item.title} item={item} />
         ))}

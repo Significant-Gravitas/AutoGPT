@@ -2,70 +2,33 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
-import { Text } from "@/components/atoms/Text/Text";
-import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { EmptySkills } from "./components/EmptySkills/EmptySkills";
-import { SkillListItem } from "./components/SkillListItem/SkillListItem";
-import { useSkillsPage } from "./useSkillsPage";
+import { useRouter } from "next/navigation";
+import { SkillsPanel } from "@/components/contextual/SkillsPanel/SkillsPanel";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function SkillsPage() {
-  const { skills, isLoading, error } = useSkillsPage();
+  const router = useRouter();
 
   useEffect(() => {
-    document.title = "AutoPilot skills – AutoGPT Platform";
+    document.title = "Skills – AutoGPT Platform";
   }, []);
+
+  function handleGuidedPrompt(prompt: string) {
+    router.push(`/home#prompt=${encodeURIComponent(prompt)}`);
+  }
 
   return (
     <main className="container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12">
       <Link
         href="/library"
-        className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
+        className="inline-flex items-center gap-1 text-sm text-foreground-tertiary hover:text-foreground-emphasis"
         data-testid="skills-back-to-library"
       >
-        <ArrowLeftIcon size={14} weight="bold" />
+        <Icon icon={ArrowLeft02Icon} size={14} />
         Back to Library
       </Link>
-      <header className="flex flex-col gap-2">
-        <Text variant="h2">AutoPilot skills</Text>
-        <Text variant="body" className="!text-zinc-500">
-          Reusable procedures your AutoPilot has distilled from past sessions.
-          Review what it remembers, or delete a skill you no longer want it to
-          reach for.
-        </Text>
-      </header>
-
-      {error ? (
-        <ErrorCard
-          responseError={{
-            message:
-              error instanceof Error ? error.message : "Failed to load skills",
-          }}
-          context="AutoPilot skills"
-        />
-      ) : isLoading ? (
-        <div
-          className="flex items-center justify-center py-16"
-          data-testid="skills-loading"
-        >
-          <LoadingSpinner />
-        </div>
-      ) : skills.length === 0 ? (
-        <EmptySkills />
-      ) : (
-        <ul
-          className="flex flex-col gap-3"
-          data-testid="skills-list"
-          aria-label="AutoPilot skills"
-        >
-          {skills.map((skill) => (
-            <li key={skill.name}>
-              <SkillListItem skill={skill} />
-            </li>
-          ))}
-        </ul>
-      )}
+      <SkillsPanel onGuidedPrompt={handleGuidedPrompt} />
     </main>
   );
 }

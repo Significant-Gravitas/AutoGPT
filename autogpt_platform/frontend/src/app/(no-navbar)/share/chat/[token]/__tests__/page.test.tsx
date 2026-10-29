@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 
@@ -10,7 +10,12 @@ import type { SharedChatMessagesPage } from "@/app/api/__generated__/models/shar
 import type { SharedChatSession } from "@/app/api/__generated__/models/sharedChatSession";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import SharedChatPage from "../page";
 
 const mockUseParams = vi.hoisted(() => vi.fn());
@@ -35,11 +40,13 @@ function resetArtifactPanelStore() {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: false,
-      isMinimized: false,
-      isMaximized: false,
-      width: 600,
       activeArtifact: null,
       history: [],
+      activeTab: "files",
+      lastArtifact: null,
+      mode: "artifact",
+      computer: null,
+      isComputerOpen: false,
     },
   });
   useCopilotUIStore.getState().resetAutoOpenState();
@@ -303,8 +310,8 @@ describe("SharedChatPage", () => {
 
     await screen.findByText(/Latest artifact/);
     await waitFor(() => {
+      // The preview drawer is driven by activeArtifact, not `isOpen`.
       const panel = useCopilotUIStore.getState().artifactPanel;
-      expect(panel.isOpen).toBe(true);
       expect(panel.activeArtifact?.id).toBe(latestArtifactId);
       expect(panel.activeArtifact?.title).toBe("latest.md");
     });
@@ -363,5 +370,31 @@ describe("SharedChatPage", () => {
     render(<SharedChatPage />);
     await screen.findByRole("heading", { level: 1 });
     expect(screen.queryByText(/older history is not visible/i)).toBeNull();
+  });
+
+  describe("Cookie settings", () => {
+    afterEach(() => {
+      removeCookiebot();
+      vi.unstubAllEnvs();
+    });
+
+    test("opens the Cookiebot dialog from the page footer", async () => {
+      configureCookiebot();
+      const { renew } = installCookiebot();
+      server.use(
+        http.get(
+          "*/api/public/shared/chats/:token",
+          () => new HttpResponse(null, { status: 404 }),
+        ),
+      );
+
+      render(<SharedChatPage />);
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Cookie settings" }),
+      );
+
+      expect(renew).toHaveBeenCalledOnce();
+    });
   });
 });

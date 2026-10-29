@@ -1,5 +1,24 @@
 """Shared constants for the CoPilot module."""
 
+import hashlib
+
+# Otto is the account's built-in helper — the identity every session
+# without an expert speaks as, and the fixed author of the morning briefing.
+AUTOPILOT_NAME = "Otto"
+AUTOPILOT_ROLE = "Head of AI"
+
+# The AutoPilot block, and the tool name its turns carry from dispatch to the
+# executor -- which bills them to the credit balance once the plan's AutoPilot
+# allowance is used up (see ``backend.copilot.credit_billing``).
+AUTOPILOT_BLOCK_ID = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
+AUTOPILOT_BLOCK_TOOL_NAME = "autopilot_block"
+
+# The per-turn spend floor, the one the old per-query budget was topped up to.
+# A turn's budget has none, but a paid plan's CLI backstop never sits below
+# it, and a credit balance has to cover it before a turn may bill to credits.
+# The per-turn ceiling is ``ChatConfig.claude_agent_max_budget_usd``.
+PER_TURN_SPEND_FLOOR_USD = 0.5
+
 # Special message prefixes for text-based markers (parsed by frontend).
 # The hex suffix makes accidental LLM generation of these strings virtually
 # impossible, avoiding false-positive marker detection in normal conversation.
@@ -32,16 +51,28 @@ STREAM_ERROR_MARKER = f"{COPILOT_SYSTEM_PREFIX} The assistant ran into an error 
 # in PendingHumanReview and other tables.
 COPILOT_SYNTHETIC_ID_PREFIX = "copilot-"
 
-# Sub-prefixes for session-scoped and node-scoped synthetic IDs.
+# Sub-prefixes for session-scoped and node-scoped synthetic IDs. The session
+# prefix names a chat's block runs in credit history; reviews carry a real
+# session id instead and only read it back from rows written before that.
 COPILOT_SESSION_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}session-"
 COPILOT_NODE_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}node-"
+
+# Present in every spend-approval review id, on both the graph-execution
+# and the chat shape, so one ``contains`` lookup finds an expert's
+# decisions. Lives here rather than beside the approval flow so the
+# copilot can recognise one without importing the API layer.
+SPEND_REVIEW_MARKER = "expert-spend:"
 
 # Separator used in synthetic node_exec_id to encode node_id.
 # Format: "{node_id}:{random_hex}" — extract node_id via rsplit(":", 1)[0]
 COPILOT_NODE_EXEC_ID_SEPARATOR = ":"
 
+# The approval gate's card for a workflow step, in the chat that started the run.
+COPILOT_STEP_CARD_PREFIX = f"{COPILOT_NODE_PREFIX}gate-workflow_step"
+
 # Compaction notice messages shown to users.
 COMPACTION_DONE_MSG = "Earlier messages were summarized to fit within context limits."
+COMPACTION_DROPPED_MSG = "Earlier messages were dropped to fit within context limits."
 COMPACTION_TOOL_NAME = "context_compaction"
 
 
@@ -62,15 +93,33 @@ MAX_TOOL_WAIT_SECONDS = 5 * 60  # 5 minutes
 # "no tool blocks >= idle_timeout" holds by construction.
 STREAM_IDLE_TIMEOUT_SECONDS = MAX_TOOL_WAIT_SECONDS * 2  # 10 minutes
 
+# The SDK turn gives up on a tool that is still pending after this long, aborts
+# the stream and pauses the E2B box.
+HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60
+
 # Redis key prefix for the SDK-stream-level lock that ensures only one
 # active SDK stream per session. Released by the SDK turn's finally block
 # and force-released by mark_session_completed on cancel/error.
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
 
 
+def step_card_id(user_id: str, node_exec_id: str) -> str:
+    """Derived from the step alone, so the run page, Home and a stopped run
+    can find the card the gate opened for it."""
+    digest = hashlib.sha256(f"{user_id}\x00{node_exec_id}".encode()).hexdigest()[:16]
+    return f"{COPILOT_STEP_CARD_PREFIX}{COPILOT_NODE_EXEC_ID_SEPARATOR}{digest}"
+
+
 def is_copilot_synthetic_id(id_value: str) -> bool:
     """Check if an ID is a CoPilot synthetic ID (not from a real graph execution)."""
     return id_value.startswith(COPILOT_SYNTHETIC_ID_PREFIX)
+
+
+def legacy_chat_session_id(graph_exec_id: str | None) -> str | None:
+    """The chat session behind an old ``copilot-session-<id>`` graph exec id."""
+    if graph_exec_id and graph_exec_id.startswith(COPILOT_SESSION_PREFIX):
+        return graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
+    return None
 
 
 def parse_node_id_from_exec_id(node_exec_id: str) -> str:
@@ -121,3 +170,18 @@ def is_transient_api_error(error_text: str) -> bool:
     """Return True if *error_text* matches a known transient Anthropic API error."""
     lower = error_text.lower()
     return any(pat.lower() in lower for pat in _TRANSIENT_ERROR_PATTERNS)
+
+
+# ``AssistantMessage.error`` categories the CLI gives an API error worth
+# retrying: a 5xx or overload, and a 429. The category is set only on a failed
+# API call, so unlike a phrase it cannot match application text, and it does
+# not move with the CLI's wording: 2.1.284 reports a 529 as "API Error: 529
+# Overloaded. This is a server-side issue...", with no status-code phrase for
+# the patterns above to find.
+_TRANSIENT_ERROR_CATEGORIES = frozenset({"server_error", "rate_limit"})
+
+
+def is_transient_assistant_error(category: str, content: str) -> bool:
+    """Return True if an API error the CLI reported in an ``AssistantMessage``
+    is transient, by its category or by the text it carries."""
+    return category in _TRANSIENT_ERROR_CATEGORIES or is_transient_api_error(content)

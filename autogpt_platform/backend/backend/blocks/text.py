@@ -7,6 +7,7 @@ import regex  # Has built-in timeout support
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -18,6 +19,12 @@ from backend.util.file import get_exec_file_path, store_media_file
 from backend.util.type import MediaFileType
 
 formatter = text.TextFormatter()
+
+MAX_REGEX_PATTERN_LENGTH = 10_000
+MAX_REGEX_TEXT_LENGTH = 1_000_000
+REGEX_TIMEOUT_SECONDS = 1.0
+MAX_MATCHES = 1000  # Maximum number of matches to prevent memory exhaustion
+MAX_MATCH_LENGTH = 10_000  # Maximum length per match
 
 
 class MatchTextPatternBlock(Block):
@@ -53,6 +60,7 @@ class MatchTextPatternBlock(Block):
                 ("positive", "Z"),
                 ("negative", "Z"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -68,7 +76,29 @@ class MatchTextPatternBlock(Block):
         else:
             text = json.dumps(input_data.text)
 
-        if re.search(input_data.match, text, flags=flags):
+        if len(input_data.match) > MAX_REGEX_PATTERN_LENGTH:
+            raise ValueError(
+                f"Regex pattern is too large to evaluate safely "
+                f"({len(input_data.match)} characters; "
+                f"maximum {MAX_REGEX_PATTERN_LENGTH})."
+            )
+
+        if len(text) > MAX_REGEX_TEXT_LENGTH:
+            raise ValueError(
+                f"Text is too large to match safely ({len(text)} characters; "
+                f"maximum {MAX_REGEX_TEXT_LENGTH})."
+            )
+
+        try:
+            matched = regex.search(
+                input_data.match, text, flags=flags, timeout=REGEX_TIMEOUT_SECONDS
+            )
+        except TimeoutError as error:
+            raise ValueError("Regex evaluation timed out.") from error
+        except regex.error as error:
+            raise ValueError(f"Invalid regex pattern: {error}") from error
+
+        if matched:
             yield "positive", output
         else:
             yield "negative", output
@@ -143,14 +173,10 @@ class ExtractTextInformationBlock(Block):
                 ("matched_results", ["World!!", "Earth!!"]),
                 ("matched_count", 2),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # Security fix: Add limits to prevent ReDoS and memory exhaustion
-        MAX_TEXT_LENGTH = 1_000_000  # 1MB character limit
-        MAX_MATCHES = 1000  # Maximum number of matches to prevent memory exhaustion
-        MAX_MATCH_LENGTH = 10_000  # Maximum length per match
-
         flags = 0
         if not input_data.case_sensitive:
             flags = flags | re.IGNORECASE
@@ -163,68 +189,32 @@ class ExtractTextInformationBlock(Block):
             txt = json.dumps(input_data.text)
 
         # Limit text size to prevent DoS
-        if len(txt) > MAX_TEXT_LENGTH:
-            txt = txt[:MAX_TEXT_LENGTH]
+        if len(txt) > MAX_REGEX_TEXT_LENGTH:
+            txt = txt[:MAX_REGEX_TEXT_LENGTH]
 
-        # Validate regex pattern to prevent dangerous patterns
-        dangerous_patterns = [
-            r".*\+.*\+",  # Nested quantifiers
-            r".*\*.*\*",  # Nested quantifiers
-            r"(?=.*\+)",  # Lookahead with quantifier
-            r"(?=.*\*)",  # Lookahead with quantifier
-            r"\(.+\)\+",  # Group with nested quantifier
-            r"\(.+\)\*",  # Group with nested quantifier
-            r"\([^)]+\+\)\+",  # Nested quantifiers like (a+)+
-            r"\([^)]+\*\)\*",  # Nested quantifiers like (a*)*
-        ]
-
-        # Check if pattern is potentially dangerous
-        is_dangerous = any(
-            re.search(dangerous, input_data.pattern) for dangerous in dangerous_patterns
-        )
-
-        # Use regex module with timeout for dangerous patterns
-        # For safe patterns, use standard re module for compatibility
         try:
+            # Compiling a pattern isn't covered by the timeout below
+            if len(input_data.pattern) > MAX_REGEX_PATTERN_LENGTH:
+                raise ValueError("Regex pattern is too large to evaluate safely.")
+
             matches = []
             match_count = 0
 
-            if is_dangerous:
-                # Use regex module with timeout (5 seconds) for dangerous patterns
-                # The regex module supports timeout parameter in finditer
-                try:
-                    for match in regex.finditer(
-                        input_data.pattern, txt, flags=flags, timeout=5.0
-                    ):
-                        if match_count >= MAX_MATCHES:
-                            break
-                        if input_data.group <= len(match.groups()):
-                            match_text = match.group(input_data.group)
-                            # Limit match length to prevent memory exhaustion
-                            if len(match_text) > MAX_MATCH_LENGTH:
-                                match_text = match_text[:MAX_MATCH_LENGTH]
-                            matches.append(match_text)
-                            match_count += 1
-                except regex.error as e:
-                    # Timeout occurred or regex error
-                    if "timeout" in str(e).lower():
-                        # Timeout - return empty results
-                        pass
-                    else:
-                        # Other regex error
-                        raise
-            else:
-                # Use standard re module for non-dangerous patterns
-                for match in re.finditer(input_data.pattern, txt, flags):
-                    if match_count >= MAX_MATCHES:
+            # Every pattern runs with a timeout, which covers the whole
+            # iteration; a timeout ends up in the empty result below
+            for match in regex.finditer(
+                input_data.pattern, txt, flags=flags, timeout=REGEX_TIMEOUT_SECONDS
+            ):
+                if input_data.group <= len(match.groups()):
+                    match_text = match.group(input_data.group)
+                    # Limit match length to prevent memory exhaustion
+                    if len(match_text) > MAX_MATCH_LENGTH:
+                        match_text = match_text[:MAX_MATCH_LENGTH]
+                    matches.append(match_text)
+                    match_count += 1
+                    # Stop before the next match is searched for
+                    if not input_data.find_all or match_count >= MAX_MATCHES:
                         break
-                    if input_data.group <= len(match.groups()):
-                        match_text = match.group(input_data.group)
-                        # Limit match length to prevent memory exhaustion
-                        if len(match_text) > MAX_MATCH_LENGTH:
-                            match_text = match_text[:MAX_MATCH_LENGTH]
-                        matches.append(match_text)
-                        match_count += 1
 
             if not input_data.find_all:
                 matches = matches[:1]
@@ -286,6 +276,7 @@ class FillTextTemplateBlock(Block):
                 ("output", "Hello World!"),
                 ("output", "Hello, World! Alice"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -320,6 +311,7 @@ class CombineTextsBlock(Block):
                 ("output", "Hello world I like cake and to go for walks"),
                 ("output", "This is a test! Hi!"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -355,6 +347,7 @@ class TextSplitBlock(Block):
                 ("texts", ["Hello", "World!"]),
                 ("texts", ["Hello", " World!"]),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -389,6 +382,7 @@ class TextReplaceBlock(Block):
             test_output=[
                 ("output", "Hi, World!"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -444,6 +438,7 @@ class FileReadBlock(Block):
             test_output=[
                 ("content", "Hello World"),
             ],
+            effect=BlockEffect.READ,
         )
 
     async def run(

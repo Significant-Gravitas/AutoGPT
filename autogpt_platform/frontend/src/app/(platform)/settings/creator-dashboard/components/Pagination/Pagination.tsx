@@ -1,11 +1,10 @@
 "use client";
-
-import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
-
 import type { Pagination as PaginationModel } from "@/app/api/__generated__/models/pagination";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   pagination: PaginationModel;
@@ -42,14 +41,14 @@ export function Pagination({ pagination, onPageChange, disabled }: Props) {
       className="flex items-center justify-between gap-3 px-4 py-3"
       data-testid="submissions-pagination"
     >
-      <Text variant="small" className="text-zinc-500">
+      <Text variant="small" className="text-foreground-tertiary">
         Showing {startItem}–{endItem} of {total_items}
       </Text>
       <div className="flex items-center gap-1.5">
         <Button
           variant="secondary"
           size="small"
-          leftIcon={<CaretLeftIcon size={14} />}
+          leftIcon={<Icon icon={ArrowLeft01Icon} size={14} />}
           disabled={disabled || current_page <= 1}
           onClick={() => onPageChange(current_page - 1)}
           aria-label="Previous page"
@@ -70,8 +69,8 @@ export function Pagination({ pagination, onPageChange, disabled }: Props) {
                 className={cn(
                   "ease-[cubic-bezier(0.16,1,0.3,1)] inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-xs font-medium tabular-nums transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50",
                   isActive
-                    ? "bg-zinc-900 text-white"
-                    : "text-zinc-700 hover:bg-zinc-100",
+                    ? "bg-action-hover text-action-foreground"
+                    : "text-foreground-body hover:bg-surface-hover",
                 )}
               >
                 {page}
@@ -82,7 +81,7 @@ export function Pagination({ pagination, onPageChange, disabled }: Props) {
         <Button
           variant="secondary"
           size="small"
-          rightIcon={<CaretRightIcon size={14} />}
+          rightIcon={<Icon icon={ArrowRight01Icon} size={14} />}
           disabled={disabled || current_page >= total_pages}
           onClick={() => onPageChange(current_page + 1)}
           aria-label="Next page"

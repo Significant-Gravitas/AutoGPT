@@ -4,9 +4,6 @@ import {
   type PlanDef,
 } from "@/components/molecules/PlanCard/plans";
 
-export const SUBSCRIPTION_PRICING_EXPERIMENT_FLAG =
-  "subscription-pricing-page-initial-state";
-
 const HIGHLIGHT_BADGE = "Best value";
 
 export type BillingCycle = "monthly" | "yearly";
@@ -19,13 +16,16 @@ export type SubscriptionPricingExperimentVariant =
 
 interface SubscriptionPricingExperimentConfig {
   billing: BillingCycle;
-  highlightedPlan: HighlightedPlanKey;
+  highlightedPlan: HighlightedPlanKey | null;
   variant: SubscriptionPricingExperimentVariant | "control";
 }
 
+// Control (the flag isn't wired up yet) matches the paywall: monthly billing
+// and no highlighted plan. Each PostHog variant below opts back into a specific
+// billing cycle + highlighted plan when the experiment is live.
 const DEFAULT_EXPERIMENT_CONFIG: SubscriptionPricingExperimentConfig = {
-  billing: "yearly",
-  highlightedPlan: PLAN_KEYS.MAX,
+  billing: "monthly",
+  highlightedPlan: null,
   variant: "control",
 };
 
@@ -74,19 +74,32 @@ export function getSubscriptionPricingExperimentConfig(
   return DEFAULT_EXPERIMENT_CONFIG;
 }
 
+// The arm to report on `plan_selected`: only one PostHog actually assigned.
+// Unresolved flags and users outside the rollout render the control layout
+// but are not in the control arm, so reporting "control" for them would
+// inflate it.
+export function getReportedPricingVariant(
+  variant: string | null,
+  isResolved: boolean,
+) {
+  if (!isResolved || variant === null) return undefined;
+  if (variant !== "control" && !isExperimentVariant(variant)) return undefined;
+  return variant;
+}
+
 export function getSubscriptionPricingExperimentPlans(
-  highlightedPlan: HighlightedPlanKey,
+  highlightedPlan: HighlightedPlanKey | null,
   plans: PlanDef[] = PLANS,
 ) {
   return plans.map((plan) => {
     if (!isPaidExperimentPlan(plan)) return plan;
 
-    const highlighted = plan.key === highlightedPlan;
+    const highlighted =
+      highlightedPlan !== null && plan.key === highlightedPlan;
     return {
       ...plan,
       highlighted,
       badge: highlighted ? HIGHLIGHT_BADGE : null,
-      buttonVariant: highlighted ? "primary" : "secondary",
     } satisfies PlanDef;
   });
 }

@@ -1,0 +1,523 @@
+import {
+  getGetV2ListChatTransportsMockHandler,
+  getGetV2ListSessionsMockHandler200,
+  getPostV2CreateSessionMockHandler,
+} from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { makeDashboard } from "@/app/(platform)/home/__tests__/heldItems";
+import { server } from "@/mocks/mock-server";
+import {
+  assistantTextChunks,
+  streamSseResponse,
+} from "@/tests/integrations/copilot-sse";
+import { focusManager } from "@tanstack/react-query";
+import { act, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAutopilotModeStore } from "../autopilotModeStore";
+import { resetCopilotChatRegistry } from "../copilotChatRegistry";
+import {
+  renderHost,
+  sessionHandler,
+  TEST_BACKEND_BASE_URL,
+  TEST_SESSION_ID,
+  typeAndSend,
+} from "./sse-helpers";
+
+const flags = vi.hoisted(() => ({ autoMode: false }));
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
+  const actual =
+    await importActual<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.COPILOT_AUTO_MODE && flags.autoMode,
+  };
+});
+
+vi.mock("@/services/environment", async (importActual) => {
+  const actual = await importActual<typeof import("@/services/environment")>();
+  return {
+    ...actual,
+    environment: {
+      ...actual.environment,
+      getAGPTServerBaseUrl: () => TEST_BACKEND_BASE_URL,
+    },
+  };
+});
+
+vi.mock("../helpers", async (importActual) => {
+  const actual = await importActual<typeof import("../helpers")>();
+  return {
+    ...actual,
+    getCopilotAuthHeaders: async () => ({ "x-test-auth": "yes" }),
+  };
+});
+
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
+}));
+
+beforeEach(() => {
+  flags.autoMode = true;
+  server.use(
+    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+      HttpResponse.json(makeDashboard([])),
+    ),
+  );
+});
+
+afterEach(() => {
+  resetCopilotChatRegistry();
+  useAutopilotModeStore.setState({ choices: {} });
+  focusManager.setFocused(undefined);
+});
+
+// These flows take 3-4.5 s on CI's slower runners, close to the 5 s default.
+describe("AutoPilot mode selector", { timeout: 15_000 }, () => {
+  it("is absent with the flag off, and the request carries no mode", async () => {
+    flags.autoMode = false;
+    const bodies = captureStreamBodies();
+
+    renderHost();
+    await typeAndSend("hi");
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(screen.queryByRole("button", { name: /approval mode/i })).toBeNull();
+    expect(bodies[0]).not.toHaveProperty("autopilot_mode");
+  });
+
+  it("sends the picked mode on the next request", async () => {
+    const bodies = captureStreamBodies();
+
+    renderHost();
+    await pickMode(/approval mode: auto/i, /ask first/i);
+
+    expect(await findModeButton(/approval mode: ask first/i)).toBeDefined();
+    await typeAndSend("hi");
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ autopilot_mode: "ask_first" });
+  });
+
+  it("leaves the mode unchanged when the Unsupervised confirm is cancelled", async () => {
+    const bodies = captureStreamBodies();
+    const user = userEvent.setup();
+
+    renderHost();
+    await pickMode(/approval mode: auto/i, /unsupervised/i);
+    await user.click(await screen.findByRole("button", { name: /cancel/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: /run this chat unsupervised/i }),
+      ).toBeNull(),
+    );
+    expect(await findModeButton(/approval mode: auto/i)).toBeDefined();
+    await typeAndSend("hi");
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).not.toHaveProperty("autopilot_mode");
+  });
+
+  it("switches to Unsupervised only after the confirm", async () => {
+    const bodies = captureStreamBodies();
+    const user = userEvent.setup();
+
+    renderHost();
+    await pickMode(/approval mode: auto/i, /unsupervised/i);
+    expect(
+      screen.queryByRole("button", { name: /approval mode: unsupervised/i }),
+    ).toBeNull();
+    expect(
+      await screen.findByText(
+        /^Otto will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
+    await user.click(
+      await screen.findByRole("button", { name: /run unsupervised/i }),
+    );
+
+    expect(await findModeButton(/approval mode: unsupervised/i)).toBeDefined();
+    await typeAndSend("hi");
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ autopilot_mode: "unsupervised" });
+  });
+
+  it("starts from the mode stored on the session", async () => {
+    const bodies = captureStreamBodies();
+
+    renderHost({
+      sessionOverride: {
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      },
+    });
+
+    expect(await findModeButton(/approval mode: ask first/i)).toBeDefined();
+    await typeAndSend("hi");
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).not.toHaveProperty("autopilot_mode");
+  });
+
+  it("carries a new chat's pick into the first request of the session it creates", async () => {
+    const bodies = captureStreamBodies();
+    server.use(
+      getGetV2ListChatTransportsMockHandler({
+        transports: [
+          {
+            auth_provider: "platform",
+            credential_id: null,
+            label: "AutoGPT Platform",
+            available: true,
+            default: true,
+          },
+        ],
+      }),
+      getPostV2CreateSessionMockHandler({
+        id: TEST_SESSION_ID,
+        created_at: "2026-05-13T00:00:00Z",
+        user_id: "test-user",
+      }),
+    );
+
+    renderHost({ searchParams: "" });
+    await pickMode(/approval mode: auto/i, /ask first/i);
+    await typeAndSend("hi");
+
+    await waitFor(() => expect(bodies).toHaveLength(1), { timeout: 5000 });
+    expect(bodies[0]).toMatchObject({ autopilot_mode: "ask_first" });
+  });
+  it("starts a new expert thread on the expert's default without sending it", async () => {
+    const bodies = captureStreamBodies();
+    const createBodies: Record<string, unknown>[] = [];
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
+      getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
+      getGetV2ListChatTransportsMockHandler({
+        transports: [
+          {
+            auth_provider: "platform",
+            credential_id: null,
+            label: "AutoGPT Platform",
+            available: true,
+            default: true,
+          },
+        ],
+      }),
+      getPostV2CreateSessionMockHandler(async ({ request }) => {
+        createBodies.push((await request.json()) as Record<string, unknown>);
+        return {
+          id: TEST_SESSION_ID,
+          created_at: "2026-05-13T00:00:00Z",
+          user_id: "test-user",
+          expert_id: "expert-maria",
+        };
+      }),
+    );
+
+    renderHost({ searchParams: "?expertId=expert-maria" });
+
+    expect(await findModeButton(/approval mode: ask first/i)).toBeDefined();
+    await typeAndSend("hi");
+
+    await waitFor(() => expect(bodies).toHaveLength(1), { timeout: 5000 });
+    expect(createBodies).toHaveLength(1);
+    expect(createBodies[0]).not.toHaveProperty("autopilot_mode");
+    expect(bodies[0]).not.toHaveProperty("autopilot_mode");
+  });
+
+  it("drops a pick left over from an earlier new chat that was never sent", async () => {
+    const createBodies: Record<string, unknown>[] = [];
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
+      getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
+      getGetV2ListChatTransportsMockHandler({
+        transports: [
+          {
+            auth_provider: "platform",
+            credential_id: null,
+            label: "AutoGPT Platform",
+            available: true,
+            default: true,
+          },
+        ],
+      }),
+      getPostV2CreateSessionMockHandler(async ({ request }) => {
+        createBodies.push((await request.json()) as Record<string, unknown>);
+        return {
+          id: TEST_SESSION_ID,
+          created_at: "2026-05-13T00:00:00Z",
+          user_id: "test-user",
+          expert_id: "expert-maria",
+        };
+      }),
+    );
+    captureStreamBodies();
+    // Picked while composing an earlier new chat, then abandoned.
+    useAutopilotModeStore.getState().choose(null, "unsupervised");
+
+    renderHost({ searchParams: "?expertId=expert-maria" });
+
+    expect(await findModeButton(/approval mode: ask first/i)).toBeDefined();
+    await typeAndSend("hi");
+
+    await waitFor(() => expect(createBodies).toHaveLength(1), {
+      timeout: 5000,
+    });
+    expect(createBodies[0]).not.toHaveProperty("autopilot_mode");
+  });
+
+  it("keeps a thread's stored mode over the expert's default", async () => {
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
+    );
+
+    renderHost({
+      sessionOverride: {
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "unsupervised" },
+      },
+    });
+
+    expect(await findModeButton(/approval mode: unsupervised/i)).toBeDefined();
+  });
+
+  it("names the chat's expert in the Unsupervised confirm", async () => {
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("ask_first")]),
+    );
+
+    renderHost({
+      sessionOverride: {
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      },
+    });
+    await pickMode(/approval mode: ask first/i, /unsupervised/i);
+
+    expect(
+      await screen.findByText(
+        /^Maria will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
+  });
+
+  it("keeps approvals locked until an expert chat knows whose it is", async () => {
+    let settleRoster: () => void = () => {};
+    const roster = new Promise<void>((resolve) => {
+      settleRoster = () => resolve();
+    });
+    server.use(
+      getListExpertIdentitiesMockHandler(async () => {
+        await roster;
+        return [mariaIdentity("ask_first")];
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderHost({
+      sessionOverride: {
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      },
+    });
+
+    expect(await findModeButton(/approval mode: ask first/i)).toHaveProperty(
+      "disabled",
+      true,
+    );
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /approval mode/i }),
+      ).toBeNull(),
+    );
+
+    settleRoster();
+    // The composer unlocks, and takes focus, once the roster is in.
+    await waitFor(() =>
+      expect(screen.getByLabelText(/chat message input/i)).toHaveProperty(
+        "disabled",
+        false,
+      ),
+    );
+    await pickMode(/approval mode: ask first/i, /unsupervised/i);
+    expect(
+      await screen.findByText(
+        /^Maria will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
+  });
+
+  it("keeps approvals locked until the chat's session has loaded", async () => {
+    let settleSession: () => void = () => {};
+    const sessionLoaded = new Promise<void>((resolve) => {
+      settleSession = () => resolve();
+    });
+    server.use(
+      getListExpertIdentitiesMockHandler([mariaIdentity("auto")]),
+      sessionHandler({
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      }),
+    );
+    const user = userEvent.setup();
+
+    // Held until settled, then passed on to the session above.
+    renderHost({
+      sessionResponse: http.get(
+        "/api/proxy/api/chat/sessions/:sessionId",
+        async () => {
+          await sessionLoaded;
+        },
+      ),
+    });
+
+    expect(await findModeButton(/approval mode/i)).toHaveProperty(
+      "disabled",
+      true,
+    );
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /approval mode/i }),
+      ).toBeNull(),
+    );
+
+    settleSession();
+    await waitFor(() =>
+      expect(screen.getByLabelText(/chat message input/i)).toHaveProperty(
+        "disabled",
+        false,
+      ),
+    );
+    await pickMode(/approval mode: ask first/i, /unsupervised/i);
+    expect(
+      await screen.findByText(
+        /^Maria will not ask before anything in this chat\./,
+      ),
+    ).toBeDefined();
+  });
+
+  it("keeps approvals open while a known expert's roster refetches", async () => {
+    let rosterReads = 0;
+    let settleRefetch: () => void = () => {};
+    const refetched = new Promise<void>((resolve) => {
+      settleRefetch = () => resolve();
+    });
+    server.use(
+      getListExpertIdentitiesMockHandler(async () => {
+        rosterReads += 1;
+        if (rosterReads > 1) await refetched;
+        return [mariaIdentity("ask_first")];
+      }),
+    );
+
+    renderHost({
+      sessionOverride: {
+        expert_id: "expert-maria",
+        metadata: { dry_run: false, autopilot_mode: "ask_first" },
+      },
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText(/chat message input/i)).toHaveProperty(
+        "disabled",
+        false,
+      ),
+    );
+
+    // Coming back to the tab refetches stale queries, the roster included.
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await waitFor(() => expect(rosterReads).toBe(2));
+
+    expect(await findModeButton(/approval mode: ask first/i)).toHaveProperty(
+      "disabled",
+      false,
+    );
+    settleRefetch();
+  });
+});
+
+describe("autopilotModeStore", () => {
+  it("carries a new chat's pick over to the session its first send creates", () => {
+    const store = useAutopilotModeStore.getState();
+    store.choose(null, "ask_first");
+    store.bindNewChatToSession("created-1");
+
+    expect(useAutopilotModeStore.getState().choices).toEqual({
+      "created-1": "ask_first",
+    });
+  });
+
+  it("clearing the new chat pick leaves session picks alone", () => {
+    const store = useAutopilotModeStore.getState();
+    store.choose(null, "ask_first");
+    store.choose("session-1", "unsupervised");
+    store.clearNewChatChoice();
+
+    expect(useAutopilotModeStore.getState().choices).toEqual({
+      "session-1": "unsupervised",
+    });
+  });
+
+  it("binds nothing when the new chat had no pick", () => {
+    useAutopilotModeStore.getState().bindNewChatToSession("created-1");
+
+    expect(useAutopilotModeStore.getState().choices).toEqual({});
+  });
+});
+
+function captureStreamBodies() {
+  const bodies: Record<string, unknown>[] = [];
+  server.use(
+    http.post(
+      `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+      async ({ request }) => {
+        bodies.push((await request.json()) as Record<string, unknown>);
+        return streamSseResponse(assistantTextChunks("Done."), {
+          abortSignal: request.signal,
+        });
+      },
+    ),
+  );
+  return bodies;
+}
+
+// The mode selector lives behind the composer's "..." menu, and the panel
+// closes again once a pick is made: open it only when it is not showing.
+async function findModeButton(name: RegExp) {
+  if (!screen.queryByRole("button", { name: /approval mode/i })) {
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: /more options/i }),
+    );
+  }
+  return screen.findByRole("button", { name });
+}
+
+async function pickMode(trigger: RegExp, option: RegExp) {
+  const user = userEvent.setup();
+  await user.click(await findModeButton(trigger));
+  await user.click(await screen.findByRole("menuitemradio", { name: option }));
+}
+
+function mariaIdentity(autopilotMode: "ask_first" | "auto" | "unsupervised") {
+  return {
+    id: "expert-maria",
+    name: "Maria",
+    avatar_url: null,
+    color: "orange-500",
+    role: "Marketing",
+    is_archived: false,
+    autopilot_mode: autopilotMode,
+  };
+}

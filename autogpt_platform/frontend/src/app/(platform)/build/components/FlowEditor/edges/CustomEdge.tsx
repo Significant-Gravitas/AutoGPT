@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useState, type CSSProperties } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   BaseEdge,
@@ -9,10 +9,11 @@ import {
 } from "@xyflow/react";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { NodeExecutionResult } from "@/lib/autogpt-server-api";
 import { JSBeads } from "./components/JSBeads";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export type CustomEdgeData = {
   isStatic?: boolean;
@@ -66,9 +67,10 @@ const CustomEdge = ({
       <path
         d={edgePath}
         fill="none"
-        stroke="black"
+        stroke="currentColor"
         strokeOpacity={0}
         strokeWidth={20}
+        // oxlint-disable-next-line design-system/no-unknown-classes -- xyflow's own class for an edge's hit area
         className="react-flow__edge-interaction cursor-pointer"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -78,14 +80,15 @@ const CustomEdge = ({
         interactionWidth={0}
         markerEnd={markerEnd}
         className={cn(
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- a static edge is 1.5px; the stroke-width scale only has 0, 1 and 2
           isStatic && "!stroke-[1.5px] [stroke-dasharray:6]",
           isBroken
-            ? "!stroke-red-500 !stroke-[2px] [stroke-dasharray:4]"
+            ? "!stroke-error !stroke-2 [stroke-dasharray:4]"
             : selected
-              ? "stroke-zinc-800"
+              ? "stroke-foreground-emphasis"
               : edgeColorClass
                 ? cn(edgeColorClass, "opacity-70 hover:opacity-100")
-                : "stroke-zinc-500/50 hover:stroke-zinc-500",
+                : "stroke-edge/50 hover:stroke-edge",
         )}
       />
       <JSBeads
@@ -98,22 +101,24 @@ const CustomEdge = ({
         <Button
           onClick={handleRemoveEdge}
           className={cn(
-            "absolute h-fit min-w-0 p-1 transition-opacity",
+            "pointer-events-auto absolute left-[var(--label-x)] top-[var(--label-y)] h-fit min-w-0 -translate-x-1/2 -translate-y-1/2 p-1 transition-opacity",
             isBroken
-              ? "bg-red-500 opacity-100 hover:bg-red-600"
+              ? "bg-error opacity-100 hover:bg-error-hover"
               : isHovered
                 ? "opacity-100"
                 : "opacity-0",
           )}
           variant={isBroken ? "primary" : "secondary"}
-          style={{
-            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-            pointerEvents: "all",
-          }}
+          style={
+            {
+              "--label-x": `${labelX}px`,
+              "--label-y": `${labelY}px`,
+            } as CSSProperties
+          }
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
-          <XIcon className="h-3 w-3" weight="bold" />
+          <Icon icon={Cancel01Icon} className="h-3 w-3" />
         </Button>
       </EdgeLabelRenderer>
     </>

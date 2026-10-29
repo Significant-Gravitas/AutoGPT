@@ -1,0 +1,9 @@
+{%- import "_email_ui.j2" as ui -%}
+{%- set name = ui.trunc(agent_name, 44) -%}
+{%- if outcome == 'approved' -%}
+{{ name }} is live in the AutoGPT Marketplace
+Anyone browsing the Marketplace can now find it, install it, and run it.
+{%- else -%}
+{{ name }} needs one more pass before it goes live
+Your submission is saved and you can resubmit as soon as it is fixed.
+{%- endif -%}

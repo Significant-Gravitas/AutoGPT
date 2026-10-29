@@ -1,14 +1,21 @@
-import type { Icon } from "@phosphor-icons/react";
 import {
-  BracketsCurlyIcon,
+  BracesIcon,
   CodeIcon,
-  FileIcon,
-  FilePdfIcon,
-  FileTextIcon,
-  ImageIcon,
+  File02Icon,
+  FileEmpty02Icon,
+  Image01Icon,
+  Pdf01Icon,
+  Presentation01Icon,
   TableIcon,
-  VideoCameraIcon,
-} from "@phosphor-icons/react";
+  Video01Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
+import {
+  getGetWorkspaceStorageUsageQueryKey,
+  getListWorkspaceFoldersQueryKey,
+} from "@/app/api/__generated__/endpoints/workspace/workspace";
+import type { QueryClient } from "@tanstack/react-query";
+import { ARTIFACTS_LIST_QUERY_KEY } from "../../useArtifactsPage";
 
 export type FileOrigin =
   | { kind: "session"; sessionId: string; href: string }
@@ -31,6 +38,27 @@ export function deriveFileOrigin(filePath: string | undefined): FileOrigin {
 
 export function getFileDownloadUrl(fileId: string): string {
   return `/api/proxy/api/workspace/files/${encodeURIComponent(fileId)}/download`;
+}
+
+// Fetches the file as a blob and triggers a browser download. Throws on a
+// non-OK response so callers can surface the error (toast) and toggle their
+// own loading state.
+export async function downloadFileBlob(
+  fileId: string,
+  fileName: string,
+): Promise<void> {
+  const res = await fetch(getFileDownloadUrl(fileId));
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Defer revocation so browsers (Firefox/Edge) have time to start the download.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export function getFilePreviewUrl(
@@ -79,8 +107,98 @@ export function formatRelativeDate(input: string | Date): string {
   });
 }
 
-export function getFileTypeLabel(mimeType: string | undefined): string {
+// Source-code extensions whose MIME type is ambiguous or actively misleading
+// in the browser/OS database — most notably `.ts`, which resolves to
+// `video/mp2t` (MPEG transport stream) and would otherwise render as a video.
+// Classifying these by extension keeps source files out of the media path.
+// Mirrors the copilot ArtifactPanel classifier, which is also extension-first.
+const CODE_EXTENSIONS = new Set([
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "mjs",
+  "cjs",
+  "mts",
+  "cts",
+  "py",
+  "rb",
+  "go",
+  "rs",
+  "java",
+  "kt",
+  "kts",
+  "c",
+  "h",
+  "cpp",
+  "cc",
+  "hpp",
+  "cs",
+  "php",
+  "swift",
+  "scala",
+  "sh",
+  "bash",
+  "zsh",
+  "css",
+  "scss",
+  "sass",
+  "less",
+  "sql",
+  "yaml",
+  "yml",
+  "toml",
+  "ini",
+  "vue",
+  "svelte",
+  "dart",
+  "lua",
+  "r",
+]);
+
+export function isCodeFile(fileName: string | undefined): boolean {
+  const ext = (fileName ?? "").toLowerCase().match(/\.([a-z0-9]+)$/);
+  return ext ? CODE_EXTENSIONS.has(ext[1]) : false;
+}
+
+type OfficeDocKind = "presentation" | "document" | "spreadsheet";
+
+// Extension first: an office file stored with a wrong MIME (e.g. text/plain)
+// must still read as an office document.
+function getOfficeDocKind(
+  mimeType: string,
+  fileName: string,
+): OfficeDocKind | null {
+  if (/\.pptx?$/.test(fileName)) return "presentation";
+  if (/\.docx?$/.test(fileName)) return "document";
+  if (/\.xlsx?$/.test(fileName)) return "spreadsheet";
+  if (mimeType.includes("presentationml") || mimeType.includes("powerpoint"))
+    return "presentation";
+  if (mimeType.includes("wordprocessingml") || mimeType.includes("msword"))
+    return "document";
+  return null;
+}
+
+const OFFICE_LABEL: Record<OfficeDocKind, string> = {
+  presentation: "Presentation",
+  document: "Document",
+  spreadsheet: "Spreadsheet",
+};
+
+const OFFICE_ICON: Record<OfficeDocKind, IconSvgElement> = {
+  presentation: Presentation01Icon,
+  document: File02Icon,
+  spreadsheet: TableIcon,
+};
+
+export function getFileTypeLabel(
+  mimeType: string | undefined,
+  fileName?: string,
+): string {
+  if (isCodeFile(fileName)) return "Code";
   const mt = (mimeType ?? "").toLowerCase();
+  const officeKind = getOfficeDocKind(mt, (fileName ?? "").toLowerCase());
+  if (officeKind) return OFFICE_LABEL[officeKind];
   if (mt.startsWith("image/")) return "Image";
   if (mt.startsWith("video/")) return "Video";
   if (mt.startsWith("audio/")) return "Audio";
@@ -94,11 +212,17 @@ export function getFileTypeLabel(mimeType: string | undefined): string {
   return "Generated file";
 }
 
-export function getFileTypeIcon(mimeType: string | undefined): Icon {
+export function getFileTypeIcon(
+  mimeType: string | undefined,
+  fileName?: string,
+): IconSvgElement {
+  if (isCodeFile(fileName)) return CodeIcon;
   const mt = (mimeType ?? "").toLowerCase();
-  if (mt.startsWith("image/")) return ImageIcon;
-  if (mt.startsWith("video/")) return VideoCameraIcon;
-  if (mt.includes("pdf")) return FilePdfIcon;
+  const officeKind = getOfficeDocKind(mt, (fileName ?? "").toLowerCase());
+  if (officeKind) return OFFICE_ICON[officeKind];
+  if (mt.startsWith("image/")) return Image01Icon;
+  if (mt.startsWith("video/")) return Video01Icon;
+  if (mt.includes("pdf")) return Pdf01Icon;
   if (mt.includes("html") || mt.includes("xhtml")) return CodeIcon;
   if (
     mt.includes("csv") ||
@@ -107,9 +231,9 @@ export function getFileTypeIcon(mimeType: string | undefined): Icon {
   ) {
     return TableIcon;
   }
-  if (mt.includes("json")) return BracketsCurlyIcon;
-  if (mt.includes("text") || mt.includes("markdown")) return FileTextIcon;
-  return FileIcon;
+  if (mt.includes("json")) return BracesIcon;
+  if (mt.includes("text") || mt.includes("markdown")) return File02Icon;
+  return FileEmpty02Icon;
 }
 
 export type PreviewKind =
@@ -119,6 +243,7 @@ export type PreviewKind =
   | "office"
   | "csv"
   | "json"
+  | "markdown"
   | "ics"
   | "vcard"
   | "text"
@@ -157,6 +282,12 @@ export function getPreviewKind(
   const mt = (mimeType ?? "").toLowerCase();
   const name = (fileName ?? "").toLowerCase();
 
+  // Extension-first for source code: `.ts` & friends carry misleading MIME
+  // types (e.g. `video/mp2t`). Render them as a generic file card, not media.
+  if (isCodeFile(name)) {
+    return sizeBytes > MAX_TEXT_PREVIEW_BYTES ? "none" : "text";
+  }
+
   if (mt.startsWith("image/") && !mt.includes("svg")) {
     return sizeBytes > MAX_IMAGE_PREVIEW_BYTES ? "none" : "image";
   }
@@ -182,11 +313,18 @@ export function getPreviewKind(
   if (mt.includes("csv") || name.endsWith(".csv")) return "csv";
   if (mt.includes("json") || name.endsWith(".json")) return "json";
   if (
+    mt.includes("markdown") ||
+    name.endsWith(".md") ||
+    name.endsWith(".markdown") ||
+    name.endsWith(".mdx")
+  ) {
+    return "markdown";
+  }
+  if (
     mt.startsWith("text/") ||
     mt.includes("html") ||
     mt.includes("xhtml") ||
     mt.includes("xml") ||
-    mt.includes("markdown") ||
     mt.includes("javascript") ||
     mt.includes("typescript") ||
     mt.includes("yaml")
@@ -194,4 +332,152 @@ export function getPreviewKind(
     return "text";
   }
   return "none";
+}
+
+export function formatDayLabel(input: string | Date): string {
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  const now = new Date();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+  const startOfDay = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ).getTime();
+  const dayDiff = Math.round((startOfToday - startOfDay) / 86_400_000);
+  if (dayDiff === 0) return "Today";
+  if (dayDiff === 1) return "Yesterday";
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  });
+}
+
+export function formatFullDate(input: string | Date): string {
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+// image / pdf / office all get a WebP thumbnail from the preview endpoint.
+export function hasImageThumbnail(kind: PreviewKind): boolean {
+  return kind === "image" || kind === "pdf" || kind === "office";
+}
+
+export function getEmptyMessage(opts: {
+  hasSearchTerm: boolean;
+  isInFolder: boolean;
+  /** Child folders are listed above the empty files area. */
+  hasFolders: boolean;
+  hasExpertFilter?: boolean;
+  expertName?: string | null;
+}): string {
+  if (opts.hasSearchTerm) return "No files match your search";
+  if (opts.hasExpertFilter) {
+    // "yet" is only true of a workspace with nowhere else to look; anywhere
+    // with folders or inside one, the files may simply be elsewhere.
+    if (!opts.isInFolder && !opts.hasFolders)
+      return "No files from this expert yet";
+    return `No files from ${opts.expertName ?? "this expert"} here`;
+  }
+  if (opts.isInFolder)
+    return opts.hasFolders
+      ? "No files directly in this folder"
+      : "This folder is empty";
+  if (opts.hasFolders) return "No files at the root yet";
+  return "No files yet";
+}
+
+export interface EmptyStateContent {
+  title: string;
+  description: string;
+  showUpload: boolean;
+  uploadFolderId: string | null;
+  chatHref: string | null;
+  chatLabel: string;
+}
+
+export function getEmptyState(opts: {
+  hasSearchTerm: boolean;
+  isInFolder: boolean;
+  hasFolders: boolean;
+  folderId: string | null;
+  expert: { id: string; name: string | null } | null;
+}): EmptyStateContent {
+  const title = getEmptyMessage({
+    hasSearchTerm: opts.hasSearchTerm,
+    isInFolder: opts.isInFolder,
+    hasFolders: opts.hasFolders,
+    hasExpertFilter: opts.expert !== null,
+    expertName: opts.expert?.name,
+  });
+  const base: EmptyStateContent = {
+    title,
+    description: "",
+    showUpload: false,
+    uploadFolderId: opts.folderId,
+    chatHref: null,
+    chatLabel: "Start a task",
+  };
+  if (opts.hasSearchTerm) {
+    return {
+      ...base,
+      description: "Try another name, or clear the search to see everything.",
+    };
+  }
+  if (opts.expert) {
+    const name = opts.expert.name;
+    return {
+      ...base,
+      description: `Files ${name ?? "this expert"} creates while working on a task will show up here.`,
+      chatHref: name
+        ? `/copilot?expertId=${encodeURIComponent(opts.expert.id)}`
+        : null,
+      chatLabel: name ? `Chat with ${name}` : base.chatLabel,
+    };
+  }
+  if (opts.isInFolder) {
+    return {
+      ...base,
+      description: "Upload a file here, or drag one in from the list.",
+      showUpload: true,
+    };
+  }
+  if (opts.hasFolders) {
+    return {
+      ...base,
+      description: "Your files live inside the folders above.",
+    };
+  }
+  return {
+    ...base,
+    description:
+      "Files your team generates and files you upload will show up here.",
+    showUpload: true,
+    chatHref: "/copilot",
+  };
+}
+
+/**
+ * Refetches everything a file deletion touches: the listing, the folder rows
+ * (which show file counts) and the storage footer.
+ */
+export function invalidateWorkspaceFileQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ARTIFACTS_LIST_QUERY_KEY });
+  queryClient.invalidateQueries({
+    queryKey: getListWorkspaceFoldersQueryKey(),
+  });
+  queryClient.invalidateQueries({
+    queryKey: getGetWorkspaceStorageUsageQueryKey(),
+  });
 }

@@ -1,13 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
-import {
-  BookOpenIcon,
-  ChatCircleIcon,
-  FileIcon,
-  StorefrontIcon,
-} from "@phosphor-icons/react";
 import { useState } from "react";
 import { SearchCommandModal } from "./SearchCommandModal";
 import type { SearchCommandBucket } from "./helpers";
+import {
+  BookOpen01Icon,
+  BubbleChatIcon,
+  FileEmpty02Icon,
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
+import { createIconComponent } from "@/components/atoms/Icon/Icon";
 
 const FIXTURE_BUCKETS: SearchCommandBucket[] = [
   {
@@ -17,12 +18,12 @@ const FIXTURE_BUCKETS: SearchCommandBucket[] = [
       {
         id: "chat-1",
         title: "Debugging the YouTube agent failures",
-        icon: ChatCircleIcon,
+        icon: createIconComponent(BubbleChatIcon),
       },
       {
         id: "chat-2",
         title: "Planning the launch announcement",
-        icon: ChatCircleIcon,
+        icon: createIconComponent(BubbleChatIcon),
       },
     ],
   },
@@ -34,19 +35,19 @@ const FIXTURE_BUCKETS: SearchCommandBucket[] = [
         id: "agent-1",
         title: "YouTube Video Summarizer",
         subtitle: "Summarize any YouTube video into bullet points",
-        icon: BookOpenIcon,
+        icon: createIconComponent(BookOpen01Icon),
       },
       {
         id: "agent-2",
         title: "Email Triage Bot",
         subtitle: "by hackergrrl",
-        icon: StorefrontIcon,
+        icon: createIconComponent(Store01Icon),
       },
       {
         id: "agent-3",
         title: "PDF Question Answerer",
         subtitle: "Ask questions about uploaded PDFs",
-        icon: BookOpenIcon,
+        icon: createIconComponent(BookOpen01Icon),
       },
     ],
   },
@@ -58,13 +59,13 @@ const FIXTURE_BUCKETS: SearchCommandBucket[] = [
         id: "file-1",
         title: "Q4-roadmap.pdf",
         subtitle: "/projects/planning",
-        icon: FileIcon,
+        icon: createIconComponent(FileEmpty02Icon),
       },
       {
         id: "file-2",
         title: "competitor-analysis.md",
         subtitle: "/research",
-        icon: FileIcon,
+        icon: createIconComponent(FileEmpty02Icon),
       },
     ],
   },
@@ -116,13 +117,13 @@ function SearchCommandModalDemo({
     // overflow or scrollbars. ``[&_.fixed]:!absolute`` also retargets
     // the backdrop's positioning so it sits inside this box.
     <div
-      className="relative h-[720px] w-full overflow-hidden rounded-md bg-zinc-100 [&_.fixed]:!absolute [&_.pt-\[18vh\]]:!pt-12"
+      className="relative h-[720px] w-full overflow-hidden rounded-md bg-surface-hover [&_.fixed]:!absolute [&_.pt-\[18vh\]]:!pt-12"
       style={{ transform: "translateZ(0)" }}
     >
       {!isOpen && (
         <button
           type="button"
-          className="m-4 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm"
+          className="m-4 rounded-md border border-border-base bg-surface px-3 py-2 text-sm shadow-sm"
           onClick={() => setIsOpen(true)}
         >
           Open search

@@ -6,12 +6,14 @@ import pytest
 
 from backend.copilot.permissions import (
     ALL_TOOL_NAMES,
+    CAPABILITY_GATE_NAMES,
     DREAM_PERMISSIONS,
     PLATFORM_TOOL_NAMES,
     SDK_BUILTIN_TOOL_NAMES,
     CopilotPermissions,
     _block_matches,
     all_known_tool_names,
+    allowed_providers,
     apply_tool_permissions,
     validate_block_identifiers,
     validate_tool_names,
@@ -105,6 +107,34 @@ class TestEffectiveAllowedTools:
         perms = CopilotPermissions(tools=["nonexistent"], tools_exclude=True)
         result = perms.effective_allowed_tools(ALL_TOOLS)
         assert result == ALL_TOOLS
+
+    def test_denying_a_capability_also_denies_what_extends_it(self):
+        # A blacklist is written against the tools that exist at the time, so
+        # an operator who revoked proactive posting never listed the edit
+        # tool — and would otherwise silently regain the ability to rewrite
+        # everything the bot has already said in their servers.
+        chat_tools = frozenset(
+            ["post_to_chat_platform", "edit_chat_platform_message", "run_block"]
+        )
+        perms = CopilotPermissions(tools=["post_to_chat_platform"], tools_exclude=True)
+
+        result = perms.effective_allowed_tools(chat_tools)
+
+        assert result == frozenset(["run_block"])
+
+    def test_an_implied_denial_does_not_leak_into_a_whitelist(self):
+        # Whitelists are explicit: listing the edit tool means it is wanted,
+        # and the implication table must not second-guess that.
+        chat_tools = frozenset(
+            ["post_to_chat_platform", "edit_chat_platform_message", "run_block"]
+        )
+        perms = CopilotPermissions(
+            tools=["edit_chat_platform_message"], tools_exclude=False
+        )
+
+        result = perms.effective_allowed_tools(chat_tools)
+
+        assert result == frozenset(["edit_chat_platform_message"])
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +367,11 @@ class TestApplyToolPermissions:
     def test_empty_permissions_returns_base_unchanged(self, mocker):
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
-            return_value=["mcp__copilot__run_block", "mcp__copilot__web_fetch", "Task"],
+            return_value=[
+                "mcp__copilot__run_capability",
+                "mcp__copilot__web_fetch",
+                "Task",
+            ],
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_sdk_disallowed_tools",
@@ -345,18 +379,18 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object(), "web_fetch": object()},
+            {"run_capability": object(), "web_fetch": object()},
         )
         perms = CopilotPermissions()
         allowed, disallowed = apply_tool_permissions(perms, use_e2b=False)
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
         assert "mcp__copilot__web_fetch" in allowed
 
     def test_blacklist_removes_tool(self, mocker):
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__web_fetch",
                 "mcp__copilot__bash_exec",
                 "Task",
@@ -369,25 +403,27 @@ class TestApplyToolPermissions:
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
             {
-                "run_block": object(),
+                "run_capability": object(),
                 "web_fetch": object(),
                 "bash_exec": object(),
             },
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "web_fetch", "bash_exec", "Task"]),
+            return_value=frozenset(
+                ["run_capability", "web_fetch", "bash_exec", "Task"]
+            ),
         )
         perms = CopilotPermissions(tools=["bash_exec"], tools_exclude=True)
         allowed, _ = apply_tool_permissions(perms, use_e2b=False)
         assert "mcp__copilot__bash_exec" not in allowed
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
 
     def test_whitelist_keeps_only_listed(self, mocker):
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__web_fetch",
                 "Task",
                 "WebSearch",
@@ -399,15 +435,17 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object(), "web_fetch": object()},
+            {"run_capability": object(), "web_fetch": object()},
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "web_fetch", "Task", "WebSearch"]),
+            return_value=frozenset(
+                ["run_capability", "web_fetch", "Task", "WebSearch"]
+            ),
         )
-        perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
+        perms = CopilotPermissions(tools=["run_capability"], tools_exclude=False)
         allowed, _ = apply_tool_permissions(perms, use_e2b=False)
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
         assert "mcp__copilot__web_fetch" not in allowed
         assert "Task" not in allowed
 
@@ -416,7 +454,7 @@ class TestApplyToolPermissions:
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__read_tool_result",
                 "Task",
             ],
@@ -427,11 +465,11 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object()},
+            {"run_capability": object()},
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "Read", "Task"]),
+            return_value=frozenset(["run_capability", "Read", "Task"]),
         )
         # Explicitly blacklist Read
         perms = CopilotPermissions(tools=["Read"], tools_exclude=True)
@@ -439,7 +477,7 @@ class TestApplyToolPermissions:
         assert (
             "mcp__copilot__read_tool_result" in allowed
         )  # always preserved for SDK internals
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
         assert "Task" in allowed
 
     def test_read_tool_always_included_with_narrow_whitelist(self, mocker):
@@ -447,7 +485,7 @@ class TestApplyToolPermissions:
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__read_tool_result",
                 "Task",
             ],
@@ -458,26 +496,26 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object()},
+            {"run_capability": object()},
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "Read", "Task"]),
+            return_value=frozenset(["run_capability", "Read", "Task"]),
         )
-        # Whitelist only run_block — Read not listed
-        perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
+        # Whitelist only run_capability — Read not listed
+        perms = CopilotPermissions(tools=["run_capability"], tools_exclude=False)
         allowed, _ = apply_tool_permissions(perms, use_e2b=False)
         assert (
             "mcp__copilot__read_tool_result" in allowed
         )  # always preserved for SDK internals
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
 
     def test_e2b_file_tools_included_when_sdk_builtin_whitelisted(self, mocker):
         """In E2B mode, whitelisting 'Read' must include mcp__copilot__read_file."""
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__read_tool_result",
                 "mcp__copilot__read_file",
                 "mcp__copilot__write_file",
@@ -490,21 +528,23 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object()},
+            {"run_capability": object()},
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "Read", "Write", "Task"]),
+            return_value=frozenset(["run_capability", "Read", "Write", "Task"]),
         )
         mocker.patch(
             "backend.copilot.sdk.e2b_file_tools.E2B_FILE_TOOL_NAMES",
             ["read_file", "write_file", "edit_file", "glob", "grep"],
         )
-        # Whitelist Read and run_block — E2B read_file should be included
-        perms = CopilotPermissions(tools=["Read", "run_block"], tools_exclude=False)
+        # Whitelist Read and run_capability — E2B read_file should be included
+        perms = CopilotPermissions(
+            tools=["Read", "run_capability"], tools_exclude=False
+        )
         allowed, _ = apply_tool_permissions(perms, use_e2b=True)
         assert "mcp__copilot__read_file" in allowed
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
         # Write not whitelisted — write_file should NOT be included
         assert "mcp__copilot__write_file" not in allowed
 
@@ -513,7 +553,7 @@ class TestApplyToolPermissions:
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__Write",
                 "mcp__copilot__Edit",
                 "mcp__copilot__read_file",
@@ -527,17 +567,19 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object()},
+            {"run_capability": object()},
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "Read", "Write", "Edit", "Task"]),
+            return_value=frozenset(["run_capability", "Read", "Write", "Edit", "Task"]),
         )
-        # Whitelist Write and run_block — mcp__copilot__Write should be included
-        perms = CopilotPermissions(tools=["Write", "run_block"], tools_exclude=False)
+        # Whitelist Write and run_capability — mcp__copilot__Write should be included
+        perms = CopilotPermissions(
+            tools=["Write", "run_capability"], tools_exclude=False
+        )
         allowed, _ = apply_tool_permissions(perms, use_e2b=False)
         assert "mcp__copilot__Write" in allowed
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
         # Edit not whitelisted — should NOT be included
         assert "mcp__copilot__Edit" not in allowed
         # read_tool_result always preserved for SDK internals
@@ -548,7 +590,7 @@ class TestApplyToolPermissions:
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
-                "mcp__copilot__run_block",
+                "mcp__copilot__run_capability",
                 "mcp__copilot__read_tool_result",
                 "mcp__copilot__read_file",
                 "Task",
@@ -560,11 +602,11 @@ class TestApplyToolPermissions:
         )
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": object()},
+            {"run_capability": object()},
         )
         mocker.patch(
             "backend.copilot.permissions.all_known_tool_names",
-            return_value=frozenset(["run_block", "Read", "Task"]),
+            return_value=frozenset(["run_capability", "Read", "Task"]),
         )
         mocker.patch(
             "backend.copilot.sdk.e2b_file_tools.E2B_FILE_TOOL_NAMES",
@@ -574,7 +616,7 @@ class TestApplyToolPermissions:
         perms = CopilotPermissions(tools=["Read"], tools_exclude=True)
         allowed, _ = apply_tool_permissions(perms, use_e2b=True)
         assert "mcp__copilot__read_file" not in allowed
-        assert "mcp__copilot__run_block" in allowed
+        assert "mcp__copilot__run_capability" in allowed
         # mcp__copilot__read_tool_result is always preserved for SDK internals
         assert "mcp__copilot__read_tool_result" in allowed
 
@@ -615,7 +657,10 @@ class TestSdkBuiltinToolNames:
 
     def test_all_tool_names_is_union(self):
         """ALL_TOOL_NAMES must equal PLATFORM_TOOL_NAMES | SDK_BUILTIN_TOOL_NAMES."""
-        assert ALL_TOOL_NAMES == PLATFORM_TOOL_NAMES | SDK_BUILTIN_TOOL_NAMES
+        assert (
+            ALL_TOOL_NAMES
+            == PLATFORM_TOOL_NAMES | SDK_BUILTIN_TOOL_NAMES | CAPABILITY_GATE_NAMES
+        )
 
     def test_no_overlap_between_platform_and_sdk(self):
         """Platform and SDK built-in names must not overlap."""
@@ -703,9 +748,11 @@ class TestDreamPermissionsPreset:
             assert tool not in effective, f"{tool} must be blocked for dream sub-agent"
 
     def test_effective_set_matches_whitelist_intersection(self):
-        # Sanity: effective set = whitelist ∩ known universe.  web_fact_check
-        # is intentionally absent from the universe until P0.5 lands, so the
-        # effective set today is the four memory tools.
+        # Sanity: effective set = whitelist ∩ known universe, plus the
+        # dispatcher the whitelist needs — all four memory tools are deferred
+        # (#14569), so without run_capability the dream pass could reach none
+        # of them.  web_fact_check is intentionally absent from the universe
+        # until P0.5 lands.
         effective = DREAM_PERMISSIONS.effective_allowed_tools(ALL_TOOL_NAMES)
         assert effective == frozenset(
             {
@@ -713,5 +760,168 @@ class TestDreamPermissionsPreset:
                 "memory_store",
                 "memory_forget_search",
                 "memory_forget_confirm",
+                "run_capability",
             }
         )
+
+
+class TestApplyToolPermissionsIsLossless:
+    """A filter that permits everything must be indistinguishable from no
+    filter. It was not: outside E2B only ``read_file`` has an MCP wrapper, so
+    mapping ``Write``/``Edit`` solely to their MCP names dropped them from
+    every filtered turn — silently, since an absent tool just never gets
+    called. Children are the only turns that carry a filter, so this removed
+    file editing from every spawned agent on non-E2B deployments."""
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_identity_whitelist_equals_no_filter(self, use_e2b: bool) -> None:
+        from backend.copilot.permissions import (
+            ALL_TOOL_NAMES,
+            CopilotPermissions,
+            apply_tool_permissions,
+        )
+
+        identity = CopilotPermissions(tools=sorted(ALL_TOOL_NAMES), tools_exclude=False)
+        allowed_identity, _ = apply_tool_permissions(identity, use_e2b=use_e2b)
+        allowed_unfiltered, _ = apply_tool_permissions(
+            CopilotPermissions(), use_e2b=use_e2b
+        )
+        assert set(allowed_identity) == set(allowed_unfiltered)
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_a_child_keeps_its_file_tools(self, use_e2b: bool) -> None:
+        from backend.copilot.permissions import (
+            CopilotPermissions,
+            apply_tool_permissions,
+        )
+        from backend.copilot.tree import (
+            DESCENT_DENIED_TOOLS,
+            SpawnRequest,
+            derive_child_envelope,
+            root_envelope,
+        )
+
+        child = derive_child_envelope(root_envelope("t"), SpawnRequest(may_spawn=True))
+        child_permissions = child.as_permissions()
+        assert child_permissions is not None
+        allowed_child, _ = apply_tool_permissions(child_permissions, use_e2b=use_e2b)
+        allowed_unfiltered, _ = apply_tool_permissions(
+            CopilotPermissions(), use_e2b=use_e2b
+        )
+        lost = set(allowed_unfiltered) - set(allowed_child)
+        # A child loses exactly the descent-denied set — nothing else.
+        assert lost == {
+            name
+            for name in allowed_unfiltered
+            if name.rsplit("__", 1)[-1] in DESCENT_DENIED_TOOLS
+        }
+
+
+# ---------------------------------------------------------------------------
+# Providers: the ceiling on a run's connected accounts
+# ---------------------------------------------------------------------------
+
+
+class TestProviders:
+    def test_no_filter_allows_every_provider(self):
+        perms = CopilotPermissions()
+        assert perms.is_provider_allowed("github")
+        assert allowed_providers(perms) is None
+        assert allowed_providers(None) is None
+
+    def test_deny_list(self):
+        perms = CopilotPermissions(providers=["github"], providers_exclude=True)
+        assert not perms.is_provider_allowed("github")
+        assert perms.is_provider_allowed("linear")
+        assert allowed_providers(perms) == ()
+        assert not perms.is_empty()
+
+    def test_allow_list(self):
+        perms = CopilotPermissions(providers=["github"], providers_exclude=False)
+        assert perms.is_provider_allowed("github")
+        assert not perms.is_provider_allowed("linear")
+        # Every provider a box can be handed is allowed: no ceiling to record.
+        assert allowed_providers(perms) is None
+
+    def test_an_allow_list_of_nothing_the_box_can_use_allows_nothing(self):
+        perms = CopilotPermissions(providers=["linear"], providers_exclude=False)
+        assert allowed_providers(perms) == ()
+
+    def test_a_tool_filter_alone_does_not_restrict_providers(self):
+        perms = CopilotPermissions(tools=["web_fetch"], tools_exclude=True)
+        assert allowed_providers(perms) is None
+
+    def test_a_child_cannot_widen_its_parent(self):
+        parent = CopilotPermissions(providers=["github"], providers_exclude=True)
+        child = CopilotPermissions(providers=["github"], providers_exclude=False)
+        merged = child.merged_with_parent(parent, ALL_TOOL_NAMES)
+        assert not merged.is_provider_allowed("github")
+        assert allowed_providers(merged) == ()
+
+    def test_the_ceiling_survives_serialisation(self):
+        """Permissions cross the executor queue as JSON."""
+        perms = CopilotPermissions(providers=["github"], providers_exclude=True)
+        again = CopilotPermissions.model_validate_json(perms.model_dump_json())
+        assert not again.is_provider_allowed("github")
+
+    def test_a_merged_ceiling_survives_the_queue_without_its_parent(self):
+        """``_parent`` is private and does not cross the executor queue."""
+        parent = CopilotPermissions(providers=["github"], providers_exclude=True)
+        child = CopilotPermissions()
+        merged = child.merged_with_parent(parent, ALL_TOOL_NAMES)
+        again = CopilotPermissions.model_validate_json(merged.model_dump_json())
+        assert not again.is_provider_allowed("github")
+        assert allowed_providers(again) == ()
+
+    def test_flattening_keeps_an_open_ceiling_open(self):
+        assert CopilotPermissions().flattened_providers() == ([], True)
+        # Under a parent too: not an allow-list of today's providers, which
+        # would deny one added later.
+        merged = CopilotPermissions().merged_with_parent(
+            CopilotPermissions(tools=["web_fetch"], tools_exclude=True),
+            ALL_TOOL_NAMES,
+        )
+        assert merged.flattened_providers() == ([], True)
+        merged = CopilotPermissions().merged_with_parent(
+            CopilotPermissions(), ALL_TOOL_NAMES
+        )
+        assert allowed_providers(merged) is None
+
+    @pytest.mark.parametrize("round_trip", [False, True])
+    def test_a_child_restriction_under_an_open_parent_is_kept(self, round_trip):
+        """The other direction of inheritance: the child narrows, the parent
+        does not."""
+        child = CopilotPermissions(providers=["github"], providers_exclude=True)
+        merged = child.merged_with_parent(CopilotPermissions(), ALL_TOOL_NAMES)
+        if round_trip:
+            merged = CopilotPermissions.model_validate_json(merged.model_dump_json())
+        assert not merged.is_provider_allowed("github")
+        assert allowed_providers(merged) == ()
+
+    def test_child_and_parent_restrictions_combine(self):
+        child = CopilotPermissions(providers=["github"], providers_exclude=False)
+        parent = CopilotPermissions(providers=["linear"], providers_exclude=True)
+        merged = child.merged_with_parent(parent, ALL_TOOL_NAMES)
+        assert merged.is_provider_allowed("github")
+        assert not merged.is_provider_allowed("linear")
+        assert allowed_providers(merged) is None  # github is every sandbox provider
+
+
+class TestGraphProviders:
+    def _graph(self, *providers):
+        from unittest.mock import MagicMock
+
+        graph = MagicMock()
+        graph.aggregate_credentials_inputs.return_value = {
+            "credentials": (MagicMock(provider=frozenset(providers)), set(), True)
+        }
+        return graph
+
+    def test_a_graph_using_a_denied_provider_is_named(self):
+        from backend.copilot.permissions import denied_graph_providers
+
+        perms = CopilotPermissions(providers=["github"], providers_exclude=True)
+        assert denied_graph_providers(perms, self._graph("github")) == ["github"]
+        # Providers the ceiling does not cover are not its to refuse.
+        assert denied_graph_providers(perms, self._graph("slack")) == []
+        assert denied_graph_providers(None, self._graph("github")) == []

@@ -20,9 +20,10 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
-import { DotsThreeVertical } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -111,19 +112,15 @@ export function ScheduleActionsDropdown({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
+            className="ml-auto shrink-0 rounded p-1 text-foreground-subtle hover:bg-surface-hover"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <DotsThreeVertical className="h-5 w-5 text-gray-400" />
+            <Icon icon={MoreVerticalIcon} className="h-5 w-5" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            onClick={handleRunNow}
-            disabled={isRunning}
-            className="flex items-center gap-2"
-          >
+          <DropdownMenuItem onClick={handleRunNow} disabled={isRunning}>
             {isRunning ? "Running..." : "Run now"}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -132,7 +129,6 @@ export function ScheduleActionsDropdown({
               e.stopPropagation();
               setShowDeleteDialog(true);
             }}
-            className="flex items-center gap-2"
           >
             Delete schedule
           </DropdownMenuItem>

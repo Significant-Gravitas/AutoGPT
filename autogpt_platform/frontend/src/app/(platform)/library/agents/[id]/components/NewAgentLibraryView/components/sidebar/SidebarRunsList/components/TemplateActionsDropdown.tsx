@@ -16,9 +16,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { DotsThreeVertical } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -67,11 +68,11 @@ export function TemplateActionsDropdown({ agent, template, onDeleted }: Props) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
+            className="ml-auto shrink-0 rounded p-1 text-foreground-subtle hover:bg-surface-hover"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <DotsThreeVertical className="h-5 w-5 text-gray-400" />
+            <Icon icon={MoreVerticalIcon} className="h-5 w-5" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -80,7 +81,6 @@ export function TemplateActionsDropdown({ agent, template, onDeleted }: Props) {
               e.stopPropagation();
               setShowDeleteDialog(true);
             }}
-            className="flex items-center gap-2"
           >
             Delete template
           </DropdownMenuItem>

@@ -8,21 +8,67 @@ the unit-level safety net for the control-flow.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prisma.enums import (
+    DreamPassPhase,
+    DreamPassRoute,
+    DreamPassStatus,
+    DreamPassTrigger,
+    SubscriptionTier,
+)
 
+from backend.copilot import rate_limit as rate_limit_mod
+from backend.copilot import token_tracking as token_tracking_mod
+from backend.copilot import usage_activation_fixtures
+from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.inference.complete import StructuredCompletion
+from backend.copilot.inference.context import (
+    InferenceError,
+    InferenceUsage,
+    RouteDecision,
+)
+from backend.copilot.inference.trace import TracedCall
+from backend.copilot.trial_cost_context import get_trial_cost_context
+from backend.data.dream_pass_models import DreamPassDraft
+from backend.data.pro_activation import UsageActivationState
+from backend.executor.batch_executor import PendingEntry
+from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
+from backend.util.llm.providers import BatchResultRow
+
+from . import batch_handoff as batch_handoff_mod
+from . import batch_submit
+from . import billing as billing_mod
+from . import clamp as clamp_mod
+from . import dedup as dedup_mod
+from . import nightly_batch as nightly_batch_mod
 from . import orchestrator as orchestrator_mod
+from .apply import INGESTION_DRAIN_TIMEOUT_SECONDS, LOCK_DRAIN_RENEWAL_SECONDS
+from .batch_callbacks import handle_dream_batch_result
+from .batch_submit import persist_input_bundle
+from .citations import fact_scopes
 from .fetch import DreamInput, EpisodeRow, FactRow
-from .llm import CompletionUsage, DreamLLMError, StructuredCompletion
+from .locks import (
+    BATCH_LOCK_TTL_SECONDS,
+    DEFAULT_LOCK_TTL_SECONDS,
+    DreamLockHeld,
+    DreamLockLostError,
+)
+from .locks import dream_lock as real_dream_lock
+from .pass_run import DreamPassRun
+from .ratification import RatificationResult
 from .schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
     DreamDemotion,
     DreamOperations,
     EntityInvalidation,
+    IngestionDrainStatus,
     ProposedFinding,
     RecombinationOutput,
 )
@@ -33,9 +79,31 @@ def _wrap(value, model: str = "test-model") -> StructuredCompletion:
 
     Tests that don't care about token bookkeeping use this so they can
     keep the side_effect list short. Tests that exercise the usage
-    pipeline build their own ``CompletionUsage`` with real numbers.
+    pipeline build their own ``InferenceUsage`` with real numbers.
     """
-    return StructuredCompletion(value=value, usage=CompletionUsage(model=model))
+    return StructuredCompletion(
+        value=value, usage=InferenceUsage(model=model, payer="platform_allowance")
+    )
+
+
+def _route(scope, job, *, config=None) -> RouteDecision:
+    """A fixed sync route naming the job's tier, so the phases don't read
+    the deployment's transport (``resolve_route`` has its own tests)."""
+    return RouteDecision(
+        engine="provider_sync",
+        auth_provider="platform",
+        provider="open_router",
+        model=f"{job.tier}-model",
+        payer="platform_allowance",
+        execution_path="sync_baseline",
+        cost_log_provider="open_router",
+        reason="test",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_route(mocker):
+    return mocker.patch.object(orchestrator_mod, "resolve_route", side_effect=_route)
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +113,7 @@ def force_sync_baseline(mocker):
 
     Step 5 of the plan routes dream pass to the Anthropic batch path
     when an Anthropic key is configured; these tests mock
-    ``structured_completion`` directly to exercise the sync three-phase
+    ``structured_complete`` directly to exercise the sync three-phase
     flow, so we have to override the routing decision to keep them
     valid. The batch path has its own dedicated test coverage in
     ``batch_callbacks_test.py``.
@@ -94,9 +162,24 @@ def _build_input(*, episodes=1, facts=1) -> DreamInput:
     )
 
 
+class _HeldLock:
+    """A dream lock handle whose lock is still held whenever a pass looks."""
+
+    token = "tok"
+
+    async def held(self) -> bool:
+        return True
+
+    async def extend(self, ttl_seconds: int) -> bool:
+        return True
+
+    def disown(self) -> None:
+        return None
+
+
 @asynccontextmanager
 async def _noop_lock(*args, **kwargs):
-    yield
+    yield _HeldLock()
 
 
 @pytest.fixture(autouse=True)
@@ -112,12 +195,17 @@ def _stub_billing(mocker):
     Redis/Supabase. Tests that exercise the budget-skip path re-patch
     ``check_dream_budget`` with a (False, reason) AsyncMock.
 
-    ``record_phase_cost`` is a no-op fire-and-forget here; the billing
+    ``record_phase_cost`` hands the usage straight back here; the billing
     seam itself has dedicated coverage in ``billing_test.py``."""
     mocker.patch.object(
         orchestrator_mod, "check_dream_budget", AsyncMock(return_value=(True, None))
     )
-    mocker.patch.object(orchestrator_mod, "record_phase_cost", AsyncMock())
+    mocker.patch.object(orchestrator_mod, "record_phase_cost", _charge_spy())
+
+
+def _charge_spy() -> AsyncMock:
+    """``record_phase_cost`` returning the usage it was given, as priced."""
+    return AsyncMock(side_effect=lambda ctx, usage: usage)
 
 
 @pytest.fixture(autouse=True)
@@ -127,6 +215,21 @@ def _stub_batch_flag(mocker):
     mocker.patch.object(
         orchestrator_mod, "is_feature_enabled", AsyncMock(return_value=False)
     )
+
+
+@pytest.fixture(autouse=True)
+def _stub_marker_redis(mocker):
+    """No last-completed marker by default (get → None) so every existing
+    test runs the full pass; the stamp write is a silent success. The
+    no-new-activity tests reconfigure ``get`` on the returned mock."""
+    redis = AsyncMock()
+    redis.get = AsyncMock(return_value=None)
+    redis.set = AsyncMock(return_value=True)
+    mocker.patch(
+        "backend.data.redis_client.get_redis_async",
+        AsyncMock(return_value=redis),
+    )
+    return redis
 
 
 @pytest.mark.asyncio
@@ -139,7 +242,7 @@ async def test_empty_input_returns_skipped(mocker):
     )
     structured = mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(),
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
@@ -150,6 +253,63 @@ async def test_empty_input_returns_skipped(mocker):
     assert result.skip_reason == "no_input"
     structured.assert_not_called()
     apply_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_is_threaded_to_lock_and_gather(mocker):
+    lock_calls: list[tuple[tuple, dict]] = []
+
+    @asynccontextmanager
+    async def scoped_lock(*args, **kwargs):
+        lock_calls.append((args, kwargs))
+        yield
+
+    mocker.patch.object(orchestrator_mod, "dream_lock", scoped_lock)
+    gather = mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input(episodes=0, facts=0)),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
+
+    assert result.skipped is True
+    expert_scope = MemoryScope.for_expert("u", "expert-1")
+    assert lock_calls[0][0][0] == expert_scope
+    gather.assert_awaited_once_with(expert_scope)
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_reaches_marker_and_apply_on_nonempty_pass(mocker):
+    input_bundle = _build_input().model_copy(
+        update={"expert_id": "expert-1", "group_id": "expert_scope"}
+    )
+    gather = mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=input_bundle),
+    )
+    read_marker = mocker.patch.object(
+        orchestrator_mod,
+        "_read_last_completed_marker",
+        AsyncMock(return_value=None),
+    )
+    stamp_marker = mocker.patch.object(
+        orchestrator_mod,
+        "_stamp_last_completed_marker",
+        AsyncMock(),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
+
+    assert result.skipped is False
+    assert result.error is None
+    expert_scope = MemoryScope.for_expert("u", "expert-1")
+    gather.assert_awaited_once_with(expert_scope)
+    read_marker.assert_awaited_once_with(expert_scope)
+    assert apply_mock.await_args.args[0] == expert_scope
+    stamp_marker.assert_awaited_once_with(expert_scope, input_bundle.window_end)
 
 
 @pytest.mark.asyncio
@@ -210,7 +370,7 @@ async def test_happy_path_runs_three_steps_and_applies(mocker):
     )
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
         ),
@@ -226,6 +386,9 @@ async def test_happy_path_runs_three_steps_and_applies(mocker):
                 "demotion_count": 0,
                 "demotion_failed_count": 0,
                 "entity_invalidation_count": 0,
+                # Non-default value so the assertion below proves the status
+                # is threaded from apply_stats, not left at the schema default.
+                "ingestion_drain_status": IngestionDrainStatus.timed_out,
             }
         ),
     )
@@ -238,7 +401,213 @@ async def test_happy_path_runs_three_steps_and_applies(mocker):
     assert result.proposal_count == 1
     assert result.summary_for_user == "Dream consolidated 1 fact."
     assert result.dream_session_id == "s1"
+    assert result.ingestion_drain_status is IngestionDrainStatus.timed_out
     apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_held_dream_lock_handle_is_threaded_into_apply(mocker):
+    """apply renews the dream lock before the drain + demotions, which it can
+    only do with the handle the orchestrator holds. Dropping that kwarg would
+    silently reinstate the lock-expiry-during-drain window, so pin it."""
+    sentinel_handle = _HeldLock()
+
+    @asynccontextmanager
+    async def _handle_lock(*args, **kwargs):
+        yield sentinel_handle
+
+    mocker.patch.object(orchestrator_mod, "dream_lock", _handle_lock)
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    consolidated = ConsolidationOutput(
+        facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[
+                _wrap(consolidated),
+                _wrap(RecombinationOutput(proposals=[])),
+                _wrap(DreamOperations(writes=consolidated.facts)),
+            ]
+        ),
+    )
+    apply_mock = mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(
+            return_value={
+                "session_id": "s1",
+                "consolidated_count": 1,
+                "ingestion_drain_status": IngestionDrainStatus.drained,
+            }
+        ),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    apply_mock.assert_awaited_once()
+    assert apply_mock.await_args.kwargs["lock_handle"] is sentinel_handle
+
+
+@pytest.mark.asyncio
+async def test_missing_drain_key_folds_to_fail_closed_timed_out(mocker):
+    """When apply_stats omits the drain key entirely (e.g. an upstream bug),
+    the result must fail closed to ``timed_out`` — writes potentially at
+    risk — never silently read as a confirmed ``drained`` success."""
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    consolidated = ConsolidationOutput(
+        facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
+    )
+    recombined = RecombinationOutput(proposals=[])
+    sanitized = DreamOperations(summary_for_user="quiet night")
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        # No ``ingestion_drain_status`` key at all.
+        AsyncMock(return_value={"session_id": "s1", "consolidated_count": 1}),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    assert result.ingestion_drain_status is IngestionDrainStatus.timed_out
+
+
+@pytest.mark.asyncio
+async def test_each_phase_threads_its_own_llm_timeout_into_its_job(
+    mocker,
+):
+    """Recombine/sanitize got 16384-token output budgets because real
+    responses exceed 8192 tokens; at real decode speeds those responses
+    outlive the shared 120s ``call_provider`` default, so each phase's
+    inference job must carry its own wall-clock budget —
+    otherwise the timeout kills exactly the responses the token-cap
+    raise was meant to save."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    consolidated = ConsolidationOutput(
+        facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
+    )
+    recombined = RecombinationOutput(proposals=[])
+    sanitized = DreamOperations(
+        writes=[],
+        proposals=[],
+        demotions=[],
+        entity_invalidations=[],
+        summary_for_user="quiet night",
+    )
+    llm_mock = mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(return_value={"session_id": "s1"}),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    timeouts = [call.args[0].job.timeout_seconds for call in llm_mock.call_args_list]
+    assert timeouts == [
+        orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS,
+        orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS,
+        orchestrator_mod.SANITIZE_TIMEOUT_SECONDS,
+    ]
+
+
+# A 120s ceiling truncates a 16384-token decode. Pinned as a literal, not
+# imported from `DEFAULT_REQUEST_TIMEOUT_SECONDS`: that setting sizes generic
+# block calls and is free to move independently of this budget.
+_TRUNCATING_TIMEOUT_SECONDS = 120
+
+
+def test_long_output_phase_timeouts_clear_the_120s_truncation_threshold():
+    """Regression pin: at 120s the phases cannot decode the 16384 output
+    tokens recombine/sanitize are budgeted for. If these ever drop to (or
+    below) that, the token-cap raise becomes dead letter again."""
+    assert orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS > _TRUNCATING_TIMEOUT_SECONDS
+    assert orchestrator_mod.SANITIZE_TIMEOUT_SECONDS > _TRUNCATING_TIMEOUT_SECONDS
+    assert orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS >= _TRUNCATING_TIMEOUT_SECONDS
+
+
+# A thinking standard model's consolidate answer, measured on a test bed:
+# Sonnet 5 through OpenRouter, on a 31-fact, 31-episode window, answered in
+# 5,912 output tokens, 5,068 of them reasoning. Given 4096 it spent them all
+# on reasoning, answered nothing, and the pass failed with empty_content.
+_THINKING_CONSOLIDATE_ANSWER_TOKENS = 5_912
+
+
+def test_consolidate_budget_leaves_a_thinking_model_room_to_answer():
+    """Regression pin: the consolidate budget covers a thinking model's
+    reasoning as well as its answer, and the batch path asks for the same
+    budgets as the sync one."""
+    assert orchestrator_mod.CONSOLIDATE_MAX_TOKENS > _THINKING_CONSOLIDATE_ANSWER_TOKENS
+    assert batch_submit.PHASE_MAX_TOKENS == {
+        "consolidate": orchestrator_mod.CONSOLIDATE_MAX_TOKENS,
+        "recombine": orchestrator_mod.RECOMBINE_MAX_TOKENS,
+        "sanitize": orchestrator_mod.SANITIZE_MAX_TOKENS,
+    }
+
+
+def test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope():
+    """Budget-math invariant with the drain budgeted as its OWN line item.
+
+    The scheduler abandons the whole pass at
+    ``SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS`` (1800s), so the full pass
+    — LLM phases + the ingestion drain + the remaining non-LLM headroom —
+    must fit inside it with slack. The dream lock (``DEFAULT_LOCK_TTL_SECONDS``,
+    1800s) is a separate, data-integrity boundary: apply RENEWS the lock to
+    a fresh budget right before the drain (``LOCK_DRAIN_RENEWAL_SECONDS``),
+    so the drain no longer counts against the original lock TTL — only the
+    LLM phases + non-drain headroom do, and those must clear a 90%-of-TTL
+    bar so a near-worst-case pass never reaches the lock expiry while writes
+    are landing. A future bump to any phase timeout (or a cut to either
+    envelope) fails here loudly."""
+    llm = (
+        orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS
+        + orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS
+        + orchestrator_mod.SANITIZE_TIMEOUT_SECONDS
+    )
+    non_drain_headroom = orchestrator_mod.DREAM_NON_LLM_HEADROOM_SECONDS
+    drain = INGESTION_DRAIN_TIMEOUT_SECONDS
+    store_io = orchestrator_mod.DREAM_STORE_IO_SECONDS
+
+    # Whole pass (including the drain) must fit the scheduler abandonment
+    # boundary with real margin. The store round trips only reach their
+    # total when every one runs to its deadline; past the boundary the
+    # scheduler stops waiting, and the pass, not cancelled, finishes.
+    worst_case = llm + drain + non_drain_headroom
+    assert worst_case < SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
+
+    # The lock only has to cover everything UP TO the drain, because the
+    # drain runs under a freshly renewed lock: every store round trip at its
+    # deadline included. Require 10% slack so the lock never expires
+    # mid-write.
+    assert llm + non_drain_headroom + store_io <= 0.9 * DEFAULT_LOCK_TTL_SECONDS
+
+    # The renewal must comfortably outlast the drain cap it protects.
+    assert LOCK_DRAIN_RENEWAL_SECONDS > drain
 
 
 @pytest.mark.asyncio
@@ -252,8 +621,8 @@ async def test_consolidate_llm_failure_surfaces_error_and_skips_apply(mocker):
     )
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
-        AsyncMock(side_effect=DreamLLMError("boom")),
+        "structured_complete",
+        AsyncMock(side_effect=InferenceError("boom")),
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
 
@@ -296,7 +665,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
 
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(huge_sanitized)]
         ),
@@ -304,7 +673,17 @@ async def test_clamps_oversized_sanitizer_output(mocker):
 
     captured: dict[str, DreamOperations] = {}
 
-    async def fake_apply(user_id, pass_id, ops, *, known_fact_uuids=None):
+    async def fake_apply(
+        scope,
+        pass_id,
+        ops,
+        *,
+        known_fact_uuids=None,
+        known_episode_uuids=None,
+        fact_scopes=None,
+        lock_handle=None,
+        lease=None,
+    ):
         captured["ops"] = ops
         return {
             "session_id": "s",
@@ -343,7 +722,7 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
     )
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[
                 _wrap(ConsolidationOutput(facts=[])),
@@ -365,7 +744,17 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
 
     captured: dict[str, DreamOperations] = {}
 
-    async def fake_apply(user_id, pass_id, ops, *, known_fact_uuids=None):
+    async def fake_apply(
+        scope,
+        pass_id,
+        ops,
+        *,
+        known_fact_uuids=None,
+        known_episode_uuids=None,
+        fact_scopes=None,
+        lock_handle=None,
+        lease=None,
+    ):
         captured["ops"] = ops
         return {
             "session_id": "s",
@@ -392,17 +781,13 @@ def test_clamp_operations_demotion_cap_rules():
         demotions=[DreamDemotion(edge_uuid=f"e{i}", reason="r") for i in range(50)],
     )
     # 5% of 100 = 5 (below the absolute cap)
-    assert len(orchestrator_mod._clamp_operations(ops, 100).demotions) == 5
+    assert len(clamp_mod.clamp_operations(ops, 100).demotions) == 5
     # 5% of 1000 = 50, so the absolute cap binds
     assert (
-        len(orchestrator_mod._clamp_operations(ops, 1000).demotions)
-        == MAX_DEMOTIONS_PER_PASS
+        len(clamp_mod.clamp_operations(ops, 1000).demotions) == MAX_DEMOTIONS_PER_PASS
     )
     # Unknown active-fact count -> absolute cap only, never zero
-    assert (
-        len(orchestrator_mod._clamp_operations(ops, -1).demotions)
-        == MAX_DEMOTIONS_PER_PASS
-    )
+    assert len(clamp_mod.clamp_operations(ops, -1).demotions) == MAX_DEMOTIONS_PER_PASS
 
 
 def test_clamp_operations_small_graph_demotion_cap_floors_at_one():
@@ -413,14 +798,14 @@ def test_clamp_operations_small_graph_demotion_cap_floors_at_one():
     ops = DreamOperations(
         demotions=[DreamDemotion(edge_uuid=f"e{i}", reason="r") for i in range(50)],
     )
-    assert len(orchestrator_mod._clamp_operations(ops, 10).demotions) == 1
-    assert len(orchestrator_mod._clamp_operations(ops, 1).demotions) == 1
-    assert len(orchestrator_mod._clamp_operations(ops, 19).demotions) == 1
+    assert len(clamp_mod.clamp_operations(ops, 10).demotions) == 1
+    assert len(clamp_mod.clamp_operations(ops, 1).demotions) == 1
+    assert len(clamp_mod.clamp_operations(ops, 19).demotions) == 1
     # 20 facts crosses the 5% threshold back to the proportional cap
-    assert len(orchestrator_mod._clamp_operations(ops, 20).demotions) == 1
-    assert len(orchestrator_mod._clamp_operations(ops, 40).demotions) == 2
+    assert len(clamp_mod.clamp_operations(ops, 20).demotions) == 1
+    assert len(clamp_mod.clamp_operations(ops, 40).demotions) == 2
     # No active facts at all -> no demotion budget
-    assert len(orchestrator_mod._clamp_operations(ops, 0).demotions) == 0
+    assert len(clamp_mod.clamp_operations(ops, 0).demotions) == 0
 
 
 def test_hallucinated_uuid_does_not_consume_cap_slot():
@@ -434,12 +819,12 @@ def test_hallucinated_uuid_does_not_consume_cap_slot():
             DreamDemotion(edge_uuid="f0", reason="r"),
         ],
     )
-    clamped = orchestrator_mod._clamp_operations(ops, 10, known_fact_uuids={"f0"})
+    clamped = clamp_mod.clamp_operations(ops, 10, known_fact_uuids={"f0"})
     assert [d.edge_uuid for d in clamped.demotions] == ["f0"]
 
     # Without the allowlist the clamp can't pre-filter — the cap slices
     # the raw list and apply.py's filter remains the only defense.
-    unfiltered = orchestrator_mod._clamp_operations(ops, 10)
+    unfiltered = clamp_mod.clamp_operations(ops, 10)
     assert [d.edge_uuid for d in unfiltered.demotions] == ["hallucinated"]
 
 
@@ -455,7 +840,7 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
     )
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[
                 _wrap(ConsolidationOutput(facts=[])),
@@ -475,7 +860,17 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
 
     captured: dict[str, DreamOperations] = {}
 
-    async def fake_apply(user_id, pass_id, ops, *, known_fact_uuids=None):
+    async def fake_apply(
+        scope,
+        pass_id,
+        ops,
+        *,
+        known_fact_uuids=None,
+        known_episode_uuids=None,
+        fact_scopes=None,
+        lock_handle=None,
+        lease=None,
+    ):
         captured["ops"] = ops
         return {
             "session_id": "s",
@@ -503,10 +898,9 @@ def test_clamp_operations_caps_entity_invalidations():
             EntityInvalidation(entity_uuid=f"ent{i}", reason="r") for i in range(25)
         ],
     )
-    clamped = orchestrator_mod._clamp_operations(ops, 100)
+    clamped = clamp_mod.clamp_operations(ops, 100)
     assert (
-        len(clamped.entity_invalidations)
-        == orchestrator_mod.MAX_ENTITY_INVALIDATIONS_PER_PASS
+        len(clamped.entity_invalidations) == clamp_mod.MAX_ENTITY_INVALIDATIONS_PER_PASS
     )
     # The first N proposed invalidations survive, in order
     assert [e.entity_uuid for e in clamped.entity_invalidations] == [
@@ -528,7 +922,7 @@ async def test_sync_path_passes_known_fact_uuids_to_apply(mocker):
     )
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[
                 _wrap(ConsolidationOutput(facts=[])),
@@ -559,6 +953,15 @@ async def test_sync_path_passes_known_fact_uuids_to_apply(mocker):
         apply_mock.await_args.kwargs["known_fact_uuids"]
         == input_bundle.known_fact_uuids
     )
+    # What an uncited write rests on (``graphiti/recall_citations.py``).
+    assert (
+        apply_mock.await_args.kwargs["known_episode_uuids"]
+        == input_bundle.known_episode_uuids
+    )
+    # Each fact's scope, which a write's fact citations must share
+    # (``citations.py``).
+    assert apply_mock.await_args.kwargs["fact_scopes"] == fact_scopes(input_bundle)
+    assert apply_mock.await_args.kwargs["fact_scopes"]
 
 
 @pytest.mark.asyncio
@@ -567,7 +970,7 @@ async def test_lock_held_returns_skipped_lock_held(mocker):
 
     @asynccontextmanager
     async def busy_lock(*args, **kwargs):
-        raise DreamLockHeld(args[0] if args else "?")
+        raise DreamLockHeld(args[0].owner_user_id if args else "?")
         yield  # pragma: no cover
 
     mocker.patch.object(orchestrator_mod, "dream_lock", busy_lock)
@@ -591,7 +994,7 @@ async def test_budget_skip_returns_insufficient_credits_without_running_phases(m
         AsyncMock(return_value=(False, "insufficient_credits")),
     )
     structured = mocker.patch.object(
-        orchestrator_mod, "structured_completion", AsyncMock()
+        orchestrator_mod, "structured_complete", AsyncMock()
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
     fetch_mock = mocker.patch.object(
@@ -640,7 +1043,7 @@ async def test_each_completed_phase_charges_once(mocker):
     sanitized = DreamOperations()
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
+        "structured_complete",
         AsyncMock(
             side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
         ),
@@ -659,42 +1062,1911 @@ async def test_each_completed_phase_charges_once(mocker):
             }
         ),
     )
-    charge_spy = AsyncMock()
+    charge_spy = _charge_spy()
     mocker.patch.object(orchestrator_mod, "record_phase_cost", charge_spy)
 
-    await orchestrator_mod.execute_dream_pass("u")
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
 
     assert charge_spy.await_count == 3
-    phases_charged = [c.kwargs["phase_usage"].phase for c in charge_spy.await_args_list]
-    assert phases_charged == ["consolidate", "recombine", "sanitize"]
+    contexts = [c.args[0] for c in charge_spy.await_args_list]
+    assert [ctx.job.phase for ctx in contexts] == [
+        "consolidate",
+        "recombine",
+        "sanitize",
+    ]
+    # One scope per pass, one job per phase, correlated by the pass id, on
+    # the tier each phase has always run on.
+    assert {ctx.scope.expert_id for ctx in contexts} == {"expert-1"}
+    assert {ctx.job.correlation_id for ctx in contexts} == {result.pass_id}
+    assert [ctx.job.tier for ctx in contexts] == ["standard", "advanced", "standard"]
+    assert [ctx.route.model for ctx in contexts] == [
+        "standard-model",
+        "advanced-model",
+        "standard-model",
+    ]
 
 
 @pytest.mark.asyncio
-async def test_partial_failure_still_charges_completed_phases(mocker):
-    """If recombine errors after consolidate succeeded, we must still
-    bill for the consolidate tokens — we already paid the provider."""
+async def test_the_pass_usage_totals_the_priced_phases(mocker):
+    """The pass's usage reads the cost each phase was charged at."""
     mocker.patch.object(
         orchestrator_mod,
         "gather_dream_input",
         AsyncMock(return_value=_build_input()),
     )
-    consolidated = ConsolidationOutput(facts=[])
+    _stub_three_phases_and_apply(mocker)
+
+    async def priced(ctx, usage):
+        return usage.model_copy(update={"cost_usd": 0.25, "cost_source": "catalog"})
+
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", AsyncMock(side_effect=priced)
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.usage is not None
+    assert [p.cost_usd for p in result.usage.phases] == [0.25, 0.25, 0.25]
+    assert result.usage.total_cost_usd == pytest.approx(0.75)
+    assert result.usage.discount_applied == 0.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failed_phase", ["consolidate", "recombine", "sanitize"])
+@pytest.mark.parametrize(
+    "error", ["max_tokens", "invalid output shape", "provider error"]
+)
+async def test_partial_failure_still_charges_completed_phases(
+    mocker, failed_phase, error
+):
     mocker.patch.object(
         orchestrator_mod,
-        "structured_completion",
-        AsyncMock(side_effect=[_wrap(consolidated), DreamLLMError("recombine boom")]),
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    phases = ["consolidate", "recombine", "sanitize"]
+    completed = phases.index(failed_phase)
+    failure_usage = InferenceUsage(
+        model="claude-sonnet-5-5",
+        input_tokens=1001,
+        output_tokens=203,
+        cache_read_tokens=3007,
+        cache_creation_tokens=509,
+        cost_usd=0.0056052,
+        cost_source="provider",
+        payer="platform_allowance",
+    )
+    failure = InferenceError(error, usage=failure_usage)
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                _wrap(RecombinationOutput(proposals=[])),
+            ][:completed]
+            + [failure]
+        ),
     )
     apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
-    charge_spy = AsyncMock()
+    charge_spy = _charge_spy()
+    mocker.patch.object(orchestrator_mod, "record_phase_cost", charge_spy)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == f"{failed_phase}: inference_failed"
+    assert charge_spy.await_count == completed
+    assert [c.args[0].job.phase for c in charge_spy.await_args_list] == (
+        phases[:completed]
+    )
+    assert failure.usage == failure_usage
+    apply_mock.assert_not_awaited()
+
+
+def _tracing_failures(seen: list[InferenceUsage | None]):
+    """A stand-in for ``trace`` that keeps the usage the real one would write
+    on a span closing on an error (``call.usage or exc.usage``)."""
+
+    @asynccontextmanager
+    async def fake_trace(ctx):
+        call = TracedCall(ctx=ctx)
+        try:
+            yield call
+        except InferenceError as exc:
+            seen.append(call.usage or exc.usage)
+            raise
+
+    return fake_trace
+
+
+@pytest.mark.asyncio
+async def test_a_failed_phase_preserves_trace_usage_without_charging(mocker):
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    billed = InferenceUsage(
+        model="claude-sonnet-5",
+        input_tokens=1_000_000,
+        output_tokens=100_000,
+        payer="platform_allowance",
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=InferenceError(
+                "LLM JSON did not match", billed, code="schema_mismatch"
+            )
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", billing_mod.record_phase_cost
+    )
+    persist = mocker.patch(
+        "backend.copilot.inference.record.persist_and_record_usage", AsyncMock()
+    )
+    traced: list[InferenceUsage | None] = []
+    mocker.patch.object(orchestrator_mod, "trace", _tracing_failures(traced))
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
+
+    assert result.error == "consolidate: schema_mismatch", "a code, never the answer"
+    apply_mock.assert_not_awaited()
+    persist.assert_not_awaited()
+    (seen,) = traced
+    assert seen == billed
+    assert result.usage is not None
+    assert result.usage.phases == []
+    assert result.usage.total_cost_usd == 0
+
+
+@pytest.mark.asyncio
+async def test_a_phase_that_got_no_answer_records_nothing(mocker):
+    """No response came back, so nothing was billed: no cost row, and the
+    pass fails at that phase as before."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=InferenceError(
+                "LLM call failed: TimeoutError: ", code="call_failed"
+            )
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", billing_mod.record_phase_cost
+    )
+    persist = mocker.patch(
+        "backend.copilot.inference.record.persist_and_record_usage", AsyncMock()
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == "consolidate: call_failed"
+    persist.assert_not_awaited()
+    assert result.usage is not None and result.usage.phases == []
+
+
+@pytest.mark.asyncio
+async def test_a_later_failed_phase_leaves_only_the_completed_phase_charged(
+    mocker,
+):
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    billed = InferenceUsage(
+        model="advanced-model",
+        input_tokens=90,
+        output_tokens=9,
+        payer="platform_allowance",
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                InferenceError("LLM returned empty content", billed),
+            ]
+        ),
+    )
+    charge_spy = _charge_spy()
     mocker.patch.object(orchestrator_mod, "record_phase_cost", charge_spy)
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
     assert result.error is not None
     assert result.error.startswith("recombine:")
-    assert charge_spy.await_count == 1  # consolidate charged, recombine never ran
-    assert charge_spy.await_args.kwargs["phase_usage"].phase == "consolidate"
+    assert [c.args[0].job.phase for c in charge_spy.await_args_list] == [
+        "consolidate",
+    ]
+    assert result.usage is not None
+    assert [p.phase for p in result.usage.phases] == ["consolidate"]
+
+
+# ---------------------------------------------------------------------------
+# No-new-activity skip — the per-user ``dream:last_completed:{user_id}``
+# marker short-circuits the pass before phase 1 when nothing new landed.
+# ---------------------------------------------------------------------------
+
+
+def _input_with_episodes(episodes: list[EpisodeRow]) -> DreamInput:
+    """Bundle with one old active fact + the given episodes — the 'old
+    facts, maybe-stale episodes' nightly shape."""
+    return DreamInput(
+        user_id="u",
+        group_id="g",
+        window_start=datetime(2026, 5, 26, tzinfo=timezone.utc),
+        window_end=datetime(2026, 6, 9, tzinfo=timezone.utc),
+        episodes=episodes,
+        facts=[
+            FactRow(
+                uuid="f0",
+                source="A",
+                target="B",
+                name="likes",
+                fact="A likes B",
+                scope="real:global",
+                confidence=0.7,
+                status="active",
+                created_at="2026-01-01T00:00:00Z",
+            )
+        ],
+        recent_sessions=[],
+        known_fact_uuids={"f0"},
+        known_episode_uuids={e.uuid for e in episodes},
+    )
+
+
+def _episode_at(
+    valid_at: str | None,
+    *,
+    uuid: str = "e0",
+    name: str | None = None,
+    source_description: str | None = None,
+    created_at: str | None = None,
+) -> EpisodeRow:
+    return EpisodeRow(
+        uuid=uuid,
+        name=name,
+        content="hello",
+        source_description=source_description,
+        valid_at=valid_at,
+        created_at=created_at,
+    )
+
+
+def _input_with_episode_times(*valid_ats: str | None) -> DreamInput:
+    """Bundle with plain user episodes at the given ``valid_at`` timestamps."""
+    return _input_with_episodes(
+        [_episode_at(valid_at, uuid=f"e{i}") for i, valid_at in enumerate(valid_ats)]
+    )
+
+
+def _stub_three_phases_and_apply(mocker) -> AsyncMock:
+    """Minimal happy-path pipeline: empty phase outputs + a stubbed apply.
+    Returns the apply mock so callers can assert the pass actually ran."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                _wrap(RecombinationOutput(proposals=[])),
+                _wrap(DreamOperations(summary_for_user="ok")),
+            ]
+        ),
+    )
+    return mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(
+            return_value={
+                "session_id": "s",
+                "consolidated_count": 0,
+                "proposal_count": 0,
+                "demotion_count": 0,
+                "demotion_failed_count": 0,
+                "entity_invalidation_count": 0,
+            }
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_marker_newer_than_all_episodes_skips_with_no_new_activity(
+    mocker, _stub_marker_redis
+):
+    """Every episode predates the last completed pass ⇒ skip before
+    phase 1: no LLM calls, no apply, no fresh marker stamp."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(
+            return_value=_input_with_episode_times(
+                "2026-06-01T00:00:00Z", "2026-06-07T23:59:59Z"
+            )
+        ),
+    )
+    structured = mocker.patch.object(
+        orchestrator_mod, "structured_complete", AsyncMock()
+    )
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is True
+    assert result.skip_reason == "no_new_activity"
+    structured.assert_not_called()
+    apply_mock.assert_not_awaited()
+    _stub_marker_redis.set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_marker_with_old_facts_and_no_episodes_skips(mocker, _stub_marker_redis):
+    """The literal nightly bug shape: old active facts, zero episodes in
+    the window, marker present ⇒ no_new_activity (NOT no_input — facts
+    exist, so the old code would have run all three phases)."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times()),
+    )
+    structured = mocker.patch.object(
+        orchestrator_mod, "structured_complete", AsyncMock()
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is True
+    assert result.skip_reason == "no_new_activity"
+    structured.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_no_marker_runs_full_pass(mocker, _stub_marker_redis):
+    """First-ever pass (or expired marker): get → None means there's no
+    baseline to compare against, so the pass runs."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-01T00:00:00Z")),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    assert result.error is None
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_redis_error_on_marker_read_fails_open_and_runs(
+    mocker, _stub_marker_redis
+):
+    """A Redis blip on the marker read must never block a dream — the
+    marker only exists to save LLM spend."""
+    _stub_marker_redis.get.side_effect = ConnectionError("redis down")
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-01T00:00:00Z")),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    assert result.error is None
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_corrupt_marker_bytes_fail_open_and_run(mocker, _stub_marker_redis):
+    """A marker holding invalid UTF-8 bytes must fail open like any other
+    unparseable value — never escalate the cost optimization into a pass
+    failure."""
+    _stub_marker_redis.get.return_value = b"\xff\xfe corrupt"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-01T00:00:00Z")),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    assert result.error is None
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_episode_newer_than_marker_runs_pass(mocker, _stub_marker_redis):
+    """One episode landed after the last completed pass ⇒ there's new
+    material to consolidate, so the pass runs."""
+    _stub_marker_redis.get.return_value = "2026-06-05T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(
+            return_value=_input_with_episode_times(
+                "2026-06-01T00:00:00Z", "2026-06-08T12:00:00Z"
+            )
+        ),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_unparseable_episode_timestamp_counts_as_new_and_runs(
+    mocker, _stub_marker_redis
+):
+    """An episode whose valid_at/created_at can't be parsed can't be
+    proven old — fail open and run the pass."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times(None)),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dream_authored_episode_newer_than_marker_does_not_count_as_new(
+    mocker, _stub_marker_redis
+):
+    """A productive pass enqueues its own ``dream_``-prefixed episodes with
+    ``valid_at = now()`` (after the stamped ``window_end``). They must NOT
+    count as new activity, or every productive night would trigger a paid
+    no-op pass the next night that only re-reads its own output."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(
+            return_value=_input_with_episodes(
+                [
+                    _episode_at("2026-06-01T00:00:00Z", uuid="e0"),
+                    _episode_at(
+                        "2026-06-30T00:00:00Z",
+                        uuid="e1",
+                        name="dream_p-xyz_consolidate_000",
+                        source_description="dream-pass consolidation; src_episodes=e0",
+                    ),
+                ]
+            )
+        ),
+    )
+    structured = mocker.patch.object(
+        orchestrator_mod, "structured_complete", AsyncMock()
+    )
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is True
+    assert result.skip_reason == "no_new_activity"
+    structured.assert_not_called()
     apply_mock.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_normal_episode_newer_than_marker_runs_even_beside_dream_episode(
+    mocker, _stub_marker_redis
+):
+    """Excluding dream-authored episodes must not suppress genuine user
+    activity: a normal episode newer than the marker still triggers the pass
+    even when a dream-authored episode sits alongside it."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(
+            return_value=_input_with_episodes(
+                [
+                    _episode_at(
+                        "2026-06-30T00:00:00Z",
+                        uuid="e0",
+                        name="dream_p-xyz_recombine_000",
+                        source_description="dream-pass proposal",
+                    ),
+                    _episode_at("2026-06-09T12:00:00Z", uuid="e1"),
+                ]
+            )
+        ),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_episode_created_after_marker_counts_as_new_despite_old_valid_at(
+    mocker, _stub_marker_redis
+):
+    """An episode whose graph node is materialized by async ingestion after
+    the gather query has ``valid_at`` (reference_time) < marker but
+    ``created_at`` > marker. Novelty uses the later of the two, so it counts
+    as new instead of being silently dropped."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(
+            return_value=_input_with_episodes(
+                [
+                    _episode_at(
+                        "2026-06-01T00:00:00Z",
+                        uuid="e0",
+                        created_at="2026-06-09T00:00:00Z",
+                    )
+                ]
+            )
+        ),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_episode_old_in_both_valid_at_and_created_at_skips(
+    mocker, _stub_marker_redis
+):
+    """Taking the max of valid_at/created_at must not spuriously run: when
+    both timestamps predate the marker, the pass still skips."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(
+            return_value=_input_with_episodes(
+                [
+                    _episode_at(
+                        "2026-06-01T00:00:00Z",
+                        uuid="e0",
+                        created_at="2026-06-05T00:00:00Z",
+                    )
+                ]
+            )
+        ),
+    )
+    structured = mocker.patch.object(
+        orchestrator_mod, "structured_complete", AsyncMock()
+    )
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is True
+    assert result.skip_reason == "no_new_activity"
+    structured.assert_not_called()
+    apply_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_successful_pass_stamps_last_completed_marker(mocker, _stub_marker_redis):
+    """A non-skipped sync apply stamps ``dream:last_completed:{user_id}``
+    with an ISO timestamp and the ~35-day TTL so the next nightly pass
+    can skip when nothing new landed."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-08T12:00:00Z")),
+    )
+    _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    assert result.error is None
+    _stub_marker_redis.set.assert_awaited_once()
+    set_args = _stub_marker_redis.set.await_args
+    assert set_args.args[0] == "dream:last_completed:u"
+    # Stamped with the gather-window end (NOT apply-completion time) so
+    # episodes that arrive mid-pass still count as new next time.
+    stamped = datetime.fromisoformat(set_args.args[1])
+    assert stamped == datetime(2026, 6, 9, tzinfo=timezone.utc)
+    assert set_args.kwargs == {"ex": orchestrator_mod.LAST_COMPLETED_TTL_SECONDS}
+
+
+@pytest.mark.asyncio
+async def test_admin_trigger_bypasses_no_new_activity_marker(
+    mocker, _stub_marker_redis
+):
+    """status_id is set only by the admin 'dream now' trigger — the
+    memory-debugging path must run the full pipeline even when the marker
+    is newer than every episode, otherwise a re-run after prompt/flag
+    changes silently no-ops for up to the marker TTL."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-01T00:00:00Z")),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u", status_id="job-1")
+
+    assert result.skipped is False
+    assert result.error is None
+    apply_mock.assert_awaited_once()
+    # The bypass must not even read the marker — the skip is caller-gated.
+    _stub_marker_redis.get.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_failed_pass_does_not_stamp_marker(mocker, _stub_marker_redis):
+    """An LLM failure means no apply ran — the marker must NOT advance,
+    otherwise tomorrow's pass would skip material this one never chewed."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-08T12:00:00Z")),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(side_effect=InferenceError("boom")),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is not None
+    _stub_marker_redis.set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_empty_apply_stats_leave_dream_session_id_none(mocker):
+    """When apply skips the dream session (empty pass), its stats carry
+    no session_id — the result must surface ``dream_session_id=None``,
+    not an empty string."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                _wrap(RecombinationOutput(proposals=[])),
+                _wrap(DreamOperations(summary_for_user="Nothing new tonight.")),
+            ]
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(
+            return_value={
+                "consolidated_count": 0,
+                "proposal_count": 0,
+                "demotion_count": 0,
+                "demotion_failed_count": 0,
+                "entity_invalidation_count": 0,
+            }
+        ),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    assert result.dream_session_id is None
+    assert result.summary_for_user == "Nothing new tonight."
+
+
 _ = MagicMock  # keep import for editor convenience; not directly used
+
+
+class TestTransientIntentFilter:
+    """#13388: transient-intent 'facts' (questions captured as memory) are
+    dropped deterministically; durable facts and goals are kept; generic
+    world-knowledge is intentionally NOT handled here (prompt's job)."""
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "User is asking how Kubernetes works",
+            # 'asking' is transient only for interrogative questions, not
+            # durable 'asking FOR/TO' requests (#3622917532).
+            "User is asking how to deploy",
+            "User is interested in knowing which Pull Requests they currently have open",
+            "The user is wondering about the deploy timeline",
+            "user wants to know the markup on credits",
+            "User asked whether the migration is risky",
+            "User is curious about lighthouse restorations",
+            "User is trying to understand the auth flow",
+            # 'learn'/'understand'/'find out'/'interested in learning' ARE
+            # transient when followed by an interrogative (a question, not a
+            # durable skill goal / aspiration).
+            "User wants to learn how Kubernetes networking works",
+            "User is interested in learning what the credit markup is",
+            "User wants to understand how the auth flow works",
+            "User wants to find out what the credit markup is",
+            # 'confused about' / 'unsure about' require the 'about' complement
+            # and drop the transient question form (#3623648910 / #3623648918).
+            "User is confused about the auth flow",
+            "User is unsure about the migration risk",
+            # 'asking' interrogatives beyond 'how' — 'which' / 'about' branches
+            # must fire too (#3623648935).
+            "User is asking which regions are cheapest",
+            "User asked about the credit markup",
+            # Perfect-progressive auxiliary ('has been asking') must be caught
+            # by the widened leading-auxiliary group (#3623648975).
+            "User has been asking how the auth flow works",
+        ],
+    )
+    def test_flags_transient_intent(self, content):
+        assert clamp_mod._is_transient_intent(content) is True
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            # Durable goals — NOT transient, must be kept.
+            "User wants to create Bluesky blocks",
+            "User is migrating auth to Better Auth",
+            "User is building a leaf-blower-simulator game",
+            # Durable SKILL goals / aspirations — 'learn/understand/find out
+            # <thing>' with no interrogative is an aspiration, not a question
+            # (review FP fixes #3622917532 / #3622917546).
+            "User wants to learn Spanish",
+            "User is interested in learning Rust as their next language",
+            "User wants to understand distributed systems",
+            "User wants to find out about new markets to expand into",
+            # Durable REQUESTS — 'asking for/to' is semantically 'wants X',
+            # not a knowledge-seeking question (#3622917532).
+            "User is asking for weekly reports",
+            "User is asking the agent to monitor open PRs",
+            # Durable personality trait — 'curious by nature' needs no
+            # 'about' complement, so it must survive (#3622917543).
+            "User is curious by nature",
+            # 'confused'/'unsure' without the 'about' complement are durable
+            # traits, not questions — keep-pins the complement guard so a
+            # future broadening fails loudly (#3623648910).
+            "User is confused by nature",
+            # Name-subject scope guard: the deterministic gate only covers the
+            # generic 'user' subject; name-phrased transient intent is left to
+            # the sanitize prompt, so it must NOT be dropped here
+            # (#3623649071 / #3623649079).
+            "Nick is asking how to scale the cluster",
+            # Bare 'interested in <noun>' must never match — pins the carve-out
+            # so a future broadening of the regex fails loudly here.
+            "User is interested in lighthouses",
+            "User is interested in knowledge graphs",
+            # Durable facts about the user.
+            "Nick's favorite deployment region is us-east1",
+            "Nick prefers Python for backend services",
+            # Generic world-knowledge — left to the sanitize PROMPT, the
+            # code filter must NOT drop these (would risk false positives).
+            "Kubernetes uses pods as the smallest unit",
+            "Better Auth supports dual JWT validation",
+        ],
+    )
+    def test_keeps_durable_facts_goals_and_generic_knowledge(self, content):
+        assert clamp_mod._is_transient_intent(content) is False
+
+    def test_clamp_drops_transient_writes_and_proposals(self):
+        ops = DreamOperations(
+            writes=[
+                ConsolidatedFact(
+                    content="User is asking how K8s works", confidence=0.5
+                ),
+                ConsolidatedFact(content="Nick prefers Python", confidence=0.9),
+            ],
+            proposals=[
+                ProposedFinding(
+                    content="User wants to know the credit markup",
+                    confidence=0.5,
+                    rationale="x",
+                    source_fact_uuids=["f1"],
+                ),
+                ProposedFinding(
+                    content="Nick and Sarah both work on auth",
+                    confidence=0.6,
+                    rationale="y",
+                    source_fact_uuids=["f2"],
+                ),
+            ],
+            summary_for_user="ok",
+        )
+        clamped = clamp_mod.clamp_operations(ops, active_fact_count=50)
+        assert [w.content for w in clamped.writes] == ["Nick prefers Python"]
+        assert [p.content for p in clamped.proposals] == [
+            "Nick and Sarah both work on auth"
+        ]
+
+    def test_drop_transient_intent_returns_kept_and_count(self):
+        """Directly pins both outputs of _drop_transient_intent so an
+        off-by-one in the dropped_count feeding logger.info is caught."""
+        items = [
+            ConsolidatedFact(content="User is asking how K8s works", confidence=0.5),
+            ConsolidatedFact(content="Nick prefers Python", confidence=0.9),
+            ConsolidatedFact(
+                content="User wants to know the credit markup", confidence=0.4
+            ),
+            ConsolidatedFact(content="Nick deploys to us-east1", confidence=0.8),
+        ]
+        kept, dropped_count = clamp_mod._drop_transient_intent(items)
+        assert [k.content for k in kept] == [
+            "Nick prefers Python",
+            "Nick deploys to us-east1",
+        ]
+        assert dropped_count == 2
+
+    def test_drop_transient_intent_empty_and_none_dropped(self):
+        """No transient items → all kept, zero dropped."""
+        items = [
+            ConsolidatedFact(content="Nick prefers Python", confidence=0.9),
+        ]
+        kept, dropped_count = clamp_mod._drop_transient_intent(items)
+        assert [k.content for k in kept] == ["Nick prefers Python"]
+        assert dropped_count == 0
+
+
+class TestNearDuplicateWriteDedup:
+    """#13387: a single pass that emits the same fact phrased multiple ways
+    is collapsed to the longest (canonical) phrasing; genuinely distinct
+    facts — even about the same entity — are preserved."""
+
+    def test_collapses_near_identical_phrasings_keeping_longest(self):
+        writes = [
+            ConsolidatedFact(
+                content="Nick uses Terminus on his iPhone for CLI work",
+                confidence=0.6,
+            ),
+            ConsolidatedFact(
+                content=(
+                    "Nick uses Terminus on his iPhone for CLI work and wants "
+                    "it to display more ASCII characters"
+                ),
+                confidence=0.7,
+            ),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 1
+        assert len(kept) == 1
+        # The longer, more specific phrasing survives.
+        assert "more ASCII characters" in kept[0].content
+
+    def test_keeps_distinct_facts_about_same_entity(self):
+        writes = [
+            ConsolidatedFact(content="Nick prefers Python for backend", confidence=0.8),
+            ConsolidatedFact(
+                content="Nick prefers Rust for systems work", confidence=0.8
+            ),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 0
+        assert len(kept) == 2
+
+    def test_one_distinguishing_word_is_not_a_duplicate(self):
+        """Containment guard: two facts differing by a single key word
+        (auth vs billing) must NOT be merged despite high overlap."""
+        writes = [
+            ConsolidatedFact(
+                content="Nick deployed the auth service to prod", confidence=0.7
+            ),
+            ConsolidatedFact(
+                content="Nick deployed the billing service to prod", confidence=0.7
+            ),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 0
+        assert len(kept) == 2
+
+    def test_preserves_original_order_of_survivors(self):
+        writes = [
+            ConsolidatedFact(content="Alpha fact about onboarding", confidence=0.5),
+            ConsolidatedFact(content="Beta fact about billing", confidence=0.5),
+            ConsolidatedFact(content="Gamma fact about deploys", confidence=0.5),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 0
+        assert [w.content for w in kept] == [
+            "Alpha fact about onboarding",
+            "Beta fact about billing",
+            "Gamma fact about deploys",
+        ]
+
+    def test_identical_content_in_different_scopes_is_kept(self):
+        writes = [
+            ConsolidatedFact(
+                content="Nick uses Terminus on his iPhone for CLI work",
+                scope="real:global",
+                confidence=0.7,
+            ),
+            ConsolidatedFact(
+                content="Nick uses Terminus on his iPhone for CLI work",
+                scope="project:foo",
+                confidence=0.7,
+            ),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 0
+        assert len(kept) == 2
+
+    def test_survivor_absorbs_dropped_writes_provenance(self):
+        writes = [
+            ConsolidatedFact(
+                content="Nick uses Terminus on his iPhone for CLI work",
+                confidence=0.6,
+                source_episode_uuids=["ep-1", "ep-2"],
+            ),
+            ConsolidatedFact(
+                content=(
+                    "Nick uses Terminus on his iPhone for CLI work and wants "
+                    "it to display more ASCII characters"
+                ),
+                confidence=0.7,
+                source_episode_uuids=["ep-2", "ep-3"],
+            ),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 1
+        assert len(kept) == 1
+        # Survivor keeps its own uuids first, then the absorbed extras.
+        assert kept[0].source_episode_uuids == ["ep-2", "ep-3", "ep-1"]
+
+    def test_survivor_absorbs_dropped_writes_fact_citations(self):
+        """A forget of a fact only the dropped duplicate cited must still
+        reach the survivor (``graphiti/recall_cascade.py``)."""
+        writes = [
+            ConsolidatedFact(
+                content="Nick uses Terminus on his iPhone for CLI work",
+                confidence=0.6,
+                source_fact_uuids=["f-1"],
+            ),
+            ConsolidatedFact(
+                content=(
+                    "Nick uses Terminus on his iPhone for CLI work and wants "
+                    "it to display more ASCII characters"
+                ),
+                confidence=0.7,
+                source_episode_uuids=["ep-3"],
+                source_fact_uuids=["f-2"],
+            ),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 1
+        assert kept[0].source_fact_uuids == ["f-2", "f-1"]
+        assert kept[0].source_episode_uuids == ["ep-3"]
+
+    def test_word_order_permutation_is_not_merged(self):
+        writes = [
+            ConsolidatedFact(content="Alice introduced Bob to Carol", confidence=0.7),
+            ConsolidatedFact(content="Alice introduced Carol to Bob", confidence=0.7),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 0
+        assert len(kept) == 2
+
+    def test_negated_fact_is_not_merged(self):
+        writes = [
+            ConsolidatedFact(content="Nick uses vim", confidence=0.7),
+            ConsolidatedFact(content="Nick never uses vim", confidence=0.7),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 0
+        assert len(kept) == 2
+
+    @pytest.mark.parametrize(
+        "negated",
+        ["User can't use vim", "User can’t use vim"],
+        ids=["apostrophe", "typographic_apostrophe"],
+    )
+    def test_a_contracted_negation_is_not_merged(self, negated):
+        """Split at its apostrophe, "can't" left only "t" between the two
+        facts, no marker, and their 3/4 overlap merged them."""
+        writes = [
+            ConsolidatedFact(content="User can use vim", confidence=0.7),
+            ConsolidatedFact(content=negated, confidence=0.7),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 0
+        assert [w.content for w in kept] == ["User can use vim", negated]
+
+    def test_clamp_collapses_duplicate_writes(self):
+        ops = DreamOperations(
+            writes=[
+                ConsolidatedFact(
+                    content="Churn rate rose sharply in Q2", confidence=0.6
+                ),
+                ConsolidatedFact(
+                    content="The churn rate rose sharply during Q2 this year",
+                    confidence=0.7,
+                ),
+                ConsolidatedFact(
+                    content="Revenue grew 12 percent in Q2", confidence=0.8
+                ),
+            ],
+            proposals=[],
+            summary_for_user="ok",
+        )
+        clamped = clamp_mod.clamp_operations(ops, active_fact_count=50)
+        contents = [w.content for w in clamped.writes]
+        # The two churn paraphrases collapse to one; revenue fact untouched.
+        assert len(contents) == 2
+        assert any("Revenue grew" in c for c in contents)
+        assert sum("churn rate rose" in c.lower() for c in contents) == 1
+
+
+@pytest.mark.asyncio
+async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
+    """If the dream lock cannot be extended to the batch window, the
+    just-submitted batch must never be applied: it is taken back (stopped at
+    the provider, then its pending entry removed so the poller never
+    dispatches callbacks, and the bundle dropped), the lock is NOT disowned,
+    and the pass reports failure."""
+    submission = mocker.MagicMock(provider_batch_id="batch-xyz")
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.persist_input_bundle", AsyncMock()
+    )
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.phase_models_for_config",
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.submit_phase",
+        AsyncMock(return_value=submission),
+    )
+    cancel = mocker.patch(
+        "backend.copilot.dream.batch_handoff.cancel_provider_batch",
+        AsyncMock(return_value=True),
+    )
+    remove_pending = mocker.patch(
+        "backend.copilot.dream.batch_handoff.remove_pending", AsyncMock()
+    )
+    cleanup = mocker.patch(
+        "backend.copilot.dream.batch_handoff.best_effort_cleanup", AsyncMock()
+    )
+    handle = mocker.MagicMock()
+    handle.extend = AsyncMock(return_value=False)
+    handle.token = "tok"
+
+    config = mocker.MagicMock()
+    config.direct_anthropic_api_key = "key"
+
+    run = DreamPassRun.begin("u-lock-lost", "anthropic_batch")
+
+    result = await batch_handoff_mod.submit_dream_pass_batch(
+        run,
+        config=config,
+        input_bundle=_build_input(),
+        status_id=None,
+        lock_handle=handle,
+    )
+
+    cancel.assert_awaited_once_with("batch-xyz")
+    remove_pending.assert_awaited_once_with("batch-xyz")
+    cleanup.assert_awaited_once_with(run.pass_id)
+    handle.disown.assert_not_called()
+    assert result.error == "submit: lock_lost"
+
+
+# ---------------------------------------------------------------------------
+# The pass's durable DreamPass row, as execute_dream_pass writes it
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_sync_pass_records_each_step_on_its_row(mocker, fake_dream_db):
+    input_bundle = _build_input()
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=input_bundle)
+    )
+    _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None and result.skipped is False
+    pass_id, draft = fake_dream_db.writes[0]
+    assert isinstance(draft, DreamPassDraft) and draft.lease_token
+    assert result.started_at is not None
+    assert (pass_id, draft) == (
+        result.pass_id,
+        DreamPassDraft(
+            id=result.pass_id,
+            user_id="u",
+            scope_key=MemoryScope.for_user("u").scope_key,
+            route=DreamPassRoute.SYNC,
+            trigger=DreamPassTrigger.CRON,
+            started_at=result.started_at,
+            lease_token=draft.lease_token,
+            lease_expires_at=result.started_at
+            + timedelta(seconds=DEFAULT_LOCK_TTL_SECONDS),
+            # The attribution the pass started under: the suite's ready,
+            # untrialed usage state.
+            cost_context={"user_id": "u", "trial_id": None, "generation": None},
+        ),
+    )
+    assert fake_dream_db.statuses(result.pass_id) == [
+        DreamPassStatus.RUNNING,
+        DreamPassStatus.APPLYING,
+        DreamPassStatus.COMPLETE,
+    ]
+    assert fake_dream_db.phases(result.pass_id) == [
+        DreamPassPhase.GATHER,
+        DreamPassPhase.CONSOLIDATE,
+        DreamPassPhase.RECOMBINE,
+        DreamPassPhase.SANITIZE,
+        DreamPassPhase.APPLY,
+        DreamPassPhase.DONE,
+    ]
+    row = fake_dream_db.rows[result.pass_id]
+    assert (row["window_start"], row["window_end"]) == (
+        input_bundle.window_start,
+        input_bundle.window_end,
+    )
+    assert row["phase_outputs"] == {
+        "consolidate": ConsolidationOutput(facts=[]),
+        "recombine": RecombinationOutput(proposals=[]),
+        "sanitize": DreamOperations(summary_for_user="ok"),
+    }
+    assert row["operations"]["planned"] == DreamOperations(summary_for_user="ok")
+    assert row["operations"]["applied"].dream_session_id == "s"
+    assert row["usage"] == result.usage
+    assert row["completed_at"] == result.completed_at
+    # The sync route keeps no input bundle: nothing resumes it from the row.
+    # And a closed row holds no lease.
+    assert row.get("input_bundle") is None
+    assert (row["lease_token"], row["lease_expires_at"]) == (None, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "trigger, recorded",
+    [("admin", DreamPassTrigger.ADMIN), ("eval", DreamPassTrigger.EVAL)],
+)
+async def test_the_callers_trigger_is_recorded(
+    mocker, fake_dream_db, trigger, recorded
+):
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input(episodes=0, facts=0)),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u", trigger=trigger)
+
+    pass_id, draft = fake_dream_db.writes[0]
+    assert pass_id == result.pass_id
+    assert isinstance(draft, DreamPassDraft) and draft.trigger is recorded
+
+
+@pytest.mark.asyncio
+async def test_a_skipped_pass_closes_its_row_as_skipped(mocker, fake_dream_db):
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input(episodes=0, facts=0)),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert fake_dream_db.statuses(result.pass_id) == [
+        DreamPassStatus.RUNNING,
+        DreamPassStatus.SKIPPED,
+    ]
+    assert fake_dream_db.phases(result.pass_id) == [DreamPassPhase.GATHER]
+    row = fake_dream_db.rows[result.pass_id]
+    assert row["skip_reason"] == "no_input"
+    assert row["completed_at"] == result.completed_at
+
+
+@pytest.mark.asyncio
+async def test_a_pass_that_finds_the_lock_held_is_recorded_skipped(
+    mocker, fake_dream_db
+):
+    @asynccontextmanager
+    async def busy_lock(*args, **kwargs):
+        raise DreamLockHeld("u")
+        yield  # pragma: no cover
+
+    mocker.patch.object(orchestrator_mod, "dream_lock", busy_lock)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert fake_dream_db.statuses(result.pass_id) == [
+        DreamPassStatus.RUNNING,
+        DreamPassStatus.SKIPPED,
+    ]
+    assert fake_dream_db.rows[result.pass_id]["skip_reason"] == "lock_held"
+
+
+@pytest.mark.asyncio
+async def test_a_phase_failure_closes_the_row_errored_at_that_phase(
+    mocker, fake_dream_db
+):
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                InferenceError("provider down"),
+            ]
+        ),
+    )
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == "recombine: inference_failed"
+    apply_mock.assert_not_awaited()
+    assert fake_dream_db.statuses(result.pass_id) == [
+        DreamPassStatus.RUNNING,
+        DreamPassStatus.ERRORED,
+    ]
+    assert fake_dream_db.phases(result.pass_id) == [
+        DreamPassPhase.GATHER,
+        DreamPassPhase.CONSOLIDATE,
+        DreamPassPhase.RECOMBINE,
+    ]
+    row = fake_dream_db.rows[result.pass_id]
+    assert row["error"] == result.error
+    assert list(row["phase_outputs"]) == ["consolidate"]
+    assert row["usage"] == result.usage
+    assert [p.phase for p in row["usage"].phases] == ["consolidate"]
+
+
+@pytest.mark.asyncio
+async def test_a_pass_whose_insert_is_not_confirmed_never_reads_the_graph(
+    mocker, fake_dream_db, caplog
+):
+    """A hard forget marks only passes whose rows it can read: a pass whose
+    insert failed or ran out of time stops before it gathers."""
+    fake_dream_db.fail = True
+    gather = mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    with caplog.at_level(logging.WARNING):
+        result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == "pass: record_unconfirmed" and result.skipped is False
+    gather.assert_not_awaited()
+    apply_mock.assert_not_awaited()
+    assert fake_dream_db.writes == []
+    assert "could not insert its record" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("landed", [False, None], ids=["refused", "failed"])
+async def test_a_pass_whose_read_set_is_not_on_its_row_makes_no_model_call(
+    mocker, fake_dream_db, landed
+):
+    """What the pass read goes on its row with the gather, before the first
+    model call: a write the row refused (closed or gone, with no stop to
+    report) or that failed ends the pass there."""
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    mocker.patch.object(
+        orchestrator_mod, "record_gathered", AsyncMock(return_value=landed)
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+    consolidate = mocker.patch.object(orchestrator_mod, "_run_consolidate", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == "gather: record_failed"
+    consolidate.assert_not_awaited()
+    apply_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_gather_records_every_fact_and_episode_it_read(mocker, fake_dream_db):
+    bundle = _build_input(episodes=2, facts=2).model_copy(
+        update={"known_fact_uuids": {"f0", "f1", "f9"}}
+    )
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=bundle)
+    )
+    _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    row = fake_dream_db.rows[result.pass_id]
+    assert row["read_uuids"] == ["e0", "e1", "f0", "f1", "f9"]
+
+
+def _batch_route(mocker, *, lock_extends: bool) -> MagicMock:
+    """Route the pass to the Anthropic batch path with its submit mocked;
+    returns the lock handle the pass holds."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "resolve_dream_execution_path",
+        return_value="anthropic_batch",
+    )
+    config = MagicMock()
+    config.direct_anthropic_api_key = "key"
+    mocker.patch.object(orchestrator_mod, "ChatConfig", return_value=config)
+    handle = MagicMock()
+    handle.token = "tok"
+    handle.extend = AsyncMock(return_value=lock_extends)
+
+    @asynccontextmanager
+    async def held_lock(*args, **kwargs):
+        yield handle
+
+    mocker.patch.object(orchestrator_mod, "dream_lock", held_lock)
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.persist_input_bundle", AsyncMock()
+    )
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.phase_models_for_config", return_value={}
+    )
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.submit_phase",
+        AsyncMock(return_value=MagicMock(provider_batch_id="batch-xyz")),
+    )
+    return handle
+
+
+@pytest.mark.asyncio
+async def test_a_batch_submit_records_the_batch_and_leaves_the_end_to_callbacks(
+    mocker, fake_dream_db
+):
+    _batch_route(mocker, lock_extends=True)
+    input_bundle = _build_input()
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=input_bundle)
+    )
+    before = datetime.now(timezone.utc)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.execution_path == "anthropic_batch" and result.error is None
+    assert fake_dream_db.statuses(result.pass_id) == [
+        DreamPassStatus.RUNNING,
+        DreamPassStatus.SUBMITTED,
+    ]
+    assert fake_dream_db.phases(result.pass_id) == [
+        DreamPassPhase.GATHER,
+        DreamPassPhase.CONSOLIDATE,
+    ]
+    row = fake_dream_db.rows[result.pass_id]
+    assert row["route"] is DreamPassRoute.ANTHROPIC_BATCH
+    assert row["provider_batch_id"] == "batch-xyz"
+    assert row["input_bundle"] == input_bundle
+    assert row["lease_token"] == "tok"
+    assert row["submitted_at"] >= before
+    assert row["lease_expires_at"] - row["submitted_at"] == timedelta(
+        seconds=BATCH_LOCK_TTL_SECONDS
+    )
+    assert "completed_at" not in row
+
+
+@pytest.mark.asyncio
+async def test_a_batch_handoff_that_lost_the_lock_is_recorded_errored(
+    mocker, fake_dream_db
+):
+    _batch_route(mocker, lock_extends=False)
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.cancel_provider_batch",
+        AsyncMock(return_value=True),
+    )
+    mocker.patch("backend.copilot.dream.batch_handoff.remove_pending", AsyncMock())
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == "submit: lock_lost"
+    assert fake_dream_db.statuses(result.pass_id) == [
+        DreamPassStatus.RUNNING,
+        DreamPassStatus.ERRORED,
+    ]
+    assert "provider_batch_id" not in fake_dream_db.rows[result.pass_id]
+    # The batch taken back may have run, and billed, at the provider before
+    # its cancel: what the pass used is unknown, not zero.
+    assert result.usage is None
+    assert "usage" not in fake_dream_db.rows[result.pass_id]
+
+
+# What the provider billed for each phase answer these tests script.
+_BILLED = InferenceUsage(
+    model="claude-sonnet-5",
+    input_tokens=100,
+    output_tokens=20,
+    cost_usd=0.001,
+    cost_source="provider",
+    payer="platform_allowance",
+)
+
+
+def _billed(value) -> StructuredCompletion:
+    """A phase answer the provider billed 100 input + 20 output tokens and
+    $0.001 for."""
+    return StructuredCompletion(value=value, usage=_BILLED)
+
+
+def _three_billed_phases(mocker) -> None:
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[
+                _billed(ConsolidationOutput(facts=[])),
+                _billed(RecombinationOutput(proposals=[])),
+                _billed(DreamOperations(summary_for_user="ok")),
+            ]
+        ),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure, error",
+    [
+        (RuntimeError("apply exploded"), "pass: crashed"),
+        (DreamLockLostError("u"), "apply: lock_lost"),
+    ],
+    ids=["apply_crash", "lock_lost"],
+)
+async def test_a_failure_after_the_phases_keeps_all_three_phases_usage(
+    mocker, fake_dream_db, failure, error
+):
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    _three_billed_phases(mocker)
+    mocker.patch.object(
+        orchestrator_mod, "apply_operations", AsyncMock(side_effect=failure)
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == error, "no exception text is recorded"
+    assert result.usage is not None
+    assert [p.phase for p in result.usage.phases] == [
+        "consolidate",
+        "recombine",
+        "sanitize",
+    ]
+    assert (result.usage.total_input_tokens, result.usage.total_output_tokens) == (
+        300,
+        60,
+    )
+    assert result.usage.total_cost_usd == pytest.approx(0.003)
+    row = fake_dream_db.rows[result.pass_id]
+    assert row["status"] is DreamPassStatus.ERRORED
+    assert row["usage"] == result.usage
+
+
+_PHASES = ("consolidate", "recombine", "sanitize")
+
+
+def _answers_until(phase: str, answer: str) -> list[StructuredCompletion | Exception]:
+    """The provider's billed answers up to and including *phase*'s, which
+    parses or, for ``failed_parse``, comes back billed but unparseable."""
+    outputs = [
+        ConsolidationOutput(facts=[]),
+        RecombinationOutput(proposals=[]),
+        DreamOperations(summary_for_user="ok"),
+    ]
+    answers: list[StructuredCompletion | Exception] = [
+        _billed(output) for output in outputs[: _PHASES.index(phase) + 1]
+    ]
+    if answer == "failed_parse":
+        answers[-1] = InferenceError("answer did not parse", usage=_BILLED)
+    return answers
+
+
+def _fail_the_charge(mocker, phase: str, failure: str) -> AsyncMock:
+    """Charge through the real accounting chain, failing *phase*'s charge:
+    at the trial-cost ledger (``trial_cost``) or at the cost log, after the
+    spend counters were charged (``cost_log``). Returns the step every
+    phase's charge reaches, to count the charges."""
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", billing_mod.record_phase_cost
+    )
+    mocker.patch.object(token_tracking_mod, "get_current_envelope", return_value=None)
+    if failure == "cost_log":
+
+        def cost_log(entry) -> None:
+            if entry.block_name == f"copilot:dream:{phase}":
+                raise RuntimeError("cost log scheduling failed after the charge")
+
+        mocker.patch.object(token_tracking_mod, "_schedule_cost_log", cost_log)
+        return mocker.patch.object(token_tracking_mod, "record_cost_usage", AsyncMock())
+    ledger = AsyncMock(
+        side_effect=[None] * _PHASES.index(phase)
+        + [ConnectionError("trial cost database unavailable")]
+    )
+    mocker.patch.object(token_tracking_mod, "_schedule_cost_log")
+    mocker.patch(
+        "backend.copilot.trial_cost_context.get_ready_usage_state",
+        AsyncMock(
+            side_effect=lambda user_id: UsageActivationState(
+                user_id=user_id,
+                tier=SubscriptionTier.TRIAL,
+                ready=True,
+                trial_id="trial-1",
+            )
+        ),
+    )
+    mocker.patch.object(
+        rate_limit_mod,
+        "credit_db",
+        return_value=MagicMock(record_subscription_trial_cost=ledger),
+    )
+    mocker.patch.object(
+        rate_limit_mod, "get_redis_async", AsyncMock(return_value=MagicMock())
+    )
+    mocker.patch.object(rate_limit_mod, "_incr_counter_atomic", AsyncMock())
+    return ledger
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", _PHASES)
+@pytest.mark.parametrize(
+    "answer, failure, error",
+    [
+        ("parsed", "trial_cost", "billing: charge_failed"),
+        ("parsed", "cost_log", "billing: charge_failed"),
+    ],
+    ids=["trial_cost", "cost_log"],
+)
+async def test_a_charge_that_fails_keeps_every_billed_phases_usage(
+    mocker, fake_dream_db, phase, answer, failure, error
+):
+    """The provider answered, and billed, every phase up to *phase*; then
+    charging *phase* fails in the accounting chain. The pass fails on that
+    error without charging anything twice, and its result and its record
+    carry the usage of every billed phase, *phase*'s included."""
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(side_effect=_answers_until(phase, answer)),
+    )
+    charges = _fail_the_charge(mocker, phase, failure)
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    billed = _PHASES.index(phase) + 1
+    assert result.error == error
+    assert charges.await_count == billed
+    apply_mock.assert_not_awaited()
+    assert result.usage is not None
+    assert [p.phase for p in result.usage.phases] == list(_PHASES[:billed])
+    assert (result.usage.total_input_tokens, result.usage.total_output_tokens) == (
+        100 * billed,
+        20 * billed,
+    )
+    assert result.usage.total_cost_usd == pytest.approx(0.001 * billed)
+    row = fake_dream_db.rows[result.pass_id]
+    assert row["status"] is DreamPassStatus.ERRORED
+    assert row["usage"] == result.usage
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", _PHASES)
+async def test_failed_inference_is_absorbed_in_ledger_and_durable_pass(
+    mocker, fake_dream_db, phase
+):
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(side_effect=_answers_until(phase, "failed_parse")),
+    )
+    charges = _fail_the_charge(mocker, phase, "trial_cost")
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    completed = _PHASES.index(phase)
+    assert result.error == f"{phase}: inference_failed"
+    assert charges.await_count == completed
+    apply_mock.assert_not_awaited()
+    assert result.usage is not None
+    assert [p.phase for p in result.usage.phases] == list(_PHASES[:completed])
+    assert result.usage.total_input_tokens == 100 * completed
+    assert result.usage.total_cost_usd == pytest.approx(0.001 * completed)
+    assert fake_dream_db.rows[result.pass_id]["usage"] == result.usage
+
+
+def _ends(mocker, ending: str) -> None:
+    """Stub the pass to end the way *ending* names."""
+    bundle = _build_input(episodes=0, facts=0) if ending == "no_input" else None
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=bundle or _build_input()),
+    )
+    if ending == "phase_failure":
+        mocker.patch.object(
+            orchestrator_mod,
+            "structured_complete",
+            AsyncMock(side_effect=InferenceError("provider down")),
+        )
+        return
+    apply_mock = _stub_three_phases_and_apply(mocker)
+    if ending == "apply_crash":
+        apply_mock.side_effect = RuntimeError("apply exploded")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ending, status",
+    [
+        ("complete", DreamPassStatus.COMPLETE),
+        ("phase_failure", DreamPassStatus.ERRORED),
+        ("no_input", DreamPassStatus.SKIPPED),
+        ("apply_crash", DreamPassStatus.ERRORED),
+    ],
+)
+async def test_the_outcome_is_recorded_before_the_lock_is_released(
+    mocker, fake_dream_db, fake_dream_redis, ending, status
+):
+    """With a healthy store the outcome is persisted before the lock is
+    released. A dropped outcome write can still leave an open row behind a
+    free lock (see ``_run_locked``); that case is the reaper's."""
+    mocker.patch(
+        "backend.data.redis_client.get_redis_async",
+        AsyncMock(return_value=fake_dream_redis),
+    )
+    mocker.patch.object(orchestrator_mod, "dream_lock", real_dream_lock)
+    _ends(mocker, ending)
+    lock_key = MemoryScope.for_user("u").redis_key("dream_lock")
+    held_at_outcome: list[bool] = []
+    record = fake_dream_db.update_dream_pass
+
+    async def watched(pass_id, update):
+        if update.status is status:
+            held_at_outcome.append(lock_key in fake_dream_redis.store)
+        return await record(pass_id, update)
+
+    mocker.patch.object(fake_dream_db, "update_dream_pass", watched)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert fake_dream_db.rows[result.pass_id]["status"] is status
+    assert held_at_outcome == [True]
+    assert lock_key not in fake_dream_redis.store
+
+
+def _consolidate_delivery(pass_id: str) -> tuple[PendingEntry, list[BatchResultRow]]:
+    now = datetime.now(timezone.utc)
+    entry = PendingEntry(
+        provider="anthropic",
+        provider_batch_id="batch-xyz",
+        callback_namespace="dream_pass",
+        submitted_at=now,
+        next_poll_at=now,
+        payload={
+            "user_id": "u",
+            "cost_context": {"user_id": "u", "trial_id": None, "generation": None},
+            "pass_id": pass_id,
+            "job_id": "",
+            "phase": "consolidate",
+            "phase_models": {
+                "consolidate": "claude-sonnet-5",
+                "recombine": "claude-opus-5-5",
+                "sanitize": "claude-sonnet-5",
+            },
+        },
+    )
+    row = BatchResultRow(
+        custom_id=f"{pass_id}_consolidate",
+        content='{"facts": []}',
+        input_tokens=10,
+        output_tokens=20,
+    )
+    return entry, [row]
+
+
+@pytest.mark.asyncio
+async def test_a_late_submit_write_keeps_the_first_callbacks_progress(
+    mocker, fake_dream_db, fake_dream_redis
+):
+    """The submit's record write lands only after the first callback has
+    moved the row on (it is written once the batch is already pollable).
+    It must not pull the row back to consolidate or its first batch."""
+    mocker.patch(
+        "backend.data.redis_client.get_redis_async",
+        AsyncMock(return_value=fake_dream_redis),
+    )
+    _batch_route(mocker, lock_extends=True)
+    # The lock the handle stands for, which the callback renews.
+    fake_dream_redis.store[MemoryScope.for_user("u").redis_key("dream_lock")] = "tok"
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.persist_input_bundle",
+        persist_input_bundle,
+    )
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    mocker.patch(
+        "backend.copilot.dream.batch_callbacks.submit_phase",
+        AsyncMock(return_value=MagicMock(provider_batch_id="batch-recombine")),
+    )
+    mocker.patch(
+        "backend.copilot.dream.batch_callbacks.anthropic_api_key",
+        return_value="sk-ant-test",
+    )
+    entered, release = asyncio.Event(), asyncio.Event()
+    record = fake_dream_db.update_dream_pass
+
+    async def submit_held(pass_id, update):
+        if update.status is DreamPassStatus.SUBMITTED:
+            entered.set()
+            await release.wait()
+        return await record(pass_id, update)
+
+    mocker.patch.object(fake_dream_db, "update_dream_pass", submit_held)
+
+    task = asyncio.create_task(orchestrator_mod.execute_dream_pass("u"))
+    await asyncio.wait_for(entered.wait(), 5)
+    pass_id = next(iter(fake_dream_db.rows))
+    await handle_dream_batch_result(*_consolidate_delivery(pass_id))
+    assert fake_dream_db.rows[pass_id]["phase"] is DreamPassPhase.RECOMBINE
+    release.set()
+    await task
+
+    row = fake_dream_db.rows[pass_id]
+    assert row["status"] is DreamPassStatus.SUBMITTED
+    assert row["phase"] is DreamPassPhase.RECOMBINE
+    assert row["provider_batch_id"] == "batch-recombine"
+    assert list(row["phase_outputs"]) == ["consolidate"]
+    assert row["lease_token"] == "tok"
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_record_store_costs_each_write_only_its_deadline(
+    mocker, stalled_dream_db
+):
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await asyncio.wait_for(orchestrator_mod.execute_dream_pass("u"), 10)
+
+    assert result.error == "pass: record_unconfirmed"
+    apply_mock.assert_not_awaited()
+    # The insert, then the outcome that would close a row it left behind,
+    # each abandoned at the deadline: a pass whose row the store cannot
+    # confirm never reads the graph, and is not held by the store.
+    assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (2, 2)
+
+
+@pytest.mark.asyncio
+async def test_the_nightly_fan_out_reaches_ratification_past_a_stalled_store(
+    mocker, stalled_dream_db
+):
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    _stub_three_phases_and_apply(mocker)
+    mocker.patch.object(
+        nightly_batch_mod, "check_dream_budget", AsyncMock(return_value=(True, None))
+    )
+    ratification = mocker.patch.object(
+        nightly_batch_mod,
+        "run_ratification_pass",
+        AsyncMock(
+            return_value=RatificationResult(
+                user_id="u", started_at=datetime.now(timezone.utc)
+            )
+        ),
+    )
+
+    result = await asyncio.wait_for(nightly_batch_mod.run_nightly_batch_submit("u"), 10)
+
+    ratification.assert_awaited_once_with("u", expert_id=None)
+    assert result.dream is not None
+    assert result.dream.error == "pass: record_unconfirmed"
+
+
+@pytest.mark.asyncio
+async def test_each_phase_cost_is_charged_under_the_passs_trial_attribution(
+    mocker, usage_snapshot
+):
+    """The pass captures the trial or paid attribution before its first
+    provider call (#15208's ``attributed_usage``), and every phase's cost
+    record (``record_phase_cost``, the inference layer's ``record``) charges
+    under it: a trial user's dream lands in the trial ledger, the trial
+    converting mid-pass or not."""
+    usage_snapshot.side_effect = lambda user_id: UsageActivationState(
+        user_id=user_id,
+        tier=SubscriptionTier.TRIAL,
+        ready=True,
+        trial_id="trial-1",
+        generation="generation-1",
+    )
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    usage = InferenceUsage(
+        model="test-model",
+        input_tokens=100,
+        output_tokens=10,
+        cost_usd=0.001,
+        cost_source="provider",
+        payer="platform_allowance",
+    )
+    outputs = [
+        ConsolidationOutput(
+            facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
+        ),
+        RecombinationOutput(proposals=[]),
+        DreamOperations(summary_for_user="quiet night"),
+    ]
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[StructuredCompletion(value=o, usage=usage) for o in outputs]
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(return_value={"session_id": "s1"}),
+    )
+    charged_under: list[str | None] = []
+
+    async def charge(ctx, usage):
+        context = get_trial_cost_context(ctx.scope.user_id)
+        charged_under.append(context.trial_id if context else None)
+        return usage
+
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", AsyncMock(side_effect=charge)
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    assert charged_under == ["trial-1", "trial-1", "trial-1"]
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot

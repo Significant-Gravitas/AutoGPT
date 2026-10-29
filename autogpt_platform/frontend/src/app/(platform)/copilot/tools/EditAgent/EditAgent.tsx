@@ -4,13 +4,11 @@ import type { ToolUIPart } from "ai";
 import { AgentSavedCard } from "../../components/AgentSavedCard/AgentSavedCard";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ToolErrorCard } from "../../components/ToolErrorCard/ToolErrorCard";
-import { MiniGame } from "../../components/MiniGame/MiniGame";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import {
   ContentCardDescription,
   ContentCodeBlock,
   ContentGrid,
-  ContentHint,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -48,15 +46,7 @@ function getAccordionMeta(output: EditAgentToolOutput | null): {
 } {
   const icon = <AccordionIcon />;
 
-  if (!output) {
-    return {
-      icon,
-      title: "Editing agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
-    };
-  }
-
-  if (isAgentPreviewOutput(output)) {
+  if (output && isAgentPreviewOutput(output)) {
     return {
       icon,
       title: output.agent_name,
@@ -78,10 +68,6 @@ export function EditAgentTool({ part }: Props) {
 
   const isOperating = !output;
 
-  // Show accordion for operating state and successful outputs, but not for errors
-  // (errors are shown inline so they get replaced when retrying)
-  const hasExpandableContent = !isError;
-
   return (
     <div className="py-2">
       {isOperating && (
@@ -89,7 +75,7 @@ export function EditAgentTool({ part }: Props) {
           <ToolIcon isStreaming={isStreaming} isError={isError} />
           <MorphingTextAnimation
             text={text}
-            className={isError ? "text-red-500" : undefined}
+            className={isError ? "text-error" : undefined}
           />
         </div>
       )}
@@ -97,42 +83,31 @@ export function EditAgentTool({ part }: Props) {
       {isError && output && isErrorOutput(output) && (
         <ToolErrorCard
           message={output.message}
-          fallbackMessage="Failed to edit the agent. Please try again."
+          fallbackMessage="Failed to edit the workflow. Please try again."
           error={output.error ? formatMaybeJson(output.error) : undefined}
           details={output.details ? formatMaybeJson(output.details) : undefined}
           actions={[
             {
               label: "Try again",
-              onClick: () => onSend("Please try editing the agent again."),
+              onClick: () => onSend("Please try editing the workflow again."),
             },
           ]}
         />
       )}
 
-      {hasExpandableContent && !(output && isAgentSavedOutput(output)) && (
+      {output && !isError && isAgentPreviewOutput(output) && (
         <ToolAccordion {...getAccordionMeta(output)}>
-          {isOperating && (
-            <ContentGrid>
-              <MiniGame />
-              <ContentHint>
-                This could take a few minutes — play while you wait!
-              </ContentHint>
-            </ContentGrid>
-          )}
-
-          {output && isAgentPreviewOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              {output.description?.trim() && (
-                <ContentCardDescription>
-                  {output.description}
-                </ContentCardDescription>
-              )}
-              <ContentCodeBlock>
-                {truncateText(formatMaybeJson(output.agent_json), 1600)}
-              </ContentCodeBlock>
-            </ContentGrid>
-          )}
+          <ContentGrid>
+            <ContentMessage>{output.message}</ContentMessage>
+            {output.description?.trim() && (
+              <ContentCardDescription>
+                {output.description}
+              </ContentCardDescription>
+            )}
+            <ContentCodeBlock>
+              {truncateText(formatMaybeJson(output.agent_json), 1600)}
+            </ContentCodeBlock>
+          </ContentGrid>
         </ToolAccordion>
       )}
 

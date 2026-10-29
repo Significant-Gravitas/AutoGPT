@@ -1,0 +1,121 @@
+import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertActivity } from "@/app/api/__generated__/models/expertActivity";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
+import { FireIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { ExpertActivityGraph } from "./ExpertActivityGraph/ExpertActivityGraph";
+import {
+  getActivityStreak,
+  getActivitySummary,
+  getThreeMonthActivityDays,
+  getYearActivityDays,
+} from "./ExpertActivityGraph/helpers";
+
+interface Props {
+  expert: Expert;
+  activity: ExpertActivity | null;
+  isActivityLoading: boolean;
+  isActivityError: boolean;
+}
+
+export function ExpertSummaryCard({
+  expert,
+  activity,
+  isActivityLoading,
+  isActivityError,
+}: Props) {
+  const activityDays = activity ? getYearActivityDays(activity.days) : null;
+  const visibleActivityDays = activityDays
+    ? getThreeMonthActivityDays(activityDays)
+    : null;
+  const summary = visibleActivityDays
+    ? getActivitySummary(visibleActivityDays)
+    : null;
+  const streak = activityDays ? getActivityStreak(activityDays) : null;
+
+  return (
+    <aside
+      aria-label={`${expert.name} at a glance`}
+      className="flex flex-col gap-4 self-start"
+    >
+      <section
+        aria-label={`${expert.name} activity`}
+        className="flex flex-col gap-2 rounded-2xl bg-surface p-4 smooth-shadow-ring-sm"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <Text variant="body-md-medium" tone="primary">
+            Activity
+          </Text>
+          {summary ? <ActivityStatus isActive={summary.isActive} /> : null}
+        </div>
+        {isActivityLoading ? (
+          <Skeleton className="h-[5.25rem] w-full rounded-lg" />
+        ) : isActivityError ? (
+          <Text variant="small" tone="muted">
+            Activity unavailable
+          </Text>
+        ) : visibleActivityDays && summary ? (
+          <>
+            <ExpertActivityGraph
+              days={visibleActivityDays}
+              color={expert.color}
+            />
+            <Text variant="small" tone="muted">
+              {summary.totalsLabel} · {summary.rangeLabel}
+            </Text>
+          </>
+        ) : null}
+      </section>
+
+      <section
+        aria-label={`${expert.name} activity streak`}
+        className="flex flex-col rounded-2xl bg-surface p-4 smooth-shadow-ring-sm"
+      >
+        {isActivityLoading ? (
+          <Skeleton className="h-16 w-full rounded-lg" />
+        ) : isActivityError ? (
+          <Text variant="small" tone="muted">
+            Streak unavailable
+          </Text>
+        ) : (
+          <div className="flex items-center justify-center gap-3 text-center">
+            <span className="inline-flex shrink-0 text-foreground-subtle">
+              <Icon icon={FireIcon} size={40} />
+            </span>
+            <div className="min-w-0 tabular-nums">
+              <Text variant="h4" tone="primary">
+                {streak ?? 0}
+              </Text>
+              <Text variant="body-md" tone="muted">
+                day streak
+              </Text>
+            </div>
+          </div>
+        )}
+      </section>
+    </aside>
+  );
+}
+
+interface ActivityStatusProps {
+  isActive: boolean;
+}
+
+function ActivityStatus({ isActive }: ActivityStatusProps) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span
+        aria-hidden
+        className={cn(
+          "size-2 rounded-full",
+          isActive ? "bg-success" : "bg-border-strong",
+        )}
+      />
+      <Text variant="small" tone="muted">
+        {isActive ? "Active this week" : "Quiet lately"}
+      </Text>
+    </span>
+  );
+}

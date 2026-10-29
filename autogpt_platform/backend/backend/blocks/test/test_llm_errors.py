@@ -10,7 +10,7 @@ def _make_openai_status_error(message: str, code: str | None = None, status: int
     response = httpx.Response(
         status, request=httpx.Request("POST", "https://api.openai.com/v1/chat")
     )
-    body = {"code": code} if code else None
+    body = {"code": code, "message": message} if code else None
     return openai.APIStatusError(message, response=response, body=body)
 
 
@@ -33,7 +33,7 @@ def _make_openai_status_error(message: str, code: str | None = None, status: int
     ],
 )
 def test_is_invalid_model_error_matches_known_patterns(message: str):
-    assert is_invalid_model_error(ValueError(message)) is True
+    assert is_invalid_model_error(_make_openai_status_error(message)) is True
 
 
 def test_is_invalid_model_error_matches_structured_code():
@@ -49,6 +49,11 @@ def test_is_invalid_model_error_matches_structured_code():
     [
         "400 prompt rejected by moderation",
         "The model rate limit does not exist for this plan",
+        "The model config does not exist",
+        "The model's tool does not exist",
+        "The model response is not available",
+        "Invalid model response format",
+        "Unsupported model parameter: temperature",
         "The dataset does not exist",
         "User profile no longer available",
         "model latency is high, please retry",
@@ -57,7 +62,7 @@ def test_is_invalid_model_error_matches_structured_code():
     ],
 )
 def test_is_invalid_model_error_ignores_non_model_errors(message: str):
-    assert is_invalid_model_error(ValueError(message)) is False
+    assert is_invalid_model_error(_make_openai_status_error(message)) is False
 
 
 def test_is_invalid_model_error_ignores_server_errors_mentioning_models():
@@ -84,10 +89,55 @@ def test_is_invalid_model_error_excludes_context_length_api_errors():
     assert is_invalid_model_error(error) is False
 
 
-def test_format_llm_error_message_appends_guidance_for_invalid_model():
-    error = ValueError("invalid model ID: claude-haiku-4-5-20251001")
+@pytest.mark.parametrize("status", [401, 403, 429, 500, 503])
+def test_structured_model_code_does_not_override_status(status: int):
+    error = _make_openai_status_error("Missing model", "model_not_found", status)
 
-    message = format_llm_error_message(error, llm.LlmModel.CLAUDE_4_5_HAIKU)
+    assert not is_invalid_model_error(error)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        [],
+        ["invalid model"],
+        42,
+        True,
+        {"error": []},
+        {"error": "invalid model"},
+        {"message": ["invalid model"]},
+        {"message": {"text": "invalid model"}},
+        {"code": ["model_not_found"]},
+        {"code": {"value": "model_not_found"}},
+        {"code": True},
+        {"debug": "invalid model", "message": "Bad input"},
+    ],
+)
+def test_malformed_provider_fields_do_not_crash_or_match(body: object):
+    response = httpx.Response(
+        400, request=httpx.Request("POST", "https://api.openai.com/v1/responses")
+    )
+    error = openai.BadRequestError("Bad request", response=response, body=body)
+
+    assert not is_invalid_model_error(error)
+
+
+def test_generic_exception_does_not_imply_a_provider_model_error():
+    assert not is_invalid_model_error(ValueError("invalid model"))
+
+
+def test_structured_code_does_not_override_context_recovery():
+    error = _make_openai_status_error(
+        "This model's maximum context length was exceeded", "model_not_found"
+    )
+
+    assert not is_invalid_model_error(error)
+
+
+def test_format_llm_error_message_appends_guidance_for_invalid_model():
+    error = _make_openai_status_error("invalid model ID: claude-haiku-4-5-20251001")
+
+    message = format_llm_error_message(error, llm.LLMModel.CLAUDE_4_5_HAIKU)
 
     assert "invalid or no longer available" in message
     assert "Check Anthropic's current model list" in message
@@ -95,9 +145,9 @@ def test_format_llm_error_message_appends_guidance_for_invalid_model():
 
 
 def test_format_llm_error_message_interpolates_openai_provider():
-    error = ValueError("invalid model ID: gpt-imaginary")
+    error = _make_openai_status_error("invalid model ID: gpt-imaginary")
 
-    message = format_llm_error_message(error, llm.LlmModel.GPT4O)
+    message = format_llm_error_message(error, llm.LLMModel.GPT4O)
 
     assert "Check OpenAI's current model list" in message
 
@@ -106,7 +156,7 @@ def test_format_llm_error_message_uses_precomputed_flag():
     error = ValueError("prompt rejected by moderation")
 
     message = format_llm_error_message(
-        error, llm.LlmModel.CLAUDE_4_5_HAIKU, is_invalid_model=True
+        error, llm.LLMModel.CLAUDE_4_5_HAIKU, is_invalid_model=True
     )
 
     assert "Check Anthropic's current model list" in message
@@ -115,6 +165,6 @@ def test_format_llm_error_message_uses_precomputed_flag():
 def test_format_llm_error_message_preserves_generic_errors():
     error = ValueError("prompt rejected by moderation")
 
-    message = format_llm_error_message(error, llm.LlmModel.CLAUDE_4_5_HAIKU)
+    message = format_llm_error_message(error, llm.LLMModel.CLAUDE_4_5_HAIKU)
 
     assert message == "Error calling LLM: prompt rejected by moderation"

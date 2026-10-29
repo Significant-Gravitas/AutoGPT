@@ -13,7 +13,6 @@ import {
   getGetV2ListLibraryFoldersResponseMock,
 } from "@/app/api/__generated__/endpoints/folders/folders.msw";
 import { getGetV1ListAllExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
-import { Flag } from "@/services/feature-flags/use-get-flag";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentList } from "../components/LibraryAgentList/LibraryAgentList";
 import { FavoriteAnimationProvider } from "../context/FavoriteAnimationContext";
@@ -24,7 +23,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async () => {
   >("@/services/feature-flags/use-get-flag");
   return {
     ...actual,
-    useGetFlag: (flag: Flag) => flag === "agent-briefing",
+    useGetFlag: () => false,
   };
 });
 
@@ -119,6 +118,40 @@ describe("LibraryAgentList — Scheduled status filter", () => {
     await waitFor(() => {
       expect(screen.queryByText("Idle Agent")).toBeNull();
     });
+  });
+
+  test("excludes agents that only have recommended_schedule_cron (not actually scheduled by the user) from the scheduled filter", async () => {
+    setupHandlers([
+      makeAgent({
+        id: "a-recommendation-only",
+        graph_id: "g-recommendation-only",
+        name: "Recommendation Only Agent",
+        is_scheduled: false,
+        recommended_schedule_cron: "0 9 * * *",
+      }),
+    ]);
+
+    renderList("scheduled");
+
+    await waitFor(() => {
+      expect(screen.queryByText("Recommendation Only Agent")).toBeNull();
+    });
+  });
+
+  test("includes agents that only have recommended_schedule_cron in the idle filter", async () => {
+    setupHandlers([
+      makeAgent({
+        id: "a-recommendation-only",
+        graph_id: "g-recommendation-only",
+        name: "Recommendation Only Agent",
+        is_scheduled: false,
+        recommended_schedule_cron: "0 9 * * *",
+      }),
+    ]);
+
+    renderList("idle");
+
+    expect(await screen.findByText("Recommendation Only Agent")).toBeDefined();
   });
 
   test("excludes idle agents (no schedule, no recommendation) from the scheduled filter", async () => {

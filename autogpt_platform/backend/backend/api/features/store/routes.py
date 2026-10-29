@@ -1,25 +1,34 @@
 import logging
 import urllib.parse
+from collections.abc import Mapping
 from typing import Literal
 
 import autogpt_libs.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
-from fastapi import Query, Security
+from fastapi import Depends, Query, Security
 from pydantic import BaseModel
+from starlette.datastructures import Headers
 
 import backend.data.graph
 import backend.util.json
 from backend.api.features.search import hybrid_search as search_engine
+from backend.api.features.search.rate_limit import enforce_public_search_rate_limit
+from backend.api.utils.client_ip import ClientIP
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
+from backend.util.product_analytics import track_listing_downloaded
 
 from . import cache as store_cache
+from . import categories as store_categories
 from . import db as store_db
 from . import image_gen as store_image_gen
+from . import local_media
 from . import media as store_media
 from . import model as store_model
+from . import submission_media
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +36,9 @@ router = fastapi.APIRouter()
 
 SubmissionSortKey = Literal["submitted", "runs"]
 SubmissionSortDir = Literal["asc", "desc"]
+
+# Same bound as global search: caps what one query can cost to embed.
+MAX_SEARCH_QUERY_LENGTH = 512
 
 
 ##############################################
@@ -43,8 +55,9 @@ SubmissionSortDir = Literal["asc", "desc"]
 async def get_profile(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
 ) -> store_model.ProfileDetails:
-    """Get the profile details for the authenticated user."""
-    profile = await store_db.get_user_profile(user_id)
+    """Get the profile details for the authenticated user, creating their
+    default profile if account setup hasn't yet."""
+    profile = await store_db.get_or_create_user_profile(user_id)
     if profile is None:
         raise NotFoundError("User does not have a profile yet")
     return profile
@@ -57,7 +70,7 @@ async def get_profile(
     dependencies=[Security(autogpt_libs.auth.requires_user)],
 )
 async def update_or_create_profile(
-    profile: store_model.Profile,
+    profile: store_model.ProfileUpdateRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
 ) -> store_model.ProfileDetails:
     """Update the store profile for the authenticated user."""
@@ -76,7 +89,8 @@ async def update_or_create_profile(
     tags=["store", "public"],
 )
 async def unified_search(
-    query: str,
+    client: ClientIP,
+    query: str = Query(max_length=MAX_SEARCH_QUERY_LENGTH),
     content_types: list[prisma.enums.ContentType] | None = Query(
         default=None,
         description="Content types to search. If not specified, searches all.",
@@ -93,6 +107,7 @@ async def unified_search(
 
     Combines semantic (embedding-based) and lexical (text-based) search for best results.
     """
+    await enforce_public_search_rate_limit(client, user_id=user_id)
 
     # Perform unified hybrid search
     results, total = await search_engine.unified_hybrid_search(
@@ -101,6 +116,7 @@ async def unified_search(
         user_id=user_id,
         page=page,
         page_size=page_size,
+        public_search=True,
     )
 
     # Convert results to response model
@@ -142,6 +158,7 @@ async def unified_search(
     tags=["store", "public"],
 )
 async def get_agents(
+    client: ClientIP,
     featured: bool = Query(
         default=False, description="Filter to only show featured agents"
     ),
@@ -150,7 +167,9 @@ async def get_agents(
     ),
     category: str | None = Query(default=None, description="Filter agents by category"),
     search_query: str | None = Query(
-        default=None, description="Literal + semantic search on names and descriptions"
+        default=None,
+        max_length=MAX_SEARCH_QUERY_LENGTH,
+        description="Literal + semantic search on names and descriptions",
     ),
     sorted_by: store_db.StoreAgentsSortOptions | None = Query(
         default=None,
@@ -158,6 +177,9 @@ async def get_agents(
     ),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
+    user_id: str | None = Security(
+        autogpt_libs.auth.get_optional_user_id, use_cache=False
+    ),
 ) -> store_model.StoreAgentsResponse:
     """
     Get a paginated list of agents from the marketplace,
@@ -171,7 +193,9 @@ async def get_agents(
     - Agent Details - Similar Agents
     - Creator Details - Agents By Creator
     """
-    agents = await store_cache._get_cached_store_agents(
+    if search_query and search_query.strip():
+        await enforce_public_search_rate_limit(client, user_id=user_id)
+    agents = await store_cache.get_public_store_agents(
         featured=featured,
         creator=creator,
         sorted_by=sorted_by,
@@ -181,6 +205,23 @@ async def get_agents(
         page_size=page_size,
     )
     return agents
+
+
+@router.get(
+    "/categories",
+    summary="List store categories",
+    tags=["store", "public"],
+)
+async def get_categories() -> list[store_model.StoreCategoryInfo]:
+    """The canonical categories a listing can be filed under."""
+    return [
+        store_model.StoreCategoryInfo(
+            value=category.value,
+            label=store_categories.CATEGORY_LABELS[category],
+            description=store_categories.CATEGORY_DESCRIPTIONS[category],
+        )
+        for category in store_categories.StoreCategory
+    ]
 
 
 @router.get(
@@ -197,7 +238,7 @@ async def get_agent_by_name(
     username = urllib.parse.unquote(username).lower()
     # URL decode the agent name since it comes from the URL path
     agent_name = urllib.parse.unquote(agent_name).lower()
-    agent = await store_cache._get_cached_agent_details(
+    agent = await store_cache.get_cached_agent_details(
         username=username, agent_name=agent_name, include_changelog=include_changelog
     )
     return agent
@@ -207,7 +248,10 @@ async def get_agent_by_name(
     "/agents/{username}/{agent_name}/review",
     summary="Create agent review",
     tags=["store"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def post_user_review_for_agent(
     username: str,
@@ -232,11 +276,12 @@ async def post_user_review_for_agent(
     "/listings/versions/{store_listing_version_id}",
     summary="Get agent by version",
     tags=["store"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
 )
 async def get_agent_by_listing_version(
     store_listing_version_id: str,
 ) -> store_model.StoreAgentDetails:
+    # Public on purpose: the query only reads the APPROVED-only StoreAgent
+    # view, so a signed-out expert page can show its workflows' preview images.
     agent = await store_db.get_store_agent_by_version_id(store_listing_version_id)
     return agent
 
@@ -252,7 +297,8 @@ async def get_graph_meta_by_store_listing_version_id(
 ) -> backend.data.graph.GraphModelWithoutNodes:
     """Get outline of graph belonging to a specific marketplace listing version"""
     graph = await store_db.get_available_graph(store_listing_version_id)
-    return graph
+    # Public outline: it names the workflow, not the account that published it.
+    return graph.shared_copy()
 
 
 @router.get(
@@ -262,9 +308,15 @@ async def get_graph_meta_by_store_listing_version_id(
 )
 async def download_agent_file(
     store_listing_version_id: str,
+    user_id: str | None = Security(autogpt_libs.auth.get_optional_user_id),
 ) -> fastapi.responses.Response:
     """Download agent graph file for a specific marketplace listing version"""
     graph_data = await store_db.get_agent(store_listing_version_id)
+    track_listing_downloaded(
+        user_id=user_id,
+        store_listing_version_id=store_listing_version_id,
+        graph_id=graph_data.id,
+    )
     file_name = f"agent_{graph_data.id}_v{graph_data.version or 'latest'}.json"
 
     return fastapi.responses.Response(
@@ -295,10 +347,10 @@ async def get_creators(
     ),
     sorted_by: store_db.StoreCreatorsSortOptions | None = None,
     page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page_size: int = Query(ge=1, le=100, default=20),
 ) -> store_model.CreatorsResponse:
     """List or search marketplace creators"""
-    creators = await store_cache._get_cached_store_creators(
+    creators = await store_cache.get_cached_store_creators(
         featured=featured,
         search_query=search_query,
         sorted_by=sorted_by,
@@ -316,7 +368,7 @@ async def get_creators(
 async def get_creator(username: str) -> store_model.CreatorDetails:
     """Get details on a marketplace creator"""
     username = urllib.parse.unquote(username).lower()
-    creator = await store_cache._get_cached_creator_details(username=username)
+    creator = await store_cache.get_cached_creator_details(username=username)
     return creator
 
 
@@ -360,11 +412,15 @@ async def get_my_unpublished_agents(
 async def delete_submission(
     submission_id: str,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
 ) -> bool:
     """Delete a marketplace listing submission"""
     result = await store_db.delete_store_submission(
         user_id=user_id,
-        submission_id=submission_id,
+        store_listing_version_id=submission_id,
+        organization_id=getattr(ctx, "org_id", None),
     )
     return result
 
@@ -377,6 +433,9 @@ async def delete_submission(
 )
 async def get_submissions(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
     search_query: str | None = Query(default=None, max_length=100),
@@ -388,6 +447,7 @@ async def get_submissions(
     parsed_statuses = _parse_status_filter(statuses)
     listings = await store_db.get_store_submissions(
         user_id=user_id,
+        organization_id=getattr(ctx, "org_id", None),
         page=page,
         page_size=page_size,
         search_query=search_query,
@@ -423,13 +483,24 @@ def _parse_status_filter(
     "/submissions",
     summary="Create store submission",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def create_submission(
     submission_request: store_model.StoreSubmissionRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
 ) -> store_model.StoreSubmission:
     """Submit a new marketplace listing for review"""
+    # Defensive: ``ctx`` may be the unresolved ``Security()`` sentinel when
+    # this function is invoked outside FastAPI's dependency-injection path
+    # (e.g. some integration tests). ``getattr`` with a default returns
+    # None instead of raising AttributeError on the sentinel.
+    org_id = getattr(ctx, "org_id", None)
     result = await store_db.create_store_submission(
         user_id=user_id,
         graph_id=submission_request.graph_id,
@@ -445,6 +516,7 @@ async def create_submission(
         categories=submission_request.categories,
         changes_summary=submission_request.changes_summary or "Initial Submission",
         recommended_schedule_cron=submission_request.recommended_schedule_cron,
+        organization_id=org_id,
     )
     return result
 
@@ -453,17 +525,24 @@ async def create_submission(
     "/submissions/{store_listing_version_id}",
     summary="Edit store submission",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def edit_submission(
     store_listing_version_id: str,
     submission_request: store_model.StoreSubmissionEditRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
 ) -> store_model.StoreSubmission:
     """Update a pending marketplace listing submission"""
     result = await store_db.edit_store_submission(
         user_id=user_id,
         store_listing_version_id=store_listing_version_id,
+        organization_id=getattr(ctx, "org_id", None),
         name=submission_request.name,
         video_url=submission_request.video_url,
         agent_output_demo_url=submission_request.agent_output_demo_url,
@@ -478,19 +557,192 @@ async def edit_submission(
     return result
 
 
+@router.get(
+    "/media/{user_id}/{media_type}/{filename}",
+    summary="Get stored marketplace media",
+    response_class=fastapi.responses.FileResponse,
+    responses={
+        200: {
+            "content": {
+                content_type: {"schema": {"type": "string", "format": "binary"}}
+                for content_type in local_media.CONTENT_TYPE_EXTENSIONS
+            }
+        }
+    },
+    tags=["store", "public"],
+)
+def get_store_media(
+    user_id: str,
+    media_type: str,
+    filename: str,
+) -> fastapi.responses.FileResponse:
+    content_type = local_media.content_type_for_filename(filename)
+    if content_type is None or media_type not in local_media.MEDIA_TYPES:
+        raise NotFoundError("Media not found")
+    try:
+        path = local_media.get_media_path(user_id, media_type, filename)
+    except ValueError:
+        raise NotFoundError("Media not found")
+    if not path.is_file():
+        raise NotFoundError("Media not found")
+    return fastapi.responses.FileResponse(
+        path, media_type=content_type, headers={"X-Content-Type-Options": "nosniff"}
+    )
+
+
 @router.post(
     "/submissions/media",
     summary="Upload submission media",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def upload_submission_media(
     file: fastapi.UploadFile,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    purpose: Literal["submission", "expert-avatar"] = "submission",
 ) -> str:
-    """Upload media for a marketplace listing submission"""
-    media_url = await store_media.upload_media(user_id=user_id, file=file)
-    return media_url
+    """Upload media for a marketplace listing submission or Expert appearance."""
+
+    return await store_media.upload_media(
+        user_id=user_id, file=file, is_avatar=purpose == "expert-avatar"
+    )
+
+
+@router.get(
+    "/submissions/media/{owner_user_id}/{media_type}/{filename}",
+    summary="Read private submission media",
+    response_class=fastapi.responses.StreamingResponse,
+    responses={
+        200: {
+            "content": {
+                content_type: {"schema": {"type": "string", "format": "binary"}}
+                for content_type in local_media.CONTENT_TYPE_EXTENSIONS
+            }
+        },
+        206: {
+            "description": "Requested byte range",
+            "content": {
+                content_type: {"schema": {"type": "string", "format": "binary"}}
+                for content_type in local_media.CONTENT_TYPE_EXTENSIONS
+            },
+        },
+        307: {"description": "Short-lived signed download URL"},
+        404: {"description": "Media not found"},
+        416: {"description": "Requested range is not satisfiable"},
+        503: {"description": "Private media is temporarily unavailable"},
+    },
+    tags=["store", "private"],
+)
+async def get_private_submission_media(
+    owner_user_id: str,
+    media_type: str,
+    filename: str,
+    request: fastapi.Request,
+    user: autogpt_libs.auth.User = Security(autogpt_libs.auth.requires_user),
+) -> fastapi.Response:
+    """
+    Serve a user's private media to them, to members of an organization they
+    share, and to admins. Anyone else gets a 404, as if it did not exist.
+    """
+    content_type = local_media.content_type_for_filename(filename)
+    if content_type is None:
+        raise NotFoundError("Media not found")
+    if not await submission_media.can_read(user, owner_user_id):
+        raise NotFoundError("Media not found")
+    try:
+        metadata = await submission_media.metadata(owner_user_id, media_type, filename)
+    except (FileNotFoundError, ValueError):
+        raise NotFoundError("Media not found")
+
+    headers = {
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Accept-Ranges": "bytes",
+    }
+    total_size = _private_media_size(metadata)
+    range_header = request.headers.get("range")
+    if (
+        range_header is None
+        and total_size > submission_media.PRIVATE_MEDIA_PROXY_BUFFER_BYTES
+    ):
+        try:
+            redirect_url = await submission_media.signed_url(
+                owner_user_id, media_type, filename
+            )
+        except Exception as error:
+            logger.error("Failed to sign oversized private media", exc_info=True)
+            raise fastapi.HTTPException(
+                status_code=503,
+                detail="Private media is temporarily unavailable",
+                headers=headers,
+            ) from error
+        if redirect_url:
+            return fastapi.responses.RedirectResponse(
+                redirect_url,
+                status_code=307,
+                headers=headers,
+            )
+
+    byte_range: tuple[int, int] | None = None
+    status_code = 200
+    if range_header:
+        try:
+            byte_range = _parse_private_media_range(range_header, total_size)
+        except ValueError:
+            headers["Content-Range"] = f"bytes */{total_size}"
+            raise fastapi.HTTPException(
+                status_code=416,
+                detail="Requested range is not satisfiable",
+                headers=headers,
+            )
+        start, end = byte_range
+        headers["Content-Range"] = f"bytes {start}-{end}/{total_size}"
+        headers["Content-Length"] = str(end - start + 1)
+        status_code = 206
+    else:
+        headers["Content-Length"] = str(total_size)
+    return fastapi.responses.StreamingResponse(
+        submission_media.stream(owner_user_id, media_type, filename, byte_range),
+        status_code=status_code,
+        media_type=content_type,
+        headers=headers,
+    )
+
+
+def _private_media_size(metadata: Mapping[str, object]) -> int:
+    try:
+        size = int(str(metadata["size"]))
+    except (KeyError, TypeError, ValueError) as error:
+        raise NotFoundError("Media not found") from error
+    if size < 0:
+        raise NotFoundError("Media not found")
+    return size
+
+
+def _parse_private_media_range(value: str, total_size: int) -> tuple[int, int]:
+    if total_size <= 0 or len(value) > 64 or not value.startswith("bytes="):
+        raise ValueError("Invalid range")
+    specification = value.removeprefix("bytes=").strip()
+    if "," in specification or specification.count("-") != 1:
+        raise ValueError("Invalid range")
+    start_text, end_text = specification.split("-", 1)
+    if start_text:
+        if not start_text.isdigit() or (end_text and not end_text.isdigit()):
+            raise ValueError("Invalid range")
+        start = int(start_text)
+        end = int(end_text) if end_text else total_size - 1
+        if start >= total_size or end < start:
+            raise ValueError("Invalid range")
+        return start, min(end, total_size - 1)
+    if not end_text.isdigit():
+        raise ValueError("Invalid range")
+    suffix_length = int(end_text)
+    if suffix_length <= 0:
+        raise ValueError("Invalid range")
+    return max(0, total_size - suffix_length), total_size - 1
 
 
 class ImageURLResponse(BaseModel):
@@ -501,7 +753,10 @@ class ImageURLResponse(BaseModel):
     "/submissions/generate_image",
     summary="Generate submission image",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[
+        Security(autogpt_libs.auth.requires_user),
+        Depends(enforce_payment_paywall),
+    ],
 )
 async def generate_image(
     graph_id: str,
@@ -520,7 +775,11 @@ async def generate_image(
     # Use .jpeg here since we are generating JPEG images
     filename = f"agent_{graph_id}.jpeg"
 
-    existing_url = await store_media.check_media_exists(user_id, filename)
+    try:
+        existing_url = await store_media.check_media_exists(user_id, filename)
+    except Exception:
+        logger.exception(f"Could not check for an existing image of graph {graph_id}")
+        existing_url = None
     if existing_url:
         logger.info(f"Using existing image for agent graph {graph_id}")
         return ImageURLResponse(image_url=existing_url)
@@ -531,6 +790,7 @@ async def generate_image(
     image_file = fastapi.UploadFile(
         file=image,
         filename=filename,
+        headers=Headers({"content-type": "image/jpeg"}),
     )
     image_url = await store_media.upload_media(
         user_id=user_id, file=image_file, use_file_name=True
@@ -567,19 +827,23 @@ async def get_cache_metrics():
         info = cache_func.cache_info()
         # Cache size metric (dynamic - changes as items are cached/expired)
         metrics.append(f'store_cache_entries{{cache="{cache_name}"}} {info["size"]}')
-        # Cache utilization percentage (dynamic - useful for monitoring)
+        # Cache utilization percentage (dynamic - useful for monitoring).
+        # An unbounded cache reports maxsize=None → utilization is undefined
+        # (0), and comparing None > 0 would raise, 500-ing the endpoint.
         utilization = (
-            (info["size"] / info["maxsize"] * 100) if info["maxsize"] > 0 else 0
+            (info["size"] / info["maxsize"] * 100)
+            if info["maxsize"] and info["maxsize"] > 0
+            else 0
         )
         metrics.append(
             f'store_cache_utilization_percent{{cache="{cache_name}"}} {utilization:.2f}'
         )
 
     # Add metrics for each cache
-    add_cache_metrics("store_agents", store_cache._get_cached_store_agents)
-    add_cache_metrics("agent_details", store_cache._get_cached_agent_details)
-    add_cache_metrics("store_creators", store_cache._get_cached_store_creators)
-    add_cache_metrics("creator_details", store_cache._get_cached_creator_details)
+    add_cache_metrics("store_agents", store_cache.get_cached_store_agents)
+    add_cache_metrics("agent_details", store_cache.get_cached_agent_details)
+    add_cache_metrics("store_creators", store_cache.get_cached_store_creators)
+    add_cache_metrics("creator_details", store_cache.get_cached_creator_details)
 
     # Add metadata/help text at the beginning
     prometheus_output = [

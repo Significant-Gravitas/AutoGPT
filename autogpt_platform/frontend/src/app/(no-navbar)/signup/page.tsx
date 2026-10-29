@@ -1,27 +1,22 @@
 "use client";
 
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-} from "@/components/__legacy__/ui/form";
+import { FormProvider } from "react-hook-form";
+import { FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
 import AuthFeedback from "@/components/auth/AuthFeedback";
+import { CheckYourInbox } from "@/components/auth/CheckYourInbox/CheckYourInbox";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 import { environment } from "@/services/environment";
-import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
 import { useSearchParams } from "next/navigation";
 import { LoadingSignup } from "./components/LoadingSignup";
+import { SignupLegalLine } from "./components/SignupLegalLine";
 import { SignupMarketingPanel } from "./components/SignupMarketingPanel";
 import { useSignupPage } from "./useSignupPage";
 
@@ -37,44 +32,58 @@ export default function SignupPage() {
   const {
     form,
     feedback,
+    nextUrl: safeNextUrl,
+    verificationEmail,
     isLoggedIn,
+    hasInitializedAuth,
     isLoading,
     isGoogleLoading,
+    isSigningUp,
     isCloudEnv,
-    isUserLoading,
     showNotAllowedModal,
-    isSupabaseAvailable,
+    optedOut,
     handleSubmit,
+    handleToggleMarketingOptOut,
     handleProviderSignup,
     handleCloseNotAllowedModal,
+    handleStartAgain,
   } = useSignupPage();
 
-  if (isUserLoading || isLoggedIn) {
+  if (!hasInitializedAuth || isLoggedIn) {
     return <LoadingSignup />;
   }
 
-  if (!isSupabaseAvailable) {
+  if (verificationEmail) {
     return (
       <AuthSplitLayout marketing={<SignupMarketingPanel />}>
-        <Text variant="body-medium" className="text-center !text-slate-500">
-          User accounts are disabled because Supabase client is unavailable
-        </Text>
+        <CheckYourInbox
+          email={verificationEmail}
+          reason="signup"
+          next={safeNextUrl}
+          marketingOptOut={optedOut}
+          onBack={handleStartAgain}
+        />
       </AuthSplitLayout>
     );
   }
 
   const confirmPasswordError = form.formState.errors.confirmPassword?.message;
-  const termsError = form.formState.errors.agreeToTerms?.message;
 
   return (
     <AuthSplitLayout marketing={<SignupMarketingPanel />}>
       <div className="mb-8">
-        <Text variant="h3" as="h1" className="!text-slate-950">
+        <Text variant="h3" as="h1" className="!text-foreground-strong">
           Create your account
+        </Text>
+        <Text variant="body" className="mt-1 !text-foreground-tertiary">
+          Already a member?{" "}
+          <Link href={loginHref} variant="secondary">
+            Log in
+          </Link>
         </Text>
       </div>
 
-      <Form {...form}>
+      <FormProvider {...form}>
         <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
           <FormField
             control={form.control}
@@ -121,60 +130,6 @@ export default function SignupPage() {
               />
             )}
           />
-          <FormField
-            control={form.control}
-            name="agreeToTerms"
-            render={({ field }) => (
-              <>
-                <FormItem className="mt-6 flex w-full flex-row items-center -space-y-1 space-x-2">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      className="relative bottom-px"
-                    />
-                  </FormControl>
-                  <div>
-                    <FormLabel className="flex flex-wrap items-center gap-1">
-                      <Text
-                        variant="body-medium"
-                        className="inline-block text-slate-950"
-                      >
-                        I agree to the
-                      </Text>
-                      <Link
-                        href="https://agpt.co/legal/platform-terms-of-use"
-                        variant="secondary"
-                      >
-                        Terms of Use
-                      </Link>
-                      <Text
-                        variant="body-medium"
-                        className="inline-block text-slate-950"
-                      >
-                        and
-                      </Text>
-                      <Link
-                        href="https://agpt.co/legal/platform-privacy-policy"
-                        variant="secondary"
-                      >
-                        Privacy Policy
-                      </Link>
-                    </FormLabel>
-                  </div>
-                </FormItem>
-                {termsError ? (
-                  <div className="flex items-center gap-2">
-                    <WarningOctagonIcon className="h-4 w-4 text-red-500" />
-                    <Text variant="small-medium" className="!text-red-500">
-                      {termsError}
-                    </Text>
-                  </div>
-                ) : null}
-              </>
-            )}
-          />
-
           <Button
             variant="primary"
             loading={isLoading}
@@ -197,22 +152,19 @@ export default function SignupPage() {
           </>
         ) : null}
 
+        <SignupLegalLine
+          optedOut={optedOut}
+          onToggle={handleToggleMarketingOptOut}
+          disabled={isSigningUp}
+        />
+
         <AuthFeedback
           type="signup"
           message={feedback}
           isError={!!feedback}
           behaveAs={environment.getBehaveAs()}
         />
-      </Form>
-
-      <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
-        <Text variant="body-medium" className="!text-slate-500">
-          Already a member?
-        </Text>
-        <Link href={loginHref} variant="secondary">
-          Log in
-        </Link>
-      </div>
+      </FormProvider>
 
       <MobileWarningBanner />
       <EmailNotAllowedModal

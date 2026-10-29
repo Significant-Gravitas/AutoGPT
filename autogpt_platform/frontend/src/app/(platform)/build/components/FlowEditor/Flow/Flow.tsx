@@ -3,10 +3,9 @@ import { okData } from "@/app/api/helpers";
 import { ErrorBoundary } from "@/components/molecules/ErrorBoundary/ErrorBoundary";
 import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
 import { BuilderChatPanel } from "../../BuilderChatPanel/BuilderChatPanel";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Background, ReactFlow } from "@xyflow/react";
 import { parseAsString, useQueryStates } from "nuqs";
-import { useCallback, useMemo } from "react";
+import { MouseEvent, ReactNode, useCallback, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useGraphStore } from "../../../stores/graphStore";
 import { useNodeStore } from "../../../stores/nodeStore";
@@ -22,6 +21,7 @@ import { CustomControls } from "./components/CustomControl";
 import { GraphLoadingBox } from "./components/GraphLoadingBox";
 import { RunningBackground } from "./components/RunningBackground";
 import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
+import { retryUnlessClientError } from "../../../helpers/graphLoadError";
 import { resolveCollisions } from "./helpers/resolve-collision";
 import { useCopyPaste } from "./useCopyPaste";
 import { useFlow } from "./useFlow";
@@ -29,6 +29,8 @@ import { useFlowRealtime } from "./useFlowRealtime";
 
 import "@xyflow/react/dist/style.css";
 import "./flow.css";
+
+const DELETE_KEY_CODES = ["Backspace", "Delete"];
 
 export const Flow = () => {
   const [{ flowID, flowExecutionID }] = useQueryStates({
@@ -43,36 +45,10 @@ export const Flow = () => {
       query: {
         select: okData,
         enabled: !!flowID,
+        retry: retryUnlessClientError,
       },
     },
   );
-
-  const nodes = useNodeStore(useShallow((state) => state.nodes));
-  const setNodes = useNodeStore(useShallow((state) => state.setNodes));
-
-  const onNodesChange = useNodeStore(
-    useShallow((state) => state.onNodesChange),
-  );
-
-  const hasWebhookNodes = useNodeStore(
-    useShallow((state) => state.hasWebhookNodes()),
-  );
-
-  const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
-  const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
-
-  const onNodeDragStop = useCallback(() => {
-    const currentNodes = useNodeStore.getState().nodes;
-    setNodes(
-      resolveCollisions(currentNodes, {
-        maxIterations: Infinity,
-        overlapThreshold: 0.5,
-        margin: 15,
-      }),
-    );
-  }, [setNodes]);
-
-  const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   // for loading purpose
   const {
@@ -95,44 +71,20 @@ export const Flow = () => {
     useShallow((state) => state.isGraphRunning),
   );
 
-  const isBuilderChatEnabled = useGetFlag(Flag.BUILDER_CHAT_PANEL);
-
   return (
-    <div className="flex h-full w-full dark:bg-slate-900">
+    <div className="flex h-full w-full">
       <div className="relative flex-1">
-        <ReactFlow
-          nodes={nodes}
-          onNodesChange={onNodesChange}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          edges={edges}
-          onConnect={onConnect}
-          onEdgesChange={onEdgesChange}
-          onNodeDragStop={onNodeDragStop}
-          onNodeContextMenu={(event) => {
-            event.preventDefault();
-          }}
-          maxZoom={2}
-          minZoom={0.05}
+        <FlowCanvas
           onDragOver={onDragOver}
           onDrop={onDrop}
-          nodesDraggable={!isLocked}
-          nodesConnectable={!isLocked}
-          elementsSelectable={!isLocked}
-          deleteKeyCode={["Backspace", "Delete"]}
+          isFlowContentLoading={isFlowContentLoading}
+          isLocked={isLocked}
+          setIsLocked={setIsLocked}
+          isReadOnly={isReadOnly}
+          isGraphRunning={isGraphRunning}
         >
-          <Background />
-          <CustomControls
-            setIsLocked={setIsLocked}
-            isLocked={isLocked}
-            isReadOnly={isReadOnly}
-          />
-          <NewControlPanel isReadOnly={isReadOnly} />
-          {isReadOnly && <ReadOnlyBanner />}
-          {!isReadOnly &&
-            (hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />)}
-          {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
-          {isGraphRunning && <RunningBackground />}
+          {/* Created here, not in FlowCanvas, so a node or edge change re-renders
+              the canvas but hands these panels the same elements and skips them. */}
           {graph && !isReadOnly && (
             <FloatingSafeModeToggle
               graph={graph}
@@ -140,18 +92,106 @@ export const Flow = () => {
             />
           )}
           <DraftRecoveryPopup isInitialLoadComplete={isInitialLoadComplete} />
-        </ReactFlow>
+        </FlowCanvas>
       </div>
       {/* TODO: Need to update it in future - also do not send executionId as prop - rather use useQueryState inside the component */}
       <FloatingReviewsPanel
         executionId={flowExecutionID || undefined}
         graphId={flowID || undefined}
       />
-      {isBuilderChatEnabled && (
-        <ErrorBoundary context="BuilderChatPanel" fallback={null}>
-          <BuilderChatPanel />
-        </ErrorBoundary>
-      )}
+      <ErrorBoundary context="BuilderChatPanel" fallback={null}>
+        <BuilderChatPanel />
+      </ErrorBoundary>
     </div>
   );
 };
+
+interface FlowCanvasProps
+  extends Pick<
+    ReturnType<typeof useFlow>,
+    | "onDragOver"
+    | "onDrop"
+    | "isFlowContentLoading"
+    | "isLocked"
+    | "setIsLocked"
+    | "isReadOnly"
+  > {
+  isGraphRunning: boolean;
+  children: ReactNode;
+}
+
+/**
+ * The only part of the builder that subscribes to `nodes` and `edges`, which
+ * change on every drag frame and every field edit.
+ */
+function FlowCanvas({
+  onDragOver,
+  onDrop,
+  isFlowContentLoading,
+  isLocked,
+  setIsLocked,
+  isReadOnly,
+  isGraphRunning,
+  children,
+}: FlowCanvasProps) {
+  const nodes = useNodeStore((state) => state.nodes);
+  const setNodes = useNodeStore((state) => state.setNodes);
+  const onNodesChange = useNodeStore((state) => state.onNodesChange);
+  const hasWebhookNodes = useNodeStore((state) => state.hasWebhookNodes());
+
+  const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
+  const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
+
+  const onNodeContextMenu = useCallback((event: MouseEvent) => {
+    event.preventDefault();
+  }, []);
+
+  const onNodeDragStop = useCallback(() => {
+    const currentNodes = useNodeStore.getState().nodes;
+    setNodes(
+      resolveCollisions(currentNodes, {
+        maxIterations: Infinity,
+        overlapThreshold: 0.5,
+        margin: 15,
+      }),
+    );
+  }, [setNodes]);
+
+  const { edges, onConnect, onEdgesChange } = useCustomEdge();
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      onNodesChange={onNodesChange}
+      nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
+      edges={edges}
+      onConnect={onConnect}
+      onEdgesChange={onEdgesChange}
+      onNodeDragStop={onNodeDragStop}
+      onNodeContextMenu={onNodeContextMenu}
+      maxZoom={2}
+      minZoom={0.05}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      nodesDraggable={!isLocked}
+      nodesConnectable={!isLocked}
+      elementsSelectable={!isLocked}
+      deleteKeyCode={DELETE_KEY_CODES}
+    >
+      <Background />
+      <CustomControls
+        setIsLocked={setIsLocked}
+        isLocked={isLocked}
+        isReadOnly={isReadOnly}
+      />
+      <NewControlPanel isReadOnly={isReadOnly} />
+      {isReadOnly && <ReadOnlyBanner />}
+      {!isReadOnly &&
+        (hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />)}
+      <GraphLoadingBox flowContentLoading={isFlowContentLoading} />
+      {isGraphRunning && <RunningBackground />}
+      {children}
+    </ReactFlow>
+  );
+}

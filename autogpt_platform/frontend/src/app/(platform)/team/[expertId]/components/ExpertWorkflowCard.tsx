@@ -1,0 +1,158 @@
+"use client";
+
+import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
+import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
+import { cn } from "@/lib/utils";
+import { Activity01Icon } from "@hugeicons/core-free-icons";
+import { isRenderableImageUrl } from "@/lib/next-image";
+import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
+import NextLink from "next/link";
+import { useState } from "react";
+import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
+import { ExpertWorkflowActions } from "./ExpertWorkflowActions";
+import { ExpertWorkflowRunButton } from "./ExpertWorkflowRunButton";
+import { useExpertWorkflowCard } from "./useExpertWorkflowCard";
+import { WorkflowChain } from "./WorkflowChain";
+import { WorkflowCredentialStack } from "./WorkflowCredentialStack";
+
+interface Props {
+  workflow: ExpertWorkflowRef;
+  libraryAgent: LibraryAgent | undefined;
+  expertId?: string;
+  coverColor: string | undefined;
+  onAsk?: (prompt: string) => void;
+}
+
+export function ExpertWorkflowCard({
+  workflow,
+  libraryAgent,
+  expertId,
+  coverColor,
+  onAsk,
+}: Props) {
+  const {
+    name,
+    runCount,
+    isTriggerWorkflow,
+    status,
+    credentialProviders,
+    libraryHref,
+    builderHref,
+    chatHref,
+    chatPrompt,
+    openRun,
+    openTriggers,
+  } = useExpertWorkflowCard({
+    workflow,
+    libraryAgent,
+    expertId,
+  });
+  const [hasImageError, setHasImageError] = useState(false);
+
+  return (
+    <div
+      data-testid="expert-workflow-row"
+      className="group relative flex w-full flex-col overflow-hidden rounded-2xl bg-surface transition-colors smooth-shadow-ring-sm hover:bg-surface-muted"
+    >
+      {libraryHref ? (
+        <NextLink
+          href={libraryHref}
+          aria-label={`Open ${name} tasks`}
+          className="absolute inset-0 z-0 rounded-xl"
+        />
+      ) : null}
+
+      <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-surface-hover">
+        {isRenderableImageUrl(libraryAgent?.image_url) && !hasImageError ? (
+          <Image
+            src={libraryAgent.image_url}
+            unoptimized={isLocalStoreMediaUrl(libraryAgent.image_url)}
+            alt=""
+            fill
+            sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+            onError={() => setHasImageError(true)}
+            className="object-cover"
+          />
+        ) : (
+          <>
+            <ExpertCover
+              className="absolute inset-0 h-full w-full rounded-none"
+              color={coverColor}
+            />
+            <div className="relative">
+              <WorkflowChain chain={workflow.chain ?? []} size="sm" />
+            </div>
+          </>
+        )}
+        <div className="pointer-events-auto absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100">
+          <ExpertWorkflowActions
+            workflow={workflow}
+            expertId={expertId}
+            name={name}
+            builderHref={builderHref}
+            chatHref={chatHref}
+            chatPrompt={chatPrompt}
+            onAsk={onAsk}
+          />
+        </div>
+      </div>
+
+      <div className="pointer-events-none relative flex flex-1 flex-col px-3 pb-3 pt-2.5">
+        <div className="hyphens-auto">
+          <Text
+            variant="large-medium"
+            tone="primary"
+            className="line-clamp-2 break-words"
+          >
+            {name}
+          </Text>
+        </div>
+        {workflow.schedule_cron ? (
+          <Text variant="small" tone="muted" className="mt-0.5">
+            {safeHumanizeCronExpression(workflow.schedule_cron)}
+          </Text>
+        ) : null}
+        {workflow.description ? (
+          <Text variant="body-md" tone="muted" className="mt-1.5 line-clamp-2">
+            {workflow.description}
+          </Text>
+        ) : null}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {runCount !== undefined ? (
+            <div className="flex items-center gap-1.5 text-foreground-tertiary">
+              <Icon icon={Activity01Icon} size={14} className="shrink-0" />
+              <Text variant="body-md" tone="muted">
+                {runCount} {runCount === 1 ? "run" : "runs"}
+              </Text>
+            </div>
+          ) : null}
+          <span
+            className={cn(
+              "rounded-md px-2 py-0.5 font-sans text-caption font-medium ring-1 ring-inset ring-border-base/80",
+              status.className,
+            )}
+          >
+            {status.label}
+          </span>
+        </div>
+        {libraryAgent ? (
+          <div className="relative z-10 mt-auto flex items-center justify-between gap-3 pt-3">
+            <WorkflowCredentialStack providers={credentialProviders} />
+            <span className="pointer-events-auto ml-auto">
+              <ExpertWorkflowRunButton
+                agent={libraryAgent}
+                isTriggerWorkflow={isTriggerWorkflow}
+                onRunCreated={openRun}
+                onTriggerSetup={openTriggers}
+              />
+            </span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}

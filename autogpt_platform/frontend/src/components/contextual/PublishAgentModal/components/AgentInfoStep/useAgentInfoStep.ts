@@ -1,3 +1,4 @@
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import { useEffect, useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -85,9 +86,15 @@ export function useAgentInfoStep({
     }
   }, [selectedAgentId, agentId]);
 
-  const handleImagesChange = useCallback((newImages: string[]) => {
-    setImages(newImages);
-  }, []);
+  const handleImagesChange = useCallback(
+    (newImages: string[]) => {
+      setImages(newImages);
+      if (newImages.length > 0) {
+        form.clearErrors("root");
+      }
+    },
+    [form],
+  );
 
   async function handleFormSubmit(data: PublishAgentFormData) {
     // Validate that at least one image is present
@@ -102,15 +109,14 @@ export function useAgentInfoStep({
     // Validate that an agent is selected before submission
     if (!selectedAgentId || !selectedAgentVersion) {
       toast({
-        title: "Agent Selection Required",
-        description: "Please select an agent before submitting to the store.",
+        title: "Workflow Selection Required",
+        description: "Please select a workflow before submitting to the store.",
         variant: "destructive",
       });
       return;
     }
 
-    const categories = data.category ? [data.category] : [];
-    const filteredCategories = categories.filter(Boolean);
+    const filteredCategories = [data.category].filter(Boolean);
 
     setIsSubmitting(true);
 
@@ -135,12 +141,13 @@ export function useAgentInfoStep({
 
       onSuccess(response);
     } catch (error) {
+      if (toastIfPlanRequired(error, "Publishing needs an active plan")) return;
       Sentry.captureException(error);
       toast({
-        title: "Submit Agent Error",
+        title: "Submit Workflow Error",
         description:
           (error instanceof Error ? error.message : undefined) ||
-          "An error occurred while submitting the agent. Please try again.",
+          "An error occurred while submitting the workflow. Please try again.",
         duration: 3000,
         variant: "destructive",
       });

@@ -2,56 +2,41 @@
 
 import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/helpers";
 import { environment } from "@/services/environment";
-import { useFlags } from "launchdarkly-react-client-sdk";
+import * as Sentry from "@sentry/nextjs";
+import type { FeatureFlagsIntegration } from "@sentry/nextjs";
 import { useEffect, useState } from "react";
+import { FLAG_BACKEND, isPostHogFlagsEnabled } from "./flag-backend";
+import { FrontendFlag as Flag } from "@/app/api/__generated__/models/frontendFlag";
+import { useFlagResolutionStarted } from "./flag-resolution";
+import { useFlagSource } from "./flag-source";
+import { usePwFlagOverrides } from "./pw-flag-overrides";
 
-export enum Flag {
-  BETA_BLOCKS = "beta-blocks",
-  MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
-  ENABLE_PLATFORM_PAYMENT = "enable-platform-payment",
-  ARTIFACTS = "artifacts",
-  ARTIFACTS_PAGE = "artifacts-page",
-  CHAT_MODE_OPTION = "chat-mode-option",
-  BUILDER_CHAT_PANEL = "builder-chat-panel",
-  AGENT_BRIEFING = "agent-briefing",
-  GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
-  CHAT_SEARCH = "chat-search",
-  CHAT_SHARING = "chat-sharing",
-  // Graphiti memory + dream-system gates. Mirror of the backend
-  // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
-  // them when memory/dream-related UI surfaces ship (P6+ on the
-  // dream-system roadmap). They default false below to match the
-  // backend's fail-closed gating (default=False, opt-in only) — a
-  // LaunchDarkly outage or missing flag key must not switch the
-  // feature on. Use ``NEXT_PUBLIC_FORCE_FLAG_*`` env overrides to
-  // enable the stack for local-dev / Playwright runs.
-  GRAPHITI_MEMORY = "graphiti-memory",
-  GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled",
-  DREAM_PASS_ENABLED = "dream-pass-enabled",
-  DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check",
-  DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
-}
+// Declared once, on the backend (`FrontendFlag` in `backend/util/feature_flag/frontend.py`),
+// which is also the set `/api/feature-flags` serves.
+export { Flag };
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 
 const defaultFlags = {
-  [Flag.BETA_BLOCKS]: [],
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
-  [Flag.ARTIFACTS]: false,
-  [Flag.ARTIFACTS_PAGE]: false,
   [Flag.CHAT_MODE_OPTION]: false,
-  [Flag.BUILDER_CHAT_PANEL]: false,
-  [Flag.AGENT_BRIEFING]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
-  [Flag.CHAT_SEARCH]: false,
-  [Flag.CHAT_SHARING]: false,
-  [Flag.GRAPHITI_MEMORY]: false,
-  [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
+  [Flag.CHAT_WORKSPACE_FILES]: false,
+  [Flag.CHAT_PINNING]: false,
+  [Flag.TASK_PROGRESS_BAR]: false,
+  // Off by default so a LaunchDarkly outage or a missing key hides the card
+  // rather than exposing the in-progress design to everyone.
+  [Flag.SETTINGS_NOTIFICATIONS]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
-  [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
-};
+  [Flag.DREAM_SKILL_LEARNING_ENABLED]: false,
+  [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
+  [Flag.COPILOT_VOICE_MODE]: false,
+  [Flag.COPILOT_AUTO_MODE]: false,
+  [Flag.COPILOT_STREAM_SHADOW]: 0,
+  [Flag.COPILOT_STREAM_RUNTIME]: false,
+} satisfies Record<Flag, unknown>;
 
 type FlagValues = typeof defaultFlags;
 
@@ -74,57 +59,75 @@ type FlagValues = typeof defaultFlags;
  */
 function readEnvOverride(flag: Flag): string | undefined {
   switch (flag) {
-    case Flag.BETA_BLOCKS:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_BETA_BLOCKS;
     case Flag.MARKETPLACE_SEARCH_TERMS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS;
     case Flag.ENABLE_PLATFORM_PAYMENT:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ENABLE_PLATFORM_PAYMENT;
-    case Flag.ARTIFACTS:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS;
-    case Flag.ARTIFACTS_PAGE:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS_PAGE;
     case Flag.CHAT_MODE_OPTION:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION;
-    case Flag.BUILDER_CHAT_PANEL:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_BUILDER_CHAT_PANEL;
-    case Flag.AGENT_BRIEFING:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_AGENT_BRIEFING;
     case Flag.GENERIC_TRIGGER_AGENTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
-    case Flag.CHAT_SEARCH:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SEARCH;
-    case Flag.CHAT_SHARING:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SHARING;
-    case Flag.GRAPHITI_MEMORY:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY;
-    case Flag.GRAPHITI_COMMUNITIES_ENABLED:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_COMMUNITIES_ENABLED;
+    case Flag.CHAT_WORKSPACE_FILES:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_WORKSPACE_FILES;
+    case Flag.CHAT_PINNING:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_PINNING;
+    case Flag.TASK_PROGRESS_BAR:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_PROGRESS_BAR;
+    case Flag.SETTINGS_NOTIFICATIONS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_SETTINGS_NOTIFICATIONS;
     case Flag.DREAM_PASS_ENABLED:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_ENABLED;
-    case Flag.DREAM_PASS_WEB_FACT_CHECK:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
+    case Flag.DREAM_SKILL_LEARNING_ENABLED:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_SKILL_LEARNING_ENABLED;
+    case Flag.COPILOT_VOICE_MODE:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_VOICE_MODE;
+    case Flag.COPILOT_AUTO_MODE:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_AUTO_MODE;
+    case Flag.COPILOT_STREAM_RUNTIME:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_STREAM_RUNTIME;
+    case Flag.COPILOT_BOT_PLATFORMS:
+    case Flag.COPILOT_STREAM_SHADOW:
+      return undefined;
   }
 }
 
-// Array-typed flags (e.g. ``BETA_BLOCKS``, ``MARKETPLACE_SEARCH_TERMS``)
+// Array-typed flags (e.g. ``MARKETPLACE_SEARCH_TERMS``)
 // cannot be meaningfully overridden through a single boolean string env
 // var — returning ``true`` / ``false`` would clash with the array type
 // callers expect.  These flags are still subject to LaunchDarkly + the
 // ``defaultFlags`` fallback; the env override path just skips them.
 const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
-  Flag.BETA_BLOCKS,
   Flag.MARKETPLACE_SEARCH_TERMS,
+  Flag.COPILOT_BOT_PLATFORMS,
+  Flag.COPILOT_STREAM_SHADOW,
 ]);
+
+// Master local-dev switch: ``NEXT_PUBLIC_FORCE_ALL_FLAGS=true`` turns every
+// boolean flag on without listing them individually. A per-flag
+// ``NEXT_PUBLIC_FORCE_FLAG_<NAME>`` still wins, so one flag can be excluded
+// with ``=false`` while the rest stay forced. Array/JSON-typed flags keep
+// their LaunchDarkly / default values.
+//
+// Inert in a production build, mirroring the backend's app_env guard:
+// NEXT_PUBLIC_* vars are inlined at build time, so one stray value in a
+// production env file would otherwise bake every fail-closed gate open into
+// the client bundle. Per-flag overrides are unaffected.
+const isForceAllFlags =
+  process.env.NODE_ENV !== "production" &&
+  ["1", "true", "yes", "on"].includes(
+    (process.env.NEXT_PUBLIC_FORCE_ALL_FLAGS ?? "").trim().toLowerCase(),
+  );
 
 export function envFlagOverride<T extends Flag>(
   flag: T,
 ): FlagValues[T] | undefined {
   if (ARRAY_TYPED_FLAGS.has(flag)) return undefined;
   const raw = readEnvOverride(flag);
-  if (raw === undefined) return undefined;
+  if (raw === undefined) {
+    return isForceAllFlags ? (true as FlagValues[T]) : undefined;
+  }
   const normalized = raw.trim().toLowerCase();
   if (["1", "true", "yes", "on"].includes(normalized)) {
     return true as FlagValues[T];
@@ -132,62 +135,135 @@ export function envFlagOverride<T extends Flag>(
   if (["0", "false", "no", "off"].includes(normalized)) {
     return false as FlagValues[T];
   }
-  return undefined;
+  return isForceAllFlags ? (true as FlagValues[T]) : undefined;
+}
+
+// A Playwright journey's runtime override wins over the build-time env one.
+function pwFlagOverride<T extends Flag>(
+  overrides: Record<string, unknown> | null,
+  flag: T,
+): FlagValues[T] | undefined {
+  if (!overrides || !(flag in overrides)) return undefined;
+  return resolveFlagValue(flag, overrides[flag]);
 }
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {
-  const currentFlags = useFlags<FlagValues>();
-  const flagValue = currentFlags[flag];
-  const areFlagsEnabled = environment.areFeatureFlagsEnabled();
-
-  const override = envFlagOverride(flag);
-  if (override !== undefined) {
-    return override;
-  }
-
-  if (!areFlagsEnabled || isPwMockEnabled) {
-    return defaultFlags[flag];
-  }
-
-  return flagValue ?? defaultFlags[flag];
+  const { value } = useFlagSource(flag);
+  const pwOverrides = usePwFlagOverrides();
+  const override = pwFlagOverride(pwOverrides, flag) ?? envFlagOverride(flag);
+  const served = override ?? servedFlagValue(flag, value);
+  recordFlagForSentry(flag, override === undefined ? served : undefined);
+  return served;
 }
 
 const FLAG_RESOLUTION_TIMEOUT_MS = 5000;
 
 /**
- * Same as ``useGetFlag`` but also surfaces whether LaunchDarkly has
+ * Same as ``useGetFlag`` but also surfaces whether the flag vendor has
  * actually answered for this flag. Callers that gate a whole route on a
  * flag should branch on ``ready`` first — short-circuiting to
- * ``notFound()`` before LD responds 404s users that actually have the
- * flag on. Falls back to "ready" after ``FLAG_RESOLUTION_TIMEOUT_MS`` so
- * a flag key that LD never registers doesn't spin forever.
+ * ``notFound()`` before the vendor responds 404s users that actually have
+ * the flag on. Falls back to "ready" after ``FLAG_RESOLUTION_TIMEOUT_MS``
+ * so an unregistered flag key doesn't spin forever; ``answered`` stays
+ * false then, for callers that must not act on a timeout. The timeout only
+ * counts from the moment the vendor can actually start answering: while the
+ * provider is still waiting on the session it would otherwise expire first
+ * and serve the default to a user whose flag is on.
  */
 export function useFlagStatus<T extends Flag>(
   flag: T,
-): { enabled: FlagValues[T]; ready: boolean } {
-  const currentFlags = useFlags<FlagValues>();
-  const areFlagsEnabled = environment.areFeatureFlagsEnabled();
-  const override = envFlagOverride(flag);
+): { enabled: FlagValues[T]; ready: boolean; answered: boolean } {
+  const { value, resolved } = useFlagSource(flag);
+  const areFlagsEnabled = areFeatureFlagsEnabled();
+  const pwOverrides = usePwFlagOverrides();
+  const override = pwFlagOverride(pwOverrides, flag) ?? envFlagOverride(flag);
 
+  const resolutionStarted = useFlagResolutionStarted();
   const [timedOut, setTimedOut] = useState(false);
   useEffect(() => {
+    if (!resolutionStarted) return;
     const timer = setTimeout(
       () => setTimedOut(true),
       FLAG_RESOLUTION_TIMEOUT_MS,
     );
     return () => clearTimeout(timer);
-  }, []);
+  }, [resolutionStarted]);
 
-  if (override !== undefined) {
-    return { enabled: override, ready: true };
-  }
-  if (!areFlagsEnabled || isPwMockEnabled) {
-    return { enabled: defaultFlags[flag], ready: true };
-  }
+  const served = override ?? servedFlagValue(flag, value);
+  recordFlagForSentry(flag, override === undefined ? served : undefined);
 
-  const ldResponded = flag in currentFlags;
+  // Until hydration ends a Playwright override can't be read yet, so a route
+  // gate must not act on the default it would replace.
+  if (isPwMockEnabled && pwOverrides === null) {
+    return { enabled: served, ready: false, answered: false };
+  }
+  if (override !== undefined || !areFlagsEnabled || isPwMockEnabled) {
+    return { enabled: served, ready: true, answered: true };
+  }
   return {
-    enabled: (currentFlags[flag] ?? defaultFlags[flag]) as FlagValues[T],
-    ready: ldResponded || timedOut,
+    enabled: served,
+    ready: resolved || timedOut,
+    answered: resolved,
   };
+}
+
+function servedFlagValue<T extends Flag>(flag: T, value: unknown) {
+  if (!areFeatureFlagsEnabled() || isPwMockEnabled) return defaultFlags[flag];
+  return resolveFlagValue(flag, value);
+}
+
+// PostHog answers a flag with no payload as a bare boolean, so a JSON-valued
+// flag can arrive as `true` and reach a consumer that calls `.map` on it.
+// `typeof` alone can't separate an array from an object; both are "object".
+export function resolveFlagValue<T extends Flag>(
+  flag: T,
+  value: unknown,
+): FlagValues[T] {
+  const fallback = defaultFlags[flag];
+
+  if (value === undefined || value === null) return fallback;
+
+  if (Array.isArray(fallback)) {
+    return (Array.isArray(value) ? value : fallback) as FlagValues[T];
+  }
+
+  if (fallback !== null && typeof fallback === "object") {
+    const isPlainObject = typeof value === "object" && !Array.isArray(value);
+    return (isPlainObject ? value : fallback) as FlagValues[T];
+  }
+
+  return (typeof value === typeof fallback ? value : fallback) as FlagValues[T];
+}
+
+// ``environment.areFeatureFlagsEnabled`` only knows about LaunchDarkly, and
+// deliberately stays that way — it is what the provider and the flag test
+// mocks stub. This is the same question asked of whichever vendor is configured.
+function areFeatureFlagsEnabled() {
+  switch (FLAG_BACKEND) {
+    case "server":
+      return true;
+    case "posthog":
+      return isPostHogFlagsEnabled();
+    case "dual":
+      return environment.areFeatureFlagsEnabled() || isPostHogFlagsEnabled();
+    default:
+      return environment.areFeatureFlagsEnabled();
+  }
+}
+
+// Records the value served, not the vendor's; env overrides pass undefined.
+// Called during render, not in an effect: a component that throws in the same
+// render never commits, and its error would reach Sentry without the flag.
+// Sentry's flag context holds booleans only; JSON-valued flags are skipped.
+// A recording failure must never break a flag read.
+function recordFlagForSentry(key: string, value: unknown) {
+  if (typeof value !== "boolean") return;
+  try {
+    Sentry.getClient()
+      ?.getIntegrationByName<FeatureFlagsIntegration>("FeatureFlags")
+      ?.addFeatureFlag(key, value);
+  } catch (error) {
+    // Debug, not warn: captureConsoleIntegration would send it to Sentry.
+    console.debug(`Could not record flag ${key} for Sentry`, error);
+  }
 }

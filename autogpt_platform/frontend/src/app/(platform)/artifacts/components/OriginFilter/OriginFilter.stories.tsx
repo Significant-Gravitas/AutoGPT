@@ -15,14 +15,14 @@ const meta: Meta<typeof OriginFilter> = {
           "Segmented pill filter for the Artifacts page. The active pill " +
           "slides between options via Framer Motion's shared `layoutId`. " +
           "Drives the `origin` query param on `useListWorkspaceFiles` " +
-          "(builder vs autopilot, all = no filter).",
+          "(uploaded vs generated, all = no filter).",
       },
     },
   },
   argTypes: {
     value: {
       control: { type: "radio" },
-      options: ["all", "builder", "autopilot"] satisfies OriginFilterValue[],
+      options: ["all", "uploaded", "generated"] satisfies OriginFilterValue[],
       description: "Currently selected origin filter.",
     },
     onChange: {
@@ -39,12 +39,12 @@ export const All: Story = {
   args: { value: "all" },
 };
 
-export const Builder: Story = {
-  args: { value: "builder" },
+export const Uploaded: Story = {
+  args: { value: "uploaded" },
 };
 
-export const Autopilot: Story = {
-  args: { value: "autopilot" },
+export const Generated: Story = {
+  args: { value: "generated" },
 };
 
 export const Interactive: Story = {
@@ -53,8 +53,8 @@ export const Interactive: Story = {
     return (
       <div className="flex flex-col items-center gap-4">
         <OriginFilter value={value} onChange={setValue} />
-        <span className="text-xs text-zinc-500">
-          Selected: <code className="text-zinc-900">{value}</code>
+        <span className="text-xs text-foreground-tertiary">
+          Selected: <code className="text-foreground-strong">{value}</code>
         </span>
       </div>
     );

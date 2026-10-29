@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import LLMModel
 from backend.copilot.tools.helpers import execute_block
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
@@ -586,9 +586,9 @@ def test_prepare_dry_run_orchestrator_block():
     assert result is not None
     # Model is overridden to the simulation model (not the user's model).
     assert result["model"] != "gpt-4o"
-    # Simulation model must parse as a real LlmModel so OrchestratorBlock's
+    # Simulation model must parse as a real LLMModel so OrchestratorBlock's
     # Pydantic input validation accepts it.
-    assert LlmModel(result["model"]) is not None
+    assert LLMModel(result["model"]) is not None
     # Capped to min(original, 10); user's 10 passes through unchanged.
     assert result["agent_mode_max_iterations"] == 10
     assert result["_dry_run_api_key"] == "sk-or-test-key"
@@ -735,6 +735,7 @@ def _make_graph_mock(graph_id: str = "g1") -> MagicMock:
     graph.input_schema = {"type": "object", "properties": {}, "required": []}
     graph.credentials_input_schema = {"type": "object", "properties": {}}
     graph.trigger_setup_info = None
+    graph.has_external_trigger = False
     return graph
 
 
@@ -753,7 +754,7 @@ async def test_run_agent_session_dry_run_overrides_kwargs():
 
     captured_params = {}
 
-    async def capture_prerequisites(graph, user_id, params, session_id):
+    async def capture_prerequisites(graph, user_id, params, session_id, expert_id=None):
         captured_params["dry_run"] = params.dry_run
         return {}, None
 
@@ -795,7 +796,7 @@ async def test_run_agent_session_dry_run_false_allows_scheduling():
 
     captured_params = {}
 
-    async def capture_prerequisites(graph, user_id, params, session_id):
+    async def capture_prerequisites(graph, user_id, params, session_id, expert_id=None):
         captured_params["dry_run"] = params.dry_run
         return {}, None
 
@@ -839,7 +840,7 @@ async def test_run_agent_session_dry_run_false_allows_llm_dry_run_true():
 
     captured_params = {}
 
-    async def capture_prerequisites(graph, user_id, params, session_id):
+    async def capture_prerequisites(graph, user_id, params, session_id, expert_id=None):
         captured_params["dry_run"] = params.dry_run
         return {}, None
 

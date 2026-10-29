@@ -1,6 +1,7 @@
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -83,6 +84,7 @@ class CreateCampaignBlock(Block):
                     created_at="2024-01-01T00:00:00Z",
                 )
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -196,6 +198,8 @@ class AddLeadToCampaignBlock(Block):
                     bounce_count=0,
                 )
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -306,6 +310,7 @@ class SaveCampaignSequencesBlock(Block):
                     message="Sequences saved successfully",
                 )
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

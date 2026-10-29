@@ -12,17 +12,18 @@ import {
 } from "@/components/contextual/OutputRenderers";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { beautifyString } from "@/lib/utils";
-import {
-  ArrowsOutSimpleIcon,
-  CheckIcon,
-  CopyIcon,
-  DownloadIcon,
-} from "@phosphor-icons/react";
 import React, { FC } from "react";
 import { useNodeDataViewer } from "./useNodeDataViewer";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";
 import { NodeDataType } from "../../helpers";
+import {
+  ArrowExpand01Icon,
+  Copy01Icon,
+  Download04Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export interface NodeDataViewerProps {
   data?: any;
@@ -85,7 +86,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
 
   const shouldGroupExecutions = groupedExecutions.length > 0;
   return (
-    <Dialog styling={{ width: "600px" }}>
+    <Dialog title="Data Preview" styling={{ width: "600px" }}>
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -93,9 +94,12 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
               <Button
                 variant="secondary"
                 size="small"
-                className="h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900"
+                className="h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-foreground-strong"
               >
-                <ArrowsOutSimpleIcon size={isViewMoreData ? 16 : 12} />
+                <Icon
+                  icon={ArrowExpand01Icon}
+                  size={isViewMoreData ? 16 : 12}
+                />
               </Button>
             </Dialog.Trigger>
           </TooltipTrigger>
@@ -108,11 +112,15 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <Text variant="large-medium" className="text-slate-900">
+              <Text variant="large-medium" tone="primary">
                 Full {dataType === "input" ? "Input" : "Output"} Preview
               </Text>
             </div>
-            <div className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs font-medium text-black">
+            <Text
+              variant="small-medium-tight"
+              as="div"
+              className="rounded-full border border-border-strong bg-surface-hover px-3 py-1.5"
+            >
               {shouldGroupExecutions ? totalGroupedItems : dataArray.length}{" "}
               item
               {shouldGroupExecutions
@@ -123,23 +131,26 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                   ? "s"
                   : ""}{" "}
               total
-            </div>
+            </Text>
           </div>
-          <div className="text-sm text-gray-600">
+          <Text variant="body-tight" tone="secondary" as="div">
             {shouldGroupExecutions ? (
               <div>
                 Pin:{" "}
-                <span className="font-semibold">{beautifyString(pinName)}</span>
+                <Text variant="body-semibold-tight" as="span" tone="inherit">
+                  {beautifyString(pinName)}
+                </Text>
               </div>
             ) : (
               <>
                 <div className="flex items-center gap-2">
-                  <Text variant="body" className="text-slate-600">
+                  <Text variant="body" tone="secondary">
                     Execution ID:
                   </Text>
                   <Text
-                    variant="body-medium"
-                    className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-xs"
+                    variant="small-medium-mono-tight"
+                    as="p"
+                    className="rounded-full border border-border-strong bg-surface-muted px-2 py-1"
                   >
                     {execId}
                   </Text>
@@ -149,18 +160,18 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                     onClick={copyExecutionId}
                     className="h-6 w-6 min-w-0 p-0"
                   >
-                    <CopyIcon size={14} />
+                    <Icon icon={Copy01Icon} size={14} />
                   </Button>
                 </div>
                 <div className="mt-2">
                   Pin:{" "}
-                  <span className="font-semibold">
+                  <Text variant="body-semibold-tight" as="span" tone="inherit">
                     {beautifyString(pinName)}
-                  </span>
+                  </Text>
                 </div>
               </>
             )}
-          </div>
+          </Text>
         </div>
 
         <div className="flex-1">
@@ -170,15 +181,16 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                 {groupedExecutions.map((execution) => (
                   <div
                     key={execution.execId}
-                    className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+                    className="rounded-3xl border border-node-border bg-surface p-4 shadow-sm"
                   >
                     <div className="flex items-center gap-2">
-                      <Text variant="body" className="text-slate-600">
+                      <Text variant="body" tone="secondary">
                         Execution ID:
                       </Text>
                       <Text
-                        variant="body-medium"
-                        className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-xs"
+                        variant="small-medium-mono-tight"
+                        as="p"
+                        className="rounded-full border border-border-strong bg-surface-muted px-2 py-1"
                       >
                         {execution.execId}
                       </Text>
@@ -208,9 +220,15 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                               >
                                 {copiedKey ===
                                 `${execution.execId}-${index}` ? (
-                                  <CheckIcon className="size-4 text-green-600" />
+                                  <Icon
+                                    icon={Tick02Icon}
+                                    className="size-4 text-success"
+                                  />
                                 ) : (
-                                  <CopyIcon className="size-4 text-black" />
+                                  <Icon
+                                    icon={Copy01Icon}
+                                    className="size-4 text-foreground-base"
+                                  />
                                 )}
                               </Button>
                               <Button
@@ -220,13 +238,16 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                                 onClick={() => handleDownloadGroupedItem(item)}
                                 aria-label="Download item"
                               >
-                                <DownloadIcon className="size-4 text-black" />
+                                <Icon
+                                  icon={Download04Icon}
+                                  className="size-4 text-foreground-base"
+                                />
                               </Button>
                             </div>
                           </div>
                         ))
                       ) : (
-                        <div className="py-4 text-center text-gray-500">
+                        <div className="py-4 text-center text-foreground-tertiary">
                           No data available
                         </div>
                       )}
@@ -252,9 +273,15 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                         aria-label="Copy item"
                       >
                         {copiedIndex === index ? (
-                          <CheckIcon className="size-4 text-green-600" />
+                          <Icon
+                            icon={Tick02Icon}
+                            className="size-4 text-success"
+                          />
                         ) : (
-                          <CopyIcon className="size-4 text-black" />
+                          <Icon
+                            icon={Copy01Icon}
+                            className="size-4 text-foreground-base"
+                          />
                         )}
                       </Button>
                       <Button
@@ -264,14 +291,17 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                         onClick={() => handleDownloadItem(index)}
                         aria-label="Download item"
                       >
-                        <DownloadIcon className="size-4 text-black" />
+                        <Icon
+                          icon={Download04Icon}
+                          className="size-4 text-foreground-base"
+                        />
                       </Button>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="py-8 text-center text-gray-500">
+              <div className="py-8 text-center text-foreground-tertiary">
                 No data available
               </div>
             )}

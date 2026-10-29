@@ -7,17 +7,23 @@ at the scheduled time.
 The ``session_id`` argument decides WHERE the follow-up lands:
 
 * Omitted / ``null`` — sentinel meaning "fire into a **fresh chat**".
-  At fire time the scheduler creates a new copilot session for the
-  user and routes the turn into it (no prior conversation context).
-  Use this for recurring "morning brief" / "daily digest" patterns
-  where a clean slate is preferred over polluting the current chat.
+  At fire time the scheduler creates a new copilot session in the same
+  Otto or expert scope and routes the turn into it (no prior
+  conversation context).
+  Use this only where a clean slate is genuinely wanted: the turn
+  starts with no idea what the last one found or said, which for a
+  recurring job means no dedupe and no "third time this week".
 
 * A specific session UUID — the follow-up resumes that session with
-  full history.  This is the right value for "remind me here in 20
-  minutes": the model reads the current ``session_id`` from the
+  full history.  Right for "remind me here in 20 minutes", and right
+  for a recurring routine that has to remember its own last run:
+  the two axes are independent and pinning a repeating follow-up to
+  one thread is a supported, common shape. The model reads the
+  current ``session_id`` from the
   trusted ``<session_context>`` block injected on every turn and
-  passes it back verbatim.  Ownership is validated — UUIDs belonging
-  to other users are rejected as ``session_not_found``.
+  passes it back verbatim. Ownership and persona scope are validated —
+  UUIDs belonging to other users or another expert are rejected as
+  ``session_not_found``.
 
 The tool ends the current turn; the model should send its final
 user-facing message *before* calling this. The deferred work happens
@@ -30,15 +36,22 @@ from typing import Any
 
 from apscheduler.triggers.cron import CronTrigger
 
+from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tools.session_context import is_followups_feature_enabled
-from backend.copilot.tracking import track_followup_scheduled
+from backend.copilot.tracking import track_chat_outcome
 from backend.data.db_accessors import user_db
 from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .base import BaseTool
-from .models import ErrorResponse, ResponseType, ToolResponseBase
+from .models import (
+    ErrorResponse,
+    ResponseType,
+    SetupRequirementsResponse,
+    ToolResponseBase,
+)
+from .schedule_credentials import INTEGRATIONS_PARAM, pin_schedule_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +68,10 @@ class ScheduleCreatedResponse(ToolResponseBase):
 class ScheduleFollowupTool(BaseTool):
     """Schedule a follow-up turn on a copilot session.
 
-    Defaults to the current session ("check on this in 20 min"). Pass
-    ``session_id`` to target a different conversation owned by the
-    same user. Exactly one of ``delay_seconds`` or ``cron`` must be
-    provided.
+    Omit ``session_id`` to create a fresh conversation in the current
+    Otto or expert scope. Pass ``session_id`` to target a conversation
+    owned by the same user in that same scope. Exactly one of
+    ``delay_seconds`` or ``cron`` must be provided.
     """
 
     @property
@@ -69,19 +82,21 @@ class ScheduleFollowupTool(BaseTool):
     def description(self) -> str:
         return (
             "Schedule a copilot follow-up turn. The 'message' is sent "
-            "at the scheduled time. The 'session_id' arg picks the "
-            "destination: OMIT IT (or pass null) to fire into a brand-"
-            "new chat created at fire-time — best for daily briefs / "
-            "recurring digests / anything that should start fresh. "
-            "Pass an existing 'session_id' (you can read the current "
-            "one from the trusted <session_context> block) to resume "
-            "that conversation with its full history — best for "
-            "'remind me here in 20 minutes'. Use 'delay_seconds' for "
-            "one-shot followups ('in 20 minutes', 'at 7am tomorrow' — "
-            "convert absolute times to a delay) or 'cron' for "
-            "recurring schedules ('every Monday at 9am'). After "
-            "calling this tool your turn ends — send your final user-"
-            "facing message before calling."
+            "at the scheduled time. Two independent choices: WHEN, and "
+            "WHERE. WHEN: 'delay_seconds' fires once ('in 20 minutes', "
+            "'at 7am tomorrow' — convert an absolute time to a delay); "
+            "'cron' repeats ('every Monday at 9am'). WHERE: omit "
+            "'session_id' to fire into a brand-new chat each time, or "
+            "pass one (the current chat's id is in the trusted "
+            "<session_context> block) to land in that conversation with "
+            "its full history. Every combination is valid, but a "
+            "repeating follow-up is not standing work: what should repeat "
+            "indefinitely, and what the user will want to find and switch "
+            "off later, belongs in `tool:schedule_routine` where that is "
+            "available — it leaves a named record they can manage; this "
+            "tool does not. After calling this "
+            "tool your turn ends — send your final user-facing message "
+            "before calling."
         )
 
     @property
@@ -108,6 +123,8 @@ class ScheduleFollowupTool(BaseTool):
                         "Mutually exclusive with cron."
                     ),
                     "minimum": 60,
+                    "title": "Runs in",
+                    "format": "seconds",
                 },
                 "cron": {
                     "type": "string",
@@ -117,25 +134,39 @@ class ScheduleFollowupTool(BaseTool):
                         "(e.g. '0 9 * * 1' = Mondays at 9am). Mutually "
                         "exclusive with delay_seconds."
                     ),
+                    "title": "Repeats",
+                    "format": "cron",
                 },
                 "session_id": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "description": (
-                        "Target session UUID. OMIT or null = create a "
-                        "brand-new chat at fire-time (no prior context). "
-                        "Pass the current session's id from <session_"
-                        "context> to fire into THIS chat with full "
-                        "history. Sessions owned by other users are "
-                        "rejected as 'session_not_found'."
+                        "Where the follow-up lands; independent of "
+                        "whether it repeats. OMIT or null = a brand-new "
+                        "chat at every fire, in the current Otto or "
+                        "expert memory scope, with no prior context — "
+                        "choose this only when each run should start "
+                        "clean. Pass a session id (the current one is in "
+                        "<session_context>) to fire into that chat with "
+                        "its full history, which is what lets a repeating "
+                        "follow-up build on its own past runs instead of "
+                        "repeating itself. Sessions owned by other users "
+                        "or in a different expert scope are rejected as "
+                        "'session_not_found'."
                     ),
+                    "title": "Lands in",
+                    "entity": "chat_session",
                 },
                 "name": {
                     "type": "string",
                     "description": "Optional short label shown in the schedules UI.",
                 },
+                "integrations": INTEGRATIONS_PARAM,
             },
             "required": ["message"],
         }
+
+    # The schedule.created activity event is recorded by the scheduler when
+    # the job is persisted, so it covers every creation path, not just this tool.
 
     async def _execute(
         self,
@@ -172,17 +203,17 @@ class ScheduleFollowupTool(BaseTool):
         # Target session: ``None`` (omitted / explicit null) = sentinel for
         # "create a fresh chat at fire time" — the scheduler handles it.
         # A non-null value pins the followup to an existing session; we
-        # validate ownership here (``get_chat_session`` returns None for
-        # both "not found" and "not yours", which collapse into the same
-        # error from the model's perspective).
+        # validate ownership and persona scope here. ``get_chat_session``
+        # returns None for both "not found" and "not yours", and all three
+        # cases collapse into the same error from the model's perspective.
         target_session_id: str | None = kwargs.get("session_id")
         if target_session_id and target_session_id != current_session_id:
             target = await get_chat_session(target_session_id, user_id)
-            if target is None:
+            if target is None or target.expert_id != session.expert_id:
                 return ErrorResponse(
                     message=(
-                        f"Session {target_session_id} not found or not "
-                        f"owned by the calling user."
+                        f"Session {target_session_id} not found, not owned by "
+                        "the calling user, or outside the current memory scope."
                     ),
                     error="session_not_found",
                     session_id=current_session_id,
@@ -238,6 +269,14 @@ class ScheduleFollowupTool(BaseTool):
                     session_id=current_session_id,
                 )
 
+        # Last, once nothing else can refuse the call: asking the user to pick
+        # an account for a schedule that then fails validation wastes the pick.
+        pins = await pin_schedule_credentials(
+            user_id, session, session.expert_id, kwargs.get("integrations")
+        )
+        if isinstance(pins, SetupRequirementsResponse):
+            return pins
+
         try:
             info = await get_scheduler_client().add_copilot_turn_schedule(
                 user_id=user_id,
@@ -247,6 +286,13 @@ class ScheduleFollowupTool(BaseTool):
                 run_at=run_at,
                 name=name,
                 user_timezone=user_timezone,
+                # Capture the scheduling chat's tenant so a fresh session
+                # minted at fire time lands in the same org/team, and its
+                # expert so those follow-up runs stay attributed to her.
+                organization_id=session.organization_id if session else None,
+                team_id=session.team_id if session else None,
+                expert_id=session.expert_id if session else None,
+                credential_pins=pins,
             )
         except ValueError as e:
             return ErrorResponse(
@@ -256,10 +302,13 @@ class ScheduleFollowupTool(BaseTool):
             )
 
         is_recurring = cron is not None
-        track_followup_scheduled(
-            user_id=user_id,
-            session_id=target_session_id,
+        track_chat_outcome(
+            user_id,
+            current_session_id,
+            "schedule_created",
+            target="followup",
             schedule_id=info.id,
+            target_chat_session_id=target_session_id,
             is_recurring=is_recurring,
         )
         if target_session_id is None:
@@ -274,9 +323,18 @@ class ScheduleFollowupTool(BaseTool):
             else f"once at {info.next_run_time}"
         )
         return ScheduleCreatedResponse(
-            message=f"Follow-up scheduled {when_str}{target_note}.",
+            message=f"Follow-up scheduled {when_str}{target_note}." + _pins_note(pins),
             schedule_id=info.id,
             next_run_time=info.next_run_time,
             is_recurring=is_recurring,
             session_id=current_session_id,
         )
+
+
+def _pins_note(pins: CredentialPins) -> str:
+    if not pins:
+        return ""
+    accounts = ", ".join(
+        f"{provider}: '{pin.title or pin.id}'" for provider, pin in sorted(pins.items())
+    )
+    return f" Every run uses these accounts: {accounts}."

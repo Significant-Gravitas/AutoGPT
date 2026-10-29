@@ -8,16 +8,17 @@ import {
   AccordionTrigger,
 } from "@/components/molecules/Accordion/Accordion";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  FilePlusIcon,
-  LightbulbIcon,
-  TrashIcon,
-  WarningIcon,
-} from "@phosphor-icons/react";
 import { DreamWriteRow } from "./components/DreamWriteRow";
 import { DreamDemotionRow } from "./components/DreamDemotionRow";
 import { DreamEntityInvalidationRow } from "./components/DreamEntityInvalidationRow";
 import { sectionCounts } from "./helpers";
+import {
+  Alert01Icon,
+  BulbIcon,
+  Delete02Icon,
+  FilePlusIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   operations: DreamOperationsSnapshot | null | undefined;
@@ -27,7 +28,7 @@ export function DreamOperationsView({ operations }: Props) {
   if (!operations) {
     return (
       <div
-        className="rounded-md border border-dashed bg-white p-4 text-center text-sm text-gray-500"
+        className="rounded-md border border-dashed bg-surface p-4 text-center text-sm text-foreground-tertiary"
         data-testid="dream-operations-empty"
       >
         No per-edge operations were returned for this dream pass.
@@ -43,10 +44,10 @@ export function DreamOperationsView({ operations }: Props) {
 
   return (
     <div
-      className="rounded-md border bg-white p-3"
+      className="rounded-md border bg-surface p-3"
       data-testid="dream-operations-view"
     >
-      <Text variant="small-medium" className="mb-2 uppercase text-gray-500">
+      <Text variant="eyebrow" as="p" className="mb-2">
         Operations
       </Text>
       <Accordion
@@ -56,7 +57,7 @@ export function DreamOperationsView({ operations }: Props) {
         <AccordionItem value="writes">
           <AccordionTrigger>
             <SectionLabel
-              icon={<FilePlusIcon size={14} weight="bold" />}
+              icon={<Icon icon={FilePlusIcon} size={14} />}
               label="Writes"
               count={counts.writes}
             />
@@ -80,7 +81,7 @@ export function DreamOperationsView({ operations }: Props) {
         <AccordionItem value="proposals">
           <AccordionTrigger>
             <SectionLabel
-              icon={<LightbulbIcon size={14} weight="bold" />}
+              icon={<Icon icon={BulbIcon} size={14} />}
               label="Proposals"
               count={counts.proposals}
             />
@@ -104,7 +105,7 @@ export function DreamOperationsView({ operations }: Props) {
         <AccordionItem value="demotions">
           <AccordionTrigger>
             <SectionLabel
-              icon={<TrashIcon size={14} weight="bold" />}
+              icon={<Icon icon={Delete02Icon} size={14} />}
               label="Demotions"
               count={counts.demotions}
             />
@@ -125,7 +126,7 @@ export function DreamOperationsView({ operations }: Props) {
         <AccordionItem value="entities">
           <AccordionTrigger>
             <SectionLabel
-              icon={<WarningIcon size={14} weight="bold" />}
+              icon={<Icon icon={Alert01Icon} size={14} />}
               label="Entity invalidations"
               count={counts.entities}
             />
@@ -155,10 +156,10 @@ interface SectionLabelProps {
 
 function SectionLabel({ icon, label, count }: SectionLabelProps) {
   return (
-    <span className="inline-flex items-center gap-2 text-sm font-medium text-gray-800">
+    <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground-emphasis">
       {icon}
       {label}
-      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-600">
+      <span className="rounded bg-surface-hover px-1.5 py-0.5 text-xs font-normal text-foreground-secondary">
         {count}
       </span>
     </span>
@@ -166,5 +167,7 @@ function SectionLabel({ icon, label, count }: SectionLabelProps) {
 }
 
 function EmptyRow({ text }: { text: string }) {
-  return <div className="px-1 py-2 text-xs text-gray-500">{text}</div>;
+  return (
+    <div className="px-1 py-2 text-xs text-foreground-tertiary">{text}</div>
+  );
 }

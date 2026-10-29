@@ -8,9 +8,11 @@ import signal
 import sys
 import threading
 import time
+import typing
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from functools import update_wrapper
+from time import monotonic
 from typing import (
     Any,
     Awaitable,
@@ -23,6 +25,7 @@ from typing import (
     Type,
     TypeVar,
     cast,
+    get_type_hints,
     overload,
 )
 
@@ -32,14 +35,18 @@ from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, TypeAdapter, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
+from tenacity import RetryCallState
+from tenacity.stop import stop_base
 
 import backend.util.exceptions as exceptions
 from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
+from backend.util import tracing
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
-from backend.util.process import AppProcess
-from backend.util.retry import conn_retry, create_retry_decorator
+from backend.util.process import AppProcess, freeze_startup_heap
+from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
+from backend.util.service_auth import internal_auth_headers, require_internal_key
 from backend.util.settings import Config, get_service_name
 
 logger = logging.getLogger(__name__)
@@ -52,6 +59,13 @@ api_comm_retry = config.pyro_client_comm_retry
 api_comm_timeout = config.pyro_client_comm_timeout
 api_call_timeout = config.rpc_client_call_timeout
 api_comm_max_wait = config.pyro_client_max_wait
+# A client retires an idle pooled connection long before the server closes it: a
+# call written into a connection as the server closes it fails with httpx.ReadError.
+rpc_server_keepalive_seconds = 60
+rpc_client_keepalive_expiry_seconds = rpc_server_keepalive_seconds / 2
+# How long a call waits, from its first missing-route answer, for a server on the
+# previous release to be replaced mid-rollout; past that the method is likelier misnamed.
+rpc_client_missing_route_wait_seconds = 300
 
 
 def _validate_no_prisma_objects(obj: Any, path: str = "result") -> None:
@@ -92,11 +106,48 @@ def expose(func: C) -> C:
     return func
 
 
+def resolve_type_hints(func: Callable[..., Any]) -> dict[str, Any]:
+    """Type hints of ``func`` evaluated in its *defining* module.
+
+    Exposed service functions are plain functions from other modules (or
+    stubs wrapping them via ``update_wrapper``), and those modules may use
+    ``from __future__ import annotations``. ``inspect.signature`` then yields
+    string annotations such as ``"SomeRecord | None"`` that neither
+    ``create_model`` nor ``TypeAdapter`` can resolve from here — the request
+    model would reject model-valued arguments and the client would hand
+    back raw dicts. Unwrapping to the original function and using
+    ``typing.get_type_hints`` evaluates the strings where the names live.
+    Falls back to the raw annotations when evaluation is impossible.
+    """
+    target = inspect.unwrap(func)
+    target = getattr(target, "__func__", target)
+    try:
+        return typing.get_type_hints(target, include_extras=True)
+    except Exception:
+        try:
+            return typing.get_type_hints(func, include_extras=True)
+        except Exception:
+            return {}
+
+
 # --------------------------------------------------
 # AppService for IPC service based on HTTP request through FastAPI
 # --------------------------------------------------
 class BaseAppService(AppProcess, ABC):
-    shared_event_loop: asyncio.AbstractEventLoop
+    # Created by `run()`, so a service stopped before then has none.
+    _shared_event_loop: asyncio.AbstractEventLoop | None = None
+
+    @property
+    def shared_event_loop(self) -> asyncio.AbstractEventLoop:
+        if self._shared_event_loop is None:
+            raise AttributeError(
+                f"[{self.service_name}] has no event loop before run()"
+            )
+        return self._shared_event_loop
+
+    @shared_event_loop.setter
+    def shared_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._shared_event_loop = loop
 
     @classmethod
     @abstractmethod
@@ -135,8 +186,12 @@ class BaseAppService(AppProcess, ABC):
             logger.info(f"[{self.service_name}] 🛑 Shared event loop stopped")
             self.shared_event_loop.close()  # ensure held resources are released
 
-    def run_and_wait(self, coro: Coroutine[Any, Any, T]) -> T:
-        return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop).result()
+    def run_and_wait(
+        self, coro: Coroutine[Any, Any, T], timeout: float | None = None
+    ) -> T:
+        return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop).result(
+            timeout
+        )
 
     def run(self):
         self.shared_event_loop = asyncio.new_event_loop()
@@ -152,8 +207,22 @@ class BaseAppService(AppProcess, ABC):
         **Note:** if you override this method in a subclass, it must call
         `super().cleanup()` *at the end*!
         """
-        # Stop the shared event loop to allow resource clean-up
-        self.shared_event_loop.call_soon_threadsafe(self.shared_event_loop.stop)
+        # Stop the shared event loop to allow resource clean-up. The loop
+        # thread closes the loop right after run_forever() returns, so a
+        # closed loop here means that thread is already gone (loop crash or
+        # repeated cleanup) and there is nothing left to stop — scheduling
+        # onto it would raise "Event loop is closed" mid-shutdown.
+        loop = self._shared_event_loop
+        if loop is not None and not loop.is_closed():
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+            except RuntimeError:
+                # The loop thread closed the loop between the check above and
+                # the scheduling call; equivalent to the is_closed() case.
+                logger.warning(
+                    f"[{self.service_name}] event loop closed before its stop "
+                    "could be scheduled; continuing cleanup"
+                )
 
         super().cleanup()
 
@@ -204,6 +273,16 @@ class HTTPClientError(Exception):
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
         super().__init__(f"HTTP {status_code}: {message}")
+
+
+class MissingRouteError(HTTPClientError):
+    """The server has no route for the method, e.g. it is on an older release."""
+
+    def __init__(self, method_name: str, base_url: str):
+        super().__init__(
+            404,
+            f"{base_url} has no RPC route '{method_name}'; it may be on an older release",
+        )
 
 
 class HTTPServerError(Exception):
@@ -298,6 +377,7 @@ class AppService(BaseAppService, ABC):
         :return: A FastAPI endpoint function.
         """
         sig = inspect.signature(func)
+        hints = resolve_type_hints(func)
         fields = {}
 
         is_bound_method = False
@@ -306,9 +386,18 @@ class AppService(BaseAppService, ABC):
                 is_bound_method = True
                 continue
 
-            # Use the provided annotation or fallback to str if not specified
-            annotation = (
-                param.annotation if param.annotation != inspect.Parameter.empty else str
+            # Use the resolved annotation or fallback to str if not specified.
+            # ``resolve_type_hints`` evaluates string annotations (modules
+            # using ``from __future__ import annotations``) in the defining
+            # module's namespace; the raw signature would leave model names
+            # as strings that a dynamic model created here cannot resolve.
+            annotation = hints.get(
+                name,
+                (
+                    param.annotation
+                    if param.annotation != inspect.Parameter.empty
+                    else str
+                ),
             )
 
             # If a default value is provided, use it; otherwise, mark the field as required with '...'
@@ -341,6 +430,21 @@ class AppService(BaseAppService, ABC):
 
             return sync_endpoint
 
+    @classmethod
+    def _register_exception_handlers(cls, app: FastAPI) -> None:
+        app.add_exception_handler(ValueError, cls._handle_internal_http_error(400))
+        app.add_exception_handler(
+            exceptions.NotFoundError, cls._handle_internal_http_error(404)
+        )
+        app.add_exception_handler(DataError, cls._handle_internal_http_error(400))
+        app.add_exception_handler(
+            UniqueViolationError, cls._handle_internal_http_error(400)
+        )
+        app.add_exception_handler(
+            exceptions.MissingConfigError, cls._handle_internal_http_error(503)
+        )
+        app.add_exception_handler(Exception, cls._handle_internal_http_error(500))
+
     @conn_retry("FastAPI server", "Running FastAPI server")
     def __start_fastapi(self):
         logger.info(
@@ -352,6 +456,7 @@ class AppService(BaseAppService, ABC):
                 self.fastapi_app,
                 host=api_host,
                 port=self.get_port(),
+                timeout_keep_alive=rpc_server_keepalive_seconds,
                 log_config=None,  # Explicitly None to avoid uvicorn replacing the logger.
                 log_level=self.log_level,
             )
@@ -367,6 +472,7 @@ class AppService(BaseAppService, ABC):
 
     def _self_terminate(self, signum: int, frame):
         """Pass SIGTERM to Uvicorn so it can shut down gracefully"""
+        stop_retry_loops()
         signame = signal.Signals(signum).name
         if not self._shutting_down:
             self._shutting_down = True
@@ -439,12 +545,28 @@ class AppService(BaseAppService, ABC):
         sentry_init()
         super().run()
 
-        self.fastapi_app = FastAPI(lifespan=self.lifespan)
+        self.fastapi_app = self.build_fastapi_app()
+
+        # Start the FastAPI server in a separate thread.
+        api_thread = threading.Thread(
+            target=self.__start_fastapi,
+            daemon=True,
+            name=f"{self.service_name}-http-server",
+        )
+        api_thread.start()
+
+        # Run the main service loop (blocking).
+        self.run_service()
+
+    def build_fastapi_app(self) -> FastAPI:
+        """The service's HTTP app: one POST route per exposed method, the
+        health checks and metrics, and nothing else."""
+        app = FastAPI(lifespan=self._serving_lifespan)
 
         # Add Prometheus instrumentation to all services
         try:
             instrument_fastapi(
-                self.fastapi_app,
+                app,
                 service_name=self.service_name,
                 expose_endpoint=True,
                 endpoint="/metrics",
@@ -463,40 +585,27 @@ class AppService(BaseAppService, ABC):
         for attr_name, attr in vars(type(self)).items():
             if getattr(attr, EXPOSED_FLAG, False):
                 route_path = f"/{attr_name}"
-                self.fastapi_app.add_api_route(
+                app.add_api_route(
                     route_path,
                     self._create_fastapi_endpoint(attr),
                     methods=["POST"],
                 )
-        self.fastapi_app.add_api_route(
-            "/health_check", self.health_check, methods=["POST", "GET"]
-        )
-        self.fastapi_app.add_api_route(
+        app.add_api_route("/health_check", self.health_check, methods=["POST", "GET"])
+        app.add_api_route(
             "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
-        self.fastapi_app.add_exception_handler(
-            ValueError, self._handle_internal_http_error(400)
-        )
-        self.fastapi_app.add_exception_handler(
-            DataError, self._handle_internal_http_error(400)
-        )
-        self.fastapi_app.add_exception_handler(
-            UniqueViolationError, self._handle_internal_http_error(400)
-        )
-        self.fastapi_app.add_exception_handler(
-            Exception, self._handle_internal_http_error(500)
-        )
+        self._register_exception_handlers(app)
+        # Last, so it is the outermost middleware: every request but the health
+        # checks and /metrics needs the internal key before anything reads it.
+        require_internal_key(app, self.service_name)
+        return app
 
-        # Start the FastAPI server in a separate thread.
-        api_thread = threading.Thread(
-            target=self.__start_fastapi,
-            daemon=True,
-            name=f"{self.service_name}-http-server",
-        )
-        api_thread.start()
-
-        # Run the main service loop (blocking).
-        self.run_service()
+    @asynccontextmanager
+    async def _serving_lifespan(self, app: FastAPI):
+        async with self.lifespan(app):
+            # After every subclass's startup, so its long-lived state is frozen too.
+            freeze_startup_heap()
+            yield
 
 
 # --------------------------------------------------
@@ -524,6 +633,71 @@ class AppServiceClient(ABC):
 ASC = TypeVar("ASC", bound=AppServiceClient)
 
 
+def _build_return_adapter(
+    func: Callable[..., Any], annotation: Any, method_name: str
+) -> TypeAdapter | None:
+    """Build the TypeAdapter that validates an RPC method's return value.
+
+    A return annotation written as a forward reference — ``list["SomeModel"]`` —
+    arrives here as ``list[ForwardRef("SomeModel")]``, and pydantic resolves that
+    name against the namespace of whoever builds the adapter, which is this module
+    rather than the one that declared the endpoint. Such an adapter is never fully
+    defined, so validating with it raises ``PydanticUserError`` on *every* call.
+    Re-resolving the hints against the declaring module fixes those.
+
+    Returns ``None`` when no usable adapter can be built, so the call falls back to
+    the raw payload (as a failed validation already does) with one warning at client
+    build time instead of an exception on every request.
+    """
+    adapter = _usable_adapter(annotation)
+    if adapter is not None:
+        return adapter
+
+    try:
+        # include_extras keeps Annotated metadata — a constraint or discriminator
+        # carried there is part of the validation contract.
+        resolved = get_type_hints(inspect.unwrap(func), include_extras=True).get(
+            "return", annotation
+        )
+    except Exception as e:
+        logger.warning(
+            f"RPC return annotation {annotation!r} of {method_name} could not be "
+            f"resolved ({type(e).__name__}: {e}); returning results unvalidated"
+        )
+        return None
+
+    adapter = _usable_adapter(resolved)
+    if adapter is None:
+        logger.warning(
+            f"RPC return annotation {annotation!r} of {method_name} has no usable "
+            "TypeAdapter; returning results unvalidated"
+        )
+    return adapter
+
+
+def _usable_adapter(annotation: Any) -> TypeAdapter | None:
+    """A TypeAdapter for *annotation*, or None if it cannot be built or rebuilt.
+
+    ``rebuild()`` returns None when the adapter is already complete and False when
+    it still has unresolved references.
+    """
+    try:
+        adapter = TypeAdapter(annotation)
+        return None if adapter.rebuild(raise_errors=False) is False else adapter
+    except Exception:
+        return None
+
+
+def _send_trace_headers(request: httpx.Request) -> None:
+    """Carry the caller's trace to the service, whose request transaction then
+    continues it. Runs inside the HTTP client span, which becomes the parent."""
+    request.headers.update(tracing.trace_propagation_headers())
+
+
+async def _send_trace_headers_async(request: httpx.Request) -> None:
+    _send_trace_headers(request)
+
+
 @conn_retry("AppService client", "Creating service client", max_retry=api_comm_retry)
 def get_service_client(
     service_client_type: Type[ASC],
@@ -536,24 +710,39 @@ def get_service_client(
         if not request_retry:
             return fn
 
-        # Use preconfigured retry decorator for service communication
-        return create_retry_decorator(
-            max_attempts=api_comm_retry,
-            max_wait=api_comm_max_wait,
-            context="Service communication",
-            exclude_exceptions=(
-                # Don't retry these specific exceptions that won't be fixed by retrying
-                ValueError,  # Invalid input/parameters
-                DataError,  # Prisma data integrity errors (foreign key, unique constraints)
-                UniqueViolationError,  # Unique constraint violations
-                KeyError,  # Missing required data
-                TypeError,  # Wrong data types
-                AttributeError,  # Missing attributes
-                asyncio.CancelledError,  # Task was cancelled
-                concurrent.futures.CancelledError,  # Future was cancelled
-                HTTPClientError,  # HTTP 4xx client errors - don't retry
-            ),
-        )(fn)
+        def retrying() -> Callable[..., Any]:
+            # Built per call, so the missing-route deadline is one call's alone.
+            return create_retry_decorator(
+                max_attempts=api_comm_retry,
+                max_wait=api_comm_max_wait,
+                context="Service communication",
+                exclude_exceptions=(
+                    # Don't retry these specific exceptions that won't be fixed by retrying
+                    ValueError,  # Invalid input/parameters
+                    DataError,  # Prisma data integrity errors (foreign key, unique constraints)
+                    UniqueViolationError,  # Unique constraint violations
+                    KeyError,  # Missing required data
+                    TypeError,  # Wrong data types
+                    AttributeError,  # Missing attributes
+                    asyncio.CancelledError,  # Task was cancelled
+                    concurrent.futures.CancelledError,  # Future was cancelled
+                    HTTPClientError,  # HTTP 4xx client errors - don't retry
+                ),
+                retry_anyway=(MissingRouteError,),
+                also_stop=_MissingRouteDeadline(),
+            )(fn)
+
+        if inspect.iscoroutinefunction(fn):
+
+            async def call_async(*args: Any, **kwargs: Any) -> Any:
+                return await retrying()(*args, **kwargs)
+
+            return cast(Callable[..., R], call_async)
+
+        def call_sync(*args: Any, **kwargs: Any) -> Any:
+            return retrying()(*args, **kwargs)
+
+        return cast(Callable[..., R], call_sync)
 
     class DynamicClient:
         def __init__(self) -> None:
@@ -561,31 +750,40 @@ def get_service_client(
             host = service_type.get_host()
             port = service_type.get_port()
             self.base_url = f"http://{host}:{port}".rstrip("/")
+            self._headers = internal_auth_headers()
             self._connection_failure_count = 0
             self._last_client_reset = 0
             self._async_clients = {}  # None key for default async client
             self._sync_clients = {}  # For sync clients (no event loop concept)
 
+        # trust_env=False: an HTTP_PROXY meant for outbound traffic must never
+        # carry these plain-HTTP calls, nor the internal key they hold.
         def _create_sync_client(self) -> httpx.Client:
             return httpx.Client(
                 base_url=self.base_url,
+                headers=self._headers,
+                trust_env=False,
                 timeout=call_timeout,
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
-                    keepalive_expiry=30.0,  # Keep connections alive longer
+                    keepalive_expiry=rpc_client_keepalive_expiry_seconds,
                 ),
+                event_hooks={"request": [_send_trace_headers]},
             )
 
         def _create_async_client(self) -> httpx.AsyncClient:
             return httpx.AsyncClient(
                 base_url=self.base_url,
+                headers=self._headers,
+                trust_env=False,
                 timeout=call_timeout,
                 limits=httpx.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
-                    keepalive_expiry=30.0,  # Keep connections alive longer
+                    keepalive_expiry=rpc_client_keepalive_expiry_seconds,
                 ),
+                event_hooks={"request": [_send_trace_headers_async]},
             )
 
         @property
@@ -691,7 +889,10 @@ def get_service_client(
 
                     raise exception_class(*args)
 
-                # Otherwise categorize by HTTP status code
+                # Otherwise categorize by HTTP status code. An unmapped 404 is
+                # FastAPI's own: the server has no such route.
+                if status_code == 404:
+                    raise MissingRouteError(method_name, self.base_url)
                 if 400 <= status_code < 500:
                     # Client errors (4xx) - wrap to prevent retries
                     raise HTTPClientError(status_code, str(e))
@@ -809,9 +1010,13 @@ def get_service_client(
 
             rpc_name = original_func.__name__
             sig = inspect.signature(original_func)
-            ret_ann = sig.return_annotation
+            ret_ann = resolve_type_hints(original_func).get(
+                "return", sig.return_annotation
+            )
             expected_return = (
-                None if ret_ann is inspect.Signature.empty else TypeAdapter(ret_ann)
+                None
+                if ret_ann is inspect.Signature.empty
+                else _build_return_adapter(original_func, ret_ann, rpc_name)
             )
 
             if inspect.iscoroutinefunction(original_func):
@@ -835,6 +1040,24 @@ def get_service_client(
     client = cast(ASC, DynamicClient())
 
     return client
+
+
+class _MissingRouteDeadline(stop_base):
+    """Stops a call's retries, of any error, before an attempt that would start more
+    than ``rpc_client_missing_route_wait_seconds`` after its first missing route."""
+
+    def __init__(self) -> None:
+        self.expires_at: float | None = None
+
+    def __call__(self, retry_state: RetryCallState) -> bool:
+        now = monotonic()
+        if self.expires_at is None:
+            if not retry_state.outcome or not isinstance(
+                retry_state.outcome.exception(), MissingRouteError
+            ):
+                return False
+            self.expires_at = now + rpc_client_missing_route_wait_seconds
+        return now + retry_state.upcoming_sleep >= self.expires_at
 
 
 def endpoint_to_sync(
