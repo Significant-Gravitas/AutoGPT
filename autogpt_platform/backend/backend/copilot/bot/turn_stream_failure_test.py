@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from .bot_backend import BotStreamError
+from .prompt import PendingMessage
 from .turn_stream import TurnStreamer
 from .turn_stream_test import _adapter, _card_api, _choice_adapter, _ctx, _patch_redis
 
@@ -35,7 +36,10 @@ class TestFailureReply:
         )
         with _patch_redis():
             await TurnStreamer(_failing_api(exc)).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
 
         reply = adapter.send_message.await_args.args[1]
@@ -49,7 +53,10 @@ class TestFailureReply:
         exc = RuntimeError("KeyError at /app/backend/copilot/secret_path.py")
         with _patch_redis():
             await TurnStreamer(_failing_api(exc)).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
 
         reply = adapter.send_message.await_args.args[1]
@@ -71,7 +78,10 @@ class TestFailureReply:
         api.stream_chat = _stream
         with _patch_redis():
             await TurnStreamer(api).stream_batch(
-                [("Bently", "user-1", "post")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="post")],
+                _ctx(),
+                adapter,
+                "42",
             )
 
         adapter.send_choice_buttons.assert_awaited_once()
@@ -86,7 +96,10 @@ class TestFailureReply:
         exc = BotStreamError("stream_timeout", "response timed out")
         with _patch_redis(), caplog.at_level("ERROR"):
             await TurnStreamer(_failing_api(exc)).stream_batch(
-                [("Bently", "user-1", "hi")], _ctx(), adapter, "42"
+                [PendingMessage(username="Bently", user_id="user-1", text="hi")],
+                _ctx(),
+                adapter,
+                "42",
             )
 
         reply = adapter.send_message.await_args.args[1]
