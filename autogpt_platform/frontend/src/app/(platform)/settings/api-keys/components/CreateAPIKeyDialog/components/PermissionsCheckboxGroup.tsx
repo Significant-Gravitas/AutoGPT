@@ -22,12 +22,7 @@ export function PermissionsCheckboxGroup({ value, onChange }: Props) {
 
   return (
     <div className="flex flex-col gap-2">
-      <Text
-        id="api-key-permissions-label"
-        variant="large-medium"
-        as="span"
-        className="text-textBlack"
-      >
+      <Text id="api-key-permissions-label" variant="large-medium" as="span">
         Permissions
       </Text>
       <div
@@ -63,12 +58,7 @@ function PermissionGroup({ group, value, onToggle }: GroupProps) {
       aria-labelledby={headingID}
       className="flex flex-col gap-1"
     >
-      <Text
-        id={headingID}
-        variant="small-medium"
-        as="span"
-        className="text-foreground-secondary"
-      >
+      <Text id={headingID} variant="small-medium" as="span" tone="secondary">
         {group.label}
       </Text>
       {group.options.map((option) => {
@@ -92,19 +82,14 @@ function PermissionGroup({ group, value, onToggle }: GroupProps) {
               aria-hidden="true"
             />
             <span className="flex min-w-0 flex-col">
-              <Text
-                id={labelID}
-                variant="body"
-                as="span"
-                className="text-foreground-body"
-              >
+              <Text id={labelID} variant="body" as="span" tone="body">
                 {option.label}
               </Text>
               <Text
                 id={`${labelID}-description`}
                 variant="small"
                 as="span"
-                className="text-foreground-secondary"
+                tone="secondary"
               >
                 {option.description}
               </Text>

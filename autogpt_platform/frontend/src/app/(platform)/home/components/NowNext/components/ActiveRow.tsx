@@ -10,6 +10,7 @@ interface Props {
   item: HomeActiveTask;
 }
 
+// oxlint-disable-next-line design-system/no-arbitrary-values -- the 60px indent lines the row up with the timeline column; the spacing scale has 14 (56px) and 16 (64px)
 const ROW_CLASS = "relative flex items-center gap-3 py-2 pl-[3.75rem] pr-4";
 
 export function ActiveRow({ item }: Props) {

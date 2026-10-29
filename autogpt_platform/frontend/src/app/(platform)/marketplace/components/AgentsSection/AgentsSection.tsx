@@ -51,11 +51,7 @@ export function AgentsSection({
         ) : null}
         {children}
         {!displayedAgents || displayedAgents.length === 0 ? (
-          <Text
-            // TODO(tokens): no exact role: text-gray-500 #6B7280
-            variant="body"
-            className="ml-4 mt-8 text-gray-500"
-          >
+          <Text variant="body" tone="muted" className="ml-4 mt-8">
             No workflows found
           </Text>
         ) : (
@@ -68,6 +64,7 @@ export function AgentsSection({
               }}
             >
               <div className="relative">
+                {/* oxlint-disable-next-line design-system/no-restyle -- the carousel track is inset to line up with the section heading */}
                 <CarouselContent className="px-4 pb-2">
                   {displayedAgents.map((agent, index) => (
                     <CarouselItem key={index} className="min-w-64 max-w-71">

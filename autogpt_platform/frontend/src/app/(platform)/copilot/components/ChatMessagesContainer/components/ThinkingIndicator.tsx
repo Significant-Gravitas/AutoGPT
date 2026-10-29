@@ -41,9 +41,9 @@ export function ThinkingIndicator({
 
   return (
     <span
+      className="inline-flex w-fit items-center gap-2.5 text-sm text-foreground-secondary"
       role="status"
       aria-live="polite"
-      className="inline-flex w-fit items-center gap-2.5 text-sm text-foreground-secondary"
     >
       <DrawnLineLoader className="text-foreground-secondary" size={16} />
       <SwapText

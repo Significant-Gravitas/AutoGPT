@@ -13,11 +13,7 @@ import {
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
 import { useStableCallback } from "@/hooks/useStableCallback";
-import { cn } from "@/lib/utils";
-import {
-  activeItemParamFor,
-  AGENT_LIBRARY_SECTION_PADDING_X,
-} from "../../../helpers";
+import { activeItemParamFor } from "../../../helpers";
 import { ScheduleListItem } from "./components/ScheduleListItem";
 import { TaskListRow } from "./components/TaskListRow";
 import { TemplateListItem } from "./components/TemplateListItem";
@@ -87,12 +83,7 @@ export function SidebarRunsList({
 
   if (loading) {
     return (
-      <div
-        className={cn(
-          "ml-6 mt-8 w-[20vw] space-y-4",
-          AGENT_LIBRARY_SECTION_PADDING_X,
-        )}
-      >
+      <div className="ml-6 mt-8 w-[20vw] space-y-4 px-4">
         <Skeleton className="h-12 w-full" />
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-24 w-full" />
@@ -128,9 +119,10 @@ export function SidebarRunsList({
     >
       <div className="relative overflow-hidden">
         <div className="pointer-events-none absolute right-0 top-0 z-10 h-[46px] w-12 bg-gradient-to-l from-background to-transparent" />
-        <div className="scrollbar-hide overflow-x-auto">
+        <div className="overflow-x-auto">
           <TabsLineList
-            className={cn(AGENT_LIBRARY_SECTION_PADDING_X, "min-w-max")}
+            // oxlint-disable-next-line design-system/no-restyle -- the tab underline (border-b) spans this padding; a margin would shorten it
+            className="min-w-max px-4"
           >
             <TabsLineTrigger value="runs">
               Tasks <span className="ml-3 inline-block">{runsCount}</span>
@@ -156,16 +148,14 @@ export function SidebarRunsList({
       <>
         <TabsLineContent
           value="runs"
-          className={cn(
-            "flex min-h-0 flex-1 flex-col",
-            AGENT_LIBRARY_SECTION_PADDING_X,
-          )}
+          className="mx-4 flex min-h-0 flex-1 flex-col"
         >
           <InfiniteList
             items={uniqueRunsByID(runs)}
             hasMore={!!hasMoreRuns}
             isFetchingMore={isFetchingMoreRuns}
             onEndReached={fetchMoreRuns}
+            // oxlint-disable-next-line design-system/no-restyle -- InfiniteList renders a bare div whose children are the list items, so the list layout and scrollbar can only be set here
             className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden"
             itemWrapperClassName="w-auto lg:w-full"
             getKey={(run) => run.id}
@@ -181,10 +171,7 @@ export function SidebarRunsList({
         </TabsLineContent>
         <TabsLineContent
           value="scheduled"
-          className={cn(
-            "mt-0 flex min-h-0 flex-1 flex-col",
-            AGENT_LIBRARY_SECTION_PADDING_X,
-          )}
+          className="mx-4 mt-0 flex min-h-0 flex-1 flex-col"
         >
           <div className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
             {schedules.length > 0 ? (
@@ -202,7 +189,7 @@ export function SidebarRunsList({
               ))
             ) : (
               <div className="flex min-h-[50vh] flex-col items-center justify-center">
-                <Text variant="large" className="text-foreground-body">
+                <Text variant="large" tone="body">
                   No scheduled workflows
                 </Text>
               </div>
@@ -212,18 +199,12 @@ export function SidebarRunsList({
         {triggersCount > 0 && (
           <TabsLineContent
             value="triggers"
-            className={cn(
-              "mt-0 flex min-h-0 flex-1 flex-col",
-              AGENT_LIBRARY_SECTION_PADDING_X,
-            )}
+            className="mx-4 mt-0 flex min-h-0 flex-1 flex-col"
           >
             <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
               {triggers.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <Text
-                    variant="body-medium"
-                    className="px-1 !text-foreground-tertiary"
-                  >
+                  <Text variant="body-medium" tone="muted" className="mx-1">
                     Webhook Triggers
                   </Text>
                   <div className="flex flex-nowrap items-center justify-start gap-4 lg:flex-col lg:gap-3">
@@ -247,10 +228,7 @@ export function SidebarRunsList({
               )}
               {triggerAgents.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <Text
-                    variant="body-medium"
-                    className="px-1 !text-foreground-tertiary"
-                  >
+                  <Text variant="body-medium" tone="muted" className="mx-1">
                     Trigger Workflows
                   </Text>
                   <div className="flex flex-nowrap items-center justify-start gap-4 lg:flex-col lg:gap-3">
@@ -280,10 +258,10 @@ export function SidebarRunsList({
               )}
               {triggers.length === 0 && triggerAgents.length === 0 && (
                 <div className="flex min-h-[50vh] flex-col items-center justify-center gap-2 px-6 text-center">
-                  <Text variant="large" className="text-foreground-body">
+                  <Text variant="large" tone="body">
                     No triggers set up
                   </Text>
-                  <Text variant="body" className="!text-foreground-tertiary">
+                  <Text variant="body" tone="muted">
                     Ask an expert to set up a trigger for this workflow (e.g.
                     &ldquo;run this when a new email arrives&rdquo;).
                   </Text>
@@ -294,10 +272,7 @@ export function SidebarRunsList({
         )}
         <TabsLineContent
           value="templates"
-          className={cn(
-            "mt-0 flex min-h-0 flex-1 flex-col",
-            AGENT_LIBRARY_SECTION_PADDING_X,
-          )}
+          className="mx-4 mt-0 flex min-h-0 flex-1 flex-col"
         >
           <div className="flex min-h-0 flex-1 flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
             {templates.length > 0 ? (
@@ -313,7 +288,7 @@ export function SidebarRunsList({
               ))
             ) : (
               <div className="flex min-h-[50vh] flex-col items-center justify-center">
-                <Text variant="large" className="text-foreground-body">
+                <Text variant="large" tone="body">
                   No templates saved
                 </Text>
               </div>

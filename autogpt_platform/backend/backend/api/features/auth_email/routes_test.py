@@ -161,6 +161,18 @@ def test_verify_email_states_its_24_hour_expiry(send_mock):
     assert "expires in 24 hours" in text
 
 
+def test_verify_email_shows_where_the_user_is_in_sign_up(send_mock):
+    _post({**VALID_BODY, "type": "verify_email"})
+
+    _, _, body, text = send_mock.call_args.args
+    for part in (body, text):
+        assert "Confirm your email address" in part
+        assert "Create your account." in part
+        assert "Confirm your email." in part
+        assert "You're here." in part.replace("&#39;", "'")
+        assert "Start working." in part
+
+
 def test_rejects_link_on_untrusted_host(send_mock):
     res = _post({**VALID_BODY, "url": "https://evil.example.com/reset"})
     assert res.status_code == 400
@@ -312,7 +324,7 @@ def test_rejects_malformed_trusted_origin_regex_at_startup():
     "email_type,subject,button",
     [
         ("reset_password", "Reset your AutoGPT Platform password", "Reset password"),
-        ("verify_email", "Verify your AutoGPT Platform email", "Verify email"),
+        ("verify_email", "Verify your AutoGPT Platform email", "Confirm email address"),
         ("change_email", "Confirm your new AutoGPT Platform email", "Confirm email"),
         ("set_password", "Set your AutoGPT Platform password", "Set password"),
     ],
@@ -339,8 +351,15 @@ def test_auth_email_design_and_plain_text(send_mock, email_type, subject, button
     )
     assert "<svg" not in body and "data:image" not in body
     assert "logo-light.png" in body
-    assert "Otto, your personal Head of AI" not in body
-    assert "autogpt-characters/" not in body
+    if email_type == "verify_email":
+        assert body.count('alt="Otto, your personal Head of AI"') == 1
+        assert re.search(
+            r'src="https://[^"]+/autogpt-characters/v1\.1/otto/neutral-transparent/256\.png"',
+            body,
+        )
+    else:
+        assert "Otto, your personal Head of AI" not in body
+        assert "autogpt-characters/" not in body
     assert "<script>" not in body
     assert "&amp;callback=&#34;&lt;script&gt;" in body
     assert url in text

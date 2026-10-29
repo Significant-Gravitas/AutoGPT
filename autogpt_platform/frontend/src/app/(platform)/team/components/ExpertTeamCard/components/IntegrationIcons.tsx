@@ -51,7 +51,8 @@ export function IntegrationIcons({ expertName, providers }: Props) {
               <Text
                 variant="body-medium"
                 as="span"
-                className="cursor-default whitespace-nowrap !text-foreground-emphasis"
+                tone="emphasis"
+                className="cursor-default whitespace-nowrap"
               >
                 +{hidden.length} more
                 <span className="sr-only">: {hiddenNames}</span>
@@ -78,15 +79,14 @@ function ProviderLogo({ provider }: LogoProps) {
       <span
         role="img"
         aria-label={name}
-        // TODO(tokens): SECRT-3152 rare size: text-[9px]
-        className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-hover text-[9px] font-semibold uppercase leading-none text-foreground-secondary ring-1 ring-border-base"
+        className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-hover text-tiny font-semibold uppercase leading-none text-foreground-secondary ring-1 ring-border-base"
       >
         {name.charAt(0)}
       </span>
     );
   }
   return (
-    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface p-[3px] ring-1 ring-border-base">
+    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface p-0.5 ring-1 ring-border-base">
       <Image
         src={`/integrations/${provider}.png`}
         alt={name}

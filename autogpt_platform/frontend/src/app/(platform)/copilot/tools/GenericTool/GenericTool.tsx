@@ -47,6 +47,7 @@ import {
   TerminalIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   part: ToolUIPart;
@@ -84,8 +85,7 @@ function ToolIcon({
     return <OrbitLoader size={14} />;
   }
 
-  // TODO(tokens): no exact role for green-500 #16A34A
-  const iconClass = "text-green-500";
+  const iconClass = "text-success";
   switch (category) {
     case "bash":
       return <Icon icon={TerminalIcon} size={14} className={iconClass} />;
@@ -271,22 +271,25 @@ function getBashAccordionData(
       <div className="space-y-2">
         {command && (
           <div>
-            {/* TODO(tokens): no exact role for slate-500 #64748B */}
-            <p className="mb-1 text-xs font-medium text-slate-500">command</p>
+            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+              command
+            </Text>
             <ContentCodeBlock>{command}</ContentCodeBlock>
           </div>
         )}
         {stdout && (
           <div>
-            {/* TODO(tokens): no exact role for slate-500 #64748B */}
-            <p className="mb-1 text-xs font-medium text-slate-500">stdout</p>
+            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+              stdout
+            </Text>
             <ContentCodeBlock>{stdout}</ContentCodeBlock>
           </div>
         )}
         {stderr && (
           <div>
-            {/* TODO(tokens): no exact role for slate-500 #64748B */}
-            <p className="mb-1 text-xs font-medium text-slate-500">stderr</p>
+            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+              stderr
+            </Text>
             <ContentCodeBlock>{stderr}</ContentCodeBlock>
           </div>
         )}
@@ -323,8 +326,7 @@ function getWebAccordionData(
       content: (
         <div className="space-y-3">
           {answer && (
-            // TODO(tokens): no exact role for slate-50 #F7F8F9, slate-800 #475263
-            <div className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">
+            <div className="whitespace-pre-wrap rounded-md bg-surface-muted p-3 text-sm text-foreground-body">
               {answer}
             </div>
           )}
@@ -337,8 +339,7 @@ function getWebAccordionData(
             return (
               <div key={i} className="text-sm">
                 {citation !== null && (
-                  // TODO(tokens): no exact role for slate-500 #64748B
-                  <span className="mr-1.5 text-xs tabular-nums text-slate-500">
+                  <span className="mr-1.5 text-xs tabular-nums text-foreground-tertiary">
                     [{citation}]
                   </span>
                 )}
@@ -355,16 +356,17 @@ function getWebAccordionData(
                   <span className="font-medium">{title}</span>
                 )}
                 {href && (
-                  // TODO(tokens): no exact role for slate-500 #64748B
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-foreground-tertiary">
                     {truncate(href, 100)}
                   </div>
                 )}
-                {/* TODO(tokens): no exact role for slate-700 #475263 */}
-                {snippet && <p className="mt-0.5 text-slate-700">{snippet}</p>}
+                {snippet && (
+                  <p className="mt-0.5 text-foreground-body">{snippet}</p>
+                )}
                 {pageAge && (
-                  // TODO(tokens): no exact role for slate-400 #8A97A8
-                  <div className="mt-0.5 text-xs text-slate-400">{pageAge}</div>
+                  <div className="mt-0.5 text-xs text-foreground-subtle">
+                    {pageAge}
+                  </div>
                 )}
               </div>
             );
@@ -559,13 +561,19 @@ function getFileAccordionData(
         {oldString && newString != null ? (
           <>
             <div>
-              {/* TODO(tokens): no exact role for red-400 #F26969 */}
-              <p className="mb-1 text-xs font-medium text-red-400">removed</p>
+              <Text variant="small-medium-tight" tone="error" className="mb-1">
+                removed
+              </Text>
               <ContentCodeBlock>{oldString}</ContentCodeBlock>
             </div>
             <div>
-              {/* TODO(tokens): no exact role for green-400 #45B56E */}
-              <p className="mb-1 text-xs font-medium text-green-400">added</p>
+              <Text
+                variant="small-medium-tight"
+                tone="success"
+                className="mb-1"
+              >
+                added
+              </Text>
               <ContentCodeBlock>{newString}</ContentCodeBlock>
             </div>
           </>
@@ -629,8 +637,7 @@ function getTodoAccordionData(input: unknown): AccordionData {
                 <Icon
                   icon={CheckmarkCircle02Icon}
                   size={14}
-                  // TODO(tokens): no exact role for green-500 #16A34A
-                  className="text-green-500"
+                  className="text-success"
                 />
               ) : todo.status === "in_progress" ? (
                 <Icon icon={CircleDashedIcon} size={14} className="text-info" />
@@ -638,8 +645,7 @@ function getTodoAccordionData(input: unknown): AccordionData {
                 <Icon
                   icon={CircleIcon}
                   size={14}
-                  // TODO(tokens): no exact role for neutral-400 #A3A3A3
-                  className="text-neutral-400"
+                  className="text-foreground-subtle"
                 />
               )}
             </span>

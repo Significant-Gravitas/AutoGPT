@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from backend.copilot.constants import HUNG_TOOL_CAP_SECONDS
 from backend.copilot.context import (
     E2B_WORKDIR,
+    get_bash_command_as_written,
     get_current_permissions,
     get_current_sandbox,
     looks_like_sdk_tool_result_path,
@@ -187,10 +188,11 @@ class BashExecTool(BaseTool):
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
             "Killed after `timeout` seconds. Anything that should persist belongs "
-            "in ~/workspace (a durable volume); other paths are scratch. The "
+            "in ~/workspace (a durable folder; the user's uploads are not in it, "
+            "see list_workspace_files); other paths are scratch. The "
             "desktop (start_desktop) is this same machine, all paths included. "
             "Expert sessions: ~/workspace is the expert's own machine, ~/shared "
-            "is the user's workspace."
+            "is the user's folder."
         )
 
     @property
@@ -284,9 +286,16 @@ class BashExecTool(BaseTool):
         # Pre-flight redirect: bash sandbox can't reach host-side SDK
         # tool-result paths. Without this the model burns turns retrying
         # `cat /root/.claude/projects/...` after `Permission denied`.
-        if looks_like_sdk_tool_result_path(command):
+        # Checks the command as written, minus its ``@@agptfile:`` refs, so
+        # neither a ref nor the file content it expands to trips the check.
+        # A command that is only refs is unset, and its expanded script is
+        # checked instead.
+        as_written = get_bash_command_as_written()
+        if as_written is None:
+            as_written = command
+        if looks_like_sdk_tool_result_path(as_written):
             return ErrorResponse(
-                message=sdk_tool_result_redirect_hint(command),
+                message=sdk_tool_result_redirect_hint(as_written),
                 error="sdk_tool_result_path_in_bash_command",
                 session_id=session_id,
             ).from_outside()

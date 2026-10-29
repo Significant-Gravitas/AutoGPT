@@ -32,8 +32,8 @@ export function SkillCard({ skill, isInstalled }: Props) {
     <Link
       href={`/marketplace/skills/${skill.slug}`}
       data-testid="skill-card"
-      // TODO(tokens): no exact role: focus-visible:ring-violet-600 #7C3AED, shadow-[…] #101828, hover:shadow-[…] #101828
-      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-[transform,box-shadow,border-color] duration-200 ease-out [touch-action:manipulation] hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- the card's hover lift shadow has no shadow token
+      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-message-table outline-none transition-[transform,box-shadow,border-color] duration-200 ease-out [touch-action:manipulation] hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
     >
       <div
         className={cn(
@@ -43,13 +43,13 @@ export function SkillCard({ skill, isInstalled }: Props) {
       />
       <div className="relative flex flex-1 flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-3">
-          <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-surface ring-1 ring-inset ring-border-base/70">
-            <Icon
-              icon={BookOpen01Icon}
-              size={24}
-              className={accent.icon}
-              aria-hidden
-            />
+          <span
+            className={cn(
+              "inline-flex h-12 w-12 items-center justify-center rounded-xl bg-surface ring-1 ring-inset ring-border-base/70",
+              accent.icon,
+            )}
+          >
+            <Icon icon={BookOpen01Icon} size={24} aria-hidden />
           </span>
           {icon && skill.categories[0] ? (
             <span
@@ -109,6 +109,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
             <Icon
               icon={Download04Icon}
               size={18}
+              // oxlint-disable-next-line design-system/require-static-classes -- the glyph wears the skill's category accent
               className={accent.icon}
               aria-hidden
             />
@@ -118,10 +119,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
               : `${skill.install_count.toLocaleString()} installed`}
           </span>
           {isInstalled ? (
-            <span
-              // TODO(tokens): no exact role: text-emerald-600 #059669
-              className="flex items-center gap-1.5 text-base font-medium text-emerald-600"
-            >
+            <span className="flex items-center gap-1.5 text-base font-medium text-success">
               <Icon icon={CheckmarkCircle02Icon} size={18} aria-hidden />
               Added
             </span>
@@ -132,6 +130,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
                 icon={ArrowRight02Icon}
                 size={16}
                 aria-hidden
+                // oxlint-disable-next-line design-system/no-restyle -- the arrow nudges on hover; Icon has no motion prop
                 className="transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none"
               />
             </span>

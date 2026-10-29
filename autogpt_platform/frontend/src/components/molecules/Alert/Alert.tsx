@@ -10,14 +10,10 @@ const alertVariants = cva(
     variants: {
       variant: {
         default: "bg-surface text-foreground-emphasis [&>svg]:text-brand",
-        // TODO(tokens): no role for orange-50 at 0x80 (#FFF3E680), yellow-300
-        // (#F8D554) or orange-600 (#E77B00).
         warning:
-          "bg-[#FFF3E680] border-yellow-300 text-foreground-emphasis [&>svg]:text-orange-600",
-        // TODO(tokens): no role for red-100 at 0x80 (#FDECEC80) or red-300
-        // (#F69999).
+          "bg-warning-surface border-warning-border text-foreground-emphasis [&>svg]:text-warning-foreground",
         error:
-          "bg-[#FDECEC80] border-red-300 text-foreground-emphasis [&>svg]:text-error",
+          "bg-error-surface border-error/40 text-foreground-emphasis [&>svg]:text-error",
       },
     },
     defaultVariants: {

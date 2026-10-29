@@ -100,6 +100,7 @@ function HomeTileSkeleton({ cardClassName }: Props) {
       <div className="flex h-10 items-center border-b border-separator px-4">
         <Skeleton className="h-3.5 w-28" />
       </div>
+      {/* oxlint-disable-next-line design-system/require-static-classes -- cardClassName is a whole, static class string */}
       <Skeleton className={`${cardClassName} rounded-none`} />
     </div>
   );
