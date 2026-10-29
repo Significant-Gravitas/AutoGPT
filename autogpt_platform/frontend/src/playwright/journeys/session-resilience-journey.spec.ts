@@ -218,18 +218,23 @@ test("session resilience journey: a session the auth backend rejects still signs
   test.setTimeout(60_000);
   await signUpIntoLibrary(page, baseURL);
 
-  const revoked = await page.evaluate(async () => {
-    const response = await fetch("/api/auth/revoke-sessions", {
+  // End the session on the server while this browser keeps its cookie, as a
+  // sign-out on another device would: sign out through the auth API, then put
+  // the session cookie back. The signed session cache stays gone, so the next
+  // check asks the database, as it would once the cache expires.
+  const sessionCookies = (await context.cookies()).filter(
+    (cookie) => !/session_data/.test(cookie.name),
+  );
+  const signedOut = await page.evaluate(async () => {
+    const response = await fetch("/api/auth/sign-out", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
     });
     return response.ok;
   });
-  expect(revoked).toBe(true);
-  // Drop the signed session cache so the next check asks the database, as it
-  // would once the cache expires.
-  await context.clearCookies({ name: /session_data/ });
+  expect(signedOut).toBe(true);
+  await context.addCookies(sessionCookies);
 
   await refocusUntil(page, () => /\/login/.test(page.url()));
   await expect(page).toHaveURL(/\/login\?next=%2Flibrary/);
