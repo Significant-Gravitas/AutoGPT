@@ -37,6 +37,10 @@ async def claim_setup_card(redis: Any, key: str, token: str, target_id: str) -> 
     """
     try:
         claimed = await redis.set(key, token, nx=True, ex=SETUP_CARD_REPOST_SECONDS)
+        # A retried SET whose first attempt landed but lost its reply finds
+        # this turn's own token: the claim is still ours.
+        if not claimed and await redis.get(key) == token:
+            claimed = True
     except Exception:
         logger.warning("Setup-card dedupe unavailable; posting the card anyway")
         return True

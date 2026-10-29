@@ -2084,6 +2084,38 @@ class TestSetupCardIsPostedOncePerThread:
         )
 
     @pytest.mark.asyncio
+    async def test_a_retried_claim_that_already_landed_still_posts_the_card(self):
+        # The client retries a SET whose reply was lost; the first attempt had
+        # already stored this turn's token, so NX now refuses it.
+        redis = _FakeRedis()
+        store_then_refuse = redis.set
+
+        async def _retried_set(key, value, ex=None, nx=False):
+            await store_then_refuse(key, value, ex=ex, nx=nx)
+            return None
+
+        redis.set = _retried_set
+        adapter = await self._run_turns([_linear_card()], redis)
+
+        adapter.send_link.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_redis_outage_on_the_ownership_check_still_posts_the_card(self):
+        redis = _FakeRedis()
+        redis.set = AsyncMock(return_value=None)
+        other_get = redis.get
+
+        async def _get(key):
+            if key.startswith("copilot-bot:setup-card:"):
+                raise ConnectionError("redis down")
+            return await other_get(key)
+
+        redis.get = _get
+        adapter = await self._run_turns([_linear_card()], redis)
+
+        adapter.send_link.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_redis_outage_still_posts_the_card(self):
         redis = _FakeRedis()
         redis.set = AsyncMock(side_effect=ConnectionError("redis down"))
