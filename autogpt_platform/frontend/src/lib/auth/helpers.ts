@@ -54,9 +54,11 @@ export function hasWebSocketDisconnectIntent(): boolean {
 
 // Redirect utilities
 export function getRedirectPath(
-  path: string, // including query strings
+  path: string | null | undefined, // including query strings
   userRole?: string,
 ): string | null {
+  if (!path) return null;
+
   if (shouldRedirectOnLogout(path)) {
     // Preserve the original path as a 'next' parameter so user can return after login
     return `/login?next=${encodeURIComponent(path)}`;
