@@ -22,11 +22,11 @@ export function RecentMemoriesCard({
   onForgetTopic,
 }: Props) {
   return (
-    <div className="flex flex-col rounded-[18px] border border-border-base bg-surface px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-      <Text variant="body-medium" as="span" className="text-textBlack">
+    <div className="flex flex-col rounded-large border border-border-base bg-surface px-4 py-4 shadow-message-table">
+      <Text variant="body-medium" as="span">
         Recent memories
       </Text>
-      <Text variant="small" as="span" className="text-foreground-tertiary">
+      <Text variant="small" as="span" tone="muted">
         The latest things this memory has learned. Forget any of them.
       </Text>
 
@@ -38,11 +38,7 @@ export function RecentMemoriesCard({
             <Skeleton className="h-5 w-4/5" />
           </div>
         ) : facts.length === 0 ? (
-          <Text
-            variant="small"
-            as="p"
-            className="py-3 text-foreground-tertiary"
-          >
+          <Text variant="small" as="p" tone="muted" className="my-3">
             Nothing remembered yet. Memories show up here as you chat.
           </Text>
         ) : (
@@ -51,23 +47,21 @@ export function RecentMemoriesCard({
               key={fact.uuid}
               className="flex items-center justify-between gap-3 py-2.5"
             >
-              <Text
-                variant="small"
-                as="span"
-                className="min-w-0 flex-1 text-textBlack"
-              >
+              <Text variant="small" as="span" className="min-w-0 flex-1">
                 {fact.fact || `${fact.source} → ${fact.target}`}
               </Text>
               <Text
                 variant="small"
                 as="span"
-                className="hidden shrink-0 text-foreground-subtle sm:inline"
+                tone="subtle"
+                className="hidden shrink-0 sm:inline"
               >
                 {formatWhen(fact.created_at)}
               </Text>
               <Button
                 variant="ghost"
                 size="small"
+                // oxlint-disable-next-line design-system/no-restyle -- a compact 28px "Forget" text action in a dense list
                 className="h-7 !min-w-0 shrink-0 px-2 text-foreground-secondary"
                 loading={forgettingUuid === fact.uuid}
                 onClick={() => onForget(fact.uuid)}
