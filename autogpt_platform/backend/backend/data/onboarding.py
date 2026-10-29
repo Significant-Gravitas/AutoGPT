@@ -16,6 +16,7 @@ from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,
 )
+from backend.data.onboarding_role import OnboardingRole
 from backend.data.onboarding_steps import (
     FrontendOnboardingStep as FrontendOnboardingStep,
 )
@@ -181,6 +182,13 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
             if data.wizardProgress is not None
             else None
         )
+        # The answered role is kept in the same revision-checked write as the
+        # draft, so a stale draft can never leave its role over a newer one.
+        if data.wizardProgress is not None and (
+            role := OnboardingRole.from_wizard(data.wizardProgress)
+        ):
+            update["role"] = role.choice
+            update["roleOther"] = role.other
         if data.wizardRevision is None:
             raise ValueError("wizardRevision is required when saving wizardProgress")
         return await _save_wizard_progress(user_id, data.wizardRevision, update)

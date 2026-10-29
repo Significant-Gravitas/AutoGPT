@@ -71,5 +71,28 @@ async def test_explicit_null_clears_the_draft(users_with_drafts):
     assert (row.wizardProgress, row.wizardRevision) == (None, DRAFT_REVISION + 1)
 
 
+async def test_a_draft_past_the_role_step_keeps_its_role(users_with_drafts):
+    user_id, _ = users_with_drafts
+    draft = wizard_progress(role="Other", otherRole="Dentist")
+
+    await update_user_onboarding(
+        user_id,
+        UserOnboardingUpdate.model_validate(
+            {
+                "wizardProgress": draft,
+                "wizardRevision": DRAFT_REVISION,
+                "wizardUserId": user_id,
+            }
+        ),
+    )
+
+    row = await read_row(user_id)
+    assert (row.role, row.roleOther, row.wizardRevision) == (
+        "Other",
+        "Dentist",
+        DRAFT_REVISION + 1,
+    )
+
+
 async def read_row(user_id: str) -> UserOnboarding:
     return await UserOnboarding.prisma().find_unique_or_raise(where={"userId": user_id})

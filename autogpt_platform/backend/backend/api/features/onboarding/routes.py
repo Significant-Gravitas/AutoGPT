@@ -1,7 +1,6 @@
 import logging
 from typing import Annotated, get_args
 
-import prisma.models
 import pydantic
 from autogpt_libs.auth import get_user_id, requires_user
 from fastapi import APIRouter, HTTPException, Security
@@ -23,11 +22,13 @@ from backend.data.onboarding import (
     update_user_onboarding,
 )
 from backend.data.onboarding_audience import queue_onboarding_role
-from backend.data.onboarding_role import OnboardingRole, kept_role, save_onboarding_role
-from backend.data.onboarding_wizard import (
-    OnboardingWizardConflict,
-    OnboardingWizardProgress,
+from backend.data.onboarding_role import (
+    OnboardingRole,
+    get_onboarding_role,
+    kept_role,
+    save_onboarding_role,
 )
+from backend.data.onboarding_wizard import OnboardingWizardConflict
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -63,12 +64,17 @@ async def get_onboarding(user_id: Annotated[str, Security(get_user_id)]):
 async def update_onboarding(
     user_id: Annotated[str, Security(get_user_id)], data: UserOnboardingUpdate
 ):
+    answered = (
+        data.wizardProgress is not None
+        and OnboardingRole.from_wizard(data.wizardProgress) is not None
+    )
+    sent = await get_onboarding_role(user_id) if answered else None
     try:
         onboarding = await update_user_onboarding(user_id, data)
     except OnboardingWizardConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if data.wizardProgress is not None:
-        await _keep_answered_role(user_id, data.wizardProgress, onboarding)
+    if answered and kept_role(onboarding) != sent:
+        await _send_answered_role(user_id, sent)
     return onboarding
 
 
@@ -180,27 +186,28 @@ async def submit_onboarding_profile(
     return {"status": "ok"}
 
 
-async def _keep_answered_role(
-    user_id: str,
-    progress: OnboardingWizardProgress,
-    onboarding: prisma.models.UserOnboarding,
-) -> None:
-    """Keep the role once the person moves on from the role step, not only at
+async def _send_answered_role(user_id: str, sent: OnboardingRole | None) -> None:
+    """Send the role once the person moves on from the role step, not only at
     the end of the wizard, which most people who stop at the paywall never
-    reach. Kept on the account, the checkout event that follows carries it to
-    MailerLite (`checkout_audience`); PostHog, and a MailerLite subscriber
-    who already opened checkout, get it now.
+    reach. The draft save keeps it on the account (`update_user_onboarding`),
+    so the checkout event that follows carries it to MailerLite
+    (`checkout_audience`); PostHog, and a MailerLite subscriber who already
+    opened checkout, get it now.
 
-    Only a pick that differs from the kept one is written, so the draft saves
-    of every later step cost nothing. The draft is saved whatever happens
-    here: the profile step at the end keeps the role again."""
-    role = OnboardingRole.from_wizard(progress)
-    if role is None or role == kept_role(onboarding):
-        return
+    What is kept is read again just before sending, so a request that paused
+    after its save sends the newer pick another tab has saved since, not its
+    own. Only a pick that differs from the one kept before the save is sent,
+    so the draft saves of every later step send nothing. The draft is saved
+    whatever happens here: the profile step at the end sends the role again,
+    and the role backfill fills in what a failed send missed."""
     try:
-        await _keep_role(user_id, role)
+        role = await get_onboarding_role(user_id)
+        if role is None or role == sent:
+            return
+        set_onboarding_role(user_id=user_id, role=role)
+        await queue_onboarding_role(user_id, role)
     except Exception:
-        logger.exception(f"Could not keep the onboarding role of {user_id}")
+        logger.exception(f"Could not send the onboarding role of {user_id}")
 
 
 async def _keep_role(user_id: str, role: OnboardingRole) -> None:

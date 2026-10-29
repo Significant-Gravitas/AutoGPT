@@ -9,7 +9,10 @@ from backend.api.features.onboarding import routes
 from backend.api.features.onboarding.routes import router
 from backend.data.onboarding import _default_user_onboarding
 from backend.data.onboarding_role import OnboardingRole
-from backend.data.onboarding_wizard import OnboardingWizardConflict
+from backend.data.onboarding_wizard import (
+    OnboardingWizardConflict,
+    OnboardingWizardProgress,
+)
 
 
 async def authenticated_user() -> str:
@@ -92,7 +95,7 @@ def _draft(**fields) -> dict:
 
 
 def _saved_row(kept: OnboardingRole | None):
-    """The row a draft save returns: it holds the pick kept before it."""
+    """The row a draft save returns: it holds the pick kept by that save."""
     return _default_user_onboarding(USER_ID).model_copy(
         update={
             "role": kept.choice if kept else None,
@@ -103,19 +106,37 @@ def _saved_row(kept: OnboardingRole | None):
 
 @pytest.fixture
 def role_writes(mocker):
-    """The kept pick's copy, and its MailerLite and PostHog writes."""
+    """The kept pick as read before and after the save, and its MailerLite
+    and PostHog writes."""
     return {
+        "read": mocker.patch.object(routes, "get_onboarding_role", new=AsyncMock()),
         "save": mocker.patch.object(routes, "save_onboarding_role", new=AsyncMock()),
         "queue": mocker.patch.object(routes, "queue_onboarding_role", new=AsyncMock()),
         "posthog": mocker.patch.object(routes, "set_onboarding_role", new=MagicMock()),
     }
 
 
-async def _save_draft(mocker, draft: dict, kept: OnboardingRole | None = None):
+async def _save_draft(
+    mocker,
+    role_writes,
+    draft: dict,
+    before: OnboardingRole | None = None,
+    saved: OnboardingRole | None = None,
+    after: OnboardingRole | None = None,
+):
+    """Save `draft` over the pick kept `before`; the save keeps `saved`, and
+    the read just before sending finds `after` (both default to the draft's
+    own pick, or `before` when it has none)."""
+    saved = saved or OnboardingRole.from_wizard(_progress(draft)) or before
+    role_writes["read"].side_effect = [before, after or saved]
     mocker.patch.object(
-        routes, "update_user_onboarding", AsyncMock(return_value=_saved_row(kept))
+        routes, "update_user_onboarding", AsyncMock(return_value=_saved_row(saved))
     )
     return await _patch(draft)
+
+
+def _progress(draft: dict) -> OnboardingWizardProgress:
+    return OnboardingWizardProgress.model_validate(draft)
 
 
 async def _patch(draft: dict):
@@ -134,6 +155,20 @@ async def _patch(draft: dict):
                 "wizardUserId": USER_ID,
             },
         )
+
+
+def _assert_sent(role_writes, role: OnboardingRole) -> None:
+    role_writes["queue"].assert_awaited_once_with(USER_ID, role)
+    role_writes["posthog"].assert_called_once_with(user_id=USER_ID, role=role)
+    # The draft save keeps it (`update_user_onboarding`); only the profile
+    # step writes it on its own.
+    role_writes["save"].assert_not_awaited()
+
+
+def _assert_nothing_sent(role_writes) -> None:
+    role_writes["queue"].assert_not_awaited()
+    role_writes["posthog"].assert_not_called()
+    role_writes["save"].assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -157,35 +192,66 @@ async def _patch(draft: dict):
     ],
     ids=["option", "other", "at-the-paywall"],
 )
-async def test_moving_on_from_the_role_step_keeps_and_sends_the_pick(
+async def test_moving_on_from_the_role_step_sends_the_pick(
     mocker, role_writes, fields, role
 ):
-    response = await _save_draft(mocker, _draft(**fields))
+    response = await _save_draft(mocker, role_writes, _draft(**fields))
 
     assert response.status_code == 200
-    role_writes["save"].assert_awaited_once_with(USER_ID, role)
-    role_writes["queue"].assert_awaited_once_with(USER_ID, role)
-    role_writes["posthog"].assert_called_once_with(user_id=USER_ID, role=role)
+    _assert_sent(role_writes, role)
 
 
 @pytest.mark.asyncio
-async def test_a_changed_pick_replaces_the_kept_one(mocker, role_writes):
+async def test_a_changed_pick_replaces_the_sent_one(mocker, role_writes):
     response = await _save_draft(
-        mocker, _draft(role="Engineering"), kept=OnboardingRole(choice="Marketing")
+        mocker,
+        role_writes,
+        _draft(role="Engineering"),
+        before=OnboardingRole(choice="Marketing"),
     )
 
     assert response.status_code == 200
+    _assert_sent(role_writes, OnboardingRole(choice="Engineering"))
+
+
+@pytest.mark.asyncio
+async def test_a_request_that_paused_after_its_save_sends_the_newer_pick(
+    mocker, role_writes
+):
+    """Tab A saves Marketing and pauses; tab B then saves Engineering on top
+    and sends it. A sends what is kept now, not its own older pick."""
     engineering = OnboardingRole(choice="Engineering")
-    role_writes["save"].assert_awaited_once_with(USER_ID, engineering)
-    role_writes["queue"].assert_awaited_once_with(USER_ID, engineering)
-    role_writes["posthog"].assert_called_once_with(user_id=USER_ID, role=engineering)
+    response = await _save_draft(
+        mocker,
+        role_writes,
+        _draft(role="Marketing"),
+        after=engineering,
+    )
+
+    assert response.status_code == 200
+    _assert_sent(role_writes, engineering)
+
+
+@pytest.mark.asyncio
+async def test_a_newer_save_back_to_the_sent_pick_sends_nothing(mocker, role_writes):
+    marketing = OnboardingRole(choice="Marketing")
+    response = await _save_draft(
+        mocker,
+        role_writes,
+        _draft(role="Engineering"),
+        before=marketing,
+        after=marketing,
+    )
+
+    assert response.status_code == 200
+    _assert_nothing_sent(role_writes)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "fields, kept",
+    "fields, before",
     [
-        # The kept pick: every later step's save is a no-op.
+        # The kept pick: every later step's save sends nothing.
         ({}, OnboardingRole(choice="Marketing")),
         (
             {"role": "Other", "otherRole": "Dentist"},
@@ -194,6 +260,9 @@ async def test_a_changed_pick_replaces_the_kept_one(mocker, role_writes):
         # Still on the role step: a pick being changed, or typed, is not taken.
         ({"currentStep": "role", "completedSteps": ["team", "autopilot"]}, None),
         ({"currentStep": "role"}, None),
+        # Back before the role step, which stays completed: what Other shows
+        # may be half typed.
+        ({"currentStep": "autopilot", "role": "Other", "otherRole": "De"}, None),
         # Not answered yet.
         ({"currentStep": "autopilot", "completedSteps": ["team"]}, None),
         ({"role": ""}, None),
@@ -204,33 +273,37 @@ async def test_a_changed_pick_replaces_the_kept_one(mocker, role_writes):
         "unchanged-other",
         "on-role-step",
         "back-on-role-step",
+        "back-before-role-step",
         "before-role-step",
         "empty",
         "blank-other",
     ],
 )
 async def test_nothing_is_sent_without_a_new_answered_pick(
-    mocker, role_writes, fields, kept
+    mocker, role_writes, fields, before
 ):
-    response = await _save_draft(mocker, _draft(**fields), kept=kept)
+    response = await _save_draft(mocker, role_writes, _draft(**fields), before=before)
 
     assert response.status_code == 200
-    role_writes["save"].assert_not_awaited()
-    role_writes["queue"].assert_not_awaited()
-    role_writes["posthog"].assert_not_called()
+    _assert_nothing_sent(role_writes)
 
 
 @pytest.mark.asyncio
-async def test_the_draft_is_saved_when_keeping_the_pick_fails(
+async def test_the_draft_is_saved_when_sending_the_pick_fails(
     mocker, role_writes, caplog
 ):
-    role_writes["save"].side_effect = RuntimeError("database down")
+    role_writes["read"].side_effect = [None, RuntimeError("database down")]
+    mocker.patch.object(
+        routes,
+        "update_user_onboarding",
+        AsyncMock(return_value=_saved_row(OnboardingRole(choice="Marketing"))),
+    )
 
-    response = await _save_draft(mocker, _draft())
+    response = await _patch(_draft())
 
     assert response.status_code == 200
     assert response.json()["userId"] == USER_ID
-    assert f"Could not keep the onboarding role of {USER_ID}" in caplog.text
+    assert f"Could not send the onboarding role of {USER_ID}" in caplog.text
     role_writes["posthog"].assert_not_called()
 
 
@@ -245,5 +318,4 @@ async def test_a_conflicting_draft_sends_nothing(mocker, role_writes):
     response = await _patch(_draft())
 
     assert response.status_code == 409
-    role_writes["save"].assert_not_awaited()
-    role_writes["posthog"].assert_not_called()
+    _assert_nothing_sent(role_writes)

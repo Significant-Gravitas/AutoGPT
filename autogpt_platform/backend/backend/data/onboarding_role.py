@@ -14,10 +14,12 @@ GTM segments on the pick, under the label people saw, in MailerLite (`role`,
 `role_other`) and PostHog (`onboarding_role`, `onboarding_role_other`).
 """
 
+from typing import get_args
+
 from prisma.models import UserOnboarding
 from pydantic import BaseModel
 
-from backend.data.onboarding_wizard import OnboardingWizardProgress
+from backend.data.onboarding_wizard import OnboardingWizardProgress, WizardStep
 
 # Each option ID the wizard sends, and the label people saw.
 ROLE_LABELS = {
@@ -31,6 +33,8 @@ ROLE_LABELS = {
 }
 OTHER = "Other"
 OTHER_MAX_CHARS = 100
+# The wizard's steps in the order it shows them.
+WIZARD_STEPS: tuple[WizardStep, ...] = get_args(WizardStep)
 
 
 class OnboardingRole(BaseModel):
@@ -56,9 +60,12 @@ class OnboardingRole(BaseModel):
     def from_wizard(cls, progress: OnboardingWizardProgress) -> "OnboardingRole | None":
         """The pick a saved wizard draft holds once the person has moved on
         from the role step with it, read the way the wizard's profile submit
-        reads it. None while they are still on that step, so a pick being
-        changed, or Other's text being typed, is never taken."""
-        if "role" not in progress.completedSteps or progress.currentStep == "role":
+        reads it. None while they are on that step or back before it: going
+        back keeps the role step completed, so a pick being changed, or
+        Other's text being typed, and then left by Back is never taken."""
+        if "role" not in progress.completedSteps or WIZARD_STEPS.index(
+            progress.currentStep
+        ) <= WIZARD_STEPS.index("role"):
             return None
         answer = progress.otherRole if progress.role == OTHER else progress.role
         if not answer.strip():

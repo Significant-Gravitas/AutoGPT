@@ -80,16 +80,19 @@ def test_the_draft_of_someone_who_stopped_at_the_paywall_is_planned():
                 wizard_progress=_draft(currentStep="role"),
                 understanding_role="Sales/BD",
             ),
+            # Back before the role step, which stays completed: Other's text
+            # may be half typed, so it is skipped.
+            _record("back@x.io", wizard_progress=_draft(currentStep="autopilot")),
             _record("broken@x.io", wizard_progress='{"version": 2}'),
         ],
         current={},
     )
     assert (plan.accounts, plan.kept, plan.drafted, plan.exact, plan.skipped) == (
-        5,
+        6,
         1,
         2,
         1,
-        1,
+        2,
     )
     assert {a.email: a.role for a in plan.posthog} == {
         "paywall@x.io": OnboardingRole(choice="Other", other="Dentist"),

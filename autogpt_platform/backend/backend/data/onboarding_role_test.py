@@ -75,6 +75,8 @@ def _draft(**fields) -> OnboardingWizardProgress:
         # What Other was showing before another pick is not the pick.
         ({"otherRole": "Dentist"}, OnboardingRole(choice="Marketing")),
         ({"currentStep": "role"}, None),
+        # Back before the role step, which stays completed.
+        ({"currentStep": "autopilot"}, None),
         ({"completedSteps": ["team", "autopilot"]}, None),
         ({"role": ""}, None),
         ({"role": "Other", "otherRole": "  "}, None),
