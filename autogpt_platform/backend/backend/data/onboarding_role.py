@@ -17,7 +17,7 @@ GTM segments on the pick, under the label people saw, in MailerLite (`role`,
 from typing import get_args
 
 from prisma.models import UserOnboarding
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from backend.data.onboarding_wizard import OnboardingWizardProgress, WizardStep
 
@@ -106,3 +106,26 @@ async def get_onboarding_role(user_id: str) -> OnboardingRole | None:
     return kept_role(
         await UserOnboarding.prisma().find_unique(where={"userId": user_id})
     )
+
+
+async def get_answered_role(user_id: str) -> OnboardingRole | None:
+    """The pick the wizard kept, or else the one in its saved draft once the
+    person moved on from the role step. Only a draft saved before SECRT-3036
+    holds a pick that was never kept: someone who resumes it at the paywall
+    can open checkout without another draft save."""
+    row = await UserOnboarding.prisma().find_unique(where={"userId": user_id})
+    if row is None:
+        return None
+    return kept_role(row) or drafted_role(row.wizardProgress)
+
+
+def drafted_role(draft: object) -> OnboardingRole | None:
+    """The pick in a saved wizard draft; None for no draft, or one that no
+    longer reads as one."""
+    if draft is None:
+        return None
+    try:
+        progress = OnboardingWizardProgress.model_validate(draft)
+    except ValidationError:
+        return None
+    return OnboardingRole.from_wizard(progress)

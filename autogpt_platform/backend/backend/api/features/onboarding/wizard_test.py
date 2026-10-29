@@ -308,6 +308,24 @@ async def test_the_draft_is_saved_when_sending_the_pick_fails(
 
 
 @pytest.mark.asyncio
+async def test_a_failed_read_before_the_save_still_saves_and_sends(
+    mocker, role_writes, caplog
+):
+    marketing = OnboardingRole(choice="Marketing")
+    role_writes["read"].side_effect = [RuntimeError("database blip"), marketing]
+    save = mocker.patch.object(
+        routes, "update_user_onboarding", AsyncMock(return_value=_saved_row(marketing))
+    )
+
+    response = await _patch(_draft())
+
+    assert response.status_code == 200
+    save.assert_awaited_once()
+    assert f"Could not read the onboarding role of {USER_ID}" in caplog.text
+    _assert_sent(role_writes, marketing)
+
+
+@pytest.mark.asyncio
 async def test_a_conflicting_draft_sends_nothing(mocker, role_writes):
     mocker.patch.object(
         routes,

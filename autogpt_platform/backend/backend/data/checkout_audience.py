@@ -28,7 +28,7 @@ import prisma.models
 
 from backend.data.db import query_raw_with_schema
 from backend.data.notifications import AudienceAction
-from backend.data.onboarding_role import OnboardingRole, get_onboarding_role
+from backend.data.onboarding_role import OnboardingRole, get_answered_role
 from backend.data.user import get_user_by_id, record_excluded_country
 from backend.notifications import posthog_audience
 from backend.notifications.audience_enrichment import (
@@ -166,7 +166,7 @@ async def _role(user_id: str) -> OnboardingRole | None:
     """The role picked in onboarding, if there is one yet. A failed read
     costs the opener their role, never their checkout event."""
     try:
-        return await get_onboarding_role(user_id)
+        return await get_answered_role(user_id)
     except Exception:
         logger.warning(f"Could not read the onboarding role of {user_id}")
         return None

@@ -142,3 +142,41 @@ async def test_the_kept_pick_is_read_back(row, role):
     table = MagicMock(find_unique=AsyncMock(return_value=row))
     with patch("prisma.models.UserOnboarding.prisma", return_value=table):
         assert await onboarding_role.get_onboarding_role("user-1") == role
+
+
+def _saved(**fields) -> dict:
+    """A draft as the row's Json column returns it."""
+    return _draft(**fields).model_dump(mode="json")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "row, role",
+    [
+        (
+            SimpleNamespace(
+                role="Marketing", roleOther=None, wizardProgress=_saved(role="Sales/BD")
+            ),
+            OnboardingRole(choice="Marketing"),
+        ),
+        # A draft saved before SECRT-3036, past the role step: its pick.
+        (
+            SimpleNamespace(role=None, roleOther=None, wizardProgress=_saved()),
+            OnboardingRole(choice="Marketing"),
+        ),
+        (
+            SimpleNamespace(
+                role=None, roleOther=None, wizardProgress=_saved(currentStep="role")
+            ),
+            None,
+        ),
+        (SimpleNamespace(role=None, roleOther=None, wizardProgress={"v": 2}), None),
+        (SimpleNamespace(role=None, roleOther=None, wizardProgress=None), None),
+        (None, None),
+    ],
+    ids=["kept", "drafted", "draft-on-role-step", "broken-draft", "no-draft", "no-row"],
+)
+async def test_the_answered_pick_falls_back_to_the_draft(row, role):
+    table = MagicMock(find_unique=AsyncMock(return_value=row))
+    with patch("prisma.models.UserOnboarding.prisma", return_value=table):
+        assert await onboarding_role.get_answered_role("user-1") == role

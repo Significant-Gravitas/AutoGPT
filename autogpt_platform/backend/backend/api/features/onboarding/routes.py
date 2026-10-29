@@ -68,7 +68,7 @@ async def update_onboarding(
         data.wizardProgress is not None
         and OnboardingRole.from_wizard(data.wizardProgress) is not None
     )
-    sent = await get_onboarding_role(user_id) if answered else None
+    sent = await _sent_role(user_id) if answered else None
     try:
         onboarding = await update_user_onboarding(user_id, data)
     except OnboardingWizardConflict as exc:
@@ -184,6 +184,17 @@ async def submit_onboarding_profile(
     await _keep_role(user_id, OnboardingRole.from_answer(data.user_role))
 
     return {"status": "ok"}
+
+
+async def _sent_role(user_id: str) -> OnboardingRole | None:
+    """The pick kept before this save, to tell whether the save changes it.
+    A failed read never costs the draft its save: the pick is then sent as if
+    new, a harmless repeat."""
+    try:
+        return await get_onboarding_role(user_id)
+    except Exception:
+        logger.warning(f"Could not read the onboarding role of {user_id}")
+        return None
 
 
 async def _send_answered_role(user_id: str, sent: OnboardingRole | None) -> None:
