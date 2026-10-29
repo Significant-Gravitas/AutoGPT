@@ -14,17 +14,27 @@ export interface SessionValidationResult {
 }
 
 export async function validateSession(
-  currentPath: string,
+  currentPath: string | null | undefined,
 ): Promise<SessionValidationResult> {
   return await Sentry.withServerActionInstrumentation(
     "validateSession",
     {},
     async () => {
+      // Server actions are public endpoints: the argument is not guaranteed
+      // to match its TypeScript type at runtime.
+      const path = typeof currentPath === "string" ? currentPath : "";
+      if (typeof currentPath !== "string") {
+        console.warn(
+          "validateSession called without a valid currentPath:",
+          currentPath,
+        );
+      }
+
       try {
         const session = await getServerSession();
 
         if (!session?.user) {
-          const redirectPath = getRedirectPath(currentPath);
+          const redirectPath = getRedirectPath(path);
           return {
             user: null,
             isValid: false,
@@ -38,7 +48,7 @@ export async function validateSession(
         };
       } catch (error) {
         console.error("Session validation error:", error);
-        const redirectPath = getRedirectPath(currentPath);
+        const redirectPath = getRedirectPath(path);
         return {
           user: null,
           isValid: false,
