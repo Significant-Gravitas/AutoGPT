@@ -21,6 +21,10 @@ import { InlineApiKeyForm } from "./InlineApiKeyForm";
 import { InlineHostScopedForm } from "./InlineHostScopedForm";
 import { InlineUserPasswordForm } from "./InlineUserPasswordForm";
 import {
+  WorkflowConnectionView,
+  type WorkflowConnectOptions,
+} from "./WorkflowConnectionView";
+import {
   GlobeIcon,
   Key01Icon,
   SecurityCheckIcon,
@@ -31,6 +35,7 @@ import type { IconSvgElement } from "@hugeicons/react";
 import { AnimatePresence, domAnimation, LazyMotion, m } from "framer-motion";
 
 interface Props {
+  workflowConnect?: WorkflowConnectOptions;
   provider: ConnectableProvider;
   selectedMethod: AuthMethod | null;
   onSelectMethod: (method: AuthMethod | null) => void;
@@ -99,6 +104,7 @@ const METHOD_COPY: Record<
 // to X", method radio cards. Form methods expand their inputs inline as
 // an accordion; OAuth is driven by the panel footer's Continue.
 export function ConnectMethodView({
+  workflowConnect,
   provider,
   selectedMethod,
   onSelectMethod,
@@ -118,6 +124,17 @@ export function ConnectMethodView({
     onSelectMethod(null);
     mcpSignIn?.onShowNativeChange(false);
   }
+
+  if (workflowConnect)
+    return (
+      <WorkflowConnectionView
+        provider={provider}
+        options={workflowConnect}
+        form={apiKeyForm}
+        onApiKeySubmit={onApiKeySubmit}
+        onConnected={onInlineConnectSuccess}
+      />
+    );
 
   return (
     // `m` + a local provider, so this renders both standalone and inside
