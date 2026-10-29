@@ -136,11 +136,11 @@ export const DateTimeInput = ({
     // Base styles matching other form components
     "rounded-3xl border border-border-base bg-surface px-4 shadow-none",
     "font-normal text-foreground-base w-full text-body leading-5",
-    "placeholder:font-normal !placeholder:text-placeholder",
+    "placeholder:font-normal",
     // Focus and hover states
     "focus:border-foreground-subtle focus:shadow-none focus:outline-none focus:ring-1 focus:ring-foreground-subtle focus:ring-offset-0",
     // Error state
-    error && "border-1.5 border-error focus:border-error focus:ring-error",
+    error && "border-error focus:border-error focus:ring-error",
     // Placeholder styling
     !selected && "text-foreground-subtle",
     "justify-start text-left",
@@ -205,9 +205,6 @@ export const DateTimeInput = ({
             {buttonText}
           </Button>
         </PopoverTrigger>
-        {/* TODO(tokens): today's popover look. No exact role: border-border-base
-            #E5E5E5; text-foreground-base #0A0A0A is the `focus` role, a ring colour,
-            not a text colour (SECRT-3154). */}
         <PopoverContent
           data-slot="date-time-input-popup"
           className="w-auto rounded-medium border-border-base p-0 text-foreground-base"
@@ -228,7 +225,6 @@ export const DateTimeInput = ({
               data-slot="date-time-input-time"
               className="mt-3 border-t pt-3"
             >
-              {/* TODO(tokens): no role is gray-700 #374151. */}
               <label
                 data-slot="date-time-input-time-label"
                 htmlFor={timeInputId}

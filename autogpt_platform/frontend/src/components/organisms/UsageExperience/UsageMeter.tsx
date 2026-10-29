@@ -37,8 +37,8 @@ export function UsageMeter({ label, percent, detail }: Props) {
           data-slot="usage-meter-fill"
           className={cn(
             "w-(--usage-meter-width) h-full rounded-full transition-[width]",
-            // TODO(tokens): no role for orange-500, the full-meter fill.
-            value >= 100 ? "bg-warning" : "bg-brand",
+            // oxlint-disable-next-line design-system/no-raw-colors -- orange full-meter fill, no orange role; warning would turn it amber
+            value >= 100 ? "bg-orange-500" : "bg-brand",
           )}
           style={{ "--usage-meter-width": `${value}%` } as CSSProperties}
         />

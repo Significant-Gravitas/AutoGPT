@@ -15,12 +15,12 @@ export function TourArtifactCard({ artifact }: Props) {
         <span>Artifact · {artifact.caption}</span>
       </div>
 
-      <Text variant="large-medium" className="text-foreground-strong">
+      <Text variant="large-medium" tone="primary">
         {artifact.title}
       </Text>
 
       {artifact.subtitle && (
-        <Text variant="body" className="text-foreground-secondary">
+        <Text variant="body" tone="secondary">
           {artifact.subtitle}
         </Text>
       )}
@@ -39,13 +39,14 @@ export function TourArtifactCard({ artifact }: Props) {
             <span className="text-error-foreground line-through decoration-error-foreground/70">
               {artifact.diff.from}
             </span>
-            <Icon
-              icon={ArrowRight02Icon}
-              className="size-4 shrink-0 text-foreground-tertiary"
-            />
+            <span className="contents text-foreground-tertiary">
+              <Icon icon={ArrowRight02Icon} className="size-4 shrink-0" />
+            </span>
             <span className="text-success-foreground">{artifact.diff.to}</span>
           </div>
-          <span className="text-sm text-foreground-tertiary">{artifact.diff.delta}</span>
+          <span className="text-sm text-foreground-tertiary">
+            {artifact.diff.delta}
+          </span>
         </div>
       )}
     </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Card } from "@/components/atoms/Card/Card";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { environment } from "@/services/environment";
@@ -32,7 +31,7 @@ export function TourUpsellCard({ surface }: Props) {
   }
 
   return (
-    <Card className="flex flex-col gap-4 border border-border-base p-4 shadow-subtle">
+    <div className="flex flex-col gap-4 rounded-large border border-border-base bg-surface p-4 shadow-subtle">
       <div className="flex items-center gap-2.5">
         <span className="flex size-9 items-center justify-center rounded-medium bg-accent-surface text-accent-strong">
           <Icon icon={SparklesIcon} size={18} aria-hidden />
@@ -70,11 +69,12 @@ export function TourUpsellCard({ surface }: Props) {
           size="small"
           onClick={handleSelfHostClick}
           leftIcon={<Icon icon={GithubIcon} size={14} aria-hidden />}
+          // oxlint-disable-next-line design-system/no-restyle -- quiet 12px secondary link; no Button variant has small muted text at this height
           className="w-full text-xs text-foreground-secondary"
         >
           Self-host instead
         </Button>
       </div>
-    </Card>
+    </div>
   );
 }

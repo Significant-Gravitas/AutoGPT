@@ -42,6 +42,7 @@ export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
       "group flex w-full max-w-[95%] flex-col gap-2",
+      // oxlint-disable-next-line design-system/no-unknown-classes -- is-user and is-assistant are markers the group-[.is-*] variants below match
       from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
       className,
     )}
@@ -58,10 +59,8 @@ export const MessageContent = ({
 }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-full min-w-0 max-w-full flex-col gap-2 overflow-hidden text-body leading-5",
+      "flex w-full min-w-0 max-w-full flex-col gap-2 overflow-hidden text-body leading-5",
       "group-[.is-user]:w-fit",
-      // TODO(tokens): no exact role for bg-surface-hover #F5F5F5; no fitting
-      // role for text-foreground-base #0A0A0A, which is focus (a focus-ring colour)
       "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-surface-hover group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground-base",
       "group-[.is-assistant]:text-foreground-base",
       className,
@@ -320,7 +319,6 @@ export const MessageBranchPage = ({
   return (
     <ButtonGroupText
       className={cn(
-        // TODO(tokens): no exact role for text-foreground-tertiary #737373
         "border-none bg-transparent text-foreground-tertiary shadow-none",
         className,
       )}
@@ -363,7 +361,6 @@ function ExternalLinkModal({
         <Text variant="body">
           You&apos;re about to visit an external website:
         </Text>
-        {/* TODO(tokens): no exact role for bg-surface-hover #F5F5F5 */}
         <Text
           variant="small-mono"
           className="mt-2 break-all rounded-md bg-surface-hover p-3"
@@ -455,8 +452,6 @@ export const MessageResponse = memo(function MessageResponse({
     <Streamdown
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-surface",
-        // TODO(tokens): no fitting role for [&_a]:text-info #3B82F6: info is a
-        // status colour and sidebar-ring a focus ring, not link copy
         "[&_a]:text-info [&_a]:no-underline [&_a]:hover:underline",
         // Raycast-style markdown tables: a rounded card with a quiet small-caps
         // header, hairline row separators and tabular figures.
@@ -471,11 +466,6 @@ export const MessageResponse = memo(function MessageResponse({
         "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-border-base [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-eyebrow",
         "[&_th:first-child]:text-shadow-message-table-violet [&_th:last-child]:text-shadow-message-table-blue [&_th]:text-shadow-message-table-indigo",
         "[&_td]:border-b [&_td]:border-separator [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:text-foreground-body [&_td]:transition-colors",
-        // TODO(tokens): no fitting role for [&_td_strong]:text-foreground-base #09090B
-        // (foreground, card-foreground and popover-foreground turn #FAFAFA under
-        // .dark), [&_td_code]:bg-surface-hover #EFEFF0 (surface-hover is a hover fill,
-        // separator a border) or the row hover bg-surface-muted #F9F9FA (surface-muted
-        // is a resting fill)
         "[&_td_strong]:font-medium [&_td_strong]:text-foreground-base",
         "[&_td_code]:whitespace-nowrap [&_td_code]:rounded [&_td_code]:bg-surface-hover [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:text-foreground-body",
         "[&_tbody_tr:last-child_td]:border-b-0",

@@ -14,8 +14,6 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
       <div
         ref={ref}
         data-slot="progress"
-        // TODO(tokens): no role is gray-200 #E5E7EB (sidebar-border has the
-        // hex but belongs to the sidebar).
         className={cn(
           "relative h-2 w-full overflow-hidden rounded-full bg-surface-active",
           className,

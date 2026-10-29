@@ -9,31 +9,22 @@ export const cardVariants = cva("", {
     variant: {
       default: "rounded-xl border border-border-base bg-surface",
       outline: "rounded-2xl bg-surface ring-1 ring-inset ring-border-base/60",
-      // TODO(tokens): `foreground` holds #09090B (zinc-950), but it is the
-      // shadcn text colour; there is no shadow-colour role.
       elevated:
-        "overflow-hidden rounded-3xl bg-surface shadow-zinc-950 smooth-shadow-ring-sm",
+        "overflow-hidden rounded-3xl bg-surface shadow-foreground-base smooth-shadow-ring-sm",
       muted: "rounded-2xl border border-border bg-muted/40",
-      // TODO(tokens): the stops are border-strong (#C5C5C9), foreground-subtle
-      // (#ADADB3) and foreground-tertiary (#83838C), border and text roles;
-      // there are no gradient-stop roles.
       featured:
-        "rounded-2xl bg-gradient-to-br from-surface-active via-zinc-400 to-zinc-500 p-px",
+        // oxlint-disable-next-line design-system/no-raw-colors -- grey gradient border stops, no gradient-stop roles
+        "rounded-2xl bg-gradient-to-br from-zinc-300 via-zinc-400 to-zinc-500 p-px",
       info: "rounded-2xl bg-info-surface text-body leading-5 text-info-foreground",
       success:
         "rounded-2xl bg-success-surface text-body leading-5 text-success-foreground",
-      // TODO(tokens): no role for amber-800 (#92400E) text.
       warning:
         "rounded-2xl bg-warning-surface text-body leading-5 text-warning-foreground",
-      // TODO(tokens): no role for amber-900 (#78350F) text.
       "warning-strong":
         "rounded-2xl bg-warning-surface text-left text-body leading-5 text-warning-foreground",
-      // TODO(tokens): no role for amber-900 (#78350F) text.
       "warning-outline":
         "rounded-lg border border-warning-border bg-warning-surface text-body leading-5 text-warning-foreground",
-      // TODO(tokens): no role for the yellow-150 border or yellow-25 surface.
-      caution: "rounded-xl border border-warning-border bg-yellow-25",
-      // TODO(tokens): no role for the red-200 (#FAC5C5) border.
+      caution: "rounded-xl border border-warning-border bg-warning-surface",
       error:
         "rounded-lg border border-error/20 bg-error-surface text-caption leading-4 text-error-foreground",
     },
@@ -118,8 +109,8 @@ export const iconTints: Record<Variant, string> = {
   warning: "shrink-0",
   "warning-strong": "shrink-0",
   "warning-outline": "shrink-0",
-  // TODO(tokens): no role for the yellow-600 icon fill.
-  caution: "fill-warning-foreground text-action-foreground",
+  // oxlint-disable-next-line design-system/no-raw-colors -- yellow icon fill, no yellow role; warning would turn it amber
+  caution: "fill-yellow-600 text-action-foreground",
   error: "shrink-0",
 };
 

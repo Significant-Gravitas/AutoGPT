@@ -28,17 +28,12 @@ export function SelectableCard({
       className={cn(
         "relative flex h-24 w-[10.375rem] shrink-0 flex-col items-center justify-center gap-2 rounded-lg border bg-surface p-4 transition-colors hover:bg-surface-muted md:shrink",
         className,
-        // TODO(tokens): no fitting role for border-border-strong #ADADB3; #ADADB3 is foreground-subtle (a text colour), not a border
         selected ? "border-border-strong bg-surface-muted" : "border-separator",
       )}
     >
       {selected && (
-        <span className="absolute right-2 top-2 flex size-4 items-center justify-center rounded-full bg-action-hover">
-          <Icon
-            icon={Tick02Icon}
-            size={10}
-            className="text-action-foreground"
-          />
+        <span className="absolute right-2 top-2 flex size-4 items-center justify-center rounded-full bg-action-hover text-action-foreground">
+          <Icon icon={Tick02Icon} size={10} />
         </span>
       )}
       <span className="flex items-center justify-center text-foreground-tertiary">

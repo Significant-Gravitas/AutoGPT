@@ -56,7 +56,6 @@ export class ErrorBoundary extends Component<
         return this.props.fallback;
       }
 
-      // TODO(tokens): no role for gray-50 (#F9FAFB).
       return (
         <div
           data-slot="error-boundary"

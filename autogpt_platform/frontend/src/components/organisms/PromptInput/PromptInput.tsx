@@ -381,12 +381,6 @@ export function PromptInputSubmit({
     <InputGroupButton
       aria-label={canStop ? "Stop" : "Submit"}
       className={cn(
-        // TODO(tokens): no fitting role for the borders border-action #3E3E43 and
-        // hover:border-action-hover #2C2C30 (action and action-hover are fills,
-        // foreground-emphasis and foreground-strong text colours) or the disabled
-        // colours zinc-200 #DADADC and white #FEFEFE (surface-active is a pressed
-        // fill, border-base a resting border, surface a resting fill,
-        // action-foreground the text on an action fill)
         "size-[2.625rem] rounded-full border-action bg-action text-action-foreground hover:border-action-hover hover:bg-action-hover disabled:border-border-base disabled:bg-surface-active disabled:text-action-foreground disabled:opacity-100",
         className,
       )}

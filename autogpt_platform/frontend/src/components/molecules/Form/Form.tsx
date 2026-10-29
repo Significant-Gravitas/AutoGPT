@@ -169,7 +169,6 @@ const FormDescription = React.forwardRef<
       ref={ref}
       id={formDescriptionId}
       data-slot="form-description"
-      // TODO(tokens): no role for neutral-500 (#737373).
       className={cn(
         "font-sans text-caption font-normal leading-4.5 text-foreground-tertiary",
         className,

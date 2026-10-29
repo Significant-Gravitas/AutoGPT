@@ -112,10 +112,6 @@ interface Base64ModeProps extends BaseProps {
 
 type Props = UploadModeProps | Base64ModeProps;
 
-// TODO(tokens): no role holds Tailwind's gray-50/300/500/600/700/900
-// (#F9FAFB, #D1D5DB, #6B7280, #4B5563, #374151, #111827) or blue-200
-// #BFDBFE, blue-300 #93C5FD, blue-700 #1D4ED8. The dark: classes never apply
-// (forcedTheme="light") and are DS6's (SECRT-3116) to delete.
 export function FileInput(props: Props) {
   const {
     value,

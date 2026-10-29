@@ -58,8 +58,7 @@ export function BriefingCard({ briefing, className }: Props) {
             pixel still clears WCAG AA (4.5:1) against the white card. */}
         <Text
           variant="body"
-          // TODO(tokens): no role for the purple-800 to purple-600 gradient
-          // stops.
+          // oxlint-disable-next-line design-system/no-raw-colors -- purple gradient text, no from- role holds purple-800
           className="bg-gradient-to-r from-purple-800 to-brand-hover bg-clip-text text-transparent"
         >
           {formatBriefingDate(briefing.briefing_date)}
@@ -176,8 +175,7 @@ function ScrollArrow({
         aria-label={isUp ? "Scroll up" : "Scroll down"}
         data-slot="briefing-card-scroll-arrow-control"
         className={cn(
-          // TODO(tokens): no shadow-colour role for zinc-950 (#09090B).
-          "flex size-8 items-center justify-center rounded-full bg-surface text-foreground-tertiary shadow-zinc-950 transition-colors smooth-shadow-ring-sm hover:text-foreground-strong",
+          "flex size-8 items-center justify-center rounded-full bg-surface text-foreground-tertiary shadow-foreground-base transition-colors smooth-shadow-ring-sm hover:text-foreground-strong",
           isVisible && "pointer-events-auto",
         )}
       >

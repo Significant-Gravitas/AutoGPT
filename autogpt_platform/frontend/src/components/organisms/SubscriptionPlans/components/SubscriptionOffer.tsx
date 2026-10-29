@@ -28,7 +28,6 @@ export function SubscriptionOffer({ plan, onTrialDetails, ...props }: Props) {
       <Card
         className={cn(
           "flex h-full flex-col rounded-2xl border border-border-strong bg-surface p-5 shadow-none",
-          // TODO(tokens): no role for the purple-300 border.
           (presentation.trial || plan.highlighted) && "border-brand/40",
         )}
       >
@@ -66,8 +65,6 @@ function OfferHeading({
       {plan.usage && (
         <span
           data-slot="offer-heading-usage"
-          // TODO(tokens): no role for the purple-100 pill or its purple-700
-          // text.
           className="rounded-full bg-accent-surface px-2 py-0.5 text-xs text-accent-strong"
         >
           {plan.usage} usage
@@ -79,9 +76,7 @@ function OfferHeading({
           className={cn(
             "rounded-full px-2 py-0.5 text-xs",
             plan.highlighted
-              ? // TODO(tokens): no role for the purple-50 pill or its purple-700
-                // text.
-                "bg-accent-surface text-accent-strong"
+              ? "bg-accent-surface text-accent-strong"
               : "bg-surface-hover text-foreground-tertiary",
           )}
         >
@@ -91,8 +86,6 @@ function OfferHeading({
       {trial && (
         <span
           data-slot="offer-heading-trial"
-          // TODO(tokens): no role for the purple-50 pill or its purple-700
-          // text.
           className="ml-auto rounded-full bg-accent-surface px-2 py-0.5 text-xs font-medium text-accent-strong"
         >
           {trial.duration_days} days free
@@ -130,8 +123,10 @@ function OfferPrice({
       <Text
         variant="small"
         tone={presentation.trial ? undefined : "muted"}
-        // TODO(tokens): no text role for purple-700.
-        className={cn("mb-2 min-h-4", presentation.trial && "text-accent-strong")}
+        className={cn(
+          "mb-2 min-h-4",
+          presentation.trial && "text-accent-strong",
+        )}
       >
         {presentation.caption || "\u00a0"}
       </Text>
@@ -161,7 +156,6 @@ function OfferFeatures({
             data-slot="offer-features-icon"
             className={cn(
               "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full",
-              // TODO(tokens): no role for the purple-50 tick surface.
               isTeam ? "bg-surface-hover" : "bg-accent-surface",
             )}
           >

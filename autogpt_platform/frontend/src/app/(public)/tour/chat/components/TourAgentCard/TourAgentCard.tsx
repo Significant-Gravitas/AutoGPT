@@ -19,13 +19,14 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border-base/70 bg-surface p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
-        <Text variant="large-medium" className="text-foreground-strong">
+        <Text variant="large-medium" tone="primary">
           {agent.name}
         </Text>
         <span
           className={cn(
             "relative isolate flex shrink-0 items-center gap-2 rounded-full bg-success-surface px-3 py-1.5 text-sm font-semibold text-success-foreground",
             !runCompleted &&
+              // oxlint-disable-next-line design-system/no-arbitrary-values -- the live run's emerald glow, no shadow token
               "shadow-[0_0_14px_-2px_rgba(16,185,129,0.65),0_0_28px_-4px_rgba(16,185,129,0.5)] ring-1 ring-success/70",
           )}
         >
@@ -60,10 +61,9 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
         {agent.blocks.map((block, index) => (
           <Fragment key={`${block}-${index}`}>
             {index > 0 && (
-              <Icon
-                icon={ArrowRight02Icon}
-                className="size-3.5 shrink-0 text-foreground-subtle"
-              />
+              <span className="contents text-foreground-subtle">
+                <Icon icon={ArrowRight02Icon} className="size-3.5 shrink-0" />
+              </span>
             )}
             <span className="rounded-md bg-surface-hover px-2.5 py-1 font-mono text-xs text-foreground-body">
               {block}

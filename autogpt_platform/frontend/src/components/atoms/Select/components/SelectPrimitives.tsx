@@ -38,9 +38,6 @@ const SelectValue = React.forwardRef<
 ));
 SelectValue.displayName = SelectPrimitive.Value.displayName;
 
-// TODO(tokens): no role holds neutral-500 (#737373) or gray-400 (#9CA3AF).
-// The dark: classes never apply (forcedTheme="light") and are DS6's
-// (SECRT-3116) to delete.
 const SelectTrigger = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
@@ -49,7 +46,7 @@ const SelectTrigger = React.forwardRef<
     ref={ref}
     data-slot="select-trigger"
     className={cn(
-      "agpt-border-input agpt-shadow-input flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border bg-transparent px-3 py-2 text-body leading-5 ring-offset-surface placeholder:text-neutral-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 data-[state=open]:border-border-strong [&>span]:line-clamp-1",
+      "agpt-border-input agpt-shadow-input flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border bg-transparent px-3 py-2 text-body leading-5 ring-offset-surface placeholder:text-placeholder focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 data-[state=open]:border-border-strong [&>span]:line-clamp-1",
       className,
     )}
     {...props}
@@ -99,9 +96,6 @@ const SelectScrollDownButton = React.forwardRef<
 SelectScrollDownButton.displayName =
   SelectPrimitive.ScrollDownButton.displayName;
 
-// TODO(tokens): no role holds neutral-200 (#E5E5E5). neutral-950 (#0A0A0A) is
-// held only by the `focus` role, the focus-ring colour, which is not a text
-// colour (SECRT-3154).
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
@@ -136,7 +130,6 @@ const SelectContent = React.forwardRef<
 ));
 SelectContent.displayName = SelectPrimitive.Content.displayName;
 
-// TODO(tokens): no role holds neutral-100 (#F5F5F5) or neutral-900 (#171717).
 const SelectItem = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
@@ -165,7 +158,6 @@ const SelectItem = React.forwardRef<
 ));
 SelectItem.displayName = SelectPrimitive.Item.displayName;
 
-// TODO(tokens): no role holds neutral-100 (#F5F5F5).
 const SelectSeparator = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Separator>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>
@@ -173,10 +165,7 @@ const SelectSeparator = React.forwardRef<
   <SelectPrimitive.Separator
     ref={ref}
     data-slot="select-separator"
-    className={cn(
-      "-mx-1 my-1 h-px bg-surface-hover",
-      className,
-    )}
+    className={cn("-mx-1 my-1 h-px bg-surface-hover", className)}
     {...props}
   />
 ));

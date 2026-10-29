@@ -13,8 +13,9 @@ export function StepIndicator({ totalSteps, currentStep }: Props) {
           key={i}
           className={cn(
             "h-1.5 rounded-full transition-all",
-            // TODO(tokens): no fitting role for bg-surface-active #C5C5C9; #C5C5C9 is foreground-disabled (a text colour) and border-strong (a border colour), not a fill
-            i + 1 === currentStep ? "w-4 bg-action-hover" : "w-1.5 bg-surface-active",
+            i + 1 === currentStep
+              ? "w-4 bg-action-hover"
+              : "w-1.5 bg-surface-active",
           )}
         />
       ))}

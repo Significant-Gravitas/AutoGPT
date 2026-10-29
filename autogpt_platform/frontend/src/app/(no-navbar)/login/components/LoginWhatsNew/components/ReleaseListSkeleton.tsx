@@ -74,6 +74,7 @@ export function ReleaseListSkeleton() {
 function Bar({ className }: { className: string }) {
   return (
     <Skeleton
+      // oxlint-disable-next-line design-system/no-restyle -- Skeleton has no reduced-motion variant; keeps the pulse off under prefers-reduced-motion
       className={cn(className, "rounded-full motion-reduce:animate-none")}
     />
   );

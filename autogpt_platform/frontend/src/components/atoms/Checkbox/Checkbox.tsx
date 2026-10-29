@@ -14,11 +14,6 @@ const Checkbox = React.forwardRef<
     ref={ref}
     data-slot="checkbox"
     className={cn(
-      // TODO(tokens): no role is neutral-900 #171717.
-      // TODO(tokens): primary-foreground holds #FAFAFA in :root but 24 24 27
-      // in .dark (text on the primary fill), so it doesn't fit; neutral-50
-      // stays.
-      // Legacy dark: classes, moved verbatim; DS6 (SECRT-3116) deletes them.
       "peer h-4 w-4 shrink-0 rounded-sm border border-action-hover shadow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-action data-[state=checked]:text-action-foreground",
       className,
     )}

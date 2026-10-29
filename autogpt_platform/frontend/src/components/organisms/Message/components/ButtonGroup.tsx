@@ -48,9 +48,7 @@ export function ButtonGroupText({
       tone="inherit"
       as="div"
       className={cn(
-        // TODO(tokens): no exact role for border-border-base #E5E5E5, bg-surface-hover
-        // #F5F5F5 or dark:border-action / dark:bg-action #262626
-        "shadow-xs flex items-center gap-2 rounded-md border border-border-base bg-surface-hover px-4 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none",
+        "flex items-center gap-2 rounded-md border border-border-base bg-surface-hover px-4 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none",
         className,
       )}
       {...props}

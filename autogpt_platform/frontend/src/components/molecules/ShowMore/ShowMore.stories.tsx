@@ -247,7 +247,9 @@ export const LongContent: Story = {
   render: () => (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h3 className="mb-2 text-sm font-medium text-foreground-tertiary">Lead Text</h3>
+        <h3 className="mb-2 text-sm font-medium text-foreground-tertiary">
+          Lead Text
+        </h3>
         <ShowMore variant="lead" previewLimit={120}>
           Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
           eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad
@@ -259,7 +261,9 @@ export const LongContent: Story = {
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-medium text-foreground-tertiary">Body Text</h3>
+        <h3 className="mb-2 text-sm font-medium text-foreground-tertiary">
+          Body Text
+        </h3>
         <ShowMore variant="body" previewLimit={120}>
           Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
           eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad
@@ -271,7 +275,9 @@ export const LongContent: Story = {
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-medium text-foreground-tertiary">Small Text</h3>
+        <h3 className="mb-2 text-sm font-medium text-foreground-tertiary">
+          Small Text
+        </h3>
         <ShowMore variant="small" previewLimit={120}>
           Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
           eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad

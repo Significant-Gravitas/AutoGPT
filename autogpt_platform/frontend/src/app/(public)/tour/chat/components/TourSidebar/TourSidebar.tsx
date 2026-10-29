@@ -53,7 +53,8 @@ function DisabledMenuItem({
       <SidebarMenuButton
         aria-disabled="true"
         tooltip={label}
-        className="cursor-not-allowed font-normal opacity-50 hover:!bg-transparent group-data-[collapsible=icon]:!p-1.5 [&>svg]:size-5"
+        // oxlint-disable-next-line design-system/no-restyle -- 20px icons need the tighter collapsed padding; SidebarMenuButton has no size for it
+        className="cursor-not-allowed group-data-[collapsible=icon]:!p-1.5 [&>svg]:size-5"
       >
         <Icon icon={icon} className="size-5" />
         <span className="truncate">{label}</span>
@@ -89,11 +90,12 @@ export function TourSidebar({ variant = "tour" }: Props) {
   return (
     <Sidebar
       collapsible="icon"
-      className="[&_[data-sidebar=sidebar]]:bg-[#F3F3F4]"
+      // oxlint-disable-next-line design-system/no-restyle -- the tour sidebar's grey panel; Sidebar has no variant for it
+      className="[&_[data-sidebar=sidebar]]:bg-surface-hover"
     >
       <TourSidebarHeader />
 
-      <SidebarContent className="gap-2 overflow-hidden">
+      <SidebarContent className="overflow-hidden">
         <motion.div
           variants={sidebarContainerVariants}
           initial="hidden"
@@ -101,6 +103,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
           className="flex min-h-0 flex-1 flex-col gap-2"
         >
           <motion.div variants={itemVariants}>
+            {/* oxlint-disable-next-line design-system/no-restyle -- the copilot sidebar's tighter group padding; SidebarGroup has no size for it */}
             <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -108,7 +111,8 @@ export function TourSidebar({ variant = "tour" }: Props) {
                     <SidebarMenuButton
                       aria-disabled="true"
                       tooltip="New Task"
-                      className="cursor-not-allowed justify-center rounded-lg bg-action font-medium text-action-foreground opacity-50 hover:!bg-action hover:!text-action-foreground group-data-[collapsible=icon]:justify-start"
+                      // oxlint-disable-next-line design-system/no-restyle -- the copilot's dark New Task button; SidebarMenuButton has no primary variant
+                      className="cursor-not-allowed justify-center rounded-lg bg-action font-medium text-action-foreground group-data-[collapsible=icon]:justify-start"
                     >
                       <Icon icon={SparklesIcon} className="size-4" />
                       <span className="truncate">New Task</span>
@@ -120,8 +124,10 @@ export function TourSidebar({ variant = "tour" }: Props) {
           </motion.div>
 
           <motion.div variants={itemVariants}>
+            {/* oxlint-disable-next-line design-system/no-restyle -- the copilot sidebar's tighter group padding; SidebarGroup has no size for it */}
             <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
               <SidebarGroupContent>
+                {/* oxlint-disable-next-line design-system/no-restyle -- the copilot sidebar's collapsed item gap; SidebarMenu has no size for it */}
                 <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
                   <DisabledMenuItem icon={Search01Icon} label="Search" />
                   <DisabledMenuItem icon={GridViewIcon} label="Workflows" />
@@ -129,7 +135,8 @@ export function TourSidebar({ variant = "tour" }: Props) {
                     <SidebarMenuButton
                       asChild
                       tooltip="Marketplace"
-                      className="font-normal hover:!bg-surface-active group-data-[collapsible=icon]:!p-1.5 [&>svg]:size-5"
+                      // oxlint-disable-next-line design-system/no-restyle -- the tour sidebar's darker hover and 20px-icon collapsed padding; SidebarMenuButton has no variant for them
+                      className="hover:!bg-surface-active group-data-[collapsible=icon]:!p-1.5 [&>svg]:size-5"
                     >
                       <Link href="/marketplace">
                         <Icon icon={Store01Icon} className="size-5" />
@@ -145,13 +152,9 @@ export function TourSidebar({ variant = "tour" }: Props) {
 
           <motion.div variants={itemVariants}>
             <CollapsibleRoot defaultOpen className="group/collapsible">
+              {/* oxlint-disable-next-line design-system/no-restyle -- the copilot sidebar's tighter group padding; SidebarGroup has no size for it */}
               <SidebarGroup className="py-1">
-                <SidebarGroupLabel
-                  asChild
-                  // The copy's line box follows the parent's line height, as
-                  // before; the primitive's own size would make it 16px.
-                  className="leading-inherit"
-                >
+                <SidebarGroupLabel asChild>
                   <CollapsibleTrigger>
                     <Text
                       as="span"
@@ -160,14 +163,15 @@ export function TourSidebar({ variant = "tour" }: Props) {
                     >
                       Workspace
                     </Text>
-                    <Icon
-                      icon={ArrowDown01Icon}
-                      className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
-                    />
+                    <span className="ml-auto flex shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none">
+                      <Icon icon={ArrowDown01Icon} className="size-4" />
+                    </span>
                   </CollapsibleTrigger>
                 </SidebarGroupLabel>
+                {/* oxlint-disable-next-line design-system/no-restyle -- Radix sets the open state and height on this element, so the collapse animation can't move to a wrapper */}
                 <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
                   <SidebarGroupContent>
+                    {/* oxlint-disable-next-line design-system/no-restyle -- the copilot sidebar's collapsed item gap; SidebarMenu has no size for it */}
                     <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
                       <DisabledMenuItem icon={Folder01Icon} label="Files" />
                     </SidebarMenu>
@@ -179,6 +183,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
         </motion.div>
       </SidebarContent>
 
+      {/* oxlint-disable-next-line design-system/no-restyle -- the upsell card's 12px inset; SidebarFooter has no size for it */}
       <SidebarFooter className="p-3 group-data-[collapsible=icon]:hidden">
         {(variant === "marketplace" || !isDemoComplete) && (
           <TourUpsellCard surface={variant} />

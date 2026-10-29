@@ -7,15 +7,6 @@ import { extendedButtonVariants } from "./helpers";
 // base (extendedButtonVariants with no variant and no size), so a compact
 // button renders the same class string, in the same order, as it did when
 // these entries lived in extendedButtonVariants.
-// The deleted file's dark: classes are carried verbatim.
-// TODO(tokens): no role holds neutral-900 #171717, neutral-100 #F5F5F5 or
-// neutral-200 #E5E5E5 (border is #E4E4E7), so they stay raw. Four colours
-// whose role matches in light mode stay raw too, because the role's .dark
-// value differs from this button's dark colour (SECRT-3154):
-// ring-focus (focus: no .dark value, dark ring is neutral-300),
-// text-action-foreground on primary (primary-foreground: .dark #18181B, dark text is
-// neutral-900 #171717), bg-error (error: no .dark value, dark bg is red-900)
-// and bg-surface (surface: no .dark value, dark bg is neutral-950).
 const COMPACT_BASE =
   "gap-2 rounded-md border-0 min-w-0 text-body leading-5 focus-visible:ring-focus [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0";
 

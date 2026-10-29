@@ -5,9 +5,6 @@ import * as SeparatorPrimitive from "@radix-ui/react-separator";
 
 import { cn } from "@/lib/utils";
 
-// TODO(tokens): no role holds neutral-200 #E5E5E5 (border is #E4E4E7,
-// separator is #EFEFF0), so it stays raw. Its dark: class comes verbatim from
-// the deleted components/ui/separator.
 export const Separator = React.forwardRef<
   React.ElementRef<typeof SeparatorPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SeparatorPrimitive.Root>

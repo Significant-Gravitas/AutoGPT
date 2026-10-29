@@ -162,6 +162,7 @@ const SidebarProvider = React.forwardRef<
       <SidebarContext.Provider value={contextValue}>
         <TooltipProvider delayDuration={0}>
           <div
+            data-slot="sidebar-wrapper"
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH,
@@ -239,6 +240,7 @@ const Sidebar = React.forwardRef<
     if (collapsible === "none") {
       return (
         <div
+          data-slot="sidebar"
           className={cn(
             "w-(--sidebar-width) flex h-full flex-col bg-sidebar text-sidebar-foreground",
             className,
@@ -255,11 +257,13 @@ const Sidebar = React.forwardRef<
       return (
         <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
           <SheetContent
+            data-slot="sidebar"
             data-sidebar="sidebar"
             data-mobile="true"
             tabIndex={-1}
             // The default sheet eases in over 500ms, which lags behind the
             // tap; a drawer curve that starts fast keeps up with the finger.
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- drawer easing curve for the sheet animation; no easing token
             className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground outline-none [animation-timing-function:cubic-bezier(0.32,0.72,0,1)] data-[state=closed]:duration-200 data-[state=open]:duration-300 [&>button]:hidden"
             style={
               {
@@ -291,6 +295,7 @@ const Sidebar = React.forwardRef<
     return (
       <div
         ref={ref}
+        data-slot="sidebar"
         className="group peer hidden text-sidebar-foreground md:block"
         data-state={state}
         data-collapsible={state === "collapsed" ? collapsible : ""}
@@ -564,6 +569,7 @@ const sidebarMenuButtonVariants = cva(
       variant: {
         default: "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         outline:
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- 1px outline drawn as a shadow so the focus ring keeps ring-sidebar-ring
           "bg-surface shadow-[0_0_0_1px_rgb(var(--color-sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_rgb(var(--color-sidebar-accent))]",
       },
       size: {

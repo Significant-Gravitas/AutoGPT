@@ -2,6 +2,7 @@
 
 import { motion, type MotionValue, useTransform } from "framer-motion";
 
+// The dot is w-3.5 (14px) wide; keep the two in step.
 export const DOT = 14;
 const GAP = 22;
 const BAR_HEIGHTS = [40, 64, 64, 40];
@@ -56,7 +57,7 @@ function Dot({
   slot,
   barHeight,
   centre,
-  color,
+  color: backgroundColor,
   reduceMotion,
 }: {
   level: MotionValue<number>;
@@ -77,24 +78,16 @@ function Dot({
       DOT + (reduceMotion ? 0 : voice * spread * (barHeight - DOT)),
   );
   const y = useTransform(height, (h) => (DOT - h) / 2);
+  const left = centre.x - DOT / 2;
+  const top = centre.y - DOT / 2;
 
   return (
     <motion.span
       data-testid="voice-dot"
       aria-hidden
-      className="absolute rounded-full"
-      style={{
-        width: DOT,
-        height,
-        left: centre.x - DOT / 2,
-        top: centre.y - DOT / 2,
-        x,
-        y,
-        scale,
-        opacity,
-        backgroundColor: color,
-        willChange: "transform, height",
-      }}
+      className="absolute w-3.5 rounded-full will-change-[transform,height]"
+      // oxlint-disable-next-line design-system/no-inline-styles -- framer-motion MotionValues, a position from the centre prop and the dot colour prop (violet-400, no role)
+      style={{ height, x, y, scale, opacity, left, top, backgroundColor }}
     />
   );
 }

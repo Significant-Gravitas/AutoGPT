@@ -7,12 +7,7 @@ interface Props extends React.HTMLAttributes<HTMLDivElement> {
   variant?: "solid" | "translucent";
 }
 
-// TODO(tokens): no role holds neutral-900 #171717, the translucent wash. Its
-// dark: class comes verbatim from the deleted components/ui/skeleton.
 const variantClassName = {
-  // TODO(tokens): no fitting role for bg-surface-hover #EFEFF0; #EFEFF0 is
-  // surface-hover, a hover fill, and this fill is not a hover state
-  // (QUALITY 41, SECRT-3154).
   solid: "bg-surface-hover",
   translucent: "bg-action/10",
 } as const;

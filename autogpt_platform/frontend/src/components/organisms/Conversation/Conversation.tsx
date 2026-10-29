@@ -34,9 +34,7 @@ export const ConversationContent = ({
     scrollClassName={cn(
       // Contain the overscroll so a fling past either end bounces the thread
       // instead of dragging the page, composer and all, with it.
-      // TODO(tokens): no fitting role for scrollbar-thumb-zinc-300 #C5C5C9:
-      // border-strong is a border and foreground-disabled a text colour
-      "overscroll-y-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
+      "overscroll-y-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-strong",
       scrollClassName,
     )}
     {...props}
@@ -66,15 +64,13 @@ export const ConversationEmptyState = ({
   >
     {children ?? (
       <>
-        {/* TODO(tokens): no exact role for text-foreground-tertiary #737373 */}
         {icon && <div className="text-foreground-tertiary">{icon}</div>}
         <div className="space-y-1">
           <Text variant="body-medium-tight" tone="inherit" as="h3">
             {title}
           </Text>
-          {/* TODO(tokens): no exact role for text-foreground-tertiary #737373 */}
           {description && (
-            <Text variant="body-tight" as="p" className="text-foreground-tertiary">
+            <Text variant="body-tight" as="p" tone="muted">
               {description}
             </Text>
           )}

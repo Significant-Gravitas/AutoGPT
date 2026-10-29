@@ -46,8 +46,6 @@ const DropdownMenuRadioGroup = React.forwardRef<
 DropdownMenuRadioGroup.displayName =
   DropdownMenuPrimitive.RadioGroup.displayName;
 
-// TODO(tokens): no role for neutral-100 (#F5F5F5), neutral-200 (#E5E5E5) or
-// neutral-900 (#171717); neutral-950 (#0A0A0A) is only the focus-ring role.
 // TODO(tokens): no tracking role for tracking-widest (0.1em), in
 // DropdownMenuShortcut.
 const DropdownMenuSubTrigger = React.forwardRef<

@@ -24,7 +24,6 @@ export function InformationTooltip({ description, iconSize = 24 }: Props) {
               had no way to read what it holds. Inside a <label> a click would
               be forwarded to the labelled control, which is not what pressing
               an info mark asks for. */}
-          {/* TODO(tokens): no role for slate-50 (#F7F8F9). */}
           <button
             type="button"
             aria-label="More information"
@@ -43,7 +42,6 @@ export function InformationTooltip({ description, iconSize = 24 }: Props) {
           <ReactMarkdown
             components={{
               a: ({ node: _, ...props }) => (
-                // TODO(tokens): no role for blue-400 (#60A5FA).
                 <a
                   target="_blank"
                   data-slot="information-tooltip-link"

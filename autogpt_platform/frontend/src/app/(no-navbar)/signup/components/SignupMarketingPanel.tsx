@@ -12,13 +12,7 @@ export function SignupMarketingPanel() {
       headingLines={[
         "Your ambition",
         <span key="line-2">
-          deserves{" "}
-          <span
-            // TODO(tokens): no exact role for text-brand (#7C3AED)
-            className="text-brand"
-          >
-            a team.
-          </span>
+          deserves <span className="text-brand">a team.</span>
         </span>,
       ]}
       description="Hire AI experts who research, write, sell and take work off your plate. Otto, your Head of AI, hands out the jobs and reports back to you."

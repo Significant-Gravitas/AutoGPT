@@ -7,7 +7,6 @@ export function ErrorHeader() {
   return (
     <div data-slot="error-card-header" className="flex items-center gap-3">
       <div data-slot="error-card-icon-wrap" className="flex-shrink-0">
-        {/* TODO(tokens): no role for red-400 (#F26969). */}
         <Icon
           data-slot="error-card-icon"
           icon={Alert01Icon}

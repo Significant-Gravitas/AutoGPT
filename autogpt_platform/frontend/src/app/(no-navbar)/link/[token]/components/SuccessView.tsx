@@ -32,27 +32,24 @@ export function SuccessView({
     : `Everyone in the ${serverNoun} can start using AutoGPT right away.`;
 
   return (
-    <AuthCard title="AutoGPT is ready!" className="max-w-[38rem] gap-6 p-8">
+    <AuthCard
+      title="AutoGPT is ready!"
+      // oxlint-disable-next-line design-system/no-restyle -- AuthCard has no roomy size; keeps today's p-8 padding and gap-6
+      className="max-w-[38rem] gap-6 p-8"
+    >
       <div className="flex w-full flex-col items-center gap-7">
-        <div
-          // TODO(tokens): no exact role for bg-success-surface (#B7E2C7)
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-success-surface"
-        >
-          <Icon
-            icon={CheckmarkCircle02Icon}
-            size={40}
-            className="text-success"
-          />
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success-surface text-success">
+          <Icon icon={CheckmarkCircle02Icon} size={40} />
         </div>
 
         <div className="w-full rounded-xl bg-muted px-6 py-5 text-center">
-          <Text variant="body-medium" className="text-muted-foreground">
+          <Text variant="body-medium" tone="muted">
             <strong>{label}</strong> is now connected to your AutoGPT account.
             <br />
             {detail}
           </Text>
           {returnUrl && forUser ? (
-            <Text variant="small" className="mt-3 block text-muted-foreground">
+            <Text variant="small" tone="muted" className="mt-3 block">
               Try it now — &ldquo;research a topic&rdquo;, &ldquo;build me a
               workflow&rdquo;, or &ldquo;draft a doc&rdquo;.
             </Text>
@@ -81,7 +78,7 @@ export function SuccessView({
         </div>
 
         {returnUrl ? null : (
-          <Text variant="small" className="text-center text-muted-foreground">
+          <Text variant="small" tone="muted" className="text-center">
             You can close this page and go back to your chat.
           </Text>
         )}

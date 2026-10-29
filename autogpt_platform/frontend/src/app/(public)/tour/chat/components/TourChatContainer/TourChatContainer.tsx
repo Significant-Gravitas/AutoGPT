@@ -16,7 +16,7 @@ export function TourChatContainer({ chat }: Props) {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[#fafafa] pb-8">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-surface-muted pb-8">
         <TourMessageList
           messages={chat.messages}
           isStreaming={chat.isStreaming}

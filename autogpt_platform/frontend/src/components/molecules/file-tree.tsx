@@ -195,10 +195,8 @@ const TreeIndicator = forwardRef<
       dir={direction}
       ref={ref}
       data-slot="file-tree-indicator"
-      // TODO(tokens): no role for neutral-400 (#A3A3A3) or neutral-600
-      // (#525252), nor for the neutral-100 (#F5F5F5) selected rows below.
       className={cn(
-        "absolute left-1.5 h-full w-px rounded-md bg-neutral-400 py-3 duration-300 ease-in-out hover:bg-neutral-600 rtl:right-1.5",
+        "absolute left-1.5 h-full w-px rounded-md bg-foreground-subtle py-3 duration-300 ease-in-out hover:bg-foreground-secondary rtl:right-1.5",
         className,
       )}
       {...props}
@@ -342,6 +340,7 @@ const File = forwardRef<
             "bg-surface-hover": isSelected && isSelectable,
           },
           isSelectable ? "cursor-pointer" : "cursor-not-allowed opacity-50",
+          // oxlint-disable-next-line design-system/no-unknown-classes -- direction marker class, not a Tailwind utility
           direction === "rtl" ? "rtl" : "ltr",
           className,
         )}

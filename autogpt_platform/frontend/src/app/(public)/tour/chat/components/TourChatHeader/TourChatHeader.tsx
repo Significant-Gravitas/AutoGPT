@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
 import { SidebarTrigger } from "@/components/molecules/Sidebar/Sidebar";
 import { useTourChatHeader } from "./useTourChatHeader";
 import { Link02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
@@ -23,13 +22,13 @@ export function TourChatHeader({ scenarioLabel, scenarioIcon }: Props) {
         <div className="md:hidden">
           <SidebarTrigger />
         </div>
-        <Icon icon={scenarioIcon} className="size-4 shrink-0 text-brand" />
-        <Text
-          variant="body-medium"
-          className="truncate bg-gradient-to-r from-brand-hover to-indigo-500 bg-clip-text text-transparent"
-        >
+        <span className="contents text-brand">
+          <Icon icon={scenarioIcon} className="size-4 shrink-0" />
+        </span>
+        {/* oxlint-disable-next-line design-system/no-raw-colors -- the scenario title's purple-to-indigo gradient, no indigo role */}
+        <p className="truncate bg-gradient-to-r from-brand-hover to-indigo-500 bg-clip-text font-sans text-body font-medium text-transparent">
           {scenarioLabel}
-        </Text>
+        </p>
       </div>
       <Button
         variant="secondary"
@@ -37,7 +36,9 @@ export function TourChatHeader({ scenarioLabel, scenarioIcon }: Props) {
         onClick={handleShare}
         leftIcon={
           isCopied ? (
-            <Icon icon={Tick02Icon} className="size-4 text-success" />
+            <span className="contents text-success">
+              <Icon icon={Tick02Icon} className="size-4" />
+            </span>
           ) : (
             <Icon icon={Link02Icon} className="size-4" />
           )

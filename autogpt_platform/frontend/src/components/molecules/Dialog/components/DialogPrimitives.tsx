@@ -66,9 +66,6 @@ function hasDialogDescription(node: React.ReactNode): boolean {
   });
 }
 
-// TODO(tokens): no role holds neutral-200 (#E5E5E5), neutral-100 (#F5F5F5) or
-// neutral-500 (#737373). The dark: classes never apply (forcedTheme="light")
-// and are DS6's (SECRT-3116) to delete.
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
@@ -112,6 +109,7 @@ const DialogContent = React.forwardRef<
           onFocusOutside?.(e);
         }}
         className={cn(
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- the centred dialog's 48% entry/exit slide; no scale step
           "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border-base bg-surface p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
           className,
         )}
@@ -189,7 +187,6 @@ const DialogTitle = React.forwardRef<
 ));
 DialogTitle.displayName = DialogPrimitive.Title.displayName;
 
-// TODO(tokens): no role holds neutral-500 (#737373).
 const DialogDescription = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
@@ -197,10 +194,7 @@ const DialogDescription = React.forwardRef<
   <DialogPrimitive.Description
     ref={ref}
     data-slot="dialog-description"
-    className={cn(
-      "text-body leading-5 text-foreground-tertiary",
-      className,
-    )}
+    className={cn("text-body leading-5 text-foreground-tertiary", className)}
     {...props}
   />
 ));

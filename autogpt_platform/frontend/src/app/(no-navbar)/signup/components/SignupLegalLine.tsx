@@ -15,11 +15,7 @@ interface Props {
 
 export function SignupLegalLine({ optedOut, onToggle, disabled }: Props) {
   return (
-    <Text
-      variant="body"
-      // TODO(tokens): no exact role for !text-foreground-tertiary (#64748B)
-      className="mt-6 text-center !text-foreground-tertiary"
-    >
+    <Text variant="body" tone="muted" className="mt-6 text-center">
       By continuing you agree to our{" "}
       <Link href={TERMS_OF_USE_URL} variant="secondary" isExternal>
         Terms of Use
@@ -31,10 +27,7 @@ export function SignupLegalLine({ optedOut, onToggle, disabled }: Props) {
       .{" "}
       <span aria-live="polite">
         {optedOut ? (
-          <span
-            // TODO(tokens): no exact role for text-foreground-base (#020617)
-            className="text-foreground-base"
-          >
+          <span className="text-foreground-base">
             You won&apos;t get marketing emails.
           </span>
         ) : (
@@ -48,7 +41,6 @@ export function SignupLegalLine({ optedOut, onToggle, disabled }: Props) {
         className={cn(
           linkBaseClasses,
           linkVariantClasses.secondary,
-          // TODO(tokens): no fitting role for focus-visible:ring-info #3B82F6; #3B82F6 is info (a status colour) and sidebar-ring (a focus ring scoped to the shadcn sidebar), not this link's focus ring
           "rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-info focus-visible:ring-offset-2",
           "disabled:cursor-not-allowed disabled:opacity-50",
         )}

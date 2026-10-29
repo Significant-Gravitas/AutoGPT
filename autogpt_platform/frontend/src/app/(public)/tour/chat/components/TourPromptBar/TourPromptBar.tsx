@@ -52,6 +52,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
       onKeyDown={handleKeyDown}
       onClick={send}
       className={cn(
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- the prompt bar's indigo glow, no shadow token
         "flex cursor-pointer items-center gap-3 rounded-xl border border-border-base bg-surface px-5 py-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] outline-none transition-shadow focus-visible:border-border-strong focus-visible:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_44px_-2px_rgba(99,102,241,0.55)]",
         isDisabled && "cursor-default opacity-60",
       )}
@@ -65,7 +66,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
       {!isDisabled && isTyped && (
         <span className="hidden shrink-0 items-center gap-1 text-xs text-foreground-subtle sm:flex">
           Press
-          <kbd className="rounded border border-border-base bg-surface-muted px-1.5 py-0.5 font-sans text-[0.7rem] text-foreground-tertiary">
+          <kbd className="rounded border border-border-base bg-surface-muted px-1.5 py-0.5 font-sans text-caption-sm text-foreground-tertiary">
             Enter
           </kbd>
         </span>

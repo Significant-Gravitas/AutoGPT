@@ -39,7 +39,6 @@ export function RenewalDetails({ terms }: Props) {
       >
         <summary
           data-slot="renewal-details-terms-toggle"
-          // TODO(tokens): no role for the violet-500 focus outline.
           className="w-fit cursor-pointer rounded-small underline decoration-border-strong underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
         >
           Full renewal terms

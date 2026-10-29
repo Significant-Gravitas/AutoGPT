@@ -19,7 +19,6 @@ const SKELETON_CARDS = 3;
 // Three across at the container's max width, two on tablets, one on phones.
 const CARD_WIDTH_CLASS = "w-full sm:w-[calc(50%-0.375rem)] lg:w-72";
 const EDGE_FADE_CLASS =
-  // TODO(tokens): no exact role for from-surface-hover (#F3F4F6), via-surface-hover/70 (#F3F4F6)
   "pointer-events-none absolute inset-x-0 z-10 h-16 from-surface-hover via-surface-hover/70 to-transparent transition-opacity duration-200";
 
 // Otto's first act as Head of AI: right after the brain dump, before the

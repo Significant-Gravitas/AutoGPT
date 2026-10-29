@@ -42,8 +42,6 @@ const SheetOverlay = React.forwardRef<
 ));
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
-// The dark: classes never apply (forcedTheme="light") and are DS6's
-// (SECRT-3116) to delete.
 const sheetVariants = cva(
   "fixed z-50 gap-4 bg-surface p-6 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out",
   {
@@ -67,7 +65,6 @@ interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
     VariantProps<typeof sheetVariants> {}
 
-// TODO(tokens): no role holds neutral-100 (#F5F5F5).
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
@@ -110,9 +107,7 @@ const SheetHeader = ({
 );
 SheetHeader.displayName = "SheetHeader";
 
-// TODO(tokens): no size role for text-lg (18px). neutral-950 (#0A0A0A) is held
-// only by the `focus` role, the focus-ring colour, which is not a text colour
-// (SECRT-3154).
+// TODO(tokens): no size role for text-lg (18px). SECRT-3152
 const SheetTitle = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Title>
@@ -120,16 +115,12 @@ const SheetTitle = React.forwardRef<
   <SheetPrimitive.Title
     ref={ref}
     data-slot="sheet-title"
-    className={cn(
-      "text-lg font-semibold text-foreground-base",
-      className,
-    )}
+    className={cn("text-lg font-semibold text-foreground-base", className)}
     {...props}
   />
 ));
 SheetTitle.displayName = SheetPrimitive.Title.displayName;
 
-// TODO(tokens): no role holds neutral-500 (#737373).
 const SheetDescription = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Description>
@@ -137,10 +128,7 @@ const SheetDescription = React.forwardRef<
   <SheetPrimitive.Description
     ref={ref}
     data-slot="sheet-description"
-    className={cn(
-      "text-body leading-5 text-foreground-tertiary",
-      className,
-    )}
+    className={cn("text-body leading-5 text-foreground-tertiary", className)}
     {...props}
   />
 ));

@@ -4,8 +4,6 @@ import { HTMLAttributes, ReactNode } from "react";
 
 const variants = {
   default: "rounded-large bg-surface p-6 shadow-md",
-  // TODO(tokens): text-foreground-base #0A0A0A is the `focus` role, a ring
-  // colour, not a text colour (SECRT-3154).
   outlined: "agpt-card text-foreground-base",
 } as const;
 
@@ -60,9 +58,8 @@ export function CardDescription({
       variant="body-tight"
       as="p"
       data-slot="card-description"
-      // TODO(tokens): no exact role: text-foreground-tertiary #737373. The dark: class
-      // is the legacy card's, kept verbatim.
-      className={cn("text-foreground-tertiary", className)}
+      tone="muted"
+      className={className}
       {...props}
     />
   );

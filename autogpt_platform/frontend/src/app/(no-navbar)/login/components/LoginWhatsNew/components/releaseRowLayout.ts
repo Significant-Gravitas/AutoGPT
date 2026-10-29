@@ -9,7 +9,8 @@ export const RELEASE_ROW_CLASS = "flex gap-3 px-3.5 py-2.5";
 export const RELEASE_DOT_COLUMN_CLASS =
   "flex w-2.5 shrink-0 justify-center pt-1";
 
-// Spacing above the headline and the details.
+// Spacing above the headline and the details. ReleaseItem writes the same
+// values as static classes on its Text, so keep the two in step.
 export const RELEASE_HEADLINE_GAP_CLASS = "mt-1";
 export const RELEASE_DETAILS_GAP_CLASS = "mt-0.5";
 
