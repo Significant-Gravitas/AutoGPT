@@ -19,7 +19,7 @@ export function MarketingHeader({ headingLines, description }: Props) {
             variant="h1"
             as="h1"
             tone="primary"
-            className="!w-full !text-display !font-semibold !leading-none tracking-heading"
+            className="!w-full !text-display !font-semibold !leading-tight tracking-heading"
           >
             {headingLines.map((line, i) => (
               <span key={i} className="block">
