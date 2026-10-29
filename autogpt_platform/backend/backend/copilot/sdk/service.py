@@ -56,6 +56,7 @@ from backend.copilot.model_router import (
 from backend.copilot.ai_spans import stamp_turn_trace_id
 from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
+from backend.copilot.sandbox_status import build_sandbox_replaced_notice
 from backend.copilot.continuation import as_model_prompt
 from backend.copilot.feedback_db import RATEABLE_ROLES
 from backend.copilot.cli_session_entry import rewrite_user_entry
@@ -6055,6 +6056,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # the next turn replays, and it must not accumulate one stale figure
         # per turn.
         budget_status = await build_turn_budget_block(envelope, user_id)
+        # Same rule: true of this turn only, so never in ``current_message``.
+        if use_e2b:
+            budget_status += await build_sandbox_replaced_notice(session_id)
 
         matched_skills_notice = (
             await build_matched_skills_notice(
