@@ -488,12 +488,37 @@ class TestThreadAdoption:
         assert "what should we do?" in text
 
     @pytest.mark.asyncio
+    async def test_channel_mention_enqueues_the_recent_channel_messages(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        enqueue = AsyncMock()
+
+        with (
+            patch.object(handler, "_enqueue_and_process", new=enqueue),
+            patch("backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()),
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="channel",
+                    bot_mentioned=True,
+                    text="update the automation to take that into account",
+                    thread_history=(
+                        MessageHistoryEntry("Nick", "u-2", "post one link, not two"),
+                    ),
+                ),
+                adapter,
+            )
+
+        message_text = enqueue.await_args.args[3]
+        assert "[Recent channel messages before this message]" in message_text
+        assert "post one link, not two" in message_text
+
+    @pytest.mark.asyncio
     async def test_channel_mention_enqueues_referenced_conversation(self):
-        # A plain channel @mention (include_thread_history is False here) that
-        # references another conversation must still carry that fetched content
-        # into the enqueued prompt. Regression guard: the handler previously
-        # only rendered referenced conversations when pulling thread history,
-        # so channel mentions silently dropped them.
+        # A channel @mention that references another conversation must carry
+        # that fetched content into the enqueued prompt. Regression guard: the
+        # handler once rendered referenced conversations only alongside thread
+        # history, so channel mentions silently dropped them.
         handler = MessageHandler(_api())
         adapter = _adapter()
         enqueue = AsyncMock()
@@ -1301,6 +1326,7 @@ class TestMessageTextReferencedConversations:
     def test_referenced_and_thread_history_both_rendered(self):
         handler = MessageHandler(_api())
         ctx = _ctx(
+            channel_type="thread",
             text="now",
             thread_history=(MessageHistoryEntry("Alice", "u-1", "earlier point"),),
             referenced_conversations=(

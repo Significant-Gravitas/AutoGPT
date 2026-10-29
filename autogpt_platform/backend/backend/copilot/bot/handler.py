@@ -177,7 +177,9 @@ class MessageHandler:
         # thread we'd been added to, require an explicit @mention
         # (or a reply to the bot) each turn so we don't hijack ongoing team
         # conversations.
-        include_thread_history = False
+        # A channel @mention opens a new thread and session, so the channel
+        # messages before it are context no earlier turn has carried.
+        include_thread_history = ctx.channel_type == "channel"
         if ctx.channel_type == "thread":
             is_subscribed = await threads.is_subscribed(ctx.platform, ctx.channel_id)
             if not is_subscribed:
