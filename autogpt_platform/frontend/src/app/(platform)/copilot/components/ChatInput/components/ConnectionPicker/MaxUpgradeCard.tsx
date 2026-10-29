@@ -66,8 +66,7 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
         href={href}
         variant="primary"
         size="small"
-        // oxlint-disable-next-line design-system/no-raw-colors -- the hover is a step darker than brand-hover, and no role is
-        className="mt-5 h-11 w-full rounded-lg border-brand bg-brand-hover text-action-foreground hover:border-purple-700 hover:bg-purple-700"
+        className="mt-5 h-11 w-full rounded-lg border-brand-hover bg-brand-hover text-action-foreground hover:border-accent-strong hover:bg-accent-strong"
       >
         Upgrade to Max
         <Icon icon={ArrowRight02Icon} size={16} aria-hidden />
