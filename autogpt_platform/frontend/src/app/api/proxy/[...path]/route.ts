@@ -1,9 +1,11 @@
 import {
   API_KEY_HEADER_NAME,
   CLIENT_COUNTRY_TOKEN_HEADER_NAME,
+  CLIENT_IP_TOKEN_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
   VERCEL_COUNTRY_HEADER_NAME,
 } from "@/lib/constants";
+import { getClientIPToken } from "@/lib/auth/client-ip-token";
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { environment } from "@/services/environment";
@@ -18,6 +20,7 @@ import {
   getWorkspaceDownloadErrorMessage,
   isPrivateStoreMediaRequest,
   isPrivateStoreVideoRequest,
+  isStoreSearchRequest,
   isWorkspaceDownloadRequest,
   watchResponseStart,
 } from "./route.helpers";
@@ -53,6 +56,7 @@ const FORWARDED_REQUEST_HEADERS: ReadonlyArray<string> = [
   "baggage",
   "x-datafast-visitor-id",
   "x-datafast-session-id",
+  "x-posthog-session-id",
 ];
 
 // Browsers advertise `zstd` in Accept-Encoding, but undici (Node 22's fetch)
@@ -88,7 +92,10 @@ const STRIPPED_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
 ]);
 
 function buildBackendUrl(path: string[], queryString: string): string {
-  return `${environment.getAGPTServerBaseUrl()}/${path.join("/")}${queryString}`;
+  // Next.js decodes each segment; encode it again so a `?`, `#` or `/` the
+  // browser sent encoded stays inside its segment.
+  const backendPath = path.map(encodeURIComponent).join("/");
+  return `${environment.getAGPTServerBaseUrl()}/${backendPath}${queryString}`;
 }
 
 async function signCountry(country: string) {
@@ -103,6 +110,7 @@ async function signCountry(country: string) {
 async function buildForwardHeaders(
   req: NextRequest,
   token: string | null,
+  path: string[],
 ): Promise<Headers> {
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
@@ -116,6 +124,10 @@ async function buildForwardHeaders(
   const country = req.headers.get(VERCEL_COUNTRY_HEADER_NAME);
   const countryToken = country ? await signCountry(country) : null;
   if (countryToken) headers.set(CLIENT_COUNTRY_TOKEN_HEADER_NAME, countryToken);
+  if (isStoreSearchRequest(path, req.nextUrl.searchParams)) {
+    const ipToken = await getClientIPToken(req.headers);
+    if (ipToken) headers.set(CLIENT_IP_TOKEN_HEADER_NAME, ipToken);
+  }
   if (token) {
     headers.set("authorization", `Bearer ${token}`);
   }
@@ -239,7 +251,7 @@ async function handler(
       return await handleWorkspaceDownload(backendUrl, token);
     }
 
-    const headers = await buildForwardHeaders(req, token);
+    const headers = await buildForwardHeaders(req, token, path);
     if (isPrivateMedia) {
       headers.set("cache-control", "no-store");
     }
@@ -285,8 +297,8 @@ async function handler(
     if (isPrivateMedia) {
       hardenPrivateMediaResponseHeaders(responseHeaders);
       // Vercel silently drops the tail of large streamed binary bodies, so
-      // private media is buffered like workspace downloads. Larger images keep
-      // streaming: a buffered body over Vercel's 4.5 MB limit fails outright.
+      // private media is buffered like workspace downloads. The backend
+      // redirects larger full responses to a short-lived signed object URL.
       if (shouldBufferPrivateMedia(backendResponse.headers)) {
         const body = await backendResponse.arrayBuffer();
         responseHeaders.set("content-length", String(body.byteLength));

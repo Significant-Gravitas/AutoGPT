@@ -22,18 +22,18 @@ export function IntegrationsSelectionBar({
   isDeleting = false,
 }: Props) {
   return (
-    <div className="flex w-full items-center justify-between rounded-[4px] border border-zinc-200 bg-zinc-100 px-4 py-2">
+    <div className="flex w-full items-center justify-between rounded-sm border border-border-base bg-surface-hover px-4 py-2">
       <div className="flex items-center gap-5">
-        <Text variant="body" as="span" className="text-zinc-700">
+        <Text variant="body" as="span" tone="body">
           {selectedCount} selected
         </Text>
         {!allSelected && (
           <button
             type="button"
             onClick={onSelectAll}
-            className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
+            className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-action"
           >
-            <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+            <Text variant="body-medium" as="span">
               Select All
             </Text>
           </button>
@@ -41,9 +41,9 @@ export function IntegrationsSelectionBar({
         <button
           type="button"
           onClick={onDeselectAll}
-          className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
+          className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-action"
         >
-          <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+          <Text variant="body-medium" as="span">
             Deselect
           </Text>
         </button>

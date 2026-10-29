@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -118,6 +119,7 @@ class NotionSearchBlock(Block):
                     1,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

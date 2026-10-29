@@ -89,6 +89,7 @@ export const OutputHandler = ({
           : isOutputVisible || selfIsRelevant || descendantIsRelevant;
 
         const { displayType, colorClass, hexColor } =
+          // oxlint-disable-next-line design-system/require-static-classes -- getTypeDisplayInfo returns whole, static class strings
           getTypeDisplayInfo(fieldSchema);
         const isExpanded = expandedObjects[fullKey] ?? false;
 
@@ -105,7 +106,7 @@ export const OutputHandler = ({
               {hasNestedProperties && (
                 <button
                   onClick={() => toggleObjectExpanded(fullKey)}
-                  className="flex items-center text-slate-500 hover:text-slate-700"
+                  className="flex items-center text-foreground-tertiary hover:text-foreground-body"
                   aria-label={isExpanded ? "Collapse" : "Expand"}
                 >
                   {isExpanded ? (
@@ -120,7 +121,7 @@ export const OutputHandler = ({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span
-                        style={{ marginLeft: 6, cursor: "pointer" }}
+                        className="ml-1.5 cursor-pointer"
                         aria-label="info"
                         tabIndex={0}
                       >
@@ -132,21 +133,15 @@ export const OutputHandler = ({
                 </TooltipProvider>
               )}
               <Text
-                variant="body"
-                className={cn(
-                  "text-slate-700",
-                  isBroken && "text-red-500 line-through",
-                )}
+                variant={isBroken ? "body-line-through" : "body"}
+                className={cn("text-foreground-body", isBroken && "text-error")}
               >
                 {fieldTitle}
               </Text>
               <Text
-                variant="small"
+                variant={isBroken ? "small-line-through" : "small"}
                 as="span"
-                className={cn(
-                  colorClass,
-                  isBroken && "!text-red-500 line-through",
-                )}
+                className={cn(colorClass, isBroken && "!text-error")}
               >
                 ({displayType})
               </Text>
@@ -177,15 +172,16 @@ export const OutputHandler = ({
   };
 
   return (
-    <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-zinc-200 bg-white py-3.5">
+    <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-border-base bg-surface py-3.5">
       <Button
         variant="ghost"
         className="mr-4 h-fit min-w-0 p-0 hover:border-transparent hover:bg-transparent"
         onClick={() => setIsOutputVisible(!isOutputVisible)}
       >
         <Text
-          variant="body"
-          className="flex items-center gap-2 !font-semibold text-slate-700"
+          variant="body-semibold"
+          tone="body"
+          className="flex items-center gap-2"
         >
           Output{" "}
           <Icon

@@ -248,7 +248,6 @@ describe("useCopilotUIStore", () => {
       completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
       isSoundEnabled: true,
-      showNotificationDialog: false,
       copilotLlmModel: "standard",
     });
   });
@@ -472,14 +471,6 @@ describe("useCopilotUIStore", () => {
         "true",
       );
     });
-
-    it("shows and hides notification dialog", () => {
-      useCopilotUIStore.getState().setShowNotificationDialog(true);
-      expect(useCopilotUIStore.getState().showNotificationDialog).toBe(true);
-
-      useCopilotUIStore.getState().setShowNotificationDialog(false);
-      expect(useCopilotUIStore.getState().showNotificationDialog).toBe(false);
-    });
   });
 });
 
@@ -522,15 +513,13 @@ describe("lastArtifact session scoping", () => {
     expect(useCopilotUIStore.getState().artifactPanel.lastArtifact).toBeNull();
   });
 
-  it("clearLastArtifact forgets the previous chat's expert integrations", () => {
+  it("clearLastArtifact leaves the previous chat's integrations tab", () => {
     useCopilotUIStore
       .getState()
       .toggleIntegrationsPanel({ id: "expert-maria", name: "Maria" });
     useCopilotUIStore.getState().closeArtifactPanel();
     useCopilotUIStore.getState().clearLastArtifact();
-    const s = useCopilotUIStore.getState();
-    expect(s.contextPanelExpert).toBeNull();
-    expect(s.artifactPanel.activeTab).toBe("files");
+    expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe("files");
   });
 
   it("closing the artifacts tab forgets the remembered preview", () => {

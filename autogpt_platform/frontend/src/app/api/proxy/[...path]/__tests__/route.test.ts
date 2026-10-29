@@ -9,16 +9,20 @@ vi.mock("@/lib/auth/country-token", () => ({
   getCountryToken: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/client-ip-token", () => ({
+  getClientIPToken: vi.fn(),
+}));
+
 vi.mock("@/services/environment", () => ({
   environment: {
     getAGPTServerBaseUrl: vi.fn(() => "https://backend.test"),
   },
 }));
 
+import { getClientIPToken } from "@/lib/auth/client-ip-token";
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { GET, POST } from "../route";
-import { PRIVATE_MEDIA_RANGE_CHUNK_BYTES } from "../route.helpers";
 
 const PRIVATE_IMAGE_HEADER_KEYS = [
   "accept",
@@ -39,6 +43,10 @@ describe("proxy route — handler pass-through", () => {
     vi.mocked(getCountryToken).mockReset();
     vi.mocked(getCountryToken).mockImplementation(
       async (country) => `signed-${country}`,
+    );
+    vi.mocked(getClientIPToken).mockReset();
+    vi.mocked(getClientIPToken).mockImplementation(
+      async (headers) => `signed-ip-${headers.get("x-forwarded-for")}`,
     );
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -213,7 +221,7 @@ describe("proxy route — handler pass-through", () => {
     expect(sentHeaders.get("baggage")).toBe("sentry-trace_id=abc123");
   });
 
-  it("forwards allowlisted DataFast attribution headers", async () => {
+  it("forwards allowlisted DataFast and PostHog session headers", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response("{}", {
         status: 200,
@@ -225,6 +233,7 @@ describe("proxy route — handler pass-through", () => {
       headers: {
         "x-datafast-visitor-id": "visitor-123",
         "x-datafast-session-id": "session-456",
+        "x-posthog-session-id": "posthog-session-789",
       },
     });
     await GET(req, makeParams(["api", "v1", "items"]));
@@ -232,6 +241,7 @@ describe("proxy route — handler pass-through", () => {
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
     expect(sentHeaders.get("x-datafast-visitor-id")).toBe("visitor-123");
     expect(sentHeaders.get("x-datafast-session-id")).toBe("session-456");
+    expect(sentHeaders.get("x-posthog-session-id")).toBe("posthog-session-789");
   });
 
   it("sends the edge-observed country only as a signed token", async () => {
@@ -295,6 +305,69 @@ describe("proxy route — handler pass-through", () => {
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
     expect(sentHeaders.get("x-client-country-token")).toBeNull();
   });
+
+  it.each([
+    ["api/store/search", "?query=sheets"],
+    ["api/store/agents", "?search_query=sheets"],
+  ])(
+    "sends the visitor's IP to %s only as the proxy's own signed token",
+    async (route, query) => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response("{}", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+      const req = new NextRequest(
+        `https://app.test/api/proxy/${route}${query}`,
+        {
+          headers: {
+            "x-forwarded-for": "203.0.113.7",
+            "x-client-ip-token": "forged",
+          },
+        },
+      );
+      await GET(req, makeParams(route.split("/")));
+
+      const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+      expect(sentHeaders.get("x-client-ip-token")).toBe(
+        "signed-ip-203.0.113.7",
+      );
+      expect(sentHeaders.get("x-forwarded-for")).toBeNull();
+    },
+  );
+
+  it.each([
+    ["api/store/agents", ""],
+    ["api/store/agents", "?search_query=%20"],
+    ["api/v1/items", "?query=sheets"],
+  ])(
+    "sends no client IP token to %s%s, even one the browser sent",
+    async (route, query) => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response("{}", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+      const req = new NextRequest(
+        `https://app.test/api/proxy/${route}${query}`,
+        {
+          headers: {
+            "x-forwarded-for": "203.0.113.7",
+            "x-client-ip-token": "forged",
+          },
+        },
+      );
+      await GET(req, makeParams(route.split("/")));
+
+      const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+      expect(sentHeaders.get("x-client-ip-token")).toBeNull();
+      expect(getClientIPToken).not.toHaveBeenCalled();
+    },
+  );
 
   it("omits Authorization header when no token is available", async () => {
     vi.mocked(getServerAuthToken).mockResolvedValueOnce(null);
@@ -385,6 +458,25 @@ describe("proxy route — handler pass-through", () => {
     );
   });
 
+  it("keeps an encoded ?, # or / inside its path segment", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/v1/items/a%3Fb%3Dc%23d%2Fe?page=2",
+    );
+    // Next.js hands the route each segment already decoded
+    await GET(req, makeParams(["api", "v1", "items", "a?b=c#d/e"]));
+
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
+      `${BACKEND}/api/v1/items/a%3Fb%3Dc%23d%2Fe?page=2`,
+    );
+  });
+
   it("preserves private video range responses without allowing shared caching", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response("video bytes", {
@@ -463,14 +555,15 @@ describe("proxy route — handler pass-through", () => {
     expect(sentHeaders.get("authorization")).not.toBe("Bearer client-supplied");
   });
 
-  it("streams private media too large to buffer", async () => {
-    const size = PRIVATE_MEDIA_RANGE_CHUNK_BYTES + 1;
+  it("forwards the backend signed redirect for oversized private media", async () => {
+    const signedUrl =
+      "https://storage.googleapis.com/private/object?signature=test";
     vi.mocked(fetch).mockResolvedValue(
-      new Response("large image", {
-        status: 200,
+      new Response(null, {
+        status: 307,
         headers: {
-          "Content-Type": "image/png",
-          "Content-Length": String(size),
+          Location: signedUrl,
+          "Cache-Control": "private, no-store",
         },
       }),
     );
@@ -488,9 +581,10 @@ describe("proxy route — handler pass-through", () => {
       makeParams(path),
     );
 
-    expect(res.headers.get("content-length")).toBeNull();
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(signedUrl);
     expect(res.headers.get("cache-control")).toBe("private, no-store");
-    expect(await res.text()).toBe("large image");
+    expect(await res.text()).toBe("");
   });
 
   it("does not expose private-media proxy exception details", async () => {

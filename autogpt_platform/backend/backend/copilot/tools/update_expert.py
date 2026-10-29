@@ -69,6 +69,7 @@ class UpdateExpertTool(BaseTool):
                 "expert_id": {
                     "type": "string",
                     "description": "The team expert to edit.",
+                    "entity": "expert",
                 },
                 "name": {
                     "type": "string",

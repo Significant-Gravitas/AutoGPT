@@ -51,14 +51,14 @@ export function MoveToFolderDialog({
         setIsOpen(false);
         setSearch("");
         toast({
-          title: "Agent moved",
+          title: "Workflow moved",
           description: `"${agentName}" has been moved.`,
         });
       },
       onError: () => {
         toast({
           title: "Error",
-          description: "Failed to move agent. Please try again.",
+          description: "Failed to move workflow. Please try again.",
           variant: "destructive",
         });
       },
@@ -119,7 +119,7 @@ export function MoveToFolderDialog({
           <div className="max-h-[280px] overflow-y-auto">
             {folders.length === 0 ? (
               <div className="flex h-20 items-center justify-center">
-                <Text variant="small" className="text-zinc-400">
+                <Text variant="small" tone="subtle">
                   No folders found
                 </Text>
               </div>
@@ -128,6 +128,7 @@ export function MoveToFolderDialog({
                 {currentFolderId && (
                   <Button
                     variant="ghost"
+                    // oxlint-disable-next-line design-system/no-restyle -- folder rows are two-line list items; no Button size fits
                     className="w-full justify-start gap-3 px-3 py-2.5"
                     disabled={isPending}
                     onClick={() => handleMoveToFolder(null)}
@@ -135,7 +136,7 @@ export function MoveToFolderDialog({
                     <span className="text-lg">📂</span>
                     <div className="flex flex-col items-start">
                       <Text variant="small-medium">My Library (root)</Text>
-                      <Text variant="small" className="text-zinc-400">
+                      <Text variant="small" tone="subtle">
                         Remove from folder
                       </Text>
                     </div>
@@ -145,17 +146,22 @@ export function MoveToFolderDialog({
                   <Button
                     key={folder.id}
                     variant="ghost"
-                    className="w-full justify-start gap-3 py-2.5"
-                    style={{ paddingLeft: `${0.75 + depth * 1.25}rem` }}
+                    // oxlint-disable-next-line design-system/no-restyle -- folder rows are two-line list items; no Button size fits
+                    className="w-full justify-start gap-3 py-2.5 pl-3"
+                    style={{ "--folder-depth": depth } as React.CSSProperties}
                     disabled={isPending}
                     onClick={() => handleMoveToFolder(folder.id)}
                   >
-                    <span className="text-lg">{folder.icon ?? "📁"}</span>
+                    <span className="ml-[calc(var(--folder-depth)*1.25rem)] text-lg">
+                      {folder.icon ?? "📁"}
+                    </span>
                     <div className="flex flex-col items-start">
                       <Text variant="small-medium">{folder.name}</Text>
-                      <Text variant="small" className="text-zinc-400">
+                      <Text variant="small" tone="subtle">
                         {folder.agent_count ?? 0}{" "}
-                        {(folder.agent_count ?? 0) === 1 ? "agent" : "agents"}
+                        {(folder.agent_count ?? 0) === 1
+                          ? "workflow"
+                          : "workflows"}
                       </Text>
                     </div>
                   </Button>

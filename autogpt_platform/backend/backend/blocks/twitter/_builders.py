@@ -410,15 +410,3 @@ class TweetPostBuilder:
 
     def build(self):
         return self.params
-
-
-class TweetGetsBuilder:
-    def __init__(self):
-        self.params: Dict[str, Any] = {"user_auth": False}
-
-    def add_id(self, tweet_id: list[str]):
-        self.params["id"] = tweet_id
-        return self
-
-    def build(self):
-        return self.params

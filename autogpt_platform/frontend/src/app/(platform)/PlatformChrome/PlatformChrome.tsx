@@ -4,49 +4,51 @@ import { CSSProperties, ReactNode } from "react";
 
 import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/TourSidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
-import { cn } from "@/lib/utils";
-import { Navbar } from "@/components/layout/Navbar/Navbar";
+import { AppSidebarToggleProvider } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
+import { ChangelogPopup } from "@/components/molecules/ChangelogPopup/ChangelogPopup";
 import {
+  getPersistedSidebarOpen,
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
+import { cn } from "@/lib/utils";
 
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
+import { ContextualTips } from "../components/ContextualTips/ContextualTips";
+import { FirstRunTour } from "../components/FirstRunTour/FirstRunTour";
+import { useFirstRunTourStore } from "../components/FirstRunTour/store";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
-import { WorkspaceFilesTrigger } from "../copilot/components/WorkspaceFilesTrigger/WorkspaceFilesTrigger";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
 import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose/BuilderSidebarAutoClose";
 import { InsetHeaderActions } from "./components/InsetHeaderActions/InsetHeaderActions";
+import { InsetHeaderSidebarTrigger } from "./components/InsetHeaderSidebarTrigger/InsetHeaderSidebarTrigger";
 import { InsetHeaderTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
 import { usePlatformChrome } from "./usePlatformChrome";
 
 interface Props {
   children: ReactNode;
+  // The request's sidebar cookie, for a server render.
+  persistedSidebarOpen?: boolean;
 }
 
-// Mobile header buttons float over the content, so they get a pill surface to
-// stay readable against whatever scrolls underneath.
-const mobileTriggerClassName =
-  "rounded-full border border-[#DADADC] bg-white hover:bg-[#F5F5F6]";
-
-export function PlatformChrome({ children }: Props) {
+export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
   const {
-    showNewLayout,
-    isNewLayoutActive,
+    showAppSidebar,
+    showChangelog,
     showTourSidebar,
     overlayInsetHeader,
-    isCopilotRoute,
     hasInsetHeaderTitle,
-    isSettingsRoute,
-    isAdminRoute,
     isBuilderRoute,
   } = usePlatformChrome();
-  // The collapsed-by-default sidebar ships with the brain-dump experience.
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  // Not mounted under the walkthrough: on a phone it lands inside the
+  // walkthrough's window, over what it points at. It mounts, with its own
+  // reveal timer, once the walkthrough ends.
+  const isFirstRunTourOpen = useFirstRunTourStore(
+    (state) => state.source !== null,
+  );
 
   const content = (
     <TopUpPromptProvider>
@@ -59,7 +61,7 @@ export function PlatformChrome({ children }: Props) {
     return (
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
         <TourSidebar variant="marketplace" />
-        <SidebarInset className="bg-[#f9f9f9]">
+        <SidebarInset className="bg-surface-muted">
           <div className="flex shrink-0 items-center px-4 pt-4 md:hidden">
             <SidebarTrigger />
           </div>
@@ -69,16 +71,24 @@ export function PlatformChrome({ children }: Props) {
     );
   }
 
-  if (showNewLayout) {
+  if (showAppSidebar) {
+    // The browser's cookie stays current across client navigation; the layout's does not.
+    // Expanded until the user collapses it, so a new user can see their chats.
+    const openOutsideBuilder =
+      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? true;
     return (
       <SidebarProvider
-        defaultOpen={!isBuilderRoute && !isBrainDumpEnabled}
+        persistState
+        defaultOpen={!isBuilderRoute && openOutsideBuilder}
         style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
       >
-        <BuilderSidebarAutoClose />
+        <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
         <ArtifactsPanelNavCollapse />
         <AppSidebar />
-        <SidebarInset className="bg-[#f9f9f9]">
+        {showChangelog && !isFirstRunTourOpen ? <ChangelogPopup /> : null}
+        <FirstRunTour />
+        <ContextualTips />
+        <SidebarInset className="bg-surface-muted">
           <header
             className={cn(
               "flex shrink-0 items-center pb-4 pt-6",
@@ -92,45 +102,25 @@ export function PlatformChrome({ children }: Props) {
             )}
           >
             <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-6 md:px-8">
-              <div className="pointer-events-auto md:hidden">
-                <SidebarTrigger className={mobileTriggerClassName} />
-              </div>
-              {/* Copilot treats up-to-lg as mobile (overlay context panel),
-                  so its workspace-files toggle stays visible past md. */}
-              {isCopilotRoute && (
-                <div className="pointer-events-auto lg:hidden">
-                  <WorkspaceFilesTrigger className={mobileTriggerClassName} />
-                </div>
-              )}
+              <InsetHeaderSidebarTrigger />
               <InsetHeaderTitle />
               <InsetHeaderActions />
             </div>
           </header>
           <AdminImpersonationBanner />
           <GlobalSearchOverlay />
-          <section className="flex-1">{content}</section>
+          <AppSidebarToggleProvider>
+            <section className="flex-1">{content}</section>
+          </AppSidebarToggleProvider>
         </SidebarInset>
       </SidebarProvider>
     );
   }
 
-  // Settings and admin render their own sidebar shells (with a Back link) —
-  // no top Navbar. Only the new layout drops the Navbar here; classic users
-  // keep it below so they don't lose global nav (wallet, account menu) or a
-  // way back on mobile.
-  if ((isSettingsRoute || isAdminRoute) && isNewLayoutActive) {
-    return (
-      <main className="flex h-screen w-full flex-col">
-        <AdminImpersonationBanner />
-        <GlobalSearchOverlay />
-        <section className="flex-1">{content}</section>
-      </main>
-    );
-  }
-
+  // Settings and admin render their own sidebar shells (with a Back link);
+  // the unauthenticated routes (reset-password, auth errors) get a bare frame.
   return (
     <main className="flex h-screen w-full flex-col">
-      <Navbar />
       <AdminImpersonationBanner />
       <GlobalSearchOverlay />
       <section className="flex-1">{content}</section>

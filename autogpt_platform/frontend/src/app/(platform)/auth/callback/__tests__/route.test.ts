@@ -1,11 +1,18 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { TERMS_VERSION } from "@/lib/legal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getServerSessionMock = vi.fn();
 const postV1GetOrCreateUserMock = vi.fn();
+const postV1RecordUserConsentMock = vi.fn();
+const rollbackSessionMock = vi.fn();
 const getOnboardingStatusMock = vi.fn();
 const revalidatePathMock = vi.fn();
 const scheduleAccountCreatedGoalMock = vi.fn();
 const cookieSetMock = vi.fn();
+const cookieGetMock = vi.fn();
+const cookieDeleteMock = vi.fn();
+const captureExceptionMock = vi.fn();
 
 vi.mock("@/lib/auth/server/getServerSession", () => ({
   getServerSession: () => getServerSessionMock(),
@@ -14,6 +21,12 @@ vi.mock("@/lib/auth/server/getServerSession", () => ({
 vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
   postV1GetOrCreateUser: (...args: unknown[]) =>
     postV1GetOrCreateUserMock(...args),
+  postV1RecordUserConsent: (...args: unknown[]) =>
+    postV1RecordUserConsentMock(...args),
+}));
+
+vi.mock("@/lib/auth/server/rollbackSession", () => ({
+  rollbackSession: () => rollbackSessionMock(),
 }));
 
 // Keep the real wasAccountCreated (it reads the provisioning response header);
@@ -31,12 +44,21 @@ vi.mock("@/app/api/helpers", () => ({
 }));
 
 vi.mock("next/headers", () => ({
-  cookies: () => Promise.resolve({ set: cookieSetMock }),
+  cookies: () =>
+    Promise.resolve({
+      set: cookieSetMock,
+      get: cookieGetMock,
+      delete: cookieDeleteMock,
+    }),
   headers: () => new Headers(),
 }));
 
 vi.mock("next/cache", () => ({
   revalidatePath: (...args: unknown[]) => revalidatePathMock(...args),
+}));
+
+vi.mock("@sentry/nextjs", () => ({
+  captureException: (...args: unknown[]) => captureExceptionMock(...args),
 }));
 
 import { GET } from "../route";
@@ -83,7 +105,12 @@ beforeEach(() => {
   getOnboardingStatusMock.mockReset();
   revalidatePathMock.mockReset();
   scheduleAccountCreatedGoalMock.mockReset();
+  postV1RecordUserConsentMock.mockReset().mockResolvedValue({ status: 200 });
+  rollbackSessionMock.mockReset();
   cookieSetMock.mockReset();
+  cookieGetMock.mockReset();
+  cookieDeleteMock.mockReset();
+  captureExceptionMock.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
@@ -160,6 +187,230 @@ describe("auth callback GET — account creation tracking", () => {
 
     expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
     expect(cookieSetMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("auth callback GET — signup consent", () => {
+  const optOutCookie = { name: "agpt_marketing_opt_out", value: "1" };
+
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "development");
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+  });
+
+  function withOptOutCookie() {
+    cookieGetMock.mockImplementation((name: string) =>
+      name === optOutCookie.name ? optOutCookie : undefined,
+    );
+  }
+
+  it("records a marketing refusal carried by the cookie and clears it", async () => {
+    withOptOutCookie();
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+
+    const response = await GET(makeCallbackRequest());
+
+    expect(response.headers.get("location")).toBe(`${origin}/onboarding`);
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledOnce();
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledWith({
+      terms_version: TERMS_VERSION,
+      marketing_opt_out: true,
+    });
+    expect(cookieDeleteMock).toHaveBeenCalledWith("agpt_marketing_opt_out");
+  });
+
+  it("records terms acceptance without a refusal when there is no cookie", async () => {
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+
+    await GET(makeCallbackRequest());
+
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledOnce();
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledWith({
+      terms_version: TERMS_VERSION,
+      marketing_opt_out: false,
+    });
+    expect(cookieDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it("records the refusal on a returning account and clears the cookie", async () => {
+    withOptOutCookie();
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(false));
+
+    await GET(makeCallbackRequest());
+
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledOnce();
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledWith({
+      terms_version: TERMS_VERSION,
+      marketing_opt_out: true,
+    });
+    expect(cookieDeleteMock).toHaveBeenCalledWith("agpt_marketing_opt_out");
+    expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
+  });
+
+  it("records nothing for a returning account that did not opt out", async () => {
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(false));
+
+    await GET(makeCallbackRequest());
+
+    expect(postV1RecordUserConsentMock).not.toHaveBeenCalled();
+    expect(cookieDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the refusal for the retry when provisioning fails", async () => {
+    withOptOutCookie();
+    postV1GetOrCreateUserMock.mockRejectedValue(new Error("backend down"));
+
+    const response = await GET(makeCallbackRequest());
+
+    expect(response.headers.get("location")).toBe(
+      `${origin}/error?message=user-creation-failed`,
+    );
+    expect(rollbackSessionMock).toHaveBeenCalledOnce();
+    expect(cookieDeleteMock).not.toHaveBeenCalled();
+    expect(postV1RecordUserConsentMock).not.toHaveBeenCalled();
+  });
+
+  it("still lands the user on the normal next page when the consent write fails", async () => {
+    withOptOutCookie();
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+    const error = new ApiError("Internal Server Error", 500, {});
+    postV1RecordUserConsentMock.mockRejectedValue(error);
+
+    const response = await GET(
+      makeCallbackRequest("/auth/callback?next=/marketplace"),
+    );
+
+    expect(response.headers.get("location")).toBe(`${origin}/marketplace`);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/marketplace", "layout");
+    expect(rollbackSessionMock).not.toHaveBeenCalled();
+    expect(captureExceptionMock).toHaveBeenCalledWith(error, {
+      tags: { signup_step: "record_consent" },
+      user: { id: "user-1" },
+      extra: { marketingOptOut: true },
+    });
+  });
+});
+
+describe("auth callback GET — email verification link", () => {
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "development");
+  });
+
+  it("provisions and tracks a new email account once the link signs it in", async () => {
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    const response = await GET(
+      makeCallbackRequest("/auth/callback?method=email"),
+    );
+
+    expect(response.headers.get("location")).toBe(`${origin}/onboarding`);
+    expect(postV1GetOrCreateUserMock).toHaveBeenCalledOnce();
+    expect(scheduleAccountCreatedGoalMock).toHaveBeenCalledOnce();
+    expect(scheduleAccountCreatedGoalMock).toHaveBeenCalledWith("email");
+    expect(cookieSetMock).toHaveBeenCalledOnce();
+    expect(cookieSetMock).toHaveBeenCalledWith(
+      "agpt_account_created",
+      "email",
+      expect.objectContaining({ maxAge: 600, path: "/" }),
+    );
+  });
+
+  it("records the terms and a refusal carried from /signup once the link signs a new account in", async () => {
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    cookieGetMock.mockImplementation((name: string) =>
+      name === "agpt_marketing_opt_out"
+        ? { name: "agpt_marketing_opt_out", value: "1" }
+        : undefined,
+    );
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    await GET(makeCallbackRequest("/auth/callback?method=email"));
+
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledOnce();
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledWith({
+      terms_version: TERMS_VERSION,
+      marketing_opt_out: true,
+    });
+    expect(cookieDeleteMock).toHaveBeenCalledWith("agpt_marketing_opt_out");
+  });
+
+  it("records a refusal carried by the link when it creates the account", async () => {
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    await GET(
+      makeCallbackRequest("/auth/callback?method=email&marketing_opt_out=1"),
+    );
+
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledOnce();
+    expect(postV1RecordUserConsentMock).toHaveBeenCalledWith({
+      terms_version: TERMS_VERSION,
+      marketing_opt_out: true,
+    });
+  });
+
+  it.each([
+    ["an existing account", "/auth/callback?method=email&marketing_opt_out=1"],
+    ["a Google sign-in", "/auth/callback?marketing_opt_out=1"],
+  ])("ignores the link's refusal for %s", async (_, path) => {
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    postV1GetOrCreateUserMock.mockResolvedValue(
+      provisioningResponse(path.includes("method=email") ? false : true),
+    );
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    await GET(makeCallbackRequest(path));
+
+    const calls = postV1RecordUserConsentMock.mock.calls;
+    expect(calls.every(([body]) => body.marketing_opt_out === false)).toBe(
+      true,
+    );
+  });
+
+  it("does not track an existing account that verifies at its next sign-in", async () => {
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(false));
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
+
+    const response = await GET(
+      makeCallbackRequest("/auth/callback?method=email&next=/marketplace"),
+    );
+
+    expect(response.headers.get("location")).toBe(`${origin}/marketplace`);
+    expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
+    expect(cookieSetMock).not.toHaveBeenCalled();
+  });
+
+  it("sends an expired or used link to log in, keeping next", async () => {
+    getServerSessionMock.mockResolvedValue(null);
+
+    const response = await GET(
+      makeCallbackRequest(
+        "/auth/callback?method=email&next=%2Fmarketplace&error=TOKEN_EXPIRED",
+      ),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      `${origin}/login?email_verification=expired&next=%2Fmarketplace`,
+    );
+    expect(postV1GetOrCreateUserMock).not.toHaveBeenCalled();
+  });
+
+  it("sends a click on an already verified link to log in", async () => {
+    getServerSessionMock.mockResolvedValue(null);
+
+    const response = await GET(
+      makeCallbackRequest("/auth/callback?method=email&next=https://evil.com"),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      `${origin}/login?email_verification=verified`,
+    );
   });
 });
 
@@ -272,6 +523,7 @@ describe("auth callback GET — user creation failures", () => {
       `${origin}/error?message=server-error`,
     );
     expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
+    expect(rollbackSessionMock).toHaveBeenCalledOnce();
   });
 
   it("redirects to rate-limited when the backend rejects with 429", async () => {

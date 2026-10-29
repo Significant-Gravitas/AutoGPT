@@ -17,14 +17,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from backend.api.features.experts.models import ExpertRoutine
-from backend.api.features.experts.routines import (
-    RoutineNotFoundError,
-    RoutineUnansweredAsksError,
-)
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import experts_db
+from backend.util.exceptions import RoutineNotFoundError, RoutineUnansweredAsksError
 
 from .base import BaseTool
 from .expert_scope import RoutineOwner, resolve_routine_owner
@@ -52,6 +49,7 @@ _EXPERT_ID_PARAM = {
         "Whose standing work. Experts act on themselves and omit it. From "
         "personal AutoPilot, name an expert, or omit for the account's own."
     ),
+    "entity": "expert",
 }
 
 
@@ -152,6 +150,7 @@ class ScheduleRoutineTool(BaseTool):
                         "Routine id from list_routines. Omit to create a new "
                         "one from 'title' and 'prompt'."
                     ),
+                    "entity": "routine",
                 },
                 "title": {
                     "type": "string",
@@ -171,6 +170,7 @@ class ScheduleRoutineTool(BaseTool):
                         "proposal with the user's answers. Required when it "
                         "has unanswered 'asks'."
                     ),
+                    "title": "Instructions",
                 },
                 "crons": {
                     "type": "array",
@@ -182,6 +182,8 @@ class ScheduleRoutineTool(BaseTool):
                         "gave an hour rather than a time, so routines do not "
                         "pile up. Not with 'delay_seconds'."
                     ),
+                    "title": "Repeats",
+                    "format": "cron",
                 },
                 "delay_seconds": {
                     "type": "integer",
@@ -190,6 +192,8 @@ class ScheduleRoutineTool(BaseTool):
                         "One-off work: seconds from now. Convert an absolute "
                         "time ('at six') to a delay. Not with 'crons'."
                     ),
+                    "title": "Runs in",
+                    "format": "seconds",
                 },
                 "session_mode": {
                     "type": "string",
@@ -201,6 +205,7 @@ class ScheduleRoutineTool(BaseTool):
                         "one unless 'session_id' names another. FRESH: a new "
                         "chat each time, remembering nothing."
                     ),
+                    "title": "Where runs land",
                 },
                 "session_id": {
                     "type": "string",
@@ -209,6 +214,8 @@ class ScheduleRoutineTool(BaseTool):
                         "this one; its id is in <session_context>. Same user "
                         "and same expert only."
                     ),
+                    "title": "Lands in",
+                    "entity": "chat_session",
                 },
                 "grants_credentials": {
                     "type": "boolean",
@@ -218,6 +225,7 @@ class ScheduleRoutineTool(BaseTool):
                         "touches nothing outside the platform. True only when "
                         "the user agreed to THIS routine using their accounts."
                     ),
+                    "title": "Uses your accounts",
                 },
                 "integrations": INTEGRATIONS_PARAM,
                 "expert_id": _EXPERT_ID_PARAM,
@@ -293,7 +301,13 @@ class ScheduleRoutineTool(BaseTool):
             )
         except RoutineNotFoundError:
             return ErrorResponse(
-                message=f"Routine '{routine_id}' was not found.",
+                message=(
+                    f"Routine '{routine_id}' is not one of the account's own. "
+                    "If it belongs to an expert, pass that expert's `expert_id` "
+                    "from list_routines."
+                    if owner.expert_id is None
+                    else f"Routine '{routine_id}' was not found on this expert."
+                ),
                 error="routine_not_found",
                 session_id=session_id,
             )

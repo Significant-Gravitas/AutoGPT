@@ -19,32 +19,20 @@ def test_identical_text_has_no_errors():
     assert errors.reference_words == 4
 
 
-def test_substitution_is_counted_once():
-    errors = compute_word_errors("the quick brown fox", "the quick green fox")
+@pytest.mark.parametrize(
+    "reference, hypothesis, counts, wer",
+    [
+        ("the quick brown fox", "the quick green fox", (1, 0, 0), 0.25),
+        ("the quick brown fox", "the very quick brown fox", (0, 1, 0), 0.25),
+        ("the quick brown fox", "the quick fox", (0, 0, 1), 0.25),
+        ("a b c d", "a x c d e", (1, 1, 0), 0.5),
+    ],
+)
+def test_each_operation_is_counted_once(reference, hypothesis, counts, wer):
+    errors = compute_word_errors(reference, hypothesis)
 
-    assert (errors.substitutions, errors.insertions, errors.deletions) == (1, 0, 0)
-    assert errors.wer == pytest.approx(0.25)
-
-
-def test_insertion_is_counted_once():
-    errors = compute_word_errors("the quick brown fox", "the very quick brown fox")
-
-    assert (errors.substitutions, errors.insertions, errors.deletions) == (0, 1, 0)
-    assert errors.wer == pytest.approx(0.25)
-
-
-def test_deletion_is_counted_once():
-    errors = compute_word_errors("the quick brown fox", "the quick fox")
-
-    assert (errors.substitutions, errors.insertions, errors.deletions) == (0, 0, 1)
-    assert errors.wer == pytest.approx(0.25)
-
-
-def test_mixed_operations_are_reported_separately():
-    errors = compute_word_errors("a b c d", "a x c d e")
-
-    assert (errors.substitutions, errors.insertions, errors.deletions) == (1, 1, 0)
-    assert errors.wer == pytest.approx(0.5)
+    assert (errors.substitutions, errors.insertions, errors.deletions) == counts
+    assert errors.wer == pytest.approx(wer)
 
 
 def test_empty_hypothesis_deletes_every_reference_word():

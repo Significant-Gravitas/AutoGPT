@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { expect, type Mock } from "vitest";
 import { resetCopilotChatRegistry } from "../../copilotChatRegistry";
 import { useCopilotStreamStore } from "../../copilotStreamStore";
+import { resetTurnRuntimes } from "../../stream/turnRuntime";
 import { renderHost } from "../sse-helpers";
 import {
   type BackendSim,
@@ -39,8 +40,6 @@ interface DriftReport {
 }
 
 type Invariant = keyof DriftReport;
-
-const ERROR_BOX_TEXT = "The assistant encountered an error";
 
 /** Every transcript the page paints, one sample per DOM mutation. */
 export function sampleTranscripts() {
@@ -99,7 +98,9 @@ export async function reportDrift({
       maxTimesPainted(painted.samples, block) > 0 && !shownText.includes(block),
   );
   const toasts = connectionToasts(toast);
-  const errorShown = document.body.textContent?.includes(ERROR_BOX_TEXT);
+  const errorBanner = document.querySelector(
+    '[data-testid="chat-error-banner"]',
+  );
   const reloaded = await renderReloaded(sim.finalRows());
   return {
     connectionToast: toasts.length ? toasts : null,
@@ -112,7 +113,7 @@ export async function reportDrift({
     missingWhileRunning: missingWhileRunning.length
       ? missingWhileRunning
       : null,
-    errorShown: errorShown ? ERROR_BOX_TEXT : null,
+    errorShown: errorBanner?.textContent ?? null,
   };
 }
 
@@ -148,6 +149,7 @@ export function expectDrift(
 
 export function resetChatState() {
   resetCopilotChatRegistry();
+  resetTurnRuntimes();
   useCopilotStreamStore.getState().resetAll();
 }
 

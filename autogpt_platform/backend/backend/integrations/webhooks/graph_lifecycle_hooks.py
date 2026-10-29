@@ -141,6 +141,7 @@ def _apply_credential_result(
     logged here so the caller doesn't have to.
     """
     refresh_error: str | None = None
+    unavailable = False
     if isinstance(result, BaseException):
         # Distinguish known credential-side failures (OAuth refresh rejected,
         # 401/403 from the provider) from infra failures (DB pool exhaustion,
@@ -165,9 +166,12 @@ def _apply_credential_result(
         )
         if is_known_credential_error:
             logger.warning(log_message)
+            # The provider's refusal describes the user's own credential.
+            refresh_error = str(result) or result.__class__.__name__
         else:
             logger.error(log_message, exc_info=result)
-        refresh_error = str(result) or result.__class__.__name__
+            # Ours, and can name a host or a pool: it stays in the log.
+            unavailable = True
         resolved = None
     else:
         resolved = result
@@ -208,6 +212,10 @@ def _apply_credential_result(
             f"{credential_ref} could not be loaded ({refresh_error}). "
             "It may have been revoked or its access expired — please "
             "reconnect this integration and try again."
+        )
+    if unavailable:
+        raise GraphActivationError(
+            f"{credential_ref} could not be loaded just now. Please try again."
         )
     raise GraphActivationError(
         f"{credential_ref} no longer exists. Please pick a different "

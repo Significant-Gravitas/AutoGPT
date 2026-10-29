@@ -8,6 +8,7 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -50,6 +51,7 @@ class LoopVideoBlock(Block):
             categories={BlockCategory.MULTIMEDIA},
             input_schema=LoopVideoBlock.Input,
             output_schema=LoopVideoBlock.Output,
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def run(

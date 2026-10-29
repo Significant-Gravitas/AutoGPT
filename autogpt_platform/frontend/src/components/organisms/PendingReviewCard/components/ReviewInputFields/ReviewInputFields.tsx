@@ -16,7 +16,7 @@ export function ReviewInputFields({
   readOnly = false,
 }: Props) {
   return (
-    <div className="flex flex-col gap-4">
+    <div data-slot="review-input-fields" className="flex flex-col gap-4">
       {fields.map((field) => (
         <ReviewInputField
           key={field.key}
@@ -57,8 +57,16 @@ function ReviewInputField({
       );
     case "group":
       return (
-        <fieldset className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-3">
-          <legend className="px-1 text-sm font-medium">{field.label}</legend>
+        <fieldset
+          data-slot="review-input-field-group"
+          className="flex flex-col gap-3 rounded-lg border border-border-base p-3"
+        >
+          <legend
+            data-slot="review-input-field-group-label"
+            className="px-1 text-sm font-medium"
+          >
+            {field.label}
+          </legend>
           <ReviewInputFields
             fields={field.fields}
             values={(value ?? {}) as Record<string, unknown>}
@@ -92,7 +100,10 @@ function StaticField({
   mono?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div
+      data-slot="review-input-fields-static-field"
+      className="flex flex-col gap-1"
+    >
       <Text variant="large-medium">{label}</Text>
       <Text
         variant="body"

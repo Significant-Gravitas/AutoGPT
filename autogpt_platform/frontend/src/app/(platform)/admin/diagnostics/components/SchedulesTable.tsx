@@ -1,7 +1,12 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Card } from "@/components/atoms/Card/Card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/atoms/Card/Card";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +14,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import React, { useState } from "react";
 import {
@@ -19,13 +24,8 @@ import {
   TableHead,
   TableRow,
   TableCell,
-} from "@/components/__legacy__/ui/table";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import {
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/__legacy__/ui/card";
+} from "@/components/molecules/Table/components/TablePrimitives";
+import { Checkbox } from "@/components/atoms/Checkbox/Checkbox";
 import {
   useGetV2ListAllUserSchedules,
   useGetV2ListOrphanedSchedules,
@@ -43,6 +43,8 @@ import {
   Refresh01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 
 interface ScheduleDetail {
   schedule_id: string;
@@ -237,14 +239,16 @@ export function SchedulesTable({
                   }}
                   disabled={isLoading}
                 >
-                  <Icon
-                    icon={Refresh01Icon}
-                    className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-                  />
+                  <span
+                    className={cn("block h-4 w-4", isLoading && "animate-spin")}
+                  >
+                    <Icon icon={Refresh01Icon} className="h-4 w-4" />
+                  </span>
                 </Button>
               </div>
             </div>
 
+            {/* oxlint-disable-next-line design-system/no-restyle -- TabsLineList has no inset variant; a padded wrapper would shorten its underline (src/components is P9's) */}
             <TabsLineList className="px-6">
               <TabsLineTrigger value="all">
                 All Schedules
@@ -261,13 +265,12 @@ export function SchedulesTable({
             <CardContent>
               {isLoading && schedules.length === 0 ? (
                 <div className="flex h-32 items-center justify-center">
-                  <Icon
-                    icon={Refresh01Icon}
-                    className="h-6 w-6 animate-spin text-gray-400"
-                  />
+                  <span className="block h-6 w-6 animate-spin text-foreground-subtle">
+                    <Icon icon={Refresh01Icon} className="h-6 w-6" />
+                  </span>
                 </div>
               ) : schedules.length === 0 ? (
-                <div className="py-8 text-center text-gray-500">
+                <div className="py-8 text-center text-foreground-tertiary">
                   No schedules found
                 </div>
               ) : (
@@ -300,7 +303,8 @@ export function SchedulesTable({
                         return (
                           <TableRow
                             key={schedule.schedule_id}
-                            className={isOrphaned ? "bg-purple-50" : ""}
+                            // oxlint-disable-next-line design-system/no-restyle -- TableRow has no highlight variant (src/components is P9's)
+                            className={isOrphaned ? "bg-accent-surface" : ""}
                           >
                             <TableCell>
                               <Checkbox
@@ -316,18 +320,24 @@ export function SchedulesTable({
                             <TableCell>{schedule.schedule_name}</TableCell>
                             <TableCell>
                               <div>{schedule.graph_name || "Unknown"}</div>
-                              <div className="font-mono text-xs text-gray-500">
+                              <Text
+                                variant="small-mono-tight"
+                                as="div"
+                                tone="muted"
+                              >
                                 v{schedule.graph_version}
-                              </div>
+                              </Text>
                             </TableCell>
                             <TableCell>
                               <div>
                                 {(schedule as ScheduleDetail).user_email || (
-                                  <span className="text-gray-400">Unknown</span>
+                                  <span className="text-foreground-subtle">
+                                    Unknown
+                                  </span>
                                 )}
                               </div>
                               <div
-                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
+                                className="group flex cursor-pointer items-center gap-1 text-foreground-tertiary hover:text-foreground-body"
                                 onClick={() => {
                                   navigator.clipboard.writeText(
                                     schedule.user_id,
@@ -339,25 +349,36 @@ export function SchedulesTable({
                                 }}
                                 title="Click to copy user ID"
                               >
-                                {schedule.user_id.substring(0, 8)}...
-                                <Icon
-                                  icon={Copy01Icon}
-                                  className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100"
-                                />
+                                <Text
+                                  variant="small-mono-tight"
+                                  as="span"
+                                  tone="inherit"
+                                >
+                                  {schedule.user_id.substring(0, 8)}...
+                                </Text>
+                                <span className="block opacity-0 transition-opacity group-hover:opacity-100">
+                                  <Icon icon={Copy01Icon} className="h-3 w-3" />
+                                </span>
                               </div>
                             </TableCell>
                             <TableCell>
                               {schedule.cron ? (
                                 <>
-                                  <code className="rounded bg-gray-100 px-2 py-1 text-xs">
+                                  <code className="rounded bg-surface-hover px-2 py-1 font-mono text-caption leading-4">
                                     {schedule.cron}
                                   </code>
-                                  <div className="text-xs text-gray-500">
+                                  <Text
+                                    variant="small-tight"
+                                    as="div"
+                                    tone="muted"
+                                  >
                                     {schedule.timezone}
-                                  </div>
+                                  </Text>
                                 </>
                               ) : (
-                                <span className="text-gray-400">N/A</span>
+                                <span className="text-foreground-subtle">
+                                  N/A
+                                </span>
                               )}
                             </TableCell>
                             <TableCell>
@@ -369,7 +390,7 @@ export function SchedulesTable({
                             </TableCell>
                             {activeTab === "orphaned" && (
                               <TableCell>
-                                <span className="text-xs text-purple-600">
+                                <span className="text-caption leading-4 text-brand-hover">
                                   {(
                                     schedule as OrphanedScheduleDetail
                                   ).orphan_reason?.replace(/_/g, " ") ||
@@ -387,11 +408,11 @@ export function SchedulesTable({
 
               {totalPages > 1 && activeTab === "all" && (
                 <div className="mt-4 flex items-center justify-between">
-                  <div className="text-sm text-gray-600">
+                  <Text variant="body-tight" as="div" tone="secondary">
                     Showing {(currentPage - 1) * pageSize + 1} to{" "}
                     {Math.min(currentPage * pageSize, total)} of {total}{" "}
                     schedules
-                  </div>
+                  </Text>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
@@ -452,11 +473,7 @@ export function SchedulesTable({
             >
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              className="bg-red-600 hover:bg-red-700"
-            >
+            <Button variant="destructive" onClick={handleDelete}>
               Delete Schedules
             </Button>
           </DialogFooter>

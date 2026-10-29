@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 
@@ -18,19 +19,19 @@ export function HelpItem({
 
   return (
     <div className="p-4">
-      <h3 className="mb-1 text-sm font-medium text-slate-950">{title}</h3>
-      <p className="text-sm text-slate-600">
+      <h3 className="mb-1 text-sm font-medium text-foreground-base">{title}</h3>
+      <Text variant="body-tight" tone="secondary">
         {description}{" "}
         {linkText && (
           <Link
             href={href}
-            className="inline-flex items-center font-medium text-slate-950 hover:text-slate-700"
+            className="inline-flex items-center font-medium text-foreground-base hover:text-foreground-body"
           >
             {linkText}
             {external && <ExternalLink className="ml-1 h-3 w-3" />}
           </Link>
         )}
-      </p>
+      </Text>
     </div>
   );
 }

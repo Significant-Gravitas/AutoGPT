@@ -24,13 +24,21 @@ from typing import Any
 
 from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_cancel_task
-from backend.copilot.model import ChatSession, get_chat_session
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
+from backend.copilot.model import (
+    CHAT_STATUS_IDLE,
+    CHAT_STATUS_QUEUED,
+    ChatSession,
+    get_chat_session,
+)
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
     SessionResult,
+    wait_for_queued_session,
     wait_for_session_result,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+from backend.copilot.turn_queue import cancel_queued_turn, queued_turn_refusal
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
@@ -156,6 +164,7 @@ class GetSubSessionResultTool(BaseTool):
         delegate = await _delegated_expert_info(user_id, sub, session)
         actor = delegate.name if delegate is not None else "Subtask"
         borrowed = _is_borrowed_thread(sub, session)
+        queued = sub.chat_status == CHAT_STATUS_QUEUED
 
         if cancel:
             if borrowed:
@@ -172,8 +181,15 @@ class GetSubSessionResultTool(BaseTool):
             # sub will break out of its stream and finalise the session
             # as failed. Return "cancelled" immediately; the sub may
             # still emit a little more output before the worker notices,
-            # but the agent doesn't need to wait for that.
-            await enqueue_cancel_task(inner_session_id)
+            # but the agent doesn't need to wait for that. A queued one has
+            # nothing running yet, so it simply leaves the queue.
+            if not (
+                queued
+                and await cancel_queued_turn(
+                    user_id=user_id, session_id=inner_session_id
+                )
+            ):
+                await enqueue_cancel_task(inner_session_id)
             return apply_delegated_expert(
                 SubSessionStatusResponse(
                     message=f"{actor} cancellation requested.",
@@ -200,9 +216,23 @@ class GetSubSessionResultTool(BaseTool):
             getattr(registry_session, "status", "") == "running"
         )
         terminal_result = None if turn_in_flight else _already_terminal_result(sub)
+        refusal = None if turn_in_flight else queued_turn_refusal(sub)
         outcome: SessionOutcome
         result: SessionResult
-        if terminal_result is not None:
+        if registry_session is None and _nothing_reached(sub):
+            return apply_delegated_expert(
+                _nothing_reached_response(
+                    sub, inner_session_id, session.session_id, actor
+                ),
+                delegate,
+            )
+        if queued:
+            outcome, result = await wait_for_queued_session(
+                session_id=inner_session_id, user_id=user_id, timeout=effective_wait
+            )
+        elif refusal is not None:
+            outcome, result = "refused", SessionResult(refusal=refusal)
+        elif terminal_result is not None:
             outcome, result = "completed", terminal_result
         elif effective_wait > 0:
             outcome, result = await wait_for_session_result(
@@ -260,6 +290,37 @@ class GetSubSessionResultTool(BaseTool):
             ),
             delegate,
         )
+
+
+def _nothing_reached(sub: ChatSession) -> bool:
+    """An idle thread with no messages and no stream meta: no turn was ever
+    dispatched to it, or the dispatch failed at the publish (the meta is
+    removed then). A dispatched turn always has meta until it ends, and an
+    ended one has messages."""
+    return sub.chat_status == CHAT_STATUS_IDLE and not sub.messages
+
+
+def _nothing_reached_response(
+    sub: ChatSession, inner_session_id: str, parent_session_id: str | None, actor: str
+) -> SubSessionStatusResponse:
+    """Polling a thread nothing reached would otherwise read "running"
+    forever. From here a task the broker never got cannot be told from one it
+    still holds (a lost confirm, a stopped executor), so it is "unconfirmed"
+    at any age and never advice to send again, which could run it twice."""
+    return SubSessionStatusResponse(
+        message=(
+            f"Nothing has reached {actor}'s thread, and from here it can't be "
+            "confirmed whether the task was delivered: it may still arrive. "
+            "Don't send it again on this basis. Tell the user it may not have "
+            "started and point them to the thread."
+        ),
+        session_id=parent_session_id,
+        status="unconfirmed",
+        sub_session_id=inner_session_id,
+        sub_autopilot_session_id=inner_session_id,
+        sub_autopilot_session_link=_sub_session_link(inner_session_id),
+        elapsed_seconds=0.0,
+    ).from_outside()
 
 
 def _in_caller_scope(sub: ChatSession, session: ChatSession) -> bool:
@@ -368,6 +429,9 @@ async def _build_progress_snapshot(
 ) -> SubSessionProgressSnapshot | None:
     """Read the sub's ChatSession and return a preview of recent messages.
 
+    The preview goes back to the model, so the sub's first message is read
+    without the memory block an older session stored in it.
+
     Returns ``None`` silently on lookup failure — progress is best-effort;
     missing progress shouldn't abort the normal ``still running`` response.
     """
@@ -377,7 +441,7 @@ async def _build_progress_snapshot(
         sub = await get_chat_session(inner_session_id)
         if sub is None:
             return None
-        messages = list(sub.messages)
+        messages = without_stored_first_turn_memory(list(sub.messages))
     except Exception as exc:  # best-effort peek
         logger.debug(
             "Progress snapshot unavailable for sub %s: %s",

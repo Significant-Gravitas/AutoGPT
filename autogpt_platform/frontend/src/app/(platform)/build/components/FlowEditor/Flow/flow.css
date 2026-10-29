@@ -7,3 +7,8 @@
   position: relative;
   transform: none;
 }
+
+/* The dot grid reads its builder role, at xyflow's default dot colour. */
+.react-flow {
+  --xy-background-pattern-color: rgb(var(--color-builder-grid));
+}
