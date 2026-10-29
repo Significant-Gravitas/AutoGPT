@@ -42,6 +42,43 @@ describe("consult_teammate verdict card", () => {
     ).toBeDefined();
   });
 
+  it("shows tag-escaped ruling text as the auditor wrote it", () => {
+    render(
+      <ToolResult
+        row={row("consult_teammate", {
+          type: "team_consult",
+          message: "Ada ruled: BLOCK.",
+          verdict: "block",
+          reason: "The draft adds a &lt;script&gt; tag.",
+          quotes: ["&lt;script src=x&gt;&lt;/script&gt;"],
+          reviewer: REVIEWER,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("The draft adds a <script> tag.")).toBeDefined();
+    expect(screen.getByText("<script src=x></script>")).toBeDefined();
+  });
+
+  it("keeps literal entity text the auditor wrote", () => {
+    render(
+      <ToolResult
+        row={row("consult_teammate", {
+          type: "team_consult",
+          message: "Ada ruled: BLOCK.",
+          verdict: "block",
+          reason: "Writes &amp;lt; where it means &lt; &amp; more.",
+          quotes: [],
+          reviewer: REVIEWER,
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText("Writes &lt; where it means < & more."),
+    ).toBeDefined();
+  });
+
   it("shows a block verdict with the offending lines quoted", () => {
     render(
       <ToolResult

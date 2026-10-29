@@ -29,7 +29,9 @@ describe("Settings billing page", () => {
   it("renders title and billing tabs", () => {
     render(<SettingsBillingPage />);
 
-    expect(screen.getByRole("heading", { name: "Billing" })).toBeDefined();
+    expect(
+      screen.getByRole("heading", { name: "Billing & usage" }),
+    ).toBeDefined();
     expect(screen.getByRole("tab", { name: "Subscription" })).toBeDefined();
     expect(
       screen.getByRole("tab", { name: "Automation Credits" }),

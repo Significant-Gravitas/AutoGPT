@@ -457,7 +457,7 @@ export class BuildPage extends BasePage {
 
     // If the toast appeared but is not yet hidden, wait for it. If it never
     // appeared at all the locator is simply hidden already — no-op.
-    const savedToast = this.page.getByText("Graph saved successfully");
+    const savedToast = this.page.getByText("Workflow saved successfully");
     if (await savedToast.isVisible({ timeout: 500 })) {
       await expect(savedToast).toBeHidden({ timeout: 10000 });
     }

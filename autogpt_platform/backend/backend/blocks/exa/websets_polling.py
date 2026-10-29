@@ -110,6 +110,7 @@ class ExaWaitForWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForWebsetBlock.Input,
             output_schema=ExaWaitForWebsetBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -497,6 +498,7 @@ class ExaWaitForEnrichmentBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForEnrichmentBlock.Input,
             output_schema=ExaWaitForEnrichmentBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

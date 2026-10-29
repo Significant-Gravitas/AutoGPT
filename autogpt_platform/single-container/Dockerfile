@@ -4,7 +4,7 @@
 # be copied into the Debian appliance image. Browser-facing service URLs are
 # intentionally same-origin paths; the in-container reverse proxy decides
 # where they land at runtime.
-FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS frontend
+FROM node:24.22.1-bookworm-slim@sha256:1681862882da07ee5476fee047bcf34138833f1df42633bb25bcb0f438d5bf3d AS frontend
 
 WORKDIR /app
 RUN corepack enable
@@ -23,7 +23,6 @@ ENV NODE_ENV=production \
     NEXT_PUBLIC_APP_ENV=local \
     NEXT_PUBLIC_BEHAVE_AS=LOCAL \
     NEXT_PUBLIC_LAUNCHDARKLY_ENABLED=false \
-    NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY=true \
     NEXT_PUBLIC_SOURCEMAPS=false \
     NEXT_PUBLIC_TURNSTILE=disabled \
     NEXT_PUBLIC_VAPID_PUBLIC_KEY="" \
@@ -34,7 +33,7 @@ RUN pnpm run generate:api \
     && NODE_OPTIONS="--max-old-space-size=8192" pnpm build \
     && rm -f .env .env.local .env.production
 
-FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS node-runtime
+FROM node:24.22.1-bookworm-slim@sha256:1681862882da07ee5476fee047bcf34138833f1df42633bb25bcb0f438d5bf3d AS node-runtime
 
 ARG NPM_VERSION=12.0.2
 RUN npm install --global "npm@${NPM_VERSION}" \
@@ -42,10 +41,11 @@ RUN npm install --global "npm@${NPM_VERSION}" \
 
 # RabbitMQ's official image ships a self-contained Erlang/OpenSSL runtime.
 # Pin the current supported 4.1.x patch by its multi-platform manifest.
-FROM rabbitmq:4.1.8@sha256:b921426eabfb39e201c60f0623f6b45a3160cf97b2dc3af2f5340365f65b5be3 AS rabbitmq
+FROM rabbitmq:4.3.6@sha256:3e5cc23235b0eb850f604e8ace10d9a9b6d05be3e36730e53522ee9ead707a9e AS rabbitmq
 
 # FalkorDB provides the Graphiti memory store. Copy only the server and module;
 # its browser UI is not part of the appliance image.
+# Ahead of infra's 4.12.5 until every FalkorDB pin and the Redis license bundle move together (OPEN-3746, #16224).
 FROM falkordb/falkordb-server:v4.20.1@sha256:8b676c2e72271f5d06541136eb214b0db50180636cc86f7ee38d63287e9b8d13 AS falkordb
 
 # autogpt-backend is supplied by Docker Bake from the existing backend
@@ -82,6 +82,12 @@ RUN install -d -m 0755 /opt/prisma-python \
     && ln -s "${query_engine}" /opt/prisma-python/query-engine
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# APT_REFRESH is part of the cache key of every RUN after it, so a new value
+# re-runs the package install below and security fixes reach the image instead
+# of staying behind a cached layer. CI passes the UTC date, which refreshes it
+# once a day.
+ARG APT_REFRESH
 
 # Block service auto-start during package installation; Supervisor owns every
 # daemon at runtime. PostgreSQL comes from PGDG to retain PG15 parity on Debian
@@ -232,9 +238,6 @@ RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
     && rm -f /app/autogpt_platform/backend/config.json \
     && ln -s /data/config/backend.json /app/autogpt_platform/backend/config.json
 
-# FORCE_FLAG_GRAPHITI_MEMORY keeps memory on; the frontend stage's
-# NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY must match it, or users can't open
-# /settings/memory to see or erase what was remembered.
 ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresql/15/bin:/app/autogpt_platform/backend/.venv/bin:${PATH}" \
     ERLANG_INSTALL_PATH_PREFIX=/opt/erlang \
     OPENSSL_INSTALL_PATH_PREFIX=/opt/openssl \
@@ -253,16 +256,15 @@ ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresq
     PRISMA_QUERY_ENGINE_BINARY=/opt/prisma-python/query-engine \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    FORCE_FLAG_GRAPHITI_MEMORY=true \
     AUTOGPT_PUBLIC_URL=http://localhost:3000
 
-# Build arguments change on every build, so they are declared only after the
-# last layer-producing step to keep them out of the layer cache keys.
+# These build arguments change on every build, so they are declared only after
+# the last layer-producing step to keep them out of the layer cache keys.
 ARG IMAGE_VERSION=dev
 ARG VCS_REF=unknown
 
 LABEL org.opencontainers.image.title="AutoGPT Platform single-container" \
-      org.opencontainers.image.description="Experimental single-node AutoGPT Platform distribution" \
+      org.opencontainers.image.description="Single-node AutoGPT Platform distribution" \
       org.opencontainers.image.source="https://github.com/Significant-Gravitas/AutoGPT" \
       org.opencontainers.image.licenses="LicenseRef-PolyForm-Shield-1.0.0 AND SSPL-1.0" \
       org.opencontainers.image.version="${IMAGE_VERSION}" \

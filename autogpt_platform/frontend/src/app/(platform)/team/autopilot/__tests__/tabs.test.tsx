@@ -9,13 +9,6 @@ import { NuqsTestingAdapter, UrlUpdateEvent } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import AutopilotPage from "../page";
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@/services/feature-flags/use-get-flag")
-  >()),
-  useFlagStatus: () => ({ enabled: true, ready: true }),
-}));
-
 beforeEach(() => {
   server.use(
     getListExpertsMockHandler([]),

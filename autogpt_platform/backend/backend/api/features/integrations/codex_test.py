@@ -222,6 +222,10 @@ def test_codex_callback_persists_one_safe_credential():
             "backend.api.features.integrations.router.codex_login_coordinator"
         ) as coordinator,
         patch("backend.api.features.integrations.router.creds_manager") as manager,
+        patch(
+            "backend.api.features.integrations.router."
+            "resume_after_reconnect_in_background"
+        ) as resume,
     ):
         manager.store.verify_state_token = AsyncMock(return_value=_oauth_state())
         coordinator.complete = AsyncMock(return_value=credentials)
@@ -232,6 +236,9 @@ def test_codex_callback_persists_one_safe_credential():
         )
 
     assert response.status_code == 200
+    # Signing in again is the fix for a scheduled chat paused on ChatGPT.
+    resume.assert_called_once()
+    assert resume.call_args.args[1] == "codex"
     assert response.json() == {
         "id": "codex-credential",
         "provider": "codex",

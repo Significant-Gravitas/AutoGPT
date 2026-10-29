@@ -11,11 +11,17 @@ tests patch the three integration seams — ``enqueue_copilot_turn``,
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.copilot import active_turns, turn_queue
+from backend.copilot.legacy_first_turn_memory_test_data import (
+    legacy_first_message,
+    master_warm,
+)
+from backend.copilot.model import ChatMessage
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
@@ -761,6 +767,58 @@ class TestGetSubSessionResult:
         mock_waiter.result_mock.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_progress_reads_an_old_sub_without_its_stored_memory_block(
+        self, monkeypatch, mock_waiter
+    ):
+        """A sub that began before warm context became query-only still holds
+        its first turn's memory block in its first message. The preview goes
+        back to the model, so it shows that message without the block, and a
+        fact forgotten since stays out of it."""
+        forgotten = "the Nova recovery password is violet-913"
+        first = legacy_first_message(
+            master_warm((forgotten,)), skills=False, rest="look into Nova"
+        )
+        sub = MagicMock(
+            user_id="alice",
+            expert_id=None,
+            messages=[ChatMessage(role="user", content=first, sequence=0)],
+        )
+        sub.metadata.delegated_by_session_id = None
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_active_session(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
+        )
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-old",
+            wait_if_running=30,
+            include_progress=True,
+        )
+
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "running" and r.progress is not None
+        assert r.progress.last_messages == [
+            {"role": "user", "content": "look into Nova"}
+        ]
+        assert forgotten not in r.model_dump_json()
+        assert "memory_context" not in r.model_dump_json()
+        # The stored message is left as it is; the backfill cleans storage.
+        assert sub.messages[0].content == first
+
+    @pytest.mark.asyncio
     async def test_wait_returns_completed_with_response(self, monkeypatch, mock_waiter):
         """'completed' outcome surfaces the SessionResult directly."""
 
@@ -1119,6 +1177,37 @@ class TestHollowResponseRepro:
         # isn't mistaken for an empty run.
         assert "workspace file" in (r.message or "")
 
+    def test_manifest_from_the_tool_log_leaves_out_working_files(self):
+        """The fallback reads the tool log, which carries no mark; the sub's
+        build scratchpad must still stay out, as it does from the listing."""
+        res = self._hollow_completed_result()
+        scratchpad = res.tool_calls[0].model_copy(
+            update={
+                "tool_call_id": "tc-state",
+                "output": json.dumps(
+                    {
+                        "file_id": "file-state",
+                        "name": "build_state.json",
+                        "path": "/sessions/inner-1/build_state.json",
+                        "size_bytes": 43,
+                    }
+                ),
+            }
+        )
+        res.tool_calls = [*res.tool_calls, scratchpad]
+
+        r = response_from_outcome(
+            outcome="completed",
+            result=res,
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=12.3,
+        )
+
+        names = {f.name for f in r.sub_workspace_files or []}
+        assert "build_state.json" not in names
+        assert "EXACT_CODE_SNIPPETS.md" in names
+
     def test_no_manifest_when_sub_returned_inline(self):
         """A sub that answered inline (no file writes) must not grow an empty
         or noisy manifest — sub_workspace_files stays None."""
@@ -1331,3 +1420,55 @@ class TestRefusedSpawnCleanup:
         )
 
         deleted.assert_not_awaited()
+
+
+class TestAThreadNothingReached:
+    """A send that raised at the publish leaves an empty, idle thread with no
+    stream meta. Polling it must say so, not report "running" forever: the
+    hand-off tells Otto to check this thread before sending again (Sentry)."""
+
+    def _empty_thread(self, monkeypatch, age: timedelta):
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+        sub.chat_status = "idle"
+        sub.started_at = datetime.now(UTC) - age
+        sub.metadata.delegated_by_session_id = None
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_stream(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_stream,
+        )
+
+    @pytest.mark.parametrize(
+        "age", [timedelta(seconds=20), timedelta(minutes=10), timedelta(days=2)]
+    )
+    @pytest.mark.asyncio
+    async def test_an_empty_thread_is_unconfirmed_and_never_resent(
+        self, monkeypatch, mock_waiter, age
+    ):
+        """From an empty thread alone a task the broker never got cannot be
+        told from one it still holds (a lost confirm, a stopped executor), so
+        whatever its age it is "unconfirmed", never "safe to send again", and
+        never "queued", whose live view turns an idle session into
+        "completed" (CodeRabbit)."""
+        self._empty_thread(monkeypatch, age)
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-7",
+            wait_if_running=30,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "unconfirmed"
+        assert "Don't send it again" in r.message
+        assert "safe to send" not in r.message
+        mock_waiter.result_mock.assert_not_awaited()

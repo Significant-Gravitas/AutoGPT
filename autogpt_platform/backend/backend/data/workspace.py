@@ -69,6 +69,7 @@ class WorkspaceFile(pydantic.BaseModel):
     deleted_at: Optional[datetime] = None
     folder_id: Optional[str] = None
     metadata: dict = pydantic.Field(default_factory=dict)
+    is_internal: bool = False
 
     @staticmethod
     def from_db(file: "UserWorkspaceFile") -> "WorkspaceFile":
@@ -87,6 +88,7 @@ class WorkspaceFile(pydantic.BaseModel):
             deleted_at=file.deletedAt,
             folder_id=file.folderId,
             metadata=file.metadata if isinstance(file.metadata, dict) else {},
+            is_internal=file.isInternal,
         )
 
 
@@ -94,7 +96,10 @@ async def get_or_create_workspace(user_id: str) -> Workspace:
     """
     Get user's workspace, creating one if it doesn't exist.
 
-    Uses upsert to atomically handle concurrent creation attempts.
+    Reads first, because the workspace nearly always exists: an upsert with
+    nothing to update cost ~0.2 s a call in prod, against ~0.12 s for a
+    read. Two first calls racing to create it are settled by the unique
+    ``userId``: the one that loses reads the winner's row.
 
     Args:
         user_id: The user's ID
@@ -102,19 +107,16 @@ async def get_or_create_workspace(user_id: str) -> Workspace:
     Returns:
         Workspace instance
     """
-    try:
-        workspace = await UserWorkspace.prisma().upsert(
-            where={"userId": user_id},
-            data={
-                "create": {"userId": user_id},
-                "update": {},  # No-op update; workspace already exists
-            },
-        )
-    except UniqueViolationError:
-        # Defense-in-depth: should not happen with upsert, but handle gracefully
-        workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
-        if workspace is None:
-            raise
+    workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
+    if workspace is None:
+        try:
+            workspace = await UserWorkspace.prisma().create(data={"userId": user_id})
+        except UniqueViolationError:
+            workspace = await UserWorkspace.prisma().find_unique(
+                where={"userId": user_id}
+            )
+            if workspace is None:
+                raise
 
     return Workspace.from_db(workspace)
 
@@ -143,6 +145,7 @@ async def create_workspace_file(
     size_bytes: int,
     checksum: Optional[str] = None,
     metadata: Optional[dict] = None,
+    is_internal: bool = False,
 ) -> WorkspaceFile:
     """
     Create a new workspace file record.
@@ -164,6 +167,7 @@ async def create_workspace_file(
         size_bytes: File size in bytes
         checksum: Optional SHA256 checksum
         metadata: Optional additional metadata
+        is_internal: Otto's own working file, left out of the user's lists
 
     Returns:
         Created WorkspaceFile instance
@@ -183,6 +187,7 @@ async def create_workspace_file(
             "sizeBytes": size_bytes,
             "checksum": checksum,
             "metadata": SafeJson(metadata or {}),
+            "isInternal": is_internal,
         }
     )
 
@@ -261,6 +266,21 @@ async def get_workspace_file_by_path(
     return WorkspaceFile.from_db(file) if file else None
 
 
+async def list_internal_file_ids(user_id: str, file_ids: list[str]) -> set[str]:
+    """Which of these files, in the user's own workspace, are Otto's working
+    files (``isInternal``). Soft-deleted rows still answer."""
+    if not file_ids:
+        return set()
+    rows = await UserWorkspaceFile.prisma().find_many(
+        where={
+            "id": {"in": file_ids},
+            "isInternal": True,
+            "Workspace": {"is": {"userId": user_id}},
+        }
+    )
+    return {row.id for row in rows}
+
+
 async def list_workspace_files(
     workspace_id: str,
     path_prefix: Optional[str] = None,
@@ -276,6 +296,7 @@ async def list_workspace_files(
     root_only: bool = False,
     allowed_path_prefixes: Optional[list[str]] = None,
     include_user_files: bool = False,
+    include_internal: bool = True,
 ) -> list[WorkspaceFile]:
     """
     List files in a workspace.
@@ -312,6 +333,9 @@ async def list_workspace_files(
         include_user_files: Widen ``allowed_path_prefixes`` with the owner's
             own files (see :func:`_scope_branches`). Ignored when the caller
             passes no prefixes, which already reaches the whole workspace.
+        include_internal: Whether to return Otto's own working files
+            (``isInternal``). Otto's tools read them, so it defaults to
+            ``True``; every list a person sees must pass ``False``.
 
     Returns:
         List of WorkspaceFile instances
@@ -323,6 +347,9 @@ async def list_workspace_files(
 
     if not include_deleted:
         where_clause["isDeleted"] = False
+
+    if not include_internal:
+        where_clause["isInternal"] = False
 
     if folder_id:
         where_clause["folderId"] = folder_id
@@ -403,6 +430,7 @@ async def count_workspace_files(
     root_only: bool = False,
     allowed_path_prefixes: Optional[list[str]] = None,
     include_user_files: bool = False,
+    include_internal: bool = True,
 ) -> int:
     """
     Count files in a workspace.
@@ -416,6 +444,7 @@ async def count_workspace_files(
         root_only: See :func:`list_workspace_files`.
         allowed_path_prefixes: See :func:`list_workspace_files`.
         include_user_files: See :func:`list_workspace_files`.
+        include_internal: See :func:`list_workspace_files`.
 
     Returns:
         Number of files
@@ -426,6 +455,8 @@ async def count_workspace_files(
     where_clause: UserWorkspaceFileWhereInput = {"workspaceId": workspace_id}
     if not include_deleted:
         where_clause["isDeleted"] = False
+    if not include_internal:
+        where_clause["isInternal"] = False
 
     if folder_id:
         where_clause["folderId"] = folder_id
@@ -624,3 +655,15 @@ async def get_workspace_total_size(workspace_id: str) -> int:
         where={"workspaceId": workspace_id, "isDeleted": False},
     )
     return sum(f.sizeBytes for f in files)
+
+
+async def get_workspace_size_breakdown(workspace_id: str) -> tuple[int, int]:
+    """The workspace's total size and the part of it held by files the user's
+    lists leave out (``isInternal``: skill packages and Otto's working
+    files), from one scan. Internal files use the quota like any other."""
+    files = await UserWorkspaceFile.prisma().find_many(
+        where={"workspaceId": workspace_id, "isDeleted": False},
+    )
+    total = sum(f.sizeBytes for f in files)
+    internal = sum(f.sizeBytes for f in files if f.isInternal)
+    return total, internal

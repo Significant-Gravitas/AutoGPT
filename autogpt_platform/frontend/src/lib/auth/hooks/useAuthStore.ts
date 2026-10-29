@@ -1,6 +1,7 @@
 "use client";
 
 import type BackendAPI from "@/lib/autogpt-server-api/client";
+import { setAnalyticsIdentitySignedIn } from "@/services/analytics/anonymous-id";
 import { resetAnalyticsIdentity } from "@/services/analytics/reset-identity";
 import {
   clearImpersonationEverywhere,
@@ -11,6 +12,11 @@ import {
   hasImpersonation,
   setImpersonationViewer,
 } from "@/lib/impersonation";
+import {
+  claimOnboardingHandoff,
+  clearOnboardingHandoff,
+} from "@/services/onboarding/brain-dump-handoff";
+import { teardownPushSubscriptionBeforeLogout } from "@/services/push-notifications/helpers";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
@@ -38,9 +44,6 @@ const MAX_RETRY_ATTEMPTS = 6;
 const SIGN_OUT_ATTEMPTS = 3;
 const SIGN_OUT_RETRY_DELAY_MS = 1_000;
 
-// The sign-out action itself never throws once delivered (it expires the
-// cookies even if revoking the session fails), so a throw means the request
-// didn't get through. Retry those before giving up.
 async function refetchEverything(): Promise<void> {
   try {
     const { getQueryClient } = await import("@/lib/react-query/queryClient");
@@ -50,6 +53,9 @@ async function refetchEverything(): Promise<void> {
   }
 }
 
+// The sign-out action itself never throws once delivered (it expires the
+// cookies even if revoking the session fails), so a throw means the request
+// didn't get through. Retry those before giving up.
 async function signOutOnServer(options: ServerLogoutOptions): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -190,19 +196,27 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
               } else if (validationResult.user && validationResult.isValid) {
                 adoptUser(validationResult.user);
                 set({ hasLoadedUser: true, isUserLoading: false });
-              } else if (!validationResult.isValid) {
-                // No session at startup: a target left from the last one goes,
-                // and a protected page sends the user to sign in (the
-                // middleware only checks that a session cookie exists, which an
-                // expired or revoked one still does).
-                if (hasImpersonation()) {
-                  endSessionEpoch();
-                  clearImpersonationEverywhere();
-                }
-                // Replace, like the middleware's redirect: the page the
-                // dead session landed on isn't somewhere to come back to.
-                if (validationResult.redirectPath) {
-                  params.router.replace(validationResult.redirectPath);
+              } else {
+                // fetchUser answered without an error that there is no
+                // session, and the fallback found none either. Only then is
+                // the visitor known to be signed out; after an error the
+                // session stays unknown, so an older account can't take the
+                // marketing site's visitor id (anonymous-id.ts).
+                if (!result.hasLoadedUser) setAnalyticsIdentitySignedIn(false);
+                if (!validationResult.isValid) {
+                  // No session at startup: a target left from the last one
+                  // goes, and a protected page sends the user to sign in (the
+                  // middleware only checks that a session cookie exists, which
+                  // an expired or revoked one still does).
+                  if (hasImpersonation()) {
+                    endSessionEpoch();
+                    clearImpersonationEverywhere();
+                  }
+                  // Replace, like the middleware's redirect: the page the
+                  // dead session landed on isn't somewhere to come back to.
+                  if (validationResult.redirectPath) {
+                    params.router.replace(validationResult.redirectPath);
+                  }
                 }
               }
             }
@@ -232,6 +246,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     // Whatever the outcome, answers to auth requests already in flight
     // belong to the session being signed out of, and must not be applied.
     endSessionEpoch();
+
+    // Needs the session, so it runs before the sign-out (bounded, never throws).
+    await teardownPushSubscriptionBeforeLogout();
 
     // Drop any admin impersonation (sessionStorage + cookie, in every tab) so
     // the next user signing in on this browser doesn't send X-Act-As-User-Id.
@@ -270,6 +287,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     // Other tabs act on this at once. Sent only now that the server has
     // expired the session cookies, or a tab could reload into the old session.
     broadcastLogout();
+    clearOnboardingHandoff();
   }
 
   async function validateSessionInternal(
@@ -446,6 +464,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       void refetchEverything();
     }
   }
+
   function handleStorageEventInternal(event: StorageEvent): void {
     if (isImpersonationClearedEvent(event)) {
       ImpersonationState.clear();
@@ -551,9 +570,20 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 });
 
 useAuthStore.subscribe((state, previousState) => {
+  // Signing out is reported here; the signed-out state on load once
+  // initialize() is done.
+  if (state.user) setAnalyticsIdentitySignedIn(true);
+  else if (previousState.user) setAnalyticsIdentitySignedIn(false);
   if (previousState.user && previousState.user.id !== state.user?.id) {
     resetAnalyticsIdentity();
+    clearCopilotCompletedSessions();
   }
+  // Whoever signs in claims the onboarding handoff: a different account
+  // than this tab last had starts without it, however the last session
+  // ended. Not on a sign-out itself: a failed refresh also drops the user,
+  // and a brand-new one must keep their walkthrough.
+  if (state.user && state.user.id !== previousState.user?.id)
+    claimOnboardingHandoff(state.user.id);
 });
 
 // Headers are built only for the user this store has signed in, so keep the
@@ -561,3 +591,14 @@ useAuthStore.subscribe((state, previousState) => {
 useAuthStore.subscribe((state, previousState) => {
   if (state.user !== previousState.user) setImpersonationViewer(state.user);
 });
+
+// Loaded lazily: the copilot store pulls in React hooks the auth store
+// otherwise has no reason to load.
+function clearCopilotCompletedSessions() {
+  if (typeof window === "undefined") return;
+  import("@/app/(platform)/copilot/store")
+    .then(({ useCopilotUIStore }) =>
+      useCopilotUIStore.getState().clearAllCompletedSessions(),
+    )
+    .catch(() => {});
+}

@@ -14,6 +14,7 @@ import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopi
 import { CardProviderIcon } from "./BlockCards";
 import { CARD, HALF, StatusCard } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface ItemsProps {
   steps: Record<string, unknown>[];
@@ -46,20 +47,21 @@ export function PlanSteps({ steps }: ItemsProps) {
         return (
           <div
             key={resultItemKey(step, i)}
-            className="flex items-center gap-2 text-[13px]"
+            className="flex items-center gap-2 text-body-sm leading-inherit"
           >
             {done ? (
               <Icon
                 icon={CheckmarkCircle02Icon}
                 size={15}
-                className="shrink-0 text-green-500"
+                className="shrink-0 text-success"
               />
             ) : (
               <Icon
                 icon={CircleIcon}
                 size={15}
                 className={
-                  "shrink-0 " + (active ? "text-purple-500" : "text-zinc-300")
+                  "shrink-0 " +
+                  (active ? "text-brand" : "text-foreground-disabled")
                 }
               />
             )}
@@ -67,16 +69,16 @@ export function PlanSteps({ steps }: ItemsProps) {
               className={
                 "min-w-0 flex-1 truncate " +
                 (done
-                  ? "text-zinc-400 line-through"
+                  ? "text-foreground-subtle line-through"
                   : active
-                    ? "font-medium text-zinc-800"
-                    : "text-zinc-600")
+                    ? "font-medium text-foreground-emphasis"
+                    : "text-foreground-secondary")
               }
             >
               {str(step, "description") ?? inline(step)}
             </span>
             {blockName && (
-              <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+              <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
                 {blockName}
               </span>
             )}
@@ -93,12 +95,12 @@ function ErrorList({ errors }: ErrorListProps) {
       {errors.map((error) => (
         <div
           key={error}
-          className="flex items-start gap-2 text-xs text-zinc-600"
+          className="flex items-start gap-2 text-xs text-foreground-secondary"
         >
           <Icon
             icon={AlertCircleIcon}
             size={14}
-            className="mt-px shrink-0 text-red-400"
+            className="mt-px shrink-0 text-error"
           />
           <span className="min-w-0 break-words">{error}</span>
         </div>
@@ -115,9 +117,9 @@ function strList(value: unknown): string[] {
 
 export function ValidationCard({ output }: OutputProps) {
   const errors = strList(output.errors);
-  if (output.valid === true) return <StatusCard ok label="Graph is valid" />;
+  if (output.valid === true) return <StatusCard ok label="Workflow is valid" />;
   if (errors.length > 0) return <ErrorList errors={errors} />;
-  return <StatusCard ok={false} label="Graph has errors" />;
+  return <StatusCard ok={false} label="Workflow has errors" />;
 }
 
 export function FixResultCard({ output }: OutputProps) {
@@ -146,16 +148,16 @@ export function QuestionsCard({ questions }: QuestionsCardProps) {
           <Icon
             icon={MessageQuestionIcon}
             size={14}
-            className="mt-0.5 shrink-0 text-zinc-400"
+            className="mt-0.5 shrink-0 text-foreground-subtle"
           />
           <div className="min-w-0">
-            <p className="text-[13px] text-zinc-700">
+            <p className="text-body-sm leading-inherit text-foreground-body">
               {str(entry, "question") ?? inline(entry)}
             </p>
             {str(entry, "example") && (
-              <p className="truncate text-xs text-zinc-400">
+              <Text variant="small-tight" tone="subtle" className="truncate">
                 e.g. {str(entry, "example")}
-              </p>
+              </Text>
             )}
           </div>
         </div>
@@ -170,17 +172,29 @@ export function SetupCard({ output, provider }: SetupCardProps) {
   if (!name) return null;
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
         <CardProviderIcon
           provider={provider}
           fallback={
-            <Icon icon={ConnectIcon} size={15} className="text-zinc-600" />
+            <Icon
+              icon={ConnectIcon}
+              size={15}
+              className="text-foreground-secondary"
+            />
           }
         />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-zinc-800">{name}</p>
-        <p className="truncate text-xs text-zinc-500">Connection required</p>
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="truncate"
+        >
+          {name}
+        </Text>
+        <Text variant="small-tight" tone="muted" className="truncate">
+          Connection required
+        </Text>
       </div>
     </div>
   );
@@ -192,19 +206,29 @@ export function SkillCard({ output }: OutputProps) {
   const triggers = strList(output.triggers);
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-        <Icon icon={BookBookmarkIcon} size={15} className="text-zinc-600" />
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
+        <Icon
+          icon={BookBookmarkIcon}
+          size={15}
+          className="text-foreground-secondary"
+        />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-zinc-800">{name}</p>
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="truncate"
+        >
+          {name}
+        </Text>
         {str(output, "description") && (
-          <p className="truncate text-xs text-zinc-500">
+          <Text variant="small-tight" tone="muted" className="truncate">
             {str(output, "description")}
-          </p>
+          </Text>
         )}
       </div>
       {triggers[0] && (
-        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+        <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
           {triggers[0]}
         </span>
       )}
@@ -219,16 +243,20 @@ export function SuggestedGoalCard({ output }: OutputProps) {
 
   return (
     <div className={`${CARD} ${HALF} flex flex-col gap-2 p-3`}>
-      <p className="text-[13px] font-medium text-zinc-800">{goal}</p>
+      <Text variant="body-sm-medium-inherit" tone="emphasis">
+        {goal}
+      </Text>
       {str(output, "reason") && (
-        <p className="text-xs text-zinc-500">{str(output, "reason")}</p>
+        <Text variant="small-tight" tone="muted">
+          {str(output, "reason")}
+        </Text>
       )}
       {actions && (
         <button
           type="button"
-          className="w-fit rounded-lg bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-zinc-700"
+          className="w-fit rounded-lg bg-action-hover px-2.5 py-1.5 text-xs font-medium text-action-foreground transition-colors hover:bg-action"
           onClick={() =>
-            actions.onSend(`Please create an agent with this goal: ${goal}`)
+            actions.onSend(`Please create a workflow with this goal: ${goal}`)
           }
         >
           Use this goal
@@ -252,18 +280,18 @@ export function TriggerSetupCard({ output }: OutputProps) {
 
   return (
     <div className={`${CARD} ${HALF} flex flex-col gap-2 p-3`}>
-      <p className="text-[13px] text-zinc-700">
+      <p className="text-body-sm leading-inherit text-foreground-body">
         {str(output, "message", "name") ?? "Trigger is ready"}
       </p>
       {url && (
-        <div className="flex items-center gap-2 rounded-lg bg-zinc-50 p-2 ring-1 ring-zinc-200/70">
-          <code className="ph-no-capture min-w-0 flex-1 break-all text-xs text-zinc-600">
+        <div className="flex items-center gap-2 rounded-lg bg-surface-muted p-2 ring-1 ring-border-base/70">
+          <code className="ph-no-capture min-w-0 flex-1 break-all text-xs text-foreground-secondary">
             {url}
           </code>
           <button
             type="button"
             onClick={handleCopy}
-            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-200"
+            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-foreground-secondary transition-colors hover:bg-surface-active"
           >
             Copy
           </button>

@@ -39,6 +39,60 @@ export function logClientRequestFailure(failure: RequestFailure) {
   });
 }
 
+/**
+ * Log one server-side request failure as one readable line. Not collapsed:
+ * server module state is shared across every user's request, so a window
+ * would hide one user's failure behind another's.
+ */
+export function logServerRequestFailure(failure: RequestFailure) {
+  const detail = failure.errorMessage
+    .slice(0, MAX_DETAIL_LENGTH)
+    .replace(/\s+/g, " ");
+  const line = `${summarize(failure, "server")}: ${detail}`;
+  if (EXPECTED_STATUSES.has(failure.status)) {
+    console.info(line);
+  } else {
+    console.error(line);
+  }
+}
+
+/**
+ * Fetch a request whose failure the caller reports with this module. Sentry's
+ * HttpClient integration files every 5xx on its own as "HTTP Client Error with
+ * status code: 500", grouped by call stack, so each failure arrived twice
+ * (BUILDER-95D beside BUILDER-95C). The integration captures before fetch
+ * resolves, so while the request is in flight `isLoggedRequestFailure` can
+ * pick that copy out for `beforeSend` to drop.
+ */
+export async function fetchWithFailureLog(url: string, init: RequestInit) {
+  const key = requestKey(init.method ?? "GET", url);
+  inFlight.set(key, (inFlight.get(key) ?? 0) + 1);
+  try {
+    return await fetch(url, init);
+  } finally {
+    const remaining = (inFlight.get(key) ?? 1) - 1;
+    if (remaining > 0) inFlight.set(key, remaining);
+    else inFlight.delete(key);
+  }
+}
+
+export function isLoggedRequestFailure(event: Sentry.ErrorEvent) {
+  const mechanism = event.exception?.values?.[0]?.mechanism?.type ?? "";
+  const { method, url } = event.request ?? {};
+  if (!mechanism.startsWith("auto.http.client.") || !method || !url) {
+    return false;
+  }
+  return inFlight.has(requestKey(method, url));
+}
+
+// The integration sees the absolute URL, while callers pass a relative one.
+function requestKey(method: string, url: string) {
+  const base = globalThis.location?.href ?? "http://localhost";
+  return `${method.toUpperCase()} ${new URL(url, base).href}`;
+}
+
+const inFlight = new Map<string, number>();
+
 // The open windows outlive a test file; reset them between cases.
 export function resetClientRequestFailureLog() {
   openWindows.forEach(({ timer }) => clearTimeout(timer));
@@ -103,8 +157,11 @@ function emit(failure: RequestFailure) {
   });
 }
 
-function summarize({ method, url, status }: RequestFailure) {
-  return `Request failed on client: ${method} ${routeTemplate(url)} ${status}`;
+function summarize(
+  { method, url, status }: RequestFailure,
+  side: "client" | "server" = "client",
+) {
+  return `Request failed on ${side}: ${method} ${routeTemplate(url)} ${status}`;
 }
 
 function statusClass(status: number) {

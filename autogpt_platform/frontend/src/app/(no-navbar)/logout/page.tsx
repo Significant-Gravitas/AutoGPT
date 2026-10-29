@@ -3,6 +3,7 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { getPostLogoutPath } from "@/lib/auth/account-banned";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
@@ -42,7 +43,7 @@ export default function LogoutPage() {
           return;
         }
         await wait(LOGOUT_REDIRECT_DELAY_MS);
-        router.replace("/login");
+        router.replace(getPostLogoutPath(window.location.search));
       }
 
       void runLogout();

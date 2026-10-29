@@ -33,6 +33,7 @@ from backend.copilot.response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
 )
 from backend.copilot.sdk.service import (
     _dispatch_response,
@@ -41,6 +42,7 @@ from backend.copilot.sdk.service import (
     _StreamAccumulator,
 )
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
+from backend.copilot.turn_pause import TurnPause, pause_of
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
@@ -727,3 +729,26 @@ class TestLateToolCallPersistence:
         with caplog.at_level(logging.WARNING):
             assert _resolve_tool_result_name(session, "missing", None) is None
         assert any("nameless tool-result" in r.message for r in caplog.records)
+
+
+class TestPausePersistence:
+    """A paused turn leaves a row the Paused card is rebuilt from on reload."""
+
+    def test_pause_is_stored_after_the_checkpoint(self) -> None:
+        session = _make_session()
+        ctx = _make_ctx(session)
+        state = _make_state()
+        acc = _StreamAccumulator(
+            assistant_response=ChatMessage(role="assistant", content=""),
+            accumulated_tool_calls=[],
+            has_appended_assistant=False,
+            has_tool_results=False,
+        )
+        checkpoint = StreamTextDelta(id="t1", delta="Where I got to: 5 of 12.")
+        _dispatch_response(checkpoint, acc, ctx, state, False, "[test]")
+        pause = TurnPause(reason="steps", steps=450)
+        paused = StreamTurnPaused(pause=pause.as_part())
+
+        assert _dispatch_response(paused, acc, ctx, state, False, "[test]") is paused
+        assert [m.content for m in session.messages][0] == "Where I got to: 5 of 12."
+        assert pause_of(session.messages[-1]) == pause

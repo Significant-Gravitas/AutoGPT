@@ -1,5 +1,5 @@
 import { render, screen } from "@/tests/integrations/test-utils";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CopilotAuthError } from "../../../../../helpers";
 import {
@@ -8,8 +8,19 @@ import {
 } from "../../../../../stream/turnRuntime";
 import { ChatErrorBanner } from "../ChatErrorBanner";
 
+const billing = vi.hoisted(() => ({ enabled: true }));
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => billing.enabled,
+}));
+
+const NO_PLAN = new SendRefusedError(
+  '{"detail":"A subscription is required to use this feature. Upgrade to continue."}',
+  402,
+);
+
 afterEach(() => {
   window.history.replaceState(null, "", "/");
+  billing.enabled = true;
 });
 
 describe("ChatErrorBanner", () => {
@@ -23,6 +34,30 @@ describe("ChatErrorBanner", () => {
     expect(
       screen.getByRole("link", { name: "Sign in" }).getAttribute("href"),
     ).toBe(`/login?next=${encodeURIComponent("/copilot?sessionId=s-1")}`);
+  });
+
+  it("no plan: offers plans instead of a reload", () => {
+    render(<ChatErrorBanner error={NO_PLAN} />);
+
+    expect(
+      screen.getByText(
+        "Sending needs an active plan, so this message wasn't sent.",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "See plans" }).getAttribute("href"),
+    ).toBe("/settings/billing");
+    expect(screen.queryByText(/maintainer has been notified/)).toBeNull();
+  });
+
+  it("no plan where this install doesn't bill: no plans link, asks the operator", () => {
+    billing.enabled = false;
+    render(<ChatErrorBanner error={NO_PLAN} />);
+
+    expect(screen.queryByRole("link", { name: "See plans" })).toBeNull();
+    expect(
+      screen.getByText("Ask whoever runs this server to set one up."),
+    ).toBeDefined();
   });
 
   it("a chat that is gone: offers a new chat", () => {

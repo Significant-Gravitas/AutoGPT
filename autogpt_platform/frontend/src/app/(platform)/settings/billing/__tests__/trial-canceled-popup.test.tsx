@@ -44,7 +44,6 @@ vi.mock("next/navigation", () => ({
 const posthog = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("@posthog/react", () => ({
   usePostHog: () => posthog,
-  useFeatureFlagVariantKey: () => undefined,
 }));
 
 const HOUR = 60 * 60 * 1000;
@@ -201,7 +200,7 @@ describe("post-cancel popup", () => {
   });
 
   it.each(["billing", "onboarding"] as const)(
-    "sends Subscribe now from the %s card to billing and closes",
+    "sends Subscribe now from the %s card to the plan confirmation and closes",
     async (returnTo) => {
       mockCancelFlow();
       render(<TrialCard returnTo={returnTo} />);
@@ -210,7 +209,9 @@ describe("post-cancel popup", () => {
         within(popup).getByRole("button", { name: "Subscribe now" }),
       );
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-      expect(mockPush).toHaveBeenCalledExactlyOnceWith("/settings/billing");
+      expect(mockPush).toHaveBeenCalledExactlyOnceWith(
+        "/settings/billing?subscribe=trial-plan",
+      );
       expect(posthog.capture).toHaveBeenCalledWith(
         "trial_subscribe_now_clicked",
         { days_left: 5 },

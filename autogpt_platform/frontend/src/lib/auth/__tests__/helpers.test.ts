@@ -89,6 +89,12 @@ describe("getRedirectPath", () => {
   it("returns null for public paths", () => {
     expect(getRedirectPath("/marketplace")).toBeNull();
   });
+
+  it("returns null instead of throwing when the path is missing", () => {
+    expect(getRedirectPath(undefined)).toBeNull();
+    expect(getRedirectPath(null)).toBeNull();
+    expect(getRedirectPath("")).toBeNull();
+  });
 });
 
 describe("broadcastLogout", () => {

@@ -44,6 +44,14 @@ describe("describeChatError", () => {
       new Error("SDK stream error: Prompt is too long"),
       "new-chat",
     ],
+    [
+      "an account without a plan",
+      new SendRefusedError(
+        '{"detail":"A subscription is required to use this feature."}',
+        402,
+      ),
+      "plans",
+    ],
   ])("%s points to what works instead of a resend", (_state, error, action) => {
     const guidance = describeChatError(error);
     expect(guidance.action).toBe(action);

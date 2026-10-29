@@ -32,17 +32,21 @@ function PreviewButton({
     <Dialog title={title}>
       <Dialog.Trigger>
         <Button
+          data-slot="file-input-preview"
           variant="outline"
           size="small"
-          className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-500"
+          className="h-7 w-7 min-w-0 flex-shrink-0 border-border-strong p-0 text-gray-500 hover:text-info-foreground dark:text-gray-400 dark:hover:text-blue-500"
           type="button"
           aria-label="Preview file"
         >
-          <Icon icon={EyeIcon} size={14} />
+          <Icon data-slot="file-input-preview-icon" icon={EyeIcon} size={14} />
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
-        <div className="overflow-hidden [&>*]:rounded-xlarge">
+        <div
+          data-slot="file-input-preview-body"
+          className="overflow-hidden [&>*]:rounded-xlarge"
+        >
           {renderer.render(value, metadata)}
         </div>
       </Dialog.Content>
@@ -108,6 +112,10 @@ interface Base64ModeProps extends BaseProps {
 
 type Props = UploadModeProps | Base64ModeProps;
 
+// TODO(tokens): no role holds Tailwind's gray-50/300/500/600/700/900
+// (#F9FAFB, #D1D5DB, #6B7280, #4B5563, #374151, #111827) or blue-200
+// #BFDBFE, blue-300 #93C5FD, blue-700 #1D4ED8. The dark: classes never apply
+// (forcedTheme="light") and are DS6's (SECRT-3116) to delete.
 export function FileInput(props: Props) {
   const {
     value,
@@ -325,12 +333,25 @@ export function FileInput(props: Props) {
 
   if (variant === "compact") {
     return (
-      <div className={cn("flex flex-col gap-1.5", className)}>
-        <div className="nodrag flex flex-col gap-1.5">
+      <div
+        data-slot="file-input"
+        className={cn("flex flex-col gap-1.5", className)}
+      >
+        <div
+          data-slot="file-input-body"
+          className="nodrag flex flex-col gap-1.5"
+        >
           {isUploading ? (
-            <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 p-2 dark:border-blue-800 dark:bg-blue-950">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600 dark:border-blue-700 dark:border-t-blue-400" />
+            <div
+              data-slot="file-input-progress"
+              className="flex items-center gap-2 rounded-md border border-blue-200 bg-info-surface p-2 dark:border-blue-800 dark:bg-blue-950"
+            >
+              <div
+                data-slot="file-input-spinner"
+                className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-info-foreground dark:border-blue-700 dark:border-t-blue-400"
+              />
               <Text
+                data-slot="file-input-progress-text"
                 variant="small"
                 className="text-blue-700 dark:text-blue-300"
               >
@@ -338,14 +359,22 @@ export function FileInput(props: Props) {
               </Text>
             </div>
           ) : value ? (
-            <div className="flex items-center gap-2">
-              <div className="flex flex-1 items-center gap-2 rounded-xlarge border border-gray-300 bg-gray-50 p-2 dark:border-gray-600 dark:bg-gray-800">
+            <div
+              data-slot="file-input-file-row"
+              className="flex items-center gap-2"
+            >
+              <div
+                data-slot="file-input-file"
+                className="flex flex-1 items-center gap-2 rounded-xlarge border border-gray-300 bg-gray-50 p-2 dark:border-gray-600 dark:bg-gray-800"
+              >
                 <Icon
+                  data-slot="file-input-file-icon"
                   icon={File02Icon}
                   className="h-4 w-4 flex-shrink-0 text-gray-600 dark:text-gray-400"
                 />
 
                 <Text
+                  data-slot="file-input-file-name"
                   variant="small-medium"
                   className="truncate text-gray-900 dark:text-gray-100"
                 >
@@ -355,6 +384,7 @@ export function FileInput(props: Props) {
                 </Text>
                 {fileInfo && (
                   <Text
+                    data-slot="file-input-file-size"
                     variant="small"
                     className="text-gray-500 dark:text-gray-400"
                   >
@@ -374,33 +404,47 @@ export function FileInput(props: Props) {
                 />
               )}
               <Button
+                data-slot="file-input-clear"
                 variant="outline"
                 size="small"
-                className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
+                className="h-7 w-7 min-w-0 flex-shrink-0 border-border-strong p-0 text-gray-500 hover:text-error-hover dark:text-gray-400 dark:hover:text-red-500"
                 onClick={handleClear}
                 type="button"
                 aria-label="Clear file"
               >
-                <Icon icon={Cancel01Icon} size={14} />
+                <Icon
+                  data-slot="file-input-clear-icon"
+                  icon={Cancel01Icon}
+                  size={14}
+                />
               </Button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div
+              data-slot="file-input-upload-row"
+              className="flex items-center gap-2"
+            >
               <Button
+                data-slot="file-input-upload"
                 variant="outline"
                 size="small"
                 onClick={() => inputRef.current?.click()}
-                className="flex-1 border-zinc-300 text-xs"
+                className="flex-1 border-border-strong text-caption leading-4"
                 disabled={isUploading}
                 type="button"
               >
-                <Icon icon={Upload01Icon} className="mr-1.5 h-3.5 w-3.5" />
+                <Icon
+                  data-slot="file-input-upload-icon"
+                  icon={Upload01Icon}
+                  className="mr-1.5 h-3.5 w-3.5"
+                />
                 {`Upload ${displayName}`}
               </Button>
             </div>
           )}
           <input
             ref={inputRef}
+            data-slot="file-input-control"
             type="file"
             accept={acceptToString(accept)}
             onChange={handleFileChange}
@@ -409,7 +453,12 @@ export function FileInput(props: Props) {
           />
         </div>
         {uploadError && (
-          <Text variant="small" className="text-red-600 dark:text-red-400">
+          <Text
+            data-slot="file-input-error"
+            variant="small"
+            tone="danger"
+            className="dark:text-red-400"
+          >
             {uploadError}
           </Text>
         )}
@@ -418,34 +467,70 @@ export function FileInput(props: Props) {
   }
 
   return (
-    <div className={cn("w-full", className)}>
+    <div data-slot="file-input" className={cn("w-full", className)}>
       {isUploading ? (
-        <div className="space-y-2">
-          <div className="flex min-h-14 items-center gap-4">
-            <div className="agpt-border-input flex min-h-14 w-full items-center gap-3 rounded-xl bg-zinc-50 p-4 text-sm">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
-              <span className="text-gray-700">
+        <div data-slot="file-input-section" className="space-y-2">
+          <div
+            data-slot="file-input-row"
+            className="flex min-h-14 items-center gap-4"
+          >
+            <div
+              data-slot="file-input-progress"
+              className="agpt-border-input flex min-h-14 w-full items-center gap-3 rounded-xl bg-surface-muted p-4 text-body leading-5"
+            >
+              <div
+                data-slot="file-input-spinner"
+                className="h-5 w-5 animate-spin rounded-full border-2 border-blue-300 border-t-info-foreground"
+              />
+              <span
+                data-slot="file-input-progress-text"
+                className="text-gray-700"
+              >
                 {mode === "base64" ? "Processing..." : "Uploading..."}
               </span>
             </div>
           </div>
         </div>
       ) : value ? (
-        <div className="space-y-2">
-          <div className="flex min-h-14 items-center gap-4">
-            <div className="agpt-border-input flex min-h-14 w-full items-center justify-between rounded-xl bg-zinc-50 p-4 text-sm text-gray-500">
-              <div className="flex items-center gap-2">
-                <Icon icon={File02Icon} className="h-7 w-7 text-black" />
-                <div className="flex flex-col gap-0.5">
-                  <span className="font-normal text-black">
+        <div data-slot="file-input-section" className="space-y-2">
+          <div
+            data-slot="file-input-row"
+            className="flex min-h-14 items-center gap-4"
+          >
+            <div
+              data-slot="file-input-file"
+              className="agpt-border-input flex min-h-14 w-full items-center justify-between rounded-xl bg-surface-muted p-4 text-body leading-5 text-gray-500"
+            >
+              <div
+                data-slot="file-input-file-info"
+                className="flex items-center gap-2"
+              >
+                <Icon
+                  data-slot="file-input-file-icon"
+                  icon={File02Icon}
+                  className="h-7 w-7 text-foreground-base"
+                />
+                <div
+                  data-slot="file-input-file-details"
+                  className="flex flex-col gap-0.5"
+                >
+                  <span
+                    data-slot="file-input-file-name"
+                    className="font-normal text-foreground-base"
+                  >
                     {fileInfo
                       ? getFileLabel(fileInfo.name, fileInfo.content_type)
                       : getFileLabelFromValue(value)}
                   </span>
-                  <span>{fileInfo ? formatFileSize(fileInfo.size) : ""}</span>
+                  <span data-slot="file-input-file-size">
+                    {fileInfo ? formatFileSize(fileInfo.size) : ""}
+                  </span>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div
+                data-slot="file-input-actions"
+                className="flex items-center gap-2"
+              >
                 {isPreviewableFile(value, fileInfo?.content_type) && (
                   <PreviewButton
                     value={value}
@@ -458,34 +543,49 @@ export function FileInput(props: Props) {
                   />
                 )}
                 <Button
+                  data-slot="file-input-clear"
                   variant="outline"
                   size="small"
                   type="button"
                   onClick={handleClear}
                   aria-label="Clear file"
-                  className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
+                  className="h-7 w-7 min-w-0 flex-shrink-0 border-border-strong p-0 text-gray-500 hover:text-error-hover dark:text-gray-400 dark:hover:text-red-500"
                 >
-                  <Icon icon={Delete02Icon} className="h-5 w-5" />
+                  <Icon
+                    data-slot="file-input-clear-icon"
+                    icon={Delete02Icon}
+                    className="h-5 w-5"
+                  />
                 </Button>
               </div>
             </div>
           </div>
           {showStorageNote && mode === "upload" && (
-            <p className="text-xs text-gray-500">{storageNote}</p>
+            <p
+              data-slot="file-input-note"
+              className="text-caption leading-4 text-gray-500"
+            >
+              {storageNote}
+            </p>
           )}
         </div>
       ) : (
-        <div className="space-y-2">
-          <div className="flex min-h-14 items-center gap-4">
+        <div data-slot="file-input-section" className="space-y-2">
+          <div
+            data-slot="file-input-row"
+            className="flex min-h-14 items-center gap-4"
+          >
             <div
+              data-slot="file-input-dropzone"
               onDrop={handleFileDrop}
               onDragOver={(e) => e.preventDefault()}
-              className="agpt-border-input flex min-h-14 w-full items-center justify-center rounded-xl border-dashed bg-zinc-50 text-sm text-gray-500"
+              className="agpt-border-input flex min-h-14 w-full items-center justify-center rounded-xl border-dashed bg-surface-muted text-body leading-5 text-gray-500"
             >
               Choose a file or drag and drop it here
             </div>
 
             <Button
+              data-slot="file-input-browse"
               onClick={() => inputRef.current?.click()}
               className="min-w-40"
               type="button"
@@ -495,17 +595,28 @@ export function FileInput(props: Props) {
           </div>
 
           {uploadError && (
-            <div className="text-sm text-red-600">Error: {uploadError}</div>
+            <div
+              data-slot="file-input-error"
+              className="text-body leading-5 text-error-hover"
+            >
+              Error: {uploadError}
+            </div>
           )}
 
           {showStorageNote && mode === "upload" && (
-            <p className="text-xs text-gray-500">{storageNote}</p>
+            <p
+              data-slot="file-input-note"
+              className="text-caption leading-4 text-gray-500"
+            >
+              {storageNote}
+            </p>
           )}
         </div>
       )}
 
       <input
         ref={inputRef}
+        data-slot="file-input-control"
         type="file"
         accept={acceptToString(accept)}
         className="hidden"

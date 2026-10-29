@@ -44,10 +44,13 @@ class AsyncRedisKeyedMutex:
             if (await lock.locked()) and (await lock.owned()):
                 await lock.release()
 
-    async def acquire(self, key: Any) -> "AsyncRedisLock":
-        """Acquires and returns a lock with the given key"""
+    async def acquire(
+        self, key: Any, *, blocking_timeout: float | None = None
+    ) -> "AsyncRedisLock":
+        """Acquire a lock, raising TimeoutError if its blocking timeout expires."""
         lock = self.redis.lock(str(key), self.timeout, thread_local=False)
-        await lock.acquire()
+        if not await lock.acquire(blocking_timeout=blocking_timeout):
+            raise TimeoutError("Timed out waiting for a Redis lock")
         # No await between taking the key and registering it: a caller that
         # wraps this in wait_for and cleans up with release(key) must always
         # find a lock it was cancelled after taking.

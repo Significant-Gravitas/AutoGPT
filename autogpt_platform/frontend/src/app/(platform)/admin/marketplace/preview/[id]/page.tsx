@@ -94,7 +94,7 @@ export default function AdminPreviewPage() {
         </button>
 
         <div className="flex items-center gap-3">
-          <span className="rounded-md bg-amber-500/20 px-3 py-1 text-sm font-medium text-amber-600">
+          <span className="rounded-md bg-warning/20 px-3 py-1 text-sm font-medium text-warning-foreground">
             Admin Preview
             {!data.has_approved_version && " — Pending Approval"}
           </span>
@@ -112,7 +112,6 @@ export default function AdminPreviewPage() {
         <div className="lg:col-span-2">
           <AgentInfo
             user={null}
-            agentId={data.graph_id}
             name={data.agent_name}
             creator={data.creator}
             creatorAvatar={data.creator_avatar}

@@ -126,12 +126,57 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   return runtime;
 }
 
+type CopilotChatRuntimeCallbacks = Required<
+  Pick<CopilotChatRuntime, "onFinish" | "onError" | "onData">
+>;
+
+export function setCopilotChatRuntimeModel(
+  runtime: CopilotChatRuntime,
+  model: CopilotLlmModel | undefined,
+) {
+  runtime.copilotModelRef.current = model;
+}
+
+export function attachCopilotChatRuntimeCallbacks(
+  runtime: CopilotChatRuntime,
+  callbacks: CopilotChatRuntimeCallbacks,
+) {
+  runtime.onFinish = callbacks.onFinish;
+  runtime.onError = callbacks.onError;
+  runtime.onData = callbacks.onData;
+}
+
+/** Leaves callbacks a newer mount attached in the meantime in place. */
+export function detachCopilotChatRuntimeCallbacks(
+  runtime: CopilotChatRuntime,
+  callbacks: CopilotChatRuntimeCallbacks,
+) {
+  if (runtime.onFinish === callbacks.onFinish) {
+    runtime.onFinish = undefined;
+  }
+  if (runtime.onData === callbacks.onData) {
+    runtime.onData = undefined;
+  }
+  if (runtime.onError === callbacks.onError) {
+    runtime.onError = undefined;
+  }
+}
+
 export function markCopilotChatRuntimeHealthy(sessionId: string) {
   useCopilotChatRuntimeStore.getState().clearNeedsReload(sessionId);
 }
 
 export function shouldReloadCopilotChatRuntime(sessionId: string) {
   return !!useCopilotChatRuntimeStore.getState().sessionNeedsReload[sessionId];
+}
+
+/** The session's runtime, rebuilt first if a dropped stream flagged it. One
+ *  call with a result, so a memo around it caches the reset with it. */
+export function takeCopilotChatRuntime(sessionId: string) {
+  if (shouldReloadCopilotChatRuntime(sessionId)) {
+    resetCopilotChatRuntime(sessionId);
+  }
+  return getOrCreateCopilotChatRuntime(sessionId);
 }
 
 export function resetCopilotChatRuntime(sessionId: string) {

@@ -17,10 +17,15 @@ from backend.copilot.rate_limit import UserPaywalledError
 from backend.util.exceptions import ExecutionFailureReason
 
 
-def _api_error(cls, status: int, headers: dict[str, str] | None = None):
+def _api_error(
+    cls,
+    status: int,
+    headers: dict[str, str] | None = None,
+    body: object = None,
+):
     request = httpx.Request("POST", "https://api.example.com/v1/chat/completions")
     response = httpx.Response(status, headers=headers or {}, request=request)
-    return cls("boom", response=response, body=None)
+    return cls("boom", response=response, body=body)
 
 
 class TestWhatTheFailureIs:
@@ -116,6 +121,37 @@ class TestWhenTheLimitLifts:
 
     def test_no_reset_is_invented_when_the_provider_reported_none(self) -> None:
         assert classify(_api_error(RateLimitError, 429)).resets_at is None
+
+
+class TestWhenAChatGPTLimitLifts:
+    """ChatGPT reports its reset in the 429 itself, not ``x-ratelimit-reset-*``."""
+
+    _FULL_WINDOW = {
+        "x-codex-primary-used-percent": "100",
+        "x-codex-primary-window-minutes": "300",
+        "x-codex-primary-reset-at": "1788400000",
+    }
+
+    def test_the_error_body_names_the_reset(self) -> None:
+        exc = _api_error(
+            RateLimitError,
+            429,
+            self._FULL_WINDOW,
+            body={"type": "usage_limit_reached", "resets_at": 1788452827},
+        )
+        failure = classify(exc, auth_provider="codex")
+        assert failure is not None
+        assert failure.as_part()["resetsAt"] == 1788452827
+
+    def test_the_quota_headers_name_it_when_the_body_does_not(self) -> None:
+        exc = _api_error(RateLimitError, 429, self._FULL_WINDOW)
+        assert classify(exc, auth_provider="codex").resets_at == 1788400000
+
+    def test_another_route_is_not_read_as_chatgpt(self) -> None:
+        exc = _api_error(
+            RateLimitError, 429, self._FULL_WINDOW, body={"resets_at": 1788452827}
+        )
+        assert classify(exc, auth_provider="platform").resets_at is None
 
 
 class TestWhichConnectionFailed:

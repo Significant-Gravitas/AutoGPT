@@ -7,25 +7,42 @@ interface Props {
 
 export function PlanComparison({ plans }: Props) {
   return (
-    <div className="space-y-4">
-      <table className="w-full table-fixed text-left font-sans text-sm text-zinc-800">
-        <thead>
-          <tr>
+    <div data-slot="plan-comparison" className="space-y-4">
+      <table
+        data-slot="plan-comparison-table"
+        className="w-full table-fixed text-left font-sans text-sm text-foreground-emphasis"
+      >
+        <thead data-slot="plan-comparison-head">
+          <tr data-slot="plan-comparison-head-row">
             {plans.map((plan) => (
-              <th key={plan.key} scope="col" className="pb-3 pr-3 font-medium">
+              <th
+                key={plan.key}
+                scope="col"
+                data-slot="plan-comparison-column"
+                className="pb-3 pr-3 font-medium"
+              >
                 {plan.name}
                 {plan.usage && ` · ${plan.usage} usage`}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody>
-          <tr className="border-t border-zinc-200">
+        <tbody data-slot="plan-comparison-body">
+          <tr
+            data-slot="plan-comparison-row"
+            className="border-t border-border-base"
+          >
             {plans.map((plan) => (
-              <td key={plan.key} className="py-3 pr-3 align-top">
-                <ul className="space-y-3">
+              <td
+                key={plan.key}
+                data-slot="plan-comparison-cell"
+                className="py-3 pr-3 align-top"
+              >
+                <ul data-slot="plan-comparison-features" className="space-y-3">
                   {plan.features.map((feature) => (
-                    <li key={feature}>{feature}</li>
+                    <li key={feature} data-slot="plan-comparison-feature">
+                      {feature}
+                    </li>
                   ))}
                 </ul>
               </td>

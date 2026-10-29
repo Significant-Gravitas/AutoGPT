@@ -62,7 +62,7 @@ describe("ScheduleList", () => {
     );
 
     expect(screen.getByText("Run scraper")).toBeDefined();
-    expect(screen.getByText("agent")).toBeDefined();
+    expect(screen.getByText("workflow")).toBeDefined();
   });
 
   it("falls back to inline JSON for unnamed schedules", () => {
@@ -101,9 +101,9 @@ describe("FolderList", () => {
     );
 
     expect(screen.getByText("Marketing")).toBeDefined();
-    expect(screen.getByText("1 agent")).toBeDefined();
+    expect(screen.getByText("1 workflow")).toBeDefined();
     expect(screen.getByText("Research")).toBeDefined();
-    expect(screen.getByText("3 agents")).toBeDefined();
+    expect(screen.getByText("3 workflows")).toBeDefined();
     expect(screen.getByText("Empty")).toBeDefined();
   });
 });

@@ -1,8 +1,9 @@
-import scrollbar from "tailwind-scrollbar";
 import type { Config } from "tailwindcss";
 import plugin from "tailwindcss/plugin";
 import tailwindcssAnimate from "tailwindcss-animate";
-import { colors } from "./src/components/styles/colors";
+import { colors } from "./src/components/styles/colors.ts";
+import scrollbar from "./tailwind.scrollbar.ts";
+import tailwind3Preset from "./tailwind.v3-preset.ts";
 
 const SMOOTH_SHADOW_SM =
   "0 18px 47px 0 color-mix(in srgb, var(--smooth-shadow-color) 3%, transparent), 0 7.5px 19px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 4px 10.5px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 2.3px 5.8px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 1.2px 3.1px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 0.5px 1.3px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent)";
@@ -18,7 +19,7 @@ const smoothShadowRing = plugin(function smoothShadowRing({
       "--smooth-ring-color": "rgba(0, 0, 0, 0.05)",
       "--smooth-ring-width": "1px",
     },
-    '.dark, .dark-mode, [data-theme="dark"]': {
+    ".dark": {
       "--smooth-ring-color": "rgba(255, 255, 255, 0.18)",
     },
   });
@@ -51,8 +52,152 @@ const grainTexture = plugin(function grainTexture({ addUtilities }) {
   });
 });
 
+const textShadow = plugin(function textShadow({ matchUtilities, theme }) {
+  matchUtilities(
+    {
+      "text-shadow": (value) => ({ textShadow: value }),
+    },
+    { values: theme("textShadow") },
+  );
+});
+
+// Every colour role is an RGB triplet in src/app/globals.css. Reading it
+// through `rgb(... / <alpha-value>)` keeps opacity modifiers (`bg-surface/50`)
+// working in Tailwind 3.
+function role(name: string) {
+  return `rgb(var(--color-${name}) / <alpha-value>)`;
+}
+
+const COLOR_ROLES = [
+  "canvas",
+  "surface",
+  "surface-muted",
+  "surface-hover",
+  "surface-active",
+  "overlay",
+  "foreground-base",
+  "foreground-strong",
+  "foreground-emphasis",
+  "foreground-body",
+  "foreground-secondary",
+  "foreground-tertiary",
+  "foreground-subtle",
+  "foreground-disabled",
+  "placeholder",
+  "separator",
+  "border-base",
+  "border-strong",
+  "focus",
+  "action",
+  "action-hover",
+  "action-foreground",
+  "brand",
+  "brand-hover",
+  "accent-surface",
+  "accent-strong",
+  "error",
+  "error-hover",
+  "error-foreground",
+  "error-surface",
+  "warning",
+  "warning-foreground",
+  "warning-surface",
+  "warning-border",
+  "success",
+  "success-foreground",
+  "success-surface",
+  "info",
+  "info-foreground",
+  "info-surface",
+  "builder-canvas",
+  "builder-grid",
+  "node-surface",
+  "node-border",
+  "node-selected",
+  "edge",
+  "handle",
+] as const;
+
+const roleColors = Object.fromEntries(
+  COLOR_ROLES.map((name) => [name, role(name)]),
+);
+
+// Text tokens: one size per role, each bundled with its line-height, so a
+// role is one decision instead of three. Values are what renders today: the
+// Text atom's variants and the raw sizes in wide use. A raw size that sets no
+// line-height today is swapped for `text-<role> leading-inherit`, so the
+// bundled line-height never changes what renders.
+//
+// TODO(tokens): SECRT-3152. Left raw on purpose, still lint warnings: the
+// rare sizes 5, 6, 9, 17, 23, 26, 35, 36, 48 and 64px and fractional rems
+// (0.7, 0.8, 0.85em, 1.3rem, 12.5px). scripts/codemod-tokens.ts snaps them
+// to the nearest role (SNAP_SIZE_TOKENS) when a directory is migrated.
+const fontSize = {
+  tiny: ["0.625rem", { lineHeight: "0.875rem" }],
+  "caption-sm": ["0.6875rem", { lineHeight: "1rem" }],
+  caption: ["0.75rem", { lineHeight: "1.125rem" }],
+  "body-sm": ["0.8125rem", { lineHeight: "1.25rem" }],
+  body: ["0.875rem", { lineHeight: "1.375rem" }],
+  "body-md": ["0.9375rem", { lineHeight: "1.5rem" }],
+  "body-lg": ["1rem", { lineHeight: "1.625rem" }],
+  lead: ["1.25rem", { lineHeight: "1.75rem" }],
+  "heading-sm": ["1.375rem", { lineHeight: "1.5rem" }],
+  heading: ["1.75rem", { lineHeight: "2.5rem" }],
+  title: ["2rem", { lineHeight: "2.5rem" }],
+  display: ["2.75rem", { lineHeight: "3.5rem" }],
+} satisfies Record<string, [string, { lineHeight: string }]>;
+
+// Explicit overrides only. `inherit` reproduces a size class that never set a
+// line-height; the 0.25rem steps cover raw values Tailwind's scale lacks.
+const lineHeight = {
+  inherit: "inherit",
+  "4.5": "1.125rem",
+  "5.5": "1.375rem",
+  "6.5": "1.625rem",
+  "12": "3rem",
+};
+
+const letterSpacing = {
+  display: "-0.04em",
+  heading: "-0.02em",
+  title: "-0.01em",
+  caps: "0.12em",
+  eyebrow: "0.06em",
+};
+
+// Classes Tailwind 3 generated nothing for, which Tailwind 4 would now turn
+// into CSS: bare numbers it accepts without a theme step (`z-12`, `flex-2`,
+// `opacity-1`), an `ease-[...]` arbitrary value Tailwind 3 rejected as
+// ambiguous, and streamdown's Tailwind 4 syntax (`content-(--x)`, a trailing
+// `!`, `wrap-anywhere`). Listing them keeps every element looking as it did;
+// the owning components can drop or fix them on their own.
+const TAILWIND_3_DEAD_CLASSES = [
+  "z-12",
+  "flex-2",
+  "disabled:opacity-1",
+  "ease-[cubic-bezier(0.16,1,0.3,1)]",
+  "ease-[cubic-bezier(0.33,1,0.68,1)]",
+  "data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)]",
+  "data-[state=closed]:ease-[cubic-bezier(0.4,0,1,1)]",
+  "wrap-anywhere",
+  "*:last:after:content-(--streamdown-caret)",
+  // Streamdown's classes below stack variants in Tailwind 4's order, which
+  // reads them the other way round from Tailwind 3; globals.css keeps the
+  // rules Tailwind 3 generated for them.
+  "*:first:mt-0",
+  "*:last:mb-0",
+  "*:last:after:inline",
+  "*:last:after:align-baseline",
+  "dark:bg-(--shiki-dark-bg)!",
+  "dark:text-(--shiki-dark)!",
+];
+
 const config = {
-  darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
+  presets: [tailwind3Preset],
+  blocklist: TAILWIND_3_DEAD_CLASSES,
+  // `dark:` applies under a `.dark` ancestor, the one dark selector. The app
+  // forces the light theme, so no `dark:` class renders today.
+  darkMode: "class",
   content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
   prefix: "",
   theme: {
@@ -69,40 +214,47 @@ const config = {
         mono: ["var(--font-geist-mono)"],
         poppins: ["var(--font-poppins)"],
       },
+      fontSize,
+      lineHeight,
+      letterSpacing,
       colors: {
+        // The custom palette stays registered until DS5 has migrated every
+        // directory: removing it would repaint each raw `zinc-*` class with
+        // Tailwind's default palette.
         ...colors,
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        ...roleColors,
+        border: role("border"),
+        input: role("input"),
+        ring: role("ring"),
+        background: role("background"),
+        foreground: role("foreground"),
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT: role("primary"),
+          foreground: role("primary-foreground"),
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+          DEFAULT: role("secondary"),
+          foreground: role("secondary-foreground"),
         },
         destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
+          DEFAULT: role("destructive"),
+          foreground: role("destructive-foreground"),
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          DEFAULT: role("muted"),
+          foreground: role("muted-foreground"),
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: role("accent"),
+          foreground: role("accent-foreground"),
         },
         popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
+          DEFAULT: role("popover"),
+          foreground: role("popover-foreground"),
         },
         card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+          DEFAULT: role("card"),
+          foreground: role("card-foreground"),
         },
         customGray: {
           "100": "#d9d9d9",
@@ -114,14 +266,14 @@ const config = {
           "700": "#272727",
         },
         sidebar: {
-          DEFAULT: "hsl(var(--sidebar-background))",
-          foreground: "hsl(var(--sidebar-foreground))",
-          primary: "hsl(var(--sidebar-primary))",
-          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
-          accent: "hsl(var(--sidebar-accent))",
-          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
-          border: "hsl(var(--sidebar-border))",
-          ring: "hsl(var(--sidebar-ring))",
+          DEFAULT: role("sidebar"),
+          foreground: role("sidebar-foreground"),
+          primary: role("sidebar-primary"),
+          "primary-foreground": role("sidebar-primary-foreground"),
+          accent: role("sidebar-accent"),
+          "accent-foreground": role("sidebar-accent-foreground"),
+          border: role("sidebar-border"),
+          ring: role("sidebar-ring"),
         },
       },
       spacing: {
@@ -182,6 +334,19 @@ const config = {
       },
       boxShadow: {
         subtle: "0px 1px 2px 0px rgba(0,0,0,0.05)",
+        "message-table": "0 1px 2px rgba(0,0,0,0.04)",
+      },
+      backgroundImage: {
+        "message-table-header":
+          "radial-gradient(35% 160% at 8% 0%, rgba(139,92,246,0.05), transparent), radial-gradient(35% 160% at 50% 0%, rgba(99,102,241,0.04), transparent), radial-gradient(35% 160% at 92% 0%, rgba(59,130,246,0.05), transparent), linear-gradient(to bottom, theme(colors.white), theme(colors.zinc.50))",
+      },
+      textShadow: {
+        "message-table-violet":
+          "0 0 6px rgba(139,92,246,0.45), 0 0 18px rgba(139,92,246,0.55)",
+        "message-table-indigo":
+          "0 0 6px rgba(99,102,241,0.45), 0 0 18px rgba(99,102,241,0.55)",
+        "message-table-blue":
+          "0 0 6px rgba(59,130,246,0.45), 0 0 18px rgba(59,130,246,0.55)",
       },
       keyframes: {
         "accordion-down": {
@@ -261,10 +426,6 @@ const config = {
           "60%": { transform: "translateX(-3px)" },
           "80%": { transform: "translateX(3px)" },
         },
-        aurora: {
-          "0%": { backgroundPosition: "50% 50%, 50% 50%" },
-          "100%": { backgroundPosition: "350% 50%, 350% 50%" },
-        },
         "marquee-x": {
           "0%": { transform: "translateX(0)" },
           "100%": { transform: "translateX(-50%)" },
@@ -303,7 +464,6 @@ const config = {
         shimmer: "shimmer 4s ease-in-out infinite",
         loader: "loader 1s infinite",
         shake: "shake 0.5s ease-in-out",
-        aurora: "aurora 60s linear infinite",
         "marquee-x": "marquee-x 40s linear infinite",
         "progress-bar":
           "progress-bar 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite",
@@ -324,9 +484,10 @@ const config = {
   },
   plugins: [
     tailwindcssAnimate,
-    scrollbar({ nocompatible: true }),
+    scrollbar,
     smoothShadowRing,
     grainTexture,
+    textShadow,
   ],
 } satisfies Config;
 
