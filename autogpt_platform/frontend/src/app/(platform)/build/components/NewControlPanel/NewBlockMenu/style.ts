@@ -1,6 +1,11 @@
+// The base the block menu's rows and chips draw on: the legacy-default
+// Button they were built from, minus the fill, shadow, height and padding
+// every one of them sets itself. Each keeps its own rounded-rectangle look.
+export const blockMenuButtonBase =
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-body font-medium leading-5 text-action-foreground transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50";
+
 export const blockMenuContainerStyle =
-  // TODO(tokens): no fitting role for scrollbar-thumb-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour), border-strong (a border colour)
-  "scrollbar-thin scrollbar-thumb-zinc-300 scrollbar-track-transparent w-full px-4 pb-4 space-y-3 h-full overflow-y-auto pt-4 transition-all duration-200";
+  "scrollbar-thin scrollbar-thumb-border-strong scrollbar-track-transparent w-full px-4 pb-4 space-y-3 h-full overflow-y-auto pt-4 transition-all duration-200";
 
 // The drag image is a detached DOM node, so <Text> can't render it; its type
 // comes from the role classes below. leading-inherit keeps the line-height it

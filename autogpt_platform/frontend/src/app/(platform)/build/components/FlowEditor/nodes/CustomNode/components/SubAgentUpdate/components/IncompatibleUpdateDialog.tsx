@@ -60,11 +60,7 @@ export function IncompatibleUpdateDialog({
     >
       <Dialog.Content>
         <div className="space-y-4">
-          <Text
-            variant="body-tight"
-            // TODO(tokens): no exact role: text-gray-600 #4B5563; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-            className="text-gray-600 dark:text-gray-400"
-          >
+          <Text variant="body-tight" tone="secondary">
             Updating <strong>{beautifyString(agentName)}</strong> from v
             {currentVersion} to v{latestVersion} will break some connections.
           </Text>
@@ -81,8 +77,7 @@ export function IncompatibleUpdateDialog({
               rightIcon={
                 <Icon
                   icon={PlusSignCircleIcon}
-                  // TODO(tokens): no exact role: text-green-500 #16A34A
-                  className="h-4 w-4 text-green-500"
+                  className="h-4 w-4 text-success"
                 />
               }
               rightTitle="Added"
@@ -102,8 +97,7 @@ export function IncompatibleUpdateDialog({
               rightIcon={
                 <Icon
                   icon={PlusSignCircleIcon}
-                  // TODO(tokens): no exact role: text-green-500 #16A34A
-                  className="h-4 w-4 text-green-500"
+                  className="h-4 w-4 text-success"
                 />
               }
               rightTitle="Added"
@@ -153,8 +147,7 @@ export function IncompatibleUpdateDialog({
               variant="primary"
               size="small"
               onClick={onConfirm}
-              // TODO(tokens): no exact role: bg-amber-600 #D97706; no fitting role for border-amber-700 #B45309; #B45309 is warning-foreground (a text colour); no fitting role for hover:bg-amber-700 #B45309; #B45309 is warning-foreground (a text colour)
-              className="border-amber-700 bg-amber-600 hover:bg-amber-700"
+              className="border-warning-foreground bg-warning-foreground hover:bg-warning-foreground"
             >
               Update Anyway
             </Button>
@@ -185,10 +178,7 @@ function TwoColumnSection({
   rightItems,
 }: TwoColumnSectionProps) {
   return (
-    <div
-      // TODO(tokens): no fitting role for border-gray-200 #E5E7EB; #E5E7EB is sidebar-border, whose .dark value (39 39 42) differs (QUALITY 43, SECRT-3154); dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-gray-700 #374151
-      className="rounded-md border border-gray-200 p-3 dark:border-gray-700"
-    >
+    <div className="rounded-md border border-border-base p-3">
       <Text variant="large-medium-tight" as="span" tone="inherit">
         {title}
       </Text>
@@ -197,9 +187,9 @@ function TwoColumnSection({
         <div className="min-w-0">
           <Text
             variant="body-tight"
+            tone="muted"
             as="div"
-            // TODO(tokens): no exact role: text-gray-500 #6B7280; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-            className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
+            className="flex items-center gap-1.5"
           >
             {leftIcon}
             <span>{leftTitle}</span>
@@ -207,30 +197,18 @@ function TwoColumnSection({
           <ul className="mt-1.5 space-y-1">
             {leftItems.length > 0 ? (
               leftItems.map((item) => (
-                <Text
-                  variant="body-tight"
-                  as="li"
-                  key={item}
-                  // TODO(tokens): no exact role: text-gray-700 #374151; dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-gray-300 #D1D5DB
-                  className="text-gray-700 dark:text-gray-300"
-                >
+                <Text variant="body-tight" tone="body" as="li" key={item}>
                   <Text
                     variant="small-mono-tight"
                     as="code"
-                    // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-red-900/30 #641D1D, dark:text-red-300 #F69999
-                    className="rounded bg-error-surface px-1 py-0.5 text-error-foreground dark:bg-red-900/30 dark:text-red-300"
+                    className="rounded bg-error-surface px-1 py-0.5 text-error-foreground"
                   >
                     {item}
                   </Text>
                 </Text>
               ))
             ) : (
-              <Text
-                variant="body-tight-italic"
-                as="li"
-                // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle); dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-gray-500 #6B7280
-                className="text-gray-400 dark:text-gray-500"
-              >
+              <Text variant="body-tight-italic" tone="subtle" as="li">
                 None
               </Text>
             )}
@@ -241,9 +219,9 @@ function TwoColumnSection({
         <div className="min-w-0">
           <Text
             variant="body-tight"
+            tone="muted"
             as="div"
-            // TODO(tokens): no exact role: text-gray-500 #6B7280; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-            className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
+            className="flex items-center gap-1.5"
           >
             {rightIcon}
             <span>{rightTitle}</span>
@@ -251,30 +229,18 @@ function TwoColumnSection({
           <ul className="mt-1.5 space-y-1">
             {rightItems.length > 0 ? (
               rightItems.map((item) => (
-                <Text
-                  variant="body-tight"
-                  as="li"
-                  key={item}
-                  // TODO(tokens): no exact role: text-gray-700 #374151; dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-gray-300 #D1D5DB
-                  className="text-gray-700 dark:text-gray-300"
-                >
+                <Text variant="body-tight" tone="body" as="li" key={item}>
                   <Text
                     variant="small-mono-tight"
                     as="code"
-                    // TODO(tokens): dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-green-900/30 #09441F, dark:text-green-300 #63C186
-                    className="rounded bg-success-surface px-1 py-0.5 text-success-foreground dark:bg-green-900/30 dark:text-green-300"
+                    className="rounded bg-success-surface px-1 py-0.5 text-success-foreground"
                   >
                     {item}
                   </Text>
                 </Text>
               ))
             ) : (
-              <Text
-                variant="body-tight-italic"
-                as="li"
-                // TODO(tokens): no fitting role for text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle); dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-gray-500 #6B7280
-                className="text-gray-400 dark:text-gray-500"
-              >
+              <Text variant="body-tight-italic" tone="subtle" as="li">
                 None
               </Text>
             )}
@@ -299,38 +265,30 @@ function SingleColumnSection({
   items,
 }: SingleColumnSectionProps) {
   return (
-    <div
-      // TODO(tokens): no fitting role for border-gray-200 #E5E7EB; #E5E7EB is sidebar-border, whose .dark value (39 39 42) differs (QUALITY 43, SECRT-3154); dark-mode classes kept as written (QUALITY 43): no exact role: dark:border-gray-700 #374151
-      className="rounded-md border border-gray-200 p-3 dark:border-gray-700"
-    >
+    <div className="rounded-md border border-border-base p-3">
       <div className="flex items-center gap-2">
         {icon}
         <Text variant="large-medium-tight" as="span" tone="inherit">
           {title}
         </Text>
       </div>
-      <Text
-        variant="body-tight"
-        // TODO(tokens): no exact role: text-gray-500 #6B7280; dark-mode classes kept as written (QUALITY 43): no fitting role for dark:text-gray-400 #9CA3AF; #9CA3AF is handle (the builder node handle)
-        className="mt-1 text-gray-500 dark:text-gray-400"
-      >
+      <Text variant="body-tight" tone="muted" className="mt-1">
         {description}
       </Text>
       <ul className="mt-2 space-y-1">
         {items.map((item) => (
           <Text
             variant="body-tight"
+            tone="body"
             as="li"
             key={item}
-            // TODO(tokens): no exact role: text-gray-700 #374151; dark-mode classes kept as written (QUALITY 43): no exact role: dark:text-gray-300 #D1D5DB
-            className="ml-4 list-disc text-gray-700 dark:text-gray-300"
+            className="ml-4 list-disc"
           >
             <Text
               variant="small-mono-tight"
               tone="inherit"
               as="code"
-              // TODO(tokens): no exact role: bg-gray-100 #F3F4F6; dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-gray-800 #1F2937
-              className="rounded bg-gray-100 px-1 py-0.5 dark:bg-gray-800"
+              className="rounded bg-surface-hover px-1 py-0.5"
             >
               {item}
             </Text>

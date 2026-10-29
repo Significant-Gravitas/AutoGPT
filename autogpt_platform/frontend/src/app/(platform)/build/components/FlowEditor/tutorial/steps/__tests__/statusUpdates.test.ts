@@ -76,7 +76,7 @@ describe("tutorial requirement and connection status", () => {
     step.when?.show?.();
 
     vi.advanceTimersByTime(300);
-    expect(classes("#req-a")).toContain("text-amber-600");
+    expect(classes("#req-a")).toContain("text-warning-foreground");
     expect(classes("#requirements-box")).toContain("bg-warning-surface");
 
     nodes.first = {
@@ -86,16 +86,16 @@ describe("tutorial requirement and connection status", () => {
     vi.advanceTimersByTime(300);
     expect(classes("#req-a")).toContain("text-success");
     expect(classes("#requirements-box")).toEqual(
-      expect.arrayContaining(["bg-success-surface", "ring-green-200"]),
+      expect.arrayContaining(["bg-success-surface", "ring-success/40"]),
     );
     expect(classes("#requirements-title")).toContain("text-success");
 
     nodes.first = { id: "n1", data: { hardcodedValues: { a: 1 } } };
     vi.advanceTimersByTime(300);
     expect(classes("#requirements-box")).toEqual(
-      expect.arrayContaining(["bg-warning-surface", "ring-amber-200"]),
+      expect.arrayContaining(["bg-warning-surface", "ring-warning-border"]),
     );
-    expect(classes("#requirements-title")).toContain("text-amber-600");
+    expect(classes("#requirements-title")).toContain("text-warning-foreground");
     step.when?.hide?.();
   });
 
@@ -114,7 +114,7 @@ describe("tutorial requirement and connection status", () => {
     };
     vi.advanceTimersByTime(300);
     expect(classes("#second-calc-requirements-box")).toEqual(
-      expect.arrayContaining(["bg-success-surface", "ring-green-200"]),
+      expect.arrayContaining(["bg-success-surface", "ring-success/40"]),
     );
     expect(classes("#second-calc-requirements-title")).toContain(
       "text-success",
@@ -123,7 +123,7 @@ describe("tutorial requirement and connection status", () => {
     nodes.second = { id: "n2", data: { hardcodedValues: {} } };
     vi.advanceTimersByTime(300);
     expect(classes("#second-calc-requirements-box")).toEqual(
-      expect.arrayContaining(["bg-warning-surface", "ring-amber-200"]),
+      expect.arrayContaining(["bg-warning-surface", "ring-warning-border"]),
     );
     step.when?.hide?.();
   });
@@ -161,7 +161,7 @@ describe("tutorial requirement and connection status", () => {
       const step = mount(steps, id);
       step.when?.show?.();
       expect(classes(status)).toEqual(
-        expect.arrayContaining(["bg-warning-surface", "text-amber-600"]),
+        expect.arrayContaining(["bg-warning-surface", "text-warning-foreground"]),
       );
 
       useEdgeStore.setState({
