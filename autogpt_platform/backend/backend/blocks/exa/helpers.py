@@ -1,211 +1,112 @@
-from enum import Enum
-from typing import Any, Dict, Literal, Optional, Union
+"""Shared helpers for the Exa blocks.
 
-from pydantic import model_validator
+The content-option models and payload builders live in ``content_settings.py``
+and ``content_payload.py``, and the response models in ``result_models.py``;
+they are re-exported here because blocks and saved imports use these names.
+This module itself holds the cost models and billing helpers.
+"""
+
+from typing import Any
 
 from backend.data.model import NodeExecutionStats
-from backend.sdk import BaseModel, Block, MediaFileType, SchemaField
+from backend.sdk import BaseModel, Block, SchemaField
+
+from .content_payload import (
+    process_contents_settings,
+    process_context_field,
+    process_highlights,
+    process_text_field,
+)
+from .content_settings import (
+    ContentSettings,
+    ContextAdvanced,
+    ContextDisabled,
+    ContextEnabled,
+    ExtrasSettings,
+    HighlightSettings,
+    LivecrawlTypes,
+    PageSection,
+    SummarySettings,
+    TextAdvanced,
+    TextDisabled,
+    TextEnabled,
+    TextVerbosity,
+)
+from .result_models import (
+    ExaSearchEntity,
+    ExaSearchExtras,
+    ExaSearchResults,
+    GroundingCitation,
+    OutputGrounding,
+    RichImageLink,
+    SearchNotice,
+    SearchSynthesis,
+    SearchWarning,
+)
+
+__all__ = [
+    "ContentSettings",
+    "ContextAdvanced",
+    "ContextDisabled",
+    "ContextEnabled",
+    "CostBreakdown",
+    "CostBreakdownItem",
+    "CostDollars",
+    "CostDollarsContents",
+    "CostDollarsSearch",
+    "ExaSearchEntity",
+    "ExaSearchExtras",
+    "ExaSearchResults",
+    "ExtrasSettings",
+    "GroundingCitation",
+    "HighlightSettings",
+    "LivecrawlTypes",
+    "OutputGrounding",
+    "PageSection",
+    "PerPagePrices",
+    "PerRequestPrices",
+    "RichImageLink",
+    "SearchNotice",
+    "SearchSynthesis",
+    "SearchWarning",
+    "SummarySettings",
+    "TextAdvanced",
+    "TextDisabled",
+    "TextEnabled",
+    "TextVerbosity",
+    "extract_exa_cost_usd",
+    "merge_exa_cost",
+    "parse_cost_dollars",
+    "process_contents_settings",
+    "process_context_field",
+    "process_highlights",
+    "process_text_field",
+]
 
 
-class LivecrawlTypes(str, Enum):
-    NEVER = "never"
-    FALLBACK = "fallback"
-    ALWAYS = "always"
-    PREFERRED = "preferred"
-
-
-class TextEnabled(BaseModel):
-    discriminator: Literal["enabled"] = "enabled"
-
-
-class TextDisabled(BaseModel):
-    discriminator: Literal["disabled"] = "disabled"
-
-
-class TextAdvanced(BaseModel):
-    discriminator: Literal["advanced"] = "advanced"
-    max_characters: Optional[int] = SchemaField(
-        default=None,
-        description="Maximum number of characters to return",
-        placeholder="1000",
+class CostDollarsSearch(BaseModel):
+    neural: float | None = SchemaField(
+        default=None, description="Cost of neural search operations"
     )
-    include_html_tags: bool = SchemaField(
-        default=False,
-        description="Include HTML tags in the response, helps LLMs understand text structure",
-        placeholder="False",
-    )
-
-
-class HighlightSettings(BaseModel):
-    num_sentences: int = SchemaField(
-        default=1,
-        description="Number of sentences per highlight",
-        placeholder="1",
-        ge=1,
-    )
-    highlights_per_url: int = SchemaField(
-        default=1,
-        description="Number of highlights per URL",
-        placeholder="1",
-        ge=1,
-    )
-    query: Optional[str] = SchemaField(
-        default=None,
-        description="Custom query to direct the LLM's selection of highlights",
-        placeholder="Key advancements",
-    )
-
-
-class SummarySettings(BaseModel):
-    query: Optional[str] = SchemaField(
-        default=None,
-        description="Custom query for the LLM-generated summary",
-        placeholder="Main developments",
-    )
-    output_schema: Optional[dict] = SchemaField(
-        default=None,
-        description="JSON schema for structured output from summary",
-        advanced=True,
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _validate_backward_compat(cls, data: Any) -> Any:
-        """Handle backward compatibility with 'schema' -> 'output_schema' rename."""
-        if isinstance(data, dict) and "schema" in data and "output_schema" not in data:
-            data = data.copy()
-            data["output_schema"] = data.pop("schema")
-        return data
-
-
-class ExtrasSettings(BaseModel):
-    links: int = SchemaField(
-        default=0,
-        description="Number of URLs to return from each webpage",
-        placeholder="1",
-        ge=0,
-    )
-    image_links: int = SchemaField(
-        default=0,
-        description="Number of images to return for each result",
-        placeholder="1",
-        ge=0,
+    keyword: float | None = SchemaField(
+        default=None, description="Cost of keyword search operations"
     )
 
 
-class ContextEnabled(BaseModel):
-    discriminator: Literal["enabled"] = "enabled"
-
-
-class ContextDisabled(BaseModel):
-    discriminator: Literal["disabled"] = "disabled"
-
-
-class ContextAdvanced(BaseModel):
-    discriminator: Literal["advanced"] = "advanced"
-    max_characters: Optional[int] = SchemaField(
-        default=None,
-        description="Maximum character limit for context string",
-        placeholder="10000",
+class CostDollarsContents(BaseModel):
+    text: float | None = SchemaField(
+        default=None, description="Cost of text extraction"
+    )
+    highlights: float | None = SchemaField(
+        default=None, description="Cost of highlight extraction"
+    )
+    summary: float | None = SchemaField(
+        default=None, description="Cost of per-result summaries"
     )
 
 
-class ContentSettings(BaseModel):
-    text: Optional[Union[bool, TextEnabled, TextDisabled, TextAdvanced]] = SchemaField(
-        default=None,
-        description="Text content retrieval. Boolean for simple enable/disable or object for advanced settings",
-    )
-    highlights: Optional[HighlightSettings] = SchemaField(
-        default=None,
-        description="Text snippets most relevant from each page",
-    )
-    summary: Optional[SummarySettings] = SchemaField(
-        default=None,
-        description="LLM-generated summary of the webpage",
-    )
-    livecrawl: Optional[LivecrawlTypes] = SchemaField(
-        default=None,
-        description="Livecrawling options: never, fallback, always, preferred",
-        advanced=True,
-    )
-    livecrawl_timeout: Optional[int] = SchemaField(
-        default=None,
-        description="Timeout for livecrawling in milliseconds",
-        placeholder="10000",
-        advanced=True,
-    )
-    subpages: Optional[int] = SchemaField(
-        default=None,
-        description="Number of subpages to crawl",
-        placeholder="0",
-        ge=0,
-        advanced=True,
-    )
-    subpage_target: Optional[Union[str, list[str]]] = SchemaField(
-        default=None,
-        description="Keyword(s) to find specific subpages of search results",
-        advanced=True,
-    )
-    extras: Optional[ExtrasSettings] = SchemaField(
-        default=None,
-        description="Extra parameters for additional content",
-        advanced=True,
-    )
-    context: Optional[Union[bool, ContextEnabled, ContextDisabled, ContextAdvanced]] = (
-        SchemaField(
-            default=None,
-            description="Format search results into a context string for LLMs",
-            advanced=True,
-        )
-    )
-
-
-# Shared result models
-class ExaSearchExtras(BaseModel):
-    links: list[str] = SchemaField(
-        default_factory=list, description="Array of links from the search result"
-    )
-    imageLinks: list[str] = SchemaField(
-        default_factory=list, description="Array of image links from the search result"
-    )
-
-
-class ExaSearchResults(BaseModel):
-    title: str | None = None
-    url: str | None = None
-    publishedDate: str | None = None
-    author: str | None = None
-    id: str
-    image: MediaFileType | None = None
-    favicon: MediaFileType | None = None
-    text: str | None = None
-    highlights: list[str] = SchemaField(default_factory=list)
-    highlightScores: list[float] = SchemaField(default_factory=list)
-    summary: str | None = None
-    subpages: list[dict] = SchemaField(default_factory=list)
-    extras: ExaSearchExtras | None = None
-
-    @classmethod
-    def from_sdk(cls, sdk_result) -> "ExaSearchResults":
-        """Convert SDK Result (dataclass) to our Pydantic model."""
-        return cls(
-            id=getattr(sdk_result, "id", ""),
-            url=getattr(sdk_result, "url", None),
-            title=getattr(sdk_result, "title", None),
-            author=getattr(sdk_result, "author", None),
-            publishedDate=getattr(sdk_result, "published_date", None),
-            text=getattr(sdk_result, "text", None),
-            highlights=getattr(sdk_result, "highlights", None) or [],
-            highlightScores=getattr(sdk_result, "highlight_scores", None) or [],
-            summary=getattr(sdk_result, "summary", None),
-            subpages=getattr(sdk_result, "subpages", None) or [],
-            image=getattr(sdk_result, "image", None),
-            favicon=getattr(sdk_result, "favicon", None),
-            extras=getattr(sdk_result, "extras", None),
-        )
-
-
-# Cost tracking models
+# Legacy breakdown models: Exa no longer returns these shapes; kept so saved
+# graphs and the CostDollars output schema stay stable.
 class CostBreakdown(BaseModel):
     keywordSearch: float = SchemaField(default=0.0)
     neuralSearch: float = SchemaField(default=0.0)
@@ -235,129 +136,39 @@ class PerPagePrices(BaseModel):
 
 
 class CostDollars(BaseModel):
-    total: float = SchemaField(description="Total dollar cost for your request")
+    total: float = SchemaField(description="Estimated total dollar cost of the request")
+    search: CostDollarsSearch | None = SchemaField(
+        default=None, description="Search cost by retrieval mode, when reported"
+    )
+    summary: float | None = SchemaField(
+        default=None, description="Cost of synthesized output, when reported"
+    )
+    contents: CostDollarsContents | None = SchemaField(
+        default=None, description="Content retrieval cost breakdown, when reported"
+    )
     breakDown: list[CostBreakdownItem] = SchemaField(
-        default_factory=list, description="Breakdown of costs by operation type"
+        default_factory=list,
+        description="Legacy: no longer returned by Exa; use search/contents",
     )
     perRequestPrices: PerRequestPrices = SchemaField(
         default_factory=PerRequestPrices,
-        description="Standard price per request for different operations",
+        description="Legacy: historical list prices, not returned by Exa",
     )
     perPagePrices: PerPagePrices = SchemaField(
         default_factory=PerPagePrices,
-        description="Standard price per page for different content operations",
+        description="Legacy: historical list prices, not returned by Exa",
     )
 
 
-# Helper functions for payload processing
-def process_text_field(
-    text: Union[bool, TextEnabled, TextDisabled, TextAdvanced, None],
-) -> Optional[Union[bool, Dict[str, Any]]]:
-    """Process text field for API payload."""
-    if text is None:
+def parse_cost_dollars(data: dict[str, Any]) -> CostDollars | None:
+    """Parse ``costDollars`` from a raw Exa response, or None when absent."""
+    raw = data.get("costDollars")
+    if not isinstance(raw, dict) or raw.get("total") is None:
         return None
-
-    # Handle backward compatibility with boolean
-    if isinstance(text, bool):
-        return text
-    elif isinstance(text, TextDisabled):
-        return False
-    elif isinstance(text, TextEnabled):
-        return True
-    elif isinstance(text, TextAdvanced):
-        text_dict = {}
-        if text.max_characters:
-            text_dict["maxCharacters"] = text.max_characters
-        if text.include_html_tags:
-            text_dict["includeHtmlTags"] = text.include_html_tags
-        return text_dict if text_dict else True
-    return None
+    return CostDollars.model_validate(raw)
 
 
-def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, Any]:
-    """Process ContentSettings into API payload format."""
-    if not contents:
-        return {}
-
-    content_settings = {}
-
-    # Handle text field (can be boolean or object)
-    text_value = process_text_field(contents.text)
-    if text_value is not None:
-        content_settings["text"] = text_value
-
-    # Handle highlights
-    if contents.highlights is not None:
-        highlights_dict: Dict[str, Any] = {
-            "numSentences": contents.highlights.num_sentences,
-            "highlightsPerUrl": contents.highlights.highlights_per_url,
-        }
-        if contents.highlights.query is not None:
-            highlights_dict["query"] = contents.highlights.query
-        content_settings["highlights"] = highlights_dict
-
-    if contents.summary is not None:
-        summary_dict = {}
-        if contents.summary.query is not None:
-            summary_dict["query"] = contents.summary.query
-        if contents.summary.output_schema is not None:
-            summary_dict["schema"] = contents.summary.output_schema
-        content_settings["summary"] = summary_dict
-
-    if contents.livecrawl is not None:
-        content_settings["livecrawl"] = contents.livecrawl.value
-
-    if contents.livecrawl_timeout is not None:
-        content_settings["livecrawlTimeout"] = contents.livecrawl_timeout
-
-    if contents.subpages is not None:
-        content_settings["subpages"] = contents.subpages
-
-    if contents.subpage_target is not None:
-        content_settings["subpageTarget"] = contents.subpage_target
-
-    if contents.extras is not None:
-        extras_dict = {}
-        # ``links``/``image_links`` are non-optional int counts (default 0); a
-        # value of 0 means "don't request any", so it must be omitted rather
-        # than sent as ``0`` to the Exa API.
-        if contents.extras.links > 0:
-            extras_dict["links"] = contents.extras.links
-        if contents.extras.image_links > 0:
-            extras_dict["imageLinks"] = contents.extras.image_links
-        content_settings["extras"] = extras_dict
-
-    context_value = process_context_field(contents.context)
-    if context_value is not None:
-        content_settings["context"] = context_value
-
-    return content_settings
-
-
-def process_context_field(
-    context: Union[bool, dict, ContextEnabled, ContextDisabled, ContextAdvanced, None],
-) -> Optional[Union[bool, Dict[str, int]]]:
-    """Process context field for API payload."""
-    if context is None:
-        return None
-
-    # Handle backward compatibility with boolean
-    if isinstance(context, bool):
-        return context if context else None
-    elif isinstance(context, dict) and "maxCharacters" in context:
-        return {"maxCharacters": context["maxCharacters"]}
-    elif isinstance(context, ContextDisabled):
-        return None  # Don't send context field at all when disabled
-    elif isinstance(context, ContextEnabled):
-        return True
-    elif isinstance(context, ContextAdvanced):
-        if context.max_characters:
-            return {"maxCharacters": context.max_characters}
-        return True
-    return None
-
-
-def extract_exa_cost_usd(response: Any) -> Optional[float]:
+def extract_exa_cost_usd(response: Any) -> float | None:
     """Return ``cost_dollars.total`` (USD) from an Exa SDK response, or None.
 
     Handles dataclass/pydantic responses (``response.cost_dollars.total``),

@@ -5,10 +5,10 @@ This module provides dedicated polling blocks for waiting on webset operations
 to complete, with progress tracking and timeout management.
 """
 
-import asyncio
 import time
+from asyncio import sleep
 from enum import Enum
-from typing import Any, Dict
+from typing import Any
 
 from exa_py import AsyncExa
 from pydantic import BaseModel
@@ -27,10 +27,12 @@ from backend.sdk import (
 
 from ._config import exa
 from .helpers import merge_exa_cost
+from .websets_api import ExaWebsetsBlockBase, segment
 
 # Import WebsetItemModel for use in enrichment samples
 # This is safe as websets_items doesn't import from websets_polling
 from .websets_items import WebsetItemModel
+from .websets_types import ApiSearchProgress, ApiWebset, ApiWebsetSearch, recall_summary
 
 
 # Model for sample enrichment data
@@ -39,18 +41,26 @@ class SampleEnrichmentModel(BaseModel):
 
     item_id: str
     item_title: str
-    enrichment_data: Dict[str, Any]
+    enrichment_data: dict[str, Any]
 
 
 class WebsetTargetStatus(str, Enum):
     IDLE = "idle"
-    COMPLETED = "completed"
+    COMPLETED = "completed"  # Legacy: webset status has no 'completed'; waits for idle
     RUNNING = "running"
     PAUSED = "paused"
     ANY_COMPLETE = "any_complete"  # Either idle or completed
 
 
-class ExaWaitForWebsetBlock(Block):
+# Targets that mean "all work finished", which for a webset is status 'idle'.
+IDLE_TARGETS = (
+    WebsetTargetStatus.IDLE,
+    WebsetTargetStatus.COMPLETED,
+    WebsetTargetStatus.ANY_COMPLETE,
+)
+
+
+class ExaWaitForWebsetBlock(ExaWebsetsBlockBase):
     """Wait for a webset to reach a specific status with progress tracking."""
 
     class Input(BlockSchemaInput):
@@ -63,7 +73,7 @@ class ExaWaitForWebsetBlock(Block):
         )
         target_status: WebsetTargetStatus = SchemaField(
             default=WebsetTargetStatus.IDLE,
-            description="Status to wait for (idle=all operations complete, completed=search done, running=actively processing)",
+            description="Status to wait for: idle (all operations complete), running (actively processing) or paused. 'completed' and 'any_complete' are legacy and wait for idle.",
         )
         timeout: int = SchemaField(
             default=300,
@@ -117,137 +127,45 @@ class ExaWaitForWebsetBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         start_time = time.time()
-        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
-
         try:
-            if input_data.target_status in [
-                WebsetTargetStatus.IDLE,
-                WebsetTargetStatus.ANY_COMPLETE,
-            ]:
-                final_webset = await aexa.websets.wait_until_idle(
-                    id=input_data.webset_id,
+            if input_data.target_status in IDLE_TARGETS:
+                webset = await self._wait_until_idle(
+                    credentials,
+                    input_data.webset_id,
                     timeout=input_data.timeout,
                     poll_interval=input_data.check_interval,
                 )
-                merge_exa_cost(self, final_webset)
-
-                elapsed = time.time() - start_time
-
-                status_str = (
-                    final_webset.status.value
-                    if hasattr(final_webset.status, "value")
-                    else str(final_webset.status)
-                )
-
-                item_count = 0
-                if final_webset.searches:
-                    for search in final_webset.searches:
-                        if search.progress:
-                            item_count += search.progress.found
-
-                # Extract progress if requested
-                search_progress = {}
-                enrichment_progress = {}
-                if input_data.include_progress:
-                    webset_dict = final_webset.model_dump(
-                        by_alias=True, exclude_none=True
-                    )
-                    search_progress = self._extract_search_progress(webset_dict)
-                    enrichment_progress = self._extract_enrichment_progress(webset_dict)
-
-                yield "webset_id", input_data.webset_id
-                yield "final_status", status_str
-                yield "elapsed_time", elapsed
-                yield "item_count", item_count
-                if input_data.include_progress:
-                    yield "search_progress", search_progress
-                    yield "enrichment_progress", enrichment_progress
-                yield "timed_out", False
+                timed_out = False
             else:
-                # For other status targets, manually poll
-                interval = input_data.check_interval
-                while time.time() - start_time < input_data.timeout:
-                    # Get current webset status
-                    webset = await aexa.websets.get(id=input_data.webset_id)
-                    merge_exa_cost(self, webset)
-                    current_status = (
-                        webset.status.value
-                        if hasattr(webset.status, "value")
-                        else str(webset.status)
-                    )
-
-                    # Check if target status reached
-                    if current_status == input_data.target_status.value:
-                        elapsed = time.time() - start_time
-
-                        # Estimate item count from search progress
-                        item_count = 0
-                        if webset.searches:
-                            for search in webset.searches:
-                                if search.progress:
-                                    item_count += search.progress.found
-
-                        search_progress = {}
-                        enrichment_progress = {}
-                        if input_data.include_progress:
-                            webset_dict = webset.model_dump(
-                                by_alias=True, exclude_none=True
-                            )
-                            search_progress = self._extract_search_progress(webset_dict)
-                            enrichment_progress = self._extract_enrichment_progress(
-                                webset_dict
-                            )
-
-                        yield "webset_id", input_data.webset_id
-                        yield "final_status", current_status
-                        yield "elapsed_time", elapsed
-                        yield "item_count", item_count
-                        if input_data.include_progress:
-                            yield "search_progress", search_progress
-                            yield "enrichment_progress", enrichment_progress
-                        yield "timed_out", False
-                        return
-
-                    # Wait before next check with exponential backoff
-                    await asyncio.sleep(interval)
-                    interval = min(interval * 1.5, input_data.max_interval)
-
-                # Timeout reached
-                elapsed = time.time() - start_time
-                webset = await aexa.websets.get(id=input_data.webset_id)
-                merge_exa_cost(self, webset)
-                final_status = (
-                    webset.status.value
-                    if hasattr(webset.status, "value")
-                    else str(webset.status)
-                )
-
-                item_count = 0
-                if webset.searches:
-                    for search in webset.searches:
-                        if search.progress:
-                            item_count += search.progress.found
-
-                search_progress = {}
-                enrichment_progress = {}
-                if input_data.include_progress:
-                    webset_dict = webset.model_dump(by_alias=True, exclude_none=True)
-                    search_progress = self._extract_search_progress(webset_dict)
-                    enrichment_progress = self._extract_enrichment_progress(webset_dict)
-
-                yield "webset_id", input_data.webset_id
-                yield "final_status", final_status
-                yield "elapsed_time", elapsed
-                yield "item_count", item_count
-                if input_data.include_progress:
-                    yield "search_progress", search_progress
-                    yield "enrichment_progress", enrichment_progress
-                yield "timed_out", True
-
-        except asyncio.TimeoutError:
+                webset, timed_out = await self._poll_for_status(credentials, input_data)
+        except TimeoutError:
             raise ValueError(
                 f"Polling timed out after {input_data.timeout} seconds"
             ) from None
+
+        yield "webset_id", input_data.webset_id
+        yield "final_status", webset.status
+        yield "elapsed_time", time.time() - start_time
+        yield "item_count", webset.items_found
+        if input_data.include_progress:
+            webset_dict = webset.model_dump(by_alias=True)
+            yield "search_progress", self._extract_search_progress(webset_dict)
+            yield "enrichment_progress", self._extract_enrichment_progress(webset_dict)
+        yield "timed_out", timed_out
+
+    async def _poll_for_status(
+        self, credentials: APIKeyCredentials, input_data: Input
+    ) -> tuple[ApiWebset, bool]:
+        """Poll with backoff until the target status; return (webset, timed_out)."""
+        start_time = time.time()
+        interval: float = input_data.check_interval
+        while time.time() - start_time < input_data.timeout:
+            webset = await self._get_webset(credentials, input_data.webset_id)
+            if webset.status == input_data.target_status.value:
+                return webset, False
+            await sleep(interval)
+            interval = min(interval * 1.5, input_data.max_interval)
+        return await self._get_webset(credentials, input_data.webset_id), True
 
     def _extract_search_progress(self, webset_data: dict) -> dict:
         """Extract search progress information from webset data."""
@@ -285,7 +203,7 @@ class ExaWaitForWebsetBlock(Block):
         return progress
 
 
-class ExaWaitForSearchBlock(Block):
+class ExaWaitForSearchBlock(ExaWebsetsBlockBase):
     """Wait for a specific webset search to complete with progress tracking."""
 
     class Input(BlockSchemaInput):
@@ -344,99 +262,45 @@ class ExaWaitForSearchBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         start_time = time.time()
-        interval = input_data.check_interval
+        interval: float = input_data.check_interval
         max_interval = 30
-        # Use AsyncExa SDK
-        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+        path = (
+            f"/websets/{segment(input_data.webset_id)}"
+            f"/searches/{segment(input_data.search_id)}"
+        )
 
-        try:
-            while time.time() - start_time < input_data.timeout:
-                # Get current search status using SDK
-                search = await aexa.websets.searches.get(
-                    webset_id=input_data.webset_id, id=input_data.search_id
-                )
-                merge_exa_cost(self, search)
-
-                # Extract status
-                status = (
-                    search.status.value
-                    if hasattr(search.status, "value")
-                    else str(search.status)
-                )
-
-                # Check if search is complete
-                if status in ["completed", "failed", "canceled"]:
-                    elapsed = time.time() - start_time
-
-                    # Extract progress information
-                    progress_dict = {}
-                    if search.progress:
-                        progress_dict = search.progress.model_dump(
-                            by_alias=True, exclude_none=True
-                        )
-
-                    # Extract recall information
-                    recall_info = {}
-                    if search.recall:
-                        recall_dict = search.recall.model_dump(
-                            by_alias=True, exclude_none=True
-                        )
-                        expected = recall_dict.get("expected", {})
-                        recall_info = {
-                            "expected_total": expected.get("total", 0),
-                            "confidence": expected.get("confidence", ""),
-                            "min_expected": expected.get("bounds", {}).get("min", 0),
-                            "max_expected": expected.get("bounds", {}).get("max", 0),
-                            "reasoning": recall_dict.get("reasoning", ""),
-                        }
-
-                    yield "search_id", input_data.search_id
-                    yield "final_status", status
-                    yield "items_found", progress_dict.get("found", 0)
-                    yield "items_analyzed", progress_dict.get("analyzed", 0)
-                    yield "completion_percentage", progress_dict.get("completion", 0)
-                    yield "elapsed_time", elapsed
-                    yield "recall_info", recall_info
-                    yield "timed_out", False
-
-                    return
-
-                # Wait before next check with exponential backoff
-                await asyncio.sleep(interval)
-                interval = min(interval * 1.5, max_interval)
-
-            # Timeout reached
-            elapsed = time.time() - start_time
-
-            # Get last known status
-            search = await aexa.websets.searches.get(
-                webset_id=input_data.webset_id, id=input_data.search_id
+        while time.time() - start_time < input_data.timeout:
+            search = ApiWebsetSearch.model_validate(
+                await self._api(credentials, "GET", path)
             )
-            merge_exa_cost(self, search)
-            final_status = (
-                search.status.value
-                if hasattr(search.status, "value")
-                else str(search.status)
-            )
+            if search.status in ["completed", "failed", "canceled"]:
+                progress = search.progress or ApiSearchProgress()
+                yield "search_id", input_data.search_id
+                yield "final_status", search.status
+                yield "items_found", int(progress.found)
+                yield "items_analyzed", int(progress.analyzed)
+                yield "completion_percentage", int(progress.completion)
+                yield "elapsed_time", time.time() - start_time
+                yield "recall_info", recall_summary(search.recall)
+                yield "timed_out", False
+                return
 
-            progress_dict = {}
-            if search.progress:
-                progress_dict = search.progress.model_dump(
-                    by_alias=True, exclude_none=True
-                )
+            # Wait before next check with exponential backoff
+            await sleep(interval)
+            interval = min(interval * 1.5, max_interval)
 
-            yield "search_id", input_data.search_id
-            yield "final_status", final_status
-            yield "items_found", progress_dict.get("found", 0)
-            yield "items_analyzed", progress_dict.get("analyzed", 0)
-            yield "completion_percentage", progress_dict.get("completion", 0)
-            yield "elapsed_time", elapsed
-            yield "timed_out", True
-
-        except asyncio.TimeoutError:
-            raise ValueError(
-                f"Search polling timed out after {input_data.timeout} seconds"
-            ) from None
+        # Timeout reached: report the last known state
+        search = ApiWebsetSearch.model_validate(
+            await self._api(credentials, "GET", path)
+        )
+        progress = search.progress or ApiSearchProgress()
+        yield "search_id", input_data.search_id
+        yield "final_status", search.status
+        yield "items_found", int(progress.found)
+        yield "items_analyzed", int(progress.analyzed)
+        yield "completion_percentage", int(progress.completion)
+        yield "elapsed_time", time.time() - start_time
+        yield "timed_out", True
 
 
 class ExaWaitForEnrichmentBlock(Block):
@@ -556,7 +420,7 @@ class ExaWaitForEnrichmentBlock(Block):
                     return
 
                 # Wait before next check with exponential backoff
-                await asyncio.sleep(interval)
+                await sleep(interval)
                 interval = min(interval * 1.5, max_interval)
 
             # Timeout reached
@@ -581,7 +445,7 @@ class ExaWaitForEnrichmentBlock(Block):
             yield "elapsed_time", elapsed
             yield "timed_out", True
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise ValueError(
                 f"Enrichment polling timed out after {input_data.timeout} seconds"
             ) from None

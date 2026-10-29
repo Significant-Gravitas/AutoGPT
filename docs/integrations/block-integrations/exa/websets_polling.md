@@ -10,9 +10,9 @@ Wait for a webset enrichment to complete with progress tracking
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block polls an enrichment operation until it completes or times out. It checks status at configurable intervals and can include sample results when done.
+This block polls the enrichment, starting every `check_interval` seconds (default 5) and backing off by 1.5x up to 30, until it is completed, failed or canceled, or `timeout` (default 300, max 1800) passes. On timeout it returns the last status with `timed_out` true instead of failing.
 
-Use this to block workflow execution until enrichments finish, enabling sequential operations that depend on enrichment data being available.
+`items_enriched` and `sample_data` come from the webset's first 5 items only, and only when `sample_results` is on and the enrichment completed; otherwise `items_enriched` is 0. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -56,9 +56,9 @@ Wait for a specific webset search to complete with progress tracking
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block polls a webset search operation until it completes or times out. It provides progress information including items found, items analyzed, and completion percentage.
+This block polls the search, starting every `check_interval` seconds (default 5) and backing off by 1.5x up to 30, until it is completed, failed or canceled, or `timeout` (default 300, max 1800) passes. It returns items found, items analyzed, completion percentage and, once the search has finished, the recall estimate.
 
-Use this when you need search results before proceeding with downstream operations like enrichments or exports.
+On timeout it returns the last known progress with `timed_out` true instead of failing. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -102,9 +102,9 @@ Wait for a webset to reach a specific status with progress tracking
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block polls a webset until it reaches a target status (idle, completed, or running). It uses exponential backoff for efficient polling and provides detailed progress information.
+This block polls a webset until it reaches the target status. For 'idle' (the default) and the legacy 'completed' and 'any_complete', it checks the webset every `check_interval` seconds until it is idle; if it is not idle within `timeout` (default 300, max 1800), the run fails with a timeout error. For 'running' or 'paused' it backs off by 1.5x up to `max_interval` and, on timeout, returns the last status with `timed_out` true.
 
-Use this for general-purpose waiting on webset operations when you don't need to track a specific search or enrichment.
+It returns the final status, elapsed time, the number of items found by the webset's searches and, with `include_progress` on, per-search progress and per-enrichment status. It charges only if Exa's response reports a cost (100 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -112,7 +112,7 @@ Use this for general-purpose waiting on webset operations when you don't need to
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to monitor | str | Yes |
-| target_status | Status to wait for (idle=all operations complete, completed=search done, running=actively processing) | "idle" \| "completed" \| "running" \| "paused" \| "any_complete" | No |
+| target_status | Status to wait for: idle (all operations complete), running (actively processing) or paused. 'completed' and 'any_complete' are legacy and wait for idle. | "idle" \| "completed" \| "running" \| "paused" \| "any_complete" | No |
 | timeout | Maximum time to wait in seconds | int | No |
 | check_interval | Initial interval between status checks in seconds | int | No |
 | max_interval | Maximum interval between checks (for exponential backoff) | int | No |

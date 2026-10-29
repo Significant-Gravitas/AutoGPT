@@ -8,9 +8,15 @@ import pytest
 from backend.blocks.exa.helpers import (
     ContentSettings,
     ExtrasSettings,
+    HighlightSettings,
+    LivecrawlTypes,
+    PageSection,
     SummarySettings,
+    TextAdvanced,
+    TextVerbosity,
     extract_exa_cost_usd,
     merge_exa_cost,
+    parse_cost_dollars,
     process_contents_settings,
 )
 from backend.data.model import NodeExecutionStats
@@ -138,7 +144,7 @@ def test_process_contents_settings_without_summary():
 def test_summary_settings_backward_compatibility_with_schema_alias():
     """Test that SummarySettings accepts 'schema' as an alias for 'output_schema'."""
     # Test that we can create SummarySettings with the old 'schema' key
-    summary = SummarySettings(**{"schema": {"type": "object"}})
+    summary = SummarySettings(schema={"type": "object"})
     assert summary.output_schema == {"type": "object"}
 
     # Test that we can also create with the new 'output_schema' key
@@ -167,3 +173,95 @@ def test_process_contents_settings_includes_positive_extras():
     result = process_contents_settings(contents)
 
     assert result["extras"] == {"imageLinks": 2}
+
+
+def test_default_content_settings_payload_is_empty():
+    """Nothing deprecated (livecrawl, numSentences, ...) is sent by default."""
+    assert process_contents_settings(ContentSettings()) == {}
+
+
+def test_highlights_default_to_adaptive_true():
+    contents = ContentSettings(highlights=HighlightSettings())
+    assert process_contents_settings(contents) == {"highlights": True}
+
+
+def test_legacy_num_sentences_maps_to_max_characters():
+    contents = ContentSettings(
+        highlights=HighlightSettings(num_sentences=2, highlights_per_url=5)
+    )
+    assert process_contents_settings(contents) == {
+        "highlights": {"maxCharacters": 2666}
+    }
+
+
+def test_max_characters_wins_over_num_sentences():
+    contents = ContentSettings(
+        highlights=HighlightSettings(max_characters=700, num_sentences=3)
+    )
+    assert process_contents_settings(contents)["highlights"] == {"maxCharacters": 700}
+
+
+@pytest.mark.parametrize(
+    "livecrawl, max_age, expected",
+    [
+        (LivecrawlTypes.ALWAYS, None, {"maxAgeHours": 0}),
+        (LivecrawlTypes.NEVER, None, {"maxAgeHours": -1}),
+        (LivecrawlTypes.FALLBACK, None, {}),
+        (LivecrawlTypes.PREFERRED, None, {"livecrawl": "preferred"}),
+        (LivecrawlTypes.ALWAYS, 12, {"maxAgeHours": 12}),
+        (None, 0, {"maxAgeHours": 0}),
+    ],
+)
+def test_freshness_never_sends_livecrawl_and_max_age_together(
+    livecrawl, max_age, expected
+):
+    contents = ContentSettings(livecrawl=livecrawl, max_age_hours=max_age)
+    assert process_contents_settings(contents) == expected
+
+
+def test_text_advanced_new_options():
+    contents = ContentSettings(
+        text=TextAdvanced(
+            verbosity=TextVerbosity.STANDARD,
+            include_sections=[PageSection.BODY],
+        )
+    )
+    assert process_contents_settings(contents) == {
+        "text": {"verbosity": "standard", "includeSections": ["body"]}
+    }
+
+
+def test_snapshot_drops_timeout_and_rejects_live_fetch():
+    contents = ContentSettings(snapshot_as_of="2026-01-15", livecrawl_timeout=5000)
+    assert process_contents_settings(contents) == {"snapshotAsOf": "2026-01-15"}
+    with pytest.raises(ValueError, match="Snapshot"):
+        process_contents_settings(
+            ContentSettings(snapshot_as_of="2026-01-15", max_age_hours=0)
+        )
+
+
+@pytest.mark.parametrize(
+    "data, expected_total",
+    [
+        ({"costDollars": {"total": 0.007, "search": {"neural": 0.007}}}, 0.007),
+        (
+            {
+                "costDollars": {
+                    "total": 0.003,
+                    "contents": {"text": 0.001, "summary": 0.002},
+                }
+            },
+            0.003,
+        ),
+        ({"costDollars": {"total": 0.01, "summary": 0.002}}, 0.01),
+        ({}, None),
+        ({"costDollars": "0.005"}, None),
+    ],
+)
+def test_parse_cost_dollars_current_shapes(data, expected_total):
+    cost = parse_cost_dollars(data)
+    if expected_total is None:
+        assert cost is None
+    else:
+        assert cost is not None
+        assert cost.total == pytest.approx(expected_total)

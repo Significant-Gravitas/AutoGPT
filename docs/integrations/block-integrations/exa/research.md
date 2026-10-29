@@ -1,18 +1,18 @@
 # Exa Research
 <!-- MANUAL: file_description -->
-Blocks for creating and managing autonomous research tasks using Exa's Research API.
+Blocks for creating and listing Exa research tasks, which now run on Exa Agent because Exa retired its Research API.
 <!-- END MANUAL -->
 
 ## Exa Create Research
 
 ### What it is
-Create research task with optional waiting - explores web and synthesizes findings with citations
+Create a research task with optional waiting. Legacy: now runs on Exa Agent (Exa retired its Research API); use the 'Exa Agent' block for new workflows.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block creates an asynchronous research task using Exa's Research API. The API autonomously explores the web, searches for relevant information, and synthesizes findings into a comprehensive report with citations.
+Exa retired its Research API, so this block now starts an Exa Agent run (`POST /agent/runs`) with your instructions as the query and your output schema, and the research ID it returns is the Exa Agent run ID. The legacy model picks a fixed Exa Agent effort: `exa-research-fast` runs at low ($0.025), `exa-research` (the default) at medium ($0.10) and `exa-research-pro` at high ($0.50). For other efforts, data sources, input data or cost caps, use the 'Exa Agent' block.
 
-You can choose from different model tiers (fast, standard, pro) depending on your speed vs. depth requirements. The block supports structured output via JSON Schema and can optionally wait for completion to return results immediately.
+With wait for completion on, the block polls the run every 10 seconds until it finishes or the polling timeout (default 600 seconds, up to 3600) passes; on timeout the block fails and the run keeps going on Exa. Once the run finishes, the block charges the run's total cost as reported by Exa, unless another block has already charged you for that run, and returns the text answer and, when the run produced a JSON object, `output_parsed`. With wait for completion off, it returns the research ID, status `pending`, model, instructions and creation time and charges nothing; collect the run with 'Exa Wait For Research' or 'Exa Get Research', and whichever first sees it finished charges it.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -20,7 +20,7 @@ You can choose from different model tiers (fast, standard, pro) depending on you
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | instructions | Research instructions - clearly define what information to find, how to conduct research, and desired output format. | str | Yes |
-| model | Research model: 'fast' for quick results, 'standard' for balanced quality, 'pro' for thorough analysis | "exa-research-fast" \| "exa-research" \| "exa-research-pro" | No |
+| model | Research depth, now mapped to an Exa Agent effort: 'exa-research-fast' runs at low effort ($0.025), 'exa-research' at medium ($0.10), 'exa-research-pro' at high ($0.50). The Exa Agent block offers every effort. | "exa-research-fast" \| "exa-research" \| "exa-research-pro" | No |
 | output_schema | JSON Schema to enforce structured output. When provided, results are validated and returned as parsed JSON. | Dict[str, Any] | No |
 | wait_for_completion | Wait for research to complete before returning. Ensures you get results immediately. | bool | No |
 | polling_timeout | Maximum time to wait for completion in seconds (only if wait_for_completion is True) | int | No |
@@ -30,7 +30,7 @@ You can choose from different model tiers (fast, standard, pro) depending on you
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| research_id | Unique identifier for tracking this research request | str |
+| research_id | Unique identifier for tracking this research request (the Exa Agent run ID) | str |
 | status | Final status of the research | str |
 | model | The research model used | str |
 | instructions | The research instructions provided | str |
@@ -42,61 +42,11 @@ You can choose from different model tiers (fast, standard, pro) depending on you
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Market Research**: Automatically research market trends, competitors, or industry developments with cited sources.
+**Market Research**: Research market trends, competitors or industry developments with cited sources.
 
-**Due Diligence**: Conduct comprehensive background research on companies, people, or technologies.
+**Due Diligence**: Gather background on companies, people or technologies and return it as structured JSON.
 
-**Content Research**: Gather research on topics for articles, reports, or presentations with proper citations.
-<!-- END MANUAL -->
-
----
-
-## Exa Get Research
-
-### What it is
-Get status and results of a research task
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block retrieves the current status and results of a previously created research task. You can check whether the research is still running, completed, or failed.
-
-When the research is complete, the block returns the full output content along with cost breakdown including searches performed, pages crawled, and tokens used. You can also optionally retrieve the detailed event log of research operations.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| research_id | The ID of the research task to retrieve | str | Yes |
-| include_events | Include detailed event log of research operations | bool | No |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| error | Error message if the operation failed | str |
-| research_id | The research task identifier | str |
-| status | Current status: pending, running, completed, canceled, or failed | str |
-| instructions | The original research instructions | str |
-| model | The research model used | str |
-| created_at | When research was created (Unix timestamp in ms) | int |
-| finished_at | When research finished (Unix timestamp in ms, if completed/canceled/failed) | int |
-| output_content | Research output as text (if completed) | str |
-| output_parsed | Structured JSON output matching outputSchema (if provided and completed) | Dict[str, Any] |
-| cost_total | Total cost in USD (if completed) | float |
-| cost_searches | Number of searches performed (if completed) | int |
-| cost_pages | Number of pages crawled (if completed) | int |
-| cost_reasoning_tokens | AI tokens used for reasoning (if completed) | int |
-| error_message | Error message if research failed | str |
-| events | Detailed event log (if include_events was True) | List[Dict[str, Any]] |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Status Monitoring**: Check progress of long-running research tasks that were started asynchronously.
-
-**Result Retrieval**: Fetch completed research results from tasks started earlier in your workflow.
-
-**Cost Tracking**: Review the cost breakdown of completed research for budgeting and optimization.
+**Content Research**: Collect material on a topic for articles, reports or presentations with sources to cite.
 <!-- END MANUAL -->
 
 ---
@@ -104,13 +54,11 @@ When the research is complete, the block returns the full output content along w
 ## Exa List Research
 
 ### What it is
-List all research tasks with pagination support
+List research tasks with pagination support. Legacy: now lists all of your team's Exa Agent runs; use 'List Exa Agent Runs' for new workflows.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block retrieves a list of all your research tasks, ordered by creation time with newest first. It supports pagination for handling large numbers of tasks.
-
-The block returns basic information about each task including its ID, status, instructions, and timestamps. Use this to find specific research tasks or monitor all ongoing research activities.
+Exa retired its Research API, so this block now calls `GET /agent/runs` and returns one page (1-50, default 10) of your team's Exa Agent runs, newest first, in the legacy research task shape. The list includes every Exa Agent run, not only ones created by 'Exa Create Research': `model` shows the legacy model name for low, medium and high runs and the effort name (such as `auto` or `ultra`) for others, and statuses are reported as pending, running, completed, canceled or failed. Exa Agent reports no page or reasoning-token counts, so `num_pages` and `reasoning_tokens` in each task's cost are always 0. Listing is free, but it needs your own Exa API key and fails with a clear message on the platform's shared Exa key, since every user of that key shares one Exa account and would see each other's runs.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -132,55 +80,11 @@ The block returns basic information about each task including its ID, status, in
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Research Management**: View all active and completed research tasks for project management.
+**Research Management**: View active and finished research tasks for project management.
 
-**Task Discovery**: Find previously created research tasks to retrieve their results or check status.
+**Task Discovery**: Find earlier research tasks to retrieve their results or check their status.
 
-**Activity Auditing**: Review research activity history for compliance or reporting purposes.
-<!-- END MANUAL -->
-
----
-
-## Exa Wait For Research
-
-### What it is
-Wait for a research task to complete with configurable timeout
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block polls a research task until it completes or times out. It periodically checks the task status at configurable intervals and returns the final results when done.
-
-The block is useful when you need to block workflow execution until research completes. It returns whether the operation timed out, allowing you to handle incomplete research gracefully.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| research_id | The ID of the research task to wait for | str | Yes |
-| timeout | Maximum time to wait in seconds | int | No |
-| check_interval | Seconds between status checks | int | No |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| error | Error message if the operation failed | str |
-| research_id | The research task identifier | str |
-| final_status | Final status when polling stopped | str |
-| output_content | Research output as text (if completed) | str |
-| output_parsed | Structured JSON output (if outputSchema was provided and completed) | Dict[str, Any] |
-| cost_total | Total cost in USD | float |
-| elapsed_time | Total time waited in seconds | float |
-| timed_out | Whether polling timed out before completion | bool |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Sequential Workflows**: Ensure research completes before proceeding to dependent workflow steps.
-
-**Synchronous Integration**: Convert asynchronous research into synchronous operations for simpler workflow logic.
-
-**Timeout Handling**: Implement research with graceful timeout handling for time-sensitive applications.
+**Activity Auditing**: Review research history and costs for compliance or reporting.
 <!-- END MANUAL -->
 
 ---

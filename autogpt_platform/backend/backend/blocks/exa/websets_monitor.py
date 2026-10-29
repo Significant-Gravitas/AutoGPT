@@ -6,15 +6,12 @@ keep websets updated with fresh data on a schedule.
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
-from exa_py import AsyncExa
-from exa_py.websets.types import Monitor as SdkMonitor
 from pydantic import BaseModel
 
 from backend.sdk import (
     APIKeyCredentials,
-    Block,
     BlockCategory,
     BlockEffect,
     BlockOutput,
@@ -26,7 +23,9 @@ from backend.sdk import (
 
 from ._config import exa
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from .helpers import merge_exa_cost
+from .websets_api import ExaWebsetsBlockBase, segment
+from .websets_fixtures import MONITOR_ID, WEBSET_ID, sample_monitor
+from .websets_payloads import criteria_payload, entity_payload
 
 
 # Mirrored model for stability - don't use SDK types directly in block outputs
@@ -47,45 +46,23 @@ class MonitorModel(BaseModel):
     updated_at: str
 
     @classmethod
-    def from_sdk(cls, monitor: SdkMonitor) -> "MonitorModel":
-        """Convert SDK Monitor to our stable model."""
-        # Extract behavior information
-        behavior_dict = monitor.behavior.model_dump(by_alias=True, exclude_none=True)
-        behavior_type = behavior_dict.get("type", "unknown")
-        behavior_config = behavior_dict.get("config", {})
-
-        # Extract cadence information
-        cadence_dict = monitor.cadence.model_dump(by_alias=True, exclude_none=True)
-        cron_expr = cadence_dict.get("cron", "")
-        timezone = cadence_dict.get("timezone", "Etc/UTC")
-
-        # Extract last run information
-        last_run_dict = {}
-        if monitor.last_run:
-            last_run_dict = monitor.last_run.model_dump(
-                by_alias=True, exclude_none=True
-            )
-
-        # Handle status enum
-        status_str = (
-            monitor.status.value
-            if hasattr(monitor.status, "value")
-            else str(monitor.status)
-        )
-
+    def from_api(cls, monitor: dict[str, Any]) -> "MonitorModel":
+        """Build the stable model from a raw Websets API monitor object."""
+        behavior = monitor.get("behavior") or {}
+        cadence = monitor.get("cadence") or {}
         return cls(
-            id=monitor.id,
-            status=status_str,
-            webset_id=monitor.webset_id,
-            behavior_type=behavior_type,
-            behavior_config=behavior_config,
-            cron_expression=cron_expr,
-            timezone=timezone,
-            next_run_at=monitor.next_run_at.isoformat() if monitor.next_run_at else "",
-            last_run=last_run_dict,
-            metadata=monitor.metadata or {},
-            created_at=monitor.created_at.isoformat() if monitor.created_at else "",
-            updated_at=monitor.updated_at.isoformat() if monitor.updated_at else "",
+            id=monitor.get("id", ""),
+            status=monitor.get("status", ""),
+            webset_id=monitor.get("websetId", ""),
+            behavior_type=behavior.get("type", "unknown"),
+            behavior_config=behavior.get("config") or {},
+            cron_expression=cadence.get("cron", ""),
+            timezone=cadence.get("timezone") or "Etc/UTC",
+            next_run_at=monitor.get("nextRunAt") or "",
+            last_run=monitor.get("lastRun") or {},
+            metadata=monitor.get("metadata") or {},
+            created_at=monitor.get("createdAt") or "",
+            updated_at=monitor.get("updatedAt") or "",
         )
 
 
@@ -94,14 +71,14 @@ class MonitorStatus(str, Enum):
 
     ENABLED = "enabled"
     DISABLED = "disabled"
-    PAUSED = "paused"
+    PAUSED = "paused"  # Legacy: Exa no longer has 'paused'; sent as 'disabled'
 
 
 class MonitorBehaviorType(str, Enum):
     """Type of behavior for a monitor."""
 
     SEARCH = "search"  # Run new searches
-    REFRESH = "refresh"  # Refresh existing items
+    REFRESH = "refresh"  # Legacy: Exa removed refresh monitors; rejected with an error
 
 
 class SearchBehavior(str, Enum):
@@ -111,7 +88,7 @@ class SearchBehavior(str, Enum):
     OVERRIDE = "override"
 
 
-class ExaCreateMonitorBlock(Block):
+class ExaCreateMonitorBlock(ExaWebsetsBlockBase):
     """Create a monitor to automatically keep a webset updated on a schedule."""
 
     class Input(BlockSchemaInput):
@@ -119,18 +96,18 @@ class ExaCreateMonitorBlock(Block):
             description="The Exa integration requires an API Key."
         )
         webset_id: str = SchemaField(
-            description="The ID or external ID of the Webset to monitor",
-            placeholder="webset-id-or-external-id",
+            description="The ID of the Webset to monitor",
+            placeholder="webset-id",
         )
 
         # Schedule configuration
         cron_expression: str = SchemaField(
-            description="Cron expression for scheduling (5 fields, max once per day)",
+            description="When to run, as a 5-field Unix cron expression. Exa allows at most one run per day.",
             placeholder="0 9 * * 1",  # Every Monday at 9 AM
         )
         timezone: str = SchemaField(
             default="Etc/UTC",
-            description="IANA timezone for the schedule",
+            description="IANA timezone the cron expression is read in",
             placeholder="America/New_York",
             advanced=True,
         )
@@ -138,51 +115,56 @@ class ExaCreateMonitorBlock(Block):
         # Behavior configuration
         behavior_type: MonitorBehaviorType = SchemaField(
             default=MonitorBehaviorType.SEARCH,
-            description="Type of monitor behavior (search for new items or refresh existing)",
+            description="What each run does. 'search' finds new items; 'refresh' is legacy (Exa removed it) and fails with an error.",
         )
 
         # Search configuration (for SEARCH behavior)
-        search_query: Optional[str] = SchemaField(
+        search_query: str | None = SchemaField(
             default=None,
-            description="Search query for finding new items (required for search behavior)",
+            description="Query each run searches for (2-10,000 characters). Leave empty to reuse the webset's last search query.",
             placeholder="AI startups that raised funding in the last week",
         )
         search_count: int = SchemaField(
             default=10,
-            description="Number of items to find in each search",
+            description="Maximum number of new items to find per run",
             ge=1,
             le=100,
         )
         search_criteria: list[str] = SchemaField(
             default_factory=list,
-            description="Criteria that items must meet",
+            description="Up to 5 criteria new items must meet. Leave empty to reuse the last search's criteria.",
             advanced=True,
         )
         search_behavior: SearchBehavior = SchemaField(
             default=SearchBehavior.APPEND,
-            description="How new results interact with existing items",
+            description="'append' adds new items to the webset; 'override' re-evaluates existing items against the run's criteria",
             advanced=True,
         )
-        entity_type: Optional[str] = SchemaField(
+        entity_type: str | None = SchemaField(
             default=None,
-            description="Type of entity to search for (company, person, etc.)",
+            description="Kind of item to find: company, person, article, research_paper or custom. Leave empty to reuse the last search's entity.",
+            advanced=True,
+        )
+        entity_description: str | None = SchemaField(
+            default=None,
+            description="What each item is, when entity type is 'custom' (2-200 characters)",
             advanced=True,
         )
 
         # Refresh configuration (for REFRESH behavior)
         refresh_content: bool = SchemaField(
             default=True,
-            description="Refresh content from source URLs (for refresh behavior)",
+            description="Legacy: only used by refresh monitors, which Exa removed",
             advanced=True,
         )
         refresh_enrichments: bool = SchemaField(
             default=True,
-            description="Re-run enrichments on items (for refresh behavior)",
+            description="Legacy: only used by refresh monitors, which Exa removed",
             advanced=True,
         )
 
         # Metadata
-        metadata: Optional[dict] = SchemaField(
+        metadata: dict | None = SchemaField(
             default=None,
             description="Metadata to attach to the monitor",
             advanced=True,
@@ -195,7 +177,7 @@ class ExaCreateMonitorBlock(Block):
         webset_id: str = SchemaField(description="The webset this monitor belongs to")
         status: str = SchemaField(description="Status of the monitor")
         behavior_type: str = SchemaField(description="Type of monitor behavior")
-        next_run_at: Optional[str] = SchemaField(
+        next_run_at: str | None = SchemaField(
             description="When the monitor will next run"
         )
         cron_expression: str = SchemaField(description="The schedule cron expression")
@@ -211,124 +193,60 @@ class ExaCreateMonitorBlock(Block):
             output_schema=ExaCreateMonitorBlock.Output,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "webset_id": "test-webset",
+                "webset_id": WEBSET_ID,
                 "cron_expression": "0 9 * * 1",
                 "behavior_type": MonitorBehaviorType.SEARCH,
                 "search_query": "AI startups",
                 "search_count": 10,
             },
             test_output=[
-                ("monitor_id", "monitor-123"),
-                ("webset_id", "test-webset"),
+                ("monitor_id", MONITOR_ID),
+                ("webset_id", WEBSET_ID),
                 ("status", "enabled"),
                 ("behavior_type", "search"),
-                ("next_run_at", "2024-01-01T00:00:00"),
+                ("next_run_at", "2024-01-01T00:00:00Z"),
                 ("cron_expression", "0 9 * * 1"),
                 ("timezone", "Etc/UTC"),
-                ("created_at", "2024-01-01T00:00:00"),
+                ("created_at", "2024-01-01T00:00:00Z"),
             ],
             test_credentials=TEST_CREDENTIALS,
-            test_mock=self._create_test_mock(),
+            test_mock={"_api": lambda *args, **kwargs: sample_monitor()},
             effect=BlockEffect.EXTERNAL,
         )
-
-    @staticmethod
-    def _create_test_mock():
-        """Create test mocks for the AsyncExa SDK."""
-        from datetime import datetime
-        from unittest.mock import AsyncMock, MagicMock
-
-        # Create mock SDK monitor object
-        mock_monitor = MagicMock()
-        mock_monitor.id = "monitor-123"
-        mock_monitor.status = MagicMock(value="enabled")
-        mock_monitor.webset_id = "test-webset"
-        mock_monitor.next_run_at = datetime.fromisoformat("2024-01-01T00:00:00")
-        mock_monitor.created_at = datetime.fromisoformat("2024-01-01T00:00:00")
-        mock_monitor.updated_at = datetime.fromisoformat("2024-01-01T00:00:00")
-        mock_monitor.metadata = {}
-        mock_monitor.last_run = None
-
-        # Mock behavior
-        mock_behavior = MagicMock()
-        mock_behavior.model_dump = MagicMock(
-            return_value={"type": "search", "config": {}}
-        )
-        mock_monitor.behavior = mock_behavior
-
-        # Mock cadence
-        mock_cadence = MagicMock()
-        mock_cadence.model_dump = MagicMock(
-            return_value={"cron": "0 9 * * 1", "timezone": "Etc/UTC"}
-        )
-        mock_monitor.cadence = mock_cadence
-
-        return {
-            "_get_client": lambda *args, **kwargs: MagicMock(
-                websets=MagicMock(
-                    monitors=MagicMock(create=AsyncMock(return_value=mock_monitor))
-                )
-            )
-        }
-
-    def _get_client(self, api_key: str) -> AsyncExa:
-        """Get Exa client (separated for testing)."""
-        return AsyncExa(api_key=api_key)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        aexa = self._get_client(credentials.api_key.get_secret_value())
-
-        # Build the payload
-        payload = {
+        if input_data.behavior_type == MonitorBehaviorType.REFRESH:
+            raise ValueError(
+                "Exa no longer supports refresh monitors; monitors can only run "
+                "searches. Set the behavior type to 'search'."
+            )
+        payload: dict[str, Any] = {
             "websetId": input_data.webset_id,
             "cadence": {
                 "cron": input_data.cron_expression,
                 "timezone": input_data.timezone,
             },
-        }
-
-        # Build behavior configuration based on type
-        if input_data.behavior_type == MonitorBehaviorType.SEARCH:
-            behavior_config = {
-                "query": input_data.search_query or "",
-                "count": input_data.search_count,
-                "behavior": input_data.search_behavior.value,
-            }
-
-            if input_data.search_criteria:
-                behavior_config["criteria"] = [
-                    {"description": c} for c in input_data.search_criteria
-                ]
-
-            if input_data.entity_type:
-                behavior_config["entity"] = {"type": input_data.entity_type}
-
-            payload["behavior"] = {
+            "behavior": {
                 "type": "search",
-                "config": behavior_config,
-            }
-        else:
-            # REFRESH behavior
-            payload["behavior"] = {
-                "type": "refresh",
-                "config": {
-                    "content": input_data.refresh_content,
-                    "enrichments": input_data.refresh_enrichments,
-                },
-            }
-
-        # Add metadata if provided
+                "config": search_config_payload(
+                    query=input_data.search_query,
+                    count=input_data.search_count,
+                    criteria=input_data.search_criteria,
+                    behavior=input_data.search_behavior,
+                    entity_type=input_data.entity_type,
+                    entity_description=input_data.entity_description,
+                ),
+            },
+        }
         if input_data.metadata:
             payload["metadata"] = input_data.metadata
 
-        sdk_monitor = await aexa.websets.monitors.create(params=payload)
-        merge_exa_cost(self, sdk_monitor)
+        monitor = MonitorModel.from_api(
+            await self._api(credentials, "POST", "/monitors", json=payload)
+        )
 
-        monitor = MonitorModel.from_sdk(sdk_monitor)
-
-        # Yield all fields
         yield "monitor_id", monitor.id
         yield "webset_id", monitor.webset_id
         yield "status", monitor.status
@@ -339,7 +257,28 @@ class ExaCreateMonitorBlock(Block):
         yield "created_at", monitor.created_at
 
 
-class ExaGetMonitorBlock(Block):
+def search_config_payload(
+    *,
+    query: str | None,
+    count: int,
+    criteria: list[str],
+    behavior: Optional["SearchBehavior"],
+    entity_type: str | None,
+    entity_description: str | None,
+) -> dict[str, Any]:
+    """A monitor's ``behavior.config``; unset fields reuse the last search's."""
+    config: dict[str, Any] = {"count": count}
+    optional = {
+        "query": query.strip() if query else None,
+        "criteria": criteria_payload(criteria),
+        "entity": entity_payload(entity_type, entity_description),
+        "behavior": behavior.value if behavior else None,
+    }
+    config.update({k: v for k, v in optional.items() if v})
+    return config
+
+
+class ExaGetMonitorBlock(ExaWebsetsBlockBase):
     """Get the details and status of a monitor."""
 
     class Input(BlockSchemaInput):
@@ -356,17 +295,17 @@ class ExaGetMonitorBlock(Block):
             description="The unique identifier for the monitor"
         )
         webset_id: str = SchemaField(description="The webset this monitor belongs to")
-        status: str = SchemaField(description="Current status of the monitor")
+        status: str = SchemaField(description="Current status: enabled or disabled")
         behavior_type: str = SchemaField(description="Type of monitor behavior")
         behavior_config: dict = SchemaField(
             description="Configuration for the monitor behavior"
         )
         cron_expression: str = SchemaField(description="The schedule cron expression")
         timezone: str = SchemaField(description="The timezone for scheduling")
-        next_run_at: Optional[str] = SchemaField(
+        next_run_at: str | None = SchemaField(
             description="When the monitor will next run"
         )
-        last_run: Optional[dict] = SchemaField(
+        last_run: dict | None = SchemaField(
             description="Information about the last run"
         )
         created_at: str = SchemaField(description="When the monitor was created")
@@ -386,15 +325,12 @@ class ExaGetMonitorBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
-        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+        monitor = MonitorModel.from_api(
+            await self._api(
+                credentials, "GET", f"/monitors/{segment(input_data.monitor_id)}"
+            )
+        )
 
-        sdk_monitor = await aexa.websets.monitors.get(monitor_id=input_data.monitor_id)
-        merge_exa_cost(self, sdk_monitor)
-
-        monitor = MonitorModel.from_sdk(sdk_monitor)
-
-        # Yield all fields
         yield "monitor_id", monitor.id
         yield "webset_id", monitor.webset_id
         yield "status", monitor.status
@@ -409,7 +345,7 @@ class ExaGetMonitorBlock(Block):
         yield "metadata", monitor.metadata
 
 
-class ExaUpdateMonitorBlock(Block):
+class ExaUpdateMonitorBlock(ExaWebsetsBlockBase):
     """Update a monitor's configuration."""
 
     class Input(BlockSchemaInput):
@@ -420,20 +356,51 @@ class ExaUpdateMonitorBlock(Block):
             description="The ID of the monitor to update",
             placeholder="monitor-id",
         )
-        status: Optional[MonitorStatus] = SchemaField(
+        status: MonitorStatus | None = SchemaField(
             default=None,
-            description="New status for the monitor",
+            description="Turn the monitor on ('enabled') or off ('disabled'). 'paused' is legacy and is sent as 'disabled'.",
         )
-        cron_expression: Optional[str] = SchemaField(
+        cron_expression: str | None = SchemaField(
             default=None,
-            description="New cron expression for scheduling",
+            description="New 5-field cron schedule (at most once per day). Required when changing the timezone.",
         )
-        timezone: Optional[str] = SchemaField(
+        timezone: str | None = SchemaField(
             default=None,
-            description="New timezone for the schedule",
+            description="New IANA timezone for the schedule (set together with the cron expression)",
             advanced=True,
         )
-        metadata: Optional[dict] = SchemaField(
+        search_query: str | None = SchemaField(
+            default=None,
+            description="New query for each run (2-10,000 characters). Changing any search setting requires 'search count'.",
+            advanced=True,
+        )
+        search_count: int | None = SchemaField(
+            default=None,
+            description="New maximum number of items per run. Required to change the monitor's search settings.",
+            ge=1,
+            advanced=True,
+        )
+        search_criteria: list[str] = SchemaField(
+            default_factory=list,
+            description="New criteria for each run (up to 5). Leave empty to keep reusing the last search's criteria.",
+            advanced=True,
+        )
+        search_behavior: SearchBehavior | None = SchemaField(
+            default=None,
+            description="'append' adds new items; 'override' re-evaluates existing items",
+            advanced=True,
+        )
+        entity_type: str | None = SchemaField(
+            default=None,
+            description="New kind of item to find: company, person, article, research_paper or custom",
+            advanced=True,
+        )
+        entity_description: str | None = SchemaField(
+            default=None,
+            description="What each item is, when entity type is 'custom' (2-200 characters)",
+            advanced=True,
+        )
+        metadata: dict | None = SchemaField(
             default=None,
             description="New metadata for the monitor",
             advanced=True,
@@ -444,7 +411,7 @@ class ExaUpdateMonitorBlock(Block):
             description="The unique identifier for the monitor"
         )
         status: str = SchemaField(description="Updated status of the monitor")
-        next_run_at: Optional[str] = SchemaField(
+        next_run_at: str | None = SchemaField(
             description="When the monitor will next run"
         )
         updated_at: str = SchemaField(description="When the monitor was updated")
@@ -453,7 +420,7 @@ class ExaUpdateMonitorBlock(Block):
     def __init__(self):
         super().__init__(
             id="245102c3-6af3-4515-a308-c2210b7939d2",
-            description="Update a monitor's status, schedule, or metadata",
+            description="Update a monitor's status, schedule, search settings or metadata",
             categories={BlockCategory.SEARCH},
             input_schema=ExaUpdateMonitorBlock.Input,
             output_schema=ExaUpdateMonitorBlock.Output,
@@ -463,35 +430,15 @@ class ExaUpdateMonitorBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
-        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
-
-        # Build update payload
-        payload = {}
-
-        if input_data.status is not None:
-            payload["status"] = input_data.status.value
-
-        if input_data.cron_expression is not None or input_data.timezone is not None:
-            cadence = {}
-            if input_data.cron_expression:
-                cadence["cron"] = input_data.cron_expression
-            if input_data.timezone:
-                cadence["timezone"] = input_data.timezone
-            payload["cadence"] = cadence
-
-        if input_data.metadata is not None:
-            payload["metadata"] = input_data.metadata
-
-        sdk_monitor = await aexa.websets.monitors.update(
-            monitor_id=input_data.monitor_id, params=payload
+        monitor = MonitorModel.from_api(
+            await self._api(
+                credentials,
+                "PATCH",
+                f"/monitors/{segment(input_data.monitor_id)}",
+                json=update_monitor_payload(input_data),
+            )
         )
-        merge_exa_cost(self, sdk_monitor)
 
-        # Convert to our stable model
-        monitor = MonitorModel.from_sdk(sdk_monitor)
-
-        # Yield fields
         yield "monitor_id", monitor.id
         yield "status", monitor.status
         yield "next_run_at", monitor.next_run_at
@@ -499,7 +446,53 @@ class ExaUpdateMonitorBlock(Block):
         yield "success", "true"
 
 
-class ExaDeleteMonitorBlock(Block):
+def update_monitor_payload(data: ExaUpdateMonitorBlock.Input) -> dict[str, Any]:
+    """Build the ``PATCH /v0/monitors/{id}`` body from the set inputs."""
+    payload: dict[str, Any] = {}
+    if data.status is not None:
+        payload["status"] = (
+            MonitorStatus.DISABLED.value
+            if data.status == MonitorStatus.PAUSED
+            else data.status.value
+        )
+    if data.cron_expression or data.timezone:
+        if not data.cron_expression:
+            raise ValueError(
+                "Exa needs the cron expression to change a monitor's timezone; "
+                "set both."
+            )
+        payload["cadence"] = {"cron": data.cron_expression}
+        if data.timezone:
+            payload["cadence"]["timezone"] = data.timezone
+    search_changes = (
+        data.search_query,
+        data.search_criteria,
+        data.search_behavior,
+        data.entity_type,
+    )
+    if data.search_count is not None:
+        payload["behavior"] = {
+            "type": "search",
+            "config": search_config_payload(
+                query=data.search_query,
+                count=data.search_count,
+                criteria=data.search_criteria,
+                behavior=data.search_behavior,
+                entity_type=data.entity_type,
+                entity_description=data.entity_description,
+            ),
+        }
+    elif any(search_changes):
+        raise ValueError(
+            "Set 'search count' to change a monitor's search settings; Exa "
+            "requires it whenever the search is updated."
+        )
+    if data.metadata is not None:
+        payload["metadata"] = data.metadata
+    return payload
+
+
+class ExaDeleteMonitorBlock(ExaWebsetsBlockBase):
     """Delete a monitor from a webset."""
 
     class Input(BlockSchemaInput):
@@ -529,37 +522,33 @@ class ExaDeleteMonitorBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
-        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
-
-        deleted_monitor = await aexa.websets.monitors.delete(
-            monitor_id=input_data.monitor_id
+        deleted = await self._api(
+            credentials, "DELETE", f"/monitors/{segment(input_data.monitor_id)}"
         )
-        merge_exa_cost(self, deleted_monitor)
 
-        yield "monitor_id", deleted_monitor.id
+        yield "monitor_id", deleted.get("id", input_data.monitor_id)
         yield "success", "true"
 
 
-class ExaListMonitorsBlock(Block):
+class ExaListMonitorsBlock(ExaWebsetsBlockBase):
     """List all monitors with pagination."""
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
-        webset_id: Optional[str] = SchemaField(
+        webset_id: str | None = SchemaField(
             default=None,
             description="Filter monitors by webset ID",
             placeholder="webset-id",
         )
         limit: int = SchemaField(
             default=25,
-            description="Number of monitors to return",
+            description="Number of monitors to return (1-200)",
             ge=1,
-            le=100,
+            le=200,
         )
-        cursor: Optional[str] = SchemaField(
+        cursor: str | None = SchemaField(
             default=None,
             description="Cursor for pagination",
             advanced=True,
@@ -573,7 +562,7 @@ class ExaListMonitorsBlock(Block):
         has_more: bool = SchemaField(
             description="Whether there are more monitors to paginate through"
         )
-        next_cursor: Optional[str] = SchemaField(
+        next_cursor: str | None = SchemaField(
             description="Cursor for the next page of results"
         )
 
@@ -590,26 +579,20 @@ class ExaListMonitorsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
-        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
-
-        response = await aexa.websets.monitors.list(
-            cursor=input_data.cursor,
-            limit=input_data.limit,
-            webset_id=input_data.webset_id,
+        response = await self._api(
+            credentials,
+            "GET",
+            "/monitors",
+            params={
+                "cursor": input_data.cursor,
+                "limit": input_data.limit,
+                "websetId": input_data.webset_id,
+            },
         )
-        merge_exa_cost(self, response)
+        monitors = [MonitorModel.from_api(m) for m in response.get("data", [])]
 
-        # Convert SDK monitors to our stable models
-        monitors = [MonitorModel.from_sdk(m) for m in response.data]
-
-        # Yield the full list
         yield "monitors", [m.model_dump() for m in monitors]
-
-        # Yield individual monitors for graph chaining
         for monitor in monitors:
             yield "monitor", monitor.model_dump()
-
-        # Yield pagination metadata
-        yield "has_more", response.has_more
-        yield "next_cursor", response.next_cursor
+        yield "has_more", bool(response.get("hasMore"))
+        yield "next_cursor", response.get("nextCursor")
