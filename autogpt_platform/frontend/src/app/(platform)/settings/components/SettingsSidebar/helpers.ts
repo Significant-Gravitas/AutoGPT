@@ -9,13 +9,11 @@ import {
   UserIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
-import { Flag } from "@/services/feature-flags/use-get-flag";
 
 export interface SettingsNavItem {
   label: string;
   href: string;
   Icon: IconSvgElement;
-  flag?: Flag;
 }
 
 export const settingsNavItems: SettingsNavItem[] = [
@@ -29,7 +27,6 @@ export const settingsNavItems: SettingsNavItem[] = [
     label: "Memory",
     href: "/settings/memory",
     Icon: BrainIcon,
-    flag: Flag.GRAPHITI_MEMORY,
   },
   { label: "Billing", href: "/settings/billing", Icon: CreditCardIcon },
   {

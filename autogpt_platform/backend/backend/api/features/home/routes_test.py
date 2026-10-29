@@ -45,7 +45,7 @@ def _dashboard() -> HomeDashboardResponse:
                 kind="approval",
                 priority="high",
                 title="Send the prepared message",
-                description="Your agent paused before taking an external action.",
+                description="Workflow “Post launch note” is waiting for your approval.",
                 why_it_matters="The task cannot continue until you decide.",
                 primary_action=HomeAction(label="Review", href="/library"),
             )

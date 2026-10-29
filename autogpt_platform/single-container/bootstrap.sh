@@ -16,6 +16,7 @@ main() {
   ensure_valkey_cluster
   verify_rabbitmq_user
   migrate_database
+  publish_skills_catalog
   configure_frontend_database_role
   publish_readiness
   log "bootstrap complete"
@@ -124,6 +125,27 @@ migrate_database() {
   )
 }
 
+# The marketplace skills and the expert roster come from the public skills
+# catalog, published the way a deploy does it right after the migrations.
+# Idempotent, so a boot that changes nothing is a no-op. Best-effort: an
+# offline box (no GitHub, no SKILLS_CATALOG_PATH checkout) boots without the
+# catalog rather than not at all, and installed copies catch up lazily.
+publish_skills_catalog() {
+  if [[ "${AUTOGPT_PUBLISH_SKILLS:-1}" != "1" ]]; then
+    log "skills catalog publish disabled (AUTOGPT_PUBLISH_SKILLS=${AUTOGPT_PUBLISH_SKILLS})"
+    return 0
+  fi
+  log "publishing the skills catalog"
+  if (
+    cd "${AUTOGPT_BACKEND_DIR}"
+    timeout 600 publish-skills-catalog --skip-missing-preloads
+  ); then
+    log "skills catalog published"
+  else
+    log "WARNING: skills catalog publish failed (see above); continuing without it. Re-run with: publish-skills-catalog --skip-missing-preloads"
+  fi
+}
+
 query_scalar() {
   PGPASSWORD="${POSTGRES_PASSWORD}"     "${POSTGRES_BINDIR}/psql"     --host=127.0.0.1     --port=5432     --username=postgres     --dbname=postgres     --set=ON_ERROR_STOP=1     --tuples-only     --no-align     --command="$1"
 }
@@ -223,7 +245,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
   platform."UserAuthJwks"
 TO autogpt_frontend;
 
-GRANT SELECT (id, email), UPDATE (email, "updatedAt")
+-- INSERT creates the platform User row from the sign-up hook
+-- (frontend/src/lib/auth/provision-platform-user.ts), so a session never
+-- exists before it. Every other column keeps its database default.
+GRANT SELECT (id, email),
+  INSERT (id, email, name, "updatedAt"),
+  UPDATE (email, "updatedAt")
   ON TABLE platform."User"
   TO autogpt_frontend;
 

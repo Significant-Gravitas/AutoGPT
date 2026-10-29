@@ -21,6 +21,8 @@ export interface ExpertAccent {
    *  across a full-width card. */
   washWide: string;
   pill: string;
+  /** A flat cover band for the top of a card — the wash without the fade. */
+  band: string;
   /** Glossy tag for the expert page's skills: a white-to-tint gradient with
    *  a top highlight and a soft glow in the accent hue. */
   chip: string;
@@ -28,23 +30,27 @@ export interface ExpertAccent {
   roleIcon: IconSvgElement;
 }
 
+/* oxlint-disable design-system/no-arbitrary-values -- the accent washes and glossy chip glows are gradients and shadows with no token */
+/* oxlint-disable design-system/no-raw-colors -- the sky accent has no role; info would turn it blue (deferred) */
 const ACCENTS: Record<string, ExpertAccent> = {
   violet: {
     wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(139,92,246,0.10),transparent_70%)]",
     washWide:
       "bg-[linear-gradient(180deg,rgba(139,92,246,0.10),rgba(139,92,246,0.03)_60%,transparent)]",
-    pill: "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-600/10",
-    chip: "bg-gradient-to-b from-white to-violet-50 text-violet-800 ring-1 ring-inset ring-violet-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(139,92,246,0.12),0_0_18px_-4px_rgba(139,92,246,0.45)]",
-    icon: "text-violet-500",
+    pill: "bg-accent-surface text-accent-strong ring-1 ring-inset ring-brand/10",
+    band: "bg-accent-surface/60",
+    chip: "bg-gradient-to-b from-surface to-accent-surface text-accent-strong ring-1 ring-inset ring-brand/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(139,92,246,0.12),0_0_18px_-4px_rgba(139,92,246,0.45)]",
+    icon: "text-brand",
     roleIcon: Megaphone01Icon,
   },
   amber: {
-    wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(245,158,11,0.10),transparent_70%)]",
+    wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-warning)/0.10),transparent_70%)]",
     washWide:
-      "bg-[linear-gradient(180deg,rgba(245,158,11,0.10),rgba(245,158,11,0.03)_60%,transparent)]",
-    pill: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/10",
-    chip: "bg-gradient-to-b from-white to-amber-50 text-amber-800 ring-1 ring-inset ring-amber-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(245,158,11,0.12),0_0_18px_-4px_rgba(245,158,11,0.45)]",
-    icon: "text-amber-500",
+      "bg-[linear-gradient(180deg,rgb(var(--color-warning)/0.10),rgb(var(--color-warning)/0.03)_60%,transparent)]",
+    pill: "bg-warning-surface text-warning-foreground ring-1 ring-inset ring-warning-foreground/10",
+    band: "bg-warning-surface/60",
+    chip: "bg-gradient-to-b from-surface to-warning-surface text-warning-foreground ring-1 ring-inset ring-warning/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(245,158,11,0.12),0_0_18px_-4px_rgba(245,158,11,0.45)]",
+    icon: "text-warning",
     roleIcon: ChartIncreaseIcon,
   },
   sky: {
@@ -52,7 +58,8 @@ const ACCENTS: Record<string, ExpertAccent> = {
     washWide:
       "bg-[linear-gradient(180deg,rgba(14,165,233,0.10),rgba(14,165,233,0.03)_60%,transparent)]",
     pill: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-600/10",
-    chip: "bg-gradient-to-b from-white to-sky-50 text-sky-800 ring-1 ring-inset ring-sky-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(14,165,233,0.12),0_0_18px_-4px_rgba(14,165,233,0.45)]",
+    band: "bg-sky-50/60",
+    chip: "bg-gradient-to-b from-surface to-sky-50 text-sky-800 ring-1 ring-inset ring-sky-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(14,165,233,0.12),0_0_18px_-4px_rgba(14,165,233,0.45)]",
     icon: "text-sky-500",
     roleIcon: Settings01Icon,
   },
@@ -60,12 +67,15 @@ const ACCENTS: Record<string, ExpertAccent> = {
     wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(113,113,122,0.08),transparent_70%)]",
     washWide:
       "bg-[linear-gradient(180deg,rgba(113,113,122,0.08),rgba(113,113,122,0.02)_60%,transparent)]",
-    pill: "bg-zinc-100 text-zinc-600 ring-1 ring-inset ring-zinc-500/10",
-    chip: "bg-gradient-to-b from-white to-zinc-50 text-zinc-700 ring-1 ring-inset ring-zinc-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(113,113,122,0.12),0_0_18px_-4px_rgba(113,113,122,0.45)]",
-    icon: "text-zinc-500",
+    pill: "bg-surface-hover text-foreground-secondary ring-1 ring-inset ring-foreground-tertiary/10",
+    band: "bg-surface-hover/60",
+    chip: "bg-gradient-to-b from-surface to-surface-muted text-foreground-body ring-1 ring-inset ring-foreground-tertiary/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(113,113,122,0.12),0_0_18px_-4px_rgba(113,113,122,0.45)]",
+    icon: "text-foreground-tertiary",
     roleIcon: Briefcase01Icon,
   },
 };
+/* oxlint-enable design-system/no-raw-colors */
+/* oxlint-enable design-system/no-arbitrary-values */
 
 const ROLE_ACCENTS: Array<[RegExp, string]> = [
   [

@@ -20,13 +20,8 @@ from collections import OrderedDict
 from prisma.enums import ContentType
 
 from backend.api.features.search.content_handlers import build_workspace_file_text
-from backend.api.features.search.embeddings import (
-    EMBEDDING_MODEL,
-    delete_content_embedding,
-    generate_embedding,
-    get_content_embedding,
-    store_content_embedding,
-)
+from backend.api.features.search.embeddings import EMBEDDING_MODEL, generate_embedding
+from backend.data.db_accessors import embeddings_db
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +51,12 @@ async def _run_embedding(file_id: str, user_id: str, name: str, path: str) -> No
                 file_id,
             )
             return
-        existing = await get_content_embedding(
+        existing = await embeddings_db().get_content_embedding(
             ContentType.WORKSPACE_FILE, file_id, user_id
         )
         if existing and existing.get("searchableText") == searchable_text:
             return
-        await store_content_embedding(
+        await embeddings_db().store_content_embedding(
             content_type=ContentType.WORKSPACE_FILE,
             content_id=file_id,
             embedding=await _embed(EMBEDDING_MODEL, searchable_text),
@@ -115,7 +110,7 @@ def schedule_workspace_file_embedding(
 async def delete_workspace_file_embedding(file_id: str, user_id: str) -> None:
     """Best-effort embedding cleanup when a workspace file is deleted."""
     try:
-        await delete_content_embedding(
+        await embeddings_db().delete_content_embedding(
             ContentType.WORKSPACE_FILE, file_id, user_id=user_id
         )
     except Exception as e:

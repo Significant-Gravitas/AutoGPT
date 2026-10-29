@@ -12,10 +12,10 @@ import { banner } from "../styles";
 export const createRunSteps = (tour: any): StepOptions[] => [
   {
     id: "press-run",
-    title: "Run Your Agent",
+    title: "Run Your Workflow",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Your agent is saved and ready! Now let's <strong>run it</strong> to see it in action.</p>
+      <div class="text-body text-foreground-emphasis">
+        <p class="text-body font-normal text-foreground-emphasis m-0">Your workflow is saved and ready! Now let's <strong>run it</strong> to see it in action.</p>
         ${banner(ICONS.ClickIcon, "Click the Run button", "action")}
       </div>
     `,
@@ -47,17 +47,17 @@ export const createRunSteps = (tour: any): StepOptions[] => [
     id: "show-output",
     title: "View the Output",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Here's the <strong>output</strong> of your block!</p>
+      <div class="text-body text-foreground-emphasis">
+        <p class="text-body font-normal text-foreground-emphasis m-0">Here's the <strong>output</strong> of your block!</p>
         
-        <div class="mt-3 p-3 bg-blue-50 ring-1 ring-blue-200 rounded-2xl">
-          <p class="text-sm font-medium text-blue-600 m-0">Latest Output:</p>
-          <p class="text-[0.8125rem] text-blue-600 m-0 mt-1">After each run, you can see the result of each block at the bottom of the block.</p>
+        <div class="mt-3 p-3 bg-info-surface ring-1 ring-info/30 rounded-2xl">
+          <p class="text-body leading-5 font-medium text-info-foreground m-0">Latest Output:</p>
+          <p class="text-body-sm leading-inherit text-info-foreground m-0 mt-1">After each run, you can see the result of each block at the bottom of the block.</p>
         </div>
         
-        <div class="mt-2 p-2 bg-zinc-100 ring-1 ring-zinc-200 rounded-xl">
-          <p class="text-[0.8125rem] text-zinc-600 m-0">The output shows:</p>
-          <ul class="text-[0.8125rem] text-zinc-500 m-0 mt-1 pl-4">
+        <div class="mt-2 p-2 bg-surface-hover ring-1 ring-border-base rounded-xl">
+          <p class="text-body-sm leading-inherit text-foreground-secondary m-0">The output shows:</p>
+          <ul class="text-body-sm leading-inherit text-foreground-tertiary m-0 mt-1 pl-4">
             <li>• The calculated result</li>
             <li>• Execution timestamp</li>
           </ul>

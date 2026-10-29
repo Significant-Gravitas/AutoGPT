@@ -33,7 +33,7 @@ export function useAttentionDecisions() {
             auto_approve_future: false,
           },
         ],
-        [item.review.graph_exec_id],
+        [item.review],
       );
       if (response.status !== 200 || response.data.failed_count > 0) {
         const message = response.status === 200 ? response.data.error : null;

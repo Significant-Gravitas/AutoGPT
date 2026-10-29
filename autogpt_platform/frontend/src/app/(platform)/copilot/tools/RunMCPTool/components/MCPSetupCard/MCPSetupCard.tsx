@@ -1,10 +1,12 @@
 "use client";
 
+import { useListExpertCredentials } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import {
   postV2DiscoverAvailableToolsOnAnMcpServer,
   postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
+import { okData } from "@/app/api/helpers";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
@@ -25,11 +27,15 @@ import { getErrorMessage } from "@/lib/mcp-errors";
 import { normalizeMcpUrl } from "@/lib/mcp-url";
 import { connectMCPOAuth } from "@/lib/mcp-oauth";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import { grantToExpert } from "@/services/experts/grant-to-expert";
+import { useQueryClient } from "@tanstack/react-query";
 import { useContext, useEffect, useId, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import { ChainActionsContext } from "../../../../components/ToolChain/chainActions";
 import { CredentialRejectionNotice } from "../../../../components/CredentialRejectionNotice/CredentialRejectionNotice";
+import { coerceExpertGrant } from "../../../../components/SetupRequirementsCard/helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   output: SetupRequirementsResponse;
@@ -38,6 +44,40 @@ interface Props {
    * Defaults to a generic "credentials connected, please retry" message.
    */
   retryInstruction?: string;
+}
+
+async function storeManualToken(serverUrl: string, token: string) {
+  // Probe before storing so a rejected credential never shows as Connected.
+  const probe = await postV2DiscoverAvailableToolsOnAnMcpServer({
+    server_url: serverUrl,
+    auth_token: token,
+  });
+  if (probe.status !== 200) {
+    const probeDetail =
+      probe.data && typeof probe.data === "object" && "detail" in probe.data
+        ? probe.data.detail
+        : null;
+    throw new Error(
+      typeof probeDetail === "string"
+        ? probeDetail
+        : "This server did not accept the credential.",
+    );
+  }
+
+  const res = await postV2StoreABearerTokenForAnMcpServer({
+    server_url: serverUrl,
+    token,
+  });
+  if (!(res.status >= 200 && res.status < 300)) {
+    const detail =
+      res.data && typeof res.data === "object" && "detail" in res.data
+        ? res.data.detail
+        : null;
+    throw new Error(
+      typeof detail === "string" ? detail : "Failed to store token",
+    );
+  }
+  return res.status === 200 ? res.data.id : undefined;
 }
 
 /**
@@ -51,6 +91,7 @@ interface Props {
  */
 export function MCPSetupCard({ output, retryInstruction }: Props) {
   const { onSend } = useCopilotChatActions();
+  const queryClient = useQueryClient();
   const allProviders = useContext(CredentialsProvidersContext);
   const chainActions = useContext(ChainActionsContext);
   const actionId = useId();
@@ -62,6 +103,13 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // agent_name is computed by the backend as the display name for the service
   const service = output.setup_info.agent_name;
   const rejection = output.rejection ?? null;
+  const expertGrant = Object.values(
+    output.setup_info.user_readiness?.missing_credentials ?? {},
+  )
+    .map((entry) =>
+      coerceExpertGrant((entry as { expert_grant?: unknown }).expert_grant),
+    )
+    .find(Boolean);
 
   // Initial connection state comes from the backend.  When the model
   // calls `run_mcp_tool` with `surface_connect_card=true`, the response's
@@ -108,20 +156,46 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // ``isFetchedAfterMount`` rather than ``isFetching``: this query key is
   // app-wide, so ``isFetching`` also goes true on window focus and on every
   // credential mutation elsewhere, blanking a genuinely connected card.
-  const liveCredential = !Array.isArray(liveCredsRes)
-    ? null
-    : liveCredsRes.find(
+  // On an expert's card the account's own credential is not enough: only one
+  // granted to the expert counts, so an ungranted one still offers Grant
+  // access. The grant list follows the same tri-state rule as the cred list.
+  const {
+    data: expertGrants,
+    isFetchedAfterMount: expertGrantsFetched,
+    isError: expertGrantsError,
+  } = useListExpertCredentials(expertGrant?.expertId ?? "", {
+    query: {
+      enabled: Boolean(expertGrant),
+      select: (res) => okData(res) ?? [],
+    },
+  });
+  const grantedIds = expertGrant
+    ? new Set((expertGrants ?? []).map((grant) => grant.credential_id))
+    : null;
+  const serverCredentials = !Array.isArray(liveCredsRes)
+    ? []
+    : liveCredsRes.filter(
         (c) =>
           c.provider === "mcp" &&
           typeof c.host === "string" &&
           normalizeMcpUrl(c.host) === normalizedServer,
       );
+  const liveCredential = serverCredentials.find(
+    (c) => !grantedIds || grantedIds.has(c.id),
+  );
+  const grantsUnknown =
+    Boolean(expertGrant) && (!expertGrantsFetched || expertGrantsError);
   const liveHasCred: boolean | "unknown" =
-    !liveCredsFetched || liveCredsError || !Array.isArray(liveCredsRes)
+    !liveCredsFetched ||
+    liveCredsError ||
+    !Array.isArray(liveCredsRes) ||
+    grantsUnknown
       ? "unknown"
       : Boolean(liveCredential);
   const storedManualAuthScheme: MCPAuthScheme =
-    liveCredential?.mcp_auth_scheme === "basic" ? "basic" : "bearer";
+    (liveCredential ?? serverCredentials[0])?.mcp_auth_scheme === "basic"
+      ? "basic"
+      : "bearer";
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +220,11 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // on the next attempt so the user can retry.
   const [forceDisconnected, setForceDisconnected] = useState(false);
   const oauthRequest = useRef<AbortController | null>(null);
+  const [granting, setGranting] = useState(false);
+  const grantInFlight = useRef(false);
+  const [grantError, setGrantError] = useState<string | null>(null);
+  const [failedGrantId, setFailedGrantId] = useState<string | null>(null);
+  const grantableId = failedGrantId ?? expertGrant?.credentials[0]?.id ?? null;
   // Combined view:
   //   1. ``forceDisconnected`` (set by the catch block) wins.
   //   2. ``localConnected`` (just completed sign-in in this component) wins.
@@ -165,19 +244,60 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
   useEffect(() => () => oauthRequest.current?.abort(), []);
 
+  async function finish(credentialId: string | undefined) {
+    if (expertGrant && credentialId) {
+      if (grantInFlight.current) return;
+      grantInFlight.current = true;
+      setGranting(true);
+      setGrantError(null);
+      const ok = await grantToExpert(
+        queryClient,
+        expertGrant.expertId,
+        credentialId,
+      ).finally(() => {
+        grantInFlight.current = false;
+        setGranting(false);
+      });
+      if (!ok) {
+        setFailedGrantId(credentialId);
+        setGrantError(
+          "Connected, but could not grant access. Try Grant access again.",
+        );
+        return;
+      }
+    }
+    setConnected(true);
+    onSend(retryInstruction ?? "I've connected. Please retry.");
+  }
+
+  function handleGrantExisting() {
+    if (grantableId) void finish(grantableId);
+  }
+
   async function handleConnect() {
     if (loading || oauthRequest.current) return;
     const controller = new AbortController();
     oauthRequest.current = controller;
     const { signal } = controller;
     setError(null);
+    setGrantError(null);
     setShowManualToken(false);
     setLoading(true);
+    await connectOAuth(signal).finally(() => {
+      if (oauthRequest.current === controller) {
+        oauthRequest.current = null;
+        if (!signal.aborted) setLoading(false);
+      }
+    });
+  }
+
+  async function connectOAuth(signal: AbortSignal) {
+    const exchange = allProviders?.mcp?.mcpOAuthCallback;
     try {
       const credential = await connectMCPOAuth({
         serverURL: serverUrl,
         signal,
-        exchange: allProviders?.mcp?.mcpOAuthCallback,
+        exchange,
       });
       signal.throwIfAborted();
       if ("reason" in credential) {
@@ -188,8 +308,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         return;
       }
       setForceDisconnected(false);
-      setConnected(true);
-      onSend(retryInstruction ?? "I've connected. Please retry.");
+      await finish(credential.id);
     } catch (error: unknown) {
       if (signal.aborted) return;
       setConnected(false);
@@ -203,11 +322,6 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           ? "OAuth sign-in timed out. Please try again."
           : message,
       );
-    } finally {
-      if (oauthRequest.current === controller) {
-        oauthRequest.current = null;
-        if (!signal.aborted) setLoading(false);
-      }
     }
   }
 
@@ -235,45 +349,16 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
     setLoading(true);
     setError(null);
+    setGrantError(null);
     try {
-      // Probe before storing so a rejected credential never shows as Connected.
-      const probe = await postV2DiscoverAvailableToolsOnAnMcpServer({
-        server_url: serverUrl,
-        auth_token: token,
-      });
-      if (probe.status !== 200) {
-        const probeDetail =
-          probe.data && typeof probe.data === "object" && "detail" in probe.data
-            ? probe.data.detail
-            : null;
-        throw new Error(
-          typeof probeDetail === "string"
-            ? probeDetail
-            : "This server did not accept the credential.",
-        );
-      }
-
-      const res = await postV2StoreABearerTokenForAnMcpServer({
-        server_url: serverUrl,
-        token,
-      });
-      if (!(res.status >= 200 && res.status < 300)) {
-        const detail =
-          res.data && typeof res.data === "object" && "detail" in res.data
-            ? res.data.detail
-            : null;
-        throw new Error(
-          typeof detail === "string" ? detail : "Failed to store token",
-        );
-      }
+      const credentialId = await storeManualToken(serverUrl, token);
       // Only clear the force-disconnect override AFTER the API confirms
       // the token was stored.  Clearing it before the await would let
       // ``liveHasCred=true`` (from an existing stale cred) re-render the
       // Connected pill while the request is still in flight, briefly
       // showing a false "Connected" state to the user.
       setForceDisconnected(false);
-      setConnected(true);
-      onSend(retryInstruction ?? "I've connected. Please retry.");
+      await finish(credentialId);
     } catch (e: unknown) {
       // Keep the force-disconnect override on so the not-connected
       // branch (error banner + manual-token input) stays visible — an
@@ -285,17 +370,18 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         (typeof err?.message === "string" ? err.message : null) ||
           "Failed to save token. Please try again.",
       );
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   }
 
   const handleConnectRef = useRef(handleConnect);
   const handleManualTokenRef = useRef(handleManualToken);
+  const handleGrantRef = useRef(handleGrantExisting);
 
   useEffect(() => {
     handleConnectRef.current = handleConnect;
     handleManualTokenRef.current = handleManualToken;
+    handleGrantRef.current = handleGrantExisting;
   });
 
   // Inside a tool chain the card renders nothing itself — it registers an
@@ -303,7 +389,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // as the state machine driving that row's callbacks.
   useEffect(() => {
     if (!chainActions) return;
-    chainActions.register({
+    chainActions.register(actionId, {
       id: actionId,
       ready: connected,
       buildMessage: () => null,
@@ -313,14 +399,17 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         serverUrl,
         connected,
         loading,
-        error,
+        error: error ?? grantError,
         showManualToken,
         authScheme: manualAuthScheme,
+        grantable: Boolean(grantableId),
+        granting,
         onConnect: () => void handleConnectRef.current(),
         onUseToken: (token) => {
           setManualToken(token);
           void handleManualTokenRef.current(token);
         },
+        onGrant: () => handleGrantRef.current(),
       },
     });
     return () => chainActions.unregister(actionId);
@@ -330,6 +419,9 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     connected,
     loading,
     error,
+    grantError,
+    grantableId,
+    granting,
     showManualToken,
     manualAuthScheme,
     serverUrl,
@@ -350,7 +442,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     // owns the error display.
     return (
       <div className="mt-2 grid gap-2">
-        <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+        <div className="rounded-lg border border-success/40 bg-success-surface px-3 py-2 text-sm text-success-foreground">
           Connected to {service}.{" "}
           <button
             type="button"
@@ -372,22 +464,33 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       {rejection && <CredentialRejectionNotice rejection={rejection} />}
 
       <div className="rounded-2xl border bg-background p-4">
+        {grantableId ? (
+          <Button
+            variant="primary"
+            size="small"
+            onClick={handleGrantExisting}
+            disabled={granting || loading}
+            className="mr-2"
+          >
+            {granting ? "Granting…" : "Grant access"}
+          </Button>
+        ) : null}
         <Button
-          variant="primary"
+          variant={grantableId ? "secondary" : "primary"}
           size="small"
           onClick={handleConnect}
-          disabled={loading}
+          disabled={loading || granting}
         >
           {loading ? "Connecting…" : `Connect ${service}`}
         </Button>
 
-        {error && (
+        {(error || grantError) && (
           <div
             role="alert"
             aria-live="polite"
-            className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            className="mt-2 rounded-lg border border-error/30 bg-error-surface px-3 py-2 text-sm text-error-foreground"
           >
-            {error}
+            {error ?? grantError}
           </div>
         )}
 
@@ -399,18 +502,20 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               disabled={loading}
               nameSuffix={service}
               className="grid gap-1"
-              labelClassName="text-xs font-medium text-gray-700"
+              labelClassName="text-xs font-medium text-foreground-body"
               selectClassName="rounded border bg-background px-2 py-1.5 text-sm"
             />
-            <label
+            <Text
+              variant="small-medium-tight"
+              as="label"
+              tone="body"
               htmlFor={manualTokenInputId}
-              className="text-xs font-medium text-gray-700"
             >
               {`${mcpAuthTokenLabel(manualAuthScheme)} for ${service}`}
-            </label>
-            <p id={manualTokenHintId} className="text-xs text-gray-500">
+            </Text>
+            <Text variant="small-tight" tone="muted" id={manualTokenHintId}>
               {mcpAuthTokenHint(manualAuthScheme)}
-            </p>
+            </Text>
             <div className="flex gap-2">
               <input
                 id={manualTokenInputId}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { CheckCircle, XCircle } from "lucide-react";
 import {
   Dialog,
@@ -10,9 +10,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/__legacy__/ui/dialog";
-import { Label } from "@/components/__legacy__/ui/label";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
+import { Label } from "@/components/atoms/Label/Label";
+import { Textarea } from "@/components/atoms/Textarea/Textarea";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import { useRouter } from "next/navigation";
 import {
@@ -55,29 +55,31 @@ export function ApproveRejectButtons({
     <>
       {!isApproved && (
         <Button
-          size="sm"
-          variant="outline"
-          className="text-green-600 hover:bg-green-50 hover:text-green-700"
+          size="xs"
+          variant="secondary"
           onClick={(e) => {
             e.stopPropagation();
             setIsApproveDialogOpen(true);
           }}
         >
-          <CheckCircle className="mr-2 h-4 w-4" />
-          Approve
+          <span className="flex items-center gap-1.5 text-success">
+            <CheckCircle className="h-4 w-4" />
+            Approve
+          </span>
         </Button>
       )}
       <Button
-        size="sm"
-        variant="outline"
-        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+        size="xs"
+        variant="secondary"
         onClick={(e) => {
           e.stopPropagation();
           setIsRejectDialogOpen(true);
         }}
       >
-        <XCircle className="mr-2 h-4 w-4" />
-        {isApproved ? "Revoke" : "Reject"}
+        <span className="flex items-center gap-1.5 text-error-hover">
+          <XCircle className="h-4 w-4" />
+          {isApproved ? "Revoke" : "Reject"}
+        </span>
       </Button>
 
       {/* Approve Dialog */}
@@ -113,12 +115,19 @@ export function ApproveRejectButtons({
             <DialogFooter>
               <Button
                 type="button"
-                variant="outline"
+                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
+                variant="legacy-outline"
                 onClick={() => setIsApproveDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit">Approve</Button>
+              <Button
+                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
+                variant="legacy-default"
+                type="submit"
+              >
+                Approve
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -169,12 +178,17 @@ export function ApproveRejectButtons({
             <DialogFooter>
               <Button
                 type="button"
-                variant="outline"
+                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
+                variant="legacy-outline"
                 onClick={() => setIsRejectDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" variant="destructive">
+              <Button
+                type="submit"
+                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
+                variant="legacy-destructive"
+              >
                 {isApproved ? "Revoke" : "Reject"}
               </Button>
             </DialogFooter>

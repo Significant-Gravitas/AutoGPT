@@ -1,0 +1,225 @@
+"""Stripe subscription sync and pending-change lookups for a trial whose
+cancellation is scheduled for the end of the trial."""
+
+import time
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+import stripe
+from prisma.enums import SubscriptionTier
+
+from backend.data import credit_subscription_test
+from backend.data.credit import (
+    _get_active_subscription_cached,
+    get_pending_subscription_change,
+    invalidate_active_subscription_cache,
+    sync_subscription_from_stripe,
+)
+from backend.data.credit_subscription_test import _make_user
+
+billing_boundaries = credit_subscription_test.billing_boundaries
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("paid_ready", [False, True])
+async def test_new_plan_ends_cancel_pending_trial_without_invoice(
+    billing_boundaries, paid_ready
+):
+    """Only a reconciled paid plan may end the old cancel-pending trial.
+
+    Canceling the old trial creates neither an invoice nor proration.
+    """
+    metadata = {"user_id": "user-1"}
+    max_sub = {
+        "id": "sub_max",
+        "customer": "cus_123",
+        "status": "active",
+        "items": {"data": [{"price": {"id": "price_max_monthly"}}]},
+        "metadata": metadata,
+    }
+    trial_sub = {
+        "id": "sub_trial",
+        "customer": "cus_123",
+        "status": "trialing",
+        "cancel_at_period_end": True,
+        "metadata": {**metadata, "trial_enrollment_id": "trial-1"},
+    }
+    ended_trial = {**trial_sub, "status": "canceled"}
+    events: list[str] = []
+
+    async def list_subscriptions(*, customer: str, status: str, limit: int):
+        return MagicMock(
+            data=[max_sub] if status == "active" else [trial_sub], has_more=False
+        )
+
+    async def cancel(sub_id: str, **params):
+        events.append(f"cancel:{sub_id}")
+        return ended_trial
+
+    async def set_tier(*, where, data):
+        events.append(f"tier:{data['subscriptionTier'].value}")
+
+    async def publish(*args):
+        events.append("publish")
+        return paid_ready
+
+    async def price_id(tier: SubscriptionTier, billing_cycle: str = "monthly"):
+        return {SubscriptionTier.MAX: "price_max_monthly"}.get(tier)
+
+    user = _make_user(tier=SubscriptionTier.TRIAL)
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=user)),
+        ),
+        patch(
+            "backend.data.credit.get_subscription_trial",
+            AsyncMock(return_value=MagicMock(subscription_id="sub_trial")),
+        ),
+        patch(
+            "backend.data.credit.subscription_activation.publish_initial_pro_activation",
+            AsyncMock(side_effect=publish),
+        ) as publish_activation,
+        patch("backend.data.credit.get_subscription_price_id", side_effect=price_id),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            side_effect=list_subscriptions,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
+            side_effect=cancel,
+        ) as mock_cancel,
+        patch(
+            "backend.data.credit.sync_subscription_from_stripe",
+            new_callable=AsyncMock,
+        ) as reconcile,
+        patch(
+            "backend.data.credit.set_subscription_tier",
+            new_callable=AsyncMock,
+        ) as mock_set,
+    ):
+        billing_boundaries.subscription.return_value = max_sub
+        billing_boundaries.tx.user.update.side_effect = set_tier
+        await sync_subscription_from_stripe(max_sub)
+
+    publish_activation.assert_awaited_once_with(
+        user,
+        max_sub,
+        "price_max_monthly",
+        billing_boundaries.tx,
+    )
+    mock_set.assert_not_awaited()
+    if not paid_ready:
+        mock_cancel.assert_not_awaited()
+        reconcile.assert_not_awaited()
+        billing_boundaries.tx.user.update.assert_not_awaited()
+        assert events == ["publish"]
+        return
+    mock_cancel.assert_awaited_once_with("sub_trial", invoice_now=False, prorate=False)
+    reconcile.assert_awaited_once_with(ended_trial)
+    billing_boundaries.tx.user.update.assert_awaited_once_with(
+        where={"id": "user-1"},
+        data={"subscriptionTier": SubscriptionTier.MAX, "subscriptionEndedAt": None},
+    )
+    assert events == ["publish", "tier:MAX", "cancel:sub_trial"]
+
+
+async def _pending_change_for(subscription: dict):
+    mock_list = MagicMock()
+    mock_list.data = [stripe.Subscription.construct_from(subscription, "k")]
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=MagicMock(stripe_customer_id="cus_abc"),
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_pro",
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.retrieve_async",
+            new_callable=AsyncMock,
+        ) as retrieve_schedule,
+    ):
+        result = await get_pending_subscription_change("user-1")
+    retrieve_schedule.assert_not_awaited()
+    return result
+
+
+@pytest.mark.asyncio
+async def test_get_pending_subscription_change_ignores_cancel_pending_trial():
+    """A trial scheduled to end has no paid plan to downgrade from."""
+    result = await _pending_change_for(
+        {
+            "id": "sub_trial",
+            "status": "trialing",
+            "current_period_end": int(time.time()) + 5 * 24 * 3600,
+            "cancel_at_period_end": True,
+            "schedule": None,
+            "metadata": {"trial_enrollment_id": "trial-1", "user_id": "user-1"},
+        }
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metadata", [{}, {"trial_enrollment_id": "trial-1", "user_id": "user-1"}]
+)
+async def test_get_pending_subscription_change_reports_paid_cancel(metadata):
+    """A paid subscription, including a converted trial, still reports its
+    scheduled cancellation."""
+    period_end = int(time.time()) + 10 * 24 * 3600
+    result = await _pending_change_for(
+        {
+            "id": "sub_pro",
+            "status": "active",
+            "current_period_end": period_end,
+            "cancel_at_period_end": True,
+            "schedule": None,
+            "metadata": metadata,
+        }
+    )
+
+    assert result is not None
+    pending_tier, effective_at, pending_cycle = result
+    assert pending_tier == SubscriptionTier.NO_TIER
+    assert int(effective_at.timestamp()) == period_end
+    assert pending_cycle is None
+
+
+@pytest.mark.asyncio
+async def test_invalidating_the_subscription_lookup_refetches_only_that_customer():
+    """A subscription changed in place is read fresh on the next status call;
+    other customers keep their cached lookup."""
+    trialing = {"id": "sub_trial", "status": "trialing", "current_period_end": 1}
+    converted = {"id": "sub_trial", "status": "active", "current_period_end": 2}
+    other = {"id": "sub_other", "status": "active", "current_period_end": 3}
+
+    async def period_end(customer_id: str) -> int | None:
+        sub = await _get_active_subscription_cached(customer_id)
+        return sub.current_period_end if sub else None
+
+    with patch(
+        "backend.data.credit._get_active_subscription",
+        new_callable=AsyncMock,
+        side_effect=[trialing, other, converted],
+    ) as lookup:
+        assert await period_end("cus_trial") == 1
+        assert await period_end("cus_other") == 3
+
+        await invalidate_active_subscription_cache("cus_trial")
+
+        assert await period_end("cus_trial") == 2
+        assert await period_end("cus_other") == 3
+    assert lookup.await_count == 3

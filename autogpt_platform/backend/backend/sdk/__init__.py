@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockManualWebhookConfig,
     BlockOutput,
     BlockSchema,
@@ -28,6 +29,7 @@ from backend.blocks._base import (
     BlockType,
     BlockWebhookConfig,
 )
+from backend.blocks._preview import ChangePreview, PreviewField, PreviewTable
 from backend.data.integrations import Webhook, update_webhook
 from backend.data.model import APIKeyCredentials, Credentials, CredentialsField
 from backend.data.model import CredentialsMetaInput as _CredentialsMetaInput
@@ -123,6 +125,7 @@ __all__ = [
     # Core Block System
     "Block",
     "BlockCategory",
+    "BlockEffect",
     "BlockOutput",
     "BlockSchema",
     "BlockSchemaInput",
@@ -130,6 +133,9 @@ __all__ = [
     "BlockType",
     "BlockWebhookConfig",
     "BlockManualWebhookConfig",
+    "ChangePreview",
+    "PreviewField",
+    "PreviewTable",
     # Schema and Model Components
     "SchemaField",
     "Credentials",

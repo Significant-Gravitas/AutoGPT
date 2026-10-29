@@ -33,7 +33,7 @@ export function RaiseFlow() {
     hasStarted,
     items,
     name,
-    role,
+    category,
     jobTitle,
     color,
     avatarUrl,
@@ -109,6 +109,7 @@ export function RaiseFlow() {
           <ScrollFade edge="bottom" isVisible={canScrollDown} />
         </div>
 
+        {/* oxlint-disable-next-line design-system/no-arbitrary-values -- the 40px panel radius has no rounded-* step (4xl is 32px) */}
         <div className="relative order-1 m-2 overflow-hidden rounded-[2.5rem] bg-muted/40 lg:order-2">
           <DitheredWaves
             className="absolute inset-0"
@@ -119,7 +120,7 @@ export function RaiseFlow() {
               variant="icon"
               size="small"
               aria-label="Back"
-              className="bg-white p-2 hover:bg-zinc-100"
+              className="bg-surface p-2 hover:bg-surface-hover"
               onClick={goBack}
               disabled={!canGoBack}
             >
@@ -129,7 +130,7 @@ export function RaiseFlow() {
               variant="icon"
               size="small"
               aria-label="Start over"
-              className="bg-white p-2 hover:bg-zinc-100"
+              className="bg-surface p-2 hover:bg-surface-hover"
               onClick={() => setIsRestartOpen(true)}
             >
               <Icon icon={RefreshIcon} size={16} />
@@ -139,7 +140,7 @@ export function RaiseFlow() {
           <div className="relative flex h-full items-center justify-center p-4 sm:p-6">
             <SoulPreviewPanel
               name={name}
-              role={role}
+              category={category}
               jobTitle={jobTitle}
               avatarUrl={avatarUrl || null}
               color={color}

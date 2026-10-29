@@ -108,4 +108,6 @@ def test_chat_platform_turns_are_rooted_and_born_tainted() -> None:
     """A chat-platform message is authored off-platform by someone who need
     not be the account owner, so its turn roots a tree and carries taint."""
     source = (_PACKAGE_ROOT / "platform_linking" / "chat.py").read_text()
-    assert "envelope=root_envelope(turn_id, tainted=True)" in source
+    assert (
+        "envelope=root_envelope(turn_id, tainted=True, session_id=session_id)" in source
+    )

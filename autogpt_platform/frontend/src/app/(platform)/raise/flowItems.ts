@@ -3,7 +3,7 @@ import { RAISE_PROMPTS, type RaiseDraft } from "./helpers";
 // One beat per question: the question waits for the previous answer, and the
 // controls it introduces wait for the question to finish typing.
 export const BEAT_KEYS = [
-  "role",
+  "category",
   "jobTitle",
   "name",
   "avatar",
@@ -43,7 +43,7 @@ export function buildFlowItems(
   ];
 
   const questions: Record<BeatKey, string> = {
-    role: RAISE_PROMPTS.roleQuestion,
+    category: RAISE_PROMPTS.categoryQuestion,
     jobTitle: RAISE_PROMPTS.jobTitleQuestion,
     name: RAISE_PROMPTS.nameQuestion,
     avatar: RAISE_PROMPTS.avatarQuestion(draft.name),
@@ -87,8 +87,8 @@ export function beatTriggers(
   hasSkillsBeat: boolean,
 ): Record<BeatKey, boolean> {
   return {
-    role: draft.hasStarted,
-    jobTitle: draft.role !== null,
+    category: draft.hasStarted,
+    jobTitle: draft.category !== null,
     name: draft.jobTitle !== null,
     avatar: draft.name !== "",
     about: draft.avatarUrl !== null,
@@ -101,7 +101,7 @@ export function beatTriggers(
 
 function beatAnswers(draft: RaiseDraft): Record<BeatKey, boolean> {
   return {
-    role: draft.role !== null,
+    category: draft.category !== null,
     jobTitle: draft.jobTitle !== null,
     name: draft.name !== "",
     avatar: draft.avatarUrl !== null,
@@ -122,15 +122,15 @@ export function lastAnsweredBeat(draft: RaiseDraft): BeatKey | null {
 // disappears on its own because the stream is derived from the answers.
 export function clearedAnswer(beat: BeatKey): Partial<RaiseDraft> {
   switch (beat) {
-    case "role":
-      return { role: null };
+    case "category":
+      // The color is answered in the same beat, so going back re-opens both.
+      return { category: null, color: null, legacyRole: undefined };
     case "jobTitle":
       return { jobTitle: null };
     case "name":
       return { name: "" };
     case "avatar":
-      // Colour is answered in the same beat, so going back re-opens both.
-      return { avatarUrl: null, color: null };
+      return { avatarUrl: null };
     case "about":
       return { about: null };
     case "voice":

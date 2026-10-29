@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   formatInTimezone,
+  formatScheduleTime,
   getTimezoneAbbreviation,
   getTimezoneDisplayName,
 } from "./timezone-utils";
@@ -108,21 +109,100 @@ describe("getTimezoneDisplayName", () => {
 });
 
 describe("formatInTimezone", () => {
-  it("returns a placeholder for an undefined date", () => {
-    expect(formatInTimezone(undefined, "UTC")).toBe("Not scheduled");
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  it("returns a placeholder for an unparseable date string", () => {
-    expect(formatInTimezone("not-a-date", "UTC")).toBe("Not scheduled");
-  });
-
-  it("returns a placeholder for an invalid Date object", () => {
-    expect(formatInTimezone(new Date(NaN), "UTC")).toBe("Not scheduled");
-  });
+  it.each([
+    undefined,
+    null,
+    "",
+    "not-a-date",
+    "2024-13-50T12:00:00Z",
+    new Date(NaN),
+    new Date(Infinity),
+    false,
+    true,
+    0,
+    NaN,
+    Infinity,
+    1n,
+    [],
+    {},
+    Symbol("date"),
+    Object.create(Date.prototype),
+    { getTime: () => 0 },
+  ])(
+    "returns a placeholder for invalid runtime date case %#",
+    (date: unknown) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      for (const timezone of ["UTC", "Invalid/Timezone"]) {
+        expect(formatInTimezone(date as string, timezone)).toBe(
+          "Not scheduled",
+        );
+      }
+      expect(warn).not.toHaveBeenCalled();
+    },
+  );
 
   it("formats a valid ISO string in the given timezone", () => {
     expect(formatInTimezone("2024-01-15T12:00:00Z", "UTC")).toBe(
       "Jan 15, 2024, 12:00 PM",
+    );
+  });
+
+  it.each([
+    [WINTER, "America/New_York", "Jan 15, 2024, 07:00 AM"],
+    [SUMMER, "America/New_York", "Jul 15, 2024, 08:00 AM"],
+    [WINTER, "Asia/Kolkata", "Jan 15, 2024, 05:30 PM"],
+    [new Date(0), "UTC", "Jan 1, 1970, 12:00 AM"],
+  ] as const)("formats %s in %s", (date, timezone, expected) => {
+    expect(formatInTimezone(date, timezone)).toBe(expected);
+  });
+
+  it("honors caller formatting options", () => {
+    expect(
+      formatInTimezone(WINTER, "America/New_York", {
+        month: "long",
+        hour12: false,
+        timeZoneName: "short",
+      }),
+    ).toBe("January 15, 2024 at 07:00 EST");
+  });
+
+  it.each(["not-set", "Invalid/Timezone"])(
+    "uses the local timezone for %s",
+    (timezone) => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const options: Intl.DateTimeFormatOptions = {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      };
+      expect(formatInTimezone(WINTER, timezone, options)).toBe(
+        new Intl.DateTimeFormat("en-US", options).format(WINTER),
+      );
+    },
+  );
+
+  it("rejects objects without invoking their date coercion methods", () => {
+    const coerce = vi.fn(() => {
+      throw new Error("Unexpected coercion");
+    });
+    const date = { getTime: coerce, [Symbol.toPrimitive]: coerce };
+    expect(formatInTimezone(date as unknown as Date, "UTC")).toBe(
+      "Not scheduled",
+    );
+    expect(coerce).not.toHaveBeenCalled();
+  });
+
+  it("keeps the schedule formatter safe and preserves its timezone label", () => {
+    expect(formatScheduleTime("not-a-date", "UTC")).toBe("Not scheduled");
+    expect(formatScheduleTime(WINTER, "UTC")).toBe(
+      "Jan 15, 2024, 12:00 PM UTC",
     );
   });
 });

@@ -124,6 +124,30 @@ describe("useCopilotStream — isFinishProbing lifecycle", () => {
     });
   });
 
+  it("still resets the flag under Strict Mode's mount, cleanup, mount", async () => {
+    // The mount effect's cleanup marks the hook unmounted; the simulated
+    // unmount left it that way for the real mount, so the probe's finally
+    // skipped the reset and the flag stayed true after the first turn.
+    server.use(
+      copilotStreamHandler({
+        baseUrl: TEST_BACKEND_BASE_URL,
+        sessionId: TEST_SESSION_ID,
+        chunks: assistantTextChunks("Hi."),
+      }),
+    );
+
+    renderHost({ strictMode: true });
+    await typeAndSend("hi");
+    await screen.findByText("Hi.", undefined, { timeout: 5000 });
+
+    await waitFor(() => expect(isFinishProbingHistory).toContain(true), {
+      timeout: 5000,
+    });
+    await waitFor(() => expect(isFinishProbingHistory.at(-1)).toBe(false), {
+      timeout: 5000,
+    });
+  });
+
   it(
     "resets the flag via finally when the probe finds a continuation stream",
     { timeout: 15000 },

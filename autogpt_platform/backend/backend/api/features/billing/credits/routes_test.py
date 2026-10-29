@@ -15,7 +15,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.billing.credits.routes import get_credit_history, router
 from backend.api.rest_api import app as real_app
-from backend.api.rest_api import handle_internal_http_error
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.credit import AutoTopUpConfig, UserCreditBase
 from backend.data.model import TransactionHistory
 
@@ -50,6 +50,15 @@ def setup_app_auth(mock_jwt_user, test_user_id):
     app.dependency_overrides[get_request_context] = _fake_request_context
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """Keep analytics off the network and let tests assert the event."""
+    return mocker.patch(
+        "backend.api.features.billing.credits.routes.track_checkout_started",
+        new_callable=AsyncMock,
+    )
 
 
 EXPECTED_OPERATIONS = {
@@ -181,6 +190,50 @@ def test_request_top_up(
         json.dumps(response_data, indent=2, sort_keys=True),
         "cred_topup_req",
     )
+
+
+def test_request_top_up_sends_checkout_started(
+    mocker: pytest_mock.MockFixture,
+    track_checkout_started: AsyncMock,
+    test_user_id: str,
+) -> None:
+    mock_credit_model = Mock()
+    mock_credit_model.top_up_intent = AsyncMock(
+        return_value="https://checkout.example.com/session123"
+    )
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.post(
+        "/credits", json={"credit_amount": 500, "surface": "billing"}
+    )
+
+    assert response.status_code == 200
+    track_checkout_started.assert_awaited_once_with(
+        user_id=test_user_id, checkout_kind="top_up", surface="billing"
+    )
+
+
+def test_request_top_up_without_a_checkout_sends_no_checkout_started(
+    mocker: pytest_mock.MockFixture,
+    track_checkout_started: AsyncMock,
+) -> None:
+    """With credits disabled there is no checkout session, so no checkout started."""
+    mock_credit_model = Mock()
+    mock_credit_model.top_up_intent = AsyncMock(return_value="")
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.post(
+        "/credits", json={"credit_amount": 500, "surface": "billing"}
+    )
+
+    assert response.status_code == 200
+    track_checkout_started.assert_not_awaited()
 
 
 def test_request_top_up_forwards_datafast_headers(
@@ -508,7 +561,7 @@ HISTORY_CONTEXT = RequestContext(
 def history_client():
     history_app = fastapi.FastAPI()
     history_app.include_router(router)
-    history_app.add_exception_handler(ValueError, handle_internal_http_error(400))
+    add_exception_handlers(history_app)
     history_app.dependency_overrides[requires_user] = lambda: None
     history_app.dependency_overrides[get_user_id] = lambda: "user"
     history_app.dependency_overrides[get_request_context] = lambda: HISTORY_CONTEXT

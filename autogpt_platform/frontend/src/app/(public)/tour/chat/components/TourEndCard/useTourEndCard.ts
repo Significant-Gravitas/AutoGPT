@@ -7,7 +7,7 @@ import { trackTourCtaClick } from "../../tracking";
 import { useTourScenarioSelection } from "../../useTourScenarioSelection";
 
 /** How long the visitor can sit on the finished demo before the "Next: …"
- * chip appears and the next sidebar scenario starts pulsing. */
+ * chip appears. */
 const IDLE_NUDGE_DELAY_MS = 4000;
 
 export function useTourEndCard() {

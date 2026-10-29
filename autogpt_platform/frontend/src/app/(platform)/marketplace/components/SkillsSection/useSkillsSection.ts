@@ -2,17 +2,21 @@ import { useListCopilotSkills } from "@/app/api/__generated__/endpoints/skills/s
 import { useGetV2ListMarketplaceSkills } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { SHELF_SIZE } from "./helpers";
+import { SHELF_PREVIEW_SIZE } from "../Shelf/helpers";
 
 interface Args {
   category?: string | null;
+  pageSize?: number;
 }
 
-export function useSkillsSection({ category }: Args = {}) {
+export function useSkillsSection({
+  category,
+  pageSize = SHELF_PREVIEW_SIZE,
+}: Args = {}) {
   const { isLoggedIn } = useAuth();
 
   const query = useGetV2ListMarketplaceSkills(
-    { page_size: SHELF_SIZE, ...(category ? { category } : {}) },
+    { page_size: pageSize, ...(category ? { category } : {}) },
     {
       query: {
         select: (response) => okData(response),

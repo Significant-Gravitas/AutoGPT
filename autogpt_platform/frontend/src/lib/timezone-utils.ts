@@ -4,24 +4,26 @@
 
 /**
  * Format a date/time in the user's timezone with timezone indicator
- * @param date - The date to format (can be string, Date, or undefined/invalid)
+ * @param date - The date to format (can be string, Date, null, or undefined)
  * @param timezone - The IANA timezone identifier (e.g., "America/New_York")
  * @param options - Intl.DateTimeFormat options
  * @returns Formatted date string with timezone, or "Not scheduled" if the date is invalid
  */
 export function formatInTimezone(
-  date: string | Date | undefined,
+  date: string | Date | null | undefined,
   timezone: string,
   options?: Intl.DateTimeFormatOptions,
 ): string {
-  const dateObj =
-    date === undefined
-      ? new Date(NaN)
-      : typeof date === "string"
-        ? new Date(date)
-        : date;
+  let timestamp: number;
+  try {
+    timestamp = Date.prototype.getTime.call(
+      typeof date === "string" ? new Date(date) : date,
+    );
+  } catch {
+    return "Not scheduled";
+  }
 
-  if (isNaN(dateObj.getTime())) {
+  if (Number.isNaN(timestamp)) {
     return "Not scheduled";
   }
 
@@ -38,11 +40,11 @@ export function formatInTimezone(
     return new Intl.DateTimeFormat("en-US", {
       ...defaultOptions,
       timeZone: timezone === "not-set" ? undefined : timezone,
-    }).format(dateObj);
+    }).format(timestamp);
   } catch {
     // Fallback to local timezone if invalid timezone
     console.warn(`Invalid timezone "${timezone}", using local timezone`);
-    return new Intl.DateTimeFormat("en-US", defaultOptions).format(dateObj);
+    return new Intl.DateTimeFormat("en-US", defaultOptions).format(timestamp);
   }
 }
 

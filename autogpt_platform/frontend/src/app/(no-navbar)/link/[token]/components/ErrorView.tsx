@@ -11,16 +11,13 @@ export function ErrorView({ message }: Props) {
   return (
     <AuthCard title="Setup failed">
       <div className="flex w-full flex-col items-center gap-6">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
-          <Icon icon={Unlink01Icon} size={40} className="text-red-600" />
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-error-surface text-error-foreground">
+          <Icon icon={Unlink01Icon} size={40} />
         </div>
-        <Text
-          variant="body-medium"
-          className="text-center text-muted-foreground"
-        >
+        <Text variant="body-medium" tone="muted" className="text-center">
           {message}
         </Text>
-        <Text variant="small" className="text-center text-muted-foreground">
+        <Text variant="small" tone="muted" className="text-center">
           Go back to your chat and ask the bot for a new setup link.
         </Text>
       </div>

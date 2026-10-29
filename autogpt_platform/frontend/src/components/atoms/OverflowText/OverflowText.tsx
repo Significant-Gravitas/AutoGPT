@@ -13,7 +13,12 @@ interface Props extends Omit<TextProps, "children"> {
   value: string | ReactNode;
 }
 
-export function OverflowText(props: Props) {
+export function OverflowText({
+  value,
+  className,
+  variant = "body",
+  ...restProps
+}: Props) {
   const elementRef = useRef<HTMLSpanElement | null>(null);
   const [isTruncated, setIsTruncated] = useState(false);
 
@@ -62,22 +67,27 @@ export function OverflowText(props: Props) {
   }
 
   useEffect(() => {
-    if (typeof props.value === "string") updateTruncation();
-  }, [props.value]);
+    if (typeof value === "string") updateTruncation();
+  }, [value]);
 
   useEffect(setupResizeListener, []);
   useEffect(setupObserver, []);
 
-  const { value, className, variant = "body", ...restProps } = props;
-
   const content = (
     <span
       ref={elementRef}
+      data-slot="overflow-text"
       className={cn(
         "block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap",
       )}
     >
-      <Text variant={variant} as="span" className={className} {...restProps}>
+      <Text
+        data-slot="overflow-text-label"
+        variant={variant}
+        as="span"
+        className={className}
+        {...restProps}
+      >
         {value}
       </Text>
     </span>
@@ -88,8 +98,12 @@ export function OverflowText(props: Props) {
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{content}</TooltipTrigger>
-          <TooltipContent>
-            {typeof value === "string" ? <p>{value}</p> : value}
+          <TooltipContent data-slot="overflow-text-tooltip">
+            {typeof value === "string" ? (
+              <p data-slot="overflow-text-tooltip-text">{value}</p>
+            ) : (
+              value
+            )}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

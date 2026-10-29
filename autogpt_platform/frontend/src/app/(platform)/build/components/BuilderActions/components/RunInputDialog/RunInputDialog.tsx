@@ -61,7 +61,7 @@ export const RunInputDialog = ({
   return (
     <>
       <Dialog
-        title={purpose === "run" ? "Run Agent" : "Schedule Run"}
+        title={purpose === "run" ? "Run Workflow" : "Schedule Run"}
         controlled={{
           isOpen,
           set: setIsOpen,
@@ -78,9 +78,7 @@ export const RunInputDialog = ({
               {hasCredentials() && credentialFields.length > 0 && (
                 <div data-id="run-input-credentials-section">
                   <div className="mb-4">
-                    <Text variant="h4" className="text-gray-900">
-                      Credentials
-                    </Text>
+                    <Text variant="h4">Credentials</Text>
                   </div>
                   <div className="px-2" data-id="run-input-credentials-form">
                     <CredentialsGroupedView
@@ -98,9 +96,7 @@ export const RunInputDialog = ({
               {hasInputs() && (
                 <div data-id="run-input-inputs-section">
                   <div className="mb-4">
-                    <Text variant="h4" className="text-gray-900">
-                      Inputs
-                    </Text>
+                    <Text variant="h4">Inputs</Text>
                   </div>
                   <div data-id="run-input-inputs-form">
                     <FormRenderer
@@ -137,7 +133,9 @@ export const RunInputDialog = ({
                       className="size-5 transition-transform group-hover:scale-110"
                     />
                   )}
-                  <span className="font-semibold">Manual Run</span>
+                  <Text variant="body-semibold-tight" as="span" tone="inherit">
+                    Manual Run
+                  </Text>
                 </Button>
               )}
               {purpose === "schedule" && (
@@ -152,7 +150,9 @@ export const RunInputDialog = ({
                     icon={Clock01Icon}
                     className="size-5 transition-transform group-hover:scale-110"
                   />
-                  <span className="font-semibold">Schedule Run</span>
+                  <Text variant="body-semibold-tight" as="span" tone="inherit">
+                    Schedule Run
+                  </Text>
                 </Button>
               )}
             </div>

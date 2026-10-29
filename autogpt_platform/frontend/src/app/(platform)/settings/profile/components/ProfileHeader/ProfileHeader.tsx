@@ -77,16 +77,18 @@ export function ProfileHeader({
         onMouseLeave={() => setIsHovered(false)}
         disabled={isUploading}
         aria-label="Change profile photo"
-        className="group relative h-[112px] w-[112px] shrink-0 cursor-pointer rounded-full outline-none transition-transform duration-150 ease-out focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-wait"
+        className="group relative h-[112px] w-[112px] shrink-0 cursor-pointer rounded-full outline-none transition-transform duration-150 ease-out focus-visible:ring-2 focus-visible:ring-brand/80 focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-wait"
       >
-        <Avatar className="h-[112px] w-[112px] shadow-[0_8px_28px_-12px_rgba(15,15,20,0.18)] ring-2 ring-white">
+        {/* oxlint-disable-next-line design-system/no-restyle, design-system/no-arbitrary-values -- the profile photo floats on a soft shadow with a white rim */}
+        <Avatar className="h-[112px] w-[112px] shadow-[0_8px_28px_-12px_rgba(15,15,20,0.18)] ring-2 ring-surface">
           <AvatarImage
             src={avatarUrl}
             alt={name || "Profile"}
             width={224}
             height={224}
           />
-          <AvatarFallback className="bg-gradient-to-br from-zinc-100 to-zinc-200 text-zinc-500">
+          {/* oxlint-disable-next-line design-system/no-restyle -- the empty photo is a grey gradient behind a person glyph */}
+          <AvatarFallback className="bg-gradient-to-br from-surface-hover to-surface-active text-foreground-tertiary">
             <Icon icon={UserIcon} size={48} />
           </AvatarFallback>
         </Avatar>
@@ -97,9 +99,11 @@ export function ProfileHeader({
             opacity: isUploading || isHovered ? 1 : 0,
           }}
           transition={{ duration: 0.18, ease: EASE_OUT }}
-          className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-[2px]"
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- a 2px blur under the hover veil; backdrop-blur-sm is 4px
+          className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-action-foreground backdrop-blur-[2px]"
         >
           {isUploading ? (
+            // oxlint-disable-next-line design-system/no-restyle -- the upload glyph spins while the photo uploads
             <Icon icon={Loading03Icon} size={26} className="animate-spin" />
           ) : (
             <Icon icon={Camera01Icon} size={26} />
@@ -114,8 +118,7 @@ export function ProfileHeader({
             duration: reduceMotion ? 0 : 0.32,
             ease: BADGE_ARC_EASE,
           }}
-          className="pointer-events-none absolute inset-0"
-          style={{ transformOrigin: "center" }}
+          className="pointer-events-none absolute inset-0 origin-center"
         >
           <motion.span
             initial={false}
@@ -124,8 +127,8 @@ export function ProfileHeader({
               duration: reduceMotion ? 0 : 0.32,
               ease: BADGE_ARC_EASE,
             }}
-            className="absolute bottom-1 right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_10px_-2px_rgba(15,15,20,0.25)]"
-            style={{ transformOrigin: "center" }}
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- the edit badge's lift shadow has no token
+            className="absolute bottom-1 right-1 flex h-9 w-9 origin-center items-center justify-center rounded-full border-2 border-surface bg-surface text-foreground-base shadow-[0_3px_10px_-2px_rgba(15,15,20,0.25)]"
           >
             <Icon icon={PencilIcon} size={16} />
           </motion.span>
@@ -142,7 +145,7 @@ export function ProfileHeader({
 
       <div className="grid w-full gap-4 sm:grid-cols-2">
         <label htmlFor="profile-name" className="flex w-full flex-col gap-2">
-          <Text variant="body-medium" as="span" className="px-4 text-black">
+          <Text variant="body-medium" as="span" className="mx-4">
             Display name
           </Text>
           <Input
@@ -161,10 +164,10 @@ export function ProfileHeader({
           className="flex w-full flex-col gap-2"
         >
           <div className="flex items-center justify-between px-4">
-            <Text variant="body-medium" as="span" className="text-black">
+            <Text variant="body-medium" as="span">
               Handle
             </Text>
-            <Text variant="small" as="span" className="!text-zinc-400">
+            <Text variant="small" as="span" tone="subtle">
               agpt.co/@your-handle
             </Text>
           </div>

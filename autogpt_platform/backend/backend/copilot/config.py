@@ -46,14 +46,14 @@ ANTHROPIC_OPENAI_COMPAT_BASE_URL = "https://api.anthropic.com/v1/"
 # auto-overrides them when left at default — see ``_apply_local_aux_models``
 # below. Kept as module constants so the validator and the field defaults
 # can't drift.
-_DEFAULT_TITLE_MODEL = "anthropic/claude-haiku-4-5"
+_DEFAULT_TITLE_MODEL = "anthropic/claude-haiku-5.5"
 _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 # Default for ``fast_advanced_model`` — kept in sync with the field default
 # below. ``_apply_local_aux_models`` reads this to detect "operator left it
 # at the cloud default" so it can rewrite to ``fast_standard_model`` under
 # local transport (otherwise an "advanced" tier request 404s against
 # Ollama's OpenAI shim — no ``anthropic/`` slugs there).
-_DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-5"
+_DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-5-5"
 
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
 CopilotLlmAuthProvider = Literal["platform", "codex", "microsoft_365_copilot"]
@@ -203,7 +203,7 @@ class ChatConfig(BaseSettings):
     # ``CHAT_FAST_MODEL``) are preserved via ``validation_alias`` so
     # existing deployments continue to override the same effective cell.
     fast_standard_model: str = Field(
-        default="anthropic/claude-sonnet-5",
+        default="anthropic/claude-sonnet-5-5",
         validation_alias=AliasChoices(
             "CHAT_FAST_STANDARD_MODEL",
             "CHAT_FAST_MODEL",
@@ -221,7 +221,7 @@ class ChatConfig(BaseSettings):
         "the cloud default — see ``_apply_local_aux_models``.",
     )
     thinking_standard_model: str = Field(
-        default="anthropic/claude-sonnet-5",
+        default="anthropic/claude-sonnet-5-5",
         validation_alias=AliasChoices(
             "CHAT_THINKING_STANDARD_MODEL",
             "CHAT_MODEL",
@@ -230,13 +230,21 @@ class ChatConfig(BaseSettings):
         "tier.  LD override: ``copilot-model-routing[thinking][standard]``.",
     )
     thinking_advanced_model: str = Field(
-        default="anthropic/claude-opus-5",
+        default="anthropic/claude-opus-5-5",
         validation_alias=AliasChoices(
             "CHAT_THINKING_ADVANCED_MODEL",
             "CHAT_ADVANCED_MODEL",
         ),
         description="SDK (extended-thinking) path, 'advanced' tier.  LD "
         "override: ``copilot-model-routing[thinking][advanced]``.",
+    )
+    learning_reviewer_model: str = Field(
+        default="",
+        description="Model for the nightly skill-learning review. Empty (the "
+        "default) routes to ``fast_standard_model`` through the normal chat "
+        "transport so the reviewer follows the same routing and accounting "
+        "as ordinary work; set ``CHAT_LEARNING_REVIEWER_MODEL`` to pin a "
+        "model chosen through evaluation.",
     )
     title_model: str = Field(
         default=_DEFAULT_TITLE_MODEL,
@@ -264,6 +272,60 @@ class ChatConfig(BaseSettings):
         "platform OR cost low. Auto-overridden to match "
         "``fast_standard_model`` under ``use_local`` when left at the "
         "cloud default — see ``_apply_local_aux_models``.",
+    )
+    gate_model: str = Field(
+        default="anthropic/claude-haiku-4-5",
+        description="Model backing the auto-mode action supervisor "
+        "(``copilot/gate/classifier.py``). Deliberately NOT routed through "
+        "``_apply_local_aux_models``: silently swapping a security "
+        "classifier for whichever small model a local operator happens to "
+        "run is exactly the substitution nobody would notice.",
+    )
+    gate_content_model: str = Field(
+        default="anthropic/claude-sonnet-5",
+        description="Model backing the content judge on outside reads "
+        "(``copilot/gate/content.py``); Haiku missed most injections in pages "
+        "past a few hundred characters. Not routed through "
+        "``_apply_local_aux_models``, for the same reason as ``gate_model``.",
+    )
+    gate_timeout_s: float = Field(
+        default=6.0,
+        description="Hard timeout for one gate classification. Expiry is not "
+        "an error path — it resolves to 'ask'.",
+    )
+    gate_first_stage: Literal["none", "jev"] = Field(
+        default="jev",
+        description="First stage of the action supervisor: Jev decides every "
+        "judged call and the LLM (``gate_model``) runs only on an ask, to write "
+        "the reason. Off without ``TYPESAFE_API_KEY``.",
+    )
+    gate_jev_model: str = Field(
+        default="jev-1.13.0",
+        description="Pinned Jev version. Once TypeSafe retires it, calls run on "
+        "``jev-latest`` and log an ERROR naming it.",
+    )
+    gate_jev_ask_threshold: float | None = Field(
+        default=None,
+        description="Unset: Jev's allow/ask choice decides. Set: the call also "
+        "asks when Jev's must-ask probability reaches it (0.4 was measured).",
+    )
+    gate_jev_timeout_s: float = Field(
+        default=2.0,
+        description="Timeout for one Jev call; expiry falls through to the LLM.",
+    )
+    read_screen_shadow_sample_rate: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Share of chats whose reads the read screen's shadow mode "
+        "(``copilot-read-screen`` = shadow) judges and records, 0 to 1. Picked "
+        "per chat, so a sampled chat is recorded whole.",
+    )
+    content_judge_timeout_s: float = Field(
+        default=15.0,
+        description="Hard timeout for one content-judge call on an outside "
+        "read. Provisional until the supervisor measurement sets it from the "
+        "judge's p95; expiry holds the read.",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
@@ -316,10 +378,6 @@ class ChatConfig(BaseSettings):
         description="TTL in seconds for stream lock (2 minutes). Short timeout allows "
         "reconnection after refresh/crash without long waits.",
     )
-    stream_max_length: int = Field(
-        default=10000,
-        description="Maximum number of messages to store per stream",
-    )
 
     # Redis key prefixes for stream registry
     session_meta_prefix: str = Field(
@@ -342,6 +400,16 @@ class ChatConfig(BaseSettings):
         ge=0,
         description="How long a process may serve a cached Langfuse prompt before "
         "re-fetching it (0 to disable caching)",
+    )
+
+    # PostHog LLM analytics (copilot/ai_spans.py)
+    posthog_builtin_tool_spans: bool = Field(
+        default=True,
+        description="Send a PostHog ``$ai_span`` for each call of the SDK "
+        "CLI's built-in tools (Task/Agent, WebSearch, ...), sub-agents' calls "
+        "included. Off, only platform tools get spans. The high-volume lookups "
+        "in ``ai_spans.UNTRACED_BUILTIN_TOOLS`` (Read, Grep, TodoWrite, ...) "
+        "never get one.",
     )
 
     # Rate limiting — cost-based limits per day and per week, stored in
@@ -432,10 +500,21 @@ class ChatConfig(BaseSettings):
             "CHAT_AGENT_MAX_TURNS",
             "CHAT_CLAUDE_AGENT_MAX_TURNS",
         ),
-        description="Maximum number of tool-call rounds per turn — applies to "
-        "both the baseline and Claude Agent SDK paths. Prevents runaway tool "
-        "loops from burning budget. Override via CHAT_AGENT_MAX_TURNS env var "
-        "(legacy CHAT_CLAUDE_AGENT_MAX_TURNS still accepted).",
+        description="Maximum number of tool-call rounds per turn on the "
+        "baseline path, which has no spend governor. The Claude Agent SDK path, "
+        "Codex models included, uses ``sdk_step_checkin`` instead. Override via "
+        "CHAT_AGENT_MAX_TURNS env var (legacy CHAT_CLAUDE_AGENT_MAX_TURNS still "
+        "accepted).",
+    )
+    sdk_step_checkin: int = Field(
+        default=450,
+        ge=1,
+        le=10000,
+        description="Model calls an SDK turn may make before its tools are "
+        "refused for a check-in: the agent writes a progress summary and the "
+        "user can choose to keep going, which starts a fresh count. The CLI's "
+        "own max_turns sits a little above this as a backstop. Spend, not "
+        "steps, is what bounds cost: the governor lands a turn at its budget.",
     )
     claude_agent_max_budget_usd: float = Field(
         default=10.0,
@@ -476,6 +555,12 @@ class ChatConfig(BaseSettings):
         "this cap). Admission reads settled spend, so a tree can overshoot by "
         "up to (max_nodes - 1) concurrently admitted turns; the node cap is "
         "what bounds it.",
+    )
+    spend_ceiling_reset: Literal["never", "daily"] = Field(
+        default="daily",
+        description="When a chat's spend ceiling starts over: at each UTC "
+        "midnight, like the daily usage limit (the ceiling and any approved "
+        "raises reset with the day), or never within the chat.",
     )
     tree_max_nodes: int = Field(
         default=8,
@@ -542,19 +627,11 @@ class ChatConfig(BaseSettings):
         "``claude_agent_thinking_effort`` for adaptive control — the SDK "
         "ignores ``max_thinking_tokens`` for those models.",
     )
-    render_reasoning_in_ui: bool = Field(
-        default=True,
-        description="Render reasoning as live UI parts "
-        "(``StreamReasoning*`` wire events). False suppresses the live "
-        "wire events only; ``role='reasoning'`` rows are always persisted "
-        "so the reasoning bubble hydrates on reload. Tokens are billed "
-        "upstream regardless.",
-    )
     stream_replay_count: int = Field(
         default=200,
         ge=1,
         le=10000,
-        description="Max Redis stream entries replayed on SSE reconnect.",
+        description="Redis stream entries read per replay batch on SSE reconnect.",
     )
     claude_agent_thinking_effort: Literal["low", "medium", "high", "max"] | None = (
         # TODO: add xhigh when SDK support catches up
@@ -698,7 +775,7 @@ class ChatConfig(BaseSettings):
         description="E2B API key. Falls back to E2B_API_KEY environment variable.",
     )
     e2b_sandbox_template: str = Field(
-        default="agpt-desktop-1x2",
+        default="agpt-desktop-1x2-cfc276e0",
         description="E2B sandbox template for copilot sessions. The default is our "
         "own image (E2B's desktop image at 1 vCPU / 2 GiB, ~$0.08/h running, "
         "no display started), built on the team automatically the first time "
@@ -1130,7 +1207,7 @@ class ChatConfig(BaseSettings):
         when the transport asks for it.
 
         The cloud defaults are ``openai/gpt-4o-mini`` / ``google/gemini-...``
-        / ``anthropic/claude-opus-5`` — fine on OpenRouter, instant 404
+        / ``anthropic/claude-opus-5-5`` — fine on OpenRouter, instant 404
         on a local backend (no provider slugs there). Operators on the
         local transport otherwise have to repeat the same Ollama slug
         across half a dozen ``CHAT_*_MODEL`` envs. Only fires when the
@@ -1139,7 +1216,7 @@ class ChatConfig(BaseSettings):
         Covers ``title_model`` + ``simulation_model`` (aux call sites)
         AND ``fast_advanced_model`` (the "advanced" baseline tier);
         without the advanced derivation, a user clicking the advanced
-        toggle in the UI sends ``anthropic/claude-opus-5`` to Ollama
+        toggle in the UI sends ``anthropic/claude-opus-5-5`` to Ollama
         and gets a model-not-found 404. The boot-time vendor validator
         is skipped under local transport so this misconfig wouldn't
         surface until the first advanced-tier turn.

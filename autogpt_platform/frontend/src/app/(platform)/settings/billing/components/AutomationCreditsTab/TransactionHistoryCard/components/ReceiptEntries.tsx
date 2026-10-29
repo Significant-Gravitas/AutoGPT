@@ -14,7 +14,9 @@ export function ReceiptEntries({ transaction }: Props) {
   const entriesID = useId();
   const referenceID = useId();
   const reference =
-    transaction.usage_execution_id || transaction.transaction_key;
+    transaction.usage_execution_id ||
+    transaction.usage_chat_session_id ||
+    transaction.transaction_key;
   return (
     <div className="mt-3">
       <div className="flex flex-wrap items-center justify-between gap-x-4">
@@ -22,7 +24,8 @@ export function ReceiptEntries({ transaction }: Props) {
           <Button
             variant="ghost"
             size="small"
-            className="min-h-11 min-w-0 px-0 text-zinc-600"
+            // oxlint-disable-next-line design-system/no-restyle -- a bare text toggle inside the receipt; no Button variant drops the padding
+            className="min-h-11 min-w-0 px-0 text-foreground-secondary"
             onClick={() => setEntriesOpen(!entriesOpen)}
             aria-expanded={entriesOpen}
             aria-controls={entriesOpen ? entriesID : undefined}
@@ -40,7 +43,8 @@ export function ReceiptEntries({ transaction }: Props) {
           <Button
             variant="ghost"
             size="small"
-            className="min-h-11 min-w-0 px-0 text-zinc-600"
+            // oxlint-disable-next-line design-system/no-restyle -- a bare text toggle inside the receipt; no Button variant drops the padding
+            className="min-h-11 min-w-0 px-0 text-foreground-secondary"
             onClick={() => setReferenceOpen(!referenceOpen)}
             aria-expanded={referenceOpen}
             aria-controls={referenceOpen ? referenceID : undefined}
@@ -56,15 +60,10 @@ export function ReceiptEntries({ transaction }: Props) {
       )}
       {referenceOpen && (
         <div id={referenceID} className="mt-2">
-          <Text variant="small" className="text-zinc-600">
-            {transaction.activity_type === "agent_run" ? "Run ID" : "Reference"}
+          <Text variant="small" tone="secondary">
+            {referenceLabel(transaction)}
           </Text>
-          <Text
-            variant="small"
-            as="code"
-            unmask={false}
-            className="break-all font-mono"
-          >
+          <Text variant="small-mono" as="code" className="break-all">
             {reference}
           </Text>
         </div>
@@ -73,10 +72,16 @@ export function ReceiptEntries({ transaction }: Props) {
   );
 }
 
+function referenceLabel(transaction: Transaction) {
+  if (transaction.usage_execution_id) return "Run ID";
+  if (transaction.usage_chat_session_id) return "Chat ID";
+  return "Reference";
+}
+
 function ChargeEntries({ transaction }: Props) {
   const charges = transaction.charges ?? [];
   return (
-    <div className="mt-2 border-t border-zinc-200 pt-3">
+    <div className="mt-2 border-t border-border-base pt-3">
       <table className="w-full text-left" aria-label="Recorded charge entries">
         <thead className="sr-only">
           <tr>
@@ -91,12 +96,7 @@ function ChargeEntries({ transaction }: Props) {
             return (
               <tr key={charge.id}>
                 <td className="py-2 pr-3 align-top">
-                  <Text
-                    variant="small"
-                    unmask={false}
-                    title={posted.full}
-                    className="text-zinc-600"
-                  >
+                  <Text variant="small" title={posted.full} tone="secondary">
                     {posted.date}
                     <br />
                     {posted.time}
@@ -106,10 +106,7 @@ function ChargeEntries({ transaction }: Props) {
                   <Text variant="small">{chargeLabel(charge.charge_type)}</Text>
                 </td>
                 <td className="py-2 text-right align-top">
-                  <TransactionAmount
-                    amount={charge.amount}
-                    className="text-xs font-normal"
-                  />
+                  <TransactionAmount amount={charge.amount} variant="small" />
                 </td>
               </tr>
             );
@@ -117,7 +114,7 @@ function ChargeEntries({ transaction }: Props) {
         </tbody>
       </table>
       {transaction.charges_truncated && (
-        <Text variant="small" className="mt-2 text-zinc-600">
+        <Text variant="small" tone="secondary" className="mt-2">
           Showing {charges.length} of {transaction.charges_total_count} charge
           entries. The total includes every charge and adjustment.
         </Text>

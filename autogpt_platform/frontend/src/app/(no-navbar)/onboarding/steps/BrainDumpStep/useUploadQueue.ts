@@ -20,8 +20,12 @@ const FLUSH_PASSES = 3;
 // the identical rejection three more times.
 const RETRYABLE_CLIENT_STATUSES = [408, 429];
 
+// `resent` marks a take sent again from the browser's copy, which the server
+// accepts even after the take was discarded (Back after a skip).
+type QueuedPart = RecordingPart & { resent?: boolean };
+
 export function useUploadQueue() {
-  const queueRef = useRef<RecordingPart[]>([]);
+  const queueRef = useRef<QueuedPart[]>([]);
   const drainRef = useRef<Promise<void> | null>(null);
   // Bumped by `reset()`. A drain sitting on an upload holds a reference to a
   // queue that a restart has since replaced, and everything it does when the
@@ -68,7 +72,10 @@ export function useUploadQueue() {
   async function drainQueue(take: number) {
     while (takeRef.current === take && queueRef.current.length > 0) {
       const part = queueRef.current[0];
-      const uploaded = await uploadWithRetries(part);
+      const uploaded = await uploadWithRetries(
+        part,
+        () => takeRef.current === take,
+      );
       if (takeRef.current !== take) return;
       if (!uploaded) {
         // Leave it at the head — reconnecting replays from here so
@@ -86,7 +93,7 @@ export function useUploadQueue() {
     }
   }
 
-  function enqueue(part: RecordingPart) {
+  function enqueue(part: QueuedPart) {
     queueRef.current = [...queueRef.current, part];
     setPendingCount(queueRef.current.length);
     void drain();
@@ -124,13 +131,20 @@ export function useUploadQueue() {
   return { enqueue, flush, reset, pendingCount, isOffline };
 }
 
-async function uploadWithRetries(part: RecordingPart) {
+// Stops retrying once the take is discarded: a part 0 landing after that
+// would claim the server row for a take nobody will finalize.
+async function uploadWithRetries(
+  part: QueuedPart,
+  isCurrentTake: () => boolean,
+) {
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    if (!isCurrentTake()) return false;
     try {
       await uploadBrainDumpPart({
         file: part.blob,
         recording_id: part.recordingId,
         part_index: part.partIndex,
+        resent: part.resent,
       });
       return true;
     } catch (error) {

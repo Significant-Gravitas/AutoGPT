@@ -117,6 +117,20 @@ async def transaction(timeout: timedelta = TRANSACTION_TIMEOUT):
         yield tx
 
 
+@asynccontextmanager
+async def bounded_transaction(statement_timeout_ms: int):
+    """A transaction each of whose statements the database gives up on
+    after *statement_timeout_ms* (``statement_timeout``, for this transaction
+    only), cancelling it there, where a caller's own deadline only stops
+    waiting for it."""
+    async with transaction() as tx:
+        await tx.query_raw(
+            "SELECT set_config('statement_timeout', $1, true)",
+            str(statement_timeout_ms),
+        )
+        yield tx
+
+
 def get_database_schema() -> str:
     """Extract database schema from DATABASE_URL."""
     parsed_url = urlparse(DATABASE_URL)

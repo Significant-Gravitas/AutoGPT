@@ -22,6 +22,9 @@ If every lookup fails (404 / timeout / parse error), the caller's
 ``fallback_cost_usd`` is recorded instead — keeps the rate-limit counter
 populated with the best available estimate rather than leaving the turn
 uncharged.
+
+:class:`TurnGenerations` collects the IDs during the turn, one CLI launch at
+a time, so a transient retry can leave out what the failed launch ran.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from collections.abc import Collection
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -220,11 +224,21 @@ def _discover_turn_subagent_gen_ids(
     Preserves ``known`` ordering so main-turn IDs stay first; only
     appends truly new IDs from the sweep.
     """
-    merged: list[str] = list(known)
-    seen = set(merged)
+    seen = set(known)
+    swept = _turn_subagent_gen_ids(project_dir, session_id, turn_start_ts)
+    return [*known, *(gen_id for gen_id in swept if gen_id not in seen)]
+
+
+def _turn_subagent_gen_ids(
+    project_dir: Path, session_id: str, turn_start_ts: float
+) -> list[str]:
+    """Gen-IDs in this session's subagent files written during this turn,
+    deduplicated, file by file and sorted within each file. Scoped as
+    :func:`_discover_turn_subagent_gen_ids` describes."""
+    ids: dict[str, None] = {}
     subagents_dir = project_dir / session_id / "subagents"
     if not subagents_dir.exists():
-        return merged
+        return []
     try:
         for jsonl in subagents_dir.glob("agent-*.jsonl"):
             try:
@@ -232,13 +246,78 @@ def _discover_turn_subagent_gen_ids(
                     continue
             except OSError:
                 continue
-            for gen_id in _gen_ids_from_jsonl(jsonl):
-                if gen_id not in seen:
-                    seen.add(gen_id)
-                    merged.append(gen_id)
+            ids.update(dict.fromkeys(sorted(_gen_ids_from_jsonl(jsonl))))
     except OSError as exc:
         logger.debug("Failed to walk subagents dir=%s: %s", subagents_dir, exc)
-    return merged
+    return list(ids)
+
+
+class TurnGenerations:
+    """The OpenRouter generations a turn is billed for, one CLI launch at a time.
+
+    The live stream names each generation of the main agent; the CLI's
+    subagents (compaction, Task) leave theirs in JSONL files, which the
+    reconcile sweeps once the turn ends. A transient retry relaunches the CLI
+    after a provider failure, and what the failed launch ran is ours to absorb,
+    as its CLI-priced spend is (``_do_transient_backoff`` in ``service.py``):
+    its generations, live or in a subagent's file, are left out of the
+    reconcile. The retry only relaunches a launch that streamed nothing, so
+    none of its queries had reported a result whose spend must stay billed.
+
+    Without a project dir the subagent files are not read, which is right for
+    a turn that does not reconcile.
+    """
+
+    def __init__(
+        self,
+        cli_project_dir: str | None = None,
+        cli_session_id: str | None = None,
+        turn_start_ts: float | None = None,
+    ) -> None:
+        # The live generation IDs to bill, in arrival order.
+        self.ids: list[str] = []
+        # What absorbed launches ran, kept so the sweep cannot bill it again.
+        self.absorbed: set[str] = set()
+        self._project_dir = cli_project_dir
+        self._session_id = cli_session_id
+        self._turn_start_ts = turn_start_ts
+        self._launch_start = 0
+        self._subagent_ids_at_launch: set[str] = set()
+
+    def add(self, generation_id: str) -> None:
+        if generation_id not in self.ids:
+            self.ids.append(generation_id)
+
+    async def start_launch(self) -> None:
+        """Mark what is billed when a CLI launch starts, so a retry can tell
+        what the launch itself ran.
+
+        Call it once the previous launch's CLI has exited, or a generation
+        its subagents wrote on the way out would count as this launch's.
+        """
+        self._launch_start = len(self.ids)
+        self._subagent_ids_at_launch = await self._subagent_ids()
+
+    async def absorb_launch(self) -> None:
+        """Leave out everything the launch since :meth:`start_launch` ran.
+
+        Call it once the launch's CLI process has exited, so its subagents
+        have written their last generation.
+        """
+        self.absorbed.update(self.ids[self._launch_start :])
+        del self.ids[self._launch_start :]
+        self.absorbed.update(await self._subagent_ids() - self._subagent_ids_at_launch)
+
+    async def _subagent_ids(self) -> set[str]:
+        if not (self._project_dir and self._session_id) or self._turn_start_ts is None:
+            return set()
+        ids = await asyncio.to_thread(
+            _turn_subagent_gen_ids,
+            Path(os.path.expanduser(self._project_dir)),
+            self._session_id,
+            self._turn_start_ts,
+        )
+        return set(ids)
 
 
 async def record_turn_cost_from_openrouter(
@@ -258,6 +337,7 @@ async def record_turn_cost_from_openrouter(
     api_key: str | None,
     log_prefix: str,
     langfuse_trace_id: str | None = None,
+    absorbed_generation_ids: Collection[str] = (),
 ) -> None:
     """Persist turn cost from OpenRouter's authoritative ``/generation``.
 
@@ -266,6 +346,9 @@ async def record_turn_cost_from_openrouter(
     cost-log append and rate-limit counter stay consistent.  No double
     counting: the caller skips its own sync persist for non-Anthropic
     OpenRouter turns and defers entirely to this task.
+
+    ``absorbed_generation_ids`` (:attr:`TurnGenerations.absorbed`) are left
+    out wherever they come from, the caller's list or the subagent sweep.
 
     Launched via ``asyncio.create_task`` from the stream ``finally`` block
     so the ~500-2000ms ``/generation`` indexing delay doesn't add latency
@@ -317,6 +400,15 @@ async def record_turn_cost_from_openrouter(
                 len(merged_ids) - len(generation_ids),
             )
         generation_ids = merged_ids
+
+    billed_ids = [g for g in generation_ids if g not in absorbed_generation_ids]
+    if len(billed_ids) != len(generation_ids):
+        logger.info(
+            "%s[cost-record] left out %d gen-IDs a transient retry absorbed",
+            log_prefix,
+            len(generation_ids) - len(billed_ids),
+        )
+    generation_ids = billed_ids
 
     if not generation_ids:
         return

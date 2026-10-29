@@ -3,6 +3,7 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { getPostLogoutPath } from "@/lib/auth/account-banned";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
@@ -30,14 +31,19 @@ export default function LogoutPage() {
         try {
           await logOut();
         } catch {
+          // The sign-out never reached the server, so the session is still
+          // live. Say so, and leave the user in the app rather than on a
+          // login page that would only send them back in.
           toast({
-            title: "Failed to log out. Redirecting to login.",
+            title: "Couldn't sign you out",
+            description: "Check your connection and try again.",
             variant: "destructive",
           });
-        } finally {
-          await wait(LOGOUT_REDIRECT_DELAY_MS);
-          router.replace("/login");
+          router.replace("/");
+          return;
         }
+        await wait(LOGOUT_REDIRECT_DELAY_MS);
+        router.replace(getPostLogoutPath(window.location.search));
       }
 
       void runLogout();

@@ -1,7 +1,7 @@
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
 import { clearContentCache } from "./components/ArtifactPanel/components/useArtifactContent";
-import { ORIGINAL_TITLE, parseSessionIDs } from "./helpers";
+import { parseSessionIDs } from "./helpers";
 
 export interface DeleteTarget {
   id: string;
@@ -99,15 +99,30 @@ export type CopilotLlmAuthSelection =
   | { authProvider: "codex"; credentialId: string }
   | { authProvider: "microsoft_365_copilot"; credentialId: string };
 
-/** Context panel tab: "files" is the inline workspace-files card, "artifacts"
- *  the docked artifacts library. */
-export type ContextPanelTab = "files" | "artifacts";
+/** Context panel tab, each docked on the right: the chat's files, the
+ *  artifacts library, or the chat's expert's integrations. */
+export type ContextPanelTab = "files" | "artifacts" | "integrations";
+
+/** The expert whose files and integrations the context panel lists. */
+export interface ContextPanelExpert {
+  id: string;
+  name: string;
+}
 
 const isClient = typeof window !== "undefined";
 
 function getPersistedOpen(): boolean {
   if (!isClient) return false;
   return storage.get(Key.COPILOT_CONTEXT_PANEL_OPEN) === "true";
+}
+
+export function getPersistedNotificationsEnabled(): boolean {
+  return (
+    isClient &&
+    storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "true" &&
+    typeof Notification !== "undefined" &&
+    Notification.permission === "granted"
+  );
 }
 
 function getPersistedTab(): ContextPanelTab {
@@ -167,6 +182,12 @@ interface CopilotUIState {
   initialPrompt: string | null;
   setInitialPrompt: (prompt: string | null) => void;
 
+  /** Text of a message that never went out. Unlike `initialPrompt`, the
+   *  composer adds it to whatever the user has typed since. */
+  recoveredDraft: string | null;
+  restoreDraft: (text: string) => void;
+  clearRecoveredDraft: () => void;
+
   /**
    * Bumped every time the composer actually sends a message. Chain action
    * cards draft into the input rather than sending themselves, so this is
@@ -210,9 +231,6 @@ interface CopilotUIState {
   isSoundEnabled: boolean;
   toggleSound: () => void;
 
-  showNotificationDialog: boolean;
-  setShowNotificationDialog: (show: boolean) => void;
-
   // Artifact panel
   artifactPanel: ArtifactPanelState;
   // `persist: false` skips the localStorage write — used by the public
@@ -226,6 +244,10 @@ interface CopilotUIState {
   toggleContextPanel: () => void;
   /** Opens the panel on `tab`, or closes it if that tab is already showing. */
   toggleContextPanelTab: (tab: ContextPanelTab) => void;
+  contextPanelExpert: ContextPanelExpert | null;
+  setContextPanelExpert: (expert: ContextPanelExpert | null) => void;
+  /** The integrations tab for `expert`, toggled like any other tab. */
+  toggleIntegrationsPanel: (expert: ContextPanelExpert) => void;
   /** Forget the remembered preview — called on session entry so a new chat
    *  can never restore the previous chat's artifact. */
   clearLastArtifact: () => void;
@@ -285,6 +307,15 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
   setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
 
+  recoveredDraft: null,
+  restoreDraft: (text) =>
+    set((state) => ({
+      recoveredDraft: state.recoveredDraft
+        ? `${state.recoveredDraft}\n\n${text}`
+        : text,
+    })),
+  clearRecoveredDraft: () => set({ recoveredDraft: null }),
+
   sentMessageCount: 0,
   notifyMessageSent: () =>
     set((state) => ({ sentMessageCount: state.sentMessageCount + 1 })),
@@ -339,11 +370,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     set({ completedSessionIDs: new Set<string>() });
   },
 
-  isNotificationsEnabled:
-    isClient &&
-    storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "true" &&
-    typeof Notification !== "undefined" &&
-    Notification.permission === "granted",
+  isNotificationsEnabled: getPersistedNotificationsEnabled(),
   setNotificationsEnabled: (enabled) => {
     storage.set(Key.COPILOT_NOTIFICATIONS_ENABLED, String(enabled));
     set({ isNotificationsEnabled: enabled });
@@ -357,9 +384,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       storage.set(Key.COPILOT_SOUND_ENABLED, String(next));
       return { isSoundEnabled: next };
     }),
-
-  showNotificationDialog: false,
-  setShowNotificationDialog: (show) => set({ showNotificationDialog: show }),
 
   // Artifact panel
   artifactPanel: {
@@ -561,6 +585,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     set((state) => ({
       artifactPanel: {
         ...state.artifactPanel,
+        activeTab:
+          state.artifactPanel.activeTab === "integrations"
+            ? "files"
+            : state.artifactPanel.activeTab,
         lastArtifact: null,
         // A new chat has its own computer; never show the previous chat's.
         computer: null,
@@ -602,6 +630,12 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
+  contextPanelExpert: null,
+  setContextPanelExpert: (expert) => set({ contextPanelExpert: expert }),
+  toggleIntegrationsPanel: (expert) => {
+    set({ contextPanelExpert: expert });
+    get().toggleContextPanelTab("integrations");
+  },
   openContextPanelForFiles: () => {
     if (_autoOpenUserClosed) return;
     if (isClient) {
@@ -622,8 +656,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   },
 
   // Explicit user action (the artifact panel's files button): drops the open
-  // preview or the computer face and hands the region to the floating files
-  // card.
+  // preview or the computer face and docks the files tab.
   showFilesTab: () => {
     if (isClient) {
       storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
@@ -720,6 +753,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       isSearchOpen: false,
       isNotificationsEnabled: false,
       isSoundEnabled: true,
+      contextPanelExpert: null,
       artifactPanel: {
         isOpen: false,
         activeArtifact: null,
@@ -734,8 +768,5 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       copilotLlmAuth: null,
       isDryRun: false,
     });
-    if (isClient) {
-      document.title = ORIGINAL_TITLE;
-    }
   },
 }));

@@ -3,6 +3,7 @@ import os
 import re
 import tempfile
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 from backend.util.data import get_data_path
@@ -37,6 +38,41 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
     return await asyncio.to_thread(_check_media_exists, user_id, filename)
 
 
+async def media_metadata(
+    user_id: str, media_type: str, filename: str
+) -> dict[str, str]:
+    return await asyncio.to_thread(_media_metadata, user_id, media_type, filename)
+
+
+async def stream_media(
+    user_id: str,
+    media_type: str,
+    filename: str,
+    byte_range: tuple[int, int] | None = None,
+) -> AsyncIterator[bytes]:
+    path = get_media_path(user_id, media_type, filename)
+    if not path.is_file():
+        raise FileNotFoundError("Media not found")
+
+    file = await asyncio.to_thread(path.open, "rb")
+    try:
+        remaining: int | None = None
+        if byte_range is not None:
+            start, end = byte_range
+            await asyncio.to_thread(file.seek, start)
+            remaining = end - start + 1
+        while remaining is None or remaining > 0:
+            read_size = 64 * 1024 if remaining is None else min(64 * 1024, remaining)
+            chunk = await asyncio.to_thread(file.read, read_size)
+            if not chunk:
+                break
+            yield chunk
+            if remaining is not None:
+                remaining -= len(chunk)
+    finally:
+        await asyncio.to_thread(file.close)
+
+
 def get_media_path(user_id: str, media_type: str, filename: str) -> Path:
     """Resolve a file inside the media root, rejecting traversal and escaping symlinks."""
     if media_type not in MEDIA_TYPES:
@@ -47,9 +83,9 @@ def get_media_path(user_id: str, media_type: str, filename: str) -> Path:
         os.path.join(
             base_dir,
             "users",
-            _validate_path_component(user_id),
+            validate_path_component(user_id),
             media_type,
-            _validate_path_component(filename),
+            validate_path_component(filename),
         )
     )
     if not candidate.startswith(base_dir + os.sep):
@@ -66,7 +102,7 @@ def stored_filename(filename: str, content_type: str, use_file_name: bool) -> st
     """Derive the extension from validated content rather than a client-supplied name."""
     extension = CONTENT_TYPE_EXTENSIONS[content_type]
     if use_file_name:
-        return f"{Path(_validate_path_component(filename)).stem}{extension}"
+        return f"{Path(validate_path_component(filename)).stem}{extension}"
     return f"{uuid.uuid4()}{extension}"
 
 
@@ -81,13 +117,13 @@ def media_root() -> Path:
 def media_url(user_id: str, media_type: str, filename: str) -> str:
     """Return a public backend URL or a same-origin path for local installations."""
     path = (
-        f"/api/store/media/{_validate_path_component(user_id)}"
-        f"/{media_type}/{_validate_path_component(filename)}"
+        f"/api/store/media/{validate_path_component(user_id)}"
+        f"/{media_type}/{validate_path_component(filename)}"
     )
     return f"{Settings().config.platform_base_url.rstrip('/')}{path}"
 
 
-def _validate_path_component(value: str) -> str:
+def validate_path_component(value: str) -> str:
     if value in {".", ".."} or not _SAFE_PATH_COMPONENT.fullmatch(value):
         raise ValueError("Invalid media path component")
     return value
@@ -95,8 +131,8 @@ def _validate_path_component(value: str) -> str:
 
 def _check_media_exists(user_id: str, filename: str) -> str | None:
     try:
-        _validate_path_component(user_id)
-        _validate_path_component(filename)
+        validate_path_component(user_id)
+        validate_path_component(filename)
         content_type = content_type_for_filename(filename)
         if content_type is None:
             return None
@@ -107,6 +143,14 @@ def _check_media_exists(user_id: str, filename: str) -> str | None:
     except ValueError:
         return None
     return None
+
+
+def _media_metadata(user_id: str, media_type: str, filename: str) -> dict[str, str]:
+    path = get_media_path(user_id, media_type, filename)
+    try:
+        return {"size": str(path.stat().st_size)}
+    except FileNotFoundError as error:
+        raise FileNotFoundError("Media not found") from error
 
 
 def _write_media(user_id: str, media_type: str, filename: str, content: bytes) -> None:

@@ -60,7 +60,9 @@ export function VoiceTrace({ source, className, color }: Props) {
       // re-invokes updaters (StrictMode does it every time in dev), so the
       // second call saw an already-emptied peak — a flat line with the odd
       // spike when a frame landed between the two.
-      const next = { level: column(source, tick++, scale), color };
+      const current = tick;
+      tick += 1;
+      const next = { level: column(source, current, scale), color };
       setColumns((previous) => [...previous.slice(1), next]);
     }, TICK_MS);
     return () => clearInterval(timer);
@@ -69,7 +71,7 @@ export function VoiceTrace({ source, className, color }: Props) {
   return (
     <div
       className={cn(
-        "flex h-6 items-center justify-center gap-[4px] overflow-hidden",
+        "flex h-6 items-center justify-center gap-1 overflow-hidden",
         className,
       )}
       aria-hidden="true"

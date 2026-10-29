@@ -5,6 +5,7 @@ from praw.models import Comment, Submission
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -166,6 +167,7 @@ class ModQueueBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -255,7 +257,8 @@ class RemoveRedditPostBlock(Block):
                 ("success", True),
             ],
             test_mock={"remove_post": lambda creds, post_id, spam, mod_note: True},
-            is_sensitive_action=True,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -316,7 +319,8 @@ class ApproveRedditPostBlock(Block):
                 ("success", True),
             ],
             test_mock={"approve_post": lambda creds, post_id: True},
-            is_sensitive_action=True,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -369,7 +373,8 @@ class LockRedditPostBlock(Block):
                 ("locked", True),
             ],
             test_mock={"set_lock": lambda creds, post_id, lock: lock},
-            is_sensitive_action=True,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -461,7 +466,8 @@ class BanSubredditUserBlock(Block):
             test_mock={
                 "ban_user": lambda creds, subreddit, username, duration, reason, mod_note, ban_message: True
             },
-            is_sensitive_action=True,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -541,7 +547,8 @@ class UnbanSubredditUserBlock(Block):
                 ("success", True),
             ],
             test_mock={"unban_user": lambda creds, subreddit, username: True},
-            is_sensitive_action=True,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -613,7 +620,8 @@ class SendModMailBlock(Block):
             test_mock={
                 "send_modmail": lambda creds, subreddit, to_username, subject, body: "mock_conv_id"
             },
-            is_sensitive_action=True,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

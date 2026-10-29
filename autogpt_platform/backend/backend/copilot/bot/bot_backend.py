@@ -9,13 +9,15 @@ discord/telegram/slack code never touches Pyro / Redis Streams plumbing.
 import asyncio
 import json
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 
 from pydantic import BaseModel
 
-from backend.copilot import stream_registry
+from backend.copilot import stream_registry, woken_turns
+from backend.copilot.config import CopilotLLMModel
 from backend.copilot.model import get_chat_session
 from backend.copilot.response_model import (
     StreamError,
@@ -23,11 +25,17 @@ from backend.copilot.response_model import (
     StreamTextDelta,
     StreamToolOutputAvailable,
 )
+from backend.data.redis_client import get_redis_async
 from backend.platform_linking.models import (
     MAX_BOT_MESSAGE_CHARS,
     BotChatRequest,
     BotEventInput,
+    BotExpert,
     BotGuildInput,
+    CardAnswer,
+    CardTurn,
+    ChannelCard,
+    ChatTurnHandle,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
     EnsureSessionResult,
@@ -51,6 +59,14 @@ from .prompt import clamp_prompt
 # up. Covers the case where the backend crashes mid-stream and never sends
 # ``StreamFinish`` — without this, the bot would hang forever on ``queue.get()``.
 STREAM_CHUNK_TIMEOUT_SECONDS = 120
+
+# A card answered mid-reply is woken by that turn's end, so a follow waits out
+# any running turn, up to the life of a turn's stream.
+_WAKE_POLL_SECONDS = 0.5
+_WAKE_WAIT_SECONDS = 60 * 60
+# Between a turn's end and the wake it starts, the chat briefly reads idle.
+_WAKE_GRACE_SECONDS = 15
+_FOLLOWED_KEY = "copilot-bot:followed-turn:"
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +111,7 @@ __all__ = [
 @dataclass
 class ResolveResult:
     linked: bool
+    account_hint: str | None = None
 
 
 @dataclass
@@ -132,6 +149,10 @@ ClarificationNeededCallback = Callable[
     [str, dict[str, Any], str | None],
     Awaitable[None],
 ]
+
+# Fired when the approval gate holds a call for the user. Args: (session_id,
+# review_id). The card goes to the channel as well as the web app's queue.
+ApprovalNeededCallback = Callable[[str, str], Awaitable[None]]
 
 
 class BotBackend:
@@ -246,12 +267,18 @@ class BotBackend:
         )
         return ResolveResult(linked=resp.linked)
 
-    async def resolve_user(self, platform: str, platform_user_id: str) -> ResolveResult:
+    async def resolve_user(
+        self, platform: str, platform_user_id: str, include_account: bool = False
+    ) -> ResolveResult:
+        """Check a DM link; ``include_account`` also fetches the masked email
+        of the linked account (an extra lookup, so only for user-facing copy).
+        """
         resp = await self._client.resolve_user_link(
             platform=Platform(platform.upper()),
             platform_user_id=platform_user_id,
+            include_account=include_account,
         )
-        return ResolveResult(linked=resp.linked)
+        return ResolveResult(linked=resp.linked, account_hint=resp.account_hint)
 
     async def list_linked_server_ids(self, platform: str, user_id: str) -> list[str]:
         """Return the platform server (guild) IDs ``user_id`` has linked.
@@ -365,6 +392,7 @@ class BotBackend:
         platform_user_id: str,
         platform_server_id: str | None,
         session_id: str | None,
+        expert_id: str | None = None,
     ) -> EnsureSessionResult:
         """Resolve (or create) the copilot session for this conversation.
 
@@ -379,6 +407,18 @@ class BotBackend:
             platform_user_id=platform_user_id,
             platform_server_id=platform_server_id,
             session_id=session_id,
+            expert_id=expert_id,
+        )
+
+    async def list_user_experts(
+        self, platform: str, platform_user_id: str, platform_server_id: str | None
+    ) -> list[BotExpert]:
+        """The hired experts this conversation can route a turn to (none in a
+        server: expert sessions are DM-only)."""
+        return await self._client.list_user_experts(
+            platform=Platform(platform.upper()),
+            platform_user_id=platform_user_id,
+            platform_server_id=platform_server_id,
         )
 
     async def upload_workspace_files(
@@ -438,6 +478,40 @@ class BotBackend:
             session_id=session_id, file_id=file_id, max_bytes=max_bytes
         )
 
+    async def open_card(
+        self,
+        platform: str,
+        platform_server_id: str | None,
+        platform_user_id: str,
+        session_id: str,
+        review_id: str,
+    ) -> ChannelCard | None:
+        """The card for a call held in this conversation, or None when there
+        is nothing in it to answer."""
+        return await self._client.open_channel_card(
+            platform=Platform(platform.upper()),
+            platform_server_id=platform_server_id,
+            platform_user_id=platform_user_id,
+            session_id=session_id,
+            review_id=review_id,
+        )
+
+    async def answer_card(
+        self,
+        platform: str,
+        platform_server_id: str | None,
+        clicker_id: str,
+        token: str,
+        index: int,
+    ) -> CardAnswer:
+        return await self._client.answer_channel_card(
+            platform=Platform(platform.upper()),
+            platform_server_id=platform_server_id,
+            clicker_id=clicker_id,
+            token=token,
+            index=index,
+        )
+
     async def stream_chat(
         self,
         platform: str,
@@ -446,10 +520,14 @@ class BotBackend:
         session_id: Optional[str] = None,
         platform_server_id: Optional[str] = None,
         file_ids: Optional[list[str]] = None,
+        expert_id: str | None = None,
+        model: CopilotLLMModel | None = None,
         on_session_id: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_notice: Optional[Callable[[str], Awaitable[None]]] = None,
         on_setup_required: SetupRequiredCallback | None = None,
         on_setup_dropped: SetupDroppedCallback | None = None,
         on_clarification_needed: ClarificationNeededCallback | None = None,
+        on_approval_needed: ApprovalNeededCallback | None = None,
     ) -> AsyncGenerator[str, None]:
         """Start a copilot turn and yield text deltas from the stream.
 
@@ -467,6 +545,8 @@ class BotBackend:
                 session_id=session_id,
                 platform_server_id=platform_server_id,
                 file_ids=file_ids or [],
+                expert_id=expert_id,
+                model=model,
             )
         )
         if handle.denial is not None:
@@ -475,13 +555,52 @@ class BotBackend:
             raise ChatTurnDeniedError(handle.denial)
         if on_session_id:
             await on_session_id(handle.session_id)
+        if handle.notice and on_notice:
+            await on_notice(handle.notice)
+        async for chunk in self.stream_turn(
+            handle,
+            on_setup_required=on_setup_required,
+            on_setup_dropped=on_setup_dropped,
+            on_clarification_needed=on_clarification_needed,
+            on_approval_needed=on_approval_needed,
+        ):
+            yield chunk
 
-        queue = await stream_registry.subscribe_to_session(
-            session_id=handle.session_id,
-            user_id=handle.user_id,
-            last_message_id=handle.subscribe_from,
-        )
-        if queue is None:
+    async def woken_turn(self, follow: CardTurn) -> ChatTurnHandle | None:
+        """The turn a wake started to carry this card, once one has; None when
+        no wake carries it, or another click already follows that turn."""
+        started = time.monotonic()
+        idle_since: float | None = None
+        while time.monotonic() - started < _WAKE_WAIT_SECONDS:
+            turn_id = await woken_turns.turn_for(follow.session_id, follow.review_id)
+            if turn_id is not None:
+                return await _claim(follow, turn_id)
+            current = await stream_registry.get_session(follow.session_id)
+            if current is not None and current.status == "running":
+                idle_since = None
+            elif idle_since is None:
+                idle_since = time.monotonic()
+            elif time.monotonic() - idle_since > _WAKE_GRACE_SECONDS:
+                return None
+            await asyncio.sleep(_WAKE_POLL_SECONDS)
+        return None
+
+    async def stream_turn(
+        self,
+        handle: ChatTurnHandle,
+        on_setup_required: SetupRequiredCallback | None = None,
+        on_setup_dropped: SetupDroppedCallback | None = None,
+        on_clarification_needed: ClarificationNeededCallback | None = None,
+        on_approval_needed: ApprovalNeededCallback | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Yield a running or finished turn's text deltas, from its start."""
+        try:
+            queue = await stream_registry.subscribe_to_turn(
+                handle.session_id, handle.user_id, handle.turn_id, handle.subscribe_from
+            )
+        except (stream_registry.TurnStreamGone, stream_registry.TurnStreamTrimmed):
+            # Trimmed: the turn ended before we subscribed and kept only its
+            # tail from the last checkpoint, which holds none of its text.
             raise BotStreamError(
                 "subscribe_failed",
                 "failed to subscribe to response stream",
@@ -490,6 +609,8 @@ class BotBackend:
         setup_notified = False
         setup_drop_notified = False
         clarification_notified = False
+        # A retried held call names its card again; the channel shows it once.
+        cards_posted: set[str] = set()
         # Track which text block each delta belongs to. Otto emits text in
         # separate blocks around tool calls / reasoning (each with its own id);
         # the frontend renders them as distinct parts, but here we concatenate
@@ -501,7 +622,7 @@ class BotBackend:
         try:
             while True:
                 try:
-                    chunk = await asyncio.wait_for(
+                    _, chunk = await asyncio.wait_for(
                         queue.get(), timeout=STREAM_CHUNK_TIMEOUT_SECONDS
                     )
                 except asyncio.TimeoutError:
@@ -556,6 +677,14 @@ class BotBackend:
                             clarification_output,
                             chunk.toolName,
                         )
+                    review_id = _extract_held_review_id(chunk.output)
+                    if (
+                        review_id
+                        and on_approval_needed
+                        and review_id not in cards_posted
+                    ):
+                        cards_posted.add(review_id)
+                        await on_approval_needed(handle.session_id, review_id)
                 elif isinstance(chunk, StreamFinish):
                     return
                 elif isinstance(chunk, StreamError):
@@ -572,6 +701,18 @@ class BotBackend:
                 session_id=handle.session_id,
                 subscriber_queue=queue,
             )
+
+
+async def _claim(follow: CardTurn, turn_id: str) -> ChatTurnHandle | None:
+    """Cards answered together wake one turn; the first click carries it."""
+    redis = await get_redis_async()
+    if not await redis.set(
+        f"{_FOLLOWED_KEY}{turn_id}", "1", nx=True, ex=_WAKE_WAIT_SECONDS
+    ):
+        return None
+    return ChatTurnHandle(
+        session_id=follow.session_id, turn_id=turn_id, user_id=follow.user_id
+    )
 
 
 def _is_corrupted_setup_requirements(output: str | dict[str, Any]) -> bool:
@@ -654,3 +795,17 @@ def _extract_clarification_needed(
     if not isinstance(questions, list) or not questions:
         return None
     return parsed
+
+
+def _extract_held_review_id(output: str | dict[str, Any]) -> str | None:
+    """The review a held call's card answers, from the gate's refusal."""
+    parsed: Any = output
+    if isinstance(output, str):
+        try:
+            parsed = json.loads(output)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(parsed, dict) or parsed.get("type") != "approval_required":
+        return None
+    review_id = parsed.get("review_id")
+    return review_id if isinstance(review_id, str) and review_id else None

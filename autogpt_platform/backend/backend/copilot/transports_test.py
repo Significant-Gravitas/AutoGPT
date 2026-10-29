@@ -80,8 +80,10 @@ def transport_env(mocker: pytest_mock.MockerFixture):
     )
     mocker.patch.object(
         transports,
-        "get_user_default_chat_route",
-        new=AsyncMock(return_value=(None, None)),
+        "user_db",
+        return_value=MagicMock(
+            get_user_default_chat_route=AsyncMock(return_value=(None, None))
+        ),
     )
     mocker.patch.object(transports, "set_user_default_chat_route", new=AsyncMock())
 
@@ -93,7 +95,7 @@ def _connect(*credential_ids: str) -> None:
 
 
 def _saved(auth_provider: str | None, credential_id: str | None = None) -> None:
-    transports.get_user_default_chat_route.return_value = (
+    transports.user_db().get_user_default_chat_route.return_value = (
         auth_provider,
         credential_id,
     )

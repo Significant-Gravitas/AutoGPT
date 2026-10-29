@@ -29,17 +29,44 @@ import posixpath
 import re
 import uuid
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.learning.content_approvals import current_content_approvals
+from backend.copilot.learning.content_checks import (
+    ContentCheckFailure,
+    check_skill_bundle,
+    collect_content_approvals,
+)
+from backend.copilot.learning.fingerprint import (
+    behavior_fingerprint,
+    behavior_tokens,
+    evidence_fingerprint,
+)
+from backend.copilot.learning.history import record_registry_write
+from backend.copilot.learning.retrieval import (
+    mark_index_revision_seen,
+    origin_label,
+    paused_skill_names,
+    read_seen_index_revision,
+    record_skill_loaded,
+    resolve_current_version,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.service import SKILLS_UPDATE_TAG, strip_server_injected_tags
-from backend.data.db_accessors import experts_db, workspace_db
+from backend.data.db_accessors import (
+    experts_db,
+    skill_db,
+    skill_deletion_db,
+    skill_versions_db,
+    workspace_db,
+    workspace_skill_db,
+)
 from backend.data.redis_client import get_redis_async
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
 from backend.data.skill_capacity import SKILL_ORIGIN_LABELS as _ORIGIN_LABELS
@@ -49,6 +76,19 @@ from backend.data.skill_capacity import SKILL_ORIGIN_USER
 from backend.data.skill_capacity import SKILL_ORIGINS as _SKILL_ORIGINS
 from backend.data.skill_capacity import SkillLimitError, SkillOwnedError
 from backend.data.skill_capacity import normalize_skill_origin as _normalize_origin
+from backend.data.skill_capacity import skill_name_key
+from backend.data.skill_content_approvals import SkillContentApproval
+from backend.data.skill_deletion import DeletedBehavior
+from backend.data.skill_learning import owner_key_for
+from backend.data.skill_package import (
+    SKILL_MD,
+    MergedPackage,
+    PackageFile,
+    merge_packages,
+    package_tree_sha256,
+)
+from backend.data.skill_version_files import SkillVersionFile
+from backend.data.skill_versions import SkillVersionRecord, content_hash
 from backend.data.workspace_scope import (
     EXPERT_SKILL_SCOPE_DENIED,
     WorkspaceAccessDeniedError,
@@ -58,11 +98,20 @@ from backend.data.workspace_scope import (
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import ConflictError
 from backend.util.feature_flag import Flag, is_feature_enabled
-from backend.util.workspace import WorkspaceManager
+from backend.util.settings import Config
+from backend.util.workspace import SkillPackageFile, WorkspaceManager
 from backend.util.workspace_storage import compute_file_checksum
+
+if TYPE_CHECKING:
+    # skill_model imports this module; the reconcile only names its types.
+    from backend.api.features.store.skill_model import (
+        ActiveSkillVersion,
+        SkillVersionPackage,
+    )
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
+from .skill_merge import merge_skill_markdown
 from .workdir import (
     read_workdir_bytes,
     remove_from_workdir,
@@ -79,7 +128,7 @@ logger = logging.getLogger(__name__)
 # does not strain Anthropic prompt caches and does not crowd out the user's
 # turn budget.  A typical user skill line lands around 150-200 chars
 # (~50 tok), so 150 entries ≈ 7.5k tokens.  Filling every description and
-# trigger to the per-field caps below is roughly 66k tokens under the same
+# trigger display to the index caps below is roughly 66k tokens under the same
 # estimate; actual token cost varies by content and tokenizer.
 # The cap is per owner folder and per origin: what the owner saves and what
 # the platform installs (a hire's bundle, a marketplace install) each get
@@ -93,11 +142,10 @@ MAX_DESCRIPTION_CHARS = 1024
 # skill-creator's 33 KB SKILL.md, the package authors are told to copy.
 MAX_BODY_CHARS = 50_000
 # Triggers appear inline in the per-turn ``<available_skills>`` index,
-# so an unbounded list (or one huge trigger) would balloon the prefix
-# the model parses every turn.  Cap both the count and the per-entry
-# length so a misbehaving caller cannot blow the token budget.
+# so rendering bounds the combined hint separately from the saved phrases.
 MAX_TRIGGERS = 10
-MAX_TRIGGER_CHARS = 64
+MAX_TRIGGER_CHARS = 512
+MAX_INDEX_TRIGGER_CHARS = 640
 # Files a skill may carry beside its SKILL.md.  The largest package in the
 # public ``anthropics/skills`` set is 83 files, so 100 clears the ecosystem
 # with room to spare while keeping one activation's copy into the sandbox
@@ -155,6 +203,46 @@ _META_VERSION = "version"
 # The workspace has no mode bits, so a script's executable bit survives
 # store → copy → sandbox as this flag.
 _META_EXECUTABLE = "executable"
+# Where a marketplace copy came from: the listing, the exact version and the
+# package hash as installed. Comparing the copy's own files to the hash says
+# whether the owner edited it; comparing the version to the listing's active
+# one says whether it is behind. Together they let a publish reach the copy:
+# an unedited copy is replaced, an edited one merged.
+_META_LISTING_ID = "listing_id"
+_META_LISTING_VERSION_ID = "listing_version_id"
+_META_PACKAGE_SHA256 = "package_sha256"
+# Set by a merge: the version the copy was on before it, and the paths where
+# both sides had changed and the owner's side was kept.
+_META_MERGED_FROM = "merged_from"
+_META_MERGE_CONFLICTS = "merge_conflicts"
+
+# What the index says about a marketplace copy relative to the marketplace.
+UPDATE_AVAILABLE = "available"
+UPDATE_MERGED = "merged"
+UPDATE_RETIRED = "retired"
+
+# Slugs a reconcile rewrote since the owner's last turn, so the next turn can
+# tell the model the bodies it may have read are stale.
+SKILLS_UPDATED_KEY = "copilot:skills_updated:{user_id}:{owner}"
+SKILLS_UPDATED_TTL_S = 7 * 24 * 3600
+# Names one notice carries; the rest wait for the next. More than the
+# owner's skill cap, so in practice one pop takes them all.
+_UPDATED_NOTICE_MAX = 500
+# Copies one reconcile will try. A cold turn right after a publish could
+# otherwise spend seconds fast-forwarding a whole bundle; the rest go next time.
+_RECONCILE_WRITE_BUDGET = 5
+# Copies that could not take the version they were last tried against, so a
+# cold turn does not fetch the same package and fail on it again: slug → the
+# version id it failed to take. A newer publish retries at once.
+SKILLS_UPDATE_BACKOFF_KEY = "copilot:skills_update_backoff:{user_id}:{owner}"
+SKILLS_UPDATE_BACKOFF_TTL_S = 6 * 3600
+
+
+class SkillChangedError(RuntimeError):
+    """A reconcile's write found the copy changed since it decided what to
+    write. The write is refused; the next cold turn compares again."""
+
+
 # Where a skill in an owner's folder came from.  Kept in the row's metadata
 # (server-written; the frontmatter is the author's to edit) so the per-owner
 # cap counts what the owner saved apart from what the platform installed.
@@ -226,6 +314,21 @@ _CARRIED_FRONTMATTER_KEYS = (
 )
 
 
+class SkillBaseline(NamedTuple):
+    """What a marketplace copy was installed from. Recorded on the SKILL.md
+    row, never in the file. ``package_sha256`` is the installed package's
+    content hash (the catalog's ``tree_sha256``); a copy whose files still
+    hash to it was never edited."""
+
+    listing_id: str
+    version_id: str
+    package_sha256: str | None
+    # The version the copy was on before a merge advanced it, and the paths
+    # where the owner's side won a conflict. Cleared by a fast-forward.
+    merged_from: str | None = None
+    merge_conflicts: tuple[str, ...] = ()
+
+
 @dataclass(frozen=True)
 class ParsedSkill:
     """A SKILL.md decoded into its frontmatter metadata + markdown body."""
@@ -241,12 +344,26 @@ class ParsedSkill:
     # owner's budget (see :func:`budget_origin`) but is nobody's to defend,
     # so a platform install may claim it.
     origin: str | None = None
+    # A marketplace copy's install record. None on the owner's own skills and
+    # on copies made before baselines were recorded.
+    baseline: SkillBaseline | None = None
+    # Derived at index time, never stored: one of the ``UPDATE_*`` states, or
+    # None when the copy is current or is not a marketplace copy.
+    update: str | None = None
 
 
 def budget_origin(skill: ParsedSkill) -> str:
     """The budget a stored skill fills: its recorded origin, or the owner's
     for a row that has none."""
     return skill.origin or SKILL_ORIGIN_USER
+
+
+def _keeps_install(origin: str | None, baseline: SkillBaseline | None) -> bool:
+    """An installed copy that records its install stays installed when its
+    owner edits it: the write keeps its marketplace origin and the baseline a
+    later update merges into. :func:`_write_skill` and
+    :func:`saved_skill_limit_reached` both decide by this."""
+    return origin == SKILL_ORIGIN_MARKETPLACE and baseline is not None
 
 
 def parse_skill_markdown(text: str, fallback_name: str = "") -> ParsedSkill | None:
@@ -256,7 +373,7 @@ def parse_skill_markdown(text: str, fallback_name: str = "") -> ParsedSkill | No
     callers treat that as "this isn't a real skill, skip it" so a stray
     file in ``skills/`` cannot break the index.
     """
-    match = _FRONTMATTER_RE.match(text)
+    match = _FRONTMATTER_RE.match(text.replace("\r\n", "\n").replace("\r", "\n"))
     if not match:
         return None
     raw_meta, body = match.group(1), match.group(2)
@@ -306,6 +423,35 @@ def render_skill_markdown(skill: ParsedSkill) -> str:
     return f"---\n{frontmatter}\n---\n\n{skill.body.rstrip()}\n"
 
 
+def is_skill_slug(name: str) -> bool:
+    return bool(_NAME_RE.fullmatch(name))
+
+
+def canonicalize_skill(skill: ParsedSkill) -> ParsedSkill:
+    """The one normalisation every write path applies before rendering.
+
+    ``store_user_skill`` strips server-injected tags and surrounding
+    whitespace and lower-cases the slug; the learning engine renders a
+    version's content with the same function so the bytes it hashes are
+    exactly the bytes the registry writes. The authored ``version``
+    frontmatter is preserved verbatim — internal version numbers never
+    change a file's content.
+    """
+    triggers = tuple(
+        t
+        for t in (strip_server_injected_tags(str(x).strip()) for x in skill.triggers)
+        if t
+    )
+    return replace(
+        skill,
+        name=skill.name.strip().lower(),
+        description=strip_server_injected_tags(skill.description.strip()),
+        body=strip_server_injected_tags(skill.body.strip()),
+        triggers=triggers,
+        version=skill.version,
+    )
+
+
 def _validate_name(name: str) -> str | None:
     if not _NAME_RE.match(name):
         return (
@@ -318,8 +464,12 @@ def _validate_name(name: str) -> str | None:
 
 
 def validate_skill_content(
-    description: str, body: str, triggers: Iterable[str]
+    description: str, body: str, triggers: Iterable[str], *, name: str | None = None
 ) -> None:
+    if name is not None:
+        name_error = _validate_name(name)
+        if name_error:
+            raise ValueError(name_error)
     trigger_list = list(triggers)
     if not description:
         raise ValueError("description is required")
@@ -594,14 +744,20 @@ async def delete_user_skill(
     (personal Otto's when ``None``).
 
     The whole tree goes, however many files it holds — a package written
-    before the cap existed still has to be removable.  Returns the normalised
-    slug on success so callers can echo it back.
+    before the cap existed still has to be removable.  Before any file goes,
+    and under the per-owner write lock, the skill's version history is ended
+    and the deleted behaviour suppressed (:func:`_record_deletion`), so
+    neither a source revocation nor overnight learning brings it back.
+    Returns the normalised slug on success so callers can echo it back.
     Raises :class:`BuiltInSkillError` for default skills,
-    :class:`SkillNotFoundError` if the skill does not exist, and
-    ``ValueError`` if ``name`` is blank.  Sibling-file cleanup is
-    best-effort — a transient delete failure on a non-SKILL.md file logs
-    but does not abort the overall delete (the SKILL.md removal is what
-    makes the skill disappear from ``<available_skills>``).
+    :class:`SkillNotFoundError` if the skill does not exist, ``ValueError``
+    if ``name`` is blank, and :class:`SkillWriteLockError` or
+    :class:`SkillVersionConflictError` when the delete could not be ordered
+    with other writes to the owner's skills; nothing was deleted then.
+    Sibling-file cleanup is best-effort — a transient delete failure on a
+    non-SKILL.md file logs but does not abort the overall delete (the
+    SKILL.md removal is what makes the skill disappear from
+    ``<available_skills>``).
     """
     slug = name.strip().lower()
     if not slug:
@@ -610,6 +766,30 @@ async def delete_user_skill(
         raise BuiltInSkillError(f"'{slug}' is a built-in skill and cannot be deleted")
 
     manager = await _get_user_skill_manager(user_id, scope)
+    lock = await _acquire_skill_write_lock(user_id, expert_id)
+    if lock is None:
+        raise SkillWriteLockError(
+            "could not order the delete with other changes to these skills; "
+            "try again"
+        )
+    try:
+        await _delete_skill_files(user_id, slug, expert_id, manager, lock)
+    finally:
+        await _release_skill_write_lock(lock, user_id)
+    await invalidate_skills_index_cache(user_id, expert_id)
+    if expert_id is not None:
+        await experts_db().remove_expert_skill_name(user_id, expert_id, slug)
+    return slug
+
+
+async def _delete_skill_files(
+    user_id: str,
+    slug: str,
+    expert_id: str | None,
+    manager: WorkspaceManager,
+    lock: AsyncClusterLock,
+) -> None:
+    """The delete itself; the caller holds the write lock."""
     info = await manager.get_file_info_by_path(_skill_md_path(slug, expert_id))
     if info is None:
         if expert_id is not None:
@@ -620,29 +800,20 @@ async def delete_user_skill(
 
     # Audit-log the delete BEFORE the workspace mutation runs so the
     # log row is present even if the delete itself raises mid-cleanup.
-    # Decode best-effort: a malformed body is fine for the audit trail —
-    # the slug + truncated description is what an operator needs to
-    # correlate later support requests.
-    description_for_log = ""
-    try:
-        raw = await manager.read_file(_skill_md_path(slug, expert_id))
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            text = ""
-        if text:
-            parsed = parse_skill_markdown(text, fallback_name=slug)
-            if parsed is not None:
-                description_for_log = parsed.description
-    except Exception:
-        # Audit-log enrichment is best-effort; failure must not block the
-        # delete the user requested.
-        pass
+    # The description is best-effort — the slug + truncated description is
+    # what an operator needs to correlate later support requests.
+    parsed = await _read_deleted_skill(manager, slug, expert_id)
     logger.info(
         "[skills] user %s… deleting skill %s: %s",
         user_id[:8],
         slug,
-        description_for_log[:60],
+        (parsed.description if parsed else "")[:60],
+    )
+    await _record_deletion(
+        user_id,
+        expert_id,
+        slug,
+        await _package_behavior(manager, expert_id, slug, parsed),
     )
 
     await manager.delete_file(info.id)
@@ -653,6 +824,16 @@ async def delete_user_skill(
     # it rather than spinning it.
     attempted: set[str] = set()
     while True:
+        if not await lock.refresh():
+            # A writer that took the lock over may have just stored a package
+            # in this folder; leftover files are the lesser harm.
+            logger.warning(
+                "[skills] lost the write lock deleting %s for user %s — "
+                "leaving any remaining files",
+                slug,
+                user_id[:8],
+            )
+            break
         try:
             siblings = await _list_package_files(manager, skill_folder(expert_id), slug)
         except Exception:
@@ -670,10 +851,187 @@ async def delete_user_skill(
                     sibling.path,
                     exc_info=True,
                 )
-    await invalidate_skills_index_cache(user_id, expert_id)
-    if expert_id is not None:
-        await experts_db().remove_expert_skill_name(user_id, expert_id, slug)
-    return slug
+
+
+async def _read_deleted_skill(
+    manager: WorkspaceManager, slug: str, expert_id: str | None
+) -> ParsedSkill | None:
+    try:
+        raw = await manager.read_file(_skill_md_path(slug, expert_id))
+        return parse_skill_markdown(raw.decode("utf-8"), fallback_name=slug)
+    except Exception:
+        # Reading is best-effort; failure must not block the delete the
+        # user requested.
+        return None
+
+
+async def _record_deletion(
+    user_id: str,
+    expert_id: str | None,
+    slug: str,
+    deleted: DeletedBehavior | None,
+) -> None:
+    """End *slug*'s version history and suppress what is being deleted.
+
+    Both the package as it stands and the version the head names are
+    suppressed: learning never reapplies either, a near copy becomes a
+    decision for the owner, and a different skill may still be learned
+    under the name. Phase 1 of a publication takes no write lock, so the
+    head can move between this read and the transaction; it is read again
+    a few times before the delete gives up.
+    """
+    versions = skill_versions_db()
+    current_id: str | None = None
+    for _ in range(3):
+        head = await versions.get_head(user_id, owner_key_for(expert_id), slug)
+        current_id = head.current_version_id if head is not None else None
+        current = (
+            await versions.get_version(user_id, current_id) if current_id else None
+        )
+        behaviors = {
+            b.behavior_fingerprint: b
+            for b in (deleted, _version_behavior(current))
+            if b is not None
+        }
+        result = await skill_deletion_db().record_skill_deletion(
+            user_id,
+            expert_id=expert_id,
+            skill_name=slug,
+            expected_current_version_id=current_id,
+            behaviors=list(behaviors.values()),
+            actor_user_id=user_id,
+        )
+        if result.committed:
+            return
+    raise SkillVersionConflictError(current_id, None)
+
+
+async def _package_behavior(
+    manager: WorkspaceManager,
+    expert_id: str | None,
+    slug: str,
+    parsed: ParsedSkill | None,
+) -> DeletedBehavior | None:
+    """The behaviour of the package being deleted, as learning would
+    fingerprint a proposal of it."""
+    if parsed is None:
+        return None
+    try:
+        files = await _read_package_files(
+            manager, skill_folder(expert_id), slug, complete=True
+        )
+    except Exception:
+        # Over the files cap, or a file that cannot be read. The body alone
+        # still catches the procedure: an exact copy then becomes a decision
+        # for the owner instead of being suppressed outright. Refusing the
+        # delete instead would leave a package with a lost file undeletable.
+        logger.warning(
+            "[skills] could not read the files of %s to record its deletion",
+            slug,
+            exc_info=True,
+        )
+        files = []
+    return _deleted_behavior(
+        slug,
+        parsed.body,
+        [
+            SkillVersionFile.from_content(f.relative_path, f.content, f.is_executable)
+            for f in files
+        ],
+    )
+
+
+def _version_behavior(version: SkillVersionRecord | None) -> DeletedBehavior | None:
+    if version is None or not version.content:
+        return None
+    parsed = parse_skill_markdown(version.content, fallback_name=version.skill_name)
+    if parsed is None:
+        return None
+    return _deleted_behavior(
+        version.skill_name,
+        parsed.body,
+        version.files,
+        [str(e.get("ref", "")) for e in version.evidence],
+    )
+
+
+def _deleted_behavior(
+    skill_name: str,
+    body: str,
+    files: list[SkillVersionFile] | None,
+    evidence_refs: list[str] | None = None,
+) -> DeletedBehavior:
+    return DeletedBehavior(
+        behavior_fingerprint=behavior_fingerprint(skill_name, body, files),
+        behavior_tokens=behavior_tokens(body),
+        evidence_fingerprints=(
+            [evidence_fingerprint(evidence_refs)] if evidence_refs else []
+        ),
+    )
+
+
+class SkillContentBlockedError(ValueError):
+    """Raised by :func:`store_user_skill` when a content check fails.
+
+    Carries the pattern class and ordinal location only — never the
+    matched value — so the message is safe to show and to persist.
+    """
+
+    def __init__(self, failure: ContentCheckFailure) -> None:
+        super().__init__(failure.describe())
+        self.failure = failure
+
+
+class SkillUsePausedError(Exception):
+    """Raised when a skill the owner stopped using is loaded."""
+
+
+class ExpectedHead(BaseModel):
+    """The tracked version a versioned write expects to still be current.
+
+    ``version_id`` is ``None`` for a skill that has no tracked current
+    version yet (never written since history began). The check runs inside
+    the per-owner write lock, after the lock is held, so a writer that was
+    delayed past a newer write (an overnight publication resumed after a
+    human correction, or an editor submitting a stale base) can never put
+    older bytes on top of a newer version.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    version_id: str | None
+
+
+class SkillVersionConflictError(Exception):
+    """Raised by :func:`store_user_skill` when ``expected_head`` no longer
+    matches the skill's current version. Nothing was written."""
+
+    def __init__(self, expected: str | None, actual: str | None) -> None:
+        super().__init__("the skill changed since this write was prepared")
+        self.expected = expected
+        self.actual = actual
+
+
+class SkillWriteLockError(Exception):
+    """Raised when a versioned write cannot take the per-owner write lock.
+
+    An ordinary ``store_skill`` falls back to a best-effort unlocked write;
+    a write that carries ``expected_head`` must not, because only the lock
+    makes the version check and the write one step.
+    """
+
+
+class SkillWritePolicy(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    version_origin: str | None = "saved_during_work"
+    actor_user_id: str | None = None
+    summary: str = ""
+    keep_auto_improve: bool | None = None
+    allowed_pattern_classes: list[str] = Field(default_factory=list)
+    content_approvals: list[SkillContentApproval] = Field(default_factory=list)
+    seeded_secret_values: list[str] = Field(default_factory=list)
+    expected_head: ExpectedHead | None = None
 
 
 async def store_user_skill(
@@ -689,6 +1047,16 @@ async def store_user_skill(
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
     origin: str = SKILL_ORIGIN_USER,
+    skill_markdown: str | None = None,
+    baseline: SkillBaseline | None = None,
+    version_origin: str | None = "saved_during_work",
+    actor_user_id: str | None = None,
+    summary: str = "",
+    keep_auto_improve: bool | None = None,
+    allowed_pattern_classes: list[str] | None = None,
+    content_approvals: list[SkillContentApproval] | None = None,
+    seeded_secret_values: list[str] | None = None,
+    expected_head: ExpectedHead | None = None,
 ) -> ParsedSkill:
     """Validate + persist a user-distilled skill, returning the stored skill.
 
@@ -723,6 +1091,18 @@ async def store_user_skill(
                 version=version,
                 extra=extra,
                 files=files,
+                skill_markdown=skill_markdown,
+                baseline=baseline,
+                learning=SkillWritePolicy(
+                    version_origin=version_origin,
+                    actor_user_id=actor_user_id,
+                    summary=summary,
+                    keep_auto_improve=keep_auto_improve,
+                    allowed_pattern_classes=allowed_pattern_classes or [],
+                    content_approvals=content_approvals or [],
+                    seeded_secret_values=seeded_secret_values or [],
+                    expected_head=expected_head,
+                ),
             )
         ],
         expert_id=expert_id,
@@ -747,6 +1127,14 @@ class SkillWrite(NamedTuple):
     # Server-recorded SHA-256s of bytes already scanned clean (never a
     # client's); a file hashing to one skips the virus scan.
     scanned_checksums: frozenset[str] = frozenset()
+    # Exact published package text, including frontmatter unknown to the runtime.
+    skill_markdown: str | None = None
+    # For a marketplace install: what the copy is being installed from.
+    baseline: SkillBaseline | None = None
+    # For a reconcile: the hash the folder had when this write was decided.
+    # The write is refused if the folder has moved since (an edit landed).
+    expected_package_sha256: str | None = None
+    learning: SkillWritePolicy = SkillWritePolicy()
 
 
 class StoredSkill(NamedTuple):
@@ -764,10 +1152,12 @@ async def store_user_skills(
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
     origin: str = SKILL_ORIGIN_USER,
+    notify_updates: bool = True,
 ) -> list[StoredSkill | Exception]:
     """:func:`store_user_skill` for several skills under one write lock and
     one listing of the owner's folder; returns each write's outcome in order,
-    so one bad skill fails alone."""
+    so one bad skill fails alone. File/storage configuration is read once
+    per batch; each package still checks the current storage quota."""
     outcomes: list[StoredSkill | Exception | None] = []
     prepared: list[tuple[int, _PreparedSkill]] = []
     for write in writes:
@@ -780,33 +1170,17 @@ async def store_user_skills(
         return cast(list[StoredSkill | Exception], outcomes)
 
     # Coordinate ordinary package writes; the database owns the hard cap.
-    lock: AsyncClusterLock | None = None
-    lock_held = False
-    try:
-        lock = AsyncClusterLock(
-            redis=await get_redis_async(),
-            key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}:{expert_id or 'autopilot'}",
-            owner_id=uuid.uuid4().hex,
-            timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
-        )
-        for _ in range(10):
-            if (await lock.try_acquire()) == lock.owner_id:
-                lock_held = True
-                break
-            await asyncio.sleep(0.1)
-    except Exception:
-        logger.warning(
-            "[skills] failed to acquire write lock for user %s — "
-            "falling back to unlocked best-effort write",
-            user_id,
-            exc_info=True,
-        )
+    # Without the lock they fall back to a best-effort unlocked write.
+    lock = await _acquire_skill_write_lock(user_id, expert_id)
+    lock_held = lock is not None
     try:
         manager = await _get_user_skill_manager(user_id, scope)
         existing = await _list_user_skills_from_workspace(user_id, expert_id, scope)
         same_origin = {s.name for s in existing if budget_origin(s) == origin}
         owners = {s.name for s in existing if s.origin == SKILL_ORIGIN_USER}
+        copies = {s.name: s for s in existing if _keeps_install(s.origin, s.baseline)}
         stored: list[tuple[int, str]] = []
+        config: Config | None = None
         for index, skill in prepared:
             # A batch outlasts one lease, so renew it before each skill. Once
             # it is lost another writer may hold the key: finish best-effort,
@@ -819,31 +1193,109 @@ async def store_user_skills(
                     user_id,
                 )
             try:
+                if skill.learning.expected_head is not None:
+                    if not lock_held:
+                        raise SkillWriteLockError(
+                            "could not serialize the versioned write; try again"
+                        )
+                    await _require_current_head(
+                        user_id,
+                        expert_id,
+                        skill.parsed.name,
+                        skill.learning.expected_head,
+                    )
+                if origin == SKILL_ORIGIN_USER:
+                    approvals = await _check_prepared_content(
+                        user_id, expert_id, scope, manager, skill
+                    )
+                    skill = skill._replace(
+                        learning=skill.learning.model_copy(
+                            update={"content_approvals": approvals}
+                        )
+                    )
                 is_new = skill.parsed.name not in same_origin
+                if config is None:
+                    config = Config()
                 checksums = await _write_skill(
-                    manager, skill, expert_id, origin, same_origin, owners
+                    manager,
+                    skill,
+                    expert_id,
+                    origin,
+                    same_origin,
+                    owners,
+                    copies,
+                    config,
                 )
             except Exception as e:
                 outcomes[index] = e
                 continue
+            if skill.learning.version_origin is not None:
+                await _record_package_history(
+                    user_id, expert_id, manager, skill, origin
+                )
             same_origin.add(skill.parsed.name)
             stored.append((index, skill.parsed.name))
             outcomes[index] = StoredSkill(skill.parsed, is_new, checksums)
         if stored:
             await invalidate_skills_index_cache(user_id, expert_id)
+            if notify_updates:
+                await _remember_updated(
+                    user_id, expert_id, [name for _, name in stored]
+                )
         if expert_id is not None and stored:
             await _record_skill_names(user_id, expert_id, stored, outcomes)
         return cast(list[StoredSkill | Exception], outcomes)
     finally:
         if lock is not None and lock_held:
-            try:
-                await lock.release()
-            except Exception:
-                logger.warning(
-                    "[skills] failed to release write lock for user %s",
-                    user_id,
-                    exc_info=True,
-                )
+            await _release_skill_write_lock(lock, user_id)
+
+
+async def _acquire_skill_write_lock(
+    user_id: str, expert_id: str | None
+) -> AsyncClusterLock | None:
+    """Take the owner's skill write lock, or ``None`` when it stays held
+    elsewhere for about a second or Redis cannot be reached."""
+    try:
+        lock = AsyncClusterLock(
+            redis=await get_redis_async(),
+            key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}:{expert_id or 'autopilot'}",
+            owner_id=uuid.uuid4().hex,
+            timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
+        )
+        for _ in range(10):
+            if (await lock.try_acquire()) == lock.owner_id:
+                return lock
+            await asyncio.sleep(0.1)
+    except Exception:
+        logger.warning(
+            "[skills] failed to acquire write lock for user %s",
+            user_id,
+            exc_info=True,
+        )
+    return None
+
+
+async def _release_skill_write_lock(lock: AsyncClusterLock, user_id: str) -> None:
+    try:
+        await lock.release()
+    except Exception:
+        logger.warning(
+            "[skills] failed to release write lock for user %s",
+            user_id,
+            exc_info=True,
+        )
+
+
+async def _require_current_head(
+    user_id: str, expert_id: str | None, name: str, expected: ExpectedHead
+) -> None:
+    """The version check of a versioned write. Runs with the write lock held
+    so no other registry write (which records its version inside the same
+    lock) can land between this read and the file write."""
+    head = await skill_versions_db().get_head(user_id, owner_key_for(expert_id), name)
+    actual = head.current_version_id if head is not None else None
+    if actual != expected.version_id:
+        raise SkillVersionConflictError(expected.version_id, actual)
 
 
 async def _record_skill_names(
@@ -886,10 +1338,64 @@ class _PreparedSkill(NamedTuple):
     rendered: str
     files: list[SkillFile] | None
     scanned_checksums: frozenset[str]
+    baseline: SkillBaseline | None = None
+    expected_package_sha256: str | None = None
+    learning: SkillWritePolicy = SkillWritePolicy()
+
+
+async def _record_package_history(
+    user_id: str,
+    expert_id: str | None,
+    manager: WorkspaceManager,
+    skill: _PreparedSkill,
+    origin: str,
+) -> None:
+    try:
+        files = await _read_package_files(
+            manager, skill_folder(expert_id), skill.parsed.name, complete=True
+        )
+        bundle = {
+            f.relative_path: f.content.decode("utf-8", errors="replace") for f in files
+        }
+        bundle["SKILL.md"] = skill.rendered
+        failure = check_skill_bundle(
+            bundle,
+            approved_matches=skill.learning.content_approvals,
+            seeded_values=skill.learning.seeded_secret_values,
+        )
+        if failure is not None:
+            raise SkillContentBlockedError(failure)
+        await record_registry_write(
+            user_id,
+            expert_id=expert_id,
+            skill_name=skill.parsed.name,
+            rendered=skill.rendered,
+            description=skill.parsed.description,
+            triggers=list(skill.parsed.triggers),
+            origin=(
+                "imported"
+                if origin == SKILL_ORIGIN_MARKETPLACE
+                else skill.learning.version_origin or "saved_during_work"
+            ),
+            actor_user_id=skill.learning.actor_user_id,
+            summary=skill.learning.summary,
+            keep_auto_improve=skill.learning.keep_auto_improve,
+            content_approvals=skill.learning.content_approvals,
+            files=[
+                SkillVersionFile.from_content(
+                    f.relative_path, f.content, f.is_executable
+                )
+                for f in files
+            ],
+        )
+    except Exception:
+        logger.warning("[skills] package history could not be recorded", exc_info=True)
 
 
 def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
     """Normalise and validate one write before anything is locked or stored."""
+    if write.skill_markdown is not None:
+        return _prepare_exact_package(write, origin)
     name = write.name.strip().lower()
     # Strip any server-injected XML tags (``<available_skills>``,
     # ``<env_context>``, etc.) from the persisted fields *before* storage —
@@ -925,7 +1431,96 @@ def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
         # Whole-package validation before the first write, so a package that
         # breaks a cap leaves the stored skill exactly as it was.
         validate_package(SkillPackage(skill_md=rendered, files=write.files))
-    return _PreparedSkill(parsed, rendered, write.files, write.scanned_checksums)
+    return _PreparedSkill(
+        parsed,
+        rendered,
+        write.files,
+        write.scanned_checksums,
+        write.baseline,
+        write.expected_package_sha256,
+        write.learning,
+    )
+
+
+def _prepare_exact_package(write: SkillWrite, origin: str) -> _PreparedSkill:
+    """A marketplace package written byte-for-byte: the published SKILL.md
+    text is stored as is (frontmatter the runtime does not know included),
+    so the copy's checksum equals the catalog's and a later publish can tell
+    an unedited copy from an edited one."""
+    if origin != SKILL_ORIGIN_MARKETPLACE:
+        raise ValueError("Exact package writes are restricted to marketplace installs")
+    text = write.skill_markdown
+    assert text is not None
+    parsed = parse_skill_markdown(text)
+    if parsed is None or parsed.name != write.name:
+        raise ValueError("Published package name does not match its listing")
+    name_error = _validate_name(parsed.name)
+    if name_error:
+        raise ValueError(name_error)
+    if strip_server_injected_tags(text) != text:
+        raise ValueError("Published package contains reserved server tags")
+    validate_skill_content(parsed.description, parsed.body, list(parsed.triggers))
+    validate_package(SkillPackage(skill_md=text, files=write.files or []))
+    return _PreparedSkill(
+        replace(parsed, origin=origin, baseline=write.baseline),
+        text,
+        write.files or [],
+        write.scanned_checksums,
+        write.baseline,
+        write.expected_package_sha256,
+        write.learning,
+    )
+
+
+async def _check_prepared_content(
+    user_id: str,
+    expert_id: str | None,
+    scope: WorkspaceScope | None,
+    manager: WorkspaceManager,
+    skill: _PreparedSkill,
+) -> list[SkillContentApproval]:
+    bundle = (
+        await read_skill_bundle_files(
+            user_id,
+            skill.parsed.name,
+            expert_id=expert_id,
+            scope=scope,
+            manager=manager,
+        )
+        if skill.files is None
+        else {}
+    )
+    for entry in skill.files or []:
+        try:
+            bundle[entry.relative_path] = entry.content.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+    bundle["SKILL.md"] = skill.rendered
+    approvals = skill.learning.content_approvals
+    failure = check_skill_bundle(
+        bundle,
+        seeded_values=skill.learning.seeded_secret_values,
+        allowed_pattern_classes=skill.learning.allowed_pattern_classes,
+        approved_matches=approvals,
+    )
+    if failure is not None and not approvals:
+        approvals = await current_content_approvals(
+            user_id, expert_id, skill.parsed.name
+        )
+        failure = check_skill_bundle(
+            bundle,
+            seeded_values=skill.learning.seeded_secret_values,
+            allowed_pattern_classes=skill.learning.allowed_pattern_classes,
+            approved_matches=approvals,
+        )
+    if failure is not None:
+        raise SkillContentBlockedError(failure)
+    return collect_content_approvals(
+        bundle,
+        approved_by_user_id=user_id,
+        allowed_pattern_classes=skill.learning.allowed_pattern_classes,
+        approved_matches=approvals,
+    )
 
 
 async def _write_skill(
@@ -935,16 +1530,27 @@ async def _write_skill(
     origin: str,
     same_origin: set[str],
     owners: set[str],
+    copies: Mapping[str, ParsedSkill],
+    config: Config,
 ) -> frozenset[str]:
-    """Write one prepared package; return the SHA-256 of every file written."""
+    """Write one prepared package; return the SHA-256 of every file written.
+
+    *copies* are the owner's marketplace copies that carry a baseline. An
+    owner's edit of one stays a marketplace copy and keeps that baseline:
+    origin never flips, so the next publish can still merge into it.
+    """
     name = skill.parsed.name
     if origin == SKILL_ORIGIN_MARKETPLACE and name in owners:
         raise SkillOwnedError(
             f"'{name}' is one of the owner's own skills; rename or delete "
             "it before installing a skill by that name."
         )
-    at_cap = len(same_origin) >= MAX_SKILLS_PER_EXPERT
-    if at_cap and name not in same_origin:
+    baseline = skill.baseline
+    edited_copy = copies.get(name) if origin == SKILL_ORIGIN_USER else None
+    if edited_copy is not None and baseline is None:
+        origin = SKILL_ORIGIN_MARKETPLACE
+        baseline = edited_copy.baseline
+    elif len(same_origin) >= MAX_SKILLS_PER_EXPERT and name not in same_origin:
         raise SkillLimitError(
             f"Skill limit reached ({MAX_SKILLS_PER_EXPERT} {_ORIGIN_LABELS[origin]} "
             "skills). Delete an unused skill first."
@@ -958,76 +1564,75 @@ async def _write_skill(
     }
     if skill.parsed.version:
         metadata[_META_VERSION] = skill.parsed.version
+    if baseline is not None:
+        metadata.update(_baseline_metadata(baseline))
     folder = skill_folder(expert_id)
-    stale = (
-        await _list_package_files(manager, folder, name, cap=None)
-        if skill.files is not None
-        else []
-    )
-    # The root is what indexes the skill, so it goes last: a new skill
-    # that fails part-way is never indexed.  An upsert cannot be made
-    # atomic here — the old bytes are gone once overwritten.  Serial
-    # because ``write_file``'s quota check is read-then-write.
-    existing_paths = {f.path for f in stale}
+    stale = await _stale_files(manager, folder, name, skill)
+    current = {f.path: f for f in stale}
     written: set[str] = set()
     checksums: set[str] = set()
-    try:
-        for entry in skill.files or []:
-            path = f"{folder}/{name}/{entry.relative_path}"
-            written.add(path)
-            await manager.write_file(
-                content=entry.content,
-                filename=entry.relative_path.rsplit("/", 1)[-1],
+    changed: list[SkillPackageFile] = []
+    for entry in skill.files or []:
+        path = f"{folder}/{name}/{entry.relative_path}"
+        written.add(path)
+        digest = compute_file_checksum(entry.content)
+        checksums.add(digest)
+        kept = current.get(path)
+        if (
+            kept is not None
+            and kept.checksum == digest
+            and kept.is_executable == entry.is_executable
+        ):
+            # Same bytes already there: a delta write leaves it alone.
+            continue
+        changed.append(
+            SkillPackageFile(
                 path=path,
-                mime_type=None,
-                overwrite=True,
-                metadata=({_META_EXECUTABLE: True} if entry.is_executable else None),
-                scanned_checksums=skill.scanned_checksums,
+                content=entry.content,
+                metadata={_META_EXECUTABLE: True} if entry.is_executable else None,
             )
-            checksums.add(compute_file_checksum(entry.content))
-        skill_md = skill.rendered.encode("utf-8")
-        await manager.write_file(
-            content=skill_md,
-            filename="SKILL.md",
-            path=_skill_md_path(name, expert_id),
-            mime_type="text/markdown",
-            overwrite=True,
-            metadata=metadata,
-            scanned_checksums=skill.scanned_checksums,
         )
-        checksums.add(compute_file_checksum(skill_md))
-    except Exception:
-        # Not a rollback: a file already here keeps the new bytes, so an
-        # upsert can fail mixed. Undo only what this call created — deleting
-        # the rest would turn a failed write into a lost file.
-        await _delete_paths(manager, written - existing_paths)
-        raise
-    await _delete_paths(
-        manager, {f.path for f in stale if f.path not in written}, stale
+    skill_md = skill.rendered.encode("utf-8")
+    # One change for the whole package: a failure leaves the previous
+    # package as it was, never new files beside an old SKILL.md.
+    await manager.write_skill_package(
+        root=SkillPackageFile(
+            path=_skill_md_path(name, expert_id),
+            content=skill_md,
+            mime_type="text/markdown",
+            metadata=metadata,
+        ),
+        files=changed,
+        removed_paths=sorted(f.path for f in stale if f.path not in written),
+        scanned_checksums=skill.scanned_checksums,
+        config=config,
     )
+    checksums.add(compute_file_checksum(skill_md))
     return frozenset(checksums)
 
 
-async def _delete_paths(
-    manager: WorkspaceManager,
-    paths: set[str],
-    known: list[SkillFileInfo] | None = None,
-) -> None:
-    """Delete workspace files by path, best-effort: a file that will not go
-    is logged, never raised, because every caller here has already done the
-    thing the user asked for."""
-    ids = {f.path: f.file_id for f in known or []}
-    for path in paths:
-        try:
-            file_id = ids.get(path)
-            if file_id is None:
-                info = await manager.get_file_info_by_path(path)
-                if info is None:
-                    continue
-                file_id = info.id
-            await manager.delete_file(file_id)
-        except Exception:
-            logger.warning("[skills] failed to delete %s", path, exc_info=True)
+async def _stale_files(
+    manager: WorkspaceManager, folder: str, name: str, skill: _PreparedSkill
+) -> list[SkillFileInfo]:
+    """The folder's files a whole-package write replaces, listed under the
+    lock. A reconcile also names the hash it decided on: the folder having
+    moved since means an edit landed in between, and the write would put it
+    back or prune a file the owner just added, so it is refused instead."""
+    if skill.files is None:
+        return []
+    if skill.expected_package_sha256 is None:
+        return await _list_package_files(manager, folder, name, cap=None)
+    listed = await _working_files(manager, folder, name)
+    if listed is None:
+        raise SkillChangedError(f"'{name}' was deleted while its update was prepared")
+    found = package_tree_sha256(
+        (path, info.checksum or "", info.is_executable) for path, info in listed.items()
+    )
+    if found != skill.expected_package_sha256:
+        raise SkillChangedError(
+            f"'{name}' changed while its update was prepared; it is compared again"
+        )
+    return [info for path, info in listed.items() if path != SKILL_MD]
 
 
 async def _parse_skill_from_workspace(
@@ -1074,12 +1679,53 @@ def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
         triggers=triggers,
         version=str(version) if version else None,
         origin=_skill_origin(meta),
+        baseline=_baseline_from_metadata(meta),
     )
 
 
 def _skill_origin(meta: Mapping[str, Any]) -> str | None:
     """The origin recorded on a row, or ``None`` when none was."""
     return _normalize_origin(meta.get(_META_SKILL_ORIGIN))
+
+
+def _baseline_from_metadata(meta: Mapping[str, Any]) -> SkillBaseline | None:
+    listing_id = meta.get(_META_LISTING_ID)
+    version_id = meta.get(_META_LISTING_VERSION_ID)
+    if not isinstance(listing_id, str) or not isinstance(version_id, str):
+        return None
+    package_sha256 = meta.get(_META_PACKAGE_SHA256)
+    merged_from = meta.get(_META_MERGED_FROM)
+    conflicts = meta.get(_META_MERGE_CONFLICTS)
+    return SkillBaseline(
+        listing_id=listing_id,
+        version_id=version_id,
+        package_sha256=package_sha256 if isinstance(package_sha256, str) else None,
+        merged_from=merged_from if isinstance(merged_from, str) else None,
+        merge_conflicts=tuple(
+            path
+            for path in (conflicts if isinstance(conflicts, list) else [])
+            if isinstance(path, str)
+        ),
+    )
+
+
+_UPDATE_STATES = frozenset({UPDATE_AVAILABLE, UPDATE_MERGED, UPDATE_RETIRED})
+
+
+def _normalize_update(value: object) -> str | None:
+    return value if isinstance(value, str) and value in _UPDATE_STATES else None
+
+
+def _baseline_metadata(baseline: SkillBaseline) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        _META_LISTING_ID: baseline.listing_id,
+        _META_LISTING_VERSION_ID: baseline.version_id,
+        _META_PACKAGE_SHA256: baseline.package_sha256,
+    }
+    if baseline.merged_from is not None:
+        metadata[_META_MERGED_FROM] = baseline.merged_from
+        metadata[_META_MERGE_CONFLICTS] = list(baseline.merge_conflicts)
+    return metadata
 
 
 async def _list_user_skills_from_workspace(
@@ -1167,6 +1813,8 @@ async def _read_skills_cache(
                 triggers=tuple(str(t) for t in item.get("triggers", [])),
                 version=item.get("version"),
                 origin=_normalize_origin(item.get("origin")),
+                baseline=_baseline_from_metadata(item.get("baseline") or {}),
+                update=_normalize_update(item.get("update")),
             )
             for item in payload
             if isinstance(item, dict) and "name" in item and "description" in item
@@ -1189,6 +1837,10 @@ async def _write_skills_cache(
                     "triggers": list(s.triggers),
                     "version": s.version,
                     "origin": s.origin,
+                    "baseline": (
+                        _baseline_metadata(s.baseline) if s.baseline else None
+                    ),
+                    "update": s.update,
                 }
                 for s in skills
             ]
@@ -1225,6 +1877,28 @@ async def invalidate_skills_index_cache(
         pass
 
 
+async def saved_skill_limit_reached(
+    user_id: str, expert_id: str | None, name: str
+) -> bool:
+    """Whether saving ``name`` as the owner's skill would need a saved-skill
+    slot the owner no longer has, by the same count of live roots the
+    workspace enforces. A marketplace copy that records its install stays
+    installed when edited (:func:`_keeps_install`) and needs no saved slot;
+    any other root moves into, or already fills, the saved budget."""
+    workspace = await workspace_db().get_or_create_workspace(user_id)
+    path = _skill_md_path(name, expert_id)
+    root = await workspace_db().get_workspace_file_by_path(workspace.id, path)
+    meta = root.metadata if root is not None and root.metadata else {}
+    origin = (
+        SKILL_ORIGIN_MARKETPLACE
+        if _keeps_install(_skill_origin(meta), _baseline_from_metadata(meta))
+        else SKILL_ORIGIN_USER
+    )
+    return not await workspace_skill_db().skill_root_has_room(
+        workspace.id, path, origin
+    )
+
+
 async def list_user_skills(
     user_id: str,
     expert_id: str | None = None,
@@ -1251,6 +1925,7 @@ async def list_user_skills(
         and await _copy_assigned_skills_not_yet_owned(user_id, expert_id, skills)
     ):
         skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
+    skills = await _reconcile_marketplace_copies(user_id, expert_id, skills, scope)
     await _write_skills_cache(user_id, skills, expert_id)
     return skills
 
@@ -1304,12 +1979,6 @@ async def _copy_assigned_skills_not_yet_owned(
     return copied
 
 
-def skill_name_key(name: str) -> str:
-    """Compare key for skill names: the row may carry a display name ("Deep
-    Research") for the skill whose folder is ``deep-research``."""
-    return re.sub(r"[\s_-]+", "-", name.strip().lower())
-
-
 def _heal_backoff_key(user_id: str, expert_id: str) -> str:
     return SKILLS_HEAL_BACKOFF_KEY.format(user_id=user_id, expert_id=expert_id)
 
@@ -1346,6 +2015,388 @@ async def _set_heal_backoff(user_id: str, expert_id: str, names: list[str]) -> N
         pass
 
 
+# ---------------------------------------------------------------------------
+# Keeping marketplace copies current
+# ---------------------------------------------------------------------------
+
+
+async def _reconcile_marketplace_copies(
+    user_id: str,
+    expert_id: str | None,
+    skills: list[ParsedSkill],
+    scope: WorkspaceScope | None,
+) -> list[ParsedSkill]:
+    """Bring the owner's marketplace copies up to the listings' active
+    versions, and flag the ones that could not be brought up.
+
+    Runs on a cold turn only. An unedited copy behind the marketplace is
+    fast-forwarded; an edited one is merged, the owner's side winning any
+    conflict; a copy with no baseline is stamped if it still matches the
+    active version and flagged otherwise. Bounded per call, so a publish
+    reaches a large bundle over a few turns rather than stalling one.
+    """
+    copies = [s for s in skills if s.origin == SKILL_ORIGIN_MARKETPLACE]
+    if not copies:
+        return skills
+    try:
+        active = await skill_db().get_active_versions([s.name for s in copies])
+    except Exception:
+        logger.warning(
+            "[skills] could not read active marketplace versions", exc_info=True
+        )
+        return skills
+    backoff = await _read_update_backoff(user_id, expert_id)
+    # Looked up for the first copy that is actually updated: on most cold
+    # turns every copy is current, and the lookup is a database round trip.
+    manager: WorkspaceManager | None = None
+    flags: dict[str, str] = {}
+    rewritten: list[str] = []
+    failed: dict[str, str] = {}
+    relist = False
+    budget = _RECONCILE_WRITE_BUDGET
+    for skill in copies:
+        current = active.get(skill.name)
+        if current is None:
+            # No listing by that slug at all: nothing to compare against.
+            continue
+        if current.retired:
+            flags[skill.name] = UPDATE_RETIRED
+            continue
+        baseline = skill.baseline
+        if baseline is not None and baseline.version_id == current.version_id:
+            if baseline.merged_from is not None:
+                flags[skill.name] = UPDATE_MERGED
+            continue
+        if backoff.get(skill.name) == current.version_id or budget <= 0:
+            # Already shown not to take this version, or this turn's share
+            # of attempts is spent: the copy waits, and the index says so.
+            flags[skill.name] = UPDATE_AVAILABLE
+            continue
+        # An attempt spends budget whether or not it lands, so copies that
+        # cannot be updated bound the turn like the ones that can.
+        budget -= 1
+        if manager is None:
+            manager = await _get_user_skill_manager(user_id, scope)
+        try:
+            outcome = await _update_copy(
+                manager, user_id, expert_id, scope, skill, current
+            )
+        except SkillChangedError:
+            # Written under the update; the next cold turn compares again.
+            flags[skill.name] = UPDATE_AVAILABLE
+            continue
+        except Exception:
+            logger.exception("[skills] could not update copy %r", skill.name)
+            flags[skill.name] = UPDATE_AVAILABLE
+            continue
+        if outcome is None:
+            failed[skill.name] = current.version_id
+            flags[skill.name] = UPDATE_AVAILABLE
+            continue
+        relist = True
+        if outcome != _STAMPED:
+            rewritten.append(skill.name)
+        if outcome == UPDATE_MERGED:
+            flags[skill.name] = UPDATE_MERGED
+    if failed:
+        await _set_update_backoff(user_id, expert_id, {**backoff, **failed})
+    if rewritten:
+        await _remember_updated(user_id, expert_id, rewritten)
+    if relist:
+        skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
+    return [replace(s, update=flags[s.name]) if s.name in flags else s for s in skills]
+
+
+_FAST_FORWARDED = "fast-forwarded"
+_STAMPED = "stamped"
+
+
+async def _update_copy(
+    manager: WorkspaceManager,
+    user_id: str,
+    expert_id: str | None,
+    scope: WorkspaceScope | None,
+    skill: ParsedSkill,
+    current: "ActiveSkillVersion",
+) -> str | None:
+    """Move one copy to the listing's active version. Returns what happened,
+    or None when the copy has to be left alone: edited with no version to
+    merge against, over the files cap, or its package could not be fetched."""
+    folder = skill_folder(expert_id)
+    listed = await _working_files(manager, folder, skill.name)
+    if listed is None:
+        return None
+    if len(listed) - 1 > MAX_PACKAGE_FILES:
+        # Written before the cap, or by hand. A merge reads the copy through
+        # the capped reader, so the files past the cap would look deleted
+        # and the write would prune them: leave the whole copy alone.
+        logger.warning(
+            "[skills] copy %r has more than %s files; not updating it",
+            skill.name,
+            MAX_PACKAGE_FILES,
+        )
+        return None
+    working_hash = package_tree_sha256(
+        (path, info.checksum or "", info.is_executable) for path, info in listed.items()
+    )
+    baseline = skill.baseline
+    if baseline is None:
+        baseline = await _prove_baseline(working_hash, current)
+        if baseline is None:
+            return None
+        if baseline.version_id == current.version_id:
+            ours = await _read_working_package(manager, folder, skill.name)
+            await _write_copy(
+                user_id, expert_id, scope, skill.name, ours, baseline, working_hash
+            )
+            return _STAMPED
+    wanted = [current.version_id]
+    edited = working_hash != baseline.package_sha256
+    if edited:
+        wanted.append(baseline.version_id)
+    packages = await skill_db().get_version_packages(wanted)
+    target = packages.get(current.version_id)
+    if target is None:
+        return None
+    theirs = _as_package(target)
+    fresh = SkillBaseline(target.listing_id, target.version_id, target.package_sha256)
+    if not edited:
+        await _write_copy(
+            user_id,
+            expert_id,
+            scope,
+            skill.name,
+            theirs,
+            fresh,
+            working_hash,
+            target.scanned_checksums,
+        )
+        return _FAST_FORWARDED
+    base = packages.get(baseline.version_id)
+    if base is None:
+        return None
+    ours = await _read_working_package(manager, folder, skill.name)
+    # Line alignment is CPU work, and this loop serves every chat session on
+    # the process: off the loop, so a long file stalls one update, not all.
+    merged = await asyncio.to_thread(_merge_copy, _as_package(base), ours, theirs)
+    stamped = fresh._replace(
+        merged_from=baseline.version_id, merge_conflicts=tuple(merged.conflicts)
+    )
+    await _write_copy(
+        user_id,
+        expert_id,
+        scope,
+        skill.name,
+        merged.files,
+        stamped,
+        working_hash,
+        target.scanned_checksums,
+    )
+    return UPDATE_MERGED
+
+
+async def _prove_baseline(
+    working_hash: str, current: "ActiveSkillVersion"
+) -> SkillBaseline | None:
+    """The baseline of a copy installed before baselines were recorded.
+
+    Its files still hash to the version it came from if nobody edited it:
+    the active version, or an older one, which the publisher hashed after
+    the fact (a pre-catalog install rendered its SKILL.md from the row's
+    fields, so the catalog's bytes never match it). A match proves the copy
+    unedited and names what to fast-forward from. No match is an edit that
+    nothing can tell from an old version, so the copy stays as it is.
+    """
+    if working_hash == current.package_sha256:
+        return SkillBaseline(
+            current.listing_id, current.version_id, current.package_sha256
+        )
+    version_id = await skill_db().find_version_by_hash(current.listing_id, working_hash)
+    if version_id is None:
+        return None
+    return SkillBaseline(current.listing_id, version_id, working_hash)
+
+
+def _merge_copy(
+    base: Mapping[str, PackageFile],
+    ours: Mapping[str, PackageFile],
+    theirs: Mapping[str, PackageFile],
+) -> MergedPackage:
+    """The siblings merge file by file; the SKILL.md merges frontmatter by
+    field and body by line (:mod:`skill_merge`), so a frontmatter the runtime
+    re-rendered on an edit never masks a catalog change to a field."""
+    merged = merge_packages(_siblings(base), _siblings(ours), _siblings(theirs))
+    root = merge_skill_markdown(_root_text(base), _root_text(ours), _root_text(theirs))
+    merged.files[SKILL_MD] = PackageFile(content=root.text.encode("utf-8"))
+    if root.conflicted:
+        merged.conflicts = sorted([*merged.conflicts, SKILL_MD])
+    return merged
+
+
+def _siblings(package: Mapping[str, PackageFile]) -> dict[str, PackageFile]:
+    return {path: entry for path, entry in package.items() if path != SKILL_MD}
+
+
+def _root_text(package: Mapping[str, PackageFile]) -> str:
+    return package[SKILL_MD].content.decode("utf-8")
+
+
+async def _working_files(
+    manager: WorkspaceManager, folder: str, slug: str
+) -> dict[str, SkillFileInfo] | None:
+    """The copy's files by path relative to the skill folder, SKILL.md
+    included, with the checksums the workspace recorded. No blob reads."""
+    root_path = f"{folder}/{slug}/{SKILL_MD}"
+    root = await manager.get_file_info_by_path(root_path)
+    if root is None:
+        return None
+    prefix = f"{folder}/{slug}/"
+    files = {
+        SKILL_MD: SkillFileInfo(path=root_path, file_id=root.id, checksum=root.checksum)
+    }
+    for info in await _list_package_files(manager, folder, slug, cap=None):
+        files[info.path[len(prefix) :]] = info
+    return files
+
+
+async def _read_working_package(
+    manager: WorkspaceManager, folder: str, slug: str
+) -> dict[str, PackageFile]:
+    """The copy's files with their bytes, for a merge or a stamp. Whole or
+    not at all: a truncated read would merge as if the rest were deleted."""
+    root = await manager.read_file(f"{folder}/{slug}/{SKILL_MD}")
+    package = {SKILL_MD: PackageFile(content=root)}
+    for entry in await _read_package_files(manager, folder, slug, complete=True):
+        package[entry.relative_path] = PackageFile(
+            content=entry.content, executable=entry.is_executable
+        )
+    return package
+
+
+def _as_package(version: "SkillVersionPackage") -> dict[str, PackageFile]:
+    package = {SKILL_MD: PackageFile(content=version.skill_markdown.encode("utf-8"))}
+    for entry in version.files:
+        package[entry.relative_path] = PackageFile(
+            content=entry.content, executable=entry.is_executable
+        )
+    return package
+
+
+async def _write_copy(
+    user_id: str,
+    expert_id: str | None,
+    scope: WorkspaceScope | None,
+    slug: str,
+    package: Mapping[str, PackageFile],
+    baseline: SkillBaseline,
+    expected_package_sha256: str,
+    scanned_checksums: list[str] | None = None,
+) -> None:
+    """Write a whole package over the copy through the ordinary install path,
+    so it is validated, capped, locked and delta-written like any install,
+    and only if the copy still hashes to what the decision was made on.
+    Reconciliation owns change notices so baseline-only stamps stay silent."""
+    [outcome] = await store_user_skills(
+        user_id,
+        [
+            SkillWrite(
+                name=slug,
+                description="",
+                body="",
+                skill_markdown=package[SKILL_MD].content.decode("utf-8"),
+                files=[
+                    SkillFile(
+                        relative_path=path,
+                        content=entry.content,
+                        is_executable=entry.executable,
+                    )
+                    for path, entry in sorted(package.items())
+                    if path != SKILL_MD
+                ],
+                scanned_checksums=frozenset(scanned_checksums or ()),
+                baseline=baseline,
+                expected_package_sha256=expected_package_sha256,
+            )
+        ],
+        expert_id=expert_id,
+        scope=scope,
+        origin=SKILL_ORIGIN_MARKETPLACE,
+        notify_updates=False,
+    )
+    if isinstance(outcome, Exception):
+        raise outcome
+
+
+def _updated_key(user_id: str, expert_id: str | None) -> str:
+    return SKILLS_UPDATED_KEY.format(user_id=user_id, owner=expert_id or "autopilot")
+
+
+async def _remember_updated(
+    user_id: str, expert_id: str | None, names: list[str]
+) -> None:
+    """Note the copies a reconcile rewrote, for the next turn's notice."""
+    try:
+        redis = await get_redis_async()
+        key = _updated_key(user_id, expert_id)
+        await redis.sadd(key, *names)
+        await redis.expire(key, SKILLS_UPDATED_TTL_S)
+    except Exception:
+        # Losing the note costs one reminder, never the update itself.
+        pass
+
+
+async def _consume_updated(user_id: str, expert_id: str | None) -> list[str]:
+    try:
+        redis = await get_redis_async()
+        key = _updated_key(user_id, expert_id)
+        # One atomic pop, so a name noted between a read and a delete is
+        # never lost; anything past the count is picked up next turn.
+        names = await redis.spop(key, _UPDATED_NOTICE_MAX) or []
+        return sorted(
+            n.decode("utf-8") if isinstance(n, bytes) else str(n) for n in names
+        )
+    except Exception:
+        return []
+
+
+def _update_backoff_key(user_id: str, expert_id: str | None) -> str:
+    return SKILLS_UPDATE_BACKOFF_KEY.format(
+        user_id=user_id, owner=expert_id or "autopilot"
+    )
+
+
+async def _read_update_backoff(user_id: str, expert_id: str | None) -> dict[str, str]:
+    """Copies that could not take the version they were last tried against,
+    slug → version id. Empty when Redis is away: the cost is a retry."""
+    try:
+        redis = await get_redis_async()
+        raw = await redis.get(_update_backoff_key(user_id, expert_id))
+        loaded = json.loads(raw) if raw else {}
+    except Exception:
+        return {}
+    if not isinstance(loaded, dict):
+        return {}
+    return {
+        slug: version_id
+        for slug, version_id in loaded.items()
+        if isinstance(slug, str) and isinstance(version_id, str)
+    }
+
+
+async def _set_update_backoff(
+    user_id: str, expert_id: str | None, entries: dict[str, str]
+) -> None:
+    try:
+        redis = await get_redis_async()
+        await redis.set(
+            _update_backoff_key(user_id, expert_id),
+            json.dumps(entries),
+            ex=SKILLS_UPDATE_BACKOFF_TTL_S,
+        )
+    except Exception:
+        pass
+
+
 async def read_user_skill_with_body(
     user_id: str,
     name: str,
@@ -1366,6 +2417,30 @@ async def read_user_skill_with_body(
         return None
     manager = await _get_user_skill_manager(user_id, scope)
     return await _parse_skill_from_workspace(manager, _skill_md_path(slug, expert_id))
+
+
+async def read_user_skill_markdown(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+    strict: bool = False,
+) -> str | None:
+    """Raw ``SKILL.md`` text as stored — the bytes a version hash refers to."""
+    slug = name.strip().lower()
+    if not slug:
+        return None
+    manager = await _get_user_skill_manager(user_id, scope)
+    try:
+        raw = await manager.read_file(_skill_md_path(slug, expert_id))
+        return raw.decode("utf-8")
+    except FileNotFoundError:
+        return None
+    except UnicodeDecodeError:
+        if strict:
+            raise
+        return None
 
 
 async def read_user_skill_package(
@@ -1459,6 +2534,61 @@ async def list_user_skill_files(
         return []
 
 
+MAX_BUNDLE_FILE_BYTES = 256 * 1024
+
+
+async def read_user_skill_files(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+    manager: WorkspaceManager | None = None,
+) -> list[SkillFile]:
+    manager = manager or await _get_user_skill_manager(user_id, scope)
+    return await _read_package_files(
+        manager, skill_folder(expert_id), name, complete=True
+    )
+
+
+async def read_skill_bundle_files(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+    manager: WorkspaceManager | None = None,
+) -> dict[str, str]:
+    """Text of every sibling file in a skill folder, keyed by relative path.
+
+    Used by the content checks so references and snippets are validated
+    with the main body. Binary or oversized files are skipped; a listing
+    failure yields ``{}`` (the SKILL.md itself is always checked).
+    """
+    slug = name.strip().lower()
+    if not slug:
+        return {}
+    try:
+        manager = manager or await _get_user_skill_manager(user_id, scope)
+        files = await _list_package_files(
+            manager, skill_folder(expert_id), slug, cap=None
+        )
+    except Exception:
+        logger.warning("[skills] failed to list bundle for %s", slug, exc_info=True)
+        return {}
+    prefix = f"{skill_folder(expert_id)}/{slug}/"
+    out: dict[str, str] = {}
+    for f in files:
+        if f.path.endswith("/SKILL.md") or f.size_bytes > MAX_BUNDLE_FILE_BYTES:
+            continue
+        try:
+            raw = await manager.read_file(f.path)
+            out[f.path[len(prefix) :]] = raw.decode("utf-8")
+        except (UnicodeDecodeError, Exception):
+            continue
+    return out
+
+
 async def find_user_skill_slug(user_id: str, name: str) -> str | None:
     """Folder slug of personal Otto's skill called *name*."""
     return (await find_user_skill_slugs(user_id, [name])).get(name.strip().lower())
@@ -1522,9 +2652,14 @@ async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str |
     if source is None:
         return None
     # The origin lives on the row, not in the file the parse above read; a
-    # bundled skill copied into an expert stays a bundled one there.
+    # bundled skill copied into an expert stays a bundled one there, bytes
+    # and baseline included, so the expert's copy updates like the original.
     root = await manager.get_file_info_by_path(_skill_md_path(slug))
     meta = root.metadata if root is not None and isinstance(root.metadata, dict) else {}
+    origin = _skill_origin(meta) or SKILL_ORIGIN_USER
+    verbatim: str | None = None
+    if origin == SKILL_ORIGIN_MARKETPLACE:
+        verbatim = (await manager.read_file(_skill_md_path(slug))).decode("utf-8")
     stored = await store_user_skill(
         user_id,
         name=slug,
@@ -1535,7 +2670,12 @@ async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str |
         extra=source.extra,
         files=await _read_package_files(manager, SKILL_FOLDER, slug),
         expert_id=expert_id,
-        origin=_skill_origin(meta) or SKILL_ORIGIN_USER,
+        origin=origin,
+        skill_markdown=verbatim,
+        baseline=_baseline_from_metadata(meta),
+        version_origin="imported",
+        actor_user_id=user_id,
+        summary="Copied from the personal skill library",
     )
     return stored.name
 
@@ -1649,6 +2789,8 @@ async def list_all_skills(
     user_id: str | None,
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
+    *,
+    require_complete: bool = False,
 ) -> list[ParsedSkill]:
     """Default seeded skills first, then the owner's own skills.
 
@@ -1660,10 +2802,18 @@ async def list_all_skills(
     *expert_id* selects whose skills follow the defaults: an expert's own
     folder, or personal Otto's when ``None``. Neither ever sees the
     other's skills.
+
+    ``require_complete`` rejects an unavailable registry so callers cannot
+    mistake a partial index for a confirmed removal of owner skills.
     """
     skills = get_default_skills_for_index()
     if user_id:
-        skills.extend(await list_user_skills(user_id, expert_id, scope))
+        owned = await list_user_skills(user_id, expert_id, scope)
+        paused = await paused_skill_names(user_id, expert_id)
+        if paused is None and require_complete:
+            raise RuntimeError("Skill registry availability could not be verified")
+        if paused is not None:
+            skills.extend(s for s in owned if s.name not in paused)
     return skills
 
 
@@ -1682,9 +2832,25 @@ def render_skills_index(skills: list[ParsedSkill]) -> str:
         return ""
     lines = []
     for s in skills:
-        trigger_hint = f" — triggers: {', '.join(s.triggers)}" if s.triggers else ""
-        lines.append(f"- name: {s.name} — {s.description}{trigger_hint}")
+        trigger_text = ", ".join(s.triggers)
+        if len(trigger_text) > MAX_INDEX_TRIGGER_CHARS:
+            trigger_text = trigger_text[:MAX_INDEX_TRIGGER_CHARS].rstrip() + "…"
+        trigger_hint = f" — triggers: {trigger_text}" if trigger_text else ""
+        update_hint = (
+            f" — note: {_UPDATE_HINTS[s.update]}" if s.update in _UPDATE_HINTS else ""
+        )
+        lines.append(f"- name: {s.name} — {s.description}{trigger_hint}{update_hint}")
     return "\n".join(lines)
+
+
+_UPDATE_HINTS = {
+    UPDATE_AVAILABLE: (
+        "a newer marketplace version exists; this copy was customized, so it "
+        "was left as is"
+    ),
+    UPDATE_MERGED: "a marketplace update was merged into this customized copy",
+    UPDATE_RETIRED: "no longer offered on the marketplace; this copy still works",
+}
 
 
 async def is_skills_feature_enabled(user_id: str | None) -> bool:
@@ -1763,6 +2929,8 @@ async def build_skills_update_notice(
     user_id: str | None,
     expert_id: str | None = None,
     prior_contents: Iterable[str] = (),
+    *,
+    session_id: str | None = None,
 ) -> str:
     """Per-turn ``<skills_update>`` notice, or ``""`` when nothing drifted.
 
@@ -1782,7 +2950,7 @@ async def build_skills_update_notice(
     try:
         if not await is_skills_feature_enabled(user_id):
             return ""
-        current = await list_all_skills(user_id, expert_id)
+        current = await list_all_skills(user_id, expert_id, require_complete=True)
     except Exception:
         logger.exception("[skills] failed to diff skills for update notice")
         return ""
@@ -1790,7 +2958,43 @@ async def build_skills_update_notice(
     seen = previously_seen_skill_slugs(prior_contents)
     added = sorted(slug for slug in current_slugs if slug not in seen)
     removed = sorted(slug for slug in seen if slug not in current_slugs)
-    if not added and not removed:
+    updated = [
+        slug
+        for slug in await _consume_updated(user_id, expert_id)
+        if slug in current_slugs and slug not in added
+    ]
+    if session_id:
+        try:
+            heads = await skill_versions_db().list_heads(
+                user_id, owner_key_for(expert_id)
+            )
+            current_versions = {
+                h.skill_name: h.current_version_id
+                for h in heads
+                if h.skill_name in current_slugs
+            }
+            previous = await read_seen_index_revision(session_id)
+            try:
+                previous_versions = json.loads(previous) if previous else {}
+            except ValueError:
+                previous_versions = {}
+            if isinstance(previous_versions, dict):
+                updated = sorted(
+                    set(updated)
+                    | {
+                        name
+                        for name, version in current_versions.items()
+                        if name in seen
+                        and name in previous_versions
+                        and previous_versions[name] != version
+                    }
+                )
+            await mark_index_revision_seen(session_id, json.dumps(current_versions))
+        except Exception:
+            logger.warning(
+                "[skills] could not check session skill versions", exc_info=True
+            )
+    if not added and not removed and not updated:
         return ""
 
     def _names(slugs: list[str]) -> str:
@@ -1807,9 +3011,14 @@ async def build_skills_update_notice(
         lines.append(f"New skills: {_names(added)}.")
     if removed:
         lines.append(f"Removed skills: {_names(removed)}.")
+    if updated:
+        lines.append(
+            f"Updated skills: {_names(updated)}. Their bodies changed since you "
+            "last read them."
+        )
     lines.append(
         "Call `tool:list_skills` to see the current list, then "
-        "`tool:read_skill` to load a new skill's body before using it."
+        "`tool:read_skill` to load a new or updated skill's body before using it."
     )
     return (
         f"<{SKILLS_UPDATE_TAG}>\n" + "\n".join(lines) + f"\n</{SKILLS_UPDATE_TAG}>\n\n"
@@ -1824,6 +3033,7 @@ async def build_skills_update_notice(
 _EXPERT_ID_PARAM = {
     "type": "string",
     "description": "Manage this expert's skills (Otto only).",
+    "entity": "expert",
 }
 
 
@@ -1848,6 +3058,11 @@ class SkillFileInfo(BaseModel):
 
 
 class ReadSkillResponse(ToolResponseBase):
+    version: int | None = None
+    version_id: str | None = None
+    origin: str | None = None
+    origin_label: str | None = None
+
     type: ResponseType = ResponseType.SKILL_LOADED
     name: str
     description: str
@@ -2006,6 +3221,67 @@ def _owner_label(expert_id: str | None) -> str:
     return "personal Otto" if expert_id is None else f"expert {expert_id}"
 
 
+class LoadedSkillVersion(BaseModel):
+    """Which learned version a ``read_skill`` call handed to the model."""
+
+    version: int | None = None
+    version_id: str | None = None
+    origin: str | None = None
+    origin_label: str | None = None
+    files: list[SkillVersionFile] | None = None
+
+    def message(self, name: str) -> str:
+        if self.version is None:
+            return f"Loaded skill '{name}'."
+        return (
+            f"Loaded skill '{name}' v{self.version} ({self.origin_label}). "
+            "Loading is not a success record; report the real outcome."
+        )
+
+
+async def resolve_loaded_skill_version(
+    user_id: str,
+    expert_id: str | None,
+    name: str,
+    text: str,
+    *,
+    manager: WorkspaceManager | None = None,
+) -> LoadedSkillVersion:
+    """Pin the loaded content to its exact version, refusing paused skills.
+
+    Raises :class:`SkillUsePausedError` when the owner stopped this skill
+    and propagates registry errors so the caller fails closed. A body whose
+    hash differs from the head's ready version (a write that bypassed
+    version tracking) is reported unversioned. Unsettled versions are refused.
+    """
+    resolved = await resolve_current_version(user_id, expert_id, name)
+    if resolved is None:
+        return LoadedSkillVersion()
+    head, current = resolved
+    if head.use_paused_at is not None:
+        raise SkillUsePausedError(name)
+    if head.current_version_id is not None and (
+        current is None or current.state != "ready"
+    ):
+        raise SkillWriteLockError("the skill version is not ready to load")
+    if current is None or current.content_hash != content_hash(text):
+        return LoadedSkillVersion()
+    if current.files is not None:
+        manager = manager or await _get_user_skill_manager(user_id)
+        listed = await _list_package_files(manager, skill_folder(expert_id), name)
+        if not _matches_version_files(
+            listed, current.files, f"{skill_folder(expert_id)}/{name}/"
+        ):
+            return LoadedSkillVersion()
+    return LoadedSkillVersion(
+        version=current.version,
+        version_id=current.id,
+        origin=current.origin,
+        origin_label=origin_label(current.origin),
+        files=current.files,
+    )
+
+
 class ReadSkillTool(BaseTool):
     """Load a skill by name: its body, its package listing, and a copy of
     that package in the working directory the model's shell runs in."""
@@ -2092,7 +3368,10 @@ class ReadSkillTool(BaseTool):
             )
 
         try:
+            from backend.copilot.learning.publish import reconcile_skill_for_read
+
             manager = await _get_user_skill_manager(user_id, owner.scope)
+            await reconcile_skill_for_read(user_id, owner.expert_id, name)
             raw = await manager.read_file(_skill_md_path(name, owner.expert_id))
         except WorkspaceAccessDeniedError:
             return ErrorResponse(
@@ -2136,6 +3415,28 @@ class ReadSkillTool(BaseTool):
                 session_id=session_id,
             )
 
+        try:
+            loaded = await resolve_loaded_skill_version(
+                user_id, owner.expert_id, name, text, manager=manager
+            )
+        except SkillUsePausedError:
+            return ErrorResponse(
+                message=(
+                    f"Skill '{name}' was stopped by its owner and is not "
+                    "available. Continue with your normal tools."
+                ),
+                error="skill_use_paused",
+                session_id=session_id,
+            )
+        except Exception:
+            return ErrorResponse(
+                message=(
+                    f"Skill '{name}' cannot be checked against the skill "
+                    "registry right now; continue with your normal tools."
+                ),
+                error="skill_registry_unavailable",
+                session_id=session_id,
+            )
         # List the package files (references/, scripts/, assets/, ...) so
         # the model knows what else lives in the bundle.
         folder = skill_folder(owner.expert_id)
@@ -2146,8 +3447,23 @@ class ReadSkillTool(BaseTool):
             logger.warning(
                 "[skills] failed to list package files for %s", name, exc_info=True
             )
+            if loaded.files is not None:
+                return ErrorResponse(
+                    message="The skill package is unavailable; retry tool:read_skill.",
+                    error="skill_package_unavailable",
+                    session_id=session_id,
+                )
             package_files = []
             listed = False
+
+        if loaded.files is not None and not _matches_version_files(
+            package_files, loaded.files, f"{folder}/{name}/"
+        ):
+            return ErrorResponse(
+                message="The skill package changed while loading; retry tool:read_skill.",
+                error="skill_changed",
+                session_id=session_id,
+            )
 
         notes: list[str] = []
         # A listing that failed is not an empty package: treating it as one
@@ -2168,6 +3484,7 @@ class ReadSkillTool(BaseTool):
             slug=name,
             session_id=session_id,
             complete=complete,
+            version_files=loaded.files,
         )
         if warning:
             notes.append(warning)
@@ -2178,6 +3495,13 @@ class ReadSkillTool(BaseTool):
                 "directory."
             )
 
+        await record_skill_loaded(
+            user_id,
+            owner.expert_id,
+            name,
+            version_id=loaded.version_id,
+            session_id=session_id,
+        )
         return ReadSkillResponse(
             name=parsed.name,
             description=parsed.description,
@@ -2188,7 +3512,11 @@ class ReadSkillTool(BaseTool):
             package_dir=package_dir,
             is_default=False,
             expert_id=owner.expert_id,
-            message=" ".join([f"Loaded skill '{name}'.", *notes]),
+            version=loaded.version,
+            version_id=loaded.version_id,
+            origin=loaded.origin,
+            origin_label=loaded.origin_label,
+            message=" ".join([loaded.message(name), *notes]),
             session_id=session_id,
         )
 
@@ -2259,7 +3587,7 @@ class DeleteSkillTool(BaseTool):
             return ErrorResponse(message=str(exc), session_id=session_id)
         except SkillNotFoundError as exc:
             return ErrorResponse(message=str(exc), session_id=session_id)
-        except ConflictError as exc:
+        except (ConflictError, SkillWriteLockError, SkillVersionConflictError) as exc:
             return ErrorResponse(message=str(exc), session_id=session_id)
         except Exception as exc:
             logger.exception("[skills] delete failed for %s", name)
@@ -2481,6 +3809,18 @@ class _CopiedFile(NamedTuple):
 _COPY_CONCURRENCY = 16
 
 
+def _matches_version_files(
+    files: list[SkillFileInfo], snapshot: list[SkillVersionFile], prefix: str
+) -> bool:
+    actual = {f.path: (f.checksum, f.is_executable) for f in files}
+    expected = {
+        prefix
+        + f.relative_path: (hashlib.sha256(f.content).hexdigest(), f.is_executable)
+        for f in snapshot
+    }
+    return actual == expected
+
+
 async def _sync_skill_package(
     manager: WorkspaceManager,
     files: list[SkillFileInfo],
@@ -2489,6 +3829,7 @@ async def _sync_skill_package(
     slug: str,
     session_id: str,
     complete: bool,
+    version_files: list[SkillVersionFile] | None = None,
 ) -> tuple[str | None, str | None]:
     """Make the turn's working directory match the skill's package.
 
@@ -2504,6 +3845,11 @@ async def _sync_skill_package(
     package_dir = f"{workdir}/skills/{slug}"
     manifest_path = f"{workdir}/{_MANIFEST_DIR}/{slug}.json"
     prefix = f"{folder}/{slug}/"
+    frozen = (
+        {f.relative_path: f.content for f in version_files}
+        if version_files is not None
+        else None
+    )
     manifest = await _read_package_manifest(manifest_path, session_id)
     limit = asyncio.Semaphore(_COPY_CONCURRENCY)
 
@@ -2523,7 +3869,11 @@ async def _sync_skill_package(
             return _CopiedFile(relative, info.checksum, executable, None)
         async with limit:
             try:
-                content = await manager.read_file(info.path)
+                content = (
+                    frozen[relative]
+                    if frozen is not None
+                    else await manager.read_file(info.path)
+                )
             except Exception:
                 logger.warning("[skills] failed to read %s", info.path, exc_info=True)
                 return None

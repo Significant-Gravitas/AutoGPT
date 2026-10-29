@@ -25,7 +25,7 @@ export function TranscriptPanel({ finalizeResponse }: Props) {
       <Alert variant="warning">
         <AlertTitle>Not exposed by any current endpoint</AlertTitle>
         <AlertDescription>
-          <Text variant="small" className="mb-2 text-zinc-700">
+          <Text variant="small" tone="body" className="mb-2">
             The full transcript and the extracted CoPilotUnderstanding.data are
             written server-side and never returned to the browser. Verified
             against the whole generated client: the brain-dump tag has only
@@ -35,7 +35,7 @@ export function TranscriptPanel({ finalizeResponse }: Props) {
             UnderstandingUpdatedResponse is a copilot tool-result shape, not a
             readable endpoint.
           </Text>
-          <Text variant="small" className="text-zinc-700">
+          <Text variant="small" tone="body">
             Showing them here would need a new backend route — e.g.{" "}
             <span className="font-mono">
               GET /onboarding/brain-dump/transcript
@@ -48,11 +48,11 @@ export function TranscriptPanel({ finalizeResponse }: Props) {
       </Alert>
 
       <div className="mt-6">
-        <Text variant="label" className="text-zinc-500">
+        <Text variant="label" tone="muted">
           transcript_preview (from finalize)
         </Text>
         {preview ? (
-          <pre className="mt-2 whitespace-pre-wrap rounded-large bg-zinc-50 p-4 font-mono text-sm text-zinc-800">
+          <pre className="mt-2 whitespace-pre-wrap rounded-large bg-surface-muted p-4 font-mono text-sm text-foreground-emphasis">
             {preview}
           </pre>
         ) : (
