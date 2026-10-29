@@ -28,6 +28,7 @@ from backend.copilot.context import (
     _current_session,
     _current_user_id,
     _encode_cwd_for_cli,
+    bash_command_as_written,
     get_execution_context,
     is_sdk_tool_path,
     reset_consult_budget,
@@ -44,6 +45,7 @@ from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
     expand_file_refs_in_args,
     read_file_bytes,
+    text_outside_file_refs,
 )
 from backend.copilot.tool_image import truncate_mcp_result
 from backend.copilot.tools import (
@@ -866,7 +868,12 @@ def _make_truncating_wrapper(
                     _clear_tool_failures(name)
                 return released
 
-        result = await run(args)
+        command = original_args.get("command") if name == "bash_exec" else None
+        as_written = (
+            text_outside_file_refs(command) if isinstance(command, str) else None
+        )
+        with bash_command_as_written(as_written):
+            result = await run(args)
         truncated = truncate_mcp_result(result, _MCP_MAX_CHARS)
         remember_cut_google_output(
             _text_from_mcp_result(result), _text_from_mcp_result(truncated)
