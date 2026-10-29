@@ -6,12 +6,16 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot.graphiti.ingest import MAX_EPISODE_BODY_BYTES
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_store import MemoryStoreTool
 from backend.copilot.tools.models import ErrorResponse, MemoryStoreResponse
 
 
-def _make_session(session_id: str = "test-session") -> ChatSession:
+def _make_session(
+    session_id: str = "test-session", *, expert_id: str | None = None
+) -> ChatSession:
     return ChatSession(
         session_id=session_id,
         user_id="test-user",
@@ -21,11 +25,45 @@ def _make_session(session_id: str = "test-session") -> ChatSession:
         credentials={},
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
+        expert_id=expert_id,
     )
+
+
+@pytest.fixture(autouse=True)
+def _display_name():
+    with patch(
+        "backend.copilot.tools.graphiti_store.resolve_user_name",
+        new_callable=AsyncMock,
+        return_value="Alice",
+    ):
+        yield
 
 
 class TestMemoryStoreTool:
     """Tests for MemoryStoreTool._execute."""
+
+    @pytest.mark.asyncio
+    async def test_store_names_the_user_as_subject(self):
+        """A JSON episode has no speaker, so the envelope must name the user
+        for the extractor to have a second entity to relate the fact to."""
+        tool = MemoryStoreTool()
+        mock_enqueue = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "backend.copilot.tools.graphiti_store.enqueue_episode",
+                mock_enqueue,
+            ),
+        ):
+            await tool._execute(
+                user_id="user-1",
+                session=_make_session(),
+                name="crm_is_hubspot",
+                content="CRM used is HubSpot.",
+            )
+
+        envelope = json.loads(mock_enqueue.await_args.kwargs["episode_body"])
+        assert envelope["user"] == "Alice"
 
     @pytest.mark.asyncio
     async def test_store_no_user_returns_error(self):
@@ -44,14 +82,19 @@ class TestMemoryStoreTool:
         assert result.session_id == "test-session"
 
     @pytest.mark.asyncio
-    async def test_store_feature_disabled_returns_error(self):
+    async def test_store_does_not_depend_on_a_flag_provider(self):
         tool = MemoryStoreTool()
         session = _make_session()
 
-        with patch(
-            "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-            new_callable=AsyncMock,
-            return_value=False,
+        with (
+            patch(
+                "backend.util.feature_flag.is_feature_enabled",
+                new=AsyncMock(side_effect=RuntimeError("provider unavailable")),
+            ) as flags,
+            patch(
+                "backend.copilot.tools.graphiti_store.enqueue_episode",
+                new=AsyncMock(return_value=True),
+            ) as enqueue,
         ):
             result = await tool._execute(
                 user_id="user-1",
@@ -60,25 +103,21 @@ class TestMemoryStoreTool:
                 content="likes python",
             )
 
-        assert isinstance(result, ErrorResponse)
-        assert "not enabled" in result.message
+        assert isinstance(result, MemoryStoreResponse)
+        enqueue.assert_awaited_once()
+        flags.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_store_missing_name_returns_error(self):
         tool = MemoryStoreTool()
         session = _make_session()
 
-        with patch(
-            "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-            new_callable=AsyncMock,
-            return_value=True,
-        ):
-            result = await tool._execute(
-                user_id="user-1",
-                session=session,
-                name="",
-                content="likes python",
-            )
+        result = await tool._execute(
+            user_id="user-1",
+            session=session,
+            name="",
+            content="likes python",
+        )
 
         assert isinstance(result, ErrorResponse)
         assert "'name' and 'content' are required" in result.message
@@ -88,17 +127,12 @@ class TestMemoryStoreTool:
         tool = MemoryStoreTool()
         session = _make_session()
 
-        with patch(
-            "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-            new_callable=AsyncMock,
-            return_value=True,
-        ):
-            result = await tool._execute(
-                user_id="user-1",
-                session=session,
-                name="pref",
-                content="",
-            )
+        result = await tool._execute(
+            user_id="user-1",
+            session=session,
+            name="pref",
+            content="",
+        )
 
         assert isinstance(result, ErrorResponse)
         assert "'name' and 'content' are required" in result.message
@@ -108,17 +142,12 @@ class TestMemoryStoreTool:
         tool = MemoryStoreTool()
         session = _make_session()
 
-        with patch(
-            "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-            new_callable=AsyncMock,
-            return_value=True,
-        ):
-            result = await tool._execute(
-                user_id="user-1",
-                session=session,
-                name="",
-                content="",
-            )
+        result = await tool._execute(
+            user_id="user-1",
+            session=session,
+            name="",
+            content="",
+        )
 
         assert isinstance(result, ErrorResponse)
         assert "'name' and 'content' are required" in result.message
@@ -131,11 +160,6 @@ class TestMemoryStoreTool:
         mock_enqueue = AsyncMock()
 
         with (
-            patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
             patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,
@@ -172,11 +196,6 @@ class TestMemoryStoreTool:
 
         with (
             patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
-            patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,
             ),
@@ -198,6 +217,52 @@ class TestMemoryStoreTool:
         assert envelope["content"] == "A fact worth remembering."
 
     @pytest.mark.asyncio
+    async def test_store_expert_session_enqueues_in_expert_scope(self):
+        tool = MemoryStoreTool()
+        session = _make_session(expert_id="expert-1")
+        mock_enqueue = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "backend.copilot.tools.graphiti_store.enqueue_episode",
+                mock_enqueue,
+            ),
+        ):
+            result = await tool._execute(
+                user_id="user-1",
+                session=session,
+                name="private_fact",
+                content="Only this expert should remember this.",
+            )
+
+        assert isinstance(result, MemoryStoreResponse)
+        assert mock_enqueue.await_args.args[0] == MemoryScope.for_expert(
+            "user-1", "expert-1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_store_rejects_an_invalid_memory_scope_before_enqueue(self):
+        tool = MemoryStoreTool()
+        mock_enqueue = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "backend.copilot.tools.graphiti_store.enqueue_episode",
+                mock_enqueue,
+            ),
+        ):
+            result = await tool._execute(
+                user_id="not a valid id",
+                session=_make_session(),
+                name="some_fact",
+                content="A fact worth remembering.",
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert result.message == "Invalid user ID for memory operations."
+        mock_enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_store_invalid_source_kind_falls_back(self):
         """Invalid enum values should fall back to defaults, not crash."""
         tool = MemoryStoreTool()
@@ -206,11 +271,6 @@ class TestMemoryStoreTool:
         mock_enqueue = AsyncMock()
 
         with (
-            patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
             patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,
@@ -239,11 +299,6 @@ class TestMemoryStoreTool:
 
         with (
             patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
-            patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,
             ),
@@ -263,16 +318,11 @@ class TestMemoryStoreTool:
         assert envelope["memory_kind"] == "rule"
 
     @pytest.mark.asyncio
-    async def test_store_queue_full_returns_error(self):
+    async def test_store_queue_full_returns_retryable_error(self):
         tool = MemoryStoreTool()
         session = _make_session()
 
         with (
-            patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
             patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 new_callable=AsyncMock,
@@ -288,6 +338,67 @@ class TestMemoryStoreTool:
 
         assert isinstance(result, ErrorResponse)
         assert "queue" in result.message.lower()
+        assert "try again" in result.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_store_oversized_content_returns_split_guidance_without_enqueueing(
+        self,
+    ):
+        """An envelope over the 64KB ingest cap is a permanent rejection.
+        The tool must tell the LLM to split the content — not surface the
+        retryable queue-full message that invites an identical retry —
+        and must never hand the oversized body to the ingest queue."""
+        tool = MemoryStoreTool()
+        session = _make_session()
+
+        mock_enqueue = AsyncMock()
+
+        with (
+            patch(
+                "backend.copilot.tools.graphiti_store.enqueue_episode",
+                mock_enqueue,
+            ),
+        ):
+            result = await tool._execute(
+                user_id="user-1",
+                session=session,
+                name="giant_memory",
+                content="x" * (MAX_EPISODE_BODY_BYTES + 1),
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "too large" in result.message.lower()
+        assert "split" in result.message.lower()
+        assert "queue" not in result.message.lower()
+        assert "try again" not in result.message.lower()
+        mock_enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_store_size_check_measures_full_envelope_not_just_content(self):
+        """The cap applies to the serialized MemoryEnvelope (what is
+        actually enqueued), so content just under the cap is still
+        rejected once the envelope's metadata pushes it over."""
+        tool = MemoryStoreTool()
+        session = _make_session()
+
+        mock_enqueue = AsyncMock()
+
+        with (
+            patch(
+                "backend.copilot.tools.graphiti_store.enqueue_episode",
+                mock_enqueue,
+            ),
+        ):
+            result = await tool._execute(
+                user_id="user-1",
+                session=session,
+                name="barely_oversized_memory",
+                content="x" * (MAX_EPISODE_BODY_BYTES - 10),
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "too large" in result.message.lower()
+        mock_enqueue.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_store_with_scope(self):
@@ -297,11 +408,6 @@ class TestMemoryStoreTool:
         mock_enqueue = AsyncMock()
 
         with (
-            patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
             patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,

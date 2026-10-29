@@ -7,17 +7,21 @@ without creating circular dependencies.
 
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import workspace_db
+from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
 from backend.util.workspace import WorkspaceManager
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
 
 
 # Allowed base directory for the Read tool.  Public so service.py can use it
@@ -46,10 +50,118 @@ _current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
 )
 _current_sdk_cwd: ContextVar[str] = ContextVar("_current_sdk_cwd", default="")
 
+# How many teammate consults one turn may spend. A consult is a single
+# tool-less LLM call, so it cannot recurse — but nothing else stops a model
+# re-asking the same question until the turn's round budget runs out, and a
+# check re-run on unchanged work is a loop, not diligence.
+MAX_CONSULTS_PER_TURN = 3
+
+# How many teammates one turn may message. Sending does not block the turn,
+# so without a cap a single turn can wake every session the user owns.
+MAX_SESSION_MESSAGES_PER_TURN = 3
+
+# Both counters live in one dict, mutated in place, like the tool-adapter's
+# _consecutive_tool_failures: the SDK CLI runs each tool call in its own task,
+# which copies the context, so an int re-``set()`` per call never reaches the
+# next one and the budget counts nothing.
+_turn_budget: ContextVar[dict[str, int] | None] = ContextVar(
+    "_turn_budget", default=None
+)
+
+
+def reset_consult_budget() -> None:
+    """Give the turn a fresh consult and message allowance. Called by both
+    engines' setters."""
+    _turn_budget.set({})
+
+
+def take_session_message_slot() -> str | None:
+    """Claim one outbound session message, or return the refusal to hand the
+    model. Per turn, for the same reason the consult budget is."""
+    used = _claim_slot("session_messages", MAX_SESSION_MESSAGES_PER_TURN)
+    if used is None:
+        return None
+    return (
+        f"You have already messaged {used} sessions this turn. Wait for a "
+        "reply before sending more — a message costs the receiver a turn."
+    )
+
+
+def take_consult_slot() -> str | None:
+    """Claim one consult, or return the refusal to hand the model.
+
+    Counting here rather than in the tool keeps the budget per *turn*: the
+    budget is created once per turn by ``set_execution_context`` and shared by
+    every tool call inside it.
+    """
+    used = _claim_slot("consults", MAX_CONSULTS_PER_TURN)
+    if used is None:
+        return None
+    return (
+        f"You have already asked teammates to check work "
+        f"{used} times this turn. Act on the verdicts you have — "
+        "re-asking about work that has not changed is a loop, not a "
+        "second opinion."
+    )
+
+
+def _claim_slot(key: str, limit: int) -> int | None:
+    """Take one slot: None when it was granted, the spent count when it was
+    not. Nothing awaits between the read and the write, so the claim is atomic
+    against the parallel tool dispatch the SDK CLI does."""
+    budget = _turn_budget.get()
+    if budget is None:
+        budget = {}
+        _turn_budget.set(budget)
+    used = budget.get(key, 0)
+    if used >= limit:
+        return used
+    budget[key] = used + 1
+    return None
+
+
 # Current execution's capability filter.  None means "no restrictions".
 # Set by set_execution_context(); read by run_block and service.py.
 _current_permissions: "ContextVar[CopilotPermissions | None]" = ContextVar(
     "_current_permissions", default=None
+)
+
+# The running turn's tree envelope. Spawn tools derive a child's envelope
+# from this — never from a session row — so a child can only ever narrow it.
+_current_envelope: "ContextVar[TurnEnvelope | None]" = ContextVar(
+    "_current_envelope", default=None
+)
+# Short tool names this turn hid from the model (permission-denied, group-
+# disabled, kickoff-narrowed).  ``run_capability`` refuses to reach them, so
+# hiding stays an enforcement boundary once tools are reachable by id.
+_current_hidden_tools: ContextVar[frozenset[str]] = ContextVar(
+    "_current_hidden_tools", default=frozenset()
+)
+# Set while an approved held call replays with the arguments it was stored with;
+# see ``replaying_bound_args``. Never from the model's arguments.
+_replaying_bound_args: ContextVar[bool] = ContextVar(
+    "_replaying_bound_args", default=False
+)
+
+
+@contextmanager
+def replaying_bound_args(bound: bool) -> Iterator[None]:
+    """Replay a held call whose arguments were already resolved when it was
+    held, so the tool runs them as approved instead of resolving them again."""
+    token = _replaying_bound_args.set(bound)
+    try:
+        yield
+    finally:
+        _replaying_bound_args.reset(token)
+
+
+def args_already_bound() -> bool:
+    return _replaying_bound_args.get()
+
+
+# Whether anyone is watching the running turn; see ``set_turn_unattended``.
+_current_turn_unattended: ContextVar[bool] = ContextVar(
+    "_current_turn_unattended", default=False
 )
 
 
@@ -69,10 +181,12 @@ _encode_cwd_for_cli = encode_cwd_for_cli
 
 def set_execution_context(
     user_id: str | None,
-    session: ChatSession,
+    session: ChatSession | None,
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
+    hidden_tools: frozenset[str] = frozenset(),
 ) -> None:
     """Set per-turn context variables used by file-resolution tool handlers."""
     _current_user_id.set(user_id)
@@ -81,6 +195,9 @@ def set_execution_context(
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
+    _current_envelope.set(envelope)
+    _current_hidden_tools.set(hidden_tools)
+    reset_consult_budget()
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
@@ -91,6 +208,33 @@ def get_execution_context() -> tuple[str | None, ChatSession | None]:
 def get_current_permissions() -> "CopilotPermissions | None":
     """Return the capability filter for the current execution, or None if unrestricted."""
     return _current_permissions.get()
+
+
+def get_current_envelope() -> "TurnEnvelope | None":
+    """The running turn's tree envelope; None outside an executor turn."""
+    return _current_envelope.get()
+
+
+def get_current_hidden_tools() -> frozenset[str]:
+    """Short tool names hidden from the model this turn."""
+    return _current_hidden_tools.get()
+
+
+def set_turn_unattended(session: ChatSession, *, scheduled: bool) -> None:
+    """Record whether anyone is watching the running turn. The executor sets
+    it for every turn, so a value never carries over to the next one.
+
+    Nobody is when the scheduler fired the turn, even into the user's own
+    chat, or when an automation opened the chat: a scheduled run's own chat, a
+    sub-session, a graph's AutoPilot block. A legacy chat without an origin
+    counts as watched, the way ``pauses_irreversible_actions`` reads it.
+    """
+    _current_turn_unattended.set(scheduled or session.metadata.origin == "automation")
+
+
+def is_unattended_turn() -> bool:
+    """Whether nobody can answer a question this turn puts to the user."""
+    return _current_turn_unattended.get()
 
 
 def get_current_sandbox() -> "AsyncSandbox | None":
@@ -157,6 +301,135 @@ def is_sdk_tool_path(path: str) -> bool:
     )
 
 
+# Anchored matches for host-side SDK tool-result paths. Used by
+# wrong-tool detectors (bash_exec, read_workspace_file) to redirect the
+# model to ``read_tool_result`` / ``@@agptfile:`` rather than letting it
+# bounce off ``Permission denied`` repeatedly.
+#
+# Two shapes are matched:
+#   (1) anything under the SDK projects dir — files, folders and globs
+#       alike (``cd …/tool-results/``,
+#       ``ls /root/.claude/projects/*/*/tool-results/``). The sandbox has
+#       no such folder, so any reference to it ends in ``Permission denied``.
+#       The path must start a shell token and be the configured
+#       ``SDK_PROJECTS_DIR`` or a home-level ``.claude/projects`` (``~``,
+#       ``$HOME``, ``/root``, ``/home/<name>``, or relative), so a repo
+#       folder like ``/home/user/my-repo/.claude/projects`` still runs.
+#   (2) model shorthand:    tool-(results|outputs)/<toolu|mcp>_<id>.json
+#
+# The shorthand branch requires the SDK's actual ID prefix so a user
+# repo that happens to use a ``tool-outputs/`` directory name does NOT
+# trigger a false redirect on legitimate paths like
+# ``my-pipeline/tool-outputs/data.json``.
+_SDK_TOOL_RESULT_RE = re.compile(
+    r"(?:^|(?<=[\s'\"=(`;&|<>]))"
+    rf"(?:{re.escape(SDK_PROJECTS_DIR)}"
+    r"|(?:(?:~|\$HOME|\$\{HOME\}|/root|/home/[^/\s'\"]+)/|/)?\.claude/projects)"
+    r"(?![\w.-])"
+    r"|(?:^|[/\s'\"])tool-(?:results|outputs)/(?:toolu|mcp)_[\w-]+\.json",
+    re.IGNORECASE,
+)
+
+
+# The bash_exec command as the model wrote it with its ``@@agptfile:`` refs
+# cut out, set by the SDK tool adapter before it expands them. The redirect
+# check reads this, so neither a ref to an SDK tool result (the route the
+# redirect itself suggests) nor a ``.claude/projects`` path that is only text
+# inside an inlined file blocks the command. Left unset when the command is
+# nothing but refs: then the expanded file is the script that runs, so the
+# check reads that.
+_bash_command_as_written: ContextVar[str | None] = ContextVar(
+    "_bash_command_as_written", default=None
+)
+
+
+@contextmanager
+def bash_command_as_written(command: str | None) -> Iterator[None]:
+    token = _bash_command_as_written.set(command)
+    try:
+        yield
+    finally:
+        _bash_command_as_written.reset(token)
+
+
+def get_bash_command_as_written() -> str | None:
+    return _bash_command_as_written.get()
+
+
+def looks_like_sdk_tool_result_path(text: str) -> bool:
+    """Return True if *text* references a host-side SDK tool-result path.
+
+    Anchored regex match — avoids false positives on user paths that
+    happen to contain a ``tool-outputs/`` directory by requiring either
+    a ``.claude/projects`` path (file, folder or glob) or the SDK's
+    ``(toolu|mcp)_<id>.json`` filename pattern.
+    """
+    if not text:
+        return False
+    return _SDK_TOOL_RESULT_RE.search(text) is not None
+
+
+# Shell separators used by ``_extract_offending_segment`` to bound the
+# path-like token that triggered the redirect. Quotes are included so a
+# quoted SDK path inside a command (e.g. ``cat "/root/.claude/..."``)
+# extracts the path without the surrounding quotes.
+_SHELL_TOKEN_DELIMS = frozenset(" |;&<>'\"\n\t`()")
+
+
+def _extract_offending_segment(text: str) -> str:
+    """Return the path-shaped token in *text* that tripped a redirect hint.
+
+    Uses the regex match position as the anchor (so false positives like
+    ``my-pipeline/tool-outputs/data.json`` never reach this path) and
+    walks outward to shell-token delimiters to capture the full
+    surrounding path (handles ``--file=/path/...`` and quoted paths).
+    Falls back to the first whitespace-separated token so callers that
+    pass an isolated path (e.g. ``read_workspace_file``) still echo
+    cleanly.
+    """
+    match = _SDK_TOOL_RESULT_RE.search(text)
+    if match:
+        # Walk outward from the matched span to shell-token boundaries
+        # so we capture the full path token, not just the regex hit
+        # (which excludes the leading slash on the absolute branch).
+        end = match.end()
+        while end < len(text) and text[end] not in _SHELL_TOKEN_DELIMS:
+            end += 1
+        start = match.start()
+        # Skip any leading delimiter the regex consumed (e.g. the space
+        # before "/root/.claude/...").
+        while start < end and text[start] in _SHELL_TOKEN_DELIMS:
+            start += 1
+        while start > 0 and text[start - 1] not in _SHELL_TOKEN_DELIMS:
+            start -= 1
+        return text[start:end]
+    stripped = text.strip()
+    return stripped.split()[0] if stripped else ""
+
+
+def sdk_tool_result_redirect_hint(path_or_command: str) -> str:
+    """User-facing redirect message for wrong-tool access to SDK tool-results.
+
+    Names the two right ways to get at the bytes so the model doesn't
+    burn another turn retrying with yet another wrong tool, and quotes
+    the *actual* matched SDK path (not just ``bash``/``cat``) so the
+    model knows which fragment of its command tripped the redirect.
+    """
+    fragment = _extract_offending_segment(path_or_command) if path_or_command else ""
+    return (
+        "This path lives in the Claude Agent SDK's host-side "
+        "tool-results directory, which is not mounted into the bash "
+        "sandbox / workspace storage. Use one of:\n"
+        "  - `read_tool_result(file_path=...)` for direct reads "
+        "(supports offset/limit; auto-unwraps the MCP envelope).\n"
+        "  - `@@agptfile:<absolute-path>[<start>-<end>]` inside another "
+        "tool's argument to inline a slice of the file's content "
+        '(e.g. `bash_exec(command="echo @@agptfile:/root/.claude/'
+        'projects/.../result.json[1-200] | jq .field")`).\n'
+        f"Offending fragment: {fragment!r}"
+    )
+
+
 def resolve_sandbox_path(path: str) -> str:
     """Normalise *path* to an absolute sandbox path under an allowed directory.
 
@@ -174,15 +447,43 @@ def resolve_sandbox_path(path: str) -> str:
     return normalized
 
 
+async def current_workspace_scope(
+    user_id: str, session_id: str
+) -> WorkspaceScope | None:
+    """Resolve the file grants for the turn currently executing.
+
+    The scope derives from the server-resolved session the executor placed
+    in the execution context — never from a session or expert ID a tool
+    argument names. Personal Otto turns are unrestricted: the account
+    owner is acting. Without an executing session nobody can be attributed,
+    so access fails closed to ``session_id`` alone.
+    """
+    _, session = get_execution_context()
+    if session is None:
+        return WorkspaceScope(session_ids=[session_id])
+    if session.user_id != user_id:
+        raise WorkspaceAccessDeniedError(
+            "Workspace access denied: the executing session belongs to another user."
+        )
+    if session.expert_id is None:
+        return None
+    scope = await workspace_db().resolve_expert_workspace_scope(
+        user_id, session.expert_id
+    )
+    return scope.with_session(session.session_id)
+
+
 async def get_workspace_manager(user_id: str, session_id: str) -> WorkspaceManager:
     """Create a session-scoped :class:`WorkspaceManager`.
 
     Placed here (rather than in ``tools/workspace_files``) so that modules
     like ``sdk/file_ref`` can import it without triggering the heavy
-    ``tools/__init__`` import chain.
+    ``tools/__init__`` import chain. Expert turns get a manager confined to
+    the expert's resolved scope (see :func:`current_workspace_scope`).
     """
     workspace = await workspace_db().get_or_create_workspace(user_id)
-    return WorkspaceManager(user_id, workspace.id, session_id)
+    scope = await current_workspace_scope(user_id, session_id)
+    return WorkspaceManager(user_id, workspace.id, session_id, scope=scope)
 
 
 def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:

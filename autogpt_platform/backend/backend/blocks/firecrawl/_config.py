@@ -8,6 +8,7 @@ from backend.sdk import BlockCostType, ProviderBuilder
 # — roughly matches our existing per-call tier for single-page scrape.
 firecrawl = (
     ProviderBuilder("firecrawl")
+    .with_description("Web scraping and crawling")
     .with_api_key("FIRECRAWL_API_KEY", "Firecrawl API Key")
     .with_base_cost(1000, BlockCostType.COST_USD)
     .build()

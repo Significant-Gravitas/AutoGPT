@@ -1,0 +1,89 @@
+"use client";
+
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/molecules/Popover/Popover";
+import * as React from "react";
+import { AccountMenuOrgList } from "./AccountMenuOrgList";
+import { InitialAvatar } from "./InitialAvatar";
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+
+interface Props {
+  userName?: string;
+  userHandle?: string;
+  userEmail?: string;
+  avatarSrc?: string;
+  isLoading?: boolean;
+}
+
+export function AccountMenuHeader({
+  userName,
+  userHandle,
+  userEmail,
+  avatarSrc,
+  isLoading = false,
+}: Props) {
+  const popupId = React.useId();
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-none transition-colors hover:bg-surface-hover focus-visible:bg-surface-hover data-[state=open]:bg-surface-hover"
+          aria-controls={popupId}
+          aria-haspopup="true"
+          data-testid="account-menu-org-trigger"
+        >
+          <InitialAvatar
+            src={avatarSrc}
+            name={userName}
+            username={userHandle}
+            className="h-8 w-8"
+          />
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            {isLoading || !userName || !userEmail ? (
+              <>
+                <Skeleton className="h-3.5 w-24" />
+                <Skeleton className="h-3 w-32" />
+              </>
+            ) : (
+              <>
+                <span className="truncate text-sm font-semibold leading-tight text-foreground-strong">
+                  {userName}
+                </span>
+                <span
+                  data-testid="account-menu-user-email"
+                  className="truncate text-sm leading-tight text-foreground-body"
+                >
+                  {userEmail}
+                </span>
+              </>
+            )}
+          </div>
+          <Icon
+            icon={ArrowRight01Icon}
+            className="shrink-0 text-foreground-body"
+            size={16}
+            aria-hidden="true"
+          />
+        </button>
+      </PopoverTrigger>
+
+      <PopoverContent
+        id={popupId}
+        side="right"
+        align="start"
+        sideOffset={12}
+        className="w-64 rounded-2xl border border-border-base p-0 shadow-lg"
+        data-testid="account-menu-org-popover"
+      >
+        <AccountMenuOrgList />
+      </PopoverContent>
+    </Popover>
+  );
+}

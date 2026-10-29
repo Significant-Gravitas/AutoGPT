@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.sdk.compaction import CompactionStats
 from backend.copilot.sdk.service import (
     _BARE_MESSAGE_TOKEN_FLOOR,
     _build_query_message,
@@ -119,7 +120,7 @@ async def test_build_query_resume_up_to_date():
             ChatMessage(role="user", content="what's new?"),
         ]
     )
-    result, was_compacted = await _build_query_message(
+    result, stats = await _build_query_message(
         "what's new?",
         session,
         use_resume=True,
@@ -128,7 +129,7 @@ async def test_build_query_resume_up_to_date():
     )
     # transcript_msg_count == msg_count - 1, so no gap
     assert result == "what's new?"
-    assert was_compacted is False
+    assert stats is None
 
 
 @pytest.mark.asyncio
@@ -147,7 +148,7 @@ async def test_build_query_resume_misaligned_watermark():
             ChatMessage(role="user", content="turn 3"),
         ]
     )
-    result, was_compacted = await _build_query_message(
+    result, stats = await _build_query_message(
         "turn 3",
         session,
         use_resume=True,
@@ -156,7 +157,7 @@ async def test_build_query_resume_misaligned_watermark():
     )
     # Misaligned watermark → skip gap, return bare message
     assert result == "turn 3"
-    assert was_compacted is False
+    assert stats is None
 
 
 @pytest.mark.asyncio
@@ -171,7 +172,7 @@ async def test_build_query_resume_stale_transcript():
             ChatMessage(role="user", content="turn 3"),
         ]
     )
-    result, was_compacted = await _build_query_message(
+    result, stats = await _build_query_message(
         "turn 3",
         session,
         use_resume=True,
@@ -182,7 +183,69 @@ async def test_build_query_resume_stale_transcript():
     assert "turn 2" in result
     assert "reply 2" in result
     assert "Now, the user says:\nturn 3" in result
-    assert was_compacted is False  # gap context does not compact
+    assert stats is None  # gap context does not compact
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_stale_transcript_leaves_out_a_note_for_the_user():
+    """A card posted into the chat between turns is in the gap the watermark
+    counts, but it is the user's, not something the model said."""
+    note = ChatMessage(
+        role="assistant",
+        content="Skipped: daily usage limit reached. Connect Discord.",
+        metadata={"kind": "scheduled_chat_notice", "hidden_from_model": True},
+    )
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="turn 1"),
+            ChatMessage(role="assistant", content="reply 1"),
+            note,
+            ChatMessage(role="user", content="turn 2"),
+            ChatMessage(role="assistant", content="reply 2"),
+            ChatMessage(role="user", content="turn 3"),
+        ]
+    )
+    result, _ = await _build_query_message(
+        "turn 3",
+        session,
+        use_resume=True,
+        transcript_msg_count=2,
+        session_id="test-session",
+    )
+    assert "turn 2" in result
+    assert "reply 2" in result
+    assert "Skipped" not in result
+    assert "Discord" not in result
+
+
+@pytest.mark.asyncio
+async def test_build_query_no_resume_leaves_out_a_note_for_the_user(monkeypatch):
+    async def _mock_compress(msgs, target_tokens=None):
+        return msgs, False, None
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service._compress_messages", _mock_compress
+    )
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="older question"),
+            ChatMessage(
+                role="assistant",
+                content="Skipped: daily usage limit reached",
+                metadata={"hidden_from_model": True},
+            ),
+            ChatMessage(role="user", content="new question"),
+        ]
+    )
+    result, _ = await _build_query_message(
+        "new question",
+        session,
+        use_resume=False,
+        transcript_msg_count=0,
+        session_id="test-session",
+    )
+    assert "older question" in result
+    assert "Skipped" not in result
 
 
 @pytest.mark.asyncio
@@ -195,7 +258,7 @@ async def test_build_query_resume_zero_msg_count():
             ChatMessage(role="user", content="new msg"),
         ]
     )
-    result, was_compacted = await _build_query_message(
+    result, stats = await _build_query_message(
         "new msg",
         session,
         use_resume=True,
@@ -203,14 +266,14 @@ async def test_build_query_resume_zero_msg_count():
         session_id="test-session",
     )
     assert result == "new msg"
-    assert was_compacted is False
+    assert stats is None
 
 
 @pytest.mark.asyncio
 async def test_build_query_no_resume_single_message():
     """Without --resume and only 1 message, return raw message."""
     session = _make_session([ChatMessage(role="user", content="first")])
-    result, was_compacted = await _build_query_message(
+    result, stats = await _build_query_message(
         "first",
         session,
         use_resume=False,
@@ -218,7 +281,7 @@ async def test_build_query_no_resume_single_message():
         session_id="test-session",
     )
     assert result == "first"
-    assert was_compacted is False
+    assert stats is None
 
 
 @pytest.mark.asyncio
@@ -234,14 +297,14 @@ async def test_build_query_no_resume_multi_message(monkeypatch):
 
     # Mock _compress_messages to return the messages as-is
     async def _mock_compress(msgs, target_tokens=None):
-        return msgs, False
+        return msgs, False, None
 
     monkeypatch.setattr(
         "backend.copilot.sdk.service._compress_messages",
         _mock_compress,
     )
 
-    result, was_compacted = await _build_query_message(
+    result, stats = await _build_query_message(
         "new question",
         session,
         use_resume=False,
@@ -252,7 +315,7 @@ async def test_build_query_no_resume_multi_message(monkeypatch):
     assert "older question" in result
     assert "older answer" in result
     assert "Now, the user says:\nnew question" in result
-    assert was_compacted is False  # mock returns False
+    assert stats is None  # mock returns no stats
 
 
 @pytest.mark.asyncio
@@ -276,7 +339,7 @@ async def test_build_query_session_msg_ceiling_prevents_pending_duplication():
         ]
     )
     # transcript covers hist1+hist2 (2 messages); pre-drain count was 3 (includes current_msg)
-    result, was_compacted = await _build_query_message(
+    result, stats = await _build_query_message(
         "current msg with pending1 pending2",
         session,
         use_resume=True,
@@ -286,7 +349,7 @@ async def test_build_query_session_msg_ceiling_prevents_pending_duplication():
     )
     # Gap should be empty (transcript_msg_count == ceiling - 1), so no history prepended
     assert result == "current msg with pending1 pending2"
-    assert was_compacted is False
+    assert stats is None
     # Pending messages must NOT appear in gap context
     assert "pending1" not in result.split("current msg")[0]
 
@@ -309,7 +372,7 @@ async def test_build_query_session_msg_ceiling_preserves_real_gap():
             ChatMessage(role="user", content="pending2"),
         ]
     )
-    result, was_compacted = await _build_query_message(
+    result, _stats = await _build_query_message(
         "current",
         session,
         use_resume=True,
@@ -345,7 +408,7 @@ async def test_build_query_session_msg_ceiling_suppresses_spurious_no_resume_fal
             ChatMessage(role="user", content="What is 7 plus 7?"),  # pending
         ]
     )
-    result, was_compacted = await _build_query_message(
+    result, stats = await _build_query_message(
         "What is 2 plus 2?\n\nWhat is 7 plus 7?",
         session,
         use_resume=False,
@@ -355,14 +418,14 @@ async def test_build_query_session_msg_ceiling_suppresses_spurious_no_resume_fal
     )
     # Should return current_message directly without wrapping in history context
     assert result == "What is 2 plus 2?\n\nWhat is 7 plus 7?"
-    assert was_compacted is False
+    assert stats is None
     # Pending question must NOT appear in a spurious history section
     assert "<conversation_history>" not in result
 
 
 @pytest.mark.asyncio
 async def test_build_query_no_resume_multi_message_compacted(monkeypatch):
-    """When compression actually compacts, was_compacted should be True."""
+    """When compression actually compacts, stats should be non-None."""
     session = _make_session(
         [
             ChatMessage(role="user", content="old"),
@@ -372,21 +435,22 @@ async def test_build_query_no_resume_multi_message_compacted(monkeypatch):
     )
 
     async def _mock_compress(msgs, target_tokens=None):
-        return msgs, True  # Simulate actual compaction
+        # Simulate actual compaction
+        return msgs, True, CompactionStats(messages_before=3, messages_after=3)
 
     monkeypatch.setattr(
         "backend.copilot.sdk.service._compress_messages",
         _mock_compress,
     )
 
-    result, was_compacted = await _build_query_message(
+    result, stats = await _build_query_message(
         "new",
         session,
         use_resume=False,
         transcript_msg_count=0,
         session_id="test-session",
     )
-    assert was_compacted is True
+    assert stats is not None
 
 
 @pytest.mark.asyncio
@@ -404,7 +468,7 @@ async def test_build_query_no_resume_at_token_floor():
             ChatMessage(role="user", content="new question"),
         ]
     )
-    result, was_compacted = await _build_query_message(
+    result, stats = await _build_query_message(
         "new question",
         session,
         use_resume=False,
@@ -414,7 +478,7 @@ async def test_build_query_no_resume_at_token_floor():
     )
     # At the floor threshold, no history is injected
     assert result == "new question"
-    assert was_compacted is False
+    assert stats is None
 
 
 @pytest.mark.asyncio
@@ -427,7 +491,7 @@ async def test_build_query_no_resume_below_token_floor():
             ChatMessage(role="user", content="new"),
         ]
     )
-    result, was_compacted = await _build_query_message(
+    result, stats = await _build_query_message(
         "new",
         session,
         use_resume=False,
@@ -436,7 +500,7 @@ async def test_build_query_no_resume_below_token_floor():
         target_tokens=_BARE_MESSAGE_TOKEN_FLOOR - 1,
     )
     assert result == "new"
-    assert was_compacted is False
+    assert stats is None
 
 
 @pytest.mark.asyncio
@@ -451,14 +515,14 @@ async def test_build_query_no_resume_above_token_floor_compresses(monkeypatch):
     )
 
     async def _mock_compress(msgs, target_tokens=None):
-        return msgs, False
+        return msgs, False, None
 
     monkeypatch.setattr(
         "backend.copilot.sdk.service._compress_messages",
         _mock_compress,
     )
 
-    result, was_compacted = await _build_query_message(
+    result, _stats = await _build_query_message(
         "new",
         session,
         use_resume=False,
@@ -469,3 +533,187 @@ async def test_build_query_no_resume_above_token_floor_compresses(monkeypatch):
     # Above the floor → history is injected (not the bare message)
     assert "<conversation_history>" in result
     assert "Now, the user says:\nnew" in result
+
+
+# ---------------------------------------------------------------------------
+# Cap-engaged: window starts above absolute sequence 0
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_cap_engaged_uses_sequence_gap(monkeypatch):
+    """When the eager-load cap engages, the windowed ``prior`` doesn't start
+    at absolute sequence 0; index-based ``prior[transcript_msg_count:]`` is
+    wrong.  ``transcript_msg_count`` IS the next uncovered DB sequence, so
+    filtering by ``sequence >= watermark`` reads it directly."""
+    # Window contains the 3 most-recent rows of a much longer conversation.
+    # Watermark = 1500 (next uncovered DB sequence).
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="cap-window-user", sequence=1500),
+            ChatMessage(role="assistant", content="cap-window-asst", sequence=1501),
+            ChatMessage(role="user", content="current turn", sequence=1502),
+        ]
+    )
+
+    async def _mock_compress(msgs, target_tokens=None):
+        return msgs, False, None
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service._compress_messages",
+        _mock_compress,
+    )
+
+    # No DB lookup expected — the watermark is already a sequence.
+    fake_db = type("FakeDB", (), {})()
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service.chat_db",
+        lambda: fake_db,
+    )
+
+    result, stats = await _build_query_message(
+        "current turn",
+        session,
+        use_resume=True,
+        transcript_msg_count=1500,
+        session_id="test-session",
+    )
+    # Both windowed messages have sequence >= 1500 — they form the gap.
+    assert "<conversation_history>" in result
+    assert "cap-window-user" in result
+    assert "cap-window-asst" in result
+    assert "Now, the user says:\ncurrent turn" in result
+    assert stats is None
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_cap_engaged_hole_fills_above_watermark(monkeypatch):
+    """When the window starts above the watermark, the missing sequences are
+    fetched from DB and prepended to ``window_gap`` so the LLM sees the full
+    post-watermark conversation."""
+    from datetime import UTC, datetime
+
+    from backend.copilot.db import PaginatedMessages
+    from backend.copilot.model import ChatSessionInfo
+
+    # Window covers sequences 1502..1503; watermark sits at 1500 leaving
+    # sequences 1500..1501 in the hole.
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="window-1502", sequence=1502),
+            ChatMessage(role="assistant", content="window-1503", sequence=1503),
+            ChatMessage(role="user", content="current turn", sequence=1504),
+        ]
+    )
+
+    async def _mock_compress(msgs, target_tokens=None):
+        return msgs, False, None
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service._compress_messages",
+        _mock_compress,
+    )
+
+    hole_page = PaginatedMessages(
+        messages=[
+            ChatMessage(role="user", content="hole-1500", sequence=1500),
+            ChatMessage(role="assistant", content="hole-1501", sequence=1501),
+        ],
+        has_more=False,
+        oldest_sequence=1500,
+        session=ChatSessionInfo(
+            session_id="test-session",
+            user_id="u1",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        ),
+    )
+
+    fake_db = type(
+        "FakeDB",
+        (),
+        {
+            "get_chat_messages_paginated": staticmethod(
+                lambda *args, **kwargs: _async_return(hole_page)
+            ),
+        },
+    )()
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service.chat_db",
+        lambda: fake_db,
+    )
+
+    result, _ = await _build_query_message(
+        "current turn",
+        session,
+        use_resume=True,
+        transcript_msg_count=1500,
+        session_id="test-session",
+    )
+    # All 4 messages (2 hole + 2 window) are in the gap.
+    assert "<conversation_history>" in result
+    assert "hole-1500" in result
+    assert "hole-1501" in result
+    assert "window-1502" in result
+    assert "window-1503" in result
+    assert "Now, the user says:\ncurrent turn" in result
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_cap_engaged_hole_fill_failure_uses_window_only(
+    monkeypatch,
+):
+    """If the hole-fill fetch raises, fall back to the windowed gap rather
+    than dropping the entire LLM context."""
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="window-1502", sequence=1502),
+            ChatMessage(role="assistant", content="window-1503", sequence=1503),
+            ChatMessage(role="user", content="current", sequence=1504),
+        ]
+    )
+
+    async def _mock_compress(msgs, target_tokens=None):
+        return msgs, False, None
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service._compress_messages",
+        _mock_compress,
+    )
+
+    fake_db = type(
+        "FakeDB",
+        (),
+        {
+            "get_chat_messages_paginated": staticmethod(
+                lambda *args, **kwargs: _async_raise(RuntimeError("db down"))
+            ),
+        },
+    )()
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service.chat_db",
+        lambda: fake_db,
+    )
+
+    result, _ = await _build_query_message(
+        "current",
+        session,
+        use_resume=True,
+        transcript_msg_count=1500,
+        session_id="test-session",
+    )
+    # Hole fetch failed but window_gap survives — context is partial but
+    # not empty, and the turn keeps going.
+    assert "<conversation_history>" in result
+    assert "window-1502" in result
+    assert "window-1503" in result
+    assert "Now, the user says:\ncurrent" in result
+
+
+async def _async_return(value):
+    return value
+
+
+async def _async_raise(exc):
+    raise exc

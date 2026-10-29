@@ -73,7 +73,10 @@ def _make_session(messages: list[ChatMessage]) -> ChatSession:
 
 
 def _msgs(*pairs: tuple[str, str]) -> list[ChatMessage]:
-    return [ChatMessage(role=r, content=c) for r, c in pairs]
+    """Build messages with sequences 0..N-1 mirroring the production schema."""
+    return [
+        ChatMessage(role=r, content=c, sequence=i) for i, (r, c) in enumerate(pairs)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +109,7 @@ class TestFastToSdkModeSwitch:
         )
 
         async def _mock_compress(msgs, target_tokens=None):
-            return msgs, False
+            return msgs, False, None
 
         monkeypatch.setattr(
             "backend.copilot.sdk.service._compress_messages", _mock_compress
@@ -114,7 +117,7 @@ class TestFastToSdkModeSwitch:
 
         # transcript_msg_count=4: baseline uploaded a transcript covering all
         # 4 prior messages, but use_resume=False (no CLI session from baseline).
-        result, compacted = await _build_query_message(
+        result, stats = await _build_query_message(
             "sdk-q1",
             session,
             use_resume=False,
@@ -129,7 +132,7 @@ class TestFastToSdkModeSwitch:
         assert "baseline-q2" in result
         assert "baseline-a2" in result
         assert "Now, the user says:\nsdk-q1" in result
-        assert compacted is False
+        assert stats is None
 
     @pytest.mark.asyncio
     async def test_scenario_r_single_baseline_turn_injected(self, monkeypatch):
@@ -143,7 +146,7 @@ class TestFastToSdkModeSwitch:
         )
 
         async def _mock_compress(msgs, target_tokens=None):
-            return msgs, False
+            return msgs, False, None
 
         monkeypatch.setattr(
             "backend.copilot.sdk.service._compress_messages", _mock_compress
@@ -184,7 +187,7 @@ class TestFastToSdkModeSwitch:
         )
 
         # transcript_msg_count=6 covers all prior messages → no gap.
-        result, compacted = await _build_query_message(
+        result, stats = await _build_query_message(
             "sdk-q2",
             session,
             use_resume=True,  # T2: --resume works after T1 set session_id
@@ -194,7 +197,7 @@ class TestFastToSdkModeSwitch:
 
         # --resume has full context — bare message only.
         assert result == "sdk-q2"
-        assert compacted is False
+        assert stats is None
 
     @pytest.mark.asyncio
     async def test_mode_switch_t1_compresses_all_baseline_turns(self, monkeypatch):
@@ -216,7 +219,7 @@ class TestFastToSdkModeSwitch:
 
         async def _mock_compress(msgs, target_tokens=None):
             compressed_batches.append(list(msgs))
-            return msgs, False
+            return msgs, False, None
 
         monkeypatch.setattr(
             "backend.copilot.sdk.service._compress_messages", _mock_compress
@@ -281,9 +284,9 @@ class TestSdkToFastModeSwitch:
                 user_id="user-1",
                 session_id="session-1",
                 session_messages=[
-                    ChatMessage(role="user", content="sdk-question"),
-                    ChatMessage(role="assistant", content="sdk-answer"),
-                    ChatMessage(role="user", content="baseline-question"),
+                    ChatMessage(role="user", content="sdk-question", sequence=0),
+                    ChatMessage(role="assistant", content="sdk-answer", sequence=1),
+                    ChatMessage(role="user", content="baseline-question", sequence=2),
                 ],
                 transcript_builder=baseline_builder,
             )
@@ -324,7 +327,11 @@ class TestSdkToFastModeSwitch:
 
         # Build a session with 10 alternating user/assistant messages + current user
         session_messages = [
-            ChatMessage(role="user" if i % 2 == 0 else "assistant", content=f"msg-{i}")
+            ChatMessage(
+                role="user" if i % 2 == 0 else "assistant",
+                content=f"msg-{i}",
+                sequence=i,
+            )
             for i in range(10)
         ]
 

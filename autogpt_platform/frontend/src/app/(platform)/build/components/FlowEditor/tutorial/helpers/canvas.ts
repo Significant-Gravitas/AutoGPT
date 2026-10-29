@@ -50,27 +50,9 @@ export const waitForNodesCount = (
   });
 };
 
-export const getNodesCount = (): number => {
-  return useNodeStore.getState().nodes.length;
-};
-
 export const getFirstNode = () => {
   const nodes = useNodeStore.getState().nodes;
   return nodes.length > 0 ? nodes[0] : null;
-};
-
-export const getNodeById = (nodeId: string) => {
-  const nodes = useNodeStore.getState().nodes;
-  return nodes.find((n) => n.id === nodeId);
-};
-
-export const nodeHasValues = (nodeId: string): boolean => {
-  const node = getNodeById(nodeId);
-  if (!node) return false;
-  const hardcodedValues = node.data?.hardcodedValues || {};
-  return Object.values(hardcodedValues).some(
-    (value) => value !== undefined && value !== null && value !== "",
-  );
 };
 
 export const fitViewToScreen = () => {

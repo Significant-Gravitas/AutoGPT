@@ -9,6 +9,7 @@ from ._webhook import ExaWebhookManager
 # Configure the Exa provider once for all blocks
 exa = (
     ProviderBuilder("exa")
+    .with_description("Neural web search")
     .with_api_key("EXA_API_KEY", "Exa API Key")
     .with_webhook_manager(ExaWebhookManager)
     # Exa returns `cost_dollars.total` on every response and ExaSearchBlock

@@ -5,9 +5,15 @@ Airtable OAuth handler implementation.
 import time
 from enum import Enum
 from logging import getLogger
-from typing import Optional
+from typing import ClassVar, Optional
 
-from backend.sdk import BaseOAuthHandler, OAuth2Credentials, ProviderName, SecretStr
+from backend.sdk import (
+    BaseOAuthHandler,
+    OAuth2Credentials,
+    ProviderName,
+    SecretStr,
+    parse_granted_scopes,
+)
 
 from ._api import (
     OAuthTokenResponse,
@@ -58,6 +64,7 @@ class AirtableOAuthHandler(BaseOAuthHandler):
     """
 
     PROVIDER_NAME = ProviderName("airtable")
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = True
     DEFAULT_SCOPES = [
         v.value
         for v in [
@@ -129,7 +136,7 @@ class AirtableOAuthHandler(BaseOAuthHandler):
                 access_token_expires_at=int(time.time()) + response.expires_in,
                 refresh_token_expires_at=int(time.time()) + response.refresh_expires_in,
                 provider=self.PROVIDER_NAME,
-                scopes=scopes,
+                scopes=parse_granted_scopes(response.scope, fallback=scopes),
             )
             logger.debug(f"Access token expires in {response.expires_in} seconds")
             logger.debug(
@@ -165,7 +172,9 @@ class AirtableOAuthHandler(BaseOAuthHandler):
                 access_token_expires_at=int(time.time()) + response.expires_in,
                 refresh_token_expires_at=int(time.time()) + response.refresh_expires_in,
                 provider=self.PROVIDER_NAME,
-                scopes=self.scopes,
+                # Not `self.scopes`: that is the full default set, which would
+                # re-widen a credential the user granted narrowly.
+                scopes=credentials.scopes,
             )
             logger.debug(f"New access token expires in {response.expires_in} seconds")
             logger.debug(

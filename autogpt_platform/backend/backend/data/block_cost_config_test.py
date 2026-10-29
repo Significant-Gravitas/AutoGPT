@@ -1,5 +1,9 @@
-import pytest
+from unittest.mock import patch
 
+import pytest
+from pydantic import SecretStr
+
+from backend.blocks._base import BlockCostType
 from backend.blocks.ayrshare.post_to_bluesky import PostToBlueskyBlock
 from backend.blocks.ayrshare.post_to_facebook import PostToFacebookBlock
 from backend.blocks.ayrshare.post_to_gmb import PostToGMBBlock
@@ -13,6 +17,7 @@ from backend.blocks.ayrshare.post_to_threads import PostToThreadsBlock
 from backend.blocks.ayrshare.post_to_tiktok import PostToTikTokBlock
 from backend.blocks.ayrshare.post_to_x import PostToXBlock
 from backend.blocks.ayrshare.post_to_youtube import PostToYouTubeBlock
+from backend.blocks.bannerbear._config import bannerbear
 from backend.blocks.bannerbear.text_overlay import BannerbearTextOverlayBlock
 from backend.blocks.code_executor import (
     ExecuteCodeBlock,
@@ -21,15 +26,30 @@ from backend.blocks.code_executor import (
 )
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.jina.chunking import JinaChunkingBlock
+from backend.blocks.llm import AITextGeneratorBlock, LLMModel
 from backend.blocks.youtube import TranscribeYoutubeVideoBlock
 from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.model import APIKeyCredentials, NodeExecutionStats
+from backend.executor import utils as executor_utils
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import (
     e2b_credentials,
     fal_credentials,
     jina_credentials,
+    open_router_credentials,
     webshare_proxy_credentials,
 )
+from backend.sdk.cost_integration import register_provider_costs_for_block
+
+
+@pytest.fixture(autouse=True)
+def _stub_preflight_estimate(monkeypatch):
+    """Force `get_preflight_estimate` to return 0 in this module's tests so
+    the dynamic-cost (E2B SECOND / FAL SECOND) pre-flight assertions don't
+    couple to a populated `block_preflight_estimates.json` once the seeding
+    PR registers non-zero estimates for these blocks."""
+    monkeypatch.setattr(executor_utils, "get_preflight_estimate", lambda _bid: 0)
+
 
 ALL_AYRSHARE_BLOCKS = [
     PostToBlueskyBlock,
@@ -104,11 +124,28 @@ def test_jina_chunking_has_flat_cost_floor():
     assert cost == 1
 
 
-def test_bannerbear_base_cost_is_three_credits():
-    # Bannerbear is registered via the SDK ProviderBuilder with base_cost=3.
+def test_bannerbear_base_cost_is_three_credits_on_the_platform_key(monkeypatch):
+    # Bannerbear is registered via the SDK ProviderBuilder with base_cost=3,
+    # billed only when the run uses the platform's BANNERBEAR_API_KEY.
+    platform_key = APIKeyCredentials(
+        id="bannerbear-default",
+        provider="bannerbear",
+        api_key=SecretStr("platform-key"),
+        title="Bannerbear API Key",
+    )
+    monkeypatch.setattr(bannerbear, "default_credentials", [platform_key])
     block = BannerbearTextOverlayBlock()
-    cost, _ = block_usage_cost(block, {})
-    assert cost == 3
+
+    # patch.dict restores BLOCK_COSTS afterwards, including when the session's
+    # block load registered no Bannerbear entry (no BANNERBEAR_API_KEY set).
+    with patch.dict(BLOCK_COSTS):
+        BLOCK_COSTS.pop(BannerbearTextOverlayBlock, None)
+        register_provider_costs_for_block(BannerbearTextOverlayBlock)
+        platform, _ = block_usage_cost(block, {"credentials": {"id": platform_key.id}})
+        own_key, _ = block_usage_cost(block, {"credentials": {"id": "user-own-key"}})
+
+    assert platform == 3
+    assert own_key == 0
 
 
 def test_e2b_sandbox_blocks_bill_per_walltime_second():
@@ -173,3 +210,65 @@ def test_transcribe_youtube_has_one_credit_tooling_floor():
         },
     )
     assert cost == 1
+
+
+# -------- SECRT-2701: OpenRouter display rates are not billing rates --------
+
+
+def _open_router_input(model: str) -> dict:
+    return {
+        "model": model,
+        "credentials": {
+            "id": open_router_credentials.id,
+            "provider": open_router_credentials.provider,
+            "type": open_router_credentials.type,
+        },
+    }
+
+
+def test_open_router_bills_cost_usd_not_the_displayed_token_rate():
+    """open_router models settle against the provider's own x-total-cost, so
+    the catalog's per-1M credit rates only ever reach the builder's price
+    label. Pinning this keeps a refactor from quietly routing these models
+    down the TOKENS branch, which WOULD turn the displayed figures into
+    charges — and they drift against OpenRouter by design.
+    """
+    entry = next(
+        c
+        for c in BLOCK_COSTS[AITextGeneratorBlock]
+        if c.cost_filter.get("model") == LLMModel("deepseek/deepseek-chat")
+    )
+    assert entry.cost_type == BlockCostType.COST_USD
+    assert entry.cost_amount == 150
+
+    # A turn OpenRouter billed at $0.10 costs ceil(0.10 * 150) = 15 credits,
+    # whatever the displayed per-1M rates happen to say. The token counts
+    # below are deliberately huge: had this model been token-billed they
+    # would have produced 48 + 133.5 credits instead.
+    stats = NodeExecutionStats(
+        provider_cost=0.10,
+        provider_cost_type="cost_usd",
+        input_token_count=1_000_000,
+        output_token_count=1_000_000,
+    )
+    cost, _ = block_usage_cost(
+        AITextGeneratorBlock(),
+        _open_router_input("deepseek/deepseek-chat"),
+        stats=stats,
+    )
+    assert cost == 15
+
+
+def test_open_router_display_rate_matches_the_catalog_entry():
+    """The builder's "$X in / $Y out per 1M" label is the catalog credit rate
+    divided by the 150 cr/$ margin — SECRT-2701's corrected deepseek figures,
+    moved again on 2026-10-17 to track OpenRouter's live reprice.
+    """
+    entry = next(
+        c
+        for c in BLOCK_COSTS[AITextGeneratorBlock]
+        if c.cost_filter.get("model") == LLMModel("deepseek/deepseek-chat")
+    )
+    assert entry.token_rate is not None
+    assert entry.token_rate.input_usd_per_1m == pytest.approx(0.32)
+    assert entry.token_rate.output_usd_per_1m == pytest.approx(0.89)

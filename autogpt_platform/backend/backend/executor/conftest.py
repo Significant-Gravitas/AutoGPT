@@ -1,0 +1,80 @@
+"""Common test fixtures for executor tests.
+
+Note: Common fixtures like ``test_user_id`` are defined in the parent
+conftest.py (``backend/conftest.py``) and are available here automatically.
+"""
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _bypass_paywall(mocker):
+    """Make every executor test treat the user as paid by default.
+
+    ``add_graph_execution`` now raises ``UserPaywalledError`` for NO_TIER
+    users when ``ENABLE_PLATFORM_PAYMENT`` is on. Tests in this module
+    pass synthetic user_ids that don't have a Supabase row, so the tier
+    lookup either fails or returns NO_TIER and trips the gate. Bypass it
+    here so the executor tests can exercise their own logic without
+    concerning themselves with paywall state. Tests that specifically
+    exercise the paywall live in ``backend/copilot/rate_limit_test.py``.
+    """
+    # Patch the *bound* name in executor.utils (where the gate fires).
+    # ``utils.py`` does ``from backend.copilot.rate_limit import is_user_paywalled``
+    # at import time, so patching ``backend.copilot.rate_limit.is_user_paywalled``
+    # alone does not affect the call site here.
+    mocker.patch(
+        "backend.executor.utils.is_user_paywalled",
+        new=mocker.AsyncMock(return_value=False),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _no_bans(mocker):
+    """No owner is banned unless a test says so. Without this the lookup goes
+    to a DatabaseManager these tests don't run, and waits out its retries."""
+    for module in (
+        "backend.executor.utils",
+        "backend.executor.scheduler",
+        "backend.copilot.turn_queue",
+    ):
+        mocker.patch(
+            f"{module}.is_user_banned", new=mocker.AsyncMock(return_value=False)
+        )
+
+
+@pytest.fixture(autouse=True)
+def _default_team_untenanted(mocker):
+    """Default the born-tenanted fallback to a no-op for executor tests.
+
+    ``add_graph_execution`` now resolves the user's default org/team via
+    ``get_user_default_team`` when no organization_id is passed on the create
+    path. Executor tests use synthetic user_ids with no personal org, so let
+    the resolver return ``(None, None)`` by default — the row stays untenanted,
+    matching the pre-fallback behavior every existing test asserts. Tests that
+    exercise the fallback override this patch with an explicit org/team.
+
+    Patched at the source module because ``add_graph_execution`` does a
+    call-time ``from backend.api.features.orgs.db import get_user_default_team``.
+    """
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        new=mocker.AsyncMock(return_value=(None, None)),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _runners_belong_to_their_org(mocker):
+    """Treat the runner as a member of the org/team a run is given.
+
+    ``add_graph_execution`` keeps a run's org/team only if the user belongs to
+    it, and checks that against the database. Executor tests use synthetic
+    users and orgs, so by default the check passes the given pair through.
+    Tests of a run given someone else's org override this patch.
+    """
+    mocker.patch(
+        "backend.executor.utils.resolve_member_tenancy",
+        new=mocker.AsyncMock(
+            side_effect=lambda user_id, org_id, team_id: (org_id, team_id)
+        ),
+    )

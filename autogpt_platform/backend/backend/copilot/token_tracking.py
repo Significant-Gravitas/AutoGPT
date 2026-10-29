@@ -15,13 +15,40 @@ import math
 import re
 import threading
 
+from openai.types.completion_usage import PromptTokensDetails
+
+from backend.copilot.credit_billing import credit_billed_turn, record_credit_billed_cost
+from backend.copilot.trial_cost_context import get_trial_cost_context
 from backend.data.db_accessors import platform_cost_db
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 
+from .context import get_current_envelope
 from .model import ChatSession, Usage
 from .rate_limit import record_cost_usage
+from .tree import charge_turn
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_cache_creation_tokens(ptd: PromptTokensDetails) -> int:
+    """Return cache-write token count from a ``PromptTokensDetails`` object.
+
+    Two provider-specific field names exist:
+    - OpenRouter streams ``cache_write_tokens`` (typed attr on newer SDK,
+      ``model_extra`` on older SDK).
+    - Direct Anthropic API uses ``cache_creation_input_tokens`` in
+      ``model_extra`` (never a typed attr on the OpenAI SDK).
+    """
+    typed_val = getattr(ptd, "cache_write_tokens", None)
+    if typed_val:
+        return int(typed_val)
+    extras = ptd.model_extra or {}
+    return int(
+        extras.get("cache_write_tokens")
+        or extras.get("cache_creation_input_tokens")
+        or 0
+    )
+
 
 # Hold strong references to in-flight cost log tasks to prevent GC.
 _pending_log_tasks: set[asyncio.Task[None]] = set()
@@ -96,6 +123,14 @@ async def persist_and_record_usage(
     cost_usd: float | str | None = None,
     model: str | None = None,
     provider: str = "open_router",
+    block_name_override: str | None = None,
+    extra_metadata: dict | None = None,
+    graph_exec_id_override: str | None = None,
+    chat_session_id_override: str | None = None,
+    credential_id_override: str | None = None,
+    skip_daily: bool = False,
+    execution_path: str = "sync",
+    expert_id: str | None = None,
 ) -> int:
     """Persist token usage to session and record generation cost for rate limiting.
 
@@ -118,6 +153,8 @@ async def persist_and_record_usage(
             report a cost and rate limiting is skipped for this turn.
         model: Model identifier for cost log attribution.
         provider: Cost provider name (e.g. "anthropic", "open_router").
+        expert_id: The expert the spend is attributed to on the cost log
+            row (``PlatformCostLog.expertId``); ``None`` for the account's own.
 
     Returns:
         The computed total_tokens (prompt + completion; cache excluded).
@@ -192,21 +229,37 @@ async def persist_and_record_usage(
 
     cost_microdollars = usd_to_microdollars(cost_float)
 
-    if user_id and cost_microdollars is not None and cost_microdollars > 0:
-        # record_cost_usage() owns its fail-open handling for Redis/network
-        # errors. Don't wrap with a broad except here — unexpected accounting
-        # bugs should surface instead of being silently logged as warnings.
-        await record_cost_usage(
-            user_id=user_id,
-            cost_microdollars=cost_microdollars,
-        )
+    if cost_microdollars is not None and cost_microdollars > 0:
+        # A turn billed to credits is charged to the credit balance as its cost
+        # lands, and spends nothing from the plan's daily and weekly windows.
+        if user_id and not await record_credit_billed_cost(user_id, cost_microdollars):
+            # record_cost_usage() owns its fail-open handling for Redis/network
+            # errors. Don't wrap with a broad except here — unexpected accounting
+            # bugs should surface instead of being silently logged as warnings.
+            await record_cost_usage(
+                user_id=user_id,
+                cost_microdollars=cost_microdollars,
+                skip_daily=skip_daily,
+            )
+        # Same charge, second ledger: the tree this turn belongs to. A tree is
+        # identified by its root turn, not by a user, so this must not sit
+        # behind the user_id guard — an anonymous turn still spends its tree's
+        # budget.
+        envelope = get_current_envelope()
+        if envelope is not None:
+            await charge_turn(envelope, cost_microdollars)
 
     # Log to PlatformCostLog for admin cost dashboard.
-    # Include entries where cost_usd is set even if token count is 0
-    # (e.g. fully-cached Anthropic responses where only cache tokens
-    # accumulate a charge without incrementing total_tokens).
-    if user_id and (total_tokens > 0 or cost_float is not None):
-        session_id = session.session_id if session else None
+    # Include entries whose only tokens are cache tokens, which total_tokens
+    # leaves out (e.g. a fully-cached response), with or without a cost:
+    # tokens the provider billed stay in the ledger even when nobody could
+    # price them.
+    if user_id and (not no_tokens or cost_float is not None):
+        # A dream pass logs under its own id as graph_exec_id; only a chat's
+        # usage names the chat.
+        chat_session_id = chat_session_id_override or (
+            session.session_id if session and graph_exec_id_override is None else None
+        )
 
         if cost_float is not None:
             tracking_type = "cost_usd"
@@ -215,14 +268,45 @@ async def persist_and_record_usage(
             tracking_type = "tokens"
             tracking_amount = total_tokens
 
+        metadata: dict = {
+            "tracking_type": tracking_type,
+            "tracking_amount": tracking_amount,
+            "cache_read_tokens": cache_read_tokens,
+            "cache_creation_tokens": cache_creation_tokens,
+            "source": "copilot",
+            # Default to ``sync`` so every row gets a non-null tag —
+            # the admin cost-logs Path column previously rendered
+            # "—" for chat rows because nobody set this. Dream and any
+            # future batch/flex caller overrides via ``execution_path``
+            # arg (which lands in the base) or ``extra_metadata`` (which
+            # overrides the base — dream uses this path historically).
+            "execution_path": execution_path,
+        }
+        if extra_metadata:
+            # Caller-supplied keys override base keys (dream pass uses this
+            # to mark source="dream_pass"); base keys it doesn't touch stay.
+            metadata.update(extra_metadata)
+
+        trial_context = get_trial_cost_context(user_id)
+        if trial_context is not None:
+            metadata["subscription_trial_id"] = trial_context.trial_id
+            metadata["usage_generation"] = trial_context.generation
+        if credit_billed_turn(user_id) is not None:
+            metadata["billing_mode"] = "credits"
+
         _schedule_cost_log(
             PlatformCostEntry(
                 user_id=user_id,
-                graph_exec_id=session_id,
+                graph_exec_id=graph_exec_id_override,
+                chat_session_id=chat_session_id,
                 block_id=COPILOT_BLOCK_ID,
-                block_name=_copilot_block_name(log_prefix),
+                block_name=(
+                    block_name_override
+                    if block_name_override is not None
+                    else _copilot_block_name(log_prefix)
+                ),
                 provider=provider,
-                credential_id=COPILOT_CREDENTIAL_ID,
+                credential_id=credential_id_override or COPILOT_CREDENTIAL_ID,
                 cost_microdollars=cost_microdollars,
                 input_tokens=prompt_tokens,
                 output_tokens=completion_tokens,
@@ -231,13 +315,8 @@ async def persist_and_record_usage(
                 model=model,
                 tracking_type=tracking_type,
                 tracking_amount=tracking_amount,
-                metadata={
-                    "tracking_type": tracking_type,
-                    "tracking_amount": tracking_amount,
-                    "cache_read_tokens": cache_read_tokens,
-                    "cache_creation_tokens": cache_creation_tokens,
-                    "source": "copilot",
-                },
+                metadata=metadata,
+                expert_id=expert_id,
             )
         )
 

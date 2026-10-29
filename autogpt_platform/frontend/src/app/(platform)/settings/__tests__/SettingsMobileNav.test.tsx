@@ -7,6 +7,12 @@ import {
 } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// These cover the hosted billing UI, which self-hosted builds hide.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+  useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
+}));
+
 type MockLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
   children: ReactNode;
   href: string;
@@ -58,7 +64,7 @@ describe("SettingsMobileNav", () => {
     expect(trigger.textContent).toContain("Billing");
   });
 
-  it("opens popover listing all 7 sections on click", async () => {
+  it("opens popover listing all 6 sections on click", async () => {
     render(<SettingsMobileNav />);
 
     fireEvent.click(
@@ -67,12 +73,11 @@ describe("SettingsMobileNav", () => {
 
     const labels = [
       "Profile",
-      "Creator Dashboard",
+      "Account",
       "Billing",
       "Integrations",
-      "Settings",
       "AutoGPT API Keys",
-      "OAuth Apps",
+      "Creator Dashboard",
     ];
     for (const label of labels) {
       expect(
@@ -92,7 +97,9 @@ describe("SettingsMobileNav", () => {
     fireEvent.click(profileLink);
 
     await waitFor(() => {
-      expect(screen.queryByRole("link", { name: /oauth apps/i })).toBeNull();
+      expect(
+        screen.queryByRole("link", { name: /creator dashboard/i }),
+      ).toBeNull();
     });
   });
 });

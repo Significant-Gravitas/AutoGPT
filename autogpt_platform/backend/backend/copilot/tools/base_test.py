@@ -1,16 +1,51 @@
 """Tests for BaseTool large-output persistence in execute()."""
 
+import base64
+import json
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.google.gmail import GmailReadBlock
+from backend.blocks.search import GetWikipediaSummaryBlock
+from backend.copilot import ai_spans
+from backend.copilot.gate import ALLOW
+from backend.copilot.gate.reads import model_view
+from backend.copilot.google_data_redaction import (
+    GOOGLE_DATA_METADATA_KEY,
+    REDACTED,
+    redact_google_data,
+)
+from backend.copilot.llm_attribution import set_turn_trace_id
+from backend.copilot.model import ChatSession
+from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.base import (
+    _DIGEST_PREVIEW_CHARS,
+    _DIGEST_THRESHOLD,
     _LARGE_OUTPUT_THRESHOLD,
     BaseTool,
+    _index_json,
+    _outline,
     _persist_and_summarize,
     _summarize_binary_fields,
 )
-from backend.copilot.tools.models import ResponseType, ToolResponseBase
+from backend.copilot.tools.models import (
+    BlockDetails,
+    BlockDetailsResponse,
+    BlockOutputResponse,
+    ErrorResponse,
+    ResponseType,
+    ToolResponseBase,
+)
+from backend.copilot.tools.workspace_files import (
+    ReadWorkspaceFileTool,
+    WorkspaceFileContentResponse,
+)
+from backend.copilot.trial_reads import shared_trial_read, trial_reads_shared
+from backend.copilot.usage_activation import get_ready_usage_state
+from backend.data.pro_activation import UsageActivationState
+from backend.data.subscription_trial import TrialState
 
 
 class _HugeOutputTool(BaseTool):
@@ -79,6 +114,7 @@ class TestPersistAndSummarize:
         call_kwargs = mock_manager.write_file.call_args
         assert call_kwargs.kwargs["content"] == raw.encode("utf-8")
         assert call_kwargs.kwargs["path"] == "tool-outputs/tc-123.json"
+        assert call_kwargs.kwargs["metadata"] == {"purpose": "tool-output"}
 
     @pytest.mark.asyncio
     async def test_fallback_on_workspace_error(self):
@@ -91,6 +127,22 @@ class TestPersistAndSummarize:
             result = await _persist_and_summarize(raw, "user-1", "session-1", "tc-fail")
 
         assert result == raw  # unchanged — fallback to normal truncation
+
+    @pytest.mark.asyncio
+    async def test_the_excerpt_envelope_is_unchanged_from_before_the_digest(self):
+        """Flag off has to be byte-identical above 80K too, which is what the
+        "safe to merge dark" claim rests on."""
+        db_patch, mgr_patch = _workspace_patches(AsyncMock())
+        with db_patch, mgr_patch:
+            result = await _persist_and_summarize(
+                "A" * 200_000, "user-1", "session-1", "tc-123"
+            )
+
+        assert 'workspace_path="tool-outputs/tc-123.json">' in result
+        assert "format=" not in result
+        assert "to read any section." in result
+        assert "continue from the returned end offset" in result
+        assert "To process the file" in result
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +172,7 @@ class TestBaseToolExecuteLargeOutput:
         tool = _HugeOutputTool(output_size=_LARGE_OUTPUT_THRESHOLD + 10_000)
         session = MagicMock()
         session.session_id = "s-1"
+        session.external_caller = False
 
         mock_workspace = MagicMock()
         mock_workspace.id = "ws-1"
@@ -139,6 +192,47 @@ class TestBaseToolExecuteLargeOutput:
         assert "<tool-output-truncated" in str(result.output)
         assert "read_workspace_file" in str(result.output)
         mock_manager.write_file.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("size", [55_000, 75_000, 200_000])
+    async def test_output_the_cli_would_spill_reaches_the_workspace(self, size):
+        """The Claude CLI moves any result over 50,000 chars to a host folder
+        bash_exec can't open (SECRT-3181). The workspace copy has to come
+        first, and the preview the model gets has to stay under that line."""
+        tool = _HugeOutputTool(output_size=size)
+        session = MagicMock()
+        session.session_id = "s-1"
+        session.external_caller = False
+        manager = AsyncMock()
+        db_patch, mgr_patch = _workspace_patches(manager)
+
+        with db_patch, mgr_patch:
+            result = await tool.execute("user-1", session, "tc-spill")
+
+        manager.write_file.assert_awaited_once()
+        assert "save_to_path" in str(result.output)
+        assert len(str(result.output)) < 50_000
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("size", [_LARGE_OUTPUT_THRESHOLD + 10_000, 200_000])
+    async def test_an_external_callers_large_output_is_not_persisted(self, size):
+        """An MCP client can't follow a preview to its copy; each one was a
+        scanned write into the caller's workspace, counted against its quota."""
+        tool = _HugeOutputTool(output_size=size)
+        session = MagicMock()
+        session.session_id = "s-1"
+        session.external_caller = True
+
+        with patch(
+            "backend.copilot.tools.base._persist_and_summarize",
+            new_callable=AsyncMock,
+        ) as persist_mock:
+            result = await tool.execute("user-1", session, "tc-mcp")
+
+        persist_mock.assert_not_awaited()
+        assert "<tool-output-truncated" not in str(result.output)
+        # Past what a result keeps, the cut says so.
+        assert ("omitted" in str(result.output)) == (size > 100_000)
 
     @pytest.mark.asyncio
     async def test_no_persistence_without_user_id(self):
@@ -192,3 +286,828 @@ class TestSummarizeBinaryFields:
         data = {"message": "hello", "type": "info"}
         raw = json.dumps(data)
         assert _summarize_binary_fields(raw) == raw
+
+
+# ---------------------------------------------------------------------------
+# Large-output digest (always on)
+# ---------------------------------------------------------------------------
+
+
+class _SchemaOutputTool(_HugeOutputTool):
+    """Returns a block-details payload, which is what the digest exists for."""
+
+    digest_large_output = True
+
+    def __init__(self, output_size: int, message: str = "Block details.", **field):
+        super().__init__(output_size)
+        self._message = message
+        self._field = field
+
+    async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+        return BlockDetailsResponse(
+            message=self._message,
+            block=BlockDetails(
+                id="b-1",
+                name="Wide Block",
+                description="A block with many fields",
+                inputs={
+                    "properties": {
+                        f"field_{i}": {
+                            "type": "string",
+                            "description": "d" * (self._output_size // 40),
+                            **self._field,
+                        }
+                        for i in range(40)
+                    },
+                    "required": ["field_0"],
+                },
+            ),
+        )
+
+
+class _BinaryOutputTool(_HugeOutputTool):
+    """Returns base64 payload: 1K of it tells the model nothing its size doesn't."""
+
+    digest_large_output = True
+
+    async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+        return WorkspaceFileContentResponse(
+            file_id="f-1",
+            name="shot.png",
+            path="tool-outputs/shot.png",
+            mime_type="image/png",
+            content_base64="A" * self._output_size,
+            message="Screenshot captured.",
+        )
+
+
+class _RetrievalTool(ReadWorkspaceFileTool):
+    """The real retrieval tool with only the workspace read stubbed out."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+        return WorkspaceFileContentResponse(
+            file_id="f-1",
+            name="tc-digest.json",
+            path="tool-outputs/tc-digest.json",
+            mime_type="text/plain",
+            content_base64=base64.b64encode(self._text.encode()).decode(),
+            message=f"Read chars 0-{len(self._text)} of {len(self._text):,} total",
+        )
+
+
+def _workspace_patches(manager):
+    workspace = MagicMock()
+    workspace.id = "ws-1"
+    db = AsyncMock()
+    db.get_or_create_workspace = AsyncMock(return_value=workspace)
+    return (
+        patch("backend.copilot.tools.base.workspace_db", return_value=db),
+        patch("backend.copilot.tools.base.WorkspaceManager", return_value=manager),
+    )
+
+
+async def _execute_with_flag(tool, flag_on: bool, manager=None):
+    """The digest used to sit behind a feature flag; it is now always on, so
+    ``flag_on`` is kept only so the call sites read as before."""
+    assert flag_on
+    session = MagicMock()
+    session.session_id = "s-1"
+    session.external_caller = False
+    db_patch, mgr_patch = _workspace_patches(manager or AsyncMock())
+    with db_patch, mgr_patch:
+        return await tool.execute("user-1", session, "tc-digest")
+
+
+class TestDigestThreshold:
+    def test_the_budget_cannot_exceed_its_own_trigger(self):
+        """Between 80K and 95K the legacy preview makes the context bigger;
+        deriving the budget from the trigger makes that unrepresentable."""
+        assert _DIGEST_PREVIEW_CHARS < _DIGEST_THRESHOLD
+
+    @pytest.mark.asyncio
+    async def test_flag_on_digests_a_mid_sized_output(self):
+        manager = AsyncMock()
+        tool = _SchemaOutputTool(output_size=_DIGEST_THRESHOLD * 3)
+        result = await _execute_with_flag(tool, flag_on=True, manager=manager)
+        output = str(result.output)
+
+        assert 'format="outline"' in output
+        assert len(output) < _DIGEST_THRESHOLD
+        # Decision-grade: every property name survives, so the model can tell
+        # from the digest alone whether it needs the file.
+        assert all(f"field_{i}" in output for i in range(40))
+        # And the way back names the tool and its arguments.
+        assert 'read_workspace_file(path="tool-outputs/tc-digest.json"' in output
+        assert "offset=<offset>, length=<length>" in output
+        assert "continue from the returned end offset" in output
+        # Without this the model reads the outline as a prefix of the output.
+        assert "not a literal prefix" in output
+        # A flat length= wider than the file turns one "narrow" read into a
+        # full one, which is how a digest ends up costing more than it saves.
+        assert "length=50000" not in output
+        assert "@" in output
+
+    @pytest.mark.asyncio
+    async def test_flag_on_writes_the_full_text_to_the_workspace(self):
+        manager = AsyncMock()
+        tool = _SchemaOutputTool(output_size=_DIGEST_THRESHOLD * 3)
+        result = await _execute_with_flag(tool, flag_on=True, manager=manager)
+        written = manager.write_file.await_args.kwargs["content"].decode()
+        assert len(written) > _DIGEST_THRESHOLD
+        assert written == (await tool._execute("user-1", MagicMock())).model_dump_json(
+            exclude_none=True
+        )
+        assert len(str(result.output)) < len(written)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_does_not_opt_in_is_never_digested(self):
+        """An outline is only readable back in windows, so a tool whose bulk is
+        one long text (the building guide, a docs page) must not be digested."""
+        tool = _HugeOutputTool(output_size=_DIGEST_THRESHOLD * 4)
+        assert tool.digest_large_output is False
+        result = await _execute_with_flag(tool, flag_on=True)
+        expected = (await tool._execute("user-1", MagicMock())).model_dump_json(
+            exclude_none=True
+        )
+        assert result.output == expected
+
+    @pytest.mark.asyncio
+    async def test_a_retrieved_window_is_never_digested(self):
+        """The way back must fit through the door: base64 pushes any window
+        over ~5.8K past the trigger, and digesting it returns base64, not text."""
+        text = "R" * (_DIGEST_THRESHOLD * 2)
+        result = await _execute_with_flag(_RetrievalTool(text), flag_on=True)
+        payload = json.loads(str(result.output))
+        assert base64.b64decode(payload["content_base64"]).decode() == text
+
+    @pytest.mark.asyncio
+    async def test_the_outline_summarizes_binary_fields_instead_of_quoting_them(self):
+        """1K of base64 is worth nothing to the model; its size is."""
+        tool = _BinaryOutputTool(output_size=_DIGEST_THRESHOLD * 2)
+        result = await _execute_with_flag(tool, flag_on=True)
+        output = str(result.output)
+        assert "<binary, ~12,000 bytes>" in output
+        assert "AAAAAAAA" not in output
+
+    @pytest.mark.asyncio
+    async def test_the_outline_keeps_the_message_whole(self):
+        """`message` carries the tool's own instruction to the model — on
+        run_block, that credentials must not go in input_data."""
+        message = "Block 'Wide Block' details. " + "Do not fabricate credentials. " * 8
+        tool = _SchemaOutputTool(output_size=_DIGEST_THRESHOLD * 3, message=message)
+        result = await _execute_with_flag(tool, flag_on=True)
+        assert message in str(result.output)
+
+    @pytest.mark.asyncio
+    async def test_a_long_message_cannot_crowd_out_the_field_names(self):
+        """`view_agent_output` interpolates raw node errors into its message,
+        so an unbounded one would spend the whole outline on a stack trace."""
+        tool = _SchemaOutputTool(
+            output_size=_DIGEST_THRESHOLD * 3, message="E" * (_DIGEST_THRESHOLD // 2)
+        )
+        output = str((await _execute_with_flag(tool, flag_on=True)).output)
+        # Uncapped this is 0: the message alone consumes the whole budget.
+        assert sum(f"field_{i}" in output for i in range(40)) >= 10
+
+    @pytest.mark.asyncio
+    async def test_the_persisted_text_is_the_text_the_offsets_index(self):
+        """pydantic and json.dumps disagree on float exponents, so persisting
+        the pydantic serialisation would shift every later window by a char."""
+        manager = AsyncMock()
+        tool = _SchemaOutputTool(output_size=_DIGEST_THRESHOLD * 3, default=1e-7)
+        result = await _execute_with_flag(tool, flag_on=True, manager=manager)
+        written = manager.write_file.await_args.kwargs["content"].decode()
+        window = re.search(r"required=\[…1 items @(\d+)\+(\d+)\]", str(result.output))
+        assert window, result.output
+        start, length = int(window[1]), int(window[2])
+        assert json.loads(written[start : start + length]) == ["field_0"]
+
+
+def _outline_of(data, budget: int) -> tuple[str, str]:
+    body, parsed, offsets = _index_json(json.dumps(data))
+    return body, _outline(parsed, offsets, budget)
+
+
+class TestOutline:
+    def test_non_json_is_not_indexed(self):
+        assert _index_json("not json at all") is None
+        assert _index_json(json.dumps("a bare string")) is None
+
+    def test_names_every_key_before_spending_the_budget_on_values(self):
+        data = {"a": {"deep": {"x": "v" * 4_000}}, "b": 1, "c": [1, 2, 3]}
+        _, outline = _outline_of(data, 400)
+        assert "b=1" in outline
+        assert "a={…1 keys" in outline
+        assert "c=[…3 items @" in outline
+        assert len(outline) <= 400
+
+    def test_every_indexed_window_slices_out_exactly_that_node(self):
+        """The whole point of the index: one narrow read, not the whole file."""
+        data = {"block": {"inputs": {"q": {"type": "string"}}}, "n": [1, {"a": 2}]}
+        body, parsed, offsets = _index_json(json.dumps(data))
+        assert parsed == data
+        assert json.loads(body) == data
+        assert offsets["$"] == (0, len(body))
+        for path, (start, length) in offsets.items():
+            node = data
+            for step in path[1:].replace("[", ".").replace("]", "").split(".")[1:]:
+                node = node[int(step)] if isinstance(node, list) else node[step]
+            assert json.loads(body[start : start + length]) == node, path
+
+    def test_the_outline_quotes_each_node_its_real_window(self):
+        """An index nothing quotes is no index: the window in the outline has
+        to slice that node out of the file the model will read."""
+        data = {"block": {"inputs": {"q": {"type": "string", "title": "Q"}}}}
+        body, outline = _outline_of(data, 600)
+        window = re.search(r"inputs=\{…1 keys @(\d+)\+(\d+)\}", outline)
+        assert window, outline
+        start, length = int(window[1]), int(window[2])
+        assert json.loads(body[start : start + length]) == data["block"]["inputs"]
+
+    def test_no_window_costs_more_to_read_back_than_the_whole_output(self):
+        """read_workspace_file base64-encodes its slice, so a window spanning
+        most of the file is a read the model must never be offered."""
+        data = {"tag": "x", "record": {f"k{i}": {"v": "v" * 200} for i in range(10)}}
+        body, outline = _outline_of(data, 900)
+        assert "record={…10 keys}" in outline  # spans the file: no window
+        widest = max(int(m) for m in re.findall(r"@\d+\+(\d+)", outline))
+        assert widest * 4 // 3 < len(body)
+
+    def test_a_single_long_string_still_says_something(self):
+        """Structure alone leaves the budget unspent, so the scalar cap widens."""
+        _, outline = _outline_of({"content": "abcdef" * 1_000}, 800)
+        assert len(outline) > 400
+        assert len(outline) <= 800
+
+    def test_says_how_much_it_left_out(self):
+        data = {f"k{i}": {"v": "x" * 200} for i in range(30)}
+        _, outline = _outline_of(data, 600)
+        assert "more nodes not shown" in outline
+        assert len(outline) <= 600
+
+
+class TestEnvelopeEnforcement:
+    """`BaseTool.execute` must REFUSE a tool outside the turn's envelope.
+
+    Hiding a tool from the model's schema is presentation; this is the
+    boundary. Without this test the enforcement block can be deleted and the
+    whole suite stays green.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_tool_outside_the_envelope_is_refused_and_never_executed(
+        self, monkeypatch
+    ):
+        from backend.copilot.context import set_execution_context
+        from backend.copilot.tree import TurnEnvelope
+
+        class _Spy(BaseTool):
+            def __init__(self) -> None:
+                self.ran = False
+
+            @property
+            def name(self) -> str:
+                return "delete_preset"
+
+            @property
+            def description(self) -> str:
+                return "spy"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                self.ran = True
+                raise AssertionError("_execute must not run for a denied tool")
+
+        tool = _Spy()
+        session = MagicMock(session_id="s1")
+        set_execution_context(
+            "u1",
+            None,
+            envelope=TurnEnvelope(
+                tree_id="t", depth=1, tools=frozenset({"read_workspace_file"})
+            ),
+        )
+        try:
+            result = await tool.execute("u1", session, "call-1")
+        finally:
+            set_execution_context(None, None, envelope=None)
+
+        assert result.success is False
+        assert tool.ran is False, "the denied tool's body executed anyway"
+
+    @pytest.mark.asyncio
+    async def test_a_permitted_tool_still_runs(self, monkeypatch):
+        from backend.copilot.context import set_execution_context
+        from backend.copilot.tree import TurnEnvelope
+
+        class _Ok(BaseTool):
+            def __init__(self) -> None:
+                self.ran = False
+
+            @property
+            def name(self) -> str:
+                return "read_workspace_file"
+
+            @property
+            def description(self) -> str:
+                return "ok"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                self.ran = True
+                return ErrorResponse(message="fine", session_id="s1")
+
+        tool = _Ok()
+        set_execution_context(
+            "u1",
+            None,
+            envelope=TurnEnvelope(
+                tree_id="t", depth=1, tools=frozenset({"read_workspace_file"})
+            ),
+        )
+        try:
+            await tool.execute("u1", MagicMock(session_id="s1"), "call-2")
+        finally:
+            set_execution_context(None, None, envelope=None)
+        assert tool.ran is True
+
+
+class TestRefusalStatus:
+    """Chat's engines hand the model a refusal as the tool's result, while an
+    MCP client reads it from the call's status."""
+
+    @pytest.mark.parametrize("external_caller", [False, True])
+    @pytest.mark.asyncio
+    async def test_a_refusal_fails_the_call_only_for_an_external_caller(
+        self, external_caller: bool
+    ):
+        class _Refuses(BaseTool):
+            @property
+            def name(self) -> str:
+                return "refusing_tool"
+
+            @property
+            def description(self) -> str:
+                return "refuses"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                return ErrorResponse(message="No", session_id=session.session_id)
+
+        session = ChatSession.new("u1", dry_run=False, origin="automation")
+        session.external_caller = external_caller
+
+        output = await _Refuses().execute("u1", session, "call-1")
+
+        assert output.success is not external_caller
+
+
+class TestGateEnforcement:
+    """`BaseTool.execute` must consult the auto-mode gate, and must consult it
+    AFTER the envelope check.
+
+    Both are early-return refusals added at the same line by different PRs, so
+    a merge can drop either without a single test going red.
+    """
+
+    @staticmethod
+    def _spy_tool():
+        class _Spy(BaseTool):
+            def __init__(self) -> None:
+                self.ran = False
+
+            @property
+            def name(self) -> str:
+                return "bash_exec"
+
+            @property
+            def description(self) -> str:
+                return "spy"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                self.ran = True
+                raise AssertionError("_execute must not run for a gated tool")
+
+        return _Spy()
+
+    @pytest.mark.asyncio
+    async def test_a_gated_call_is_refused_and_never_executed(self):
+        from backend.copilot.gate import Decision
+
+        tool = self._spy_tool()
+        with (
+            patch(
+                "backend.copilot.gate.check_action",
+                new=AsyncMock(
+                    return_value=Decision(
+                        allowed=False, reason="needs your approval", review_id="r1"
+                    )
+                ),
+            ),
+        ):
+            result = await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        assert tool.ran is False, "the gated tool's body executed anyway"
+
+    @pytest.mark.asyncio
+    async def test_the_envelope_refusal_precedes_the_gate(self):
+        """A call the envelope refuses can never run, so spending a user's
+        approval on it is wrong."""
+        from backend.copilot.context import set_execution_context
+        from backend.copilot.tree import TurnEnvelope
+
+        tool = self._spy_tool()
+        check = AsyncMock()
+        set_execution_context(
+            "u1",
+            None,
+            envelope=TurnEnvelope(
+                tree_id="t", depth=1, tools=frozenset({"read_workspace_file"})
+            ),
+        )
+        try:
+            with patch("backend.copilot.gate.check_action", new=check):
+                result = await tool.execute("u1", MagicMock(session_id="s1"), "call-2")
+        finally:
+            set_execution_context(None, None, envelope=None)
+
+        assert result.success is False
+        assert tool.ran is False
+        check.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_crashing_gate_refuses_rather_than_runs(self):
+        """A gate that crashes must not become a gate that passes."""
+        tool = self._spy_tool()
+        crash = AsyncMock(side_effect=RuntimeError("gate down"))
+        with patch("backend.copilot.gate.check_action", new=crash):
+            result = await tool.execute("u1", MagicMock(session_id="s1"), "call-3")
+
+        assert result.success is False
+        assert tool.ran is False
+
+    @pytest.mark.asyncio
+    async def test_flag_off_writes_nothing(self):
+        """Flag-off must be today's behaviour: no rule read, no review row,
+        for a call every mode would otherwise stop."""
+        calls: list[str] = []
+        tool = self._recording_tool("post_to_chat_platform", calls)
+        redis = AsyncMock()
+        reviews = MagicMock()
+        with (
+            patch(
+                "backend.copilot.gate.is_feature_enabled",
+                new=AsyncMock(return_value=False),
+            ),
+            patch("backend.copilot.gate.chat_rules.get_redis_async", new=redis),
+            patch("backend.copilot.gate.review.review_db", new=reviews),
+        ):
+            await tool.execute("u1", ChatSession.new(user_id="u1", dry_run=False), "c")
+
+        assert calls == ["run"]
+        redis.assert_not_awaited()
+        reviews.assert_not_called()
+
+    @staticmethod
+    def _recording_tool(tool_name: str, calls: list[str]):
+        class _Recorder(BaseTool):
+            @property
+            def name(self) -> str:
+                return tool_name
+
+            @property
+            def description(self) -> str:
+                return "recorder"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                calls.append("run")
+                return ErrorResponse(message="ran", session_id=session.session_id)
+
+        return _Recorder()
+
+
+class TestTrialReads:
+    @pytest.mark.asyncio
+    async def test_a_tool_reads_the_trial_as_it_is_when_the_tool_runs(self):
+        """A turn's setup shares one trial read; a tool run inside that block
+        reads the trial again, so it acts on the trial as it is now."""
+        at_the_start = MagicMock(spec=TrialState)
+        when_the_tool_ran = MagicMock(spec=TrialState)
+        read = AsyncMock(side_effect=[at_the_start, when_the_tool_ran])
+        seen: list[TrialState | None] = []
+
+        class _ReadsTheTrial(_HugeOutputTool):
+            async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+                seen.append(await shared_trial_read(user_id, read))
+                return await super()._execute(user_id, session, **kwargs)
+
+        session = MagicMock()
+        session.session_id = "s-1"
+        with trial_reads_shared():
+            assert await shared_trial_read("user-1", read) is at_the_start
+            await _ReadsTheTrial(output_size=10).execute("user-1", session, "tc-trial")
+
+        assert seen == [when_the_tool_ran]
+
+    @pytest.mark.asyncio
+    async def test_a_tool_reads_the_usage_state_as_it_is_when_the_tool_runs(self):
+        """A turn's setup shares one usage-state read; a tool run inside that
+        block reads it again, so a plan change mid-turn reaches the tool."""
+        at_the_start = UsageActivationState(
+            user_id="user-1", tier=SubscriptionTier.TRIAL, ready=True
+        )
+        when_the_tool_ran = UsageActivationState(
+            user_id="user-1", tier=SubscriptionTier.PRO, ready=True
+        )
+        usage_db = MagicMock()
+        usage_db.get_usage_activation_state = AsyncMock(
+            side_effect=[at_the_start, when_the_tool_ran]
+        )
+        seen: list[UsageActivationState] = []
+
+        class _ReadsTheUsageState(_HugeOutputTool):
+            async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+                seen.append(await get_ready_usage_state(user_id))
+                return await super()._execute(user_id, session, **kwargs)
+
+        session = MagicMock()
+        session.session_id = "s-1"
+        with (
+            patch(
+                "backend.copilot.usage_activation.pro_activation_db",
+                return_value=usage_db,
+            ),
+            trial_reads_shared(),
+        ):
+            assert await get_ready_usage_state("user-1") is at_the_start
+            await _ReadsTheUsageState(output_size=10).execute(
+                "user-1", session, "tc-usage"
+            )
+
+        assert seen == [when_the_tool_ran]
+
+
+class TestPostHogToolSpans:
+    """Every platform tool call, on either engine, is a PostHog ``$ai_span``
+    in the reply's trace, and none carries the tool's input or output."""
+
+    @staticmethod
+    def _tool(response: ToolResponseBase | None = None, error: bool = False):
+        class _Tool(BaseTool):
+            @property
+            def name(self) -> str:
+                return "gmail_read"
+
+            @property
+            def description(self) -> str:
+                return "reads mail"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+                if error:
+                    raise RuntimeError("could not read the inbox")
+                assert response is not None
+                return response
+
+        return _Tool()
+
+    @pytest.fixture
+    def capture(self, mocker):
+        set_turn_trace_id("turn-1")
+        ai_spans.set_turn_span("turn-1")
+        yield mocker.patch.object(ai_spans.posthog_client, "capture")
+        set_turn_trace_id(None)
+        ai_spans.set_turn_span(None)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_call_is_a_span_without_its_input_or_output(self, capture):
+        email_subject = "Subject: quarterly numbers"
+        tool = self._tool(
+            ToolResponseBase(type=ResponseType.NO_RESULTS, message=email_subject)
+        )
+
+        await tool.execute(
+            "u1", MagicMock(session_id="s1"), "call-1", query=email_subject
+        )
+
+        capture.assert_called_once()
+        _, event, properties = capture.call_args.args
+        assert event == "$ai_span"
+        assert properties["$ai_span_name"] == "gmail_read"
+        assert properties["$ai_trace_id"] == "turn-1"
+        assert properties["$ai_parent_id"] == "turn-1"
+        assert properties["$ai_session_id"] == "s1"
+        assert properties["$ai_is_error"] is False
+        assert email_subject not in repr(properties)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_answers_with_an_error_failed(self, capture):
+        tool = self._tool(ErrorResponse(message="no such label", session_id="s1"))
+
+        await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is True
+        assert "$ai_error" not in properties
+        assert "no such label" not in repr(properties)
+
+    @pytest.mark.asyncio
+    async def test_a_call_waiting_for_an_approval_did_not_fail(self, capture):
+        """An approval card is the user's decision to make, not the tool
+        failing, so it must not count against the tool."""
+        tool = self._tool(ToolResponseBase(type=ResponseType.NO_RESULTS, message=""))
+        session = MagicMock(session_id="s1")
+        refusal = tool._refusal("call-1", session, "Needs your approval")
+        with patch.object(tool, "_gate", new=AsyncMock(return_value=(refusal, False))):
+            result = await tool.execute("u1", session, "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is False
+
+    @pytest.mark.asyncio
+    async def test_a_call_waiting_for_a_sign_in_did_not_fail(self, capture):
+        tool = self._tool(ToolResponseBase(type=ResponseType.NO_RESULTS, message=""))
+
+        with patch.object(
+            type(tool), "requires_auth", new_callable=lambda: property(lambda _: True)
+        ):
+            result = await tool.execute(None, MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is False
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_raises_failed_with_its_type_not_its_message(
+        self, capture
+    ):
+        tool = self._tool(error=True)
+
+        result = await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is True
+        assert properties["$ai_error"] == "RuntimeError"
+        assert "inbox" not in repr(properties)
+
+
+# ---------------------------------------------------------------------------
+# The gate's traces of a Google call
+# ---------------------------------------------------------------------------
+
+
+class TestGateTracesOfGoogleCalls:
+    """The supervisor and the content judge quote a call's arguments and
+    result in prompts of their own, so for a Google call whatever they trace
+    is redacted whole."""
+
+    @staticmethod
+    def _block_tool(provider: str | None):
+        class _Block(BaseTool):
+            @property
+            def name(self) -> str:
+                return "run_capability"
+
+            @property
+            def description(self) -> str:
+                return "Runs a block"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                return BlockOutputResponse(
+                    message="ran",
+                    block_id="b",
+                    block_name="b",
+                    outputs={"result": ["the email"]},
+                    provider=provider,
+                )
+
+        return _Block()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "names_google_block, provider, action_redacted, read_redacted",
+        [
+            (True, None, True, True),
+            (False, "google", False, True),
+            (False, None, False, False),
+        ],
+        ids=["names a Google block", "returns Google data", "neither"],
+    )
+    async def test_redacted_while_the_gate_runs(
+        self, names_google_block, provider, action_redacted, read_redacted
+    ):
+        block = GmailReadBlock() if names_google_block else GetWikipediaSummaryBlock()
+        traced: dict[str, object] = {}
+
+        async def action(*args, **kwargs):
+            traced["action"] = redact_google_data({"text": "the email"})
+            return ALLOW
+
+        async def read(*args, **kwargs):
+            traced["read"] = redact_google_data({"text": "the email"})
+
+        with (
+            patch("backend.copilot.gate.check_action", side_effect=action),
+            patch(
+                "backend.copilot.gate.reads.release_held_read",
+                new=AsyncMock(return_value=None),
+            ),
+            patch("backend.copilot.gate.reads.screen_read", side_effect=read),
+            patch("backend.copilot.tools.base._record_activity", new=AsyncMock()),
+        ):
+            await self._block_tool(provider).execute(
+                "u1", MagicMock(session_id="s1"), "call-1", id=block.id
+            )
+
+        def expected(redacted: bool) -> dict[str, str]:
+            return {"text": REDACTED if redacted else "the email"}
+
+        assert traced == {
+            "action": expected(action_redacted),
+            "read": expected(read_redacted),
+        }
+        assert redact_google_data({"text": "the email"}) == expected(False)
+
+    @pytest.mark.asyncio
+    async def test_the_late_cut_of_a_google_output_is_redacted(self):
+        """The SDK's late path cuts the output again before the model reads it."""
+        seen: list[str] = []
+
+        def cut(text: str, success: bool) -> str:
+            seen.append(text[: len(text) // 2])
+            return seen[-1]
+
+        token = model_view.set(cut)
+        try:
+            with (
+                patch(
+                    "backend.copilot.gate.check_action",
+                    new=AsyncMock(return_value=ALLOW),
+                ),
+                patch(
+                    "backend.copilot.gate.reads.release_held_read",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
+                    "backend.copilot.gate.reads.screen_read",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch("backend.copilot.tools.base._record_activity", new=AsyncMock()),
+            ):
+                await self._block_tool("google").execute(
+                    "u1", MagicMock(session_id="s1"), "call-1"
+                )
+        finally:
+            model_view.reset(token)
+
+        assert seen and redact_google_data({"o": seen[0]}) == {"o": REDACTED}
+
+
+class TestPersistedGoogleOutputIsFlagged:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("google", [True, False])
+    async def test_the_saved_file_says_whether_it_holds_google_data(self, google):
+        workspace = MagicMock(id="ws-1")
+        db = AsyncMock()
+        db.get_or_create_workspace = AsyncMock(return_value=workspace)
+        manager = AsyncMock()
+        with (
+            patch("backend.copilot.tools.base.workspace_db", return_value=db),
+            patch("backend.copilot.tools.base.WorkspaceManager", return_value=manager),
+        ):
+            await _persist_and_summarize(
+                "A" * 200_000, "u1", "s1", "call-1", google_data=google
+            )
+
+        metadata = manager.write_file.await_args.kwargs["metadata"]
+        assert metadata.get(GOOGLE_DATA_METADATA_KEY, False) is google

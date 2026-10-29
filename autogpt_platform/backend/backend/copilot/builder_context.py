@@ -7,9 +7,10 @@ import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
-from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.session_permissions import BUILDER_BLOCKED_TOOLS
 from backend.copilot.tools.agent_generator import get_agent_as_json
 from backend.copilot.tools.get_agent_building_guide import _load_guide
+from backend.copilot.tools.helpers import session_entered_building_mode
 
 logger = logging.getLogger(__name__)
 
@@ -18,55 +19,35 @@ BUILDER_CONTEXT_TAG = "builder_context"
 BUILDER_SESSION_TAG = "builder_session"
 
 
-# Tools hidden from builder-bound sessions: ``create_agent`` /
-# ``customize_agent`` would mint a new graph (panel is bound to one),
-# and ``get_agent_building_guide`` duplicates bytes already in the
-# system-prompt suffix. Everything else (find_block, find_agent, …)
-# stays available so the LLM can look up ids instead of hallucinating.
-BUILDER_BLOCKED_TOOLS: tuple[str, ...] = (
-    "create_agent",
-    "customize_agent",
-    "get_agent_building_guide",
-)
-
-
-def resolve_session_permissions(
-    session: ChatSession | None,
-) -> CopilotPermissions | None:
-    """Blacklist :data:`BUILDER_BLOCKED_TOOLS` for builder-bound sessions,
-    return ``None`` (unrestricted) otherwise."""
-    if session is None or not session.metadata.builder_graph_id:
-        return None
-    return CopilotPermissions(
-        tools=list(BUILDER_BLOCKED_TOOLS),
-        tools_exclude=True,
-    )
-
-
 # Caps — mirror the frontend ``serializeGraphForChat`` defaults so the
 # server-side block stays within a practical token budget for large graphs.
 _MAX_NODES = 100
 _MAX_LINKS = 200
 
-_FETCH_FAILED_PREFIX = (
-    f"<{BUILDER_CONTEXT_TAG}>\n"
-    f"<status>fetch_failed</status>\n"
-    f"</{BUILDER_CONTEXT_TAG}>\n\n"
-)
+_FETCH_FAILED_PREFIX = f"<{BUILDER_CONTEXT_TAG}>\n<status>fetch_failed</status>\n</{BUILDER_CONTEXT_TAG}>\n\n"
 
 # Embedded in the cacheable suffix so the LLM picks the right run_agent
 # dispatch mode without forcing the user to watch a long-blocking call.
-_BUILDER_RUN_AGENT_GUIDANCE = (
-    "You are operating inside the builder panel, not the standalone "
-    "copilot page. The builder page already subscribes to agent "
-    "executions the moment you return an execution_id, so for REAL "
-    "(non-dry) runs prefer `run_agent(dry_run=False, wait_for_result=0)` "
-    "— the user will see the run stream in the builder's execution panel "
-    "in-place and your turn ends immediately with the id. For DRY-RUNS "
-    "keep `dry_run=True, wait_for_result=120`: blocking is required so "
-    "you can inspect `execution.node_executions` and report the verdict "
-    "in the same turn."
-)
+_BUILDER_RUN_AGENT_GUIDANCE = "You are in the builder panel, which streams any run as soon as you return its execution_id. For real runs use `run_agent(dry_run=False, wait_for_result=0)`: the user watches it in the execution panel and your turn ends. For dry runs use `dry_run=True, wait_for_result=120` so you can check `execution.node_executions` and report the result in the same turn."
+
+
+# Steers the model toward edit_agent on the bound graph. Empty builder
+# graphs (version=1, no nodes) tempt the model to reach for create_agent;
+# that tool is hidden in builder sessions and the model has no UI to ask
+# the user for permission — without explicit guidance it would otherwise
+# narrate a phantom Claude-Code-style approval prompt.
+def _format_blocked_tool_list(tools: tuple[str, ...]) -> str:
+    """Render BUILDER_BLOCKED_TOOLS as ``a`, ``b`, and ``c``
+    so the prose stays in sync with the tuple."""
+    quoted = [f"`{name}`" for name in tools]
+    if len(quoted) <= 1:
+        return quoted[0] if quoted else ""
+    if len(quoted) == 2:
+        return f"{quoted[0]} and {quoted[1]}"
+    return f"{', '.join(quoted[:-1])}, and {quoted[-1]}"
+
+
+_BUILDER_TOOL_GUIDANCE = f'This builder panel is bound to the workflow in <builder_context>. Make every change with `tool:edit_agent` on that graph id, including filling an empty workflow (version=1, no nodes); it takes the same node/link payload as `tool:create_agent`. Usual sequence: `find_capability(context="graph")` for block ids and input schemas, then one `tool:edit_agent` call with all nodes and links. There is no permission prompt UI here, so never ask the user to approve or allow a tool. {_format_blocked_tool_list(BUILDER_BLOCKED_TOOLS)} are intentionally unavailable in builder sessions; the building guide is in <building_guide> below.'
 
 
 def _sanitize_for_xml(value: Any) -> str:
@@ -129,8 +110,7 @@ def _format_links(
         src_out = link.get("source_name") or ""
         dst_in = link.get("sink_name") or ""
         lines.append(
-            f"- {_sanitize_for_xml(src_name)}.{_sanitize_for_xml(src_out)} "
-            f"-> {_sanitize_for_xml(dst_name)}.{_sanitize_for_xml(dst_in)}"
+            f"- {_sanitize_for_xml(src_name)}.{_sanitize_for_xml(src_out)} -> {_sanitize_for_xml(dst_name)}.{_sanitize_for_xml(dst_in)}"
         )
     extra = len(links) - len(visible)
     if extra > 0:
@@ -139,14 +119,32 @@ def _format_links(
     return f"<links>\n{body}\n</links>"
 
 
-async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
-    """Return the cacheable system-prompt suffix for a builder session.
+async def build_builder_system_prompt_suffix(
+    session: ChatSession, *, force: bool = False
+) -> str:
+    """Return the cacheable system-prompt suffix for a building session.
 
-    Holds only static content (dispatch guidance + building guide) so the
-    bytes are identical across turns AND across sessions for different
-    graphs — the live id/name/version ride on the per-turn prefix.
+    Two cases include the full agent-building guide in the system prompt so
+    it lives in the cached static prefix instead of the compactable
+    conversation tail:
+
+    - **Builder-bound sessions** additionally get the builder tool/dispatch
+      guidance (existing behaviour).
+    - **Building sessions** — a regular session where the guide was loaded
+      (tool or skill) in a *prior* turn — get the guide alone. Detection is
+      derived from persisted message history, so no session-metadata write
+      is needed and the suffix stays byte-identical across the rest of the
+      session (one prompt-cache re-write when the mode first activates).
+
+    *force* skips that history check for the caller that already knows the
+    answer — the SDK building-mode restart, which runs only because the enter
+    tool set the flag in *this* turn, before its row is in ``messages``.
+
+    Holds only static content so the bytes are identical across turns AND
+    across sessions — live graph id/name/version ride on the per-turn prefix.
     """
-    if not session.metadata.builder_graph_id:
+    is_builder = bool(session.metadata.builder_graph_id)
+    if not force and not is_builder and not session_entered_building_mode(session):
         return ""
 
     try:
@@ -157,15 +155,18 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
 
     # The guide is trusted server-side content (read from disk). We do NOT
     # escape it — the LLM needs the raw markdown to make sense of block ids,
-    # code fences, and example JSON.
-    return (
-        f"\n\n<{BUILDER_SESSION_TAG}>\n"
-        f"<run_agent_dispatch_mode>\n"
-        f"{_BUILDER_RUN_AGENT_GUIDANCE}\n"
-        f"</run_agent_dispatch_mode>\n"
-        f"<building_guide>\n{guide}\n</building_guide>\n"
-        f"</{BUILDER_SESSION_TAG}>"
+    # code fences, and example JSON. INVARIANT: _load_guide()'s source must
+    # stay server-controlled; if it ever becomes user- or store-influenced,
+    # escape or sandbox the content before it enters the system prompt.
+    guide_block = (
+        f"<building_guide>\n{_BUILDING_GUIDE_PREAMBLE}\n\n{guide}\n</building_guide>"
     )
+    if not is_builder:
+        return f"\n\n{guide_block}"
+    return f"\n\n<{BUILDER_SESSION_TAG}>\n<tool_usage>\n{_BUILDER_TOOL_GUIDANCE}\n</tool_usage>\n<run_agent_dispatch_mode>\n{_BUILDER_RUN_AGENT_GUIDANCE}\n</run_agent_dispatch_mode>\n{guide_block}\n</{BUILDER_SESSION_TAG}>"
+
+
+_BUILDING_GUIDE_PREAMBLE = 'The full agent-building guide is below and stays available for this session. Do not call get_agent_building_guide or read the "agent_building_guide" skill again, even after context compaction.'
 
 
 async def build_builder_context_turn_prefix(
@@ -205,13 +206,7 @@ async def build_builder_context_turn_prefix(
     nodes = agent_json.get("nodes") or []
     links = agent_json.get("links") or []
     name_attr = f' name="{_sanitize_for_xml(graph_name)}"' if graph_name else ""
-    graph_tag = (
-        f'<graph id="{_sanitize_for_xml(graph_id)}"'
-        f"{name_attr} "
-        f'version="{version}" '
-        f'node_count="{len(nodes)}" '
-        f'edge_count="{len(links)}"/>'
-    )
+    graph_tag = f'<graph id="{_sanitize_for_xml(graph_id)}"{name_attr} version="{version}" node_count="{len(nodes)}" edge_count="{len(links)}"/>'
 
     inner = f"{graph_tag}\n{_format_nodes(nodes)}\n{_format_links(links, nodes)}"
     return f"<{BUILDER_CONTEXT_TAG}>\n{inner}\n</{BUILDER_CONTEXT_TAG}>\n\n"

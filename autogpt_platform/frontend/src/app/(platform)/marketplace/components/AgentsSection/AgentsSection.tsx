@@ -5,9 +5,10 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
-} from "@/components/__legacy__/ui/carousel";
+} from "@/components/molecules/Carousel/Carousel";
 import { Text } from "@/components/atoms/Text/Text";
-import { DotsNineIcon } from "@phosphor-icons/react";
+import { ReactNode } from "react";
+import { SectionHeader } from "../SectionHeader";
 import { StoreCard } from "../StoreCard/StoreCard";
 import { useAgentsSection } from "./useAgentsSection";
 
@@ -25,14 +26,22 @@ export interface Agent {
 
 interface Props {
   sectionTitle?: string;
+  eyebrow?: string;
+  eyebrowIcon?: ReactNode;
+  subtitle?: string;
   agents: StoreAgent[];
   hideAvatars?: boolean;
+  children?: ReactNode;
 }
 
 export function AgentsSection({
   sectionTitle,
+  eyebrow,
+  eyebrowIcon,
+  subtitle,
   agents: allAgents,
   hideAvatars = false,
+  children,
 }: Props) {
   const displayedAgents = allAgents;
   const { handleCardClick } = useAgentsSection();
@@ -40,15 +49,26 @@ export function AgentsSection({
   return (
     <div className="flex flex-col items-center justify-center">
       <div className="w-full max-w-[1360px]">
-        {sectionTitle ? (
-          <div className="mb-8 flex flex-row items-center gap-2">
-            <DotsNineIcon size={24} />
-            <Text variant="h4">{sectionTitle}</Text>
-          </div>
+        {sectionTitle && (eyebrow || subtitle) ? (
+          <SectionHeader
+            eyebrow={eyebrow}
+            eyebrowIcon={eyebrowIcon}
+            title={sectionTitle}
+            subtitle={subtitle}
+          />
+        ) : sectionTitle ? (
+          <h2 className="mb-7 text-2xl font-semibold tracking-heading text-foreground-strong">
+            {sectionTitle}
+          </h2>
         ) : null}
+        {children}
         {!displayedAgents || displayedAgents.length === 0 ? (
-          <Text variant="body" className="ml-4 mt-8 text-gray-500">
-            No agents found
+          <Text
+            // TODO(tokens): no exact role: text-gray-500 #6B7280
+            variant="body"
+            className="ml-4 mt-8 text-gray-500"
+          >
+            No workflows found
           </Text>
         ) : (
           <>
@@ -82,8 +102,8 @@ export function AgentsSection({
                     </CarouselItem>
                   ))}
                 </CarouselContent>
-                <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[rgb(246,247,248)] to-transparent" />
-                <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[rgb(246,247,248)] to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-canvas to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-canvas to-transparent" />
               </div>
             </Carousel>
 

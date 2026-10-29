@@ -1,6 +1,7 @@
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -39,6 +40,7 @@ class JinaChunkingBlock(Block):
             categories={BlockCategory.AI, BlockCategory.TEXT},
             input_schema=JinaChunkingBlock.Input,
             output_schema=JinaChunkingBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

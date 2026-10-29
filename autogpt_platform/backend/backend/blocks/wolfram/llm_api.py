@@ -3,6 +3,7 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockCostType,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -15,6 +16,7 @@ from ._api import llm_api_call
 
 wolfram = (
     ProviderBuilder("wolfram")
+    .with_description("Computational knowledge engine")
     .with_api_key("WOLFRAM_APP_ID", "Wolfram Alpha App ID")
     .with_base_cost(1, BlockCostType.RUN)
     .build()
@@ -42,6 +44,7 @@ class AskWolframBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
             output_schema=self.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

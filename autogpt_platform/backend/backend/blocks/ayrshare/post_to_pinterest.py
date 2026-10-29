@@ -3,6 +3,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
@@ -85,6 +86,8 @@ class PostToPinterestBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToPinterestBlock.Input,
             output_schema=PostToPinterestBlock.Output,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

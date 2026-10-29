@@ -1,29 +1,29 @@
-import logging
+import os
+import re
+import sys
 from enum import Enum
+from types import TracebackType
 
 from pydantic import SecretStr
 from sentry_sdk._init_implementation import init as _sentry_init
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from sentry_sdk.api import flush as _sentry_flush
-from sentry_sdk.integrations import DidNotEnable
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
+from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST
 
 try:
     from sentry_sdk.integrations.anthropic import AnthropicIntegration
 except ImportError:
     AnthropicIntegration = None  # type: ignore[assignment,misc]
 
-try:
-    from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
-except ImportError:
-    LaunchDarklyIntegration = None  # type: ignore[assignment,misc]
-
-from backend.util import feature_flag
+from backend.util.exceptions import get_execution_failure_reason
+from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.settings import BehaveAs, Settings
+from backend.util.tracing import traces_sampler
+from backend.util.url_redaction import REDACTED, redact_url
 
 settings = Settings()
-logger = logging.getLogger(__name__)
 
 
 class DiscordChannel(str, Enum):
@@ -55,11 +55,158 @@ _AMQP_KEYWORDS = [
 
 _AMQP_INDICATORS = ["aio_pika", "aiormq", "amqp", "pika", "rabbitmq"]
 
+# Pika reconnect noise: `conn_retry` already handles these. Drop only the
+# four known signatures so genuine pika ERRORs (auth, declare failures) still
+# reach Sentry. (AUTOGPT-SERVER-6JC/6JD/6JE/6JF.)
+_PIKA_RECONNECT_LOGGERS = {
+    "pika.adapters.utils.io_services_utils",
+    "pika.adapters.blocking_connection",
+    "pika.adapters.base_connection",
+}
+_PIKA_RECONNECT_SIGNATURES = (
+    "streamlosterror",
+    "transport indicated eof",
+    "socket eof",
+    "connection_lost",
+)
+
+_SENTRY_SENSITIVE_FIELDS = sorted(
+    set(DEFAULT_DENYLIST)
+    | SENSITIVE_FIELD_NAMES
+    | {
+        "anthropic_auth_token",
+        "client_secret",
+        "codex_access_token",
+        "codex_api_key",
+        "device_code",
+        "id_token",
+        "login_code",
+        "openai_api_key",
+        "provider_state",
+        "secrets",
+        "state_token",
+        "user_code",
+        "verification_url",
+    }
+)
+# A user is known to Sentry by their id only, so their email and IP address are
+# filtered wherever else they turn up, such as in extras or a frame's locals.
+# Exact names only: keys like ``email_verified`` stay readable.
+_SENTRY_PERSONAL_FIELDS = ("email", "user_email", "recipient", "ip", "ip_address")
+# Matched case-insensitively against every key in the event, as sentry's
+# EventScrubber does (with its PII list, since send_default_pii is off).
+_SENTRY_SENSITIVE_KEYS = frozenset(
+    field.lower()
+    for field in (
+        *_SENTRY_SENSITIVE_FIELDS,
+        *DEFAULT_PII_DENYLIST,
+        *_SENTRY_PERSONAL_FIELDS,
+    )
+)
+_EMBEDDED_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|"
+    r"authorization|client[_-]?secret|password|provider[_-]?state|secret|"
+    r"device[_-]?code|login[_-]?code|state[_-]?token|user[_-]?code|"
+    r"verification[_-]?url)"
+    r"(?:\\?[\"']?)\s*[:=]"
+)
+_TOKEN_SHAPED_VALUE = re.compile(
+    r"(?i)(?:\b(?:bearer|basic)\s+[a-z0-9._~+/=-]{8,}|"
+    r"\beyJ[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\b|"
+    r"\b(?:sk-(?:proj-)?|gh[pousr]_|github_pat_|xox[baprs]-)[a-z0-9_-]{8,})"
+)
+_FILTERED_VALUE = "[Filtered]"
+
+
+def _scrub_secrets(value: object) -> object:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if isinstance(key, str) and key.lower() in _SENTRY_SENSITIVE_KEYS:
+                value[key] = _FILTERED_VALUE
+            else:
+                value[key] = _scrub_secrets(nested)
+        return value
+    if isinstance(value, list):
+        for index, nested in enumerate(value):
+            value[index] = _scrub_secrets(nested)
+        return value
+    if isinstance(value, str) and (
+        _EMBEDDED_SECRET_ASSIGNMENT.search(value) or _TOKEN_SHAPED_VALUE.search(value)
+    ):
+        return _FILTERED_VALUE
+    return value
+
+
+def _scrub_sentry_event(event: dict) -> None:
+    """Scrub sensitive keys and secret-shaped values from an outgoing event.
+
+    ``before_send`` sees the event after the SDK has serialized it, and the
+    transport then ``json.dumps`` it as is. So every replacement must be plain
+    JSON: sentry's EventScrubber writes ``AnnotatedValue`` objects, and one of
+    those here made the SDK drop the whole event as an internal error. ``_meta``
+    is the SDK's own annotation tree and is left alone.
+    """
+    _redact_request_urls(event)
+    for key, value in event.items():
+        if key != "_meta":
+            event[key] = _scrub_secrets(value)
+
+
+def _redact_request_urls(event: dict) -> None:
+    """Mask credentials in the request URL the ASGI integration attaches.
+
+    EventScrubber only scrubs a request's headers, cookies and body, so the
+    query string, which for the WebSocket holds the user's session JWT, and
+    the path secrets in ``url`` would otherwise be sent with every event.
+    """
+    request = event.get("request") or {}
+    if isinstance(request.get("url"), str):
+        request["url"] = redact_url(request["url"])
+    # The SDK has already decoded the query, so a %26 inside a value reads as a
+    # separator and the rest of the value as a key. None of it can be kept.
+    if request.get("query_string"):
+        request["query_string"] = REDACTED
+    # A request no route matched is named after its raw URL.
+    transaction = event.get("transaction")
+    source = (event.get("transaction_info") or {}).get("source")
+    if source == "url" and isinstance(transaction, str):
+        event["transaction"] = redact_url(transaction)
+
+
+# FalkorDB (Graphiti CoPilot memory) connection-teardown noise. graphiti-core's
+# ``execute_query`` logs ERROR + re-raises whenever a query races the closing of
+# its redis.asyncio connection — the fire-and-forget cache-eviction close or a
+# per-request ``driver.close()`` in a finally block. Chat degrades gracefully
+# (memory callers swallow it), so these are benign. Drop only the two teardown
+# signatures, scoped to the graphiti driver (by logger for log events, by
+# traceback for exceptions) so genuine query errors (Cypher typos, missing
+# graphs) — and unrelated main-redis outages — still reach Sentry. (SENTRY-1387.)
+_FALKORDB_DRIVER_LOGGER = "graphiti_core.driver.falkordb_driver"
+_FALKORDB_TEARDOWN_SIGNATURES = (
+    "buffer is closed",
+    "connection closed by server",
+)
+
+
+def _raised_from_graphiti_falkordb(exc_tb: TracebackType | None) -> bool:
+    """True if the graphiti FalkorDB driver module appears in the traceback.
+
+    graphiti-core's ``execute_query`` re-raises from that module, so its frame
+    is on the traceback of a teardown error originating there. Scoping to it
+    keeps unrelated redis exceptions (e.g. the platform's main redis) reaching
+    Sentry even when they share the ``connection closed by server`` message.
+    """
+    while exc_tb is not None:
+        if exc_tb.tb_frame.f_globals.get("__name__") == _FALKORDB_DRIVER_LOGGER:
+            return True
+        exc_tb = exc_tb.tb_next
+    return False
+
 
 def _before_send(event, hint):
     """Filter out expected/transient errors from Sentry to reduce noise."""
     if "exc_info" in hint:
-        exc_type, exc_value, _ = hint["exc_info"]
+        exc_type, exc_value, exc_tb = hint["exc_info"]
         exc_msg = str(exc_value).lower() if exc_value else ""
 
         # AMQP/RabbitMQ transient connection errors — expected during deploys
@@ -76,12 +223,21 @@ def _before_send(event, hint):
             ) or any(kw in exc_msg for kw in _AMQP_INDICATORS):
                 return None
 
+        # FalkorDB connection-teardown races (eviction/shutdown) — benign, but
+        # only when raised from the graphiti driver, so an unrelated main-redis
+        # outage sharing the message still reaches Sentry.
+        if any(
+            sig in exc_msg for sig in _FALKORDB_TEARDOWN_SIGNATURES
+        ) and _raised_from_graphiti_falkordb(exc_tb):
+            return None
+
         # User-caused credential/auth/integration errors — not platform bugs
         if any(kw in exc_msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
-        # Expected business logic — insufficient balance
-        if "insufficient balance" in exc_msg or "no credits left" in exc_msg:
+        # Expected business logic — exhausted wallet, or a plan that does
+        # not include the feature. Neither is a platform bug.
+        if get_execution_failure_reason(exc_value) is not None:
             return None
 
         # Expected security check — blocked IP access
@@ -94,11 +250,7 @@ def _before_send(event, hint):
         ):
             return None
 
-        # Prisma UniqueViolationError — always caught and handled in our codebase.
-        # These arise from concurrent create operations racing on unique constraints
-        # (workspace files, credits, library folders, store listings, chat messages).
-        # Every call site has an except handler; the global FastAPI handler also
-        # catches them and returns 400.  Safe to drop unconditionally.
+        # Prisma UniqueViolationError is always handled (FastAPI returns 400).
         if exc_type and exc_type.__name__ == "UniqueViolationError":
             return None
 
@@ -119,7 +271,14 @@ def _before_send(event, hint):
     log_msg = (
         logentry.get("formatted") or logentry.get("message") or event.get("message")
     )
-    if event.get("logger") and log_msg:
+    logger_name = event.get("logger")
+    if logger_name in _PIKA_RECONNECT_LOGGERS and log_msg:
+        if any(sig in log_msg.lower() for sig in _PIKA_RECONNECT_SIGNATURES):
+            return None
+    if logger_name == _FALKORDB_DRIVER_LOGGER and log_msg:
+        if any(sig in log_msg.lower() for sig in _FALKORDB_TEARDOWN_SIGNATURES):
+            return None
+    if logger_name and log_msg:
         msg = log_msg.lower()
         noisy_log_patterns = [
             "amqpconnection",
@@ -135,17 +294,86 @@ def _before_send(event, hint):
         if any(kw in msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
+    _strip_user_pii(event)
+    _strip_ip_headers(event)
+    _scrub_sentry_event(event)
     return event
 
 
+def _before_send_transaction(event, hint):
+    """Transactions skip ``before_send`` but carry the same request data, and
+    every WebSocket connection is one."""
+    _strip_user_pii(event)
+    _strip_ip_headers(event)
+    _redact_request_urls(event)
+    return event
+
+
+# Sentry knows a user by their id only: never their email, name or IP
+# address, whichever code put them on the scope.
+_SENTRY_USER_FIELDS = frozenset({"id"})
+
+
+def _strip_user_pii(event: dict) -> None:
+    user = event.get("user")
+    if user is None:
+        return
+    kept = {
+        field: value for field, value in user.items() if field in _SENTRY_USER_FIELDS
+    }
+    if kept:
+        event["user"] = kept
+    else:
+        del event["user"]
+
+
+# Request headers that carry the visitor's IP address or the location derived
+# from it. The backends sit behind Cloudflare, which adds ``Cf-Connecting-Ip``
+# and its ``Cf-Ip*`` location headers to every request; sentry-sdk only drops
+# ``X-Forwarded-For`` and ``X-Real-Ip`` with PII off.
+_IP_HEADER_MARKERS = (
+    "forwarded",
+    "proxied_for",
+    "real_ip",
+    "connecting_ip",
+    "client_ip",
+    "vercel_ip",
+)
+
+
+def _is_ip_header(name: str) -> bool:
+    key = name.lower().replace("-", "_")
+    return key.startswith("cf_ip") or any(m in key for m in _IP_HEADER_MARKERS)
+
+
+def _strip_ip_headers(event: dict) -> None:
+    request = event.get("request")
+    if not isinstance(request, dict):
+        return
+    headers = request.get("headers")
+    if not isinstance(headers, dict):
+        return
+    request["headers"] = {
+        name: value for name, value in headers.items() if not _is_ip_header(name)
+    }
+
+
+def _sentry_environment() -> str:
+    """The environment events are tagged with. A deployment that names itself
+    (a PR preview, say) takes precedence over the one computed from the app
+    environment and behaviour mode. A blank name counts as none."""
+    config = settings.config
+    return (
+        config.sentry_environment.strip()
+        or f"app:{config.app_env.value}-behave:{config.behave_as.value}"
+    )
+
+
 def sentry_init():
+    if _running_under_pytest():
+        return
+
     sentry_dsn = settings.secrets.sentry_dsn
-    integrations = []
-    if feature_flag.is_configured() and LaunchDarklyIntegration is not None:
-        try:
-            integrations.append(LaunchDarklyIntegration(feature_flag.get_client()))
-        except DidNotEnable as e:
-            logger.error(f"Error enabling LaunchDarklyIntegration for Sentry: {e}")
     optional_integrations = (
         [AnthropicIntegration(include_prompts=False)]
         if AnthropicIntegration is not None
@@ -154,16 +382,32 @@ def sentry_init():
     _sentry_init(
         dsn=sentry_dsn,
         traces_sample_rate=1.0,
+        traces_sampler=traces_sampler,
+        # Traces reach our own services only, through the RPC client's headers
+        # (backend.util.service); outbound calls to third parties, such as a
+        # block's request to a user-supplied URL, carry no Sentry headers.
+        trace_propagation_targets=[],
         profiles_sample_rate=1.0,
-        environment=f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}",
+        release=settings.config.sentry_release.strip() or None,
+        environment=_sentry_environment(),
+        # The SDK default, pinned: no IP address, request headers with
+        # personal data or cookies.
+        send_default_pii=False,
         before_send=_before_send,
+        before_send_transaction=_before_send_transaction,
         integrations=[
             AsyncioIntegration(),
             LoggingIntegration(),
         ]
-        + optional_integrations
-        + integrations,
+        + optional_integrations,
     )
+
+
+def _running_under_pytest() -> bool:
+    """sentry_init() runs at import time (AppProcess class body), before pytest
+    sets PYTEST_CURRENT_TEST; the env var covers spawned service subprocesses,
+    which do not inherit sys.modules. Self-hosted instances match neither."""
+    return "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ
 
 
 def sentry_capture_error(error: BaseException):

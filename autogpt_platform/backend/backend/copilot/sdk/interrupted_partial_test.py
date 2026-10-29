@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from backend.copilot.constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -22,6 +24,7 @@ from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 
 from .service import (
+    _RETRYABLE_STREAM_ERROR_CODES,
     _classify_final_failure,
     _FinalFailure,
     _flush_orphan_tool_uses_to_session,
@@ -223,6 +226,35 @@ class TestFlushOrphanToolUses:
         adapter.flush_unresolved_tool_calls.assert_not_called()
         assert events == []
 
+    def test_persists_tool_name_on_synthetic_rows(self):
+        session = _make_session()
+        state = _adapter_with_unresolved([_tool_output("t1", "r1")])
+        _flush_orphan_tool_uses_to_session(session, state)
+        assert session.messages[0].name == "t"
+
+    def test_nameless_output_falls_back_to_matching_tool_call(self):
+        session = _make_session(
+            [
+                ChatMessage(
+                    role="assistant",
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "t1",
+                            "type": "function",
+                            "function": {"name": "web_search", "arguments": "{}"},
+                        }
+                    ],
+                )
+            ]
+        )
+        flushed = [
+            StreamToolOutputAvailable(toolCallId="t1", toolName=None, output="r1")
+        ]
+        state = _adapter_with_unresolved(flushed)
+        _flush_orphan_tool_uses_to_session(session, state)
+        assert session.messages[-1].name == "web_search"
+
 
 class TestClassifyFinalFailure:
     """Ensures the history marker (via finalize) and the SSE StreamError yield
@@ -251,38 +283,32 @@ class TestClassifyFinalFailure:
             retryable=False,
         )
 
-    def test_attempts_exhausted(self):
+    @pytest.mark.parametrize(
+        "attempts_exhausted, transient_exhausted, code, retryable",
+        [
+            pytest.param(
+                True, False, "all_attempts_exhausted", False, id="attempts_exhausted"
+            ),
+            pytest.param(
+                False, True, "transient_api_error", True, id="transient_exhausted"
+            ),
+            pytest.param(
+                False, False, "sdk_stream_error", False, id="stream_err_fallback"
+            ),
+        ],
+    )
+    def test_exhaustion_and_stream_error_codes(
+        self, attempts_exhausted, transient_exhausted, code, retryable
+    ):
         result = _classify_final_failure(
             _InterruptedAttempt(),
-            attempts_exhausted=True,
-            transient_exhausted=False,
-            stream_err=RuntimeError("x"),
-        )
-        assert result is not None
-        assert result.code == "all_attempts_exhausted"
-        assert result.retryable is False
-
-    def test_transient_exhausted(self):
-        result = _classify_final_failure(
-            _InterruptedAttempt(),
-            attempts_exhausted=False,
-            transient_exhausted=True,
-            stream_err=RuntimeError("x"),
-        )
-        assert result is not None
-        assert result.code == "transient_api_error"
-        assert result.retryable is True
-
-    def test_stream_err_fallback(self):
-        result = _classify_final_failure(
-            _InterruptedAttempt(),
-            attempts_exhausted=False,
-            transient_exhausted=False,
+            attempts_exhausted=attempts_exhausted,
+            transient_exhausted=transient_exhausted,
             stream_err=RuntimeError("some sdk error"),
         )
         assert result is not None
-        assert result.code == "sdk_stream_error"
-        assert result.retryable is False
+        assert result.code == code
+        assert result.retryable is retryable
 
     def test_returns_none_when_no_failure_recorded(self):
         assert (
@@ -320,3 +346,22 @@ class TestRetryRollbackContract:
             "part-2",
             f"{COPILOT_ERROR_PREFIX} Boom",
         ]
+
+
+class TestRetryableStreamErrorCodes:
+    """SECRT-2252: ``_dispatch_response`` consults this set to decide whether
+    the StreamError flowing through it should append a retryable marker (UI
+    shows a retry button) or a terminal one (UI shows ErrorCard only)."""
+
+    def test_transient_api_error_is_retryable(self):
+        assert "transient_api_error" in _RETRYABLE_STREAM_ERROR_CODES
+
+    def test_empty_completion_is_retryable(self):
+        # The adapter emits this for ghost-finished SDK turns. The user
+        # message ("The model returned an empty response.") only makes sense
+        # if the UI offers a retry — otherwise the user sees a dead error.
+        assert "empty_completion" in _RETRYABLE_STREAM_ERROR_CODES
+
+    def test_unknown_codes_are_not_retryable(self):
+        assert "sdk_error" not in _RETRYABLE_STREAM_ERROR_CODES
+        assert "all_attempts_exhausted" not in _RETRYABLE_STREAM_ERROR_CODES

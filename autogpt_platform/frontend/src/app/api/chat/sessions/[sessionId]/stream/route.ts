@@ -1,5 +1,5 @@
 import { environment } from "@/services/environment";
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { NextRequest } from "next/server";
 import { normalizeSSEStream, SSE_HEADERS } from "../../../sse-helpers";
 
@@ -11,12 +11,34 @@ const DEBUG_SSE_TIMEOUT_MS = process.env.NEXT_PUBLIC_SSE_TIMEOUT_MS
   ? Number(process.env.NEXT_PUBLIC_SSE_TIMEOUT_MS)
   : undefined;
 
-function debugSignal(): AbortSignal | undefined {
-  if (!DEBUG_SSE_TIMEOUT_MS) return undefined;
-  console.warn(
-    `[SSE_DEBUG] Simulating proxy timeout in ${DEBUG_SSE_TIMEOUT_MS}ms`,
-  );
-  return AbortSignal.timeout(DEBUG_SSE_TIMEOUT_MS);
+// Bounds the time to ESTABLISH the backend stream (time-to-first-response), so
+// a hung connection can't leave the client spinner waiting forever. It is
+// cleared the moment response headers arrive, so it never truncates a healthy
+// long-lived SSE stream — maxDuration still caps the total stream duration.
+const STREAM_CONNECT_TIMEOUT_MS = 30_000;
+
+async function fetchStream(url: string, init: RequestInit): Promise<Response> {
+  // Debug/testing hook: NEXT_PUBLIC_SSE_TIMEOUT_MS aborts the ENTIRE stream to
+  // simulate a mid-stream proxy timeout.
+  if (DEBUG_SSE_TIMEOUT_MS) {
+    console.warn(
+      `[SSE_DEBUG] Simulating proxy timeout in ${DEBUG_SSE_TIMEOUT_MS}ms`,
+    );
+    return fetch(url, {
+      ...init,
+      signal: AbortSignal.timeout(DEBUG_SSE_TIMEOUT_MS),
+    });
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), STREAM_CONNECT_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    // Headers arrived (or the request already failed); stop guarding so the
+    // streamed body runs for the full maxDuration window.
+    clearTimeout(timer);
+  }
 }
 
 export async function POST(
@@ -55,7 +77,7 @@ export async function POST(
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const response = await fetch(streamUrl.toString(), {
+    const response = await fetchStream(streamUrl.toString(), {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -64,7 +86,6 @@ export async function POST(
         context: context || null,
         file_ids: file_ids || null,
       }),
-      signal: debugSignal(),
     });
 
     if (!response.ok) {
@@ -125,10 +146,9 @@ export async function GET(
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const response = await fetch(streamUrl.toString(), {
+    const response = await fetchStream(streamUrl.toString(), {
       method: "GET",
       headers,
-      signal: debugSignal(),
     });
 
     if (response.status === 204) {

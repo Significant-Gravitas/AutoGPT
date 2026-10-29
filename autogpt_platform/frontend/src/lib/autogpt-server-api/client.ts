@@ -1,16 +1,17 @@
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
+import {
+  isAccountBannedResponse,
+  signOutBannedAccount,
+} from "@/lib/auth/account-banned";
+import { getWebSocketToken } from "@/lib/auth/actions";
 import { ImpersonationState } from "@/lib/impersonation";
-import { getWebSocketToken } from "@/lib/supabase/actions";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
-import { createBrowserClient } from "@supabase/ssr";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AddUserCreditsResponse,
-  AnalyticsDetails,
-  AnalyticsMetrics,
   APIKey,
   APIKeyCredentials,
   APIKeyPermission,
@@ -50,12 +51,18 @@ import type {
   Schedule,
   ScheduleCreatable,
   ScheduleID,
+  SkippedWebhookPreset,
   TransactionHistory,
   User,
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
   WebSocketNotification,
 } from "./types";
+import {
+  describeCloseEvent,
+  describeErrorEvent,
+  logWebSocketIssue,
+} from "./websocket-logging";
 
 const isClient = environment.isClientSide();
 
@@ -112,40 +119,23 @@ export default class BackendAPI {
     this.wsUrl = wsUrl;
   }
 
-  private async getSupabaseClient(): Promise<SupabaseClient | null> {
-    return isClient
-      ? createBrowserClient(
-          environment.getSupabaseUrl(),
-          environment.getSupabaseAnonKey(),
-          {
-            isSingleton: true,
-          },
-        )
-      : await getServerSupabase();
-  }
-
   async isAuthenticated(): Promise<boolean> {
-    const supabaseClient = await this.getSupabaseClient();
-    if (!supabaseClient) return false;
-    const {
-      data: { session },
-    } = await supabaseClient.auth.getSession();
-    return session != null;
+    // getWebSocketToken is a server action, so this works from both the
+    // client (RPC) and the server (direct call); a token is only minted
+    // when a valid session exists.
+    const { token, error } = await getWebSocketToken();
+    return token != null && !error;
   }
 
   createUser(): Promise<User> {
     return this._request("POST", "/auth/user", {});
   }
 
-  updateUserEmail(email: string): Promise<{ email: string }> {
-    return this._request("POST", "/auth/user/email", { email });
-  }
-
   ////////////////////////////////////////
   /////////////// CREDITS ////////////////
   ////////////////////////////////////////
 
-  async getUserCredit(): Promise<{ credits: number }> {
+  async getUserCredit(): Promise<{ credits: number | null }> {
     try {
       const response = await this._get("/credits");
       return response ?? { credits: 0 };
@@ -153,7 +143,10 @@ export default class BackendAPI {
       if (!(error instanceof LogoutInterruptError)) {
         Sentry.captureException(error);
       }
-      return { credits: 0 };
+      // Return null (rather than 0) so callers can distinguish a real $0
+      // balance from a failed fetch — used by TopUpPromptProvider to avoid
+      // nudging users to top up on transient API errors.
+      return { credits: null };
     }
   }
 
@@ -257,7 +250,13 @@ export default class BackendAPI {
     return this._request("POST", "/graphs", requestBody);
   }
 
-  updateGraph(id: GraphID, graph: GraphUpdateable): Promise<Graph> {
+  updateGraph(
+    id: GraphID,
+    graph: GraphUpdateable,
+  ): Promise<{
+    graph: Graph;
+    skipped_webhook_presets?: SkippedWebhookPreset[];
+  }> {
     return this._request("PUT", `/graphs/${id}`, graph);
   }
 
@@ -265,7 +264,10 @@ export default class BackendAPI {
     return this._request("DELETE", `/graphs/${id}`);
   }
 
-  setGraphActiveVersion(id: GraphID, version: number): Promise<Graph> {
+  setGraphActiveVersion(
+    id: GraphID,
+    version: number,
+  ): Promise<{ skipped_webhook_presets?: SkippedWebhookPreset[] }> {
     return this._request("PUT", `/graphs/${id}/versions/active`, {
       active_graph_version: version,
     });
@@ -324,7 +326,11 @@ export default class BackendAPI {
     provider: string,
     scopes?: string[],
     credentialID?: string,
-  ): Promise<{ login_url: string; state_token: string }> {
+  ): Promise<{
+    login_url: string;
+    state_token: string;
+    cancel_url?: string | null;
+  }> {
     return this._get(
       `/integrations/${provider}/login`,
       buildOAuthLoginQuery(scopes, credentialID),
@@ -372,8 +378,14 @@ export default class BackendAPI {
     );
   }
 
-  listProviders(): Promise<string[]> {
-    return this._get("/integrations/providers");
+  async listProviders(): Promise<string[]> {
+    // The endpoint returns `ProviderMetadata[]` (`{ name, description }`) but
+    // legacy consumers (e.g. CredentialsProvider) still expect a flat string[]
+    // of provider names. Map down so we keep that contract.
+    const response: Array<{ name: string }> = await this._get(
+      "/integrations/providers",
+    );
+    return response.map((p) => p.name);
   }
 
   listSystemProviders(): Promise<string[]> {
@@ -443,14 +455,6 @@ export default class BackendAPI {
    */
   async pingWebhook(webhook_id: string): Promise<boolean> {
     return this._request("POST", `/integrations/webhooks/${webhook_id}/ping`);
-  }
-
-  logMetric(metric: AnalyticsMetrics) {
-    return this._request("POST", "/analytics/log_raw_metric", metric);
-  }
-
-  logAnalytic(analytic: AnalyticsDetails) {
-    return this._request("POST", "/analytics/log_raw_analytics", analytic);
   }
 
   async uploadFile(
@@ -681,19 +685,6 @@ export default class BackendAPI {
     return this._request("GET", path, query);
   }
 
-  private async getAuthToken(): Promise<string> {
-    // Only try client-side session (for WebSocket connections)
-    // This will return "no-token-found" with httpOnly cookies, which is expected
-    const supabaseClient = await this.getSupabaseClient();
-    const {
-      data: { session },
-    } = (await supabaseClient?.auth.getSession()) || {
-      data: { session: null },
-    };
-
-    return session?.access_token || "no-token-found";
-  }
-
   private async _uploadFile(path: string, file: File): Promise<string> {
     const formData = new FormData();
     formData.append("file", file);
@@ -731,7 +722,7 @@ export default class BackendAPI {
     formData: FormData,
   ): Promise<string> {
     // Dynamic import is required even for client-only functions because helpers.ts
-    // has server-only imports (like getServerSupabase) at the top level. Static imports
+    // has server-only imports (like getBackendAuthToken) at the top level. Static imports
     // would bundle server-only code into the client bundle, causing runtime errors.
     const { buildClientUrl, handleFetchError } = await import("./helpers");
 
@@ -744,7 +735,11 @@ export default class BackendAPI {
     });
 
     if (!response.ok) {
-      throw await handleFetchError(response);
+      const error = await handleFetchError(response);
+      if (isAccountBannedResponse(error.status, error.response)) {
+        signOutBannedAccount();
+      }
+      throw error;
     }
 
     return await response.json();
@@ -805,6 +800,9 @@ export default class BackendAPI {
           let errorMessage = `Upload failed (${xhr.status})`;
           try {
             const errorData = JSON.parse(xhr.responseText);
+            if (isAccountBannedResponse(xhr.status, errorData)) {
+              signOutBannedAccount();
+            }
             if (errorData.detail) {
               if (
                 typeof errorData.detail === "string" &&
@@ -877,7 +875,7 @@ export default class BackendAPI {
     payload?: Record<string, any>,
   ) {
     // Dynamic import is required even for client-only functions because helpers.ts
-    // has server-only imports (like getServerSupabase) at the top level. Static imports
+    // has server-only imports (like getBackendAuthToken) at the top level. Static imports
     // would bundle server-only code into the client bundle, causing runtime errors.
     const {
       buildClientUrl,
@@ -904,6 +902,9 @@ export default class BackendAPI {
       headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
     }
 
+    Object.assign(headers, getDatafastAttribution());
+    Object.assign(headers, getPostHogSessionHeader());
+
     const response = await fetch(url, {
       method,
       headers,
@@ -913,6 +914,9 @@ export default class BackendAPI {
 
     if (!response.ok) {
       const error = await handleFetchError(response);
+      if (isAccountBannedResponse(error.status, error.response)) {
+        signOutBannedAccount();
+      }
       if (
         isAuthenticationError(response, error.message) &&
         isLogoutInProgress()
@@ -926,6 +930,12 @@ export default class BackendAPI {
       throw error;
     }
 
+    if (
+      response.status === 204 ||
+      response.headers.get("Content-Length") === "0"
+    ) {
+      return null;
+    }
     return await response.json();
   }
 
@@ -1086,16 +1096,35 @@ export default class BackendAPI {
         };
 
         this.webSocket.onclose = (event) => {
-          if (this.webSocket?.state == "connecting") {
-            console.error(
-              `[BackendAPI] WebSocket failed to connect: ${event.reason}`,
+          const phase = this.webSocket?.state;
+          if (phase == "connecting" || phase == "connected") {
+            const { summary, extra } = describeCloseEvent(
               event,
+              this.wsUrl,
+              phase,
             );
-          } else if (this.webSocket?.state == "connected") {
-            console.warn(
-              `[BackendAPI] WebSocket connection closed: ${event.reason}`,
-              event,
-            );
+            // A logout in this tab or another closes the socket on purpose,
+            // and one still connecting then reports a 1006: not a failure.
+            if (
+              this.isIntentionallyDisconnected ||
+              this._hasDisconnectIntent()
+            ) {
+              console.debug(
+                `[BackendAPI] WebSocket closed on purpose: ${summary}`,
+              );
+            } else if (phase == "connecting") {
+              logWebSocketIssue(
+                "error",
+                `[BackendAPI] WebSocket failed to connect: ${summary}`,
+                extra,
+              );
+            } else {
+              logWebSocketIssue(
+                "warn",
+                `[BackendAPI] WebSocket connection closed: ${summary}`,
+                extra,
+              );
+            }
           }
           this.webSocket!.state = "closed";
 
@@ -1116,7 +1145,12 @@ export default class BackendAPI {
 
         this.webSocket.onerror = (error) => {
           if (this.webSocket?.state == "connected") {
-            console.error("[BackendAPI] WebSocket error:", error);
+            const { summary, extra } = describeErrorEvent(error, this.wsUrl);
+            logWebSocketIssue(
+              "error",
+              `[BackendAPI] WebSocket error: ${summary}`,
+              extra,
+            );
           }
         };
         this.webSocket.onmessage = (event) => this._handleWSMessage(event);

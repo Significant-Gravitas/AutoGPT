@@ -236,7 +236,7 @@ export const CustomStyling: Story = {
     variant: "body-medium",
     previewLimit: 80,
     className: "max-w-md",
-    toggleClassName: "text-blue-600 hover:text-blue-800",
+    toggleClassName: "text-info-foreground hover:text-blue-800",
   },
 };
 

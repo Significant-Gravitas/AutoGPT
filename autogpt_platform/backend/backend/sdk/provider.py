@@ -55,6 +55,7 @@ class Provider:
         supported_auth_types: Optional[Set[CredentialsType]] = None,
         api_client_factory: Optional[Callable] = None,
         error_handler: Optional[Callable[[Exception], str]] = None,
+        description: Optional[str] = None,
         **kwargs,
     ):
         self.name = name
@@ -63,6 +64,7 @@ class Provider:
         self.default_credentials = default_credentials or []
         self.base_costs = base_costs or []
         self.supported_auth_types = supported_auth_types or set()
+        self.description = description
         self._api_client_factory = api_client_factory
         self._error_handler = error_handler
 

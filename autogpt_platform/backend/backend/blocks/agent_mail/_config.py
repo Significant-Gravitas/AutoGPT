@@ -12,6 +12,7 @@ from backend.sdk import APIKeyCredentials, BlockCostType, ProviderBuilder, Secre
 # past billing. Revisit once AgentMail publishes usage-based pricing.
 agent_mail = (
     ProviderBuilder("agent_mail")
+    .with_description("Managed email accounts for agents")
     .with_api_key("AGENTMAIL_API_KEY", "AgentMail API Key")
     .with_base_cost(1, BlockCostType.RUN)
     .build()

@@ -1,38 +1,44 @@
 import {
+  BrainIcon,
+  ChartIncreaseIcon,
   CreditCardIcon,
-  GearIcon,
-  IdentificationBadgeIcon,
-  KeyIcon,
-  PlugsConnectedIcon,
-  SquaresFourIcon,
-  UserCircleIcon,
-  type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
+  Key01Icon,
+  MessageMultiple01Icon,
+  PlugSocketIcon,
+  SlidersHorizontalIcon,
+  UserIcon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
 export interface SettingsNavItem {
   label: string;
   href: string;
-  Icon: PhosphorIcon;
+  Icon: IconSvgElement;
 }
 
 export const settingsNavItems: SettingsNavItem[] = [
-  { label: "Profile", href: "/settings/profile", Icon: UserCircleIcon },
+  { label: "Profile", href: "/settings/profile", Icon: UserIcon },
   {
-    label: "Creator Dashboard",
-    href: "/settings/creator-dashboard",
-    Icon: SquaresFourIcon,
+    label: "Account",
+    href: "/settings/account",
+    Icon: SlidersHorizontalIcon,
+  },
+  {
+    label: "Memory",
+    href: "/settings/memory",
+    Icon: BrainIcon,
   },
   { label: "Billing", href: "/settings/billing", Icon: CreditCardIcon },
   {
     label: "Integrations",
     href: "/settings/integrations",
-    Icon: PlugsConnectedIcon,
+    Icon: PlugSocketIcon,
   },
-  { label: "Settings", href: "/settings/preferences", Icon: GearIcon },
-  { label: "AutoGPT API Keys", href: "/settings/api-keys", Icon: KeyIcon },
+  { label: "Bots", href: "/settings/bots", Icon: MessageMultiple01Icon },
+  { label: "AutoGPT API Keys", href: "/settings/api-keys", Icon: Key01Icon },
   {
-    label: "OAuth Apps",
-    href: "/settings/oauth-apps",
-    Icon: IdentificationBadgeIcon,
+    label: "Creator Dashboard",
+    href: "/settings/creator-dashboard",
+    Icon: ChartIncreaseIcon,
   },
 ];

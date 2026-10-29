@@ -60,7 +60,7 @@ describe("LibraryPage", () => {
 
     render(<LibraryPage />);
 
-    expect(await screen.findByText("My Agents")).toBeDefined();
+    expect(await screen.findByText("All Workflows")).toBeDefined();
   });
 
   test("shows error state on API failure", async () => {
@@ -102,7 +102,7 @@ All handlers are aggregated in `src/mocks/mock-handlers.ts` and the MSW server i
 
 - **`@/tests/integrations/test-utils`** — custom `render()` that wraps components with `QueryClientProvider`, `BackendAPIProvider`, `OnboardingProvider`, `NuqsTestingAdapter`, and `TooltipProvider`, so query-state hooks and tooltips work out of the box in page-level tests
 - **`@/tests/integrations/setup-nextjs-mocks`** — mocks for `next/navigation`, `next/image`, `next/headers`, `next/link`
-- **`@/tests/integrations/mock-supabase-request`** — mocks Supabase auth (returns null user by default)
+- **`@/tests/integrations/mock-auth-request`** — mocks Better Auth (returns null session by default)
 
 ### What to test at page level
 
@@ -129,7 +129,7 @@ pnpm exec playwright test   # run the same eight-spec Playwright suite directly
 
 ### Setup
 
-1. Start the backend + Supabase stack:
+1. Start the backend stack (Postgres, Redis, RabbitMQ, API):
    - From `autogpt_platform`: `docker compose --profile local up deps_backend -d`
 2. Seed rich E2E data (creates `test123@example.com` with library agents):
    - From `autogpt_platform/backend`: `poetry run python test/e2e_test_data.py`
@@ -138,13 +138,12 @@ pnpm exec playwright test   # run the same eight-spec Playwright suite directly
 
 - Playwright runs from `frontend/playwright.config.ts` and keeps browser-only code in `frontend/src/playwright/`
 - Global setup creates reusable auth states for deterministic seeded accounts in `frontend/.auth/states/`
-- `getTestUser()` (from `src/playwright/utils/auth.ts`) picks one seeded account for general auth coverage
-- `getTestUserWithLibraryAgents()` uses the rich user created by the data script
+- `getSeededTestUser()` (from `src/playwright/credentials/accounts.ts`) returns a seeded account by key
 
 ### Test users
 
-- **Seeded E2E accounts** — created by backend fixtures and logged in during Playwright global setup. Used by `getTestUser()` and `E2E_AUTH_STATES`
-- **Rich user with library agents** — created by `backend/test/e2e_test_data.py`. Used by `getTestUserWithLibraryAgents()`
+- **Seeded E2E accounts** — created by backend fixtures and logged in during Playwright global setup. Used by `getSeededTestUser()` and `E2E_AUTH_STATES`
+- **Rich user with library agents** — created by `backend/test/e2e_test_data.py`
 
 ### Current Playwright E2E suite
 
@@ -172,6 +171,14 @@ If you reset the Docker DB and logins start failing:
 - `pnpm build-storybook` — build static
 - `pnpm test-storybook` — CI runner
 - When changing components in `src/components`, update or add stories and verify in Storybook/Chromatic
+
+## Performance measurement
+
+`pnpm perf` measures re-renders, main-thread time and JS heap for a fixed scenario (copilot, builder, library) against `NEXT_PUBLIC_RENDER_COUNTER=1 pnpm dev`, and `pnpm perf:compare` prints two labelled sets side by side. It is a local tool, not part of CI. See [frontend-perf-measurement.md](../../docs/engineering/frontend-perf-measurement.md) for setup, the scenarios and how to read the output.
+
+### Performance PRs
+
+A PR that claims to make the frontend faster includes the `pnpm perf:compare --a before --b after` table for the scenario it targets, measured on the same machine. A PR that adds a scenario adds its baseline to [frontend-perf-baseline.md](../../docs/engineering/frontend-perf-baseline.md).
 
 ## TDD Workflow
 

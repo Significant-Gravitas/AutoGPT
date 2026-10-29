@@ -20,7 +20,7 @@ export function CronSchedulerDialog({
   setOpen,
 
   defaultCronExpression = "",
-  title = "Schedule Graph",
+  title = "Schedule Workflow",
   inputs,
   credentials,
 }: CronSchedulerDialogProps) {
@@ -31,6 +31,7 @@ export function CronSchedulerDialog({
     handleCreateSchedule,
     scheduleName,
     setScheduleName,
+    scheduleNameError,
     isCreatingSchedule,
   } = useCronSchedulerDialog({
     open,
@@ -55,6 +56,7 @@ export function CronSchedulerDialog({
             className="max-w-80"
             value={scheduleName}
             onChange={(e) => setScheduleName(e.target.value)}
+            error={scheduleNameError}
           />
 
           <CronScheduler
@@ -65,12 +67,14 @@ export function CronSchedulerDialog({
 
           {/* Timezone info */}
           {userTimezone === "not-set" ? (
-            <div className="flex items-center gap-2 rounded-xlarge border border-amber-200 bg-amber-50 p-3">
-              <InfoIcon className="h-4 w-4 text-amber-600" />
-              <Text variant="body" className="text-amber-800">
+            <div className="flex items-center gap-2 rounded-xlarge border border-warning-border bg-warning-surface p-3">
+              <InfoIcon className="h-4 w-4 text-warning-foreground" />
+              <Text variant="body" tone="warning">
                 No timezone set. Schedule will run in UTC.
-                <a href="/profile/settings" className="ml-1 underline">
-                  Set your timezone
+                <a href="/settings/account" className="ml-1 underline">
+                  <Text variant="body" as="span" tone="inherit">
+                    Set your timezone
+                  </Text>
                 </a>
               </Text>
             </div>

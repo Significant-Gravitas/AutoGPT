@@ -1,0 +1,244 @@
+import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
+import { beforeEach, describe, expect, test } from "vitest";
+import {
+  assembledKit,
+  EMPTY_DRAFT,
+  getExpertLimitCode,
+  kitBudgetLabel,
+  kitToolsLabel,
+  loadDraft,
+  raisedIdentity,
+  type RaiseDraft,
+  resolveVoicePreferences,
+  saveDraft,
+  VOICE_SKIPPED_LABEL,
+  voiceSummaryLabel,
+} from "./helpers";
+import { colorForCategory } from "./components/CategoryStep/helpers";
+
+const samples: VoiceSample[] = [
+  { label: "Direct", text: "Do this next." },
+  { label: "Warm", text: "Let's work through this together." },
+];
+
+describe("raise helpers", () => {
+  test("labels preset and custom voice choices", () => {
+    expect(voiceSummaryLabel({ choice: "a" }, samples)).toBe("Direct");
+    expect(voiceSummaryLabel({ choice: "b" }, samples)).toBe("Warm");
+    expect(
+      voiceSummaryLabel(
+        { choice: "custom", customText: "My own sample" },
+        samples,
+      ),
+    ).toBe("My own writing sample");
+  });
+
+  test("resolves a preset and rejects a blank custom voice", () => {
+    expect(resolveVoicePreferences({ choice: "a" }, samples)).toContain(
+      "Preferred writing style: Direct.",
+    );
+    expect(
+      resolveVoicePreferences({ choice: "custom", customText: "   " }, samples),
+    ).toBeNull();
+  });
+
+  test("builds the same complete raised identity shown by the backend", () => {
+    expect(raisedIdentity("Otto")).toBe(
+      "I'm Otto, an AI Expert created by you. I use your instructions to help with your work.",
+    );
+  });
+
+  test("extracts a structured expert-limit code safely", () => {
+    expect(
+      getExpertLimitCode({
+        detail: { code: "raised_expert_lifetime_limit", limit: 100 },
+      }),
+    ).toBe("raised_expert_lifetime_limit");
+    expect(getExpertLimitCode({ detail: "legacy error" })).toBeNull();
+    expect(getExpertLimitCode(null)).toBeNull();
+  });
+
+  test("formats weekly budget and tool labels for the soul preview", () => {
+    expect(kitBudgetLabel(null)).toBeNull();
+    expect(kitBudgetLabel({ weeklyBudget: null, attachments: [] })).toBeNull();
+    expect(kitBudgetLabel({ weeklyBudget: 0, attachments: [] })).toBe(
+      "No weekly limit",
+    );
+    expect(kitBudgetLabel({ weeklyBudget: 500, attachments: [] })).toBe(
+      "$5 / week",
+    );
+    expect(
+      kitToolsLabel({
+        weeklyBudget: null,
+        attachments: [
+          {
+            kind: "skill",
+            source: "library",
+            id: "seo-audit",
+            name: "SEO audit",
+          },
+        ],
+      }),
+    ).toBe("SEO audit");
+  });
+
+  test("assembles preview kit from answered budget and attachments", () => {
+    expect(assembledKit(EMPTY_DRAFT)).toBeNull();
+    expect(
+      assembledKit({
+        ...EMPTY_DRAFT,
+        budget: { credits: 500 },
+        marketplace: [
+          {
+            kind: "workflow",
+            source: "marketplace",
+            id: "listing-1",
+            name: "SEO Blog Writer",
+          },
+        ],
+      }),
+    ).toEqual({
+      weeklyBudget: 500,
+      attachments: [
+        {
+          kind: "workflow",
+          source: "marketplace",
+          id: "listing-1",
+          name: "SEO Blog Writer",
+        },
+      ],
+    });
+  });
+
+  test("keeps a skipped budget distinct from an unanswered one", () => {
+    expect(assembledKit({ ...EMPTY_DRAFT, budget: { credits: null } })).toEqual(
+      { weeklyBudget: null, attachments: [] },
+    );
+  });
+});
+
+describe("restoring a persisted draft", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  test("backfills the skipped-voice label when the draft is past the voice beat", () => {
+    saveDraft({ ...EMPTY_DRAFT, step: "budget", voiceLabel: null });
+
+    expect(loadDraft().voiceLabel).toBe(VOICE_SKIPPED_LABEL);
+  });
+
+  test("leaves the voice beat unanswered when the draft has not reached it", () => {
+    saveDraft({ ...EMPTY_DRAFT, step: "about", voiceLabel: null });
+
+    expect(loadDraft().voiceLabel).toBeNull();
+  });
+
+  test("keeps an explicitly picked voice label", () => {
+    saveDraft({ ...EMPTY_DRAFT, step: "budget", voiceLabel: "Direct" });
+
+    expect(loadDraft().voiceLabel).toBe("Direct");
+  });
+
+  test("answers the area from the role an earlier draft was started with", () => {
+    saveDraftFromEarlierBuild({
+      hasStarted: true,
+      role: "marketer",
+      color: "rose-300",
+      jobTitle: "Marketing Manager",
+      name: "Nova",
+      avatarUrl: "",
+      step: "about",
+    });
+
+    const draft = loadDraft();
+    expect(draft).toMatchObject({
+      category: "marketing",
+      color: "rose-300",
+      step: "about",
+    });
+    expect(draft).not.toHaveProperty("role");
+  });
+
+  test("reads a typed role for its area and colors the draft to match", () => {
+    saveDraftFromEarlierBuild({
+      hasStarted: true,
+      role: "Invoice chaser",
+      jobTitle: "",
+      step: "name",
+    });
+
+    expect(loadDraft()).toMatchObject({
+      category: "finance",
+      color: colorForCategory("finance"),
+      step: "name",
+    });
+  });
+
+  test("keeps a custom role when reopening a draft without a job title", () => {
+    saveDraftFromEarlierBuild({ role: "Invoice chaser", step: "avatar" });
+
+    const draft = loadDraft();
+    expect(draft).toMatchObject({
+      step: "jobTitle",
+      category: "finance",
+      legacyRole: "Invoice chaser",
+    });
+    saveDraft(draft);
+    expect(loadDraft()).toEqual(draft);
+  });
+
+  test("moves a draft parked on the old area beat on to the avatar", () => {
+    saveDraftFromEarlierBuild({
+      hasStarted: true,
+      role: "marketer",
+      jobTitle: "Marketing Manager",
+      name: "Nova",
+      step: "category",
+    });
+
+    expect(loadDraft()).toMatchObject({
+      category: "marketing",
+      step: "avatar",
+    });
+  });
+
+  test("opens a draft still on the retired role question at the area beat", () => {
+    saveDraftFromEarlierBuild({ hasStarted: true, role: null, step: "role" });
+
+    expect(loadDraft()).toMatchObject({ category: null, step: "category" });
+  });
+
+  test("moves a draft parked on the retired kit step onto budget", () => {
+    saveDraftFromEarlierBuild({ step: "kit" });
+
+    expect(loadDraft().step).toBe("budget");
+  });
+
+  test("sends a draft from before the job title beat back to that beat", () => {
+    saveDraftFromEarlierBuild({
+      hasStarted: true,
+      role: "marketer",
+      name: "Nova",
+      step: "avatar",
+    });
+
+    expect(loadDraft()).toEqual({
+      ...EMPTY_DRAFT,
+      hasStarted: true,
+      category: "marketing",
+      color: colorForCategory("marketing"),
+      step: "jobTitle",
+    });
+  });
+
+  test("restarts the flow when the stored step is not a known step", () => {
+    saveDraftFromEarlierBuild({ step: "space-invaders" });
+
+    expect(loadDraft().step).toBe(EMPTY_DRAFT.step);
+  });
+});
+
+function saveDraftFromEarlierBuild(fields: object) {
+  saveDraft({ ...EMPTY_DRAFT, ...fields } as RaiseDraft);
+}

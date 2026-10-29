@@ -18,4 +18,9 @@ reach a block as a "profile key".
 
 from backend.sdk import ProviderBuilder
 
-ayrshare = ProviderBuilder("ayrshare").with_managed_api_key().build()
+ayrshare = (
+    ProviderBuilder("ayrshare")
+    .with_description("Post to every social network")
+    .with_managed_api_key()
+    .build()
+)

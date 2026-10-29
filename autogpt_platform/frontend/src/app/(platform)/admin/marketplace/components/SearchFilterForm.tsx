@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Input } from "@/components/__legacy__/ui/input";
-import { Button } from "@/components/__legacy__/ui/button";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
+import { Button } from "@/components/atoms/Button/Button";
 import { Search } from "lucide-react";
 import {
   Select,
@@ -11,8 +11,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "@/components/atoms/Select/components/SelectPrimitives";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import { isKey } from "@/lib/keyboard";
 
 export function SearchAndFilterAdminMarketplace({
   initialSearch,
@@ -60,13 +61,14 @@ export function SearchAndFilterAdminMarketplace({
   return (
     <div className="flex items-center justify-between">
       <div className="flex w-full items-center gap-2">
-        <Input
+        <BaseInput
           placeholder="Search agents by Name, Creator, or Description..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+          onKeyDown={(e) => isKey(e, "Enter") && handleSearch()}
         />
-        <Button variant="outline" onClick={handleSearch}>
+        {/* oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2) */}
+        <Button variant="legacy-outline" onClick={handleSearch}>
           <Search className="h-4 w-4" />
         </Button>
       </div>

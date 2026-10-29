@@ -2,6 +2,7 @@
 
 import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/executionStartedResponse";
 import { Button } from "@/components/atoms/Button/Button";
+import { executionSharePath } from "@/lib/share/routes";
 import { useRouter } from "next/navigation";
 import {
   ContentCard,
@@ -29,6 +30,7 @@ export function titleForStatus(status: string | undefined): string {
     return "Execution stopped";
   if (s === "TIMED_OUT" || s === "INCOMPLETE") return "Execution incomplete";
   if (s === "RUNNING") return "Execution running";
+  if (s === "SCHEDULED") return "Execution scheduled";
   return "Execution started";
 }
 
@@ -38,8 +40,20 @@ export function ExecutionStartedCard({ output }: Props) {
   // onto the URL so the builder's in-place execution UI opens — the
   // "View Execution" button here would navigate the user away from the
   // page they're editing, so hide it.
-  const { chatSurface } = useCopilotChatActions();
-  const hideViewExecution = chatSurface === "builder";
+  //
+  // On the public share viewer, route the CTA to the linked execution's
+  // own share page (``/share/{token}``) when a linked share exists.
+  // If it doesn't (chat shared without opting in to share this run),
+  // hide the button — the auth-gated /library URL is unreachable.
+  const { chatSurface, getExecutionShareToken } = useCopilotChatActions();
+  const linkedShareToken = getExecutionShareToken?.(output.execution_id);
+  const hideViewExecution =
+    chatSurface === "builder" || (chatSurface === "share" && !linkedShareToken);
+
+  const href = linkedShareToken
+    ? executionSharePath(linkedShareToken)
+    : (output.library_agent_link ??
+      `/library/agents/${output.graph_id}?activeTab=runs&activeItem=${output.execution_id}`);
 
   return (
     <ContentGrid>
@@ -51,12 +65,7 @@ export function ExecutionStartedCard({ output }: Props) {
           <Button
             size="small"
             className="mt-3"
-            onClick={() =>
-              router.push(
-                output.library_agent_link ??
-                  `/library/agents/${output.graph_id}?activeTab=runs&activeItem=${output.execution_id}`,
-              )
-            }
+            onClick={() => router.push(href)}
           >
             View Execution
           </Button>

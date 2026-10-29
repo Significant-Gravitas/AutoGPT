@@ -14,18 +14,28 @@ x-backend-env:
   DATABASEMANAGER_HOST: database_manager
   EXECUTIONMANAGER_HOST: executor
   NOTIFICATIONMANAGER_HOST: notification_server
+  PLATFORMLINKINGMANAGER_HOST: platform_linking_manager
   CLAMAV_SERVICE_HOST: clamav
   DB_HOST: db
-  REDIS_HOST: redis
+  REDIS_HOST: redis-0
+  REDIS_PORT: "17000"
+  # The 3-container local cluster announces distinct compose hostnames per
+  # shard (redis-0/1/2), each resolvable via Docker DNS inside the compose
+  # network. Bypass the HOST-pinning address_remap so CLUSTER SLOTS uses the
+  # announced addresses directly — see ``backend.data.redis_client``.
+  REDIS_USE_ANNOUNCED_ADDRESS: "true"
   RABBITMQ_HOST: rabbitmq
   GRAPHITI_FALKORDB_HOST: falkordb
   GRAPHITI_FALKORDB_PORT: "6379"
-  # Override Supabase URL for Docker network
-  SUPABASE_URL: http://kong:8000
+  # JWKS endpoint of the Better Auth service embedded in the frontend.
+  # Containers reach it via the compose service name, not localhost.
+  JWT_JWKS_URL: http://frontend:3000/api/auth/jwks
   # Database connection string for Docker network
   # This cannot be constructed like in .env because we cannot interpolate values set here (DB_HOST)
-  DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
-  DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+  # The password is POSTGRES_PASSWORD from autogpt_platform/.env, as for `db`.
+  DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?run make init-env in autogpt_platform/ to generate it}@db:5432/postgres?connect_timeout=60&schema=platform
+  DIRECT_URL: postgresql://postgres:${POSTGRES_PASSWORD:?run make init-env in autogpt_platform/ to generate it}@db:5432/postgres?connect_timeout=60&schema=platform
+  FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
 
 # Common env_file configuration for backend services
 x-backend-env-files: &backend-env-files
@@ -33,6 +43,45 @@ x-backend-env-files: &backend-env-files
     - backend/.env.default # Base defaults (always exists)
     - path: backend/.env # User overrides (optional)
       required: false
+
+x-codex-tmpfs: &codex-tmpfs
+  - /run/autogpt-codex:rw,nosuid,nodev,noexec,mode=0700,size=128m
+
+# Shared base for the three Redis Cluster shards + one-shot init sidecar.
+# The anchor absorbs image + network + server command so each service body
+# collapses to its hostname + port + (for the seed) healthcheck.
+#
+# REDIS_PASSWORD comes from the backend env files, where the backend reads it
+# too. Each shard takes it on stdin as config, so it never shows up in the
+# process list. A backend/.env from before shards had a password has none, and
+# the cluster then runs without one, as it used to; `make init-env` adds it.
+x-redis-node: &redis-node
+  image: redis:7
+  # A stopping shard writes its data out first; give it time to finish.
+  stop_grace_period: 60s
+  networks:
+    - app-network
+  <<: *backend-env-files
+  command:
+    - sh
+    - -c
+    - |
+      port="$${REDIS_NODE_PORT:?}"
+      auth=""
+      if [ -n "$${REDIS_PASSWORD:-}" ]; then
+        # A line break would start a config directive of its own.
+        if [ "$$(printf '%s' "$$REDIS_PASSWORD" | tr -d '\r\n')" != "$$REDIS_PASSWORD" ]; then
+          echo "REDIS_PASSWORD must be a single line" >&2
+          exit 1
+        fi
+        # Escaped for a quoted config value, which a backslash or quote would end.
+        password=$$(printf '%s' "$$REDIS_PASSWORD" | sed 's/[\\"]/\\&/g')
+        auth="requirepass \"$$password\"
+      masterauth \"$$password\""
+      fi
+      exec docker-entrypoint.sh redis-server - --port "$$port" --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname "$$(hostname)" --cluster-announce-port "$$port" --cluster-announce-bus-port "$$((port + 10000))" --cluster-preferred-endpoint-type hostname <<EOF
+      $$auth
+      EOF
 
 services:
   migrate:
@@ -71,24 +120,113 @@ services:
       retries: 3
       start_period: 5s
 
-  redis:
-    image: redis:latest
+  # Three-container 3-master Redis Cluster for local dev. Stock ``redis:7``
+  # on each shard runs its default entrypoint; the one-shot ``redis-init``
+  # sidecar runs ``redis-cli --cluster create`` once and exits. No volumes
+  # — local dev treats the cluster as cache-only, so every ``docker compose
+  # up`` starts fresh. (Persisting only the seed volume across restarts is
+  # a trap: the other shards come back with new IDs and the seed's
+  # ``nodes.conf`` pins stale peers that cluster gossip can't heal.) Each
+  # shard announces its own compose hostname via
+  # ``--cluster-announce-hostname`` so both in-compose clients (Docker DNS)
+  # and host-native clients (handled by the backend's ``address_remap``)
+  # receive a consistent address on CLUSTER SLOTS. Ports 17000/17001/17002
+  # sit well clear of FalkorDB on host 6380. They are published on 127.0.0.1
+  # only, for `make run-backend` and tools on this machine.
+  redis-0:
+    <<: *redis-node
+    hostname: redis-0
+    environment:
+      REDIS_NODE_PORT: "17000"
     ports:
-      - "6379:6379"
-    networks:
-      - app-network
+      - "127.0.0.1:17000:17000"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        [
+          "CMD-SHELL",
+          "if [ -n \"$${REDIS_PASSWORD:-}\" ]; then export REDISCLI_AUTH=\"$$REDIS_PASSWORD\"; fi; redis-cli -p 17000 ping && redis-cli -p 17000 cluster info | grep -q 'cluster_state:ok'",
+        ]
       interval: 10s
       timeout: 5s
-      retries: 5
-  falkordb:
-    image: falkordb/falkordb:latest
-    ports:
-      - "6380:6379" # FalkorDB Redis protocol (6380 to avoid clash with Redis on 6379)
-      - "3001:3000" # FalkorDB web UI
+      retries: 30
+  redis-1:
+    <<: *redis-node
+    hostname: redis-1
     environment:
-      - REDIS_ARGS=--requirepass ${GRAPHITI_FALKORDB_PASSWORD:-}
+      REDIS_NODE_PORT: "17001"
+    ports:
+      - "127.0.0.1:17001:17001"
+  redis-2:
+    <<: *redis-node
+    hostname: redis-2
+    environment:
+      REDIS_NODE_PORT: "17002"
+    ports:
+      - "127.0.0.1:17002:17002"
+  # Idempotent within the lifetime of a single compose project: a re-``up``
+  # without ``down`` leaves the already-formed cluster untouched. A ``down`` +
+  # ``up`` wipes every shard (no volumes) and re-creates from scratch. Shards
+  # that Compose recreates instead (a changed setting, a new image) keep their
+  # data and the cluster's ``nodes.conf`` in their anonymous ``/data`` volumes
+  # but come back on new addresses, where the others can't find them: each is
+  # introduced to the rest at their current address. A cluster that still
+  # can't form is started over only if its shards hold no keys, because the
+  # backend keeps work in progress in Redis, not just cache.
+  redis-init:
+    <<: *redis-node
+    depends_on: [redis-0, redis-1, redis-2]
+    restart: "no"
+    # A started shard can take a second to accept connections, and this runs once: wait for every PONG.
+    command:
+      - sh
+      - -c
+      - |
+        if [ -n "$${REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$$REDIS_PASSWORD"; fi
+        nodes="redis-0:17000 redis-1:17001 redis-2:17002"
+        cli() { node="$$1"; shift; redis-cli -h "$${node%:*}" -p "$${node#*:}" "$$@"; }
+        for node in $$nodes; do
+          i=0; until cli "$$node" ping 2>/dev/null | grep -q PONG || [ $$i -ge 60 ]; do i=$$((i + 1)); sleep 0.5; done
+        done
+        formed() { for node in $$nodes; do cli "$$node" cluster info 2>/dev/null | grep -q cluster_state:ok || return 1; done; }
+        if ! cli redis-0:17000 cluster info 2>/dev/null | grep -q '^cluster_slots_assigned:0'; then
+          for node in $$nodes; do
+            for peer in $$nodes; do
+              [ "$$peer" = "$$node" ] && continue
+              ip=$$(getent hosts "$${peer%:*}" | awk '{ print $$1; exit }')
+              cli "$$node" cluster meet "$$ip" "$${peer#*:}" "$$(($${peer#*:} + 10000))" >/dev/null 2>&1
+            done
+          done
+          i=0; until formed || [ $$i -ge 40 ]; do i=$$((i + 1)); sleep 0.5; done
+          formed && exit 0
+        fi
+        for node in $$nodes; do
+          keys=$$(cli "$$node" dbsize 2>/dev/null)
+          if [ "$$keys" != 0 ]; then
+            echo "redis-init: the cluster did not form and $${node%:*} may hold data (DBSIZE answered '$$keys'), so nothing is reset. To start Redis empty instead, run docker compose rm -sf redis-0 redis-1 redis-2 and then docker compose up -d." >&2
+            exit 1
+          fi
+        done
+        for node in $$nodes; do
+          cli "$$node" cluster reset hard >/dev/null 2>&1
+        done
+        redis-cli --cluster create redis-0:17000 redis-1:17001 redis-2:17002 --cluster-replicas 0 --cluster-yes
+  falkordb:
+    # The version infra deploys; bump every FalkorDB pin together (OPEN-3746, #16224).
+    image: falkordb/falkordb:v4.12.5
+    # Published on 127.0.0.1 only, for the backend outside Docker and tools on this machine.
+    ports:
+      - "127.0.0.1:6380:6379" # FalkorDB Redis protocol (6380 to avoid clash with Redis on 6379)
+      - "127.0.0.1:3001:3000" # FalkorDB web UI
+    <<: *backend-env-files
+    # `:?` exits the container if the var is unset/empty, surfacing a
+    # missing-config error instead of silent `--requirepass ""` auth.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        export REDIS_ARGS="--requirepass $${GRAPHITI_FALKORDB_PASSWORD:?GRAPHITI_FALKORDB_PASSWORD must be set: run make init-env in autogpt_platform/ to generate it}"
+        && exec /var/lib/falkordb/bin/run.sh "$$@"
+      - --
     volumes:
       - falkordb_data:/data
     networks:
@@ -97,7 +235,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          'redis-cli -p 6379 -a "${GRAPHITI_FALKORDB_PASSWORD:-}" --no-auth-warning ping && wget --spider -q http://localhost:3000 || exit 1',
+          'redis-cli -p 6379 -a "$${GRAPHITI_FALKORDB_PASSWORD:-}" --no-auth-warning ping | grep -q PONG',
         ]
       interval: 10s
       timeout: 5s
@@ -115,10 +253,39 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
+    # Published on 127.0.0.1 only, for the backend outside Docker.
     ports:
-      - "5672:5672"
+      - "127.0.0.1:5672:5672"
+
+  # One-shot: publishes the public skills catalog (marketplace skills and the
+  # expert roster) once the schema is migrated, the same way a deploy does
+  # after `prisma migrate deploy`. Idempotent, so a restart that changes
+  # nothing is a no-op. Needs GitHub; offline, set SKILLS_CATALOG_PATH in
+  # backend/.env to a local checkout. Fails once and visibly rather than
+  # looping, and nothing else waits on it: copies catch up lazily.
+  publish_skills:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
+    build:
+      context: ../
+      dockerfile: autogpt_platform/backend/Dockerfile
+      target: server
+    command: ["publish-skills-catalog", "--skip-missing-preloads"]
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      redis-0:
+        condition: service_healthy
+    <<: *backend-env-files
+    environment:
+      <<: *backend-env
+    networks:
+      - app-network
+    restart: "no"
 
   rest_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -130,7 +297,7 @@ services:
           target: autogpt_platform/backend/
           action: rebuild
     depends_on:
-      redis:
+      redis-0:
         condition: service_healthy
       db:
         condition: service_healthy
@@ -141,10 +308,13 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
+      CODEX_TEMP_ROOT: /run/autogpt-codex
+    tmpfs: *codex-tmpfs
     ports:
       - "8006:8006"
     volumes:
       - workspace-data:/app/autogpt_platform/backend/workspaces
+      - store-media-data:/app/autogpt_platform/backend/store-media
     networks:
       - app-network
     logging:
@@ -154,6 +324,7 @@ services:
         max-file: "3"
 
   executor:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -165,7 +336,7 @@ services:
           target: autogpt_platform/backend/
           action: rebuild
     depends_on:
-      redis:
+      redis-0:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -178,8 +349,11 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-    ports:
-      - "8002:8002"
+      CODEX_TEMP_ROOT: /run/autogpt-codex
+    tmpfs: *codex-tmpfs
+    # Metrics only. Reachable from the other containers, not from the host.
+    expose:
+      - "8002"
     networks:
       - app-network
     logging:
@@ -189,6 +363,7 @@ services:
         max-file: "3"
 
   copilot_executor:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -200,7 +375,7 @@ services:
           target: autogpt_platform/backend/
           action: rebuild
     depends_on:
-      redis:
+      redis-0:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -213,9 +388,12 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
+      CODEX_TEMP_ROOT: /run/autogpt-codex
       PYTHONUNBUFFERED: "1"
-    ports:
-      - "8008:8008"
+    tmpfs: *codex-tmpfs
+    # Metrics only. Reachable from the other containers, not from the host.
+    expose:
+      - "8008"
     volumes:
       - workspace-data:/app/autogpt_platform/backend/workspaces
     networks:
@@ -227,6 +405,7 @@ services:
         max-file: "3"
 
   websocket_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -240,7 +419,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      redis:
+      redis-0:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
@@ -260,6 +439,7 @@ services:
         max-file: "3"
 
   database_manager:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -278,8 +458,11 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-    ports:
-      - "8005:8005"
+    # Internal service. Reachable from the other containers, not from the host.
+    expose:
+      - "8005"
+    volumes:
+      - store-media-data:/app/autogpt_platform/backend/store-media
     networks:
       - app-network
     logging:
@@ -289,6 +472,7 @@ services:
         max-file: "3"
 
   scheduler_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -302,7 +486,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      redis:
+      redis-0:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -313,8 +497,9 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-    ports:
-      - "8003:8003"
+    # Internal service. Reachable from the other containers, not from the host.
+    expose:
+      - "8003"
     networks:
       - app-network
     logging:
@@ -324,6 +509,7 @@ services:
         max-file: "3"
 
   notification_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -346,8 +532,44 @@ services:
     <<: *backend-env-files
     environment:
       <<: *backend-env
-    ports:
-      - "8007:8007"
+    # Internal service. Reachable from the other containers, not from the host.
+    expose:
+      - "8007"
+    networks:
+      - app-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  platform_linking_manager:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
+    profiles: ["bot"]
+    build:
+      context: ../
+      dockerfile: autogpt_platform/backend/Dockerfile
+      target: server
+    command: ["platform-linking-manager"] # points to entry in [tool.poetry.scripts] in pyproject.toml
+    develop:
+      watch:
+        - path: ./
+          target: autogpt_platform/backend/
+          action: rebuild
+    depends_on:
+      db:
+        condition: service_healthy
+      redis-0:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      database_manager:
+        condition: service_started
+    <<: *backend-env-files
+    environment:
+      <<: *backend-env
+    # Internal service. Reachable from the other containers, not from the host.
+    expose:
+      - "8009"
     networks:
       - app-network
     logging:
@@ -362,6 +584,7 @@ services:
       target: prod
       args:
         NEXT_PUBLIC_PW_TEST: ${NEXT_PUBLIC_PW_TEST:-false}
+        NEXT_PUBLIC_FRONTEND_BASE_URL: ${NEXT_PUBLIC_FRONTEND_BASE_URL:-http://localhost:3000}
     depends_on:
       db:
         condition: service_healthy
@@ -384,12 +607,19 @@ services:
     environment:
       # Server-side environment variables (Docker service names)
       # These override the localhost URLs from env files when running in Docker
-      AUTH_CALLBACK_URL: http://rest_server:8006/auth/callback
-      SUPABASE_URL: http://kong:8000
       AGPT_SERVER_URL: http://rest_server:8006/api
       AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
+      NEXT_PUBLIC_FRONTEND_BASE_URL: ${NEXT_PUBLIC_FRONTEND_BASE_URL:-http://localhost:3000}
+      # Better Auth (embedded in this Next.js server) — talks to Postgres
+      # directly; tables live in the platform schema (Prisma migrations).
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?run make init-env in autogpt_platform/ to generate it}@db:5432/postgres
+      AUTH_DB_SCHEMA: platform
+      # Node closes an idle keep-alive socket after 5 s (+1 s buffer); a client reusing one right then
+      # gets "socket hang up". Keep idle sockets longer than clients and proxies leave them unused.
+      KEEP_ALIVE_TIMEOUT: "65000"
 volumes:
   workspace-data:
+  store-media-data:
   falkordb_data:
 
 networks:

@@ -1,22 +1,18 @@
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
+
+from prisma.enums import AlertCause
 
 from backend.blocks import get_block
 from backend.blocks._base import Block
-from backend.blocks.io import AgentOutputBlock
 from backend.data import redis_client as redis
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.execution import GraphExecutionEntry, NodeExecutionEntry
-from backend.data.model import GraphExecutionStats, NodeExecutionStats
-from backend.data.notifications import (
-    AgentRunData,
-    LowBalanceData,
-    NotificationEventModel,
-    NotificationType,
-    ZeroBalanceData,
-)
-from backend.notifications.notifications import queue_notification
+from backend.data.execution import ExecutionStatus, NodeExecutionEntry
+from backend.data.expert_spend import add_weekly_spend, add_weekly_spend_sync
+from backend.data.model import NodeExecutionStats
+from backend.notifications.alert_causes import LowBalanceCause, ZeroBalanceCause
 from backend.util.clients import (
     get_database_manager_async_client,
     get_database_manager_client,
@@ -24,7 +20,7 @@ from backend.util.clients import (
 )
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.logging import TruncatedLogger
-from backend.util.metrics import DiscordChannel, discord_send_alert
+from backend.util.metrics import DiscordChannel
 from backend.util.settings import Settings
 
 from .utils import LogMetadata, block_usage_cost, execution_usage_cost
@@ -64,9 +60,12 @@ async def clear_insufficient_funds_notifications(user_id: str) -> int:
         redis_client = await redis.get_redis_async()
         pattern = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:*"
         keys = [key async for key in redis_client.scan_iter(match=pattern)]
-        if keys:
-            return await redis_client.delete(*keys)
-        return 0
+        # Keys here span multiple graph IDs and therefore multiple cluster
+        # slots — a bulk DELETE would raise CROSSSLOT, so delete per key.
+        deleted = 0
+        for key in keys:
+            deleted += await redis_client.delete(key)
+        return deleted
     except Exception as e:
         logger.warning(
             f"Failed to clear insufficient funds notification flags for user "
@@ -76,12 +75,14 @@ async def clear_insufficient_funds_notifications(user_id: str) -> int:
 
 
 def _block_has_paid_cost_entry(block: Block, input_data: "dict[str, Any]") -> bool:
-    """Whether any BLOCK_COSTS entry matches this input — even if pre-flight is 0.
+    """Whether any non-free BLOCK_COSTS entry matches this input — even if
+    pre-flight is 0.
 
     Used to guard dynamic-cost blocks (SECOND/ITEMS/COST_USD) whose
     pre-flight cost is 0 but whose post-flight reconciliation will debit
     a real amount. A user with non-positive balance must not be allowed
-    to start such a block.
+    to start such a block. Free entries (e.g. Ollama models, Jev's BYOK
+    price) never debit, so they don't count.
     """
     from backend.data.block_cost_config import BLOCK_COSTS
 
@@ -90,7 +91,10 @@ def _block_has_paid_cost_entry(block: Block, input_data: "dict[str, Any]") -> bo
     block_costs = BLOCK_COSTS.get(type(block))
     if not block_costs:
         return False
-    return any(_is_cost_filter_match(bc.cost_filter, input_data) for bc in block_costs)
+    return any(
+        not bc.is_free and _is_cost_filter_match(bc.cost_filter, input_data)
+        for bc in block_costs
+    )
 
 
 def resolve_block_cost(
@@ -115,37 +119,62 @@ def resolve_block_cost(
 def charge_usage(
     node_exec: NodeExecutionEntry,
     execution_count: int,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
+    """Pre-flight charge for a node execution.
+
+    Returns ``(total_cost, remaining_balance, block_pre_flight_cost)``.
+    ``block_pre_flight_cost`` is the block-only portion (excludes the
+    every-N-blocks ``execution_usage_cost``) so reconciliation can settle
+    its delta against the exact value charged here, not a re-fetched one
+    that may have drifted if the estimates JSON was hot-swapped between
+    the two calls.
+    """
     total_cost = 0
     remaining_balance = 0
+    block_pre_flight = 0
     db_client = get_db_client()
     block, cost, matching_filter = resolve_block_cost(node_exec)
     if not block:
-        return total_cost, 0
+        return total_cost, 0, block_pre_flight
 
+    org_id = node_exec.execution_context.organization_id
     if cost > 0:
-        remaining_balance = db_client.spend_credits(
-            user_id=node_exec.user_id,
-            cost=cost,
-            metadata=UsageTransactionMetadata(
-                graph_exec_id=node_exec.graph_exec_id,
-                graph_id=node_exec.graph_id,
-                node_exec_id=node_exec.node_exec_id,
-                node_id=node_exec.node_id,
-                block_id=node_exec.block_id,
-                block=block.name,
-                input=matching_filter,
-                reason=f"Ran block {node_exec.block_id} {block.name}",
-            ),
+        block_metadata = UsageTransactionMetadata(
+            graph_exec_id=node_exec.graph_exec_id,
+            graph_id=node_exec.graph_id,
+            node_exec_id=node_exec.node_exec_id,
+            node_id=node_exec.node_id,
+            block_id=node_exec.block_id,
+            block=block.name,
+            input=matching_filter,
+            reason=f"Ran block {node_exec.block_id} {block.name}",
         )
+        if org_id:
+            remaining_balance = db_client.spend_org_credits(
+                org_id=org_id,
+                user_id=node_exec.user_id,
+                cost=cost,
+                metadata=block_metadata,
+                team_id=node_exec.execution_context.team_id,
+            )
+        else:
+            remaining_balance = db_client.spend_credits(
+                user_id=node_exec.user_id,
+                cost=cost,
+                metadata=block_metadata,
+            )
         total_cost += cost
+        block_pre_flight = cost
     elif _block_has_paid_cost_entry(block, node_exec.inputs):
         # Dynamic-cost blocks (SECOND/ITEMS/COST_USD) compute 0 pre-flight
         # because the real charge is settled post-flight against stats. Guard
         # execution here: a user with non-positive balance cannot start a
         # paid block even if the pre-flight estimate is zero, otherwise
         # reconciliation leaks real provider spend as an uncollectable debit.
-        remaining_balance = db_client.get_credits(user_id=node_exec.user_id)
+        if org_id:
+            remaining_balance = db_client.get_org_credits(org_id=org_id)
+        else:
+            remaining_balance = db_client.get_credits(user_id=node_exec.user_id)
         if remaining_balance <= 0:
             raise InsufficientBalanceError(
                 user_id=node_exec.user_id,
@@ -165,40 +194,93 @@ def charge_usage(
         execution_usage_cost(execution_count) if execution_count > 0 else (0, 0)
     )
     if cost > 0:
-        remaining_balance = db_client.spend_credits(
-            user_id=node_exec.user_id,
-            cost=cost,
-            metadata=UsageTransactionMetadata(
-                graph_exec_id=node_exec.graph_exec_id,
-                graph_id=node_exec.graph_id,
-                input={
-                    "execution_count": usage_count,
-                    "charge": "Execution Cost",
-                },
-                reason=f"Execution Cost for {usage_count} blocks of ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
-            ),
+        exec_metadata = UsageTransactionMetadata(
+            graph_exec_id=node_exec.graph_exec_id,
+            graph_id=node_exec.graph_id,
+            input={
+                "execution_count": usage_count,
+                "charge": "Execution Cost",
+            },
+            reason=f"Execution Cost for {usage_count} blocks of ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
         )
+        if org_id:
+            remaining_balance = db_client.spend_org_credits(
+                org_id=org_id,
+                user_id=node_exec.user_id,
+                cost=cost,
+                metadata=exec_metadata,
+                team_id=node_exec.execution_context.team_id,
+            )
+        else:
+            remaining_balance = db_client.spend_credits(
+                user_id=node_exec.user_id,
+                cost=cost,
+                metadata=exec_metadata,
+            )
         total_cost += cost
 
-    return total_cost, remaining_balance
+    if total_cost > 0 and node_exec.execution_context.expert_id:
+        add_weekly_spend_sync(node_exec.execution_context.expert_id, total_cost)
+
+    return total_cost, remaining_balance, block_pre_flight
+
+
+def redispatch_reconcile_baseline(node_exec: NodeExecutionEntry) -> int | None:
+    """What a re-dispatched node still has billed, for its reconciliation to
+    settle against. Its first dispatch was charged and this one is not (#15272).
+
+    - REVIEW: the run that parked the block returned without doing anything,
+      and ``on_node_execution`` reconciled it as a COMPLETED run with empty
+      stats. That settled the charge down to the block's price for empty
+      stats: the run price for per-run blocks, 0 for usage-priced ones. (A
+      SECOND-priced park would have settled to 1 credit, since a sub-second
+      run bills one unit; no block that can pause is SECOND-priced.) That
+      price is returned, so the resumed run settles to one run's cost.
+    - RUNNING: the pod died before reconciling, so the pre-flight charge still
+      stands. ``None`` makes reconciliation read the block's pre-flight price,
+      which equals that charge unless the price changed in between.
+    """
+    if node_exec.redispatched_from != ExecutionStatus.REVIEW:
+        return None
+    block = get_block(node_exec.block_id)
+    if not block:
+        return None
+    settled, _ = block_usage_cost(
+        block=block, input_data=node_exec.inputs, stats=NodeExecutionStats()
+    )
+    return settled
 
 
 async def charge_reconciled_usage(
     node_exec: NodeExecutionEntry,
     stats: NodeExecutionStats,
+    pre_flight_charge: int | None = None,
 ) -> tuple[int, int]:
     """Charge the dynamic portion of a block's cost from its execution stats.
 
     Computes post-flight cost from the execution stats and settles the delta
-    against the pre-flight estimate. Positive delta → charge the user; negative
-    delta → refund the overcharge (happens when a TOKENS block's flat
-    MODEL_COST floor exceeds the real token-metered cost). Zero delta is a
-    no-op — common for RUN-only blocks and any balanced estimate.
+    against the pre-flight estimate. Positive delta → charge the user (allowed
+    to push the balance negative — see below); negative delta → refund the
+    overcharge (happens when a TOKENS block's flat MODEL_COST floor exceeds
+    the real token-metered cost). Zero delta is a no-op — common for RUN-only
+    blocks and any balanced estimate.
+
+    Negative-balance handling: positive deltas are recorded with
+    ``fail_insufficient_credits=False`` so a wallet that can't cover the
+    shortfall ends up in debt rather than producing a `billing_leak`. The
+    block already ran and the provider was already paid in real $$ — failing
+    the spend would just hide the cost. The debt is naturally cleared on the
+    next top-up (auto or manual), since top-ups simply add to the balance.
 
     Called once per node execution AFTER the block has finished running and
-    stats (walltime, tokens, provider_cost) are populated. Swallows its own
-    InsufficientBalanceError because reconciliation must never poison the
-    success path — log and move on; the shortfall is captured in telemetry.
+    stats (walltime, tokens, provider_cost) are populated. Swallows any
+    unexpected exception so reconciliation never poisons the success path.
+
+    ``pre_flight_charge`` lets the caller pin the baseline to the exact
+    amount that was actually billed in `charge_usage`, instead of re-reading
+    the historical-average JSON. Without this, a hot-swap of
+    ``block_preflight_estimates.json`` between charge and reconciliation
+    would shift the baseline and skew the delta.
     """
     try:
         db_client = get_database_manager_async_client()
@@ -206,7 +288,10 @@ async def charge_reconciled_usage(
         if not block:
             return 0, 0
 
-        pre_flight, _ = block_usage_cost(block=block, input_data=node_exec.inputs)
+        if pre_flight_charge is None:
+            pre_flight, _ = block_usage_cost(block=block, input_data=node_exec.inputs)
+        else:
+            pre_flight = pre_flight_charge
         post_flight, matching_filter = block_usage_cost(
             block=block, input_data=node_exec.inputs, stats=stats
         )
@@ -218,68 +303,76 @@ async def charge_reconciled_usage(
         # amount is positive (i.e. credits back to the wallet). We reuse the
         # USAGE type so the refund is attributable to the same graph
         # execution in credit history.
-        remaining_balance = await db_client.spend_credits(
-            user_id=node_exec.user_id,
-            cost=delta,
-            metadata=UsageTransactionMetadata(
-                graph_exec_id=node_exec.graph_exec_id,
-                graph_id=node_exec.graph_id,
-                node_exec_id=node_exec.node_exec_id,
-                node_id=node_exec.node_id,
-                block_id=node_exec.block_id,
-                block=block.name,
-                input={**matching_filter, "reconciled_delta": delta},
-                reason=(
-                    f"Post-flight reconciliation for {block.name}: "
-                    f"actual={post_flight} credits, pre-flight={pre_flight}"
-                ),
+        #
+        # `fail_insufficient_credits=False` is passed for every reconciliation
+        # spend. For positive deltas this bypasses the balance guard so the
+        # spend always lands — the wallet may go negative; that's the point,
+        # we'd rather record real debt than leak the cost. For negative deltas
+        # (refunds) the flag is moot: `amount = -cost > 0`, so the SQL guard's
+        # `$2 >= 0` short-circuit holds regardless.
+        reconcile_metadata = UsageTransactionMetadata(
+            graph_exec_id=node_exec.graph_exec_id,
+            graph_id=node_exec.graph_id,
+            node_exec_id=node_exec.node_exec_id,
+            node_id=node_exec.node_id,
+            block_id=node_exec.block_id,
+            block=block.name,
+            input={**matching_filter, "reconciled_delta": delta},
+            reason=(
+                f"Post-flight reconciliation for {block.name}: "
+                f"actual={post_flight} credits, pre-flight={pre_flight}"
             ),
         )
+        org_id = node_exec.execution_context.organization_id
+        if org_id:
+            remaining_balance = await db_client.spend_org_credits(
+                org_id=org_id,
+                user_id=node_exec.user_id,
+                cost=delta,
+                metadata=reconcile_metadata,
+                team_id=node_exec.execution_context.team_id,
+                fail_insufficient_credits=False,
+            )
+        else:
+            remaining_balance = await db_client.spend_credits(
+                user_id=node_exec.user_id,
+                cost=delta,
+                metadata=reconcile_metadata,
+                fail_insufficient_credits=False,
+            )
         # Refunds can't push the balance below the threshold — skip.
+        # Only fire user-level low-balance handling when the spend landed on
+        # the USER ledger: no org context, or a personal org (which bills
+        # the owner's wallet). Real-org deductions come from OrgBalance, so
+        # the user's personal auto-top-up must not trigger for those.
+        # The delta has landed, so a failed check is logged here instead of
+        # dropping the delta via the handler below.
         if delta > 0:
-            # handle_low_balance is sync + does a blocking RPC; dispatch to
-            # thread so we don't block the event loop. Rare path (threshold
-            # crossings only).
-            await asyncio.to_thread(
-                handle_low_balance,
-                get_db_client(),
-                node_exec.user_id,
-                remaining_balance,
-                delta,
-            )
+            try:
+                user_ledger = not org_id or (
+                    await db_client.get_personal_org_owner(org_id) is not None
+                )
+                if user_ledger:
+                    # handle_low_balance is sync + does a blocking RPC;
+                    # dispatch to thread so we don't block the event loop.
+                    # Rare path (threshold crossings only).
+                    await asyncio.to_thread(
+                        handle_low_balance,
+                        get_db_client(),
+                        node_exec.user_id,
+                        remaining_balance,
+                        delta,
+                    )
+            except Exception:
+                logger.exception(
+                    f"Low-balance check failed after reconciling node "
+                    f"{node_exec.node_exec_id}"
+                )
+        # Keep the expert's weekly meter honest for dynamic-cost blocks:
+        # positive deltas add spend, refunds subtract.
+        if node_exec.execution_context.expert_id:
+            await add_weekly_spend(node_exec.execution_context.expert_id, delta)
         return delta, remaining_balance
-    except InsufficientBalanceError as e:
-        # Billing leak: work is already done, but the user cannot pay. Emit a
-        # structured ERROR so alerting can pick it up and ping the platform
-        # channel so the leak is visible in real time.
-        logger.error(
-            "billing_leak: insufficient balance after post-flight reconciliation",
-            extra={
-                "billing_leak": True,
-                "user_id": node_exec.user_id,
-                "graph_id": node_exec.graph_id,
-                "graph_exec_id": node_exec.graph_exec_id,
-                "node_exec_id": node_exec.node_exec_id,
-                "block_id": node_exec.block_id,
-                "cost": abs(e.amount),
-                "balance": e.balance,
-                "error": str(e),
-            },
-        )
-        try:
-            await discord_send_alert(
-                f"⚠️ billing_leak (post-flight reconciliation)\n"
-                f"user={node_exec.user_id} graph={node_exec.graph_id} "
-                f"exec={node_exec.graph_exec_id}\n"
-                f"block={node_exec.block_id} needed={abs(e.amount)} "
-                f"balance={e.balance}",
-                DiscordChannel.PLATFORM,
-            )
-        except Exception:
-            # Discord dispatch is best-effort; never let alert failure poison
-            # the success path of a completed block.
-            logger.exception("billing_leak discord alert dispatch failed")
-        return 0, 0
     except Exception:
         logger.exception(
             f"charge_reconciled_usage failed unexpectedly for block "
@@ -302,14 +395,27 @@ async def charge_node_usage(node_exec: NodeExecutionEntry) -> tuple[int, int]:
     (``increment_execution_count``). Nested tool executions are sub-steps
     of a single block run from the user's perspective and should not push
     them into higher per-execution cost tiers.
+
+    Pins ``node_exec.pre_flight_charge`` to the block cost actually spent,
+    so the post-flight reconciliation settles against what the wallet paid
+    (as the main queue does), not against a re-derived catalogue estimate.
     """
 
     def _run():
-        total_cost, remaining = charge_usage(node_exec, 0)
+        total_cost, remaining, block_pre_flight = charge_usage(node_exec, 0)
+        node_exec.pre_flight_charge = block_pre_flight
         if total_cost > 0:
-            handle_low_balance(
-                get_db_client(), node_exec.user_id, remaining, total_cost
-            )
+            try:
+                handle_low_balance(
+                    get_db_client(), node_exec.user_id, remaining, total_cost
+                )
+            except Exception:
+                # The spend has landed: a failed alert must not report it as a
+                # failed charge, or the caller drops it from the run's cost.
+                logger.exception(
+                    f"Low-balance check failed after charging node "
+                    f"{node_exec.node_exec_id}"
+                )
         return total_cost, remaining
 
     return await asyncio.to_thread(_run)
@@ -334,43 +440,6 @@ async def try_send_insufficient_funds_notif(
         log_metadata.warning(
             f"Failed to send insufficient funds notification: {notif_error}"
         )
-
-
-def handle_agent_run_notif(
-    db_client: "DatabaseManagerClient",
-    graph_exec: GraphExecutionEntry,
-    exec_stats: GraphExecutionStats,
-) -> None:
-    metadata = db_client.get_graph_metadata(
-        graph_exec.graph_id, graph_exec.graph_version
-    )
-    outputs = db_client.get_node_executions(
-        graph_exec.graph_exec_id,
-        block_ids=[AgentOutputBlock().id],
-    )
-
-    named_outputs = [
-        {
-            key: value[0] if key == "name" else value
-            for key, value in output.output_data.items()
-        }
-        for output in outputs
-    ]
-
-    queue_notification(
-        NotificationEventModel(
-            user_id=graph_exec.user_id,
-            type=NotificationType.AGENT_RUN,
-            data=AgentRunData(
-                outputs=named_outputs,
-                agent_name=metadata.name if metadata else "Unknown Agent",
-                credits_used=exec_stats.cost,
-                execution_time=exec_stats.walltime,
-                graph_id=graph_exec.graph_id,
-                node_count=exec_stats.node_count,
-            ),
-        )
-    )
 
 
 def handle_insufficient_funds_notif(
@@ -410,18 +479,19 @@ def handle_insufficient_funds_notif(
     metadata = db_client.get_graph_metadata(graph_id)
     base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
-    # Queue user email notification
-    queue_notification(
-        NotificationEventModel(
-            user_id=user_id,
-            type=NotificationType.ZERO_BALANCE,
-            data=ZeroBalanceData(
-                current_balance=e.balance,
-                billing_page_link=f"{base_url}/profile/credits",
-                shortfall=shortfall,
-                agent_name=metadata.name if metadata else "Unknown Agent",
-            ),
-        )
+    # Raise the alert condition rather than sending: the alert engine owns
+    # debouncing, coalescing and the daily cap, and folds anything it can't
+    # send into the next Briefing.
+    agent_name = metadata.name if metadata else "Unknown Agent"
+    db_client.raise_alert_condition(
+        user_id=user_id,
+        cause=AlertCause.ZERO_BALANCE,
+        cause_key=f"zero_balance:{graph_id}",
+        data=ZeroBalanceCause(
+            cta_path="/settings/billing",
+            agent=agent_name,
+            shortfall_display=f"${shortfall / 100:,.2f}",
+        ).model_dump(mode="json"),
     )
 
     # Send Discord system alert
@@ -463,15 +533,13 @@ def handle_low_balance(
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
-        queue_notification(
-            NotificationEventModel(
-                user_id=user_id,
-                type=NotificationType.LOW_BALANCE,
-                data=LowBalanceData(
-                    current_balance=current_balance,
-                    billing_page_link=f"{base_url}/profile/credits",
-                ),
-            )
+        db_client.raise_alert_condition(
+            user_id=user_id,
+            cause=AlertCause.LOW_BALANCE,
+            cause_key="low_balance",
+            data=_low_balance_cause(
+                current_balance, transaction_cost, db_client, user_id
+            ).model_dump(mode="json"),
         )
 
         try:
@@ -489,3 +557,43 @@ def handle_low_balance(
             )
         except Exception as e:
             logger.warning(f"Failed to send low balance Discord alert: {e}")
+
+
+def _low_balance_cause(
+    current_balance: int,
+    transaction_cost: int,
+    db_client: "DatabaseManagerClient",
+    user_id: str,
+) -> LowBalanceCause:
+    """Forecast the runway from what the account actually spends.
+
+    The rate used to be the cost of the single transaction that crossed the
+    threshold, which is not a rate at all: a one-cent charge against a
+    five-credit balance forecast a run-out date over a year away, inside an
+    email whose entire point is that the balance is nearly gone. Both the date
+    and the "per day" figure reached the customer.
+
+    With too little history to average, the forecast slots are left unset and
+    the alert says the balance is low without naming a date.
+    """
+    daily_rate = db_client.get_recent_daily_spend(user_id)
+    balance_display = f"${current_balance / 100:,.2f}"
+    scheduled_agents = db_client.count_scheduled_agents(user_id)
+
+    if daily_rate <= 0:
+        return LowBalanceCause(
+            cta_path="/settings/billing",
+            balance_display=balance_display,
+            scheduled_agents=scheduled_agents,
+        )
+
+    days_left = max(int(current_balance / daily_rate), 0)
+    runs_out = datetime.now(tz=timezone.utc) + timedelta(days=days_left)
+    return LowBalanceCause(
+        cta_path="/settings/billing",
+        days_left=days_left,
+        daily_rate_display=f"${daily_rate / 100:,.2f}",
+        balance_display=balance_display,
+        runs_out_label=f"{runs_out.day} {runs_out.strftime('%b')}",
+        scheduled_agents=scheduled_agents,
+    )

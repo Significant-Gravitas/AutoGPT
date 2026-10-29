@@ -2,9 +2,10 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
-import { CaretDownIcon, CaretUpIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { getIconSize, ShowMoreTextVariant } from "./helpers";
+import { ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface ShowMoreProps {
   children: string;
@@ -34,7 +35,7 @@ export function ShowMore({
 
   if (!shouldTruncate) {
     return (
-      <Text variant={variant} className={cn(className)}>
+      <Text variant={variant} data-slot="show-more" className={cn(className)}>
         {children}
       </Text>
     );
@@ -43,6 +44,7 @@ export function ShowMore({
   return (
     <Text
       variant={variant}
+      data-slot="show-more"
       className={cn(
         isExpanded
           ? "flex-end flex flex-wrap items-center"
@@ -54,21 +56,30 @@ export function ShowMore({
       {!isExpanded && "..."}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
+        data-slot="show-more-toggle"
         className={cn(
-          "ml-1 inline-flex items-center gap-1 font-medium text-black",
+          "ml-1 inline-flex items-center gap-1 font-medium text-foreground-base",
           toggleClassName,
         )}
         type="button"
       >
         {isExpanded ? (
           <>
-            <CaretUpIcon size={iconSize} weight="bold" />
-            <span>less</span>
+            <Icon
+              data-slot="show-more-toggle-icon"
+              icon={ArrowUp01Icon}
+              size={iconSize}
+            />
+            <span data-slot="show-more-toggle-label">less</span>
           </>
         ) : (
           <>
-            <CaretDownIcon size={iconSize} weight="bold" />
-            <span>more</span>
+            <Icon
+              data-slot="show-more-toggle-icon"
+              icon={ArrowDown01Icon}
+              size={iconSize}
+            />
+            <span data-slot="show-more-toggle-label">more</span>
           </>
         )}
       </button>

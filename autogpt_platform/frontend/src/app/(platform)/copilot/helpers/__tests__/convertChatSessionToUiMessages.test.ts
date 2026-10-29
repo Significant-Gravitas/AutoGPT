@@ -1,9 +1,78 @@
+import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { describe, expect, it } from "vitest";
-import { convertChatSessionMessagesToUiMessages } from "../convertChatSessionToUiMessages";
+import {
+  concatWithAssistantMerge,
+  convertChatSessionMessagesToUiMessages,
+} from "../convertChatSessionToUiMessages";
 
 const SESSION_ID = "sess-test";
 
 describe("convertChatSessionMessagesToUiMessages", () => {
+  it("keeps a run-post as its own bubble carrying run metadata", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "assistant", content: "Earlier turn.", sequence: 0 },
+        {
+          role: "assistant",
+          content: "I just finished a run.",
+          sequence: 1,
+          metadata: {
+            kind: "expert_run",
+            execution_id: "exec-1",
+            graph_id: "graph-1",
+            output_type: "table",
+          },
+        },
+      ],
+      { isComplete: true },
+    );
+
+    // The run-post is not folded into the preceding assistant bubble.
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[1].metadata).toMatchObject({ kind: "expert_run" });
+  });
+
+  it("keeps a skipped-run note as its own bubble between two replies", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "assistant", content: "Here is your briefing.", sequence: 0 },
+        {
+          role: "assistant",
+          content: "Skipped: daily usage limit reached. It didn't run.",
+          sequence: 1,
+          metadata: {
+            kind: "scheduled_chat_notice",
+            hidden_from_model: true,
+            headline: "Skipped: daily usage limit reached",
+            body: "It didn't run.",
+          },
+        },
+        { role: "assistant", content: "Next briefing.", sequence: 2 },
+      ],
+      { isComplete: true },
+    );
+
+    // Folded either way, the card would vanish into a reply.
+    expect(result.messages).toHaveLength(3);
+    expect(result.messages[1].metadata).toMatchObject({
+      kind: "scheduled_chat_notice",
+    });
+    expect(result.messages[2].metadata).toBeUndefined();
+  });
+
+  it("does not attach metadata to legacy assistant messages", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "assistant", content: "Plain reply.", sequence: 0 }],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].metadata).toBeUndefined();
+  });
+
   it("does not drop user messages with null content", () => {
     const result = convertChatSessionMessagesToUiMessages(
       SESSION_ID,
@@ -55,6 +124,21 @@ describe("convertChatSessionMessagesToUiMessages", () => {
 
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0].role).toBe("user");
+  });
+
+  it("preserves persisted kickoff metadata on the hydrated UI message", () => {
+    const metadata = {
+      hidden: true,
+      kind: "expert_kickoff",
+      expert_id: "3f8b0f7e-9f30-4a3b-a6a1-000000000001",
+    };
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "user", content: "kickoff", sequence: 0, metadata }],
+      { isComplete: true },
+    );
+
+    expect(result.messages[0].metadata).toEqual(metadata);
   });
 
   it("attaches a reasoning row between user/assistant to the surrounding assistant bubble", () => {
@@ -273,5 +357,424 @@ describe("convertChatSessionMessagesToUiMessages", () => {
     expect(result.messages).toHaveLength(2);
     const mergedId = result.messages[1].id;
     expect(result.stats.get(mergedId)?.createdAt).toBe(later);
+  });
+});
+
+// --------------------------------------------------------------------------- //
+//  concatWithAssistantMerge — page-boundary stitching                         //
+// --------------------------------------------------------------------------- //
+
+function uiAssistant(
+  sessionId: string,
+  seq: number,
+  text: string,
+): UIMessage<unknown, UIDataTypes, UITools> {
+  return {
+    id: `${sessionId}-seq-${seq}`,
+    role: "assistant",
+    parts: [{ type: "text", text, state: "done" }],
+  };
+}
+
+function uiUser(
+  sessionId: string,
+  seq: number,
+  text: string,
+): UIMessage<unknown, UIDataTypes, UITools> {
+  return {
+    id: `${sessionId}-seq-${seq}`,
+    role: "user",
+    parts: [{ type: "text", text, state: "done" }],
+  };
+}
+
+describe("concatWithAssistantMerge", () => {
+  it("returns b unchanged when a is empty", () => {
+    const b = [uiAssistant(SESSION_ID, 0, "hi")];
+    expect(concatWithAssistantMerge([], b)).toBe(b);
+  });
+
+  it("returns a unchanged when b is empty", () => {
+    const a = [uiAssistant(SESSION_ID, 0, "hi")];
+    expect(concatWithAssistantMerge(a, [])).toBe(a);
+  });
+
+  it("merges two ASSISTANT bubbles whose DB sequences are strictly adjacent", () => {
+    const a = [uiAssistant(SESSION_ID, 2, "hello")];
+    const b = [uiAssistant(SESSION_ID, 3, " world")];
+    const result = concatWithAssistantMerge(a, b);
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("assistant");
+    expect(result[0].parts).toHaveLength(2);
+  });
+
+  it("does NOT merge when DB sequences are not adjacent — a hidden user/reasoning row would be silently swallowed", () => {
+    // Real-world repro: assistant_seq3 + (user_seq4 not yet hydrated) +
+    // assistant_seq6.  Pre-fix this stitched seq3 and seq6 into one bubble
+    // and the chip's user follow-up at seq4 vanished.
+    const a = [uiAssistant(SESSION_ID, 3, "before")];
+    const b = [uiAssistant(SESSION_ID, 6, "after")];
+    const result = concatWithAssistantMerge(a, b);
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe(`${SESSION_ID}-seq-3`);
+    expect(result[1].id).toBe(`${SESSION_ID}-seq-6`);
+  });
+
+  it("does NOT absorb a run-post WorkCard into the preceding assistant bubble", () => {
+    const a = [uiAssistant(SESSION_ID, 2, "plain reply")];
+    const runPost = {
+      ...uiAssistant(SESSION_ID, 3, "I finished a run."),
+      metadata: { kind: "expert_run", execution_id: "exec-1" },
+    };
+    const result = concatWithAssistantMerge(a, [runPost]);
+    expect(result).toHaveLength(2);
+    expect(result[1].metadata).toMatchObject({ kind: "expert_run" });
+  });
+
+  it("does NOT let a run-post WorkCard absorb the following assistant bubble", () => {
+    const runPost = {
+      ...uiAssistant(SESSION_ID, 2, "I finished a run."),
+      metadata: { kind: "expert_run", execution_id: "exec-1" },
+    };
+    const b = [uiAssistant(SESSION_ID, 3, "plain reply")];
+    const result = concatWithAssistantMerge([runPost], b);
+    expect(result).toHaveLength(2);
+    expect(result[0].metadata).toMatchObject({ kind: "expert_run" });
+    expect(result[1].metadata).toBeUndefined();
+  });
+
+  it("does NOT merge when last-of-a is user and first-of-b is assistant", () => {
+    const a = [uiUser(SESSION_ID, 4, "follow up")];
+    const b = [uiAssistant(SESSION_ID, 5, "got it")];
+    const result = concatWithAssistantMerge(a, b);
+    expect(result).toHaveLength(2);
+  });
+
+  it("merges a single-row page B onto a multi-row merged bubble in page A using the LAST seq of the bubble", () => {
+    // Sentry: pre-fix, a merged bubble holding seq=5+6 was keyed
+    // ``-seq-5``, and a cross-page assistant at seq=7 failed the
+    // ``firstSeq === lastSeq + 1`` check (7 !== 5+1) and split into
+    // two bubbles.  The in-page merge now advances the id to the last
+    // seq, so the adjacency check sees ``7 === 6+1`` and merges.
+    const pageA = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "reasoning", content: "thinking", sequence: 5 },
+        { role: "assistant", content: "first part", sequence: 6 },
+      ],
+      { isComplete: true },
+    ).messages;
+    expect(pageA).toHaveLength(1);
+    expect(pageA[0].id).toBe(`${SESSION_ID}-seq-6`);
+    const pageB = [uiAssistant(SESSION_ID, 7, "continued")];
+    const result = concatWithAssistantMerge(pageA, pageB);
+    expect(result).toHaveLength(1);
+    expect(result[0].parts.length).toBeGreaterThan(1);
+  });
+
+  it("does NOT merge across hydrated → streaming boundary (streaming ids fail seq-extraction)", () => {
+    const a = [uiAssistant(SESSION_ID, 5, "from db")];
+    const b: UIMessage<unknown, UIDataTypes, UITools>[] = [
+      {
+        id: "ai-sdk-streaming-uuid",
+        role: "assistant",
+        parts: [{ type: "text", text: " streaming", state: "streaming" }],
+      },
+    ];
+    const result = concatWithAssistantMerge(a, b);
+    // Refusing to merge is the safer default — streaming consumer handles
+    // its own assistant continuity inside the active turn.
+    expect(result).toHaveLength(2);
+  });
+});
+
+describe("convertChatSessionMessagesToUiMessages — latest user marker", () => {
+  it("marks the latest user row as isLatestUserMessage=true", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { id: "uuid-user-1", role: "user", content: "first", sequence: 0 },
+        { id: "uuid-asst-1", role: "assistant", content: "reply", sequence: 1 },
+        { id: "uuid-user-2", role: "user", content: "newest", sequence: 2 },
+      ],
+      { isComplete: true },
+    );
+
+    const stats0 = result.stats.get(result.messages[0].id);
+    const stats2 = result.stats.get(
+      result.messages[result.messages.length - 1].id,
+    );
+    // First user row is older — not the latest.
+    expect(stats0?.isLatestUserMessage).toBeFalsy();
+    // Latest user row carries the marker; consumer (ChatMessagesContainer)
+    // decides whether to render the Queued badge by also checking
+    // session.chat_status === 'queued'.
+    expect(stats2?.isLatestUserMessage).toBe(true);
+    expect(stats2?.rawMessageId).toBe("uuid-user-2");
+  });
+
+  it("marks a single user row as the latest", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ id: "u1", role: "user", content: "hi", sequence: 0 }],
+      { isComplete: true },
+    );
+
+    const stats = result.stats.get(result.messages[0].id);
+    expect(stats?.isLatestUserMessage).toBe(true);
+  });
+
+  describe("orphan TodoWrite recovery", () => {
+    const todos = [
+      { content: "Step 1", activeForm: "Doing step 1", status: "completed" },
+      { content: "Step 2", activeForm: "Doing step 2", status: "completed" },
+    ];
+
+    function findTodoPart(result: {
+      messages: UIMessage<unknown, UIDataTypes, UITools>[];
+    }) {
+      return result.messages
+        .find((m) => m.role === "assistant")
+        ?.parts.find((p) => p.type === "tool-TodoWrite");
+    }
+
+    it("recovers an orphan result from the backend `todos` field", () => {
+      const result = convertChatSessionMessagesToUiMessages(
+        SESSION_ID,
+        [
+          { role: "assistant", content: "on it", sequence: 0 },
+          {
+            role: "tool",
+            content: JSON.stringify({ type: "todo_write", todos }),
+            tool_call_id: "call-1",
+            sequence: 1,
+          },
+        ],
+        { isComplete: true },
+      );
+
+      const todoPart = findTodoPart(result);
+      expect(todoPart).toBeDefined();
+      expect(
+        (todoPart as { input: { todos: unknown[] } }).input.todos,
+      ).toHaveLength(2);
+    });
+
+    it("ignores an orphan result missing a `todos` array", () => {
+      const result = convertChatSessionMessagesToUiMessages(
+        SESSION_ID,
+        [
+          { role: "assistant", content: "on it", sequence: 0 },
+          {
+            role: "tool",
+            content: JSON.stringify({ type: "todo_write", newTodos: todos }),
+            tool_call_id: "call-1",
+            sequence: 1,
+          },
+        ],
+        { isComplete: true },
+      );
+
+      expect(findTodoPart(result)).toBeUndefined();
+    });
+
+    it("does not duplicate when a whitespace-padded tool_call_id matches a consumed id", () => {
+      const result = convertChatSessionMessagesToUiMessages(
+        SESSION_ID,
+        [
+          {
+            role: "assistant",
+            content: "on it",
+            sequence: 0,
+            tool_calls: [
+              {
+                id: "call-1",
+                function: {
+                  name: "TodoWrite",
+                  arguments: JSON.stringify({ todos }),
+                },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: JSON.stringify({ type: "todo_write", todos }),
+            tool_call_id: " call-1 ",
+            sequence: 1,
+          },
+        ],
+        { isComplete: true },
+      );
+
+      const todoParts = result.messages
+        .find((m) => m.role === "assistant")
+        ?.parts.filter((p) => p.type === "tool-TodoWrite");
+      expect(todoParts).toHaveLength(1);
+    });
+  });
+
+  describe("tool output matching", () => {
+    it("attaches an output whose tool_call_id is whitespace-padded", () => {
+      const result = convertChatSessionMessagesToUiMessages(
+        SESSION_ID,
+        [
+          {
+            role: "assistant",
+            content: "running a tool",
+            sequence: 0,
+            tool_calls: [
+              {
+                id: "call-1",
+                function: { name: "SomeTool", arguments: "{}" },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: JSON.stringify({ ok: true }),
+            tool_call_id: " call-1 ",
+            sequence: 1,
+          },
+        ],
+        { isComplete: false },
+      );
+
+      const toolPart = result.messages
+        .find((m) => m.role === "assistant")
+        ?.parts.find((p) => p.type === "tool-SomeTool") as
+        | { state: string; output: unknown }
+        | undefined;
+
+      expect(toolPart?.state).toBe("output-available");
+      expect(toolPart?.output).toEqual({ ok: true });
+    });
+  });
+});
+
+// Exactly what `build_files_block` emits: the files hint first, then the
+// folders hint, either or both present.
+const FILE_HINT =
+  "Use read_workspace_file with the file_id to access file contents.";
+const FOLDER_HINT =
+  "Use list_workspace_files with the folder_id to see what is in a folder.";
+
+function userParts(content: string) {
+  const { messages } = convertChatSessionMessagesToUiMessages(
+    SESSION_ID,
+    [{ role: "user", content, sequence: 0 }],
+    { isComplete: true },
+  );
+  return messages[0].parts;
+}
+
+describe("the [Attached files] block", () => {
+  it("parses a folder-only block, leaving no raw text in the bubble", () => {
+    const parts = userParts(
+      `Look at this.\n\n[Attached files]\n- Reports (folder, 3 file(s) directly inside), folder_id=0fd0aaaa-1111-4222-8333-444455556666\n${FOLDER_HINT}`,
+    );
+
+    expect(parts).toEqual([
+      { type: "text", text: "Look at this.", state: "done" },
+      {
+        type: "data-workspace-folder",
+        data: {
+          id: "0fd0aaaa-1111-4222-8333-444455556666",
+          name: "Reports",
+          fileCount: 3,
+        },
+      },
+    ]);
+  });
+
+  it("parses a block with both a file and a folder, dropping both hint lines", () => {
+    const parts = userParts(
+      `Compare these.\n\n[Attached files]\n- a.txt (text/plain, 1.0 KB), file_id=0f11eeee-1111-4222-8333-444455556666\n- Reports (folder, 3 file(s) directly inside), folder_id=0fd0aaaa-1111-4222-8333-444455556666\n${FILE_HINT}\n${FOLDER_HINT}`,
+    );
+
+    const text = parts.find((p) => p.type === "text");
+    expect(text).toEqual({
+      type: "text",
+      text: "Compare these.",
+      state: "done",
+    });
+    expect(parts.map((p) => p.type)).toEqual([
+      "text",
+      "file",
+      "data-workspace-folder",
+    ]);
+    // Neither hint may survive as prose in the user's own bubble.
+    expect(JSON.stringify(parts)).not.toContain("list_workspace_files");
+    expect(JSON.stringify(parts)).not.toContain("read_workspace_file");
+  });
+
+  it("still parses a legacy files-only block", () => {
+    const parts = userParts(
+      `Here.\n\n[Attached files]\n- a.txt (text/plain, 1.0 KB), file_id=0f11eeee-1111-4222-8333-444455556666\n${FILE_HINT}`,
+    );
+    expect(parts.map((p) => p.type)).toEqual(["text", "file"]);
+    expect(JSON.stringify(parts)).not.toContain("[Attached files]");
+  });
+
+  it("leaves a message with no block alone", () => {
+    expect(userParts("just text")).toEqual([
+      { type: "text", text: "just text", state: "done" },
+    ]);
+  });
+});
+
+describe("a pause marker row", () => {
+  const MARKER =
+    "[__COPILOT_SYSTEM_e3b0__] Paused: this task is out of today's budget.";
+  const PAUSE = {
+    reason: "daily",
+    resets_at: "2026-10-12T06:00:00.000Z",
+    steps: null,
+    checkpoint_saved: true,
+    started: true,
+  };
+
+  it("becomes the Paused card's part, riding the bubble it merges into", () => {
+    const { messages } = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "Do the thing.", sequence: 0 },
+        { role: "assistant", content: "Saved where I got to.", sequence: 1 },
+        {
+          role: "assistant",
+          content: MARKER,
+          sequence: 2,
+          // The API client hands dates over as Date objects.
+          metadata: {
+            turn_paused: { ...PAUSE, resets_at: new Date(PAUSE.resets_at) },
+          },
+        },
+      ],
+      { isComplete: true },
+    );
+
+    expect(messages).toHaveLength(2);
+    expect(messages[1].parts).toEqual([
+      { type: "text", text: "Saved where I got to.", state: "done" },
+      { type: "data-turn-paused", id: "seq-2", data: PAUSE },
+    ]);
+  });
+
+  it("stays a system note when its pause can't be read", () => {
+    const { messages } = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        {
+          role: "assistant",
+          content: MARKER,
+          sequence: 0,
+          metadata: { turn_paused: { reason: "lunch" } },
+        },
+      ],
+      { isComplete: true },
+    );
+
+    expect(messages[0].parts).toEqual([
+      { type: "text", text: MARKER, state: "done" },
+    ]);
   });
 });

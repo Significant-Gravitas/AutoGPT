@@ -1,17 +1,41 @@
 "use client";
 
+import { FormProvider } from "react-hook-form";
 import { CronExpressionDialog } from "@/components/contextual/CronScheduler/cron-scheduler-dialog";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormField } from "@/components/molecules/Form/Form";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/molecules/Accordion/Accordion";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
+import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
-import { CalendarClockIcon } from "lucide-react";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import * as React from "react";
 import { StepHeader } from "../StepHeader";
+import { StepFooter } from "../StepFooter";
 import { ThumbnailImages } from "./components/ThumbnailImages";
+import { CharCountedTextarea } from "./components/CharCountedTextarea";
 import { Props, useAgentInfoStep } from "./useAgentInfoStep";
+import { SUB_HEADING_MAX } from "./helpers";
+import {
+  Album01Icon,
+  AlertCircleIcon,
+  Calendar03Icon,
+  CheckmarkCircle02Icon,
+  InformationCircleIcon,
+  SparklesIcon,
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+
+const DESCRIPTION_MAX = 1000;
+const INSTRUCTIONS_MAX = 2000;
 
 export function AgentInfoStep({
   onBack,
@@ -24,6 +48,7 @@ export function AgentInfoStep({
   const {
     form,
     agentId,
+    images,
     initialImages,
     initialSelectedImage,
     handleImagesChange,
@@ -38,245 +63,445 @@ export function AgentInfoStep({
     isMarketplaceUpdate,
   });
 
+  const { categories, isUnavailable, placeholder } = useStoreCategories();
+
   const [cronScheduleDialogOpen, setCronScheduleDialogOpen] =
     React.useState(false);
+  const [openAccordion, setOpenAccordion] = React.useState("");
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setOpenAccordion((current) => current || "basics");
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const handleScheduleChange = (cronExpression: string) => {
     form.setValue("recommendedScheduleCron", cronExpression);
   };
 
-  const categoryOptions = [
-    { value: "productivity", label: "Productivity" },
-    { value: "writing", label: "Writing & Content" },
-    { value: "development", label: "Development" },
-    { value: "data", label: "Data & Analytics" },
-    { value: "marketing", label: "Marketing & SEO" },
-    { value: "research", label: "Research & Learning" },
-    { value: "creative", label: "Creative & Design" },
-    { value: "business", label: "Business & Finance" },
-    { value: "personal", label: "Personal Assistant" },
-    { value: "other", label: "Other" },
-  ];
+  const categoryOptions = categories.map((category) => ({
+    value: category.value,
+    label: category.label,
+  }));
+
+  const isSubmitDisabled =
+    Object.keys(form.formState.errors).length > 0 || isSubmitting;
+
+  const watched = form.watch();
+  const errors = form.formState.errors;
+  const basicsHasError = !!(
+    errors.title ||
+    errors.slug ||
+    errors.subheader ||
+    errors.category
+  );
+  const experienceHasError = !!(
+    errors.description ||
+    errors.instructions ||
+    errors.youtubeLink ||
+    errors.agentOutputDemo
+  );
+  const thumbnailsHasError = !!errors.root;
+  const basicsComplete =
+    !basicsHasError &&
+    !!watched.title &&
+    !!watched.slug &&
+    !!watched.subheader &&
+    !!watched.category;
+  const thumbnailsComplete = !thumbnailsHasError && images.length > 0;
+  const experienceComplete =
+    !experienceHasError &&
+    !!watched.description &&
+    !!watched.youtubeLink &&
+    !!watched.agentOutputDemo;
+
+  const title = isMarketplaceUpdate
+    ? "Describe the update"
+    : "Build the store listing";
+  const description = isMarketplaceUpdate
+    ? "Explain what changed, then adjust any listing details that need to move with this version."
+    : "Write a bit of details about your workflow so reviewers and users know what to expect.";
 
   return (
-    <div className="mx-auto flex w-full flex-col rounded-3xl">
-      <StepHeader
-        title="Publish Agent"
-        description="Write a bit of details about your agent"
-      />
+    <div className="mx-auto flex w-full flex-col">
+      <StepHeader title={title} description={description} currentStep="info" />
 
-      <Form {...form}>
-        <form onSubmit={handleSubmit} className="flex-grow overflow-y-auto p-6">
-          {/* Changes summary field - only shown for updates */}
+      <FormProvider {...form}>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5 pb-5">
           {isMarketplaceUpdate && (
-            <FormField
-              control={form.control}
-              name="changesSummary"
-              render={({ field }) => (
-                <div className="mb-6">
+            <section className="rounded-2xl border border-warning-border bg-warning-surface p-4">
+              <div className="mb-4 flex items-start gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface text-warning-foreground shadow-subtle">
+                  <Icon icon={InformationCircleIcon} size={18} />
+                </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <Text variant="body-medium" as="h3" tone="warning-strong">
+                    Update note
+                  </Text>
+                  <Text variant="small" tone="warning">
+                    Reviewers use this to understand why the marketplace listing
+                    needs a new version.
+                  </Text>
+                </div>
+              </div>
+              <FormField
+                control={form.control}
+                name="changesSummary"
+                render={({ field }) => (
                   <Input
                     id={field.name}
+                    labelVariant="body"
                     label="What changed?"
+                    labelTooltip="Summary of what's new or improved in this version. Reviewers see this first."
                     type="textarea"
+                    rows={1}
                     placeholder="Describe what's new or improved in this version..."
                     error={form.formState.errors.changesSummary?.message}
                     required
+                    wrapperClassName="!mb-0"
                     {...field}
                   />
-                  <Text variant="small" className="mt-1 text-gray-600">
-                    This is required to help users understand what&apos;s
-                    different in this update.
-                  </Text>
-                </div>
-              )}
-            />
+                )}
+              />
+            </section>
           )}
 
-          {/* Optional section label for updates */}
-          {isMarketplaceUpdate && (
-            <div className="mb-4">
-              <Text variant="body" className="font-medium text-gray-700">
-                Optional: Update any of the following details (or leave them
-                as-is)
-              </Text>
-            </div>
-          )}
-
-          <FormField
-            control={form.control}
-            name="title"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Title"
-                type="text"
-                placeholder="Agent name"
-                error={form.formState.errors.title?.message}
-                {...field}
-              />
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="subheader"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Subheader"
-                type="text"
-                placeholder="A tagline for your agent"
-                error={form.formState.errors.subheader?.message}
-                {...field}
-              />
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="slug"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Slug"
-                type="text"
-                placeholder="URL-friendly name for your agent"
-                error={form.formState.errors.slug?.message}
-                {...field}
-              />
-            )}
-          />
-
-          <ThumbnailImages
-            agentId={agentId}
-            onImagesChange={handleImagesChange}
-            initialImages={initialImages}
-            initialSelectedImage={initialSelectedImage}
-            errorMessage={form.formState.errors.root?.message}
-          />
-
-          <FormField
-            control={form.control}
-            name="youtubeLink"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="YouTube video link"
-                type="url"
-                placeholder="Paste a video link here"
-                error={form.formState.errors.youtubeLink?.message}
-                {...field}
-              />
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="category"
-            render={({ field }) => (
-              <Select
-                id={field.name}
-                label="Category"
-                placeholder="Select a category for your agent"
-                value={field.value}
-                onValueChange={field.onChange}
-                error={form.formState.errors.category?.message}
-                options={categoryOptions}
-              />
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="description"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Description"
-                type="textarea"
-                placeholder="Describe your agent and what it does"
-                error={form.formState.errors.description?.message}
-                {...field}
-              />
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="agentOutputDemo"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Agent Output Demo"
-                type="url"
-                placeholder="Add a short video showing the agent's results in action."
-                error={form.formState.errors.agentOutputDemo?.message}
-                {...field}
-              />
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="instructions"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Instructions"
-                type="textarea"
-                placeholder="Explain to users how to run this agent and what to expect"
-                error={form.formState.errors.instructions?.message}
-                {...field}
-              />
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="recommendedScheduleCron"
-            render={({ field }) => (
-              <div className="mb-8 flex flex-col space-y-2">
-                <Text variant="large-medium">Recommended Schedule</Text>
-                <p className="text-xs text-gray-600">
-                  Suggest when users should run this agent for best results
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setCronScheduleDialogOpen(true)}
-                  className="w-full justify-start text-sm"
+          <Accordion
+            type="single"
+            collapsible
+            value={openAccordion}
+            onValueChange={setOpenAccordion}
+            className="overflow-hidden rounded-xl border border-border-base bg-surface shadow-subtle [&>*+*]:border-t [&>*+*]:border-border-base"
+          >
+            <AccordionItem value="basics" className="border-0 px-4">
+              <AccordionTrigger className="hover:no-underline">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  className="flex items-center gap-2"
                 >
-                  <CalendarClockIcon className="mr-2 h-4 w-4" />
-                  {field.value
-                    ? humanizeCronExpression(field.value)
-                    : "Set schedule"}
-                </Button>
-              </div>
-            )}
-          />
+                  <Icon
+                    icon={Store01Icon}
+                    size={18}
+                    className="text-foreground-tertiary"
+                  />
+                  Listing basics
+                  {basicsHasError ? (
+                    <Icon
+                      icon={AlertCircleIcon}
+                      size={16}
+                      className="text-error"
+                    />
+                  ) : basicsComplete ? (
+                    <Icon
+                      icon={CheckmarkCircle02Icon}
+                      size={16}
+                      className="text-brand"
+                    />
+                  ) : null}
+                </Text>
+              </AccordionTrigger>
+              <AccordionContent className="px-1 pb-4 pt-0">
+                <div className="grid gap-x-4 sm:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="title"
+                    render={({ field }) => (
+                      <Input
+                        id={field.name}
+                        labelVariant="body"
+                        label="Title"
+                        labelTooltip="Public name shown on the marketplace listing."
+                        type="text"
+                        placeholder="Workflow name"
+                        error={form.formState.errors.title?.message}
+                        {...field}
+                      />
+                    )}
+                  />
 
-          <div className="flex justify-between gap-4 pt-6">
-            <Button
-              type="button"
-              onClick={onBack}
-              variant="secondary"
-              className="w-full"
-            >
-              Back
-            </Button>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={
-                Object.keys(form.formState.errors).length > 0 || isSubmitting
-              }
-              loading={isSubmitting}
-            >
-              Submit for review
-            </Button>
-          </div>
+                  <FormField
+                    control={form.control}
+                    name="subheader"
+                    render={({ field }) => (
+                      <CharCountedTextarea
+                        max={SUB_HEADING_MAX}
+                        value={field.value ?? ""}
+                      >
+                        <Input
+                          id={field.name}
+                          labelVariant="body"
+                          label="Tagline"
+                          labelTooltip="The one-line subtitle shown under the workflow name and on preview cards. Start with a verb and name the outcome for the user."
+                          type="text"
+                          placeholder="Find decision-makers at any company in seconds"
+                          error={form.formState.errors.subheader?.message}
+                          required
+                          {...field}
+                        />
+                      </CharCountedTextarea>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="slug"
+                  render={({ field }) => (
+                    <Input
+                      id={field.name}
+                      labelVariant="body"
+                      label="Slug"
+                      labelTooltip="URL-friendly identifier used in the marketplace path. Lowercase letters, numbers, hyphens only."
+                      type="text"
+                      placeholder="URL-friendly name"
+                      error={form.formState.errors.slug?.message}
+                      {...field}
+                    />
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="category"
+                  render={({ field }) => (
+                    <Select
+                      id={field.name}
+                      labelVariant="body"
+                      label="Category"
+                      labelTooltip="Primary category that helps users discover the workflow."
+                      placeholder={placeholder}
+                      disabled={isUnavailable}
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      error={form.formState.errors.category?.message}
+                      options={categoryOptions}
+                    />
+                  )}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="thumbnails" className="border-0 px-4">
+              <AccordionTrigger className="hover:no-underline">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  className="flex items-center gap-2"
+                >
+                  <Icon
+                    icon={Album01Icon}
+                    size={18}
+                    className="text-foreground-tertiary"
+                  />
+                  Thumbnails
+                  {thumbnailsHasError ? (
+                    <Icon
+                      icon={AlertCircleIcon}
+                      size={16}
+                      className="text-error"
+                    />
+                  ) : thumbnailsComplete ? (
+                    <Icon
+                      icon={CheckmarkCircle02Icon}
+                      size={16}
+                      className="text-brand"
+                    />
+                  ) : null}
+                </Text>
+              </AccordionTrigger>
+              <AccordionContent className="px-1 pb-4 pt-0">
+                <ThumbnailImages
+                  agentId={agentId}
+                  onImagesChange={handleImagesChange}
+                  initialImages={initialImages}
+                  initialSelectedImage={initialSelectedImage}
+                  errorMessage={form.formState.errors.root?.message}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="experience" className="border-0 px-4">
+              <AccordionTrigger className="hover:no-underline">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  className="flex items-center gap-2"
+                >
+                  <Icon
+                    icon={SparklesIcon}
+                    size={18}
+                    className="text-foreground-tertiary"
+                  />
+                  Experience details
+                  {experienceHasError ? (
+                    <Icon
+                      icon={AlertCircleIcon}
+                      size={16}
+                      className="text-error"
+                    />
+                  ) : experienceComplete ? (
+                    <Icon
+                      icon={CheckmarkCircle02Icon}
+                      size={16}
+                      className="text-brand"
+                    />
+                  ) : null}
+                </Text>
+              </AccordionTrigger>
+              <AccordionContent className="px-1 pb-4 pt-0">
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <CharCountedTextarea
+                      max={DESCRIPTION_MAX}
+                      value={field.value ?? ""}
+                    >
+                      <Input
+                        id={field.name}
+                        labelVariant="body"
+                        label="Description"
+                        labelTooltip="What the workflow does and the outcome users get."
+                        type="textarea"
+                        rows={2}
+                        placeholder="Describe the outcome this workflow creates"
+                        error={form.formState.errors.description?.message}
+                        {...field}
+                      />
+                    </CharCountedTextarea>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="instructions"
+                  render={({ field }) => (
+                    <CharCountedTextarea
+                      max={INSTRUCTIONS_MAX}
+                      value={field.value ?? ""}
+                    >
+                      <Input
+                        id={field.name}
+                        labelVariant="body"
+                        label="Instructions"
+                        labelTooltip="Steps users should follow to set up and run the workflow."
+                        type="textarea"
+                        rows={2}
+                        placeholder="Explain inputs, setup, and what to expect after a run"
+                        error={form.formState.errors.instructions?.message}
+                        {...field}
+                      />
+                    </CharCountedTextarea>
+                  )}
+                />
+
+                <div className="grid gap-x-4 sm:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="youtubeLink"
+                    render={({ field }) => (
+                      <Input
+                        id={field.name}
+                        labelVariant="body"
+                        label="YouTube video link"
+                        labelTooltip="Demo or walkthrough video hosted on YouTube."
+                        type="url"
+                        placeholder="https://youtube.com/watch?v=..."
+                        error={form.formState.errors.youtubeLink?.message}
+                        {...field}
+                      />
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="agentOutputDemo"
+                    render={({ field }) => (
+                      <Input
+                        id={field.name}
+                        labelVariant="body"
+                        label="Output demo"
+                        labelTooltip="Link showing example output the workflow produces."
+                        type="url"
+                        placeholder="https://youtube.com/watch?v=..."
+                        error={form.formState.errors.agentOutputDemo?.message}
+                        {...field}
+                      />
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="recommendedScheduleCron"
+                  render={({ field }) => (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-1">
+                          <Text variant="body" as="span">
+                            Recommended schedule
+                          </Text>
+                          <InformationTooltip
+                            description="Suggested cron schedule users can run the workflow on. Sets a run cadence for recurring use cases."
+                            iconSize={20}
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCronScheduleDialogOpen(true)}
+                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-border-base bg-surface px-4 py-2.5 text-left text-foreground-base shadow-none transition-colors hover:border-border-strong focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                      >
+                        <Icon
+                          icon={Calendar03Icon}
+                          size={16}
+                          className="shrink-0 text-foreground-tertiary"
+                        />
+                        <Text
+                          variant="body-tight"
+                          as="span"
+                          tone={field.value ? "inherit" : "subtle"}
+                          className="truncate"
+                        >
+                          {field.value
+                            ? humanizeCronExpression(field.value)
+                            : "Set schedule"}
+                        </Text>
+                      </button>
+                    </div>
+                  )}
+                />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          <StepFooter
+            secondary={
+              <Button
+                type="button"
+                onClick={onBack}
+                variant="secondary"
+                size="small"
+                className="w-full sm:w-auto"
+              >
+                Back
+              </Button>
+            }
+            primary={
+              <Button
+                type="submit"
+                size="small"
+                disabled={isSubmitDisabled}
+                loading={isSubmitting}
+                className="w-full sm:w-auto"
+              >
+                {isSubmitting ? "Submitting" : "Submit for review"}
+              </Button>
+            }
+          />
         </form>
-      </Form>
+      </FormProvider>
 
       <CronExpressionDialog
         open={cronScheduleDialogOpen}

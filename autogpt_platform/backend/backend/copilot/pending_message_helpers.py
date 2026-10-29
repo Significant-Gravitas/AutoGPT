@@ -7,27 +7,51 @@ Also provides the call-rate-limit check for the queue endpoint so
 routes.py stays free of Redis/Lua details.
 """
 
+import asyncio
 import logging
-from typing import TYPE_CHECKING, Callable
+import uuid
+from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import HTTPException
 from pydantic import BaseModel
+from redis.exceptions import RedisClusterException, RedisError
 
-from backend.copilot.model import ChatMessage, upsert_chat_session
+from backend.copilot.model import (
+    CHAT_STATUS_QUEUED,
+    CHAT_STATUS_RUNNING,
+    ChatMessage,
+    upsert_chat_session,
+)
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
     PendingMessageContext,
+    accept_client_message,
+    claim_client_message,
     drain_pending_messages,
-    format_pending_as_user_message,
+    finish_despite_cancellation,
+    peek_pending_count,
+    pending_message_text,
     push_pending_message,
+    push_pending_message_if_session_running,
+    release_client_message,
+)
+from backend.copilot.response_model import (
+    StreamPendingDrained,
+    StreamPendingDrainedMessage,
 )
 from backend.copilot.stream_registry import get_session as get_active_session_meta
+from backend.copilot.stream_registry import get_session_meta_key
+from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import incr_with_ttl
-from backend.data.workspace import resolve_workspace_files
+from backend.data.workspace import build_files_block, resolve_attachable_workspace_files
+from backend.data.workspace_folder import resolve_attachable_workspace_folders
+from backend.data.workspace_scope import WorkspaceAccessDeniedError
 
 if TYPE_CHECKING:
+    from prisma.models import UserWorkspaceFile
+
     from backend.copilot.model import ChatSession
     from backend.copilot.transcript_builder import TranscriptBuilder
 
@@ -41,28 +65,80 @@ PENDING_CALL_WINDOW_SECONDS = 60
 _PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"
 
 
-async def is_turn_in_flight(session_id: str) -> bool:
-    """Return ``True`` when a copilot turn is actively running for *session_id*.
+class StreamRegistryUnavailable(Exception):
+    """The active-session lookup in Redis failed — the route should fail
+    closed with HTTP 503 instead of bubbling the raw Redis error as 500.
 
-    Used by the unified POST /stream entry point and the autopilot block so
-    a second message arriving while an earlier turn is still executing gets
-    queued into the pending buffer instead of racing the in-flight turn on
-    the cluster lock.
+    Mirrors :class:`backend.copilot.rate_limit.RateLimitUnavailable` so the
+    chat-route pre-flight chain (``is_turn_in_flight`` → ``check_rate_limit``)
+    maps any Redis brown-out to the same polished 503 + ``Retry-After``
+    response, regardless of which step tripped first.
     """
-    active = await get_active_session_meta(session_id)
-    return active is not None and active.status == "running"
+
+
+async def is_turn_in_flight(session_id: str) -> bool:
+    """Return ``True`` when a copilot turn is actively running OR
+    waiting in the cross-session queue for *session_id*.
+
+    Used by the HTTP pending-message endpoint and the autopilot block so a
+    second message arriving while an earlier turn is still executing (or
+    waiting in queue) gets buffered via ``queue_pending_for_http``
+    instead of racing the in-flight turn on the cluster lock.
+
+    Two sources are consulted:
+
+    * Redis stream registry (``status='running'``) — catches actively
+      streaming turns.
+    * ``ChatSession.chatStatus`` — catches both ``"running"`` and
+      ``"queued"`` so a session whose turn hasn't been claimed by the
+      dispatcher yet is still treated as in flight.
+
+    Raises :class:`StreamRegistryUnavailable` when the underlying Redis
+    lookup fails. The HTTP layer must catch this and map it to 503 — letting
+    the raw Redis error bubble would surface as an unhandled 500 with
+    internal cluster details in the body.
+    """
+    try:
+        active = await get_active_session_meta(session_id)
+    except (RedisError, RedisClusterException, ConnectionError, OSError) as exc:
+        # RedisClusterException covers SlotNotCoveredError raised during a
+        # GKE rolling restart (it does NOT inherit from RedisError, only
+        # from Exception). Same fail-closed posture as ``check_rate_limit``.
+        logger.warning(
+            "is_turn_in_flight: stream registry unavailable for session=%s: %s",
+            session_id,
+            exc,
+        )
+        raise StreamRegistryUnavailable() from exc
+    if active is not None and active.status == "running":
+        return True
+    # Fall through to ChatSession.chatStatus: catches the queued case the
+    # Redis registry doesn't know about (dispatcher hasn't claimed yet).
+    # If the DB is unavailable we can't tell whether the session is
+    # queued or running — fail-closed the same way the Redis branch
+    # above does so the HTTP layer maps the unknown state to 503 with a
+    # Retry-After header instead of a raw 500.
+    try:
+        chat_status = await chat_db().get_chat_session_status(session_id)
+    except Exception as exc:
+        logger.warning(
+            "is_turn_in_flight: chat_status lookup failed for session=%s: %s",
+            session_id,
+            exc,
+        )
+        raise StreamRegistryUnavailable() from exc
+    return chat_status in (CHAT_STATUS_QUEUED, CHAT_STATUS_RUNNING)
 
 
 class QueuePendingMessageResponse(BaseModel):
-    """Response returned by ``POST /stream`` with status 202 when a message
-    is queued because the session already has a turn in flight.
+    """Response returned when a message is queued because the session already
+    has a turn in flight.
 
     - ``buffer_length``: how many messages are now in the session's
       pending buffer (after this push)
     - ``max_buffer_length``: the per-session cap (server-side constant)
     - ``turn_in_flight``: ``True`` if a copilot turn was running when
-      we checked — purely informational for UX feedback.  Always ``True``
-      for responses from ``POST /stream`` with status 202.
+      we checked — purely informational for UX feedback.
     """
 
     buffer_length: int
@@ -76,25 +152,61 @@ async def queue_user_message(
     message: str,
     context: PendingMessageContext | None = None,
     file_ids: list[str] | None = None,
+    require_turn_in_flight: bool = False,
+    metadata: dict[str, Any] | None = None,
 ) -> QueuePendingMessageResponse:
     """Push *message* into the per-session pending buffer.
 
     The shared primitive for "a message arrived while a turn is in flight" —
-    called from the unified POST /stream handler and the autopilot block.
+    called from the HTTP pending-message path and the autopilot block.
     Call-frequency rate limiting is the caller's responsibility (HTTP path
     enforces it; internal block callers skip it).
+
+    ``metadata`` lands on the user row the message is persisted as. It is
+    for internal senders only (a session messaging another session); the
+    HTTP path never passes it.
     """
     pending = PendingMessage(
         content=message,
         file_ids=file_ids or [],
         context=context,
+        metadata=metadata or None,
     )
+    if require_turn_in_flight:
+        new_len = await push_pending_message_if_session_running(
+            session_id,
+            pending,
+            session_meta_key=get_session_meta_key(session_id),
+        )
+        return QueuePendingMessageResponse(
+            buffer_length=new_len or 0,
+            max_buffer_length=MAX_PENDING_MESSAGES,
+            turn_in_flight=new_len is not None,
+        )
+
     new_len = await push_pending_message(session_id, pending)
     return QueuePendingMessageResponse(
         buffer_length=new_len,
         max_buffer_length=MAX_PENDING_MESSAGES,
         turn_in_flight=await is_turn_in_flight(session_id),
     )
+
+
+async def resolve_attachments_for_http(
+    user_id: str,
+    file_ids: list[str],
+    *,
+    session_id: str,
+    expert_id: str | None,
+) -> list["UserWorkspaceFile"]:
+    """Resolve attachment IDs for an HTTP request, mapping an expert-scope
+    violation to a 400 so the stream and pending routes answer alike."""
+    try:
+        return await resolve_attachable_workspace_files(
+            user_id, file_ids, session_id=session_id, expert_id=expert_id
+        )
+    except WorkspaceAccessDeniedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 async def queue_pending_for_http(
@@ -104,20 +216,115 @@ async def queue_pending_for_http(
     message: str,
     context: dict[str, str] | None,
     file_ids: list[str] | None,
+    folder_ids: list[str] | None,
+    expert_id: str | None,
+    client_message_id: str | None = None,
 ) -> QueuePendingMessageResponse:
     """HTTP-facing wrapper around :func:`queue_user_message`.
 
-    Owns the HTTP-only concerns that sat inline in ``stream_chat_post``:
+    Owns the HTTP-only concerns for the pending-message route:
 
     1. Per-user call-rate cap (429 on overflow).
-    2. File-ID sanitisation against the user's own workspace.
+    2. File-ID sanitisation against the user's own workspace and, for an
+       expert session, the expert's file scope (400 on a foreign file).
     3. ``{url, content}`` dict → ``PendingMessageContext`` coercion.
     4. Push via ``queue_user_message``.
 
-    Raises :class:`HTTPException` with status 429 if the rate cap is hit;
-    otherwise returns the ``QueuePendingMessageResponse`` the handler can
-    serialise 1:1 into the 202 body.
+    Attached folders are appended to the message text here rather than carried
+    as a field: a pending message is rendered from ``content`` when the turn
+    drains it, and entries written by older workers are still in Redis.
+
+    ``client_message_id`` is the send's scoped idempotency key.  A send
+    whose key was already accepted is answered without pushing again (see
+    :func:`already_accepted_response`), and a push that does not land gives
+    the key back so a genuine retry can.  A copy that arrives while another
+    is still being pushed waits for its outcome, and gets a 503 if that
+    outlasts the wait.
+
+    Raises :class:`HTTPException` with status 429 if the rate cap is hit or
+    400 if an expert session attaches a file outside its scope; otherwise
+    returns the ``QueuePendingMessageResponse`` the handler can serialise 1:1.
     """
+    sanitized_file_ids: list[str] | None = None
+    if file_ids:
+        files = await resolve_attachments_for_http(
+            user_id, file_ids, session_id=session_id, expert_id=expert_id
+        )
+        sanitized_file_ids = [wf.id for wf in files] or None
+    if folder_ids:
+        folders = await resolve_attachable_workspace_folders(
+            user_id, folder_ids, expert_id=expert_id
+        )
+        message += build_files_block([], folders)
+
+    # ``PendingMessageContext`` uses the default ``extra='ignore'`` so
+    # unknown keys in the loose HTTP-level ``context`` dict are silently
+    # dropped rather than raising ``ValidationError`` + 500ing (sentry
+    # r3105553772).  The strict mode would only help protect against
+    # typos, but the upstream ``StreamChatRequest.context: dict[str, str]``
+    # is already schemaless, so the strict mode adds no real safety.
+    queue_context = PendingMessageContext.model_validate(context) if context else None
+
+    # Push first via the Lua CAS gate.  Bumping the per-user call-rate
+    # counter BEFORE the push would charge a budget tick on every TOCTOU
+    # loss against turn completion (status flips running→completed between
+    # the FE's is_turn_in_flight check and our gate), which both this
+    # endpoint and the POST /stream queue-fall-through can hit.  Pushing
+    # first lets the gate own the no-op short-circuit.
+    claim_owner = uuid.uuid4().hex
+    if client_message_id is not None:
+        claim = await claim_client_message(session_id, client_message_id, claim_owner)
+        if claim == "accepted":
+            logger.info(
+                "pending_messages: skipped retransmit of an accepted message "
+                "for session=%s",
+                session_id,
+            )
+            return await already_accepted_response(session_id)
+        if claim == "reserved":
+            raise client_message_in_progress_error()
+
+    push = asyncio.ensure_future(
+        queue_user_message(
+            session_id=session_id,
+            message=message,
+            context=queue_context,
+            file_ids=sanitized_file_ids,
+            require_turn_in_flight=True,
+        )
+    )
+    try:
+        response = await asyncio.shield(push)
+    except asyncio.CancelledError:
+        # The append may already have landed (the push still awaits its
+        # SPUBLISH), so settle the claim by what the push did, not by the
+        # cancellation: releasing it would let a retry queue a second copy.
+        if client_message_id is not None:
+            await finish_despite_cancellation(
+                asyncio.ensure_future(
+                    _settle_claim_of_cancelled_push(
+                        push, session_id, client_message_id, claim_owner
+                    )
+                )
+            )
+        raise
+    except BaseException:
+        if client_message_id is not None:
+            await release_client_message(session_id, client_message_id, claim_owner)
+        raise
+    if not response.turn_in_flight:
+        if client_message_id is not None:
+            await release_client_message(session_id, client_message_id, claim_owner)
+        raise HTTPException(
+            status_code=409,
+            detail="Session has no active turn. Start a new turn with POST /stream.",
+        )
+    if client_message_id is not None:
+        await accept_client_message(session_id, client_message_id, claim_owner)
+
+    # Push landed — now charge the rate counter.  If this tick crosses the
+    # limit we still keep the queued message (next drain will pick it up)
+    # but report 429 so the client backs off further pushes.
     call_count = await check_pending_call_rate(user_id)
     if call_count > PENDING_CALL_LIMIT:
         raise HTTPException(
@@ -129,23 +336,60 @@ async def queue_pending_for_http(
             ),
         )
 
-    sanitized_file_ids: list[str] | None = None
-    if file_ids:
-        files = await resolve_workspace_files(user_id, file_ids)
-        sanitized_file_ids = [wf.id for wf in files] or None
+    return response
 
-    # ``PendingMessageContext`` uses the default ``extra='ignore'`` so
-    # unknown keys in the loose HTTP-level ``context`` dict are silently
-    # dropped rather than raising ``ValidationError`` + 500ing (sentry
-    # r3105553772).  The strict mode would only help protect against
-    # typos, but the upstream ``StreamChatRequest.context: dict[str, str]``
-    # is already schemaless, so the strict mode adds no real safety.
-    queue_context = PendingMessageContext.model_validate(context) if context else None
-    return await queue_user_message(
-        session_id=session_id,
-        message=message,
-        context=queue_context,
-        file_ids=sanitized_file_ids,
+
+async def _settle_claim_of_cancelled_push(
+    push: "asyncio.Future[QueuePendingMessageResponse]",
+    session_id: str,
+    client_message_id: str,
+    owner: str,
+) -> None:
+    try:
+        response = await push
+    except Exception:
+        await release_client_message(session_id, client_message_id, owner)
+        return
+    if response.turn_in_flight:
+        await accept_client_message(session_id, client_message_id, owner)
+    else:
+        await release_client_message(session_id, client_message_id, owner)
+
+
+def client_message_in_progress_error() -> HTTPException:
+    """For a copy that arrived while the first copy was still being scheduled
+    and outlasted the wait for its outcome.  It is neither accepted nor
+    refused yet, so the client is told to retry, as for a degraded registry.
+    """
+    return HTTPException(
+        status_code=503,
+        detail="Your message is still being sent, retry shortly",
+        headers={"Retry-After": "5"},
+    )
+
+
+async def already_accepted_response(session_id: str) -> QueuePendingMessageResponse:
+    """Answer a retransmit of a send the server already accepted.
+
+    ``turn_in_flight`` is ``True`` whatever the turn is doing now: it tells the
+    client its message was taken, and ``False`` would make it fall back to
+    ``POST /stream`` and send the message all over again.
+    """
+    try:
+        buffer_length = await peek_pending_count(session_id)
+    except Exception as e:
+        # The count is informational. A Redis blip must not turn an accepted
+        # send into an error, which the client would answer by resending it.
+        logger.warning(
+            "pending_messages: buffer length lookup failed for session=%s: %s",
+            session_id,
+            e,
+        )
+        buffer_length = 0
+    return QueuePendingMessageResponse(
+        buffer_length=buffer_length,
+        max_buffer_length=MAX_PENDING_MESSAGES,
+        turn_in_flight=True,
     )
 
 
@@ -203,7 +447,7 @@ def pending_texts_from(pending: list[PendingMessage]) -> list[str]:
     turn-start injection (bundles the pending block into the user prompt)
     and the auto-continue combined-message path.
     """
-    return [format_pending_as_user_message(pm)["content"] for pm in pending]
+    return [pending_message_text(pm) for pm in pending]
 
 
 def combine_pending_with_current(
@@ -294,32 +538,42 @@ async def persist_session_safe(
 
 async def persist_pending_as_user_rows(
     session: "ChatSession",
-    transcript_builder: "TranscriptBuilder",
+    transcript_builder: "TranscriptBuilder | None",
     pending: list[PendingMessage],
     *,
     log_prefix: str,
     content_of: Callable[[PendingMessage], str] = lambda pm: pm.content,
     on_rollback: Callable[[int], None] | None = None,
 ) -> bool:
-    """Append ``pending`` as user rows to *session* + *transcript_builder*,
-    persist, and roll back + re-queue if the persist silently failed.
+    """Append ``pending`` as user rows to *session* (and optionally
+    *transcript_builder*), persist, and roll back + re-queue if the
+    persist silently failed.
 
-    This is the shared mid-turn follow-up persist used by both the baseline
-    and SDK paths — they differ only in (a) how they derive the displayed
-    string from a ``PendingMessage`` and (b) what extra per-path state
-    (e.g. ``openai_messages``) needs trimming on rollback.  Those variance
-    points are exposed as ``content_of`` and ``on_rollback``.
+    Used by both **mid-turn** drain (MCP tool boundaries; pass a real
+    ``transcript_builder`` so the entries become additional user turns
+    in the conversation flow) and **turn-start** drain (pass ``None``;
+    the transcript already gets one entry for the whole turn at
+    turn-end via ``append_user(combined_current_message)`` — appending
+    each pending here as well would triple-count them in the next
+    turn's ``--resume`` context).
+
+    Differs across baseline/SDK paths only in (a) how the displayed
+    string is derived from a ``PendingMessage`` and (b) what extra
+    per-path state (e.g. ``openai_messages``) needs trimming on
+    rollback.  Those variance points are exposed as ``content_of`` and
+    ``on_rollback``.
 
     Flow:
-      1. Snapshot transcript + record the session.messages length.
-      2. Append one user row per pending message to both stores.
+      1. Snapshot transcript (if any) + record the session.messages length.
+      2. Append one user row per pending message; mirror to the
+         transcript only when *transcript_builder* is provided.
       3. ``persist_session_safe`` — swallowed errors mean no sequences get
          back-filled, which we use as the failure signal.
       4. If any newly-appended row has ``sequence is None`` → rollback:
-         delete the appended rows, restore the transcript snapshot, call
-         ``on_rollback(anchor)`` for the caller's own state, then re-push
-         each ``PendingMessage`` into the primary pending buffer so the
-         next turn-start drain picks them up.
+         delete the appended rows, restore the transcript snapshot (if
+         any), call ``on_rollback(anchor)`` for the caller's own state,
+         then re-push each ``PendingMessage`` into the primary pending
+         buffer so the next turn-start drain picks them up.
 
     Returns ``True`` when the rows were persisted with sequences, ``False``
     when the rollback path fired.  Callers can use this to decide whether
@@ -329,12 +583,23 @@ async def persist_pending_as_user_rows(
         return True
 
     session_anchor = len(session.messages)
-    transcript_snapshot = transcript_builder.snapshot()
+    transcript_snapshot = (
+        transcript_builder.snapshot() if transcript_builder is not None else None
+    )
 
     for pm in pending:
         content = content_of(pm)
-        session.messages.append(ChatMessage(role="user", content=content))
-        transcript_builder.append_user(content=content)
+        session.messages.append(
+            ChatMessage(role="user", content=content, metadata=pm.metadata or None)
+        )
+        if transcript_builder is not None:
+            transcript_builder.append_user(
+                content=(
+                    [{"type": "text", "text": content}, pm.model_image.anthropic()]
+                    if pm.model_image
+                    else content
+                )
+            )
 
     # ``persist_session_safe`` may return a ``model_copy`` of *session* (e.g.
     # when ``upsert_chat_session`` patches a concurrently-updated title).
@@ -363,17 +628,39 @@ async def persist_pending_as_user_rows(
             len(pending),
         )
         del session.messages[session_anchor:]
-        transcript_builder.restore(transcript_snapshot)
+        if transcript_builder is not None and transcript_snapshot is not None:
+            transcript_builder.restore(transcript_snapshot)
         if on_rollback is not None:
             on_rollback(session_anchor)
+        # ``push_pending_message`` uses the bounded ``capped_rpush`` (LTRIM
+        # to ``MAX_PENDING_MESSAGES``).  If ≥``MAX_PENDING_MESSAGES`` fresh
+        # follow-ups arrived between the original drain and this rollback
+        # (heavy typing across a tool boundary), the LTRIM drops oldest
+        # entries — which can include the ones we just re-pushed. The model
+        # already saw that content (mid-turn injection earlier in the
+        # turn), but no DB row lands so the user sees no UI bubble.
+        # Surface a warning so the bounded data-loss path is visible in
+        # prod (it is rare and would otherwise be observable only via the
+        # absence of a bubble).
+        rollback_buffer_at_cap = False
         for pm in pending:
             try:
-                await push_pending_message(session.session_id, pm)
+                new_length = await push_pending_message(session.session_id, pm)
+                if new_length >= MAX_PENDING_MESSAGES:
+                    rollback_buffer_at_cap = True
             except Exception:
                 logger.exception(
                     "%s Failed to re-queue mid-turn follow-up on rollback",
                     log_prefix,
                 )
+        if rollback_buffer_at_cap:
+            logger.warning(
+                "%s Rollback re-push hit pending-buffer cap (MAX=%d); a "
+                "previously queued follow-up may have been LTRIM-displaced "
+                "(silent UI-bubble drop). Investigate if observed.",
+                log_prefix,
+                MAX_PENDING_MESSAGES,
+            )
         return False
 
     logger.info(
@@ -382,3 +669,48 @@ async def persist_pending_as_user_rows(
         len(pending),
     )
     return True
+
+
+async def persist_unfolded_rows(
+    session: "ChatSession | None",
+    pending: list[PendingMessage],
+    *,
+    log_prefix: str,
+) -> None:
+    """Save rows a turn took but ended before folding in, such as results of
+    approved calls whose approvals it spent. Empties *pending*, so only the
+    first of several exits saves, and never raises over the turn's own error."""
+    if not pending or session is None:
+        return
+    saving = list(pending)
+    pending.clear()
+    try:
+        if any(message.model_image is not None for message in saving):
+            # No model transcript exists yet to retain the pixels. Requeue the
+            # whole batch so the next turn receives its images and order intact.
+            for message in saving:
+                await push_pending_message(session.session_id, message)
+            return
+        await persist_pending_as_user_rows(session, None, saving, log_prefix=log_prefix)
+    except Exception:
+        logger.warning(
+            f"{log_prefix} Could not save {len(saving)} unfolded row(s)",
+            exc_info=True,
+        )
+
+
+def drained_rows_entry(
+    pending: list[PendingMessage],
+    content_of: Callable[[PendingMessage], str] = lambda pm: pm.content,
+) -> StreamPendingDrained:
+    """The stream entry for the user rows ``persist_pending_as_user_rows``
+    landed: one message per row, with the row's own content and metadata."""
+    return StreamPendingDrained(
+        drainedCount=len(pending),
+        messages=[
+            StreamPendingDrainedMessage(
+                id=pm.id, content=content_of(pm), metadata=pm.metadata or None
+            )
+            for pm in pending
+        ],
+    )

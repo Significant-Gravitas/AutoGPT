@@ -1,6 +1,24 @@
+import { useContext, type ComponentProps } from "react";
+import { AnsweredQuestionsContext } from "../../QuestionDock/AnsweredQuestionsContext";
+import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
+import { PendingOnboardingContext } from "../../ExpertOnboardingCard/PendingOnboardingContext";
+import { act } from "@testing-library/react";
+import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
+import { buildKickoffMessage } from "../../../expertKickoff";
+import type { TurnStatsMap } from "../../../helpers/convertChatSessionToUiMessages";
+
+type Message = UIMessage<unknown, UIDataTypes, UITools>;
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return { ...actual, useGetFlag: () => false };
+});
 
 const mockScrollEl = {
   scrollHeight: 100,
@@ -19,7 +37,7 @@ vi.mock("use-stick-to-bottom", () => ({
   ConversationScrollButton: () => null,
 }));
 
-vi.mock("@/components/ai-elements/conversation", () => ({
+vi.mock("@/components/organisms/Conversation/Conversation", () => ({
   Conversation: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="conversation">{children}</div>
   ),
@@ -29,15 +47,21 @@ vi.mock("@/components/ai-elements/conversation", () => ({
   ConversationScrollButton: () => null,
 }));
 
-vi.mock("@/components/ai-elements/message", () => ({
+vi.mock("@/components/organisms/Message/Message", () => ({
   Message: ({
     children,
     from,
+    "data-message-id": messageId,
   }: {
     children: React.ReactNode;
     from?: string;
+    "data-message-id"?: string;
   }) => (
-    <div data-testid={`message-${from ?? "unknown"}`} data-from={from}>
+    <div
+      data-testid={`message-${from ?? "unknown"}`}
+      data-from={from}
+      data-message-id={messageId}
+    >
       {children}
     </div>
   ),
@@ -56,50 +80,101 @@ vi.mock("@/components/ai-elements/message", () => ({
 vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
+vi.mock("../components/ChainMessageParts", () => ({
+  ChainMessageParts: function ChainMessageParts({
+    parts,
+    isCurrentlyStreaming,
+  }: {
+    parts: unknown[];
+    isCurrentlyStreaming?: boolean;
+  }) {
+    const answered = useContext(AnsweredQuestionsContext);
+    const pending = useContext(PendingQuestionsContext);
+    const onboarding = useContext(PendingOnboardingContext);
+    return (
+      <div
+        data-testid="chain-message-parts"
+        data-parts={JSON.stringify(parts)}
+        data-streaming={String(!!isCurrentlyStreaming)}
+        data-answered={JSON.stringify(
+          [...answered].map(([id, answers]) => [id, [...answers]]),
+        )}
+        data-pending={String(pending !== null)}
+        data-onboarding={onboarding ?? ""}
+      />
+    );
+  },
+}));
 
-vi.mock("../components/CopyButton", () => ({ CopyButton: () => null }));
-vi.mock("../components/CollapsedToolGroup", () => ({
-  CollapsedToolGroup: () => null,
+vi.mock("../components/QueueBadge", () => ({
+  QueueBadge: ({ sessionID }: { sessionID: string | null }) => (
+    <span data-testid="queue-badge" data-session-id={sessionID ?? ""}>
+      QueueBadge
+    </span>
+  ),
+}));
+
+vi.mock("../components/CopyButton", () => ({
+  CopyButton: ({ text }: { text: string }) => (
+    <span data-testid="copy-message" data-text={text} />
+  ),
 }));
 vi.mock("../components/MessageAttachments", () => ({
   MessageAttachments: () => null,
 }));
 vi.mock("../components/MessagePartRenderer", () => ({
-  MessagePartRenderer: () => null,
+  MessagePartRenderer: ({ part }: { part: { type: string; text?: string } }) =>
+    part.type === "text" ? <span>{part.text}</span> : null,
 }));
 vi.mock("../components/ReasoningCollapse", () => ({
   ReasoningCollapse: () => null,
 }));
 vi.mock("../components/ThinkingIndicator", () => ({
-  ThinkingIndicator: () => null,
+  ThinkingIndicator: ({ statusMessage }: { statusMessage?: string | null }) => (
+    <div data-testid="thinking-indicator">{statusMessage ?? "thinking"}</div>
+  ),
+}));
+vi.mock("../../ToolChain/ToolChain", () => ({
+  ToolChain: () => <div data-testid="tool-chain" />,
 }));
 vi.mock("../../JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
 }));
 vi.mock("../../JobStatsBar/useElapsedTimer", () => ({
   useElapsedTimer: () => ({ elapsedSeconds: 0 }),
+  useElapsedAnchor: () => ({ startedAtMs: null, frozenSeconds: 0 }),
 }));
 vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
-  CopilotPendingReviews: () => null,
+  CopilotPendingReviews: (props: object) => (
+    <span data-testid="pending-reviews" data-props={JSON.stringify(props)} />
+  ),
 }));
-vi.mock("../helpers", () => ({
-  buildRenderSegments: () => [],
+// Tests below override this default by re-mocking ../helpers as needed.
+vi.mock("../helpers", async (importOriginal) => ({
+  extractReviewTargets: (await importOriginal<typeof import("../helpers")>())
+    .extractReviewTargets,
+  getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
-  parseSpecialMarkers: () => ({ markerType: null }),
-  splitReasoningAndResponse: (parts: unknown[]) => ({
-    reasoningParts: [],
-    responseParts: parts,
-  }),
+  isChainableToolPart: () => false,
+}));
+
+vi.mock("../../../helpers/messageMarkers", () => ({
+  parseSpecialMarkers: (text: string) => {
+    if (typeof text === "string" && text.startsWith("[__COPILOT_ERROR_")) {
+      return { markerType: "error" };
+    }
+    if (
+      typeof text === "string" &&
+      text.startsWith("[__COPILOT_RETRYABLE_ERROR_")
+    ) {
+      return { markerType: "retryable_error" };
+    }
+    return { markerType: null };
+  },
 }));
 
 vi.mock("@/components/atoms/LoadingSpinner/LoadingSpinner", () => ({
   LoadingSpinner: () => <div data-testid="loading-spinner" />,
-}));
-
-vi.mock("@phosphor-icons/react", () => ({
-  Clock: () => <span data-testid="clock-icon" />,
-  ArrowDown: () => null,
-  ArrowUp: () => null,
 }));
 
 // ── helpers ───────────────────────────────────────────────────────────────
@@ -124,8 +199,8 @@ class MockIntersectionObserver {
 }
 
 const baseProps = {
-  messages: [] as any[],
-  status: "ready" as const,
+  messages: [] as Message[],
+  status: "ready",
   error: undefined,
   isLoading: false,
   sessionID: "sess-123",
@@ -134,7 +209,164 @@ const baseProps = {
   isLoadingMore: false,
   onLoadMore: vi.fn(),
   onRetry: vi.fn(),
-};
+} satisfies ComponentProps<typeof ChatMessagesContainer>;
+
+describe("ChatMessagesContainer — assistant rendering", () => {
+  const messages = [
+    {
+      id: "assistant-tools",
+      role: "assistant" as const,
+      parts: [{ type: "text" as const, text: "Done" }],
+    },
+  ];
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("shares saved answers with read-only viewers without activating question forms", () => {
+    const question = {
+      type: "tool-ask_question",
+      toolCallId: "ask-1",
+      state: "output-available",
+      input: {},
+      output: {
+        type: "agent_builder_clarification_needed",
+        questions: [{ question: "Which region?", keyword: "region" }],
+      },
+    } as Message["parts"][number];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        readOnly
+        messages={[
+          { id: "asked", role: "assistant", parts: [question] },
+          {
+            id: "answered",
+            role: "user",
+            parts: [
+              {
+                type: "text",
+                text: "**Here are my answers:**\n\n> Which region?\n\nEurope\n\nPlease proceed.",
+              },
+            ],
+          },
+          {
+            id: "pending",
+            role: "assistant",
+            parts: [
+              { ...question, toolCallId: "ask-2" } as Message["parts"][number],
+              {
+                type: "tool-expert_onboarding",
+                toolCallId: "hire",
+                state: "output-available",
+                input: {},
+                output: {
+                  type: "expert_onboarding",
+                  steps: [
+                    {
+                      question: "Which outcome?",
+                      keyword: "outcome",
+                      options: [],
+                    },
+                  ],
+                },
+              } as Message["parts"][number],
+            ],
+          },
+        ]}
+      />,
+    );
+    for (const row of screen.getAllByTestId("chain-message-parts")) {
+      expect(JSON.parse(row.getAttribute("data-answered") ?? "[]")).toEqual([
+        ["ask-1", [["region", "Europe"]]],
+      ]);
+      expect(row.getAttribute("data-pending")).toBe("false");
+      expect(row.getAttribute("data-onboarding")).toBe("");
+    }
+  });
+
+  it("renders assistant messages through the chain renderer", () => {
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+
+    expect(screen.getByTestId("chain-message-parts")).toBeDefined();
+  });
+
+  it("shows the thinking indicator inside a submitted assistant turn", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        status="submitted"
+      />,
+    );
+
+    expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+  });
+
+  it("drops the thinking indicator once a streaming turn has landed on a pause", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          {
+            id: "assistant-paused",
+            role: "assistant",
+            parts: [
+              { type: "text", text: "Saved where I got to." },
+              {
+                type: "data-turn-paused",
+                data: { reason: "steps", steps: 450 },
+              },
+            ],
+          },
+        ]}
+        status="streaming"
+      />,
+    );
+
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+  });
+
+  it("keeps the backend's status lines out of the thinking indicator", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="submitted"
+        messages={[
+          {
+            id: "assistant-status",
+            role: "assistant",
+            parts: [
+              {
+                type: "data-status",
+                data: { message: "Restoring your session…" },
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("thinking-indicator").textContent).toBe(
+      "thinking",
+    );
+    expect(screen.queryByText("Restoring your session…")).toBeNull();
+  });
+
+  it("keeps the thinking indicator out of a read-only transcript", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        status="submitted"
+        readOnly
+      />,
+    );
+
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+  });
+});
 
 // ── queued-messages rendering ─────────────────────────────────────────────
 
@@ -166,6 +398,20 @@ describe("ChatMessagesContainer — queuedMessages", () => {
     );
     expect(screen.getByText("What about section 3?")).toBeDefined();
     expect(screen.getByText("Queued")).toBeDefined();
+  });
+
+  it("renders queued account references as badges without exposing IDs", () => {
+    const { container } = render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={[
+          "Check [Work Gmail](credential://google/work-credential-id)",
+        ]}
+      />,
+    );
+    expect(screen.getByText("Work Gmail")).toBeDefined();
+    expect(container.textContent).not.toContain("work-credential-id");
+    expect(container.textContent).not.toContain("credential://");
   });
 
   it("renders multiple queued messages as separate bubbles", () => {
@@ -204,6 +450,7 @@ describe("ChatMessagesContainer — queuedMessages", () => {
 
 describe("ChatMessagesContainer — loading", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     mockScrollEl.scrollHeight = 100;
     mockScrollEl.scrollTop = 0;
     mockScrollEl.clientHeight = 500;
@@ -212,6 +459,7 @@ describe("ChatMessagesContainer — loading", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
     vi.unstubAllGlobals();
   });
@@ -224,6 +472,172 @@ describe("ChatMessagesContainer — loading", () => {
   it("does not show spinner when not loading", () => {
     render(<ChatMessagesContainer {...baseProps} isLoading={false} />);
     expect(screen.queryByTestId("loading-spinner")).toBeNull();
+  });
+
+  it("shows the restore message instead of stale tail content during active-session resume", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading={false}
+        isRestoringActiveSession
+        messages={[
+          {
+            id: "user-1",
+            role: "user",
+            parts: [{ type: "text", text: "Investigate this" }],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("message-user")).toBeDefined();
+    expect(screen.getByText("Retrieving latest messages")).toBeDefined();
+  });
+
+  it("shows a reconnecting fallback after 6 seconds of restore", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading={false}
+        isRestoringActiveSession
+        activeStreamStartedAt="2026-04-23T15:00:00.000Z"
+        messages={[
+          {
+            id: "user-1",
+            role: "user",
+            parts: [{ type: "text", text: "Investigate this" }],
+          },
+        ]}
+      />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(6_000);
+    });
+
+    expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+    expect(screen.getByText("Reconnecting…")).toBeDefined();
+    expect(
+      screen.getByText("Still syncing the latest progress."),
+    ).toBeDefined();
+  });
+
+  it("prefers the runtime's notice in the restore fallback", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading={false}
+        isRestoringActiveSession
+        restoreStatusMessage="Catching up…"
+        messages={[
+          {
+            id: "user-1",
+            role: "user",
+            parts: [{ type: "text", text: "Investigate this" }],
+          },
+        ]}
+      />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(6_000);
+    });
+
+    expect(screen.getByText("Catching up…")).toBeDefined();
+  });
+});
+
+// ── error banner dedup ────────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — error banner dedup", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the trailing banner when no persisted error marker is in messages", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new Error("SDK stream error: Prompt is too long")}
+        status="error"
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByText("SDK stream error: Prompt is too long"),
+    ).toBeDefined();
+    expect(screen.getByTestId("chat-error-banner")).toBeDefined();
+  });
+
+  it("suppresses the trailing banner when the last assistant message carries an error marker", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new Error("SDK stream error: Prompt is too long")}
+        status="error"
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+          {
+            id: "a-1",
+            role: "assistant",
+            parts: [
+              {
+                type: "text",
+                text: "[__COPILOT_ERROR_f7a1__] SDK stream error: Prompt is too long",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("chat-error-banner")).toBeNull();
+  });
+
+  it("suppresses the trailing banner when the marker is retryable", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new Error("Transient error")}
+        status="error"
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+          {
+            id: "a-1",
+            role: "assistant",
+            parts: [
+              {
+                type: "text",
+                text: "[__COPILOT_RETRYABLE_ERROR_a9c2__] Transient error",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("chat-error-banner")).toBeNull();
   });
 });
 
@@ -283,10 +697,10 @@ describe("ChatMessagesContainer — turnStats", () => {
 
   it("renders the local timestamp on a user message (hover reveal)", () => {
     const userId = "user-1";
-    const turnStats = new Map([
+    const turnStats: TurnStatsMap = new Map([
       [userId, { createdAt: "2026-04-23T08:32:09.000Z" }],
     ]);
-    const messages = [
+    const messages: Message[] = [
       {
         id: userId,
         role: "user" as const,
@@ -294,11 +708,10 @@ describe("ChatMessagesContainer — turnStats", () => {
       },
     ];
     render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-        turnStats={turnStats as any}
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
       />,
     );
     // The timestamp is rendered in the MessageActions area alongside CopyButton;
@@ -312,7 +725,7 @@ describe("ChatMessagesContainer — turnStats", () => {
   });
 
   it("skips the user timestamp when turnStats has no entry for that message id", () => {
-    const messages = [
+    const messages: Message[] = [
       {
         id: "user-unknown",
         role: "user" as const,
@@ -320,16 +733,1252 @@ describe("ChatMessagesContainer — turnStats", () => {
       },
     ];
     render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-        turnStats={new Map() as any}
+        {...baseProps}
+        messages={messages}
+        turnStats={new Map()}
       />,
     );
     const labels = screen.queryAllByText((_, el) =>
       /2026/.test(el?.textContent ?? ""),
     );
     expect(labels.length).toBe(0);
+  });
+});
+
+// ── per-message queue badge ───────────────────────────────────────────────
+
+describe("ChatMessagesContainer — queue badges on user messages", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders a QueueBadge when the row is the latest user in a queued session", () => {
+    const userId = "user-q1";
+    const turnStats: TurnStatsMap = new Map([
+      [
+        userId,
+        {
+          isLatestUserMessage: true,
+          rawMessageId: "uuid-q1",
+        },
+      ],
+    ]);
+    const messages: Message[] = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [
+          { type: "text" as const, text: "queue me", state: "done" as const },
+        ],
+      },
+    ];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
+        sessionChatStatus="queued"
+      />,
+    );
+    const badge = screen.getByTestId("queue-badge");
+    expect(badge.getAttribute("data-session-id")).toBe("sess-123");
+  });
+
+  it.each([false, true])(
+    "shows and copies only the delegated task (readOnly=%s)",
+    (readOnly) => {
+      const preamble =
+        "[Delegated task from Ari, a teammate on this user's team — not " +
+        "the user. They cannot see your thread, so report the outcome in your " +
+        "final message. If the task needs something only the user can " +
+        "provide, say what is missing instead of guessing.]";
+      const message = {
+        id: "sess-123-seq-0",
+        role: "user" as const,
+        parts: [
+          { type: "text" as const, text: `${preamble}\n\nDraft the update.` },
+        ],
+        metadata: readOnly
+          ? undefined
+          : {
+              from_session_id: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+              from_expert_name: "Ari",
+            },
+      };
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[message]}
+          readOnly={readOnly}
+        />,
+      );
+
+      expect(screen.getByText("Draft the update.")).toBeDefined();
+      expect(screen.queryByText(/They cannot see your thread/)).toBeNull();
+      expect(screen.getByTestId("copy-message").dataset.text).toBe(
+        "Draft the update.",
+      );
+      expect(screen.queryAllByTestId("sent-from-badge")).toHaveLength(
+        readOnly ? 0 : 1,
+      );
+      expect(message.parts[0].text).toBe(`${preamble}\n\nDraft the update.`);
+    },
+  );
+
+  it("renders a Sent from badge linking to the session a delegated message came from", () => {
+    const messages: Message[] = [
+      {
+        id: "user-d1",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "draft the ops update" }],
+        metadata: {
+          from_session_id: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+          from_expert_id: "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+          from_expert_name: "Ari",
+        },
+      },
+    ];
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+    const card = screen.getByTestId("sent-from-badge");
+    expect(card.textContent).toContain("Sent from Ari");
+    expect(card.getAttribute("href")).toBe(
+      "/copilot?sessionId=3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+    );
+  });
+
+  const sessionSentFrom = {
+    sessionId: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+    expertId: null,
+    expertName: null,
+  };
+
+  function userRow(id: string, text: string) {
+    return {
+      id,
+      role: "user" as const,
+      parts: [{ type: "text" as const, text }],
+    };
+  }
+
+  it("falls back to the session's delegation provenance on the opening message only", () => {
+    const messages: Message[] = [
+      userRow("sess-123-seq-0", "first task"),
+      {
+        id: "sess-123-seq-1",
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: "done" }],
+      },
+      userRow("sess-123-seq-2", "typed by the user"),
+    ];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        hasMoreMessages={false}
+        sessionSentFrom={sessionSentFrom}
+      />,
+    );
+    const cards = screen.getAllByTestId("sent-from-badge");
+    expect(cards).toHaveLength(1);
+    expect(cards[0].textContent).toContain("Sent from Otto");
+  });
+
+  it("does NOT fall back onto a later row when pagination stopped short of the opening row", () => {
+    // hasMoreMessages goes false after repeated load errors or at the
+    // history cap while older rows still exist; the first retained row is
+    // then a later human message, not the one the delegation opened with.
+    const messages: Message[] = [
+      userRow("sess-123-seq-40", "typed by the user"),
+      {
+        id: "sess-123-seq-41",
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: "sure" }],
+      },
+    ];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        hasMoreMessages={false}
+        sessionSentFrom={sessionSentFrom}
+      />,
+    );
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
+
+  it("keeps the fallback on the opening row while more history is still loadable", () => {
+    // The pagination flag flips true during a refetch; the opening row's
+    // identity does not depend on it.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[userRow("sess-123-seq-0", "first task")]}
+        hasMoreMessages={true}
+        sessionSentFrom={sessionSentFrom}
+      />,
+    );
+    expect(screen.getByTestId("sent-from-badge").textContent).toContain(
+      "Sent from Otto",
+    );
+  });
+
+  it("does NOT fall back onto a row whose id carries no DB sequence", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[userRow("user-streamed", "first task")]}
+        hasMoreMessages={false}
+        sessionSentFrom={sessionSentFrom}
+      />,
+    );
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
+
+  it("does NOT fall back when the session carries no delegation provenance", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[userRow("sess-123-seq-0", "hello")]}
+        hasMoreMessages={false}
+        sessionSentFrom={null}
+      />,
+    );
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
+
+  it("does NOT render a Sent from badge for an ordinary user message", () => {
+    const messages: Message[] = [
+      {
+        id: "user-plain",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "hello" }],
+      },
+    ];
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
+
+  it("does NOT render a QueueBadge for normal (non-queued) user messages", () => {
+    const userId = "user-n1";
+    const turnStats: TurnStatsMap = new Map([
+      [userId, { createdAt: "2026-04-23T08:32:09.000Z" }],
+    ]);
+    const messages: Message[] = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "hi", state: "done" }],
+      },
+    ];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
+      />,
+    );
+    expect(screen.queryByTestId("queue-badge")).toBeNull();
+  });
+
+  it("does NOT render the badge when isLatestUserMessage but session is idle", () => {
+    // Guards against regressing the AND-gate: even if a row is the
+    // latest user message, the badge should stay hidden unless the
+    // OWNING session is in the queued state.
+    const userId = "user-q2";
+    const turnStats: TurnStatsMap = new Map([
+      [userId, { isLatestUserMessage: true, rawMessageId: "uuid-q2" }],
+    ]);
+    const messages: Message[] = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "live", state: "done" }],
+      },
+    ];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
+        sessionChatStatus="idle"
+      />,
+    );
+    expect(screen.queryByTestId("queue-badge")).toBeNull();
+  });
+});
+
+// ── readOnly viewer behaviour ─────────────────────────────────────────────
+//
+// The shared-chat viewer (``/share/chat/[token]``) renders the same
+// ChatMessagesContainer with ``readOnly`` so the public viewer cannot
+// trigger any owner-only interactions (load-more, queue badges,
+// feedback actions, error banners).  These tests pin the gate.
+
+describe("ChatMessagesContainer — readOnly mode", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it.each([false, true])(
+    "applies streamed tool names before stripping bookkeeping parts (readOnly=%s)",
+    (readOnly) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          readOnly={readOnly}
+          messages={[
+            {
+              id: "assistant-display",
+              role: "assistant",
+              parts: [
+                {
+                  type: "tool-run_agent",
+                  toolCallId: "call-one",
+                  state: "input-available",
+                  input: { library_agent_id: "library-id" },
+                },
+                {
+                  type: "data-tool-display",
+                  id: "call-one",
+                  data: {
+                    toolCallId: "call-one",
+                    displayName: "Daily briefing",
+                  },
+                },
+              ],
+            },
+          ]}
+        />,
+      );
+      const renderedParts = JSON.parse(
+        screen.getByTestId("chain-message-parts").dataset.parts ?? "[]",
+      );
+      expect(renderedParts).toEqual([
+        {
+          type: "tool-run_agent",
+          toolCallId: "call-one",
+          state: "input-available",
+          input: { library_agent_id: "library-id" },
+          title: "Daily briefing",
+        },
+      ]);
+    },
+  );
+
+  it.each([false, true])(
+    "shows a scheduled chat's note to its owner alone (readOnly=%s)",
+    (readOnly) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          readOnly={readOnly}
+          messages={[
+            {
+              id: "notice-1",
+              role: "assistant",
+              parts: [
+                { type: "text", text: "Skipped: daily usage limit reached" },
+              ],
+              metadata: {
+                kind: "scheduled_chat_notice",
+                reason: "no_plan",
+                headline: "Skipped: daily usage limit reached",
+                body: "“Briefing” didn't run.",
+                actions: [],
+              },
+            },
+          ]}
+        />,
+      );
+
+      expect(screen.queryAllByTestId("scheduled-chat-notice")).toHaveLength(
+        readOnly ? 0 : 1,
+      );
+      expect(
+        screen.queryAllByText("Skipped: daily usage limit reached"),
+      ).toHaveLength(readOnly ? 0 : 1);
+    },
+  );
+
+  it("renders no Sent from badge in a read-only transcript", () => {
+    const messages: Message[] = [
+      {
+        id: "sess-123-seq-0",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "first task" }],
+      },
+      {
+        id: "sess-123-seq-1",
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: "done" }],
+      },
+      {
+        id: "sess-123-seq-2",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "draft the ops update" }],
+        metadata: {
+          from_session_id: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+          from_expert_id: null,
+          from_expert_name: "Ari",
+        },
+      },
+    ];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        readOnly
+        hasMoreMessages={false}
+        sessionSentFrom={{
+          sessionId: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+          expertId: null,
+          expertName: null,
+        }}
+      />,
+    );
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
+
+  it("hides the load-older-messages sentinel even when more history exists", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        hasMoreMessages
+        onLoadMore={vi.fn()}
+        readOnly
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: /load older messages/i }),
+    ).toBeNull();
+  });
+
+  it("hides queued messages even when queuedMessages is non-empty", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={["should not show"]}
+        readOnly
+      />,
+    );
+    expect(screen.queryByText("should not show")).toBeNull();
+    expect(screen.queryByText("Queued")).toBeNull();
+  });
+
+  it("hides the trailing error banner even on error status", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new Error("upstream blew up")}
+        status="error"
+        readOnly
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("chat-error-banner")).toBeNull();
+    expect(screen.queryByText(/upstream blew up/i)).toBeNull();
+  });
+
+  it("hides the queue-badge gate even when the session is queued", () => {
+    const userId = "user-q-readonly";
+    const turnStats: TurnStatsMap = new Map([
+      [userId, { isLatestUserMessage: true, rawMessageId: "uuid-q-ro" }],
+    ]);
+    const messages: Message[] = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [
+          { type: "text" as const, text: "queue me", state: "done" as const },
+        ],
+      },
+    ];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
+        sessionChatStatus="queued"
+        readOnly
+      />,
+    );
+    expect(screen.queryByTestId("queue-badge")).toBeNull();
+  });
+});
+
+// ── expert kickoff ────────────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — expert kickoff", () => {
+  it("hides the kickoff prompt and shows only the reply", () => {
+    const kickoff = buildKickoffMessage("3f8b0f7e-9f30-4a3b-a6a1-000000000001");
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        hasMoreMessages={false}
+        messages={[
+          {
+            id: "m1",
+            role: "user",
+            parts: [{ type: "text", text: kickoff.text }],
+            metadata: kickoff.metadata,
+          },
+          {
+            id: "m2",
+            role: "assistant",
+            parts: [{ type: "text", text: "Hi, I'm Maria." }],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.queryByTestId("message-user")).toBeNull();
+    expect(screen.queryByText(kickoff.text)).toBeNull();
+    expect(screen.getAllByTestId("message-assistant").length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it("keeps a user message that merely repeats the kickoff wording", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        hasMoreMessages={false}
+        messages={[
+          {
+            id: "m1",
+            role: "user",
+            parts: [
+              {
+                type: "text",
+                text: "You were just hired. Call expert_onboarding once, and nothing else",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByTestId("message-user")).toHaveLength(1);
+  });
+});
+
+// ── pending upload placeholder ────────────────────────────────────────────
+
+describe("ChatMessagesContainer — pendingSend", () => {
+  const pendingSend = {
+    text: "tell me about this",
+    attachments: [
+      {
+        name: "talk.pdf",
+        mediaType: "application/pdf",
+        sizeBytes: 2048,
+        isUploading: true,
+      },
+      { name: "icon.png", mediaType: "image/png", isUploading: true },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the sent text and attachments before the message reaches the transcript", () => {
+    render(<ChatMessagesContainer {...baseProps} pendingSend={pendingSend} />);
+
+    expect(screen.getByText("tell me about this")).toBeDefined();
+    expect(screen.getByText("talk.pdf")).toBeDefined();
+    expect(screen.getByText("icon.png")).toBeDefined();
+  });
+
+  it("narrates the upload in the thinking indicator", () => {
+    render(<ChatMessagesContainer {...baseProps} pendingSend={pendingSend} />);
+
+    expect(screen.getByTestId("thinking-indicator").textContent).toBe(
+      "Uploading 2 files…",
+    );
+  });
+
+  it("uses the singular for a single file", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        pendingSend={{
+          ...pendingSend,
+          attachments: pendingSend.attachments.slice(0, 1),
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("thinking-indicator").textContent).toBe(
+      "Uploading 1 file…",
+    );
+  });
+
+  it("does not show the history spinner while the placeholder is up", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading
+        pendingSend={pendingSend}
+      />,
+    );
+
+    expect(screen.getByText("tell me about this")).toBeDefined();
+    expect(screen.queryByTestId("loading-spinner")).toBeNull();
+  });
+
+  it("keeps the placeholder out of a read-only transcript", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        pendingSend={pendingSend}
+        readOnly
+      />,
+    );
+
+    expect(screen.queryByText("tell me about this")).toBeNull();
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+  });
+
+  it("still shows the history spinner in a read-only transcript", () => {
+    // The placeholder is suppressed here, so nothing stands in for the
+    // spinner — hiding it would leave the transcript blank while it loads.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading
+        pendingSend={pendingSend}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByTestId("loading-spinner")).toBeDefined();
+  });
+});
+
+// ── mid-turn drain split ──────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — mid-turn follow-up", () => {
+  afterEach(cleanup);
+
+  const toolPart = {
+    type: "tool-read_file",
+    toolCallId: "call-1",
+    state: "output-available",
+    input: {},
+    output: "ok",
+  };
+
+  const drainedTurn = [
+    {
+      id: "user-1",
+      role: "user" as const,
+      parts: [{ type: "text" as const, text: "plan my week" }],
+    },
+    {
+      id: "assistant-1",
+      role: "assistant" as const,
+      parts: [
+        toolPart,
+        {
+          type: "data-pending-drained",
+          id: "hint-0",
+          data: {
+            drainedCount: 1,
+            messages: [{ id: "pm-1", content: "also check Friday" }],
+          },
+        },
+        { ...toolPart, toolCallId: "call-2" },
+      ],
+    },
+  ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[];
+
+  function renderedRowIds() {
+    return Array.from(document.querySelectorAll("[data-message-id]")).map(
+      (el) => el.getAttribute("data-message-id"),
+    );
+  }
+
+  it("renders the drained message between the work before and after it", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={drainedTurn}
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual([
+      "user-1",
+      "assistant-1#seg0",
+      "midturn-pm-1",
+      "assistant-1",
+    ]);
+    expect(
+      Array.from(document.querySelectorAll('[data-testid="message-user"]')),
+    ).toHaveLength(2);
+  });
+
+  it("settles the chain above the follow-up and streams only the last one", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={drainedTurn}
+      />,
+    );
+
+    expect(
+      screen
+        .getAllByTestId("chain-message-parts")
+        .map((el) => el.getAttribute("data-streaming")),
+    ).toEqual(["false", "true"]);
+  });
+
+  it("draws a promoted fallback bubble once its hint carries the text", () => {
+    // The backstop GET promoted the chip above the assistant before the SSE
+    // hint arrived; the hint then draws the same follow-up at the drain
+    // point. Exactly one bubble, between the two assistant segments.
+    const withFallback = [
+      drainedTurn[0],
+      {
+        id: "promoted-midturn-pending-chip-local-1",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "also check Friday" }],
+      },
+      drainedTurn[1],
+    ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[];
+
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={withFallback}
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual([
+      "user-1",
+      "assistant-1#seg0",
+      "midturn-pm-1",
+      "assistant-1",
+    ]);
+    // The prompt and one follow-up: the fallback row is not drawn as well.
+    expect(screen.getAllByTestId("message-user")).toHaveLength(2);
+  });
+
+  it("keeps a text-less hint out of the tool chain it lands in", () => {
+    // The hint is stream bookkeeping: left in the parts, it would split the
+    // chain around it into two.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={
+          [
+            drainedTurn[0],
+            {
+              ...drainedTurn[1],
+              parts: [
+                drainedTurn[1].parts[0],
+                {
+                  type: "data-pending-drained",
+                  id: "hint-0",
+                  data: { drainedCount: 1 },
+                },
+                drainedTurn[1].parts[2],
+              ],
+            },
+          ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[]
+        }
+      />,
+    );
+
+    const renderedParts = JSON.parse(
+      screen.getByTestId("chain-message-parts").dataset.parts ?? "[]",
+    ) as { type: string }[];
+    expect(renderedParts.map((p) => p.type)).toEqual([
+      "tool-read_file",
+      "tool-read_file",
+    ]);
+  });
+
+  it("shows the thinking indicator while the follow-up is the newest thing in the turn", () => {
+    // Answer text is normally inflight, but a drain hint landing after it
+    // means the assistant has not produced anything for the follow-up yet.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={
+          [
+            drainedTurn[0],
+            {
+              ...drainedTurn[1],
+              parts: [
+                { type: "text", text: "Here is your week.", state: "done" },
+                drainedTurn[1].parts[1],
+              ],
+            },
+          ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[]
+        }
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual([
+      "user-1",
+      "assistant-1#seg0",
+      "midturn-pm-1",
+      "assistant-1",
+    ]);
+    expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+  });
+
+  it("draws one follow-up when the promoted bubble sits behind the stream's placeholder row", () => {
+    // The live shape: the prompt, the status-only placeholder `useChat`
+    // leaves before the server's message id arrives, the bubble the
+    // auto-continue effect promoted, then the assistant whose hint carries
+    // the same text.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={
+          [
+            drainedTurn[0],
+            {
+              id: "placeholder-1",
+              role: "assistant",
+              parts: [{ type: "data-status", data: { message: "Preparing…" } }],
+            },
+            {
+              id: "promoted-auto-continue-pending-chip-local-1",
+              role: "user",
+              parts: [{ type: "text", text: "also check Friday" }],
+            },
+            drainedTurn[1],
+          ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[]
+        }
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual([
+      "user-1",
+      "placeholder-1",
+      "assistant-1#seg0",
+      "midturn-pm-1",
+      "assistant-1",
+    ]);
+    expect(screen.getAllByTestId("message-user")).toHaveLength(2);
+  });
+
+  it("leaves the turn whole when the hint carries no text", () => {
+    const withoutText = [
+      drainedTurn[0],
+      {
+        ...drainedTurn[1],
+        parts: [
+          drainedTurn[1].parts[0],
+          {
+            type: "data-pending-drained",
+            id: "hint-0",
+            data: { drainedCount: 1 },
+          },
+          drainedTurn[1].parts[2],
+        ],
+      },
+    ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[];
+
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={withoutText}
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual(["user-1", "assistant-1"]);
+  });
+});
+
+describe("ChatMessagesContainer — held call rows", () => {
+  it("never shows the server's wake row or a late result as the user's words", () => {
+    const messages: Message[] = [
+      {
+        id: "sess-123-seq-5",
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: "I answered an action that was waiting for my approval.",
+          },
+        ],
+        metadata: { held_calls_answered: true },
+      },
+      {
+        id: "sess-123-seq-6",
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: '<held_call_result tool="create_folder">folder_created Q3</held_call_result>',
+          },
+        ],
+        metadata: { held_call: { review_id: "r1" } },
+      },
+    ];
+
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+
+    expect(screen.queryByText(/I answered an action/)).toBeNull();
+    expect(screen.queryByText(/folder_created/)).toBeNull();
+    expect(screen.getByText("Approval answered")).toBeDefined();
+  });
+
+  it.each([
+    ["approved", "Result sent to Otto."],
+    ["rejected", "Declined; nothing was sent to Otto."],
+    ["expired", "Expired; nothing was sent to Otto."],
+    ["unknown", "Unclear; check before relying on it."],
+  ])(
+    "labels the wake by the card's recorded outcome: %s",
+    (outcome, clause) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={answeredCards([{ id: "a", outcome }])}
+        />,
+      );
+
+      expect(
+        screen.getByText(`Approval answered: Read "a.example.com". ${clause}`),
+      ).toBeDefined();
+    },
+  );
+
+  // Each cause the backend closes a call for, with the body it writes; only
+  // a read can close after an identical re-read already delivered it.
+  it.each([
+    [
+      "an action whose card is no longer open",
+      false,
+      "Nothing ran: this card is no longer open.",
+      'Post to "a.example.com". Closed; nothing ran.',
+    ],
+    [
+      "an action whose details were lost",
+      false,
+      "Nothing ran: the approved action's details were lost before it could run.",
+      'Post to "a.example.com". Closed; nothing ran.',
+    ],
+    [
+      "an action whose tool no longer exists",
+      false,
+      "Nothing ran: this tool no longer exists.",
+      'Post to "a.example.com". Closed; nothing ran.',
+    ],
+    [
+      "a read whose card is no longer open",
+      true,
+      "Nothing ran: this card is no longer open.",
+      'Read "a.example.com". Closed; nothing was released, or Otto already had it.',
+    ],
+    [
+      "a read an identical re-read already received",
+      true,
+      "The user released this content and it was already delivered to you once; nothing more arrives for this call.",
+      'Read "a.example.com". Closed; nothing was released, or Otto already had it.',
+    ],
+  ])("labels a closed card truly: %s", (_cause, read, body, label) => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([{ id: "a", outcome: "closed", read, body }])}
+      />,
+    );
+
+    expect(screen.getByText(`Approval answered: ${label}`)).toBeDefined();
+  });
+
+  it("claims nothing for a result row with no recorded outcome", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([{ id: "a" }])}
+      />,
+    );
+
+    expect(
+      screen.getByText('Approval answered: Read "a.example.com".'),
+    ).toBeDefined();
+  });
+
+  it("gives each answer in one wake its own clause", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([
+          { id: "a", outcome: "approved" },
+          { id: "b", outcome: "rejected" },
+          { id: "c", outcome: "approved" },
+        ])}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        'Approval answered: Read "a.example.com", Read "c.example.com". ' +
+          'Results sent to Otto. Read "b.example.com". ' +
+          "Declined; nothing was sent to Otto.",
+      ),
+    ).toBeDefined();
+  });
+
+  interface AnsweredCard {
+    id: string;
+    outcome?: string;
+    read?: boolean;
+    body?: string;
+  }
+
+  // A turn's held cards, its wake row, and a result row per card, as the
+  // server persists them.
+  function answeredCards(cards: AnsweredCard[]): Message[] {
+    return [
+      {
+        id: "assistant-cards",
+        role: "assistant",
+        parts: cards.map(({ id, read = true }) => ({
+          type: "tool-run_capability",
+          toolCallId: `call-${id}`,
+          state: "output-available",
+          input: {},
+          output: JSON.stringify({
+            type: "approval_required",
+            review_id: reviewId(id, read),
+            ask: read ? "Read" : "Post to",
+            object: `${id}.example.com`,
+          }),
+        })),
+      } as Message,
+      {
+        id: "wake",
+        role: "user",
+        parts: [
+          {
+            type: "text",
+            text: "I answered an action that was waiting for my approval.",
+          },
+        ],
+        metadata: { held_calls_answered: true },
+      },
+      ...cards.map(({ id, outcome, read = true, body }) => ({
+        id: `result-${id}`,
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: `<held_call_result tool="run_capability">\n${body ?? (outcome === "approved" ? "page text" : "Nothing ran.")}\n</held_call_result>`,
+          },
+        ],
+        metadata: {
+          held_call: {
+            review_id: reviewId(id, read),
+            tool_name: "run_capability",
+            tool_call_id: `call-${id}`,
+            outcome,
+          },
+        },
+      })),
+    ];
+  }
+
+  function reviewId(id: string, read: boolean) {
+    return `copilot-node-gate-${read ? "read-" : ""}run_capability:${id}`;
+  }
+});
+
+describe("ChatMessagesContainer — pending reviews", () => {
+  function withToolOutput(output: object): Message[] {
+    return [
+      {
+        id: "assistant-review",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-run_capability",
+            toolCallId: "call-1",
+            state: "output-available",
+            input: {},
+            output: JSON.stringify(output),
+          },
+        ],
+      } as Message,
+    ];
+  }
+
+  function mounted() {
+    return screen
+      .queryAllByTestId("pending-reviews")
+      .map((el) => JSON.parse(el.getAttribute("data-props") ?? "{}"));
+  }
+
+  const chatList = (pollWhileEmpty: boolean, refetchKey: number) => ({
+    chatSessionId: "sess-123",
+    pollWhileEmpty,
+    refetchKey,
+    expertName: null,
+    expert: null,
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("finds a chat review by the chat's session, with no graph execution", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "review_required",
+          review_id: "copilot-node-blk:ab12",
+          block_id: "blk",
+          block_name: "Create Folder",
+          input_data: {},
+        })}
+      />,
+    );
+
+    expect(mounted()).toEqual([chatList(true, 0)]);
+  });
+
+  it("finds a chat review stored before it had a session id of its own", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "review_required",
+          review_id: "copilot-node-blk:ab12",
+          graph_exec_id: "copilot-session-sess-123",
+        })}
+      />,
+    );
+
+    expect(mounted()).toEqual([chatList(true, 0)]);
+  });
+
+  it("finds an agent run's reviews by its graph execution", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({ execution_id: "exec-9", status: "REVIEW" })}
+      />,
+    );
+
+    expect(mounted()).toEqual([
+      { runs: [{ graphExecId: "exec-9" }] },
+      chatList(false, 0),
+    ]);
+  });
+
+  it("finds the reviews of every run that paused, not only the newest", () => {
+    // Four runs of one expert each waiting on her spend approval (T554).
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={["exec-1", "exec-2", "exec-3", "exec-4"].flatMap((id) =>
+          withToolOutput({
+            execution_id: id,
+            graph_id: "g-1",
+            status: "REVIEW",
+          }),
+        )}
+      />,
+    );
+
+    expect(
+      mounted()[0]
+        .runs.map((run: { graphExecId: string }) => run.graphExecId)
+        .sort(),
+    ).toEqual(["exec-1", "exec-2", "exec-3", "exec-4"]);
+  });
+
+  it("keeps the chat's held cards loaded while a newer run is the review target", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          ...withToolOutput({ type: "approval_required", review_id: "r1" }),
+          ...withToolOutput({ execution_id: "exec-9", status: "RUNNING" }),
+        ]}
+      />,
+    );
+
+    // One held call on screen: fetched, but polled only if a card comes back.
+    expect(mounted()).toEqual([
+      { runs: [{ graphExecId: "exec-9" }] },
+      chatList(false, 1),
+    ]);
+  });
+
+  it("refetches the chat's list at once for a new held call while it is the target", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "approval_required",
+          review_id: "r1",
+        })}
+      />,
+    );
+
+    expect(mounted()).toEqual([chatList(true, 1)]);
+  });
+
+  it("still finds held cards whose call has paged out of the loaded history", () => {
+    render(<ChatMessagesContainer {...baseProps} messages={[]} />);
+
+    expect(mounted()).toEqual([chatList(false, 0)]);
+  });
+
+  it("mounts nothing in a read-only transcript", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        readOnly
+        messages={withToolOutput({ type: "review_required", review_id: "r" })}
+      />,
+    );
+
+    expect(mounted()).toEqual([]);
   });
 });

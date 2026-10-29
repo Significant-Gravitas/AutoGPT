@@ -37,7 +37,7 @@ export function AgentInputsReadOnly({
 
   if (!hasInputs && !hasCredentials) {
     return (
-      <Text variant="body" className="text-zinc-700">
+      <Text variant="body" tone="body">
         No input for this run.
       </Text>
     );
@@ -68,7 +68,7 @@ export function AgentInputsReadOnly({
       {/* Credentials */}
       {hasCredentials && (
         <div className="flex flex-col gap-6">
-          {hasInputs && <div className="border-t border-neutral-200 pt-4" />}
+          {hasInputs && <div className="border-t border-border-base pt-4" />}
           {credentialFieldEntries.map(([key, inputSubSchema]) => {
             const credential = credentialInputs![key];
             if (!credential) return null;

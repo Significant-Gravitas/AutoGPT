@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import backend.data.tally as tally_module
 from backend.data.tally import (
     _EXTRACTION_PROMPT,
     _EXTRACTION_SUFFIX,
@@ -425,7 +426,7 @@ async def test_extract_business_understanding_themed_prompts():
     mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_response
 
-    with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
+    with patch("backend.data.tally.get_openai_client", return_value=mock_client):
         result = await extract_business_understanding("Q: Name?\nA: Alice")
 
     assert result.user_name == "Alice"
@@ -455,7 +456,7 @@ async def test_extract_themed_prompts_filters_long_and_unknown_keys():
     mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_response
 
-    with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
+    with patch("backend.data.tally.get_openai_client", return_value=mock_client):
         result = await extract_business_understanding("Q: Name?\nA: Alice")
 
     assert result.suggested_prompts is not None
@@ -480,7 +481,7 @@ async def test_extract_business_understanding_filters_nulls():
     mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_response
 
-    with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
+    with patch("backend.data.tally.get_openai_client", return_value=mock_client):
         result = await extract_business_understanding("Q: Name?\nA: Alice")
 
     assert result.user_name == "Alice"
@@ -500,7 +501,7 @@ async def test_extract_business_understanding_invalid_json():
     mock_client.chat.completions.create.return_value = mock_response
 
     with (
-        patch("backend.data.tally.AsyncOpenAI", return_value=mock_client),
+        patch("backend.data.tally.get_openai_client", return_value=mock_client),
         pytest.raises(json.JSONDecodeError),
     ):
         await extract_business_understanding("Q: Name?\nA: Alice")
@@ -513,11 +514,26 @@ async def test_extract_business_understanding_timeout():
     mock_client.chat.completions.create.side_effect = asyncio.TimeoutError()
 
     with (
-        patch("backend.data.tally.AsyncOpenAI", return_value=mock_client),
+        patch("backend.data.tally.get_openai_client", return_value=mock_client),
         patch("backend.data.tally._LLM_TIMEOUT", 0.001),
         pytest.raises(asyncio.TimeoutError),
     ):
         await extract_business_understanding("Q: Name?\nA: Alice")
+
+
+@pytest.mark.asyncio
+async def test_extract_business_understanding_missing_openrouter_key():
+    """When no LLM client is configured, raise a clear RuntimeError pointing
+    operators at both the cloud (``OPEN_ROUTER_API_KEY``) and local
+    (``CHAT_USE_LOCAL=true``) escape hatches."""
+    with (
+        patch(
+            "backend.data.tally.get_openai_client", return_value=None
+        ) as mock_get_client,
+        pytest.raises(RuntimeError, match=r"OPEN_ROUTER_API_KEY.*CHAT_USE_LOCAL"),
+    ):
+        await extract_business_understanding("Q: Name?\nA: Alice")
+    mock_get_client.assert_called_once_with(prefer_openrouter=True)
 
 
 # ── _refresh_cache ───────────────────────────────────────────────────────────
@@ -631,3 +647,42 @@ async def test_fetch_tally_page_uses_provided_client():
     assert "form123" in call_url
     assert "page=1" in call_url
     assert result == {"submissions": [], "questions": []}
+
+
+@pytest.mark.asyncio
+async def test_refresh_cache_incremental_passes_last_fetch_as_str():
+    existing_index = {"old@example.com": {"responses": [], "submitted_at": "x"}}
+    values = {
+        tally_module._LAST_FETCH_KEY.format(
+            form_id="form123"
+        ): b"2026-09-01T00:00:00+00:00",
+        tally_module._EMAIL_INDEX_KEY.format(form_id="form123"): json.dumps(
+            existing_index
+        ),
+        tally_module._QUESTIONS_KEY.format(form_id="form123"): json.dumps(
+            SAMPLE_QUESTIONS
+        ),
+    }
+    redis = MagicMock()
+    redis.get = AsyncMock(side_effect=lambda key: values.get(key))
+    redis.setex = AsyncMock()
+
+    with (
+        patch("backend.data.tally.Settings"),
+        patch("backend.data.tally._make_tally_client", return_value=MagicMock()),
+        patch(
+            "backend.data.tally.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ),
+        patch(
+            "backend.data.tally._fetch_all_submissions",
+            new_callable=AsyncMock,
+            return_value=(SAMPLE_QUESTIONS, SAMPLE_SUBMISSIONS),
+        ) as fetch,
+    ):
+        email_index, questions = await _refresh_cache("form123")
+
+    assert fetch.await_args.kwargs["start_date"] == "2026-09-01T00:00:00+00:00"
+    assert "old@example.com" in email_index
+    assert "alice@example.com" in email_index
+    assert questions == SAMPLE_QUESTIONS

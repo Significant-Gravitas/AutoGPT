@@ -13,6 +13,138 @@ generator client {
   partial_type_generator = "backend/data/partial_types.py"
 }
 
+// ============ Auth service (Better Auth) tables ============ //
+// Owned by Prisma migrations, but read/written at runtime by the Better Auth
+// service embedded in the frontend (via its pg adapter). Table and column
+// names must match Better Auth's expected model/field names exactly.
+
+model AuthUser {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          String?
+  banned        Boolean?
+  banReason     String?
+  banExpires    DateTime?
+  preferredName String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+
+  sessions AuthSession[]
+  accounts AuthAccount[]
+  ipEvents AuthIPEvent[]
+
+  @@map("UserAuthIdentity")
+}
+
+model AuthSession {
+  id             String   @id
+  expiresAt      DateTime
+  token          String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+  ipAddress      String?
+  userAgent      String?
+  impersonatedBy String?
+  userId         String
+  user           AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("UserAuthSession")
+}
+
+model AuthAccount {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @default(now()) @updatedAt
+  user                  AuthUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("UserAuthAccount")
+}
+
+model AuthVerification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@index([identifier])
+  @@map("UserAuthVerification")
+}
+
+model AuthJwks {
+  id         String    @id
+  publicKey  String
+  privateKey String
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+
+  @@map("UserAuthJwks")
+}
+
+// ============ End auth service (Better Auth) tables ============ //
+
+// Written and enforced by the frontend's Better Auth hooks over raw SQL (hence
+// the database-generated ids); read by the admin users page.
+
+// Where each sign-up and sign-in came from. Sessions can't answer that: a ban
+// deletes them and they expire. Kept `auth_ip_event_retention_days`.
+model AuthIPEvent {
+  id        String          @id @default(dbgenerated("gen_random_uuid()"))
+  userId    String
+  kind      AuthIPEventKind
+  // As Better Auth records a session's IP: an IPv6 address masked to its /64.
+  ipAddress String
+  userAgent String?
+  createdAt DateTime        @default(now())
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([ipAddress])
+  @@index([createdAt])
+  @@map("UserAuthIPEvent")
+}
+
+enum AuthIPEventKind {
+  SIGN_UP
+  SIGN_IN
+}
+
+// An IP refused at sign-up and sign-in, or an email domain refused at sign-up.
+model AuthAccessBlock {
+  id          String              @id @default(dbgenerated("gen_random_uuid()"))
+  kind        AuthAccessBlockKind
+  value       String
+  reason      String
+  createdById String?
+  createdAt   DateTime            @default(now())
+  expiresAt   DateTime?
+
+  @@unique([kind, value])
+  @@map("UserAuthAccessBlock")
+}
+
+enum AuthAccessBlockKind {
+  IP
+  EMAIL_DOMAIN
+}
+
 // User model to mirror Auth provider users
 model User {
   id               String   @id // This should match the Supabase user ID
@@ -26,28 +158,52 @@ model User {
   stripeCustomerId String?
   topUpConfig      Json?
 
-  maxEmailsPerDay              Int     @default(3)
-  notifyOnAgentRun             Boolean @default(true)
-  notifyOnZeroBalance          Boolean @default(true)
-  notifyOnLowBalance           Boolean @default(true)
-  notifyOnBlockExecutionFailed Boolean @default(true)
-  notifyOnContinuousAgentError Boolean @default(true)
-  notifyOnDailySummary         Boolean @default(true)
-  notifyOnWeeklySummary        Boolean @default(true)
-  notifyOnMonthlySummary       Boolean @default(true)
-  notifyOnAgentApproved        Boolean @default(true)
-  notifyOnAgentRejected        Boolean @default(true)
+  maxEmailsPerDay Int @default(3)
+
+  // The volume knob from the Briefing footer: a frequency plus two switches,
+  // instead of one unsubscribe trapdoor.
+  briefingFrequency    BriefingFrequency @default(WEEKLY)
+  alertsEnabled        Boolean           @default(true)
+  notifyOnStoreVerdict Boolean           @default(true)
+
+  // Last Briefing actually sent, so a re-run of the scheduler can't send the
+  // same period twice and the next period knows where to start.
+  lastBriefingAt DateTime?
+
+  // Set the first time this user pays for a plan. Doubles as the "first
+  // subscription" test for the welcome email and its idempotency key.
+  welcomeEmailSentAt DateTime?
 
   timezone String @default("not-set")
 
-  // CoPilot subscription tier — controls rate-limit multipliers.
-  // Multipliers applied in get_global_rate_limits(): BASIC=1x, PRO=5x, MAX=20x, BUSINESS=60x, ENTERPRISE=60x.
-  // NOTE: @default(PRO) is intentional for the beta period — all existing and new
-  // users receive PRO-level (5x) rate limits by default. The Python-level constant
-  // DEFAULT_TIER=BASIC (in copilot/rate_limit.py) acts as a code-level fallback when
-  // the DB value is NULL or unrecognised. At GA, a migration will flip the column
-  // default to BASIC and batch-update users to their billing-derived tiers.
-  subscriptionTier SubscriptionTier @default(PRO)
+  // Consent captured at signup. termsVersion names the terms and privacy
+  // policy text the account agreed to (frontend lib/legal.ts TERMS_VERSION).
+  // A set marketingOptOutAt keeps the account out of MailerLite entirely.
+  termsAcceptedAt       DateTime?
+  termsVersion          String?
+  marketingOptOutAt     DateTime?
+  marketingOptOutSource String? // "signup" | "email_unsubscribe" | "settings"
+  // The first Iranian or Russian country a checkout saw for the account (its
+  // IP or billing country). Like an opt-out, it keeps the account out of
+  // MailerLite for good (backend/notifications/consent.py).
+  marketingExcludedCountry String?
+
+  // Default AutoPilot connection for chats the caller didn't route explicitly
+  // (bot links, schedules, a fresh /copilot session). NULL means "automatic" —
+  // the server picks, exactly as it did before this setting existed. The
+  // credential is stored alongside the provider so the choice keeps pointing at
+  // one ChatGPT account once a user can link several.
+  defaultChatAuthProvider String?
+  defaultChatCredentialId String?
+
+  subscriptionTier  SubscriptionTier   @default(NO_TIER)
+  // When the tier last dropped from a plan or trial to NO_TIER, through
+  // set_subscription_tier or the trial reconcile, which clear it when they set
+  // a tier again. Product mail keeps reaching the account for 7 days.
+  subscriptionEndedAt DateTime?
+  subscriptionTrial SubscriptionTrial?
+  paidUsageActivation PaidUsageActivation?
+  proActivationAttempt ProActivationAttempt?
 
   // Relations
 
@@ -58,23 +214,45 @@ model User {
   CreditTransactions   CreditTransaction[]
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
+  ChatMessageFeedback  ChatMessageFeedback[]
+  UserBriefings        UserBriefing[]
+  ActivityEvents       ActivityEvent[]
   AgentPresets         AgentPreset[]
   LibraryAgents        LibraryAgent[]
   LibraryFolders       LibraryFolder[]
+  OwnedExperts         Expert[]
+  ExpertPods           ExpertPod[]
+  SkillLearningSources SkillLearningSource[]
+  SkillLearningReviews SkillLearningReview[]
+  SkillHeads           SkillHead[]
+  SkillVersions        SkillVersion[]
+  SkillSuppressions    SkillSuppression[]
+  SkillUseEvents       SkillUseEvent[]
+
+
+  ExpertRoutines       ExpertRoutine[]
+  DreamPasses          DreamPass[]
+  ScheduledChatStreaks ScheduledChatStreak[]
+  MemoryScopeSchedules MemoryScopeSchedule[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
   CoPilotUnderstanding  CoPilotUnderstanding?
+  OnboardingBrainDump   OnboardingBrainDump?
   BuilderSearchHistory  BuilderSearchHistory[]
   StoreListings         StoreListing[]
   StoreListingReviews   StoreListingReview[]
   StoreVersionsReviewed StoreListingVersion[]
+  SkillListings         SkillListing[]
+  SkillVersionsReviewed SkillListingVersion[]   @relation("SkillVersionsReviewed")
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
+  AlertConditions       AlertCondition[]
+  PushSubscriptions     PushSubscription[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
-  PlatformCostLogs PlatformCostLog[]
+  PlatformCostLogs      PlatformCostLog[]
 
   // OAuth Provider relations
   OAuthApplications       OAuthApplication[]
@@ -82,12 +260,79 @@ model User {
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
 
+  // Organization & Workspace relations
+  OrgMemberships  OrgMember[]
+  TeamMemberships TeamMember[]
+
   // Platform bot linking
   PlatformLinks     PlatformLink[]
   PlatformUserLinks PlatformUserLink[]
+
+  ExperimentAssignments ExperimentAssignment[]
+  Attribution           UserAttribution?
+}
+
+// One row per (user, experiment): the arm a user was bucketed into the first
+// time the experiment was evaluated for them. Written once and never
+// overwritten, so analytics can join a stable arm to every later event
+// (runs, retention, spend) without depending on the flag provider's history.
+model ExperimentAssignment {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  experimentKey String
+  variant       String
+  // "posthog" when the frontend reports a PostHog-evaluated flag,
+  // "backend" when the server bucketed the user itself.
+  source        String
+
+  @@unique([userId, experimentKey])
+  @@index([experimentKey, variant])
+}
+
+// Where a user came from, captured once around signup. Holds the identities
+// the analytics tools know the user by before they had a user id, so the
+// database can join marketing attribution (DataFast), product analytics
+// (PostHog) and feature-flag bucketing (LaunchDarkly, via the shared
+// anonymous id) to activation and revenue. Fields are filled at most once.
+model UserAttribution {
+  userId    String   @id
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // First-party anonymous id shared with PostHog and LaunchDarkly pre-login.
+  anonymousId       String?
+  // PostHog $device_id at the time of reporting, when it differs.
+  posthogDistinctId String?
+  datafastVisitorId String?
+  datafastSessionId String?
+
+  // First landing on the site, as seen by the browser that later signed up.
+  landingPath  String?
+  referrer     String?
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  // "email" | "google" when the account was created in this browser session.
+  signupMethod String?
+
+  @@index([anonymousId])
+  @@index([datafastVisitorId])
+}
+
+enum ChatSessionStatus {
+  idle
+  queued
+  running
 }
 
 enum SubscriptionTier {
+  NO_TIER
+  TRIAL
   BASIC
   PRO
   MAX
@@ -95,34 +340,75 @@ enum SubscriptionTier {
   ENTERPRISE
 }
 
-enum OnboardingStep {
-  // Introductory onboarding (Library)
-  WELCOME
-  USAGE_REASON
-  INTEGRATIONS
-  AGENT_CHOICE
-  AGENT_NEW_RUN
-  AGENT_INPUT
-  CONGRATS
-  // First Wins
-  VISIT_COPILOT
-  GET_RESULTS
-  MARKETPLACE_VISIT
-  MARKETPLACE_ADD_AGENT
-  MARKETPLACE_RUN_AGENT
-  BUILDER_SAVE_AGENT
-  // Consistency Challenge
-  RE_RUN_AGENT
-  SCHEDULE_AGENT
-  RUN_AGENTS
-  RUN_3_DAYS
-  // The Pro Playground
-  TRIGGER_WEBHOOK
-  RUN_14_DAYS
-  RUN_AGENTS_100
-  // No longer rewarded but exist for analytical purposes
-  BUILDER_OPEN
-  BUILDER_RUN_AGENT
+// One immutable generation for the first settled trial-to-Pro/Max conversion. Never reset on replay.
+model PaidUsageActivation {
+  id                   String @id @default(uuid())
+  userId               String @unique
+  user                 User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String @unique
+  stripeInvoiceId      String @unique
+  readyAt              DateTime?
+  createdAt            DateTime @default(now())
+}
+
+// Cutover fence: old settled payments cannot become new activation resets on replay.
+model PaidUsageActivationPolicy {
+  id        String @id
+  startsAt  DateTime @default(now())
+}
+
+model ProActivationAttempt {
+  id                   String @id @default(uuid())
+  userId               String @unique
+  user                 User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String @unique
+  stripeCustomerId     String
+  terms                Json
+  returnTo             String
+  status               String @default("quoted")
+  confirmedAt          DateTime?
+  invoiceId            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model SubscriptionTrial {
+  id                        String    @id @default(uuid())
+  userId                    String    @unique
+  user                      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer                     Json
+  stripeCustomerId          String
+  stripeCheckoutSessionId   String?   @unique
+  stripeSubscriptionId      String?   @unique
+  stripeConversionInvoiceId String?   @unique
+  notificationRevision      Int       @default(0)
+  checkoutAttempt           Int       @default(0)
+  checkoutSuccessUrl        String
+  checkoutCancelUrl         String
+  checkoutMetadata          Json      @default("{}")
+  status                    String    @default("checkout_pending")
+  rejectionReason           String?
+  cardVerifiedAt            DateTime?
+  startedAt                 DateTime?
+  endsAt                    DateTime?
+  consumedAt                DateTime?
+  convertedAt               DateTime?
+  cancelAtPeriodEnd         Boolean   @default(false)
+  costMicrodollars          BigInt    @default(0)
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@index([status, endsAt])
+  @@index([stripeCustomerId, id])
+}
+
+// No account/trial foreign key: deleting an account must not reset intro eligibility.
+model SubscriptionTrialClaim {
+  key       String   @id
+  trialId   String
+  createdAt DateTime @default(now())
+
+  @@index([trialId])
 }
 
 model UserOnboarding {
@@ -130,19 +416,32 @@ model UserOnboarding {
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
-  completedSteps                OnboardingStep[] @default([])
-  walletShown                   Boolean          @default(false)
-  notified                      OnboardingStep[] @default([])
-  rewardedFor                   OnboardingStep[] @default([])
+  // Step names are validated at the API boundary (Pydantic Literal on the
+  // backend, OpenAPI-generated union on the frontend). Storing as String[]
+  // means renames/adds/retires are code-only — legacy values become inert
+  // strings instead of stuck enum members. See SECRT-2355.
+  completedSteps                String[]  @default([])
+  wizardProgress                Json?
+  wizardRevision                Int       @default(0)
+  walletShown                   Boolean   @default(false)
+  notified                      String[]  @default([])
+  rewardedFor                   String[]  @default([])
   usageReason                   String?
-  integrations                  String[]         @default([])
+  integrations                  String[]  @default([])
   otherIntegrations             String?
   selectedStoreListingVersionId String?
   agentInput                    Json?
   onboardingAgentExecutionId    String?
-  agentRuns                     Int              @default(0)
+  agentRuns                     Int       @default(0)
   lastRunAt                     DateTime?
-  consecutiveRunDays            Int              @default(0)
+  consecutiveRunDays            Int       @default(0)
+
+  // The role picked in the wizard: one of RoleStep's option IDs, or "Other"
+  // with the typed text in roleOther. Written only by POST /onboarding/profile:
+  // AutoPilot rewrites the copy in CoPilotUnderstanding, so that is no record
+  // of the pick (backend/data/onboarding_role.py).
+  role      String?
+  roleOther String?
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -161,6 +460,266 @@ model CoPilotUnderstanding {
   @@index([userId])
 }
 
+enum BrainDumpStatus {
+  recording_uploaded
+  transcribing
+  transcribed
+  extracting
+  completed
+  failed
+}
+
+enum BrainDumpInputMode {
+  voice
+  typed
+  skipped
+}
+
+/// Onboarding voice "brain dump": the raw recording plus its full
+/// transcript. The transcript is stored complete even when a shortened
+/// version is what gets injected into the copilot's first prompt —
+/// truncation is never silent, and the audio is never deleted on failure
+/// so the user can always re-run or download it.
+model OnboardingBrainDump {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String @unique
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Client-generated identifier that ties uploaded parts to one take and
+  /// makes `finalize` idempotent across retries.
+  recordingId String
+
+  status    BrainDumpStatus
+  inputMode BrainDumpInputMode
+
+  audioPath      String?
+  mimeType       String?
+  sizeBytes      Int?
+  durationSecs   Float?
+  transcript     String?
+  transcriptLang String?
+  errorCode      String?
+  /// What decided a quality-gate rejection (`quality.QualityRejection.reason`).
+  errorReason    String?
+
+  /// Written once when the dump is processed, read by the copilot home's
+  /// greeting. Generated up-front rather than on page load so the greeting
+  /// is instant — the user has already waited through the loading screen.
+  greeting             String?
+  /// List of {title, prompt} objects the user can pick from under the
+  /// greeting. JSON so the shape can evolve without a migration.
+  suggestedPrompts     Json    @default("[]")
+  /// True once the user has sent their first message. The greeting is
+  /// never shown again after this, but its content is kept.
+  greetingSeen         Boolean @default(false)
+  /// List of {provider, reason} objects Claude picks from the transcript
+  /// and the live provider registry. Null until the recommendation
+  /// background job (separate from the greeting one) writes its result.
+  recommendedProviders Json?
+  /// The team AutoPilot proposes off the back of the dump: {diagnosis,
+  /// experts, raise_suggestion, source}, where every expert is a live
+  /// roster template. Null until its background job writes a result;
+  /// `source="disabled"` records a run the feature flag switched off.
+  recommendedExperts   Json?
+
+  @@index([userId])
+}
+
+model UserBriefing {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Local calendar date the briefing covers, in the user's timezone at generation time.
+  briefingDate DateTime @db.Date
+
+  // Serialized BriefingContent (see backend/copilot/briefing/models.py).
+  content Json
+
+  // Set only after the briefing was posted into the user's copilot thread.
+  // Null means the session post failed (or hasn't happened yet) — the next
+  // generation run for the same date retries delivery instead of skipping.
+  deliveredAt DateTime?
+
+  // Every read is by user + date (latest-first or exact date), so the unique
+  // index above serves them all — no secondary index to pay for on write.
+  @@unique([userId, briefingDate])
+}
+
+enum ActivityEventCategory {
+  FILE
+  INTEGRATION
+  RUN
+  SCHEDULE
+}
+
+// Append-only audit log of work agents performed on the user's behalf:
+// side-effecting copilot tool calls, credentialed block executions, and
+// run completions. Powers the Home "Recent work" feed.
+model ActivityEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String?
+
+  // Soft references on purpose: events must outlive the expert, session or
+  // schedule that produced them, so attribution falls back to `data`.
+  expertId    String?
+  sessionId   String?
+  graphExecId String?
+  nodeExecId  String?
+  scheduleId  String?
+
+  category  ActivityEventCategory
+  eventType String
+  provider  String?
+  objectId  String?
+  title     String
+  data      Json                  @default("{}")
+
+  @@index([userId, createdAt])
+  @@index([userId, category, createdAt])
+  @@index([sessionId])
+  @@index([expertId, createdAt])
+}
+
+// The route a dream pass took: the chat transport's sync path, or Anthropic's
+// Message Batches API.
+enum DreamPassRoute {
+  SYNC
+  ANTHROPIC_BATCH
+}
+
+enum DreamPassTrigger {
+  CRON
+  ADMIN
+  EVAL
+}
+
+// The step a dream pass is at: gathering its input, running (or waiting on
+// the batch of) one of its three phases, applying what the last one returned,
+// or done. Declared in that order, and the order is load-bearing: an update
+// only moves a row's phase to a later value (data/dream_pass_update.py).
+enum DreamPassPhase {
+  GATHER
+  CONSOLIDATE
+  RECOMBINE
+  SANITIZE
+  APPLY
+  DONE
+}
+
+// Open statuses first, in the order a pass moves through them, then the
+// terminal ones. An update only moves a row's status to a later value.
+enum DreamPassStatus {
+  QUEUED
+  RUNNING
+  SUBMITTED
+  APPLYING
+  COMPLETE
+  ERRORED
+  CANCELLED
+  EXPIRED
+  SKIPPED
+}
+
+// One dream pass over one memory scope (the account's or an expert's), from
+// gather to apply, on either route. The sync orchestrator writes it as each
+// step runs; the batch path at submit and in each result callback. Redis still
+// holds the lock, the batch state and the admin job status: this row is the
+// durable record beside them, and a failed write never fails the pass.
+model DreamPass {
+  // The pass id the orchestrator mints, which every phase's cost row carries.
+  id String @id
+
+  userId   String
+  User     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  // MemoryScope.scope_key: what the scope's dream lock and markers key on.
+  scopeKey String
+
+  route            DreamPassRoute
+  trigger          DreamPassTrigger
+  phase            DreamPassPhase   @default(GATHER)
+  status           DreamPassStatus  @default(QUEUED)
+  skipReason       String?
+  // Bumped by a stop from outside the pass (a cancel, or an expiry by a newer
+  // pass's guard) in the statement that closes the row, so a step that started
+  // under an older generation knows to stop.
+  cancelGeneration Int              @default(0)
+
+  // The provider batch of the phase in flight (batch route only).
+  providerBatchId String?
+  // The dream lock's ownership token, and when the lock lapses unless renewed:
+  // written with the row, renewed at each step, emptied when the row closes,
+  // or, for a row closed with a cleanup pending, once that cleanup is done.
+  leaseToken      String?
+  leaseExpiresAt  DateTime?
+
+  // Set by a close that leaves a cleanup behind (a stop from outside, a batch
+  // pass's end, the reaper's) and cleared once every step of that cleanup has
+  // finished, so the reaper resumes whatever the pass left undone.
+  cleanupPendingAt DateTime?
+
+  // The pass's DreamInput, in the format the batch path already persists to
+  // Redis (batch route only), emptied when the row closes.
+  inputBundle  Json?
+  // Each phase's validated output, keyed by phase.
+  phaseOutputs Json?
+  // The clamped operations apply was handed, and what apply reported.
+  operations   Json?
+  // DreamPassUsage: tokens and cost, per phase and in total.
+  usage        Json?
+  // The usage attribution (TrialCostContext) the pass started under, which
+  // every charge of its phases goes by. A row without one is never charged.
+  costContext  Json?
+
+  // The episode window the pass gathered.
+  windowStart DateTime?
+  windowEnd   DateTime?
+  error       String?
+
+  // Set by a hard forget that may have reached the pass, and never cleared:
+  // the dream's text in the row is blanked, by the forget if the pass is
+  // closed, else by the transition that closes it, and its narrative is
+  // written blanked (backend/copilot/dream/forget_copies.py).
+  erasedAt  DateTime?
+  // Every fact and episode the pass gathered, recorded before its first
+  // model call and never cleared: a hard forget marks a pass that read what
+  // it reached however long ago the pass closed, and its narrative's session
+  // keeps a copy for once the row has aged out. A pass's create states it
+  // (empty until the pass gathers); a row whose writer did not (one from
+  // before this column, or written by a release without it during a rollout)
+  // holds "*": it may have read anything, and any hard forget in its scope
+  // reaches it (backend/data/dream_pass_models.UNKNOWN_READS).
+  readUuids String[]  @default(["*"])
+
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  submittedAt DateTime?
+  appliedAt   DateTime?
+  completedAt DateTime?
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  @@index([scopeKey, status])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  // Deleting an expert cascades here; without it that scans every pass.
+  @@index([expertId])
+  // The reaper's scans: open passes whose lease lapsed, oldest first, and
+  // closed passes whose cleanup has not finished.
+  @@index([status, leaseExpiresAt])
+  @@index([status, cleanupPendingAt])
+}
 
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
@@ -177,7 +736,8 @@ model UserWorkspace {
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  Files UserWorkspaceFile[]
+  Files   UserWorkspaceFile[]
+  Folders UserWorkspaceFolder[]
 
   @@index([userId])
 }
@@ -205,9 +765,52 @@ model UserWorkspaceFile {
 
   metadata Json @default("{}")
 
-  SharedExecutionFiles SharedExecutionFile[]
+  // Otto's own working file (a parked tool output, its build scratchpad),
+  // kept out of the user's file lists. Decided once at write time; see
+  // backend/data/workspace_internal.py.
+  isInternal Boolean @default(false)
 
-  @@unique([workspaceId, path])
+  // User-level organization. Null = root. The folder API soft-deletes
+  // folders and reparents files to root; SetNull is a hard-delete safety net.
+  folderId String?
+  Folder   UserWorkspaceFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  SharedExecutionFiles SharedExecutionFile[]
+  SharedChatFiles      SharedChatFile[]
+
+  // Paths are unique among LIVE files, which Prisma cannot express: the rule is
+  // a partial unique index created in migrations
+  // ("UserWorkspaceFile_workspaceId_path_live_key"). A soft-deleted row keeps
+  // the path it was deleted at.
+  @@index([workspaceId, isDeleted])
+  @@index([folderId])
+}
+
+// User-created folder for organizing workspace files. Purely a DB-level
+// organizational layer — storage paths are unaffected. Mirrors LibraryFolder.
+model UserWorkspaceFolder {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  workspaceId String
+  Workspace   UserWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  name String
+  icon String?
+
+  // Null = a folder at the workspace root.
+  parentId String?
+  Parent   UserWorkspaceFolder?  @relation("WorkspaceFolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  Children UserWorkspaceFolder[] @relation("WorkspaceFolderHierarchy")
+
+  isDeleted Boolean @default(false)
+
+  Files UserWorkspaceFile[]
+
+  // Names are unique among LIVE siblings, which Prisma cannot express: both
+  // rules are partial unique indexes created in migrations
+  // ("..._workspaceId_parentId_name_live_key" and "..._workspaceId_name_root_key").
   @@index([workspaceId, isDeleted])
 }
 
@@ -242,6 +845,11 @@ model BuilderSearchHistory {
 
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Tenancy
+  organizationId String?
+
+  @@index([organizationId])
 }
 
 ////////////////////////////////////////////////////////////
@@ -273,9 +881,94 @@ model ChatSession {
   totalPromptTokens     Int @default(0)
   totalCompletionTokens Int @default(0)
 
+  // Session lifecycle for the per-user soft running cap + cross-session
+  // queue.  ``idle`` (DEFAULT, no turn in flight), ``queued`` (waiting
+  // for a running slot to free), ``running`` (a turn is currently
+  // being processed).  ``updatedAt`` doubles as the status-change
+  // timestamp (every transition touches the row).
+  chatStatus ChatSessionStatus @default(idle)
+
   Messages ChatMessage[]
 
-  @@index([userId, updatedAt])
+  // Expert this session is scoped to; null = plain Autopilot session.
+  // Sessions keep expertId for history when the expert is archived (soft delete).
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id])
+
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  // When true, the session is pinned to the top of the user's sidebar
+  // list, surfacing ahead of unpinned sessions regardless of recency.
+  // Mirrors the LibraryAgent.isFavorite pattern.
+  isPinned Boolean @default(false)
+
+  // Sharing fields — mirrors AgentGraphExecution sharing
+  isShared   Boolean   @default(false)
+  shareToken String?   @unique
+  sharedAt   DateTime?
+
+  // When true (set at share-enable time), any run_agent execution in
+  // this chat is automatically linked into the share — both the
+  // existing history at enable-time and any new runs that land while
+  // the share is active.  When false, no executions are linked even
+  // if the chat itself is shared (cards in the viewer render in their
+  // "execution not shared" state).
+  autoShareExecutions Boolean @default(false)
+
+  SharedChatFiles  SharedChatFile[]
+  ChatLinkedShares ChatLinkedShare[]
+
+  // Single compound index covers (a) the cap-count (count by userId +
+  // chatStatus), (b) the queue-list ORDER BY updatedAt asc, AND (c) the
+  // sidebar list (find_many WHERE userId ORDER BY updatedAt desc).
+  @@index([userId, chatStatus, updatedAt], name: "ChatSession_user_status_idx")
+  @@index([teamId, updatedAt])
+  @@index([organizationId])
+  @@index([shareToken])
+  @@index([expertId])
+}
+
+// Tracks which workspace files are exposed via a shared chat session.
+// Same allowlist defense as SharedExecutionFile: enumeration-resistant
+// downloads via uniform 404 + single allowlist lookup.
+model SharedChatFile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  sessionId String
+  Session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  fileId String
+  File   UserWorkspaceFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  shareToken String
+
+  @@unique([shareToken, fileId])
+  @@index([shareToken])
+  @@index([sessionId])
+}
+
+// Links a shared ChatSession to AgentGraphExecution rows that were
+// opted-in at share time so the public viewer can resolve drill-ins.
+// On chat-share revoke, only executions whose ``sharedVia=CHAT_LINK``
+// (no independent user share) get their share state cleared.
+model ChatLinkedShare {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  sessionId String
+  Session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  executionId String
+  Execution   AgentGraphExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, executionId])
+  @@index([sessionId])
+  @@index([executionId])
 }
 
 model ChatMessage {
@@ -298,7 +991,75 @@ model ChatMessage {
   sequence   Int
   durationMs Int? // Wall-clock milliseconds for this assistant turn
 
+  // Which LLM served this assistant turn, and which routing layer picked it
+  // ("ld" | "catalog" | "env" | "fallback" — the last when the CLI's
+  // overload fallback served a different model than the routed one).
+  // Product-intelligence mirrors these columns to
+  // segment quality judgments by model — model experiments are unmeasurable
+  // without them. Null on user/tool rows and rows predating this column.
+  model         String?
+  routingSource String?
+
+  // Which connection served this assistant turn. The session's metadata is
+  // the route a chat STARTS on; these record the route a turn actually RAN
+  // on, so a later route change cannot rewrite what already happened.
+  // Null on user/tool rows and on rows predating this column, where the
+  // session's own route is the answer (see `segment_of`).
+  llmAuthProvider String?
+  llmCredentialId String?
+
+  // Langfuse trace of the SDK turn that wrote this assistant or reasoning
+  // row, so a rating of the reply can be scored against that trace. Null on
+  // user/tool rows, on baseline turns (no turn-level trace) and on rows
+  // predating this column.
+  langfuseTraceId String?
+
+  // PostHog trace of the turn that wrote this assistant or reasoning row:
+  // the `$ai_trace_id` its generations and spans carry, so a rating of the
+  // reply can name the trace. Null on user/tool rows, on rows written
+  // outside an executor turn and on rows predating this column.
+  traceId String?
+
+  // Per-row JSONB metadata bag.  Currently holds the dispatcher's
+  // submit-time payload (file_ids, mode, model, permissions, context,
+  // request_arrival_at) on the user row that triggered a queued turn,
+  // so a later promotion can replay the original turn faithfully.
+  // Generic so future per-row state can land here without a migration.
+  metadata Json?
+
+  Feedback ChatMessageFeedback[]
+
   @@unique([sessionId, sequence])
+}
+
+// A user's rating of an AutoPilot reply: thumbs up/down from the message
+// actions, or a copy of the reply. One row per user, message and score name,
+// so voting again updates the rating in place. The row id is also the id of
+// the matching Langfuse score, which makes re-sending a rating idempotent.
+model ChatMessageFeedback {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  messageId String
+  Message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  // Copied from the message so a chat's ratings read without a join.
+  sessionId String
+
+  scoreName  String // "user-feedback" (1 = up, 0 = down) or "copy" (always 1)
+  scoreValue Int
+  comment    String?
+
+  // The trace the Langfuse score was attached to. Null when the reply had
+  // none and the score went on the chat's Langfuse session instead.
+  langfuseTraceId String?
+
+  @@unique([messageId, userId, scoreName])
+  @@index([userId])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
@@ -333,9 +1094,17 @@ model AgentGraph {
   LibraryAgents        LibraryAgent[]
   StoreListingVersions StoreListingVersion[]
 
+  // Tenancy columns (nullable until cutover migration backfills existing data)
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
   @@id(name: "graphVersionId", [id, version])
   @@index([userId, isActive, id, version])
   @@index([forkedFromId, forkedFromVersion])
+  @@index([teamId, isActive, id, version])
+  @@index([organizationId])
 }
 
 ////////////////////////////////////////////////////////////
@@ -374,26 +1143,115 @@ model AgentPreset {
   webhookId String?
   Webhook   IntegrationWebhook? @relation(fields: [webhookId], references: [id])
 
+  // Expert attribution: set when the preset was created for a hired
+  // expert's installed workflow; every run it fires inherits it.
+  // Survives expert archival (soft delete), like ChatSession.expertId.
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
+
+  // Set when detach-on-archive deactivated this preset, so re-hire
+  // reactivates only what archiving turned off — a preset the user had
+  // deliberately disabled beforehand stays off.
+  deactivatedByExpertArchive Boolean @default(false)
+
   isDeleted Boolean @default(false)
+
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([agentGraphId, agentGraphVersion])
   @@index([webhookId])
+  @@index([expertId])
+  @@index([teamId])
+  @@index([organizationId])
 }
 
+// The four product-notification families plus the account/billing service
+// messages. Every email the platform sends is one of these; there is
+// deliberately no per-run notification type — a finished run is evidence for
+// the Briefing's highlights, not a message of its own.
 enum NotificationType {
-  AGENT_RUN
-  ZERO_BALANCE
+  BRIEFING
+  ALERT
+  VERDICT
+  OPS
+  SUBSCRIPTION_WELCOME
+  PAYMENT_FAILED
+  PAYMENT_FINAL_NOTICE
+  SUBSCRIPTION_CANCELLED
+  SUBSCRIPTION_RESUMED
+  SUBSCRIPTION_ENDED
+  TRIAL_UPDATE
+}
+
+// How often the Briefing is delivered. OFF is the "alerts only" / "pause"
+// half of the footer volume knob; `alertsEnabled` carries the other half.
+enum BriefingFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  OFF
+}
+
+// Every condition the Alert family can fire for. The last four have no
+// equivalent in the notification surface this replaces.
+enum AlertCause {
+  AUTH_EXPIRED
+  PAUSED_FAILURES
+  BLOCK_FAILED
+  CONTINUOUS_ERROR
+  AWAITING_REVIEW
+  AWAITING_INPUT
   LOW_BALANCE
-  BLOCK_EXECUTION_FAILED
-  CONTINUOUS_AGENT_ERROR
-  DAILY_SUMMARY
-  WEEKLY_SUMMARY
-  MONTHLY_SUMMARY
-  REFUND_REQUEST
-  REFUND_PROCESSED
-  AGENT_APPROVED
-  AGENT_REJECTED
+  ZERO_BALANCE
+  GUARDRAIL
+}
+
+enum AlertConditionStatus {
+  // Raised, inside the debounce window, not yet emailed.
+  PENDING
+  // Emailed. Blocks the same cause from re-alerting for 24h.
+  SENT
+  // Deduped or capped — folds into the next Briefing's attention block
+  // instead of re-pinging the inbox.
+  DEFERRED
+  // Cleared before it was ever sent, or fixed afterwards.
+  RESOLVED
+}
+
+// One row per live "the platform is blocked on the human" condition. The
+// alert engine debounces (10 min), coalesces, dedupes per cause per 24h and
+// caps sends at two a day off this table; anything it can't send lands in the
+// Briefing rather than being dropped.
+model AlertCondition {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  cause    AlertCause
+  // Stable identity of the underlying problem (e.g. "auth_expired:gmail:<graph
+  // id>"), so re-raising the same condition updates one row instead of piling
+  // up duplicates, and resolving it can find the row without the payload.
+  causeKey String
+  data     Json
+
+  status     AlertConditionStatus @default(PENDING)
+  sentAt     DateTime?
+  resolvedAt DateTime?
+  // Set once the condition has been carried into a Briefing's attention
+  // block, so the next Briefing doesn't repeat it.
+  briefedAt  DateTime?
+
+  @@unique([userId, causeKey])
+  @@index([status, createdAt])
+  @@index([userId, status])
 }
 
 model NotificationEvent {
@@ -422,21 +1280,58 @@ model UserNotificationBatch {
 
   Notifications NotificationEvent[]
 
+  // Tenancy
+  organizationId String?
+  teamId         String?
+
   // Each user can only have one batch of a notification type at a time
   @@unique([userId, type])
+  @@index([organizationId])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // An endpoint belongs to one browser profile, so to one account at a time:
+  // subscribing moves it to whoever signed in last.
+  endpoint String @unique
+  p256dh   String
+  auth     String
+
+  userAgent    String?
+  failCount    Int       @default(0)
+  lastFailedAt DateTime?
+
+  // Implied by the unique endpoint and kept only so a backend release that
+  // still upserts on (userId, endpoint) keeps working through a rolling
+  // deploy; it also serves per-user lookups. Safe to drop once no deployed
+  // release upserts on it.
+  @@unique([userId, endpoint])
 }
 
 // For the library page
 // It is a user controlled list of agents, that they will see in their library
 model LibraryAgent {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
+  lastRunAt DateTime?
 
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   imageUrl String?
+
+  // Marketplace metadata snapshotted at download time, so a downloaded agent
+  // shows its published title/description instead of the creator's originals.
+  // Null for user-created agents, which fall back to the graph's own values.
+  name        String?
+  description String?
 
   agentGraphId      String
   agentGraphVersion Int
@@ -452,15 +1347,26 @@ model LibraryAgent {
 
   isFavorite      Boolean @default(false)
   isCreatedByUser Boolean @default(false)
+  isHidden        Boolean @default(false)
   isArchived      Boolean @default(false)
   isDeleted       Boolean @default(false)
 
   settings Json @default("{}")
 
+  ExpertWorkflows ExpertWorkflow[]
+
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
   @@unique([userId, agentGraphId, agentGraphVersion])
   @@index([agentGraphId, agentGraphVersion])
   @@index([creatorId])
   @@index([folderId])
+  @@index([teamId])
+  @@index([organizationId])
 }
 
 model LibraryFolder {
@@ -483,7 +1389,683 @@ model LibraryFolder {
 
   LibraryAgents LibraryAgent[]
 
-  @@unique([userId, parentId, name]) // Name unique per parent per user
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  // Names are unique among LIVE siblings, which Prisma cannot express: both
+  // rules are partial unique indexes created in migration
+  // 20261008180000_library_folder_name_unique_partial
+  // ("LibraryFolder_userId_parentId_name_live_key" and
+  // "LibraryFolder_userId_name_root_live_key").
+  @@index([organizationId])
+}
+
+// An Expert is a hireable persona. Roster rows are templates
+// (ownerUserId null, isTemplate true); hiring instantiates an owned copy.
+// Templates are never chat targets and never owned.
+model Expert {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // null for roster templates; set on hire
+  ownerUserId String?
+  OwnerUser   User?   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  name             String
+  avatarUrl        String?
+  // Accent color token picked while raising (e.g. "sky-300"); "" = unset.
+  color            String   @default("")
+  role             String
+  // What the expert would be called on a team ("Social Media Manager"); the
+  // `role` above names the area it covers. null on raised experts.
+  jobTitle         String?
+  tagline          String?
+  identity         String
+  bio              String?
+  skills           String[] @default([])
+  // Free-text `role` cannot stand in: "Ops" folds onto no canonical
+  // category, and a raised expert's role is whatever its owner typed.
+  categories       String[] @default([])
+  voicePreferences String   @default("")
+  boundaries       String   @default("")
+
+  toolProfile Json?
+
+  // Template-only: up to three creator-written "sets up on day one" rows.
+  dayOne Json?
+
+  isTemplate       Boolean  @default(false)
+  // Stable roster key from the skills catalog (`maria`, `alex`). Templates are
+  // resolved by this on every publish, never by display name. Null on hires.
+  templateKey      String?  @unique
+  sourceTemplateId String?
+  SourceTemplate   Expert?  @relation("ExpertFromTemplate", fields: [sourceTemplateId], references: [id])
+  HiredCopies      Expert[] @relation("ExpertFromTemplate")
+
+  isArchived Boolean @default(false)
+
+  // Weekly credit guardrail: null = platform default from config.
+  // Spend is tracked per ISO week in Redis and reconciled from
+  // CreditTransaction via the execution's expertId.
+  weeklyBudget      Int?
+  // Set when a budget breach (or archive) paused this expert's schedules
+  // and triggers. Chat is never paused. Cleared by the resume endpoint.
+  schedulesPausedAt DateTime?
+
+  // Set when the owner paused nightly skill learning for this expert. Only
+  // future learning stops; existing skills stay usable and ordinary work is
+  // unaffected. Cleared by the resume-learning endpoint.
+  learningPausedAt DateTime?
+
+  // Approval mode every new web chat with this expert starts on
+  // ("ask_first" | "auto" | "unsupervised"). null = platform default.
+  // Hire-only: templates never carry one and a hire copies nothing.
+  autopilotMode String?
+
+  // Null until the credential allow-list has been seeded from the expert's
+  // installed workflows. Distinguishes "never curated" from "deliberately
+  // empty": without it, revoking an expert's last credential would look
+  // identical to a fresh expert and re-seed the grant straight back.
+  credentialsSeededAt DateTime?
+
+  // A hire returns once its row exists; its preloads, skills and routines are
+  // installed after the response. setupStartedAt is the running job's lease.
+  setupStatus    ExpertSetupStatus @default(READY)
+  setupStartedAt DateTime?
+  // What the last setup run could not install, by display name.
+  setupFailures  String[]          @default([])
+
+  Workflows       ExpertWorkflow[]
+  Credentials     ExpertCredential[]
+  ChatSessions    ChatSession[]
+  GraphExecutions AgentGraphExecution[]
+  AgentPresets    AgentPreset[]
+  PauseEvents     ExpertPauseEvent[]
+  BundledSkills   ExpertSkillListing[]
+  Routines        ExpertRoutine[]
+  DreamPasses     DreamPass[]
+  MemorySchedule  MemoryScopeSchedule?
+
+  // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
+  podId String?
+  Pod   ExpertPod? @relation(fields: [podId], references: [id], onDelete: SetNull)
+
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  // Hire idempotency: one hired copy per (user, template). Postgres allows
+  // multiple NULL ownerUserId rows, so templates are unaffected.
+  @@unique([ownerUserId, sourceTemplateId])
+  @@index([ownerUserId, isArchived])
+  @@index([isTemplate, isArchived])
+  @@index([teamId])
+  @@index([organizationId])
+  @@index([podId])
+}
+
+// Join between an Expert and a workflow (marketplace agent) installed on it.
+// Template rows carry only storeListingVersionId; hire resolves each preload
+// into the hiring user's LibraryAgent.
+model ExpertWorkflow {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  // marketplace source: set on template preloads and marketplace installs
+  storeListingVersionId String?
+  StoreListingVersion   StoreListingVersion? @relation(fields: [storeListingVersionId], references: [id])
+
+  // the hiring user's LibraryAgent; null on template rows
+  libraryAgentId String?
+  LibraryAgent   LibraryAgent? @relation(fields: [libraryAgentId], references: [id])
+
+  // Install-time scheduling: template rows carry the roster cadence; hire
+  // copies it and records the created schedule's id. A non-null cron with a
+  // null scheduleId means schedule creation failed at install time (e.g.
+  // missing credentials) — the workflow "needs setup".
+  scheduleCron String?
+  scheduleId   String?
+
+  // Duplicate install on an expert returns the existing row.
+  @@unique([expertId, storeListingVersionId])
+  @@index([expertId, createdAt, id])
+}
+
+enum ExpertSetupStatus {
+  INSTALLING
+  READY
+  FAILED
+}
+
+// Where a routine's turn lands each time it fires.
+enum ExpertRoutineSource {
+  // Shipped by a roster or a shared package. Its prompt was written by someone
+  // who will never see the account it runs on, so it arrives reaching nothing
+  // and stays that way until the owner grants it.
+  TEMPLATE
+  // Dictated by the owner in their own chat. There is no third party in the
+  // prompt, so it runs with the same reach a `schedule_followup` has always had.
+  OWNER
+}
+
+enum ExpertRoutineSession {
+  // A brand-new chat every fire. No memory of the last run.
+  FRESH
+  // One named chat, pinned when the routine was switched on: the one it was
+  // set up in unless the owner named another. Any session the owner holds in
+  // the same expert scope is allowed, which is the one thing `schedule_followup`
+  // could do that a routine could not.
+  PINNED
+  // One durable thread of its own, minted at the first fire and reused after.
+  // Per routine, not per expert, so two routines on the same cadence never
+  // interleave into one conversation. Its conversation history preserves
+  // continuity between runs, which is why it is the default.
+  THREAD
+}
+
+// Standing work an expert does unattended: a prompt on a cadence, firing as a
+// copilot turn. `schedule_followup` is the primitive underneath; this is the
+// durable record that owns the cadence, the thread, and the on/off state.
+//
+// Template rows are proposals — a draft prompt, a suggested cadence, and the
+// questions an owner has to answer before it can run. Hiring copies them OFF,
+// because a cadence that fires unattended from the day of hire is a much
+// bigger promise than a skill. Switching one on resolves the proposal into the
+// routine that actually runs.
+model ExpertRoutine {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // Null when the routine is the account's own standing work rather than an
+  // expert's — Otto is the platform's default assistant, not a row in Expert,
+  // so its routines have no expert to hang off. Exactly one of expertId and
+  // userId is set: a template or hire row names the expert and takes its owner
+  // from it; an account row names the owner directly.
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  userId String?
+  User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Roster/shared slug, and the key `_sync_routines` matches on. Null when the
+  // expert authored this one in conversation; Postgres treats NULLs as
+  // distinct, so the unique below still allows many authored rows.
+  key String?
+
+  title  String
+  // The proposal on a template row; what actually runs once resolved.
+  prompt String
+  // One routine, several fire times — a callback sweep that runs at 08:30 and
+  // again at 13:00 is one thing the owner switched on, not two. Template rows
+  // hold the suggested cadence; hire rows hold the resolved one.
+  crons  String[]
+  // What the owner has to tell the expert before this can run: which repo,
+  // which inbox, what time. Carried from the source package's installer block.
+  // A routine with unanswered asks cannot be switched on.
+  asks   String[]
+
+  sessionMode ExpertRoutineSession @default(THREAD)
+  // THREAD: null until the first fire mints it, then reused. PINNED: the chat
+  // the owner named. FRESH: stays null.
+  sessionId   String?
+
+  // Where the prompt came from, which is what decides how far a fire-time turn
+  // can reach. Nothing else in the row answers that: a proposal and an
+  // owner's own words are both just text by the time they are scheduled.
+  source ExpertRoutineSource @default(TEMPLATE)
+
+  // Exactly one of `crons` and `runAt` is set. `runAt` is the one-shot — "check
+  // the deploy at six" — which gets a row like any other so it can be listed,
+  // renamed, cancelled and counted rather than living only as a scheduler job.
+  runAt   DateTime?
+  // Stamped when a one-shot has run. The row outlives its job on purpose; this
+  // is what stops a spent routine still reading as switched on.
+  firedAt DateTime?
+
+  // One scheduler job per cron. Empty means off — off is the absence of a job,
+  // not a paused one, so a routine nobody switched on costs the scheduler
+  // nothing.
+  scheduleIds           String[]
+  enabledAt             DateTime?
+  // Set when the owner resolved the proposal (a time, a source, a rewrite).
+  // From then on the row is theirs and roster edits never touch it again.
+  customizedAt          DateTime?
+  // False means the fire-time turn resolves an EMPTY credential allow-list, so
+  // the routine provably reaches nothing outside the platform — the rule
+  // `PreloadSeed.cron` states for preloads, enforced rather than asserted.
+  // Seeded and shared rows always arrive false; only an owner binding this
+  // routine to their connections sets it.
+  grantsCredentials     Boolean   @default(false)
+  // {provider: {id, title}}: the account each turn uses where the owner has
+  // several for one provider, chosen in the chat that set the routine up. A
+  // pinned account that is gone fails the step instead of switching accounts.
+  credentialPins        Json?
+  // Mirrors AgentPreset.deactivatedByExpertArchive: re-hire resumes exactly
+  // what archiving paused, never one the owner had switched off themselves.
+  pausedByExpertArchive Boolean   @default(false)
+
+  @@unique([expertId, key])
+  @@index([expertId, createdAt, id])
+  @@index([userId, createdAt, id])
+}
+
+// The runs a scheduled chat (an Expert routine or a follow-up) has failed the
+// same way in a row. The third run that fails outright pauses it, and its
+// owner is told once, with the fix; a run that works removes the row.
+model ScheduledChatStreak {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // The routine's id, or the follow-up's schedule id: a routine with several
+  // fire times is one scheduled chat.
+  scheduleKey String
+  // The jobs its pause stopped, which Resume restarts. Never a job the
+  // owner had paused; empty until the streak pauses.
+  scheduleIds String[]
+  title       String
+  // The chat its latest run went to, where the owner is told.
+  sessionId   String?
+
+  // What the runs have in common: compared by key, explained by the rest.
+  failureKey  String
+  failureKind String
+  provider    String?
+  tool        String?
+  // Runs in a row that failed this way, and how many of the latest of those
+  // failed outright, in a row.
+  failures         Int @default(1)
+  wholeRunFailures Int @default(0)
+
+  notifiedAt DateTime?
+  pausedAt   DateTime?
+
+  @@unique([userId, scheduleKey])
+  @@index([userId, pausedAt])
+}
+
+// A Skills Hub listing a roster template comes with; hiring installs its
+// active version into the new expert's own skills folder.
+model ExpertSkillListing {
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  skillListingId String
+  SkillListing   SkillListing @relation(fields: [skillListingId], references: [id], onDelete: Cascade)
+
+  // Display order, as the roster declares it.
+  position Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@id([expertId, skillListingId])
+  @@index([skillListingId])
+}
+
+// Which of the owner's integration credentials an expert may use.
+// Deny-by-default: an expert with no rows here reaches nothing, so the
+// seeding marker on Expert (credentialsSeededAt) is what keeps existing
+// experts working across the migration.
+model ExpertCredential {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  // IntegrationCredential.id for USER-scoped rows. Deliberately NOT a foreign
+  // key: system credentials (platform LLM keys built from settings) never have
+  // a row at all, and reads intersect grants against the user's live
+  // credentials anyway — so a deleted credential leaves an inert grant rather
+  // than blocking the delete or cascading a revoke the user did not ask for.
+  credentialId String
+  // Denormalized so listing an expert's integrations never has to decrypt a
+  // payload just to learn which logo to draw.
+  provider     String
+
+  @@unique([expertId, credentialId])
+  @@index([expertId])
+}
+
+// Audit log for expert schedule pauses (budget breach, archive). "All
+// pauses logged and reversible": resume stamps clearedAt on the open row.
+model ExpertPauseEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  reason    String
+  clearedAt DateTime?
+
+  @@index([expertId, createdAt])
+}
+
+////////////////////////////////////////////////////////////
+////////////   SKILL LEARNING (nightly stage)   ////////////
+////////////////////////////////////////////////////////////
+
+// One revision of a learning source (an ordinary chat session today; other
+// adapters register their own sourceKind). The row is the durable half of
+// the generic approval-aware source contract: it carries the owner/scope,
+// the immutable revision, bounded evidence references, outcome signals,
+// the eligibility state, and an approval checkpoint when the source kind
+// requires one. Eligibility is re-checked live by the adapter before any
+// publication — this row alone never authorises a change.
+model SkillLearningSource {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Scope owner: an expert id, or null for the personal (AutoPilot) scope.
+  expertId String?
+  // "personal" or the expert id — makes the owner part of unique keys.
+  ownerKey String
+
+  sourceKind String // e.g. "chat_session"
+  sourceId   String // adapter-specific id (session id)
+  // Latest observed immutable revision (message sequence for chats).
+  revision   String
+  // Last revision with a durable review disposition; the learner only
+  // considers revisions newer than this cursor.
+  processedRevision String?
+
+  // "ordinary" | "requested" (an explicit "learn this" request)
+  origin String @default("ordinary")
+
+  // "eligible" | "waiting_approval" | "excluded" | "inaccessible"
+  eligibility String @default("eligible")
+  // Bumped on exclusion / revocation so a queued review can detect that
+  // its eligibility snapshot is stale.
+  epoch Int @default(0)
+
+  // Approval checkpoint (adapters with a review lifecycle only).
+  approvalEventId String?
+  approvalActorId String?
+  approvedRevision String?
+
+  // Bounded evidence references and deterministic outcome signals
+  // (lists of small JSON objects; never full transcripts).
+  evidenceRefs   Json @default("[]")
+  outcomeSignals Json @default("[]")
+
+  excludedAt       DateTime?
+  excludedByUserId String?
+
+  Reviews SkillLearningReview[]
+
+  @@unique([userId, sourceKind, sourceId])
+  @@index([userId, ownerKey, eligibility, updatedAt])
+}
+
+// Durable review ledger: one row per (source, revision, policy version).
+// A retryable failure updates the same row instead of inserting another
+// so a crashed worker never re-applies a completed change.
+model SkillLearningReview {
+  id          String    @id @default(uuid())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+  completedAt DateTime?
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+
+  sourceId       String
+  Source         SkillLearningSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceRevision String
+  policyVersion  Int
+  // Correlates every review of one nightly (or requested) run.
+  runId String
+
+  // "applied" | "skipped" | "deferred" | "conflict" | "needs_decision" |
+  // "blocked_content" | "provider_error" | "budget_exhausted" |
+  // "stale_eligibility" | "inaccessible_evidence" | "no_novel_procedure" |
+  // "suppressed" | "paused"
+  disposition String
+  reason      String @default("")
+  attempts    Int    @default(1)
+  // Model-call reservations also bound retries after an ambiguous crash.
+  modelAttempts Int  @default(0)
+  // Validated publication input only; cleared when the review settles.
+  reviewReplay Json?
+  // Normalised fingerprint of the proposed behaviour (see fingerprint.py).
+  changeFingerprint String?
+  skillName         String?
+  appliedVersionId  String?
+
+  model            String?
+  inputTokens      Int     @default(0)
+  outputTokens     Int     @default(0)
+  costMicrodollars BigInt?
+
+  @@unique([sourceId, sourceRevision, policyVersion])
+  @@index([userId, ownerKey, createdAt])
+  @@index([runId])
+}
+
+// Current-version pointer and per-skill learning policy. The workspace
+// SKILL.md stays the content surface; this row is what compare-and-swap
+// publication races against.
+model SkillHead {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+  skillName String
+
+  currentVersion   Int     @default(0)
+  currentVersionId String?
+  // sha256 of the SKILL.md the head last wrote; a differing workspace file
+  // means a write bypassed version tracking and is treated as a human edit.
+  contentHash String?
+
+  // "Automatic improvements": when false, automated changes become
+  // proposals that need the owner's decision.
+  autoImprove Boolean @default(true)
+  // "Pause learning" for this skill (future automated changes stop).
+  learningPausedAt DateTime?
+  // "Stop using this skill" (excluded from retrieval; history kept).
+  usePausedAt DateTime?
+
+  Versions SkillVersion[]
+
+  @@unique([userId, ownerKey, skillName])
+  @@index([userId, ownerKey])
+}
+
+// Immutable skill versions. Every write to a skill (overnight, during
+// work, human edit, restore, import) appends one; version numbers are
+// monotonic per skill and restoration creates a new version that refers
+// to the prior content.
+model SkillVersion {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+  skillName String
+
+  headId String
+  Head   SkillHead @relation(fields: [headId], references: [id], onDelete: Cascade)
+
+  version Int
+  // Full rendered SKILL.md for this version (frontmatter + body).
+  content     String
+  contentHash String
+  // Null for legacy Markdown-only versions; [] is an explicitly empty package.
+  packageFiles Json?
+  contentApprovals Json @default("[]")
+  description String
+  triggers    String[] @default([])
+
+  // "saved_overnight" | "saved_during_work" | "requested" | "edited" |
+  // "restored" | "imported"
+  origin      String
+  actorUserId String?
+  // Plain explanation of what changed and why.
+  summary String @default("")
+
+  baseVersionId         String?
+  restoredFromVersionId String?
+  reviewId              String?
+
+  // [{source_id, source_kind, source_ref, revision}] — contributing source
+  // revisions (inherited by descendants until independently re-authored).
+  sources Json @default("[]")
+  // [{kind, label, ref}] — concrete evidence labels and limits.
+  evidence Json @default("[]")
+  limits   String[] @default([])
+
+  // "ready" | "pending_write" | "candidate" | "needs_decision" |
+  // "blocked_content" | "paused" | "archived" | "invalidated" | "stale"
+  state       String @default("ready")
+  stateReason String @default("")
+  // Content-check outcome for blocked versions: pattern class + step only.
+  blockedPatternClass String?
+  blockedStep         String?
+
+  @@unique([headId, version])
+  @@index([userId, ownerKey, skillName, createdAt])
+  @@index([userId, state, createdAt])
+}
+
+// Suppression record for an undone learned change: identifies the
+// normalised proposed behaviour so a paraphrase cannot silently
+// re-apply it. Evidence fingerprints are kept for audit only.
+model SkillSuppression {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+  skillName String
+
+  behaviorFingerprint  String
+  // Normalised step tokens behind the fingerprint so a near-identical
+  // proposal can be routed to review instead of silently reapplied.
+  behaviorTokens       String[] @default([])
+  evidenceFingerprints String[] @default([])
+  actorUserId          String?
+  reason               String   @default("")
+
+  @@unique([userId, ownerKey, skillName, behaviorFingerprint])
+}
+
+// Load / outcome events attached to the exact version used. A load is
+// never a success claim; only a concrete check or an explicit user
+// report can record an outcome.
+model SkillUseEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId String?
+  ownerKey String
+  skillName String
+  versionId String?
+  sessionId String?
+
+  // "loaded" | "succeeded" | "failed" | "stopped_mid_use" | "outcome_unknown"
+  kind        String
+  detail      String  @default("")
+  actorUserId String?
+
+  @@index([userId, ownerKey, skillName, createdAt])
+  @@index([versionId, kind])
+}
+
+// A user-owned named group of the user's own experts. Distinct from the
+// org-tenancy Team model: pods are a personal roster grouping with no
+// members, invites, or org. Deleting a pod detaches its experts (SetNull).
+model ExpertPod {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name String
+
+  Experts Expert[]
+
+  // Doubles as the userId lookup index for list_pods.
+  @@unique([userId, name])
+}
+
+// One row per memory scope (the account, or one hired expert) that the
+// nightly dream and weekly community-rebuild crons serve. It is the source of
+// truth for "is this scope scheduled" (copilot/dream/registry.py): whether its
+// crons may run, the timezone they were registered in, and their APScheduler
+// job ids. Replaces the Redis registration markers.
+model MemoryScopeSchedule {
+  // MemoryScope.scope_key: the raw user id for the account, expert_<sha256>
+  // for an expert. Also the suffix of both job ids.
+  scopeKey String @id
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Null for the account scope, whose scopeKey equals userId (a CHECK in the
+  // migration holds that).
+  expertId String? @unique
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  // The IANA timezone the recorded jobs were registered in.
+  timezone String
+  state    MemoryScopeScheduleState @default(ACTIVE)
+
+  // Null while that cron is not registered: its flag is off, registration
+  // failed, or the scope is paused or wiped. Skill learning runs per account,
+  // so an expert's scope never records a learning job.
+  communityJobId String?
+  nightlyJobId   String?
+  learningJobId  String?
+
+  // When each job body last ran its pass without an error.
+  lastNightlyRunAt   DateTime?
+  lastCommunityRunAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([userId])
+  @@index([state])
+}
+
+// ACTIVE: the crons are registered and run. PAUSED: the expert is archived or
+// its schedules are paused; the crons are removed until it resumes. WIPED: the
+// scope's memory was erased; the crons are removed and no registry operation
+// reactivates the scope (the wipe work decides what brings one back).
+enum MemoryScopeScheduleState {
+  ACTIVE
+  PAUSED
+  WIPED
 }
 
 ////////////////////////////////////////////////////////////
@@ -594,6 +2176,27 @@ model AgentGraphExecution {
   agentPresetId String?
   AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
 
+  // Expert attribution: set when the run was started by/for a hired expert
+  // (install-time schedule, expert trigger, or manual schedule of an
+  // expert-installed workflow). Survives expert archival — archive is a
+  // soft delete, mirroring ChatSession.expertId semantics.
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
+
+  // How the run was started (values: backend.data.execution.ExecutionTrigger).
+  // Persisted so analytics can separate human-initiated runs from schedule,
+  // webhook, API and copilot-initiated ones instead of inferring it from the
+  // preset / expert / parent columns. Null for rows that predate the column.
+  triggerSource String?
+  // What started the run, for that source: schedule id, webhook id, chat
+  // session id, API key id, or the UI surface for manual runs.
+  triggerRef    String?
+  // What started this run, when it was not a person: the scheduler job or
+  // the webhook that fired. Soft references, since jobs live in
+  // APScheduler's own store and webhooks are cleaned up independently.
+  scheduleId    String?
+  webhookId     String?
+
   inputs           Json?
   credentialInputs Json?
   nodesInputMasks  Json?
@@ -606,23 +2209,51 @@ model AgentGraphExecution {
 
   stats Json?
 
+  // Scored once, when the run reaches a terminal state, from signals we
+  // already have (outcome, first-ever success, novel output, cost/duration
+  // anomaly). Assembling a Briefing is then a ranked read rather than a scan
+  // of every run in the period. Null for runs that finished before scoring
+  // existed, and for runs still in flight.
+  interestingness Float?
+
   // Parent-child execution tracking for nested agent graphs
   parentGraphExecutionId String?
   ParentExecution        AgentGraphExecution?  @relation("ParentChildExecution", fields: [parentGraphExecutionId], references: [id], onDelete: SetNull)
   ChildExecutions        AgentGraphExecution[] @relation("ParentChildExecution")
 
   // Sharing fields
-  isShared             Boolean                @default(false)
-  shareToken           String?                @unique
+  isShared             Boolean               @default(false)
+  shareToken           String?               @unique
   sharedAt             DateTime?
+  // Provenance: USER = explicitly shared by owner, CHAT_LINK = enabled
+  // as part of a ChatSession share.  Drives cascade-revoke logic so that
+  // user-initiated shares survive chat-share revocation.
+  sharedVia            SharedVia?
   SharedExecutionFiles SharedExecutionFile[]
+  ChatLinkedShares     ChatLinkedShare[]
+
+  // Tenancy (nullable until cutover migration backfills existing data)
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])
   @@index([createdAt])
+  // Briefing assembly: top-scored runs for one user over one period.
+  @@index([userId, endedAt, interestingness])
   @@index([agentPresetId])
+  @@index([expertId, createdAt])
   @@index([shareToken])
   @@index([parentGraphExecutionId])
+  @@index([teamId, isDeleted, createdAt])
+  @@index([organizationId])
+}
+
+enum SharedVia {
+  USER
+  CHAT_LINK
 }
 
 // This model describes the execution of an AgentNode.
@@ -699,9 +2330,12 @@ enum ReviewStatus {
 model PendingHumanReview {
   nodeExecId    String       @id
   userId        String
-  graphExecId   String
-  graphId       String
-  graphVersion  Int
+  // A review belongs to a graph execution (the three graph columns) or to a
+  // chat (chatSessionId); a check constraint enforces exactly one.
+  graphExecId   String?
+  graphId       String?
+  graphVersion  Int?
+  chatSessionId String?
   payload       Json // The actual payload data to be reviewed
   instructions  String? // Instructions/message for the reviewer
   editable      Boolean      @default(true) // Whether the reviewer can edit the data
@@ -715,9 +2349,15 @@ model PendingHumanReview {
 
   User User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Tenancy
+  organizationId String?
+  teamId         String?
+
   @@unique([nodeExecId]) // One pending review per node execution
   @@index([userId, status])
   @@index([graphExecId, status])
+  @@index([chatSessionId, status])
+  @@index([organizationId])
 }
 
 // Webhook that is registered with a provider and propagates to one or more nodes
@@ -741,6 +2381,14 @@ model IntegrationWebhook {
 
   AgentNodes   AgentNode[]
   AgentPresets AgentPreset[]
+
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
 }
 
 model AnalyticsDetails {
@@ -805,6 +2453,68 @@ enum CreditTransactionType {
   SUBSCRIPTION
 }
 
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+//////////   ORGANIZATION ORGANIZATION & WORKSPACE ENUMS TEAM ENUMS    /////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+enum TeamJoinPolicy {
+  OPEN
+  PRIVATE
+}
+
+enum ResourceVisibility {
+  PRIVATE
+  TEAM
+  ORG
+}
+
+enum CredentialScope {
+  USER
+  TEAM
+  ORG
+}
+
+enum OrgAliasType {
+  MIGRATION
+  RENAME
+  MANUAL
+}
+
+enum OrgMemberStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum SeatType {
+  FREE
+  PAID
+}
+
+enum SeatStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+}
+
+enum TransferStatus {
+  PENDING
+  SOURCE_APPROVED
+  TARGET_APPROVED
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum CredentialOwnerType {
+  USER
+  TEAM
+  ORG
+}
+
 model CreditTransaction {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
@@ -855,36 +2565,42 @@ model PlatformCostLog {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 
-  userId       String?
-  User         User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
-  graphExecId  String?
-  nodeExecId   String?
-  graphId      String?
-  nodeId       String?
-  blockId      String?
-  blockName    String?
-  provider     String
-  credentialId String?
+  userId        String?
+  User          User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  graphExecId   String?
+  // The AutoPilot chat the cost came from, when it did not come from a graph run.
+  chatSessionId String?
+  nodeExecId    String?
+  graphId       String?
+  nodeId        String?
+  blockId       String?
+  blockName     String?
+  provider      String
+  credentialId  String?
 
   // Cost in microdollars (1 USD = 1,000,000). Null if unknown.
   costMicrodollars BigInt?
 
-  inputTokens  Int?
-  outputTokens Int?
+  inputTokens         Int?
+  outputTokens        Int?
   cacheReadTokens     Int? // Anthropic cache read tokens (billed at 10% of base)
   cacheCreationTokens Int? // Anthropic cache write tokens (billed at 125% of base)
-  dataSize     Int? // bytes
-  duration     Float? // seconds
-  model        String?
-  trackingType   String? // e.g. "cost_usd", "tokens", "characters", "items", "per_run", "sandbox_seconds", "walltime_seconds"
-  trackingAmount Float? // Amount in the unit implied by trackingType
-  metadata       Json?
+  dataSize            Int? // bytes
+  duration            Float? // seconds
+  model               String?
+  trackingType        String? // e.g. "cost_usd", "tokens", "characters", "items", "per_run", "sandbox_seconds", "walltime_seconds"
+  trackingAmount      Float? // Amount in the unit implied by trackingType
+  metadata            Json?
+  // The expert a background LLM call ran for (a dream pass on an expert's
+  // memory, a consult from an expert's chat); null for the account's own.
+  expertId            String?
 
   @@index([userId, createdAt])
   @@index([provider, createdAt])
   @@index([createdAt])
   @@index([graphExecId])
   @@index([provider, trackingType])
+  @@index([expertId, createdAt])
 }
 
 ////////////////////////////////////////////////////////////
@@ -923,6 +2639,7 @@ model Profile {
 
   LibraryAgents LibraryAgent[]
   StoreListings StoreListing[]
+  SkillListings SkillListing[]
 
   @@index([userId])
 }
@@ -979,6 +2696,8 @@ view StoreAgent {
 
   recommended_schedule_cron String?
 
+  owning_org_id String?
+
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
   //   * idx_mv_agent_run_counts (UNIQUE on agentGraphId) - Primary lookup
@@ -1025,6 +2744,26 @@ view StoreSubmission {
   run_count         Int
   review_count      Int
   review_avg_rating Float
+
+  organization_id String?
+}
+
+// StoreCreator view — like Creator but with org_name for org-owned listings
+view StoreCreator {
+  username    String @unique
+  name        String
+  avatar_url  String
+  description String
+
+  top_categories String[]
+  links          String[]
+
+  num_agents   Int
+  agent_rating Float
+  agent_runs   Int
+  is_featured  Boolean
+
+  org_name String?
 }
 
 // Note: This is actually a MATERIALIZED VIEW in the database
@@ -1085,7 +2824,7 @@ model StoreListing {
   ActiveVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
 
   // The agent link here is only so we can do lookup on agentId
-  agentGraphId String       @unique
+  agentGraphId String @unique
 
   owningUserId   String
   OwningUser     User    @relation(fields: [owningUserId], references: [id])
@@ -1094,9 +2833,14 @@ model StoreListing {
   // Relations
   Versions StoreListingVersion[] @relation("ListingVersions")
 
+  // Tenancy — owningOrgId will be NOT NULL after cutover migration
+  owningOrgId String?
+  OwningOrg   Organization? @relation("OrgStoreListings", fields: [owningOrgId], references: [id])
+
   @@unique([owningUserId, slug])
   // Used in the view query
   @@index([isDeleted, hasApprovedVersion])
+  @@index([owningOrgId])
 }
 
 model StoreListingVersion {
@@ -1154,14 +2898,180 @@ model StoreListingVersion {
   // Reviews for this specific version
   Reviews StoreListingReview[]
 
+  ExpertWorkflows ExpertWorkflow[]
+
   // Note: Embeddings now stored in UnifiedContentEmbedding table
   // Use contentType=STORE_AGENT and contentId=storeListingVersionId
+
+  // Tenancy
+  organizationId String?
 
   @@unique([storeListingId, version])
   @@index([storeListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
   @@index([agentGraphId, agentGraphVersion]) // Non-unique index for efficient lookups
+  @@index([organizationId])
+}
+
+// A marketplace listing for a knowledge skill: instructions and examples the
+// copilot reads, never a runnable graph. Separate from StoreListing because
+// that model's agentGraphId is required and its StoreAgent view exposes the
+// graph as non-null.
+model SkillListing {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  isDeleted          Boolean @default(false)
+  hasApprovedVersion Boolean @default(false)
+
+  // Globally unique, not scoped to a creator: a platform listing has no
+  // creator segment to disambiguate it, so the URL is /marketplace/skills/{slug}.
+  slug String @unique
+
+  activeVersionId String?              @unique
+  ActiveVersion   SkillListingVersion? @relation("SkillActiveVersion", fields: [activeVersionId], references: [id])
+
+  // Popularity for browse ordering. Skills have no executions, so there is no
+  // run count to aggregate — installs are counted on the row instead.
+  installCount Int @default(0)
+
+  // Null for platform-authored starter listings, the way a roster Expert has
+  // no owner until it is hired. A creator listing carries both.
+  owningUserId   String?
+  OwningUser     User?    @relation(fields: [owningUserId], references: [id])
+  CreatorProfile Profile? @relation(fields: [owningUserId], references: [userId], map: "SkillListing_owner_Profile_fkey", onDelete: Cascade)
+
+  Versions  SkillListingVersion[] @relation("SkillListingVersions")
+  BundledBy ExpertSkillListing[]
+
+  // Tenancy
+  owningOrgId String?
+  OwningOrg   Organization? @relation("OrgSkillListings", fields: [owningOrgId], references: [id])
+
+  @@index([isDeleted, hasApprovedVersion])
+  @@index([owningUserId])
+  @@index([owningOrgId])
+}
+
+model SkillListingVersion {
+  id        String   @id @default(uuid())
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // The SKILL.md this version publishes: frontmatter fields plus the body.
+  // Snapshotted at submission, so editing the creator's library skill never
+  // changes what installers get.
+  name        String
+  description String
+  body        String
+  triggers    String[] @default([])
+  categories  String[]
+
+  // Integrations the skill's instructions assume the installer has connected;
+  // provider names as used by the credentials system.
+  requiredProviders String[] @default([])
+
+  // SHA-256 of each exact file an install wrote after it passed the virus
+  // scan; a later install writing the same bytes skips the scan.
+  scannedSha256 String[] @default([])
+
+  // Content identity of the whole package: SHA-256 over the canonical JSON of
+  // the sorted `(path, sha256, executable)` file list, SKILL.md included. The
+  // same formula the skills catalog records as `tree_sha256`, so a package is
+  // identified identically in the repo, on this row and in a user's copy.
+  // A version with a hash is immutable; publishing re-uses it by hash.
+  // Null on creator submissions.
+  packageSha256 String?
+  // The SKILL.md exactly as published, installed byte-for-byte so a copy's
+  // checksum can be compared to the catalog's. Null on versions written
+  // before the catalog publisher, whose installs render from the fields.
+  skillMarkdown String?
+
+  // The creator's own library skill slug this was published from, so a
+  // re-publish can find its listing again. Null once that skill is deleted.
+  sourceSkillSlug String?
+
+  // Where a vendored skill came from, shown as attribution on the card. Null
+  // for a creator's own skill and for one the platform wrote itself.
+  sourceRepo String?
+  sourceUrl  String?
+  license    String?
+
+  isDeleted   Boolean @default(false)
+  isAvailable Boolean @default(true)
+
+  submissionStatus SubmissionStatus @default(DRAFT)
+  submittedAt      DateTime?
+
+  skillListingId String
+  SkillListing   SkillListing @relation("SkillListingVersions", fields: [skillListingId], references: [id], onDelete: Cascade)
+
+  ActiveFor SkillListing? @relation("SkillActiveVersion")
+
+  changesSummary String?
+
+  reviewerId       String?
+  Reviewer         User?     @relation("SkillVersionsReviewed", fields: [reviewerId], references: [id])
+  internalComments String?
+  reviewComments   String?
+  reviewedAt       DateTime?
+
+  // Tenancy
+  organizationId String?
+
+  Files SkillListingFile[]
+
+  @@unique([skillListingId, version])
+  @@unique([skillListingId, packageSha256])
+  @@index([skillListingId, submissionStatus, isAvailable])
+  @@index([submissionStatus])
+  @@index([reviewerId])
+  @@index([organizationId])
+}
+
+// One publish of the skills catalog into this database: which commit, which
+// manifest, and what changed. Append-only audit log; rollback is publishing an
+// older commit, since versions are immutable and content-addressed.
+model SkillCatalogRelease {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  repository     String
+  revision       String
+  releaseKey     String
+  manifestSha256 String
+  // {created: [slug], updated: [slug], unchanged: n, retired: [slug],
+  //  experts: {created: [key], updated: [key], retired: [key]}}
+  summary        Json
+
+  @@index([createdAt])
+}
+
+/// One file beside a published version's SKILL.md, snapshotted at submit time
+/// like the body is. Bytes live in the row: a version is immutable once
+/// approved, capped at 20 MiB in the application layer, and cascade-deleted
+/// with its version, so a blob store would only add orphan cleanup.
+model SkillListingFile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  skillListingVersionId String
+  SkillListingVersion   SkillListingVersion @relation(fields: [skillListingVersionId], references: [id], onDelete: Cascade)
+
+  /// Posix path relative to the skill folder, e.g. `scripts/with_server.py`.
+  relativePath String
+  sizeBytes    Int
+  sha256       String
+  mimeType     String?
+  /// Restored on install: `python scripts/x.py` works without it, `./x.py` does not.
+  isExecutable Boolean @default(false)
+
+  content Bytes
+
+  @@unique([skillListingVersionId, relativePath])
 }
 
 // Content type enum for unified search across store agents, blocks, docs
@@ -1174,6 +3084,8 @@ enum ContentType {
   INTEGRATION // File-based: Python classes (blocks with credentials)
   DOCUMENTATION // File-based: .md/.mdx files
   LIBRARY_AGENT // Database: User's personal agents
+  WORKSPACE_FILE // Database: UserWorkspaceFile (per-user)
+  CHAT_SESSION // Database: ChatSession (per-user)
 }
 
 // Unified embeddings table for all searchable content types
@@ -1186,7 +3098,10 @@ model UnifiedContentEmbedding {
   // Content identification
   contentType ContentType
   contentId   String // DB ID (storeListingVersionId) or file identifier (block.id, file_path)
-  userId      String? // NULL for public content (store, blocks, docs), userId for private content (library agents)
+  // NULL for public content (store, blocks, docs); userId for private content (library agents).
+  // A SQL CHECK constraint enforces ``contentType != 'LIBRARY_AGENT' OR userId IS NOT NULL``
+  // (see migration ``20260525120000_library_agent_userid_check``).
+  userId      String?
 
   // Search data
   embedding      Unsupported("vector(1536)") // pgvector embedding (extension in platform schema)
@@ -1230,18 +3145,34 @@ enum SubmissionStatus {
 }
 
 enum APIKeyPermission {
+  // Legacy v1 permissions (kept for backward compatibility)
   IDENTITY // Info about the authenticated user
-  EXECUTE_GRAPH // Can execute agent graphs
+  EXECUTE_GRAPH // Can execute agent graphs (v1 only)
   READ_GRAPH // Can get graph versions and details
   WRITE_GRAPH // Can create and update agent graphs
-  EXECUTE_BLOCK // Can execute individual blocks
+  EXECUTE_BLOCK // Can execute individual blocks (v1 only)
   READ_BLOCK // Can get block information
-  READ_STORE // Can read store agents and creators
   WRITE_LIBRARY // Can add agents to library
-  USE_TOOLS // Can use chat tools via external API
-  MANAGE_INTEGRATIONS // Can initiate OAuth flows and complete them
+  USE_TOOLS // Can use v1 chat tools, and v2 MCP tools that spend platform resources
+  MANAGE_INTEGRATIONS // Can initiate OAuth flows and create credentials
   READ_INTEGRATIONS // Can list credentials and providers
   DELETE_INTEGRATIONS // Can delete credentials
+
+  // V2 permissions
+  READ_SCHEDULE // Can list schedules
+  WRITE_SCHEDULE // Can create and delete schedules
+  READ_STORE // Can read marketplace submissions (listings are public and accessible without this permission)
+  WRITE_STORE // Can create, update, delete marketplace submissions
+  READ_LIBRARY // Can list library agents and runs
+  RUN_AGENT // Can run agents and presets from library
+  READ_RUN // Can list and get run details
+  WRITE_RUN // Can stop and delete runs
+  SHARE_RUN // Can share/unshare agent runs
+  READ_RUN_REVIEW // Can list pending human-in-the-loop reviews
+  WRITE_RUN_REVIEW // Can submit human-in-the-loop review responses
+  READ_CREDITS // Can get credit balance and transactions
+  READ_FILES // Can list and download workspace files
+  WRITE_FILES // Can upload and delete workspace files
 }
 
 model APIKey {
@@ -1265,8 +3196,17 @@ model APIKey {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Tenancy
+  organizationId    String?
+  teamId            String?
+  ownerType         CredentialOwnerType?
+  teamIdRestriction String?
+  Team              Team?                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
   @@index([head, name])
   @@index([userId, status])
+  @@index([teamId])
+  @@index([organizationId])
 }
 
 model UserBalance {
@@ -1320,8 +3260,14 @@ model OAuthApplication {
   AccessTokens       OAuthAccessToken[]
   RefreshTokens      OAuthRefreshToken[]
 
+  // Tenancy
+  organizationId    String?
+  ownerType         CredentialOwnerType?
+  teamIdRestriction String?
+
   @@index([clientId])
   @@index([ownerId])
+  @@index([organizationId])
 }
 
 // Temporary authorization codes (10 min TTL)
@@ -1395,6 +3341,331 @@ model OAuthRefreshToken {
   @@index([expiresAt]) // For cleanup
 }
 
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////   ORGANIZATION ORGANIZATION & WORKSPACE MODELS TEAM MODELS    //////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+model Organization {
+  id                   String    @id @default(uuid())
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  name                 String
+  slug                 String    @unique
+  avatarUrl            String?
+  description          String?
+  isPersonal           Boolean   @default(false)
+  settings             Json      @default("{}")
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  topUpConfig          Json?
+  archivedAt           DateTime?
+  deletedAt            DateTime?
+  bootstrapUserId      String?
+
+  Members            OrgMember[]
+  Teams              Team[]
+  Aliases            OrganizationAlias[]
+  Balance            OrgBalance?
+  CreditTransactions OrgCreditTransaction[]
+  Invitations        OrgInvitation[]
+  StoreListings      StoreListing[]               @relation("OrgStoreListings")
+  SkillListings      SkillListing[]               @relation("OrgSkillListings")
+  Credentials        IntegrationCredential[]
+  Profile            OrganizationProfile?
+  Subscription       OrganizationSubscription?
+  SeatAssignments    OrganizationSeatAssignment[]
+  TransfersFrom      TransferRequest[]            @relation("TransferSource")
+  TransfersTo        TransferRequest[]            @relation("TransferTarget")
+  AuditLogs          AuditLog[]
+  // slug already has @unique which creates an index — no separate @@index needed
+  // Partial unique index "Organization_one_personal_per_user" on (bootstrapUserId)
+  // WHERE isPersonal AND deletedAt IS NULL AND bootstrapUserId IS NOT NULL enforces
+  // at most one live personal org per user — created via SQL migration
+  // 20260713120000_org_one_personal_per_user (Prisma can't model partial indexes).
+}
+
+model OrganizationAlias {
+  id              String       @id @default(uuid())
+  organizationId  String
+  aliasSlug       String       @unique
+  aliasType       OrgAliasType
+  createdAt       DateTime     @default(now())
+  createdByUserId String?
+  removedAt       DateTime?
+  removedByUserId String?
+  isRemovable     Boolean      @default(true)
+
+  Organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([aliasSlug])
+  @@index([organizationId])
+}
+
+model OrganizationProfile {
+  organizationId String   @id
+  username       String   @unique
+  displayName    String?
+  avatarUrl      String?
+  bio            String?
+  socialLinks    Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  Organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model OrgMember {
+  id               String          @id @default(uuid())
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  orgId            String
+  userId           String
+  isOwner          Boolean         @default(false)
+  isAdmin          Boolean         @default(false)
+  isBillingManager Boolean         @default(false)
+  status           OrgMemberStatus @default(ACTIVE)
+  joinedAt         DateTime        @default(now())
+  invitedByUserId  String?
+
+  Org            Organization                @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  User           User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  SeatAssignment OrganizationSeatAssignment? @relation
+
+  @@unique([orgId, userId])
+  @@index([userId])
+  @@index([orgId, status])
+}
+
+model OrgInvitation {
+  id               String    @id @default(uuid())
+  createdAt        DateTime  @default(now())
+  orgId            String
+  email            String
+  targetUserId     String?
+  isAdmin          Boolean   @default(false)
+  isBillingManager Boolean   @default(false)
+  token            String    @unique @default(uuid())
+  tokenHash        String?
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  revokedAt        DateTime?
+  invitedByUserId  String
+  teamIds          String[]
+
+  Org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([token])
+  @@index([orgId])
+}
+
+model Team {
+  id              String         @id @default(uuid())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  name            String
+  slug            String?
+  description     String?
+  isDefault       Boolean        @default(false)
+  joinPolicy      TeamJoinPolicy @default(OPEN)
+  orgId           String
+  archivedAt      DateTime?
+  createdByUserId String?
+
+  Org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  Members TeamMember[]
+
+  AgentGraphs    AgentGraph[]
+  Executions     AgentGraphExecution[]
+  ChatSessions   ChatSession[]
+  Presets        AgentPreset[]
+  LibraryAgents  LibraryAgent[]
+  LibraryFolders LibraryFolder[]
+  Experts        Expert[]
+  Webhooks       IntegrationWebhook[]
+  APIKeys        APIKey[]
+  Credentials    IntegrationCredential[] @relation("TeamCredentials")
+  TeamInvites    TeamInvite[]
+
+  @@unique([orgId, name])
+  @@index([orgId, isDefault])
+  @@index([orgId, joinPolicy])
+}
+
+model TeamMember {
+  id               String          @id @default(uuid())
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  teamId           String
+  userId           String
+  isAdmin          Boolean         @default(false)
+  isBillingManager Boolean         @default(false)
+  status           OrgMemberStatus @default(ACTIVE)
+  joinedAt         DateTime        @default(now())
+  invitedByUserId  String?
+
+  Team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@index([teamId, status])
+}
+
+model TeamInvite {
+  id               String    @id @default(uuid())
+  createdAt        DateTime  @default(now())
+  teamId           String
+  email            String
+  targetUserId     String?
+  isAdmin          Boolean   @default(false)
+  isBillingManager Boolean   @default(false)
+  token            String    @unique @default(uuid())
+  tokenHash        String?
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  revokedAt        DateTime?
+  invitedByUserId  String
+
+  Team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([token])
+  @@index([teamId])
+}
+
+model OrganizationSubscription {
+  organizationId       String    @id
+  planCode             String?
+  planTier             String?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  status               String    @default("active")
+  renewalAt            DateTime?
+  cancelAt             DateTime?
+  entitlements         Json      @default("{}")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  Organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model OrganizationSeatAssignment {
+  id               String     @id @default(uuid())
+  organizationId   String
+  userId           String
+  seatType         SeatType   @default(FREE)
+  status           SeatStatus @default(ACTIVE)
+  assignedByUserId String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  OrgMember    OrgMember?   @relation(fields: [organizationId, userId], references: [orgId, userId], onDelete: Cascade)
+  Organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId, status])
+}
+
+model OrgBalance {
+  orgId     String   @id
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  Org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+model OrgCreditTransaction {
+  transactionKey    String                @default(uuid())
+  createdAt         DateTime              @default(now())
+  orgId             String
+  initiatedByUserId String?
+  teamId            String?
+  amount            Int
+  type              CreditTransactionType
+  runningBalance    Int?
+  isActive          Boolean               @default(true)
+  metadata          Json?
+
+  Org Organization @relation(fields: [orgId], references: [id], onDelete: NoAction)
+
+  @@id(name: "orgCreditTransactionIdentifier", [transactionKey, orgId])
+  @@index([orgId, createdAt])
+  @@index([initiatedByUserId])
+  @@index([teamId])
+}
+
+model TransferRequest {
+  id                     String         @id @default(uuid())
+  resourceType           String
+  resourceId             String
+  sourceOrganizationId   String
+  targetOrganizationId   String
+  initiatedByUserId      String
+  status                 TransferStatus @default(PENDING)
+  sourceApprovedByUserId String?
+  targetApprovedByUserId String?
+  completedAt            DateTime?
+  reason                 String?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  SourceOrg Organization @relation("TransferSource", fields: [sourceOrganizationId], references: [id])
+  TargetOrg Organization @relation("TransferTarget", fields: [targetOrganizationId], references: [id])
+
+  @@index([sourceOrganizationId])
+  @@index([targetOrganizationId])
+  @@index([status])
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String?
+  teamId         String?
+  actorUserId    String
+  entityType     String
+  entityId       String?
+  action         String
+  beforeJson     Json?
+  afterJson      Json?
+  correlationId  String?
+  createdAt      DateTime @default(now())
+
+  Organization Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model IntegrationCredential {
+  id               String              @id @default(uuid())
+  organizationId   String
+  ownerType        CredentialOwnerType
+  ownerId          String // userId, teamId, or orgId depending on ownerType
+  teamId           String? // Dedicated FK for workspace-scoped creds (set when ownerType=TEAM)
+  provider         String
+  credentialType   String
+  displayName      String
+  encryptedPayload String
+  createdByUserId  String
+  lastUsedAt       DateTime?
+  status           String              @default("active")
+  metadata         Json?
+  expiresAt        DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  Organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Workspace    Team?        @relation("TeamCredentials", fields: [teamId], references: [id], onDelete: Cascade, map: "IntegrationCredential_workspace_fkey")
+
+  @@index([organizationId, ownerType, provider])
+  @@index([ownerId, ownerType])
+  @@index([createdByUserId])
+}
+
 // ── Platform Bot Linking ──────────────────────────────────────────────
 // Links external chat platform identities (Discord, Telegram, Slack, etc.)
 // to AutoGPT user accounts, enabling the multi-platform CoPilot bot.
@@ -1422,12 +3693,12 @@ enum PlatformLinkType {
 // "owner" — all usage from that server is attributed to their account.
 model PlatformLink {
   id                  String       @id @default(uuid())
-  userId              String       // AutoGPT user ID of the owner
+  userId              String // AutoGPT user ID of the owner
   User                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   platform            PlatformType
-  platformServerId    String       // Server/guild/group ID on that platform
-  ownerPlatformUserId String       // Platform user ID of the person who set it up
-  serverName          String?      // Display name of the server (best-effort, may go stale)
+  platformServerId    String // Server/guild/group ID on that platform
+  ownerPlatformUserId String // Platform user ID of the person who set it up
+  serverName          String? // Display name of the server (best-effort, may go stale)
   linkedAt            DateTime     @default(now())
 
   @@unique([platform, platformServerId])
@@ -1440,11 +3711,11 @@ model PlatformLink {
 // separately.
 model PlatformUserLink {
   id               String       @id @default(uuid())
-  userId           String       // AutoGPT user ID
+  userId           String // AutoGPT user ID
   User             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   platform         PlatformType
-  platformUserId   String       // Individual's user ID on the platform
-  platformUsername String?      // Display name at link time (best-effort)
+  platformUserId   String // Individual's user ID on the platform
+  platformUsername String? // Display name at link time (best-effort)
   linkedAt         DateTime     @default(now())
 
   @@unique([platform, platformUserId])
@@ -1461,12 +3732,12 @@ model PlatformLinkToken {
   platform         PlatformType
   linkType         PlatformLinkType @default(SERVER)
   // SERVER token fields (null for USER tokens)
-  platformServerId String?          // Server/guild/group ID being linked
-  serverName       String?          // Server display name
-  channelId        String?          // Channel to send confirmation back to
+  platformServerId String? // Server/guild/group ID being linked
+  serverName       String? // Server display name
+  channelId        String? // Channel to send confirmation back to
   // Always set — platform user ID of the person who will claim ownership
   platformUserId   String
-  platformUsername String?          // Their display name
+  platformUsername String? // Their display name
   expiresAt        DateTime
   usedAt           DateTime?
   createdAt        DateTime         @default(now())
@@ -1474,4 +3745,98 @@ model PlatformLinkToken {
   @@index([platform, platformServerId])
   @@index([platform, platformUserId])
   @@index([expiresAt])
+}
+
+// ── Bot usage analytics ────────────────────────────────────────────────
+// Privacy: these tables NEVER store message content. Only counts,
+// timestamps, bounded enums (event type, channel type, error kind) and
+// numeric metrics (reply length, latency). Tagged with PlatformType so the
+// same analytics work for every chat-bot platform.
+
+// Append-only stream of discrete bot usage events. Powers message-volume,
+// command-usage, error-rate and per-server activity charts.
+model BotEvent {
+  id          String       @id @default(uuid())
+  createdAt   DateTime     @default(now())
+  platform    PlatformType
+  // Bounded event kind, e.g. "message_received", "reply_sent",
+  // "command_used", "link_created", "link_removed", "stream_error".
+  eventType   String
+  serverId    String? // Platform server/guild ID; null for DMs
+  channelType String? // "dm" | "channel" | "thread"
+  commandName String? // For command_used events (e.g. "/new", "/resume")
+  errorKind   String? // Bounded failure category for stream_error events
+  charCount   Int? // Reply length in characters — a metric, NOT content
+  durationMs  Int? // Receive→reply latency in milliseconds
+
+  @@index([platform, eventType, createdAt])
+  @@index([platform, serverId, createdAt])
+  @@index([createdAt])
+}
+
+// Presence table: which servers the bot is physically in right now (a
+// superset of PlatformLink, since the bot can be in servers that haven't run
+// /setup). `leftAt IS NULL` is the live membership; the joinedAt histogram
+// drives growth charts and sharding-threshold prediction.
+model BotGuild {
+  id         String       @id @default(uuid())
+  platform   PlatformType
+  serverId   String // Platform server/guild ID
+  name       String? // Server display name (best-effort, may go stale)
+  joinedAt   DateTime     @default(now())
+  leftAt     DateTime? // Set when the bot is removed; null = currently joined
+  lastSeenAt DateTime     @default(now()) // Last reconcile that confirmed presence
+
+  @@unique([platform, serverId])
+  @@index([platform, leftAt])
+}
+
+// Per-workspace OAuth install credentials for webhook bots that use a
+// multi-tenant "Add to <platform>" install flow (Slack Events API, and later
+// Teams etc.). One row per installed workspace/team, holding that workspace's
+// bot token ENCRYPTED at rest via JSONCryptor — exactly like User.integrations,
+// never a raw token. This is the credential the adapter uses to call the
+// platform API on that workspace's behalf; distinct from BotGuild (presence /
+// analytics) and PlatformLink (account ownership).
+model BotInstall {
+  id               String       @id @default(uuid())
+  platform         PlatformType
+  platformServerId String // Workspace/team ID (e.g. Slack team_id)
+  credentials      String // Encrypted JSON: { bot_token, ... }
+  botUserId        String? // The bot's own user ID within that workspace
+  appId            String? // Platform app ID (used to match uninstall events)
+  name             String? // Workspace display name (best-effort, may go stale)
+  installedAt      DateTime     @default(now())
+  updatedAt        DateTime?    @updatedAt
+  revokedAt        DateTime? // Set on app_uninstalled / tokens_revoked
+
+  @@unique([platform, platformServerId])
+  @@index([platform, revokedAt])
+}
+
+// Retirement records: which AgentNodes were rewritten when a model was
+// retired via the retirement CLI (backend.data.llm_registry.retire), so the
+// operation is observable and revertable. Slugs are plain strings validated
+// against the catalog file at write time — the catalog is not a DB table.
+// Per-install runtime state, unlike the catalog itself (catalog-as-code).
+model LlmModelMigration {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sourceModelSlug String // The retired model
+  targetModelSlug String // The model workflows were migrated to
+  reason          String?
+
+  // JSON array of rewritten AgentNode ids, for revert
+  migratedNodeIds Json @default("[]")
+  nodeCount       Int // DB constraint: >= 0
+
+  isReverted Boolean   @default(false)
+  revertedAt DateTime?
+
+  // Note: Partial unique index in migration SQL prevents multiple active
+  // migrations per source: UNIQUE (sourceModelSlug) WHERE isReverted = false
+  @@index([targetModelSlug])
+  @@index([sourceModelSlug, isReverted])
 }

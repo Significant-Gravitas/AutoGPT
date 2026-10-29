@@ -70,8 +70,8 @@ export function LibraryFolderDeleteDialog({
       <Dialog.Content>
         <div>
           <Text variant="large">
-            Are you sure you want to delete &ldquo;{folder.name}&rdquo;? Agents
-            inside this folder will be moved back to your library.
+            Are you sure you want to delete &ldquo;{folder.name}&rdquo;?
+            Workflows inside this folder will be moved back to your library.
           </Text>
           <Dialog.Footer>
             <Button

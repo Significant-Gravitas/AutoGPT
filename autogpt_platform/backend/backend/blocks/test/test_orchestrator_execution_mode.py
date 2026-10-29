@@ -4,14 +4,25 @@ Covers:
 - ExecutionMode enum members exist and have stable values
 - EXTENDED_THINKING provider validation (anthropic/open_router allowed, others rejected)
 - EXTENDED_THINKING model-name validation (must start with "claude")
+- EXTENDED_THINKING options handed to the Claude Agent SDK
 """
 
+from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import claude_agent_sdk
 import pytest
+from claude_agent_sdk import ClaudeAgentOptions, ResultMessage
+from pydantic import SecretStr
 
-from backend.blocks.llm import LlmModel
-from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
+from backend.blocks.llm import LLMModel
+from backend.blocks.orchestrator import (
+    ExecutionMode,
+    OrchestratorBlock,
+    _select_final_answer_parts,
+)
+from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
+from backend.data.model import APIKeyCredentials
 
 # ---------------------------------------------------------------------------
 # ExecutionMode enum integrity
@@ -53,7 +64,7 @@ class TestExecutionModeEnum:
 
 
 def _make_model_stub(provider: str, value: str):
-    """Create a lightweight stub that behaves like LlmModel for validation."""
+    """Create a lightweight stub that behaves like LLMModel for validation."""
     metadata = MagicMock()
     metadata.provider = provider
     stub = MagicMock()
@@ -99,14 +110,14 @@ class TestExtendedThinkingProviderValidation:
         assert not model_name.startswith("claude")
 
     def test_real_gpt4o_model_rejected(self):
-        """Verify a real LlmModel enum member (GPT4O) fails the provider check."""
-        model = LlmModel.GPT4O
+        """Verify a real LLMModel enum member (GPT4O) fails the provider check."""
+        model = LLMModel.GPT4O
         provider = model.metadata.provider
         assert provider not in ("anthropic", "open_router")
 
     def test_real_claude_model_passes(self):
-        """Verify a real LlmModel enum member (CLAUDE_4_6_SONNET) passes."""
-        model = LlmModel.CLAUDE_4_6_SONNET
+        """Verify a real LLMModel enum member (CLAUDE_4_6_SONNET) passes."""
+        model = LLMModel.CLAUDE_4_6_SONNET
         provider = model.metadata.provider
         model_name = model.value
         assert provider in ("anthropic", "open_router")
@@ -146,7 +157,7 @@ class TestExtendedThinkingValidationRaisesInBlock:
     async def test_non_anthropic_provider_raises_valueerror(self):
         """EXTENDED_THINKING + openai provider raises ValueError."""
         block = OrchestratorBlock()
-        input_data = _make_input_data(model=LlmModel.GPT4O)
+        input_data = _make_input_data(model=LLMModel.GPT4O)
 
         with (
             patch.object(
@@ -200,3 +211,203 @@ class TestExtendedThinkingValidationRaisesInBlock:
                 execution_context=MagicMock(),
                 execution_processor=MagicMock(),
             )
+
+
+# ---------------------------------------------------------------------------
+# _select_final_answer_parts — pins the SDK-mode "finished" contract:
+# only the last text-only assistant message contributes; messages with
+# tool calls (text or no) are intermediate narration.
+# ---------------------------------------------------------------------------
+
+
+class TestSelectFinalAnswerParts:
+    """The helper is the testable extraction of the inline branch in
+    ``_execute_tools_sdk_mode`` that decides which assistant-message
+    texts make it into the ``finished`` output pin.  Covering it here
+    keeps the SDK path's contract pinned without mocking the full
+    Claude Agent SDK + MCP stream."""
+
+    def test_text_only_message_replaces_current(self) -> None:
+        # Model stopped calling tools and emitted text — that's the
+        # composed final answer.  Replaces any prior selection.
+        assert _select_final_answer_parts(
+            text_parts=["final answer"],
+            has_tool_calls=False,
+            current=["prior"],
+        ) == ["final answer"]
+
+    def test_text_with_tool_calls_keeps_current(self) -> None:
+        # Mixed text+tool messages are intermediate narration — keep
+        # the last text-only selection unchanged.
+        assert _select_final_answer_parts(
+            text_parts=["narration before tool"],
+            has_tool_calls=True,
+            current=["earlier final answer"],
+        ) == ["earlier final answer"]
+
+    def test_tool_only_message_keeps_current(self) -> None:
+        # Message with no text and only tool calls — keep current.
+        assert _select_final_answer_parts(
+            text_parts=[],
+            has_tool_calls=True,
+            current=["earlier final"],
+        ) == ["earlier final"]
+
+    def test_empty_message_keeps_current(self) -> None:
+        # Defensive: empty assistant message contributes nothing.
+        assert _select_final_answer_parts(
+            text_parts=[],
+            has_tool_calls=False,
+            current=["earlier final"],
+        ) == ["earlier final"]
+
+    def test_no_qualifying_message_returns_empty(self) -> None:
+        # The agent never composes a final answer (e.g. keeps calling
+        # tools until max iterations) — ``current`` stays empty so
+        # ``finished`` surfaces as ``""``, the diagnostic signal for
+        # autopilot / dry-run.
+        current: list[str] = []
+        for text, has_tools in [
+            (["narration"], True),
+            ([], True),
+            (["more narration"], True),
+        ]:
+            current = _select_final_answer_parts(
+                text_parts=text, has_tool_calls=has_tools, current=current
+            )
+        assert current == []
+
+    def test_last_text_only_message_wins_in_sequence(self) -> None:
+        # Multiple text-only messages over the run — the **last** one
+        # is the agent's answer (most recent composition).
+        current: list[str] = []
+        current = _select_final_answer_parts(
+            text_parts=["first answer"], has_tool_calls=False, current=current
+        )
+        current = _select_final_answer_parts(
+            text_parts=["narration"], has_tool_calls=True, current=current
+        )
+        current = _select_final_answer_parts(
+            text_parts=["second answer"], has_tool_calls=False, current=current
+        )
+        assert current == ["second answer"]
+
+    def test_returns_copy_not_reference(self) -> None:
+        # Defensive: the SDK call site reuses the ``text_parts`` list
+        # per-message; the helper must return a copy so subsequent
+        # mutations don't poison the captured final answer.
+        text_parts = ["final"]
+        result = _select_final_answer_parts(
+            text_parts=text_parts, has_tool_calls=False, current=[]
+        )
+        text_parts.clear()
+        assert result == ["final"]
+
+    def test_blank_text_only_message_keeps_current(self) -> None:
+        # Whitespace-only / empty-string text blocks with no tool calls
+        # would otherwise look like a "final" answer and clobber a real
+        # one captured earlier in the stream. The docstring says empty
+        # messages don't contribute — enforce that for blank strings too.
+        for blank in [[""], ["   "], ["\n"], ["", "  ", "\t"]]:
+            assert _select_final_answer_parts(
+                text_parts=blank,
+                has_tool_calls=False,
+                current=["real final answer"],
+            ) == ["real final answer"], f"blank={blank!r} clobbered current"
+
+
+# ---------------------------------------------------------------------------
+# Options handed to the Claude Agent SDK
+# ---------------------------------------------------------------------------
+
+
+class _ClientRecorder:
+    """Stands in for ``ClaudeSDKClient``: records its options and prompt."""
+
+    seen: list[ClaudeAgentOptions | str] = []
+
+    def __init__(self, options: ClaudeAgentOptions) -> None:
+        self.seen.append(options)
+
+    async def __aenter__(self) -> "_ClientRecorder":
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        return None
+
+    async def query(self, prompt: str) -> None:
+        self.seen.append(prompt)
+
+    async def receive_response(self) -> AsyncGenerator[ResultMessage, None]:
+        yield ResultMessage(
+            subtype="success",
+            duration_ms=1,
+            duration_api_ms=1,
+            is_error=False,
+            num_turns=1,
+            session_id="sess-1",
+        )
+
+
+async def _run_sdk_mode(
+    prompt_text: str, cli_check: MagicMock
+) -> tuple[list[tuple[str, object]], list[ClaudeAgentOptions | str]]:
+    """Run SDK mode against ``_ClientRecorder``; return outputs and what it saw."""
+    input_data = MagicMock(sys_prompt="", prompt=prompt_text)
+    input_data.model.value = "claude-test"
+    credentials = APIKeyCredentials(
+        id="test-anthropic-id",
+        provider="anthropic",
+        api_key=SecretStr("mock-anthropic-key"),
+        title="Mock Anthropic key",
+        expires_at=None,
+    )
+    with (
+        patch.object(_ClientRecorder, "seen", []) as seen,
+        patch.object(claude_agent_sdk, "ClaudeSDKClient", _ClientRecorder),
+        patch("backend.blocks.orchestrator.require_verbatim_prompts_cli", cli_check),
+    ):
+        outputs: list[tuple[str, object]] = [
+            output
+            async for output in OrchestratorBlock()._execute_tools_sdk_mode(
+                input_data=input_data,
+                credentials=credentials,
+                tool_functions=[],
+                prompt=[{"role": "user", "content": prompt_text}],
+                execution_params=MagicMock(graph_exec_id="graph-exec-1"),
+                execution_processor=MagicMock(),
+            )
+        ]
+    return outputs, seen
+
+
+@pytest.mark.asyncio
+async def test_sdk_mode_sends_slash_prompt_as_text() -> None:
+    """A graph prompt such as "/compact" goes to the checked CLI as text, with
+    the CLI's commands off, prompts delivered verbatim, and no settings or MCP
+    servers loaded from the host's config dir."""
+    cli_check = MagicMock(return_value="/opt/claude/claude")
+    _, seen = await _run_sdk_mode("/compact", cli_check)
+
+    options, prompt = seen
+    assert isinstance(options, ClaudeAgentOptions)
+    assert options.extra_args == {
+        "strict-mcp-config": None,
+        DISABLE_SLASH_COMMANDS_FLAG: None,
+    }
+    assert options.setting_sources == []
+    assert options.verbatim_prompts is True
+    assert prompt == " /compact"
+    cli_check.assert_called_once_with(None)
+    assert options.cli_path == "/opt/claude/claude"
+
+
+@pytest.mark.asyncio
+async def test_sdk_mode_does_not_start_a_cli_that_is_too_old() -> None:
+    """An older CLI ignores ``verbatim_prompts`` without an error, so the
+    block reports an error instead of starting it."""
+    cli_check = MagicMock(side_effect=RuntimeError("The Claude Code CLI is too old"))
+    outputs, seen = await _run_sdk_mode("hello", cli_check)
+
+    assert seen == []
+    assert outputs == [("error", "The Claude Code CLI is too old")]

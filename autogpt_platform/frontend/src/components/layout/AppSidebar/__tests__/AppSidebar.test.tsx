@@ -1,0 +1,207 @@
+import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import {
+  getGetHomeDashboardMockHandler200,
+  getGetHomeDashboardResponseMock200,
+} from "@/app/api/__generated__/endpoints/home/home.msw";
+import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
+import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
+import { server } from "@/mocks/mock-server";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { fireEvent } from "@testing-library/react";
+
+import { AppSidebar } from "../AppSidebar";
+import { Flag } from "@/services/feature-flags/use-get-flag";
+
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: { id: "user-1", email: "alice@example.com", role: "user" },
+    isLoggedIn: true,
+    isUserLoading: false,
+  }),
+}));
+
+function dashboardWith(agents: HomeAgentStatus[]): HomeDashboardResponse {
+  return { ...getGetHomeDashboardResponseMock200(), agents };
+}
+
+function makeAgent(id: string, name: string): HomeAgentStatus {
+  return {
+    expert: { id, name, role: "Expert", avatar_url: null },
+    status: "ready",
+    detail: "Ready for the next task",
+  };
+}
+
+// The global next/link mock only exports `default`; AppSidebar also imports
+// `useLinkStatus`, so re-mock here with a no-op pending status.
+vi.mock("next/link", () => ({
+  __esModule: true,
+  default: ({
+    children,
+    href,
+    ...props
+  }: {
+    children: ReactNode;
+    href: string;
+  }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+  useLinkStatus: () => ({ pending: false }),
+}));
+
+const routerPush = vi.hoisted(() => vi.fn());
+
+vi.mock("next/navigation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/navigation")>();
+  return {
+    ...actual,
+    useRouter: () => ({
+      push: routerPush,
+      replace: vi.fn(),
+      prefetch: vi.fn(),
+    }),
+    usePathname: () => "/marketplace",
+    useSearchParams: () => new URLSearchParams(),
+  };
+});
+
+const useGetFlagMock = vi.hoisted(() =>
+  vi.fn<(flag: Flag) => boolean>(() => false),
+);
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: (flag: Flag) => useGetFlagMock(flag),
+  };
+});
+
+function renderSidebar() {
+  return render(
+    <SidebarProvider>
+      <AppSidebar />
+    </SidebarProvider>,
+  );
+}
+
+beforeEach(() => {
+  routerPush.mockClear();
+  useGetFlagMock.mockReturnValue(false);
+  server.use(getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }));
+});
+
+afterEach(() => {
+  server.resetHandlers();
+});
+
+describe("AppSidebar", () => {
+  it("marks chats, Team, Files and the Workspace group for the first-run walkthrough", () => {
+    const { container } = renderSidebar();
+    const target = (name: string) =>
+      container.querySelector(`[data-tour-target="${name}"]`);
+
+    expect(target("chats")?.textContent).toContain("Recent chats");
+    expect(target("team")?.textContent).toContain("Team");
+    expect(target("files")?.textContent).toContain("Files");
+    expect(target("workspace")?.textContent).toContain("Workspace");
+  });
+
+  it("ignores a keydown with no key and preserves the new-task shortcut", () => {
+    renderSidebar();
+    const event = new KeyboardEvent("keydown", {
+      ctrlKey: true,
+      shiftKey: true,
+      cancelable: true,
+    });
+    Object.defineProperty(event, "key", { value: undefined });
+
+    expect(() => fireEvent(document, event)).not.toThrow();
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+
+    fireEvent.keyDown(document, { key: "O", ctrlKey: true, shiftKey: true });
+    expect(routerPush).toHaveBeenCalledWith("/home");
+  });
+
+  it("renders the primary navigation links", () => {
+    renderSidebar();
+    expect(screen.queryByText("Workflows")).toBeNull();
+    expect(screen.getByText("Marketplace")).toBeDefined();
+    expect(screen.getByText("Build")).toBeDefined();
+    expect(screen.getByRole("link", { name: /files/i })).toBeDefined();
+    expect(screen.getByText("Home")).toBeDefined();
+  });
+
+  it("shows Team instead of Workflows for every signed-in user", () => {
+    useGetFlagMock.mockReturnValue(true);
+    renderSidebar();
+    const teamLink = screen.getByRole("link", { name: /team/i });
+    expect(teamLink.getAttribute("href")).toBe("/team");
+    expect(screen.queryByText("Workflows")).toBeNull();
+  });
+
+  it("keeps a Home link for every signed-in user", () => {
+    useGetFlagMock.mockReturnValue(true);
+    renderSidebar();
+    const homeLink = screen.getByRole("link", { name: /home/i });
+    expect(homeLink.getAttribute("href")).toBe("/home");
+  });
+
+  it("combines Home and New Task into one navigation entry", () => {
+    renderSidebar();
+    expect(screen.queryByRole("link", { name: /new task/i })).toBeNull();
+    const home = screen.getByRole("link", { name: /^home/i });
+    expect(home.getAttribute("href")).toBe("/home");
+  });
+
+  it("renders the workspace and recent chats group headers", () => {
+    useGetFlagMock.mockReturnValue(true);
+    renderSidebar();
+    expect(screen.getByText("Workspace")).toBeDefined();
+    expect(screen.getByText("Recent chats")).toBeDefined();
+  });
+
+  it("always shows Team and Files when the flag provider returns false", () => {
+    renderSidebar();
+    expect(screen.getByText("Workspace")).toBeDefined();
+    expect(screen.getByRole("link", { name: /team/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /files/i })).toBeDefined();
+  });
+
+  it("marks the active link based on the current pathname", () => {
+    // global next/navigation mock resolves usePathname() to "/marketplace"
+    renderSidebar();
+    const marketplaceLink = screen.getByText("Marketplace").closest("a");
+    expect(marketplaceLink?.getAttribute("href")).toBe("/marketplace");
+  });
+
+  it("shows the recent-chats empty state once sessions resolve", async () => {
+    renderSidebar();
+    expect(await screen.findByText(/no conversations yet/i)).toBeDefined();
+  });
+
+  it("does not nest the team roster under Team", async () => {
+    useGetFlagMock.mockReturnValue(true);
+    server.use(
+      getGetHomeDashboardMockHandler200(
+        dashboardWith([makeAgent("expert-maria", "Maria")]),
+      ),
+    );
+    renderSidebar();
+
+    expect(await screen.findByRole("link", { name: /team/i })).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: /Maria/i })).toBeNull(),
+    );
+  });
+});

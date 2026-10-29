@@ -1,10 +1,9 @@
 "use client";
-
-import { CopyIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { Copy01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   plainTextKey: string;
@@ -27,18 +26,19 @@ export function CreateAPIKeySuccess({ plainTextKey, onClose }: Props) {
 
   return (
     <div className="flex flex-col gap-4 px-1">
-      <Text variant="body" className="text-zinc-700">
+      <Text variant="body" className="text-foreground-body">
         Copy your key now. For security, we won&apos;t show it again.
       </Text>
 
-      <div className="flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 p-3">
-        <code className="flex-1 break-all font-mono text-xs text-zinc-800">
+      <div className="flex items-center gap-2 rounded-md border border-border-base bg-surface-muted p-3">
+        {/* ph-no-capture keeps the one-time key out of PostHog session replays. */}
+        <code className="ph-no-capture flex-1 break-all font-mono text-xs text-foreground-emphasis">
           {plainTextKey}
         </code>
         <Button
           variant="secondary"
           size="small"
-          leftIcon={<CopyIcon size={16} />}
+          leftIcon={<Icon icon={Copy01Icon} size={16} />}
           onClick={handleCopy}
         >
           Copy

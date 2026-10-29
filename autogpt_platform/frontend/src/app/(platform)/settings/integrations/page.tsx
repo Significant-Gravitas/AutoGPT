@@ -1,16 +1,7 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
+import { IntegrationsPanel } from "@/components/contextual/IntegrationsPanel/IntegrationsPanel";
 
 export default function SettingsIntegrationsPage() {
-  return (
-    <>
-      <Text variant="h4" className="text-[#1F1F20]">
-        Integrations
-      </Text>
-      <Text variant="large" className="mt-2 text-zinc-600">
-        Coming soon.
-      </Text>
-    </>
-  );
+  return <IntegrationsPanel />;
 }

@@ -18,5 +18,22 @@ class User:
             user_id=payload["sub"],
             email=payload.get("email", ""),
             phone_number=payload.get("phone", ""),
-            role=payload["role"],
+            # Default rather than index: a token without a `role` claim is a
+            # token we simply don't grant privileges to, so it should be
+            # treated as an ordinary user — not raise KeyError and surface as
+            # a 500. verify_user already fails closed on the admin check.
+            role=payload.get("role", "user"),
         )
+
+
+@dataclass(frozen=True)
+class RequestContext:
+    user_id: str
+    org_id: str
+    team_id: str | None  # None = org-home context
+    is_org_owner: bool
+    is_org_admin: bool
+    is_org_billing_manager: bool
+    is_team_admin: bool
+    is_team_billing_manager: bool
+    seat_status: str  # ACTIVE, INACTIVE, PENDING, NONE

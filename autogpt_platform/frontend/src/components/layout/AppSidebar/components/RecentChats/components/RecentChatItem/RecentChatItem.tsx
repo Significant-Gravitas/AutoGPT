@@ -1,0 +1,232 @@
+"use client";
+
+import { ChatOriginIcon } from "@/app/(platform)/copilot/components/ChatOriginIcon/ChatOriginIcon";
+import { resolvePlatformLogo } from "@/app/(platform)/copilot/components/ChatOriginIcon/platformLogos";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
+import {
+  SidebarMenuAction,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/molecules/Sidebar/Sidebar";
+import Link, { useLinkStatus } from "next/link";
+import { memo, useRef } from "react";
+import {
+  BookOpen01Icon,
+  Delete02Icon,
+  Download04Icon,
+  Loading03Icon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  PinIcon,
+  PinOffIcon,
+  Share03Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
+
+interface Session {
+  id: string;
+  title?: string | null;
+  source_platform?: string | null;
+  is_processing?: boolean | null;
+  is_pinned?: boolean | null;
+  updated_at: string;
+}
+
+interface Props {
+  session: Session;
+  isActive: boolean;
+  isEditing: boolean;
+  editingTitle: string;
+  onEditingTitleChange: (value: string) => void;
+  onSubmitRename: (id: string) => void;
+  onCancelRename: () => void;
+  isExporting: boolean;
+  isDeleting: boolean;
+  chatPinningEnabled: boolean;
+  onPin: (id: string, isPinned: boolean) => void;
+  onRename: (id: string, title: string | null | undefined) => void;
+  onExport: (id: string, title: string | null | undefined) => void;
+  onShare: (id: string) => void;
+  isLearningEnabled: boolean;
+  onExcludeFromLearning: (id: string) => void;
+  onDelete: (id: string, title: string | null | undefined) => void;
+}
+
+// Rendered inside the <Link>, so useLinkStatus reports that link's pending
+// navigation — mirrors the loader on the main sidebar nav links.
+function ChatLinkLoader() {
+  const { pending } = useLinkStatus();
+
+  if (!pending) return null;
+
+  return (
+    <LoadingSpinner
+      size="small"
+      className="ml-auto !size-4 shrink-0 text-foreground-tertiary"
+    />
+  );
+}
+
+// Memoised: the list hands every row the same shared callbacks (taking the
+// session id), so a list refetch only re-renders rows whose session changed.
+export const RecentChatItem = memo(function RecentChatItem({
+  session,
+  isActive,
+  isEditing,
+  editingTitle,
+  onEditingTitleChange,
+  onSubmitRename,
+  onCancelRename,
+  isExporting,
+  isDeleting,
+  chatPinningEnabled,
+  onPin,
+  onRename,
+  onExport,
+  onShare,
+  isLearningEnabled,
+  onExcludeFromLearning,
+  onDelete,
+}: Props) {
+  const title = session.title || "Untitled chat";
+  const hasPlatformLogo = !!resolvePlatformLogo(session.source_platform);
+
+  // Enter and Escape both blur the input, which would otherwise trigger a
+  // second (or contradictory) submit via onBlur. This flag lets onBlur skip
+  // the submit when the key handler already resolved the edit.
+  const skipBlurSubmitRef = useRef(false);
+
+  if (isEditing) {
+    return (
+      <SidebarMenuItem>
+        <input
+          autoFocus
+          aria-label="Rename chat"
+          value={editingTitle}
+          onChange={(e) => onEditingTitleChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (isKey(e, "Enter")) {
+              e.preventDefault();
+              skipBlurSubmitRef.current = true;
+              onSubmitRename(session.id);
+              e.currentTarget.blur();
+            } else if (isKey(e, "Escape")) {
+              e.preventDefault();
+              skipBlurSubmitRef.current = true;
+              onCancelRename();
+              e.currentTarget.blur();
+            }
+          }}
+          onBlur={() => {
+            if (skipBlurSubmitRef.current) {
+              skipBlurSubmitRef.current = false;
+              return;
+            }
+            onSubmitRename(session.id);
+          }}
+          className="w-full rounded-md border border-border-strong bg-surface px-2 py-1 text-body leading-5 text-foreground-emphasis outline-none focus:border-brand focus:ring-1 focus:ring-brand max-md:py-2 max-md:text-body-lg max-md:leading-6"
+        />
+      </SidebarMenuItem>
+    );
+  }
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        asChild
+        isActive={isActive}
+        tooltip={title}
+        // leading-5 keeps SidebarMenuButton's 20px line-height under max-md:text-body-md.
+        className="font-normal hover:!bg-surface-hover data-[active=true]:!bg-surface-hover data-[active=true]:font-normal max-md:h-11 max-md:!pr-11 max-md:text-body-md max-md:leading-5"
+      >
+        <Link href={`/home?sessionId=${session.id}`}>
+          {session.is_processing ? (
+            <LoadingSpinner
+              size="small"
+              className="size-4 shrink-0 text-brand-hover"
+            />
+          ) : hasPlatformLogo ? (
+            <ChatOriginIcon sourcePlatform={session.source_platform} />
+          ) : null}
+          <span className="truncate">{title}</span>
+          <ChatLinkLoader />
+        </Link>
+      </SidebarMenuButton>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <SidebarMenuAction
+            showOnHover
+            aria-label="Chat actions"
+            className="max-md:!top-1.5 max-md:w-8 max-md:[&>svg]:size-5"
+          >
+            <Icon
+              icon={MoreHorizontalIcon}
+              className="text-sidebar-foreground/90"
+            />
+          </SidebarMenuAction>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {chatPinningEnabled && (
+            <DropdownMenuItem
+              onClick={() => onPin(session.id, !!session.is_pinned)}
+            >
+              {session.is_pinned ? (
+                <Icon icon={PinOffIcon} className="mr-2 h-4 w-4" />
+              ) : (
+                <Icon icon={PinIcon} className="mr-2 h-4 w-4" />
+              )}
+              {session.is_pinned ? "Unpin chat" : "Pin chat"}
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={() => onRename(session.id, session.title)}>
+            <Icon icon={PencilIcon} className="mr-2 h-4 w-4" />
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => onExport(session.id, session.title)}
+            onSelect={(e) => {
+              if (isExporting) e.preventDefault();
+            }}
+            disabled={isExporting}
+          >
+            {isExporting ? (
+              <Icon
+                icon={Loading03Icon}
+                className="mr-2 h-4 w-4 animate-spin"
+              />
+            ) : (
+              <Icon icon={Download04Icon} className="mr-2 h-4 w-4" />
+            )}
+            {isExporting ? "Exporting…" : "Export chat"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onShare(session.id)}>
+            <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
+            Share chat
+          </DropdownMenuItem>
+          {isLearningEnabled && (
+            <DropdownMenuItem onClick={() => onExcludeFromLearning(session.id)}>
+              <Icon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />
+              Exclude from learning
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem
+            onClick={() => onDelete(session.id, session.title)}
+            disabled={isDeleting}
+            className="text-error-foreground focus:bg-error-surface focus:text-error-foreground"
+          >
+            <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
+            Delete chat
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SidebarMenuItem>
+  );
+});

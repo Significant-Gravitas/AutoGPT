@@ -1,12 +1,7 @@
-// Force a non-UTC timezone so the UTC-month boundary logic in
-// `startOfCurrentMonth` can be distinguished from a hypothetical local-month
-// implementation. Node reads TZ on each Date operation on Linux (CI), so this
-// takes effect before any `new Date(...)` below.
-process.env.TZ = "America/Los_Angeles";
-
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { within } from "@testing-library/react";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { http, HttpResponse } from "msw";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
   getGetV2ListLibraryAgentsMockHandler,
@@ -18,16 +13,19 @@ import {
   getGetV2ListLibraryFoldersMockHandler,
   getGetV2ListLibraryFoldersResponseMock,
 } from "@/app/api/__generated__/endpoints/folders/folders.msw";
-import { getGetV1ListAllExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
-import { Flag } from "@/services/feature-flags/use-get-flag";
+import {
+  getGetV1ListAllExecutionsMockHandler,
+  getGetV1UserCostSummaryMockHandler,
+} from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import LibraryPage from "../page";
 
-// Defensive teardown: if a test fails before its final `vi.useRealTimers()`,
-// later tests would inherit fake timers. Global `cleanup()` is handled in
-// `src/tests/integrations/vitest.setup.tsx`.
 afterEach(() => {
   vi.useRealTimers();
+  flags.paymentsOn = true;
 });
+
+// Payments on is a billed install; off is a self-hosted one without billing.
+const flags = vi.hoisted(() => ({ paymentsOn: true }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async () => {
   const actual = await vi.importActual<
@@ -35,13 +33,12 @@ vi.mock("@/services/feature-flags/use-get-flag", async () => {
   >("@/services/feature-flags/use-get-flag");
   return {
     ...actual,
-    useGetFlag: (flag: Flag) => flag === "agent-briefing",
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.ENABLE_PLATFORM_PAYMENT && flags.paymentsOn,
   };
 });
 
-function setupHandlers(
-  executions: Parameters<typeof getGetV1ListAllExecutionsMockHandler>[0],
-) {
+function setupHandlers({ totalCents }: { totalCents: number }) {
   const agents = [
     { ...getGetV2ListLibraryAgentsResponseMock().agents[0], graph_id: "g-1" },
   ];
@@ -77,77 +74,25 @@ function setupHandlers(
         },
       }),
     ),
-    getGetV1ListAllExecutionsMockHandler(executions),
+    getGetV1ListAllExecutionsMockHandler([]),
+    getGetV1UserCostSummaryMockHandler({
+      total_cents: totalCents,
+      run_count: totalCents > 0 ? 3 : 0,
+      billable_run_count: totalCents > 0 ? 3 : 0,
+      failed_cost_cents: 0,
+      by_agent:
+        totalCents > 0
+          ? [{ graph_id: "g-1", cost_cents: totalCents, run_count: 3 }]
+          : [],
+      top_runs: [],
+      daily: [],
+    }),
   );
 }
 
 describe("LibraryPage — AgentBriefingPanel 'Spent this month' tile", () => {
-  test("sums execution costs from the current UTC month and formats as currency", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    vi.setSystemTime(new Date("2026-04-15T12:00:00.000Z"));
-
-    setupHandlers([
-      {
-        id: "this-month-a",
-        user_id: "test-user",
-        graph_id: "g-1",
-        graph_version: 1,
-        inputs: {},
-        credential_inputs: {},
-        nodes_input_masks: {},
-        preset_id: null,
-        status: "COMPLETED",
-        started_at: new Date("2026-04-02T10:00:00.000Z"),
-        ended_at: new Date("2026-04-02T10:05:00.000Z"),
-        stats: { cost: 250 },
-      },
-      {
-        id: "this-month-b",
-        user_id: "test-user",
-        graph_id: "g-1",
-        graph_version: 1,
-        inputs: {},
-        credential_inputs: {},
-        nodes_input_masks: {},
-        preset_id: null,
-        status: "COMPLETED",
-        started_at: new Date("2026-04-10T10:00:00.000Z"),
-        ended_at: new Date("2026-04-10T10:02:00.000Z"),
-        stats: { cost: 75 },
-      },
-      {
-        // April 1 in UTC, but March 31 22:00 in America/Los_Angeles.
-        // A buggy local-month implementation would exclude this execution
-        // under TZ=America/Los_Angeles; the correct UTC-month logic includes
-        // it. Contributes 500 cents to the expected $8.25 total.
-        id: "utc-vs-local-boundary",
-        user_id: "test-user",
-        graph_id: "g-1",
-        graph_version: 1,
-        inputs: {},
-        credential_inputs: {},
-        nodes_input_masks: {},
-        preset_id: null,
-        status: "COMPLETED",
-        started_at: new Date("2026-04-01T05:00:00.000Z"),
-        ended_at: new Date("2026-04-01T05:02:00.000Z"),
-        stats: { cost: 500 },
-      },
-      {
-        id: "previous-month",
-        user_id: "test-user",
-        graph_id: "g-1",
-        graph_version: 1,
-        inputs: {},
-        credential_inputs: {},
-        nodes_input_masks: {},
-        preset_id: null,
-        status: "COMPLETED",
-        started_at: new Date("2026-03-31T23:59:00.000Z"),
-        ended_at: new Date("2026-04-01T00:00:00.000Z"),
-        stats: { cost: 9999 },
-      },
-    ]);
+  test("shows monthly spend from the cost-summary endpoint", async () => {
+    setupHandlers({ totalCents: 825 });
 
     render(<LibraryPage />);
 
@@ -157,19 +102,11 @@ describe("LibraryPage — AgentBriefingPanel 'Spent this month' tile", () => {
     if (!tile) {
       throw new Error("Spent this month tile should render inside a button");
     }
-    // 250 + 75 + 500 = 825 cents = $8.25. The late-March UTC execution must
-    // NOT contribute, and the April-1-UTC/March-31-local execution MUST
-    // contribute (confirms UTC-month boundary under a non-UTC test zone).
     expect(within(tile).getByText("$8.25")).toBeDefined();
-
-    vi.useRealTimers();
   });
 
-  test("renders $0.00 when no executions ran this month", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    vi.setSystemTime(new Date("2026-04-15T12:00:00.000Z"));
-
-    setupHandlers([]);
+  test("renders $0.00 when the endpoint reports zero spend", async () => {
+    setupHandlers({ totalCents: 0 });
 
     render(<LibraryPage />);
 
@@ -180,7 +117,48 @@ describe("LibraryPage — AgentBriefingPanel 'Spent this month' tile", () => {
       throw new Error("Spent this month tile should render inside a button");
     }
     expect(within(tile).getByText("$0.00")).toBeDefined();
+  });
+});
 
-    vi.useRealTimers();
+describe("LibraryPage — AgentBriefingPanel without billing (self-hosted)", () => {
+  test("shows no spend, no costs breakdown, and never asks for spend", async () => {
+    flags.paymentsOn = false;
+    setupHandlers({ totalCents: 825 });
+    let costSummaryRequests = 0;
+    server.use(
+      http.get("/api/proxy/api/executions/cost-summary", () => {
+        costSummaryRequests += 1;
+        return HttpResponse.json({}, { status: 500 });
+      }),
+    );
+
+    render(<LibraryPage />);
+
+    const runningTile = (await screen.findByText("Running now")).closest(
+      "button",
+    );
+    expect(runningTile).not.toBeNull();
+    expect(screen.queryByText("Spent this month")).toBeNull();
+    expect(screen.queryByText(/costs breakdown/i)).toBeNull();
+    expect(screen.queryByText("$8.25")).toBeNull();
+    expect(costSummaryRequests).toBe(0);
+  });
+
+  test("a second click on the active tile goes back to the overview", async () => {
+    flags.paymentsOn = false;
+    setupHandlers({ totalCents: 0 });
+
+    render(<LibraryPage />);
+
+    const idle = await screen.findByRole("button", { name: /^Idle\b/ });
+    fireEvent.click(idle);
+    expect(idle.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(idle);
+    expect(idle.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      screen
+        .getByRole("button", { name: /^Running now\b/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
   });
 });
