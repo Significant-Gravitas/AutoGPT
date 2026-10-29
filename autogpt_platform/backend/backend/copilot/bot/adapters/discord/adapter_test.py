@@ -2570,3 +2570,31 @@ class TestAddressedToOthers:
         msg.role_mentions = [ours]
 
         assert adapter._is_mentioned(msg) is True
+
+    def test_our_managed_role_is_stripped_and_other_roles_kept(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        ours = _role(4000, "AutoGPT")
+        ours.tags = MagicMock(bot_id=1000)
+        msg = _message("<@&4000> ask <@&3000> about it", [])
+        msg.role_mentions = [ours, _role(3000, "Engineering")]
+
+        assert adapter._strip_mentions(msg) == "ask @Engineering about it"
+
+    @pytest.mark.asyncio
+    async def test_options_after_our_managed_role_are_read(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        ours = _role(4000, "AutoGPT")
+        ours.tags = MagicMock(bot_id=1000)
+        msg = _gateway_message(
+            "<@&4000> expert=Bolt mode=smart fix it",
+            [],
+            _fresh_thread(_ubbes_post()),
+            role_mentions=[ours],
+        )
+
+        ctx = await _deliver(adapter, msg)
+
+        assert ctx is not None
+        assert ctx.options == TurnOptions(expert_name="Bolt", model="advanced")
+        assert ctx.text.endswith("fix it")
+        assert "AutoGPT" not in ctx.text

@@ -899,8 +899,8 @@ class DiscordAdapter(SocketAdapter):
         return "\n\n".join(parts).strip()
 
     def _strip_mentions(self, message: discord.Message) -> str:
-        """Strip the bot's own mention; replace other users' raw mention
-        tokens with `@displayname` so the LLM keeps the context.
+        """Strip the bot's own mention and managed role; replace other users'
+        and roles' raw mention tokens with `@name` so the LLM keeps the context.
         """
         text = message.content
         bot_id = self._client.user.id if self._client.user else None
@@ -910,7 +910,8 @@ class DiscordAdapter(SocketAdapter):
             for token in raw_tokens:
                 text = text.replace(token, replacement)
         for role in getattr(message, "role_mentions", None) or ():
-            text = text.replace(f"<@&{role.id}>", f"@{role.name}")
+            replacement = "" if self._is_own_role(role) else f"@{role.name}"
+            text = text.replace(f"<@&{role.id}>", replacement)
         return text.strip()
 
     def _collect_mentionable_users(
