@@ -18,6 +18,7 @@ from backend.copilot.capabilities.models import (
 )
 from backend.copilot.capabilities.text import tokenize
 from backend.integrations.mcp_catalog import MCPCatalogEntry, get_mcp_catalog
+from backend.integrations.service_identity import service_for_catalog_entry
 
 
 def mcp_catalog_entries() -> list[CapabilityEntry]:
@@ -56,6 +57,7 @@ def _catalog_entry(preset: MCPCatalogEntry, keyed_by_host: bool) -> CapabilityEn
         id=f"mcp:{host}" if keyed_by_host and host else f"mcp:{slug}",
         kind="mcp_server",
         klass="service",
+        service=service_for_catalog_entry(preset).service,
         name=preset.display_name,
         purpose=clip_purpose(preset.description),
         description=normalize_text(preset.description),

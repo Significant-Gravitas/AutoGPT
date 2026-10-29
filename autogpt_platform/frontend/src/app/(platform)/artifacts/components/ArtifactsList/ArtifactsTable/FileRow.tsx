@@ -22,12 +22,10 @@ import { FilePreviewCard } from "./FilePreviewCard";
 import { FileThumbnail } from "./FileThumbnail";
 import {
   ACTIONS_CELL_CLASS,
-  DATE_CELL_CLASS,
   NAME_BUTTON_CLASS,
   REDUCED_ROW_VARIANTS,
   ROW_GRID_CLASS,
   ROW_VARIANTS,
-  SIZE_CELL_CLASS,
 } from "./row-layout";
 
 interface Props {
@@ -68,8 +66,8 @@ export function FileRow({
       animate="show"
       className={cn(
         ROW_GRID_CLASS,
-        "group cursor-pointer px-2 transition-colors has-[[data-state=open]]:bg-zinc-50 hover:bg-zinc-50",
-        isSelected && "bg-zinc-100 hover:bg-zinc-100",
+        "group cursor-pointer px-2 transition-colors hover:bg-surface-muted has-[[data-state=open]]:bg-surface-muted",
+        isSelected && "bg-surface-hover hover:bg-surface-hover",
       )}
       data-testid="artifacts-list-item"
       data-selected={isSelected || undefined}
@@ -87,7 +85,7 @@ export function FileRow({
           type="button"
           aria-label={`Select ${file.name}`}
           aria-pressed={isSelected}
-          className="group/select relative my-2.5 mr-3 shrink-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+          className="group/select relative my-2.5 mr-3 shrink-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle"
           onClick={(e) => {
             e.stopPropagation();
             onToggleSelect(file);
@@ -98,10 +96,10 @@ export function FileRow({
           <span
             aria-hidden
             className={cn(
-              "pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl text-white transition-opacity",
+              "pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl text-action-foreground transition-opacity",
               isSelected
-                ? "bg-zinc-900/80 opacity-100"
-                : "bg-zinc-900/60 opacity-0 group-hover/select:opacity-100 group-focus-visible/select:opacity-100",
+                ? "bg-action-hover/80 opacity-100"
+                : "bg-action-hover/60 opacity-0 group-hover/select:opacity-100 group-focus-visible/select:opacity-100",
             )}
           >
             <Icon icon={Tick02Icon} size={20} />
@@ -117,7 +115,8 @@ export function FileRow({
               <Text
                 variant="body-medium"
                 as="span"
-                className="truncate text-zinc-900"
+                tone="primary"
+                className="truncate"
               >
                 {file.name}
               </Text>
@@ -133,7 +132,8 @@ export function FileRow({
               align="center"
               sideOffset={16}
               collisionPadding={16}
-              className="max-w-none rounded-2xl border border-zinc-200 bg-white p-0 text-sm shadow-xl shadow-black/10 outline-none"
+              // oxlint-disable-next-line design-system/no-restyle -- the hover preview is a card, which the tooltip atom has no variant for
+              className="max-w-none rounded-2xl border border-border-base bg-surface p-0 text-sm text-foreground-strong shadow-xl shadow-black/10 outline-none"
             >
               <FilePreviewCard file={file} />
             </TooltipContent>
@@ -142,7 +142,7 @@ export function FileRow({
         <button
           type="button"
           aria-label={`Rename ${file.name}`}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:opacity-100"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-foreground-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground-strong focus-visible:opacity-100 group-hover:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
             setIsRenameOpen(true);
@@ -155,7 +155,8 @@ export function FileRow({
       <Text
         variant="body"
         as="span"
-        className={cn(DATE_CELL_CLASS, "text-zinc-500")}
+        tone="muted"
+        className="hidden truncate sm:block"
         title={formatFullDate(file.created_at)}
       >
         {formatDayLabel(file.created_at)}
@@ -163,7 +164,9 @@ export function FileRow({
       <Text
         variant="body"
         as="span"
-        className={cn(SIZE_CELL_CLASS, "text-zinc-500")}
+        tone="muted"
+        // oxlint-disable-next-line design-system/no-restyle -- tabular figures keep the size column aligned; Text has no numeric variant
+        className="hidden tabular-nums md:block"
       >
         {formatFileSize(file.size_bytes)}
       </Text>

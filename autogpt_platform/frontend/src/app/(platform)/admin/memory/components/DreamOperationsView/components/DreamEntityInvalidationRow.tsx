@@ -9,15 +9,16 @@ interface Props {
 export function DreamEntityInvalidationRow({ item }: Props) {
   const touched = item.edges_touched ?? [];
   return (
+    // oxlint-disable-next-line design-system/no-raw-colors -- rose has no role; error would change the hue (deferred)
     <li className="border-l-2 border-rose-200 py-1.5 pl-3">
       <Text variant="small-medium" className="break-words">
         {item.reason}
       </Text>
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-gray-500">
-        <code className="font-mono text-[10px]">
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-foreground-tertiary">
+        <code className="font-mono text-tiny leading-inherit">
           entity: {shortenUuid(item.entity_uuid)}
         </code>
-        <Text variant="small" className="text-gray-500" as="span">
+        <Text variant="small" tone="muted" as="span">
           {touched.length} edge{touched.length === 1 ? "" : "s"} touched
         </Text>
       </div>
@@ -26,13 +27,13 @@ export function DreamEntityInvalidationRow({ item }: Props) {
           {touched.slice(0, 6).map((u) => (
             <code
               key={u}
-              className="rounded bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600"
+              className="rounded bg-surface-muted px-1.5 py-0.5 font-mono text-tiny leading-inherit text-foreground-secondary"
             >
               {shortenUuid(u)}
             </code>
           ))}
           {touched.length > 6 ? (
-            <Text variant="small" className="text-gray-500" as="span">
+            <Text variant="small" tone="muted" as="span">
               +{touched.length - 6} more
             </Text>
           ) : null}

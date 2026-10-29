@@ -19,28 +19,42 @@ from pydantic import BaseModel, Field, model_validator
 
 from backend.copilot.graphiti.memory_model import MemoryKind
 
+from .routing import ExecutionPath
+
 logger = logging.getLogger(__name__)
+
+DreamPhase = Literal["consolidate", "recombine", "sanitize"]
 
 
 class IngestionDrainStatus(str, Enum):
     """Fate of a dream pass's enqueued graph writes at the moment the pass
     was reported complete.
 
-    Three distinct states, so consumers (and a future Memory Visualizer)
+    Five distinct states, so consumers (and a future Memory Visualizer)
     can tell a healthy by-design skip from a real failure:
 
-      * ``drained`` — the pass's own episodes were confirmed landed in the
-        graph before the pass returned (sync path), or the pass enqueued
-        nothing to drain. Healthy.
+      * ``drained`` — the worker finished every one of the pass's own
+        episodes before the pass returned (sync path): each was written,
+        dropped for resting on a forget (``dropped_forgotten``), or failed
+        with a logged error; or the pass enqueued nothing to drain. Healthy.
       * ``skipped`` — the drain was intentionally not run to avoid stalling
         a shared serial loop (batch path). The episodes process
-        fire-and-forget; healthy by design, NOT a failure signal.
+        fire-and-forget, counted pending; healthy by design, NOT a failure
+        signal.
+      * ``not_applied`` — this pass never began applying, so no drain ran.
+      * ``unknown`` — this pass began applying but recorded no outcome: it
+        may still be applying, or have applied before it ended (a cancel
+        after its last check does not stop an apply), or failed partway. Its
+        writes may have been enqueued, so whether they drained is not known.
       * ``timed_out`` — the sync-path drain was attempted but did not finish
-        within its budget. The reported write/proposal counts include
-        episodes still queued in-process, which are lost if the worker's pod
-        restarts. This is the only value that warrants an operator warning.
+        within its budget. The episodes not written yet are counted pending,
+        not written; they stay queued in-process, and are lost if the
+        worker's pod restarts. This is the only value that warrants an
+        operator warning.
     """
 
+    not_applied = "not_applied"
+    unknown = "unknown"
     drained = "drained"
     skipped = "skipped"
     timed_out = "timed_out"
@@ -54,8 +68,10 @@ class IngestionDrainStatus(str, Enum):
 class ConsolidatedFact(BaseModel):
     """A cluster of related facts merged into a single canonical statement.
 
-    Phase 1 output. Provenance always points back to the source episodes
-    so apply.py can record where the consolidation came from.
+    Phase 1 output. It cites the episodes and active facts it was drawn from,
+    so apply can record where the consolidation came from and a forget of one
+    of them reaches it (``dream/citations.py``); one citing nothing the pass
+    read is dropped unwritten.
     """
 
     content: str = Field(description="Canonical statement of the consolidated fact.")
@@ -71,6 +87,13 @@ class ConsolidatedFact(BaseModel):
     source_episode_uuids: list[str] = Field(
         default_factory=list,
         description="UUIDs of the :Episodic nodes the fact was consolidated from.",
+    )
+    source_fact_uuids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "UUIDs of the active facts (:RELATES_TO edges) the fact was "
+            "consolidated from."
+        ),
     )
 
 
@@ -171,7 +194,7 @@ class DreamDemotion(BaseModel):
 class EntityInvalidation(BaseModel):
     """Demote every :RELATES_TO edge directly attached to an entity.
 
-    Single-hop only — apply.py calls ``invalidate_entity_direct_neighbors``
+    Single-hop only — demotions.py calls ``invalidate_entity_direct_neighbors``
     which clamps to ``[r:RELATES_TO]-(other)``; never expands to
     neighbors-of-neighbors.
     """
@@ -187,7 +210,12 @@ class DreamOperations(BaseModel):
     apply.py:
       * ≤ ``max_demotions_per_pass`` demotions per pass (runaway-demotion
         mitigation per spec §3 / TODO P0.3b).
-      * Scope match enforced — proposals cannot cross scopes.
+      * Scope match enforced — a write or proposal citing a fact of
+        another scope (a fact's scope, else ``real:global``) is dropped
+        whole, as is one citing nothing the pass read
+        (``dream/citations.py``); episode citations are not scoped. A
+        source in the same scope that the write does not truly rest on is
+        not caught.
       * Empty ``writes`` and ``proposals`` is fine; a pass can be no-op.
     """
 
@@ -238,8 +266,20 @@ class DemotionSummary(BaseModel):
     reason: str
     new_status: Literal["superseded", "contradicted"]
     applied: bool = True
-    """False when the underlying Cypher reported zero rows touched —
-    typically because the edge uuid was stale by the time apply.py ran."""
+    """False unless the write was acknowledged as changing the fact: it
+    matched no live fact (typically stale by the time apply ran), the recall
+    guard spared it (``protected``), or its outcome is unknown
+    (``indeterminate``)."""
+    protected: bool = False
+    """True when the write left a live fact alone because the user recalled
+    it within the protection window (``recall_guard.py``); ``applied`` is
+    then False. Counted in ``protected_demotions`` if the pass's final read,
+    after every acknowledged write, finds the fact live."""
+    indeterminate: bool = False
+    """True when the write raised: it may have committed before its
+    acknowledgement was lost, never arrived, or still be queued on the
+    server, so ``applied`` and ``protected`` say nothing. Counted in
+    ``indeterminate_demotion_writes``."""
 
 
 class EntityInvalidationSummary(BaseModel):
@@ -248,6 +288,14 @@ class EntityInvalidationSummary(BaseModel):
     entity_uuid: str
     reason: str
     edges_touched: list[str] = Field(default_factory=list)
+    # Live neighbours the invalidation's write left alone: the user recalled
+    # them within the protection window (``recall_guard.py``). Counted in
+    # ``protected_demotions`` if the pass's final read finds them live.
+    edges_protected: list[str] = Field(default_factory=list)
+    # The write raised: it may have committed, never arrived, or still be
+    # queued, so which neighbours it touched or protected is unknown and both
+    # lists are empty. Counted in ``indeterminate_demotion_writes``.
+    indeterminate: bool = False
 
 
 class DreamOperationsSnapshot(BaseModel):
@@ -272,7 +320,7 @@ class DreamOperationsSnapshot(BaseModel):
 class PhaseUsage(BaseModel):
     """Per-phase token + cost telemetry."""
 
-    phase: Literal["consolidate", "recombine", "sanitize"]
+    phase: DreamPhase
     model: str
     input_tokens: int = 0
     output_tokens: int = 0
@@ -280,8 +328,9 @@ class PhaseUsage(BaseModel):
     cache_creation_tokens: int = 0
     cost_usd: float | None = None
     """``None`` when the provider didn't return a cost and the model
-    isn't in ``model_pricing.py`` — caller treats as unknown rather
-    than zero. ``0.0`` is legitimate (zero tokens, edge case)."""
+    has no catalog price (``backend/copilot/price_card.py``) — caller
+    treats as unknown rather than zero. ``0.0`` is legitimate (zero
+    tokens, edge case)."""
 
 
 class DreamPassUsage(BaseModel):
@@ -305,7 +354,7 @@ class DreamPassUsage(BaseModel):
     """Sum of phase cost_usd values; ``None`` if any phase was unknown."""
     discount_applied: float = 0.0
     """Execution-path discount factor in [0, 1] — 0.0 for sync_baseline,
-    0.5 for anthropic_batch / openai_batch. The ``total_cost_usd``
+    0.5 for anthropic_batch. The ``total_cost_usd``
     above already has this factored in; recorded separately so the
     cost ledger can audit the savings."""
 
@@ -322,26 +371,68 @@ class DreamPassResult(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     elapsed_seconds: float | None = None
-    execution_path: Literal["sync_baseline", "anthropic_batch", "openai_batch"] = (
-        "sync_baseline"
-    )
+    execution_path: ExecutionPath = "sync_baseline"
 
-    # Per-phase telemetry — null when the phase did not run.
+    # Per-phase telemetry — null when the phase did not run. The writes and
+    # proposals count only those graphiti saved before the pass was
+    # reported, never one merely queued.
     consolidated_count: int = 0
     proposal_count: int = 0
     demotion_count: int = 0
     entity_invalidation_count: int = 0
+    # Of the pass's writes and proposals, the ones dropped unwritten because
+    # a forget reached what they rest on after the pass read the graph; only
+    # those dropped before the pass was reported (see ingestion_drain_status).
+    dropped_forgotten: int = 0
+    # The ones not written yet when the pass was reported: still queued
+    # in-process (lost if the process stops), waiting for the graph's write
+    # lock, or being written. Every one on the batch path, which does not
+    # wait for them.
+    pending_writes: int = 0
+    # Of those writes and proposals, the ones the worker did not make: their
+    # citation marker could not be written (the write fails closed) or the
+    # graph write raised; only those failed before the pass was reported.
+    failed_writes: int = 0
+    # Of those made, the ones whose derivation record failed after the write:
+    # their citation marker stays in the graph until it is reconciled, before
+    # the next forget there or by the dream reaper
+    # (``graphiti/recall_reconcile.py``); same reporting window.
+    provenance_pending: int = 0
+    # Writes and proposals dropped before they were queued because they cited
+    # nothing the pass read, or a fact of another scope than their own
+    # (``dream/citations.py``); not counted in ``consolidated_count`` or
+    # ``proposal_count``.
+    uncited_writes_dropped: int = 0
+    # Their citations of a fact of another scope; each write is counted above.
+    cross_scope_citations_dropped: int = 0
+    # Distinct facts the recall guard kept live through the pass
+    # (``recall_guard.py``): an acknowledged write spared them, and the
+    # pass's final read, after every acknowledged write, found them live. A
+    # snapshot at that read: a later forget or pass can retire them. A fact
+    # spared by two writes counts once.
+    protected_demotions: int = 0
+    # The pass's demotion and invalidation writes that raised. Each may have
+    # committed, never arrived, or still be queued on the server, so the
+    # changed counts above can be short by what they did.
+    indeterminate_demotion_writes: int = 0
+    # True only when the final read answered and no write's outcome is
+    # unknown. Otherwise the counts are provisional: ``protected_demotions``
+    # may count a fact an unknown write changes, even after the pass
+    # returned, and falls back to spared minus acknowledged changes when the
+    # read failed.
+    demotion_accounting_complete: bool = True
 
     summary_for_user: str = ""
     dream_session_id: str | None = None
 
     # Fate of the dream's enqueued graph writes when the pass was reported
-    # complete — see ``IngestionDrainStatus``. ``drained`` is a fully-landed
-    # (or nothing-to-drain) pass, ``skipped`` is the by-design batch skip
+    # complete — see ``IngestionDrainStatus``. ``drained`` is a pass whose
+    # writes the worker all finished (written, dropped or failed; or nothing
+    # to drain), ``skipped`` is the by-design batch skip
     # (healthy), ``timed_out`` is a sync-path drain that overran its budget
     # with writes still queued in-process (at risk on pod restart). Defaults
     # to ``drained`` so a payload that omits the field still validates as a
-    # fully-landed pass. Note this default is deliberately the opposite of
+    # finished pass. Note this default is deliberately the opposite of
     # ``apply.drain_status_from_stats``, which fails closed to ``timed_out``
     # for a missing LIVE stats key: an absent key on a fresh pass means lost
     # observability, while an absent field on a stored record predates the

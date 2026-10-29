@@ -19,7 +19,7 @@ Only the LLM boundary is stubbed — no API key, no network.
 
 Lives in ``graphiti/`` rather than ``dream/`` for the local conftest, which
 supplies the ``falkordb_available`` skip guard, the stubbed Graphiti client,
-and the no-op ``server`` / ``graph_cleanup`` overrides that keep this suite
+and the no-op ``server`` override that keeps this suite
 off SpinTestServer (postgres + rabbitmq). ``dream/`` has no conftest, and
 adding one would change how the existing dream unit tests run.
 
@@ -51,6 +51,9 @@ from . import ingest as ingest_mod
 from .client import derive_group_id
 from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
+from .recall_citations import Citations
+from .recall_stamp import stamp_recalls, stamp_time
+from .scope import MemoryScope
 
 PASS_ID = "e2e-pass"
 SESSION_ID = "e2e-session"
@@ -206,9 +209,9 @@ def stub_boundaries(
 
     * ``get_graphiti_client`` — patched on ``ingest`` (where it is used) to
       return a Graphiti wired to the test's real driver with the LLM stubbed.
-    * ``ensure_dream_system_scheduled`` — ``_ensure_worker`` imports it lazily
-      from ``dream.scheduling``, so that module IS the use site. Left live it
-      would fire LaunchDarkly + scheduler RPCs from a background task.
+    * ``ensure_scope_scheduled`` — patched on ``ingest`` (where the first
+      write per group calls it). Left live it would fire LaunchDarkly,
+      registry and scheduler calls from a background task.
     * ``get_redis_async`` — likewise imported lazily by the hit tracker.
     """
     driver, _user_id = dream_graph
@@ -216,9 +219,8 @@ def stub_boundaries(
     mocker.patch.object(
         ingest_mod, "get_graphiti_client", mocker.AsyncMock(return_value=client)
     )
-    mocker.patch(
-        "backend.copilot.dream.scheduling.ensure_dream_system_scheduled",
-        mocker.AsyncMock(return_value={}),
+    mocker.patch.object(
+        ingest_mod, "ensure_scope_scheduled", mocker.AsyncMock(return_value={})
     )
     mocker.patch(
         "backend.data.redis_client.get_redis_async",
@@ -254,12 +256,15 @@ async def _ingest_dream_proposal(user_id: str) -> None:
     """Write one dream proposal through the production path and await it."""
     completion = ingest_mod.IngestionCompletion()
     queued = await apply_mod._write_proposed_finding(
-        user_id,
+        MemoryScope.for_user(user_id),
         PASS_ID,
         0,
         PROPOSAL,
         session_id=SESSION_ID,
         completion=completion,
+        # What it cites is beside the point here; the citation checks and the
+        # cascade are ``recall_cascade_integration_test.py``.
+        citations=Citations(),
     )
     assert queued, "proposal was dropped before reaching the ingestion queue"
     completion.register()
@@ -357,7 +362,8 @@ async def test_warm_context_hit_promotes_the_tentative_edge(dream_graph) -> None
     await _ingest_dream_proposal(user_id)
     edge_uuid = (await _sole_edge(driver))["uuid"]
 
-    assert await try_ratify_on_hit(user_id, [edge_uuid]) == 1
+    promoted = await try_ratify_on_hit(MemoryScope.for_user(user_id), [edge_uuid])
+    assert (promoted.promoted_count, promoted.accounting_complete) == (1, True)
 
     edge = await _sole_edge(driver)
     assert edge["status"] == "active"
@@ -374,8 +380,9 @@ async def test_warm_context_hit_promotes_the_tentative_edge(dream_graph) -> None
     assert edge["scope"] == PROPOSAL.scope
     assert edge["confidence"] == pytest.approx(PROPOSAL.confidence)
 
+    again = await try_ratify_on_hit(MemoryScope.for_user(user_id), [edge_uuid])
     assert (
-        await try_ratify_on_hit(user_id, [edge_uuid]) == 0
+        again.promoted_count == 0
     ), "the status='tentative' guard makes repeat hits no-ops"
 
 
@@ -385,14 +392,14 @@ async def test_sweep_promotes_a_tentative_edge_that_earned_a_hit(dream_graph) ->
     """Promote leg of the SWEEP: distinct from the warm-context hook.
 
     ``try_ratify_on_hit`` promotes via ``_promote_if_tentative``; the sweep
-    reaches ``_promote_edge`` only through ``_process_edge``'s ``hits >= 1``
+    reaches that same write only through ``_process_edge``'s ``hits >= 1``
     branch, keyed off the Redis counter — this is the test that makes the
     ``_FakeRedis`` counter load-bearing.
     """
     driver, user_id = dream_graph
     await _ingest_dream_proposal(user_id)
     edge_uuid = (await _sole_edge(driver))["uuid"]
-    await record_memory_hit(user_id, edge_uuid)
+    await record_memory_hit(MemoryScope.for_user(user_id), edge_uuid)
 
     result = await run_ratification_pass(user_id)
 
@@ -416,10 +423,10 @@ async def test_repeated_hits_accumulate_in_the_counter(dream_graph) -> None:
     await _ingest_dream_proposal(user_id)
     edge_uuid = (await _sole_edge(driver))["uuid"]
 
-    await record_memory_hit(user_id, edge_uuid)
-    await record_memory_hit(user_id, edge_uuid)
+    await record_memory_hit(MemoryScope.for_user(user_id), edge_uuid)
+    await record_memory_hit(MemoryScope.for_user(user_id), edge_uuid)
 
-    assert await get_hit_count(user_id, edge_uuid) == 2
+    assert await get_hit_count(MemoryScope.for_user(user_id), edge_uuid) == 2
 
 
 @pytest.mark.integration
@@ -452,6 +459,65 @@ async def test_sweep_supersedes_unhit_edge_past_its_grace_period(dream_graph) ->
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_sweep_spares_an_unhit_edge_the_user_recalled_within_the_window(
+    dream_graph,
+) -> None:
+    """The proposal's Redis hit count was lost, but the user recalled it: the
+    stamp a real recall leaves on the edge is enough. The sweep's guarded
+    write leaves it tentative and counts it as protected, not superseded."""
+    driver, user_id = dream_graph
+    await _ingest_dream_proposal(user_id)
+    edge_uuid = (await _sole_edge(driver))["uuid"]
+    await _backdate_edge(
+        driver, edge_uuid, RATIFICATION_GRACE_PERIOD + timedelta(days=1)
+    )
+    assert await stamp_recalls(driver, [edge_uuid], owner=user_id) == 1
+    assert await get_hit_count(MemoryScope.for_user(user_id), edge_uuid) == 0
+
+    result = await run_ratification_pass(user_id)
+
+    assert result.error is None
+    assert result.per_edge_errors == []
+    assert (
+        result.examined_count,
+        result.superseded_count,
+        result.protected_count,
+    ) == (1, 0, 1)
+    edge = await _sole_edge(driver)
+    assert edge["status"] == "tentative"
+    assert edge["expired_at"] is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sweep_supersedes_an_unhit_edge_last_recalled_before_the_window(
+    dream_graph,
+) -> None:
+    """A recall older than the protection window protects nothing: the
+    proposal is superseded as unratified, as if it had never been recalled."""
+    driver, user_id = dream_graph
+    await _ingest_dream_proposal(user_id)
+    edge_uuid = (await _sole_edge(driver))["uuid"]
+    await _backdate_edge(
+        driver, edge_uuid, RATIFICATION_GRACE_PERIOD + timedelta(days=45)
+    )
+    await driver.execute_query(
+        "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->() "
+        "SET e.recall_count = 1, e.last_recalled_at = $recalled",
+        uuid=edge_uuid,
+        recalled=stamp_time(datetime.now(timezone.utc) - timedelta(days=40)),
+    )
+
+    result = await run_ratification_pass(user_id)
+
+    assert (result.superseded_count, result.protected_count) == (1, 0)
+    edge = await _sole_edge(driver)
+    assert edge["status"] == "superseded"
+    assert edge["expiration_reason"] == "unratified"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_sweep_never_touches_an_already_active_edge(dream_graph) -> None:
     """The sweep must be inert on ratified memory, however old it gets.
 
@@ -466,7 +532,7 @@ async def test_sweep_never_touches_an_already_active_edge(dream_graph) -> None:
     edge_uuid = (await _sole_edge(driver))["uuid"]
 
     # Promote it the production way: a real hit, then the sweep's promote leg.
-    await record_memory_hit(user_id, edge_uuid)
+    await record_memory_hit(MemoryScope.for_user(user_id), edge_uuid)
     assert (await run_ratification_pass(user_id)).ratified_count == 1
     promoted = await _sole_edge(driver)
     assert promoted["status"] == "active"

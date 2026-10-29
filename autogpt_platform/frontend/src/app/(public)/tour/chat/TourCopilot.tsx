@@ -2,12 +2,15 @@
 
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
-import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import {
+  SidebarInset,
+  SidebarProvider,
+} from "@/components/molecules/Sidebar/Sidebar";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import dynamic from "next/dynamic";
 import { CSSProperties } from "react";
 import { TourChatHost } from "./TourChatHost";
+import { DotDistortionShader } from "./components/DotDistortionShader/DotDistortionShader";
 import { TourChatHeader } from "./components/TourChatHeader/TourChatHeader";
 import { TourSidebar } from "./components/TourSidebar/TourSidebar";
 import { buildTourArtifactRef } from "./helpers";
@@ -99,8 +102,8 @@ export function TourCopilot() {
       className="h-dvh min-h-0"
     >
       <TourSidebar />
-      <SidebarInset className="min-h-0 overflow-hidden bg-[#fafafa]">
-        <div className="relative flex h-full min-h-0 w-full">
+      <SidebarInset className="min-h-0 overflow-hidden">
+        <div className="relative flex h-full min-h-0 w-full bg-surface-muted">
           {chatColumn}
           {artifactPanels}
         </div>

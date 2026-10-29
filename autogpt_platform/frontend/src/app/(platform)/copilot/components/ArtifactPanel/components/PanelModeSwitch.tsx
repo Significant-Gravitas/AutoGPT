@@ -27,7 +27,7 @@ export function PanelModeSwitch({ mode, hasArtifact, onChange }: Props) {
     <div
       role="group"
       aria-label="Panel view"
-      className="flex shrink-0 items-center rounded-md bg-zinc-100 p-0.5"
+      className="flex shrink-0 items-center rounded-md bg-surface-hover p-0.5"
     >
       {OPTIONS.map((option) => {
         const active = option.value === mode;
@@ -42,9 +42,10 @@ export function PanelModeSwitch({ mode, hasArtifact, onChange }: Props) {
             className={cn(
               "flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors",
               active
-                ? "bg-white text-zinc-900 shadow-sm"
-                : "text-zinc-500 hover:text-zinc-800",
-              disabled && "cursor-not-allowed opacity-40 hover:text-zinc-500",
+                ? "bg-surface text-foreground-strong shadow-sm"
+                : "text-foreground-tertiary hover:text-foreground-emphasis",
+              disabled &&
+                "cursor-not-allowed opacity-40 hover:text-foreground-tertiary",
             )}
           >
             <Icon icon={option.icon} size={14} />

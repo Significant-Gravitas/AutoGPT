@@ -3,20 +3,19 @@
 import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { PublishSkillButton } from "../PublishSkillButton/PublishSkillButton";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { useSkillListItem } from "./useSkillListItem";
 import {
   BookOpen01Icon,
   Delete02Icon,
   Download04Icon,
   EyeIcon,
 } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
+import { PublishSkillButton } from "../PublishSkillButton/PublishSkillButton";
+import { useSkillListItem } from "./useSkillListItem";
 
 interface Props {
   skill: CopilotSkillInfo;
@@ -42,17 +41,20 @@ export function SkillListItem({ skill, isNew = false }: Props) {
     detail,
     detailErrorMessage,
   } = useSkillListItem({ skill });
-  const isSkillsHubEnabled = useGetFlag(Flag.SKILLS_HUB);
 
   return (
     <div
-      className="flex w-full flex-col gap-3 rounded-large border border-zinc-200 bg-white p-4 sm:flex-row sm:items-start sm:justify-between"
+      className="flex w-full flex-col gap-3 rounded-large border border-border-base bg-surface p-4 sm:flex-row sm:items-start sm:justify-between"
       data-testid="skill-row"
       data-skill-name={skill.name}
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-violet-50">
-          <Icon icon={BookOpen01Icon} size={18} className="text-violet-700" />
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-separator bg-accent-surface">
+          <Icon
+            icon={BookOpen01Icon}
+            size={18}
+            className="text-accent-strong"
+          />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
@@ -67,7 +69,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
               </span>
             )}
           </div>
-          <Text variant="small" className="!text-zinc-500">
+          <Text variant="small" tone="muted">
             {descriptionPreview}
           </Text>
           {triggers.length > 0 ? (
@@ -78,7 +80,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
               {triggers.map((trigger) => (
                 <span
                   key={trigger}
-                  className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
+                  className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-secondary"
                 >
                   {trigger}
                 </span>
@@ -108,9 +110,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
         >
           <Icon icon={Download04Icon} className="h-4 w-4" />
         </Button>
-        {isSkillsHubEnabled ? (
-          <PublishSkillButton skillName={skill.name} />
-        ) : null}
+        <PublishSkillButton skillName={skill.name} />
         <Button
           variant="icon"
           size="icon"
@@ -129,7 +129,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
       >
         <Dialog.Content>
           <div className="flex flex-col gap-3">
-            <Text variant="small" className="!text-zinc-500">
+            <Text variant="small" tone="muted">
               {detail?.description ?? descriptionPreview}
             </Text>
             {triggers.length > 0 ? (
@@ -137,7 +137,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                 {triggers.map((trigger) => (
                   <span
                     key={trigger}
-                    className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
+                    className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-secondary"
                   >
                     {trigger}
                   </span>
@@ -158,8 +158,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
             ) : (
               <>
                 <pre
-                  className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"
-                  style={{ whiteSpace: "pre-wrap" }}
+                  className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-medium bg-surface-muted p-3 text-sm text-foreground-emphasis"
                   data-testid="skill-view-body"
                 >
                   {detail?.body || "(no body)"}
@@ -169,10 +168,10 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                     className="flex flex-col gap-1"
                     data-testid="skill-view-files"
                   >
-                    <Text variant="small" className="!text-zinc-500">
+                    <Text variant="small" tone="muted">
                       Package files ({detail?.files?.length ?? 0}):
                     </Text>
-                    <ul className="flex flex-col gap-0.5 text-xs text-zinc-600">
+                    <ul className="flex flex-col gap-0.5 text-xs text-foreground-secondary">
                       {fileRows.map((row) => (
                         <li
                           key={row.path}
@@ -180,7 +179,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                         >
                           <span className="break-all">{row.label}</span>
                           {row.sizeLabel ? (
-                            <span className="flex-shrink-0 tabular-nums text-zinc-400">
+                            <span className="flex-shrink-0 tabular-nums text-foreground-subtle">
                               {row.sizeLabel}
                             </span>
                           ) : null}

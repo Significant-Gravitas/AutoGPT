@@ -1,11 +1,13 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/components/molecules/Sheet/Sheet";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import {
@@ -36,6 +38,12 @@ const TAB_TITLES: Record<ContextPanelTab, string> = {
   integrations: "Integrations",
 };
 
+const TAB_DESCRIPTIONS: Record<ContextPanelTab, string> = {
+  files: "Files from this chat.",
+  artifacts: "Artifacts from this chat to preview.",
+  integrations: "The tools this chat's expert can use.",
+};
+
 export function ContextPanel({ sessionId, mobile }: Props) {
   const expert = useCopilotUIStore((s) => s.contextPanelExpert);
   const {
@@ -48,8 +56,22 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   const [isResizing, setIsResizing] = useState(false);
   const shouldReduceMotion = useReducedMotion();
 
+  // The mobile sheet titles itself in its header; the artifacts library
+  // brings its own toolbar.
+  const showTitle = !mobile && activeTab !== "artifacts";
+
   const content = (
     <div className="flex min-h-0 flex-1 flex-col">
+      {showTitle && (
+        <Text
+          variant="large-semibold-tight"
+          as="h2"
+          tone="primary"
+          className="mx-6 mb-1 mt-6 shrink-0"
+        >
+          {TAB_TITLES[activeTab]}
+        </Text>
+      )}
       {activeTab === "artifacts" ? (
         <ArtifactsTab sessionId={sessionId} />
       ) : (
@@ -74,10 +96,15 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           side="right"
           className="flex w-full flex-col p-0 sm:max-w-full"
         >
-          <SheetHeader className="mt-12 p-2 text-left">
-            <SheetTitle className="text-sm font-medium text-zinc-900">
-              {TAB_TITLES[activeTab]}
+          <SheetHeader className="mt-12 px-6 pb-1 pt-2 text-left">
+            <SheetTitle>
+              <Text as="span" variant="lg-semibold" tone="primary">
+                {TAB_TITLES[activeTab]}
+              </Text>
             </SheetTitle>
+            <SheetDescription className="sr-only">
+              {TAB_DESCRIPTIONS[activeTab]}
+            </SheetDescription>
           </SheetHeader>
           {content}
         </SheetContent>
@@ -87,8 +114,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
 
   // Width is the animated property because the panel pushes the chat column
   // rather than overlaying it. Dragging the handle bypasses the tween (a
-  // queued 300ms tween per pointer move would trail the cursor). The chat's
-  // sidebar icon toggles the panel, so it carries no header of its own.
+  // queued 300ms tween per pointer move would trail the cursor).
   const transition =
     shouldReduceMotion || isResizing
       ? { duration: 0 }
@@ -103,7 +129,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           animate={{ width: contextPanelWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
-          className="relative h-full shrink-0 border-l border-l-[#80808017] bg-sidebar"
+          className="relative h-full shrink-0 border-l border-l-separator bg-sidebar"
         >
           {/* Sibling of the clip, not a child of it: the handle is
               -translate-x-1/2 and deliberately straddles the border, so

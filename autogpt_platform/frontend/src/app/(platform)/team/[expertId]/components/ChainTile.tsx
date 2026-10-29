@@ -21,10 +21,10 @@ const KIND_ICONS: Record<
   { icon: IconSvgElement; label: string }
 > = {
   integration: { icon: Plug01Icon, label: "Integration" },
-  input: { icon: InputCursorTextIcon, label: "Agent input" },
-  output: { icon: FileExportIcon, label: "Agent output" },
+  input: { icon: InputCursorTextIcon, label: "Workflow input" },
+  output: { icon: FileExportIcon, label: "Workflow output" },
   trigger: { icon: FlashIcon, label: "Trigger" },
-  agent: { icon: Robot01Icon, label: "Agent" },
+  agent: { icon: Robot01Icon, label: "Workflow" },
   ai: { icon: AiChat02Icon, label: "AI model" },
   mcp: { icon: Plug01Icon, label: "MCP tool" },
   human: { icon: UserCheck01Icon, label: "Human review" },
@@ -41,20 +41,21 @@ export function ChainTile({ item, size }: Props) {
   return (
     <span
       className={cn(
-        "flex items-center justify-center bg-white ring-1 ring-zinc-200/70",
+        "flex items-center justify-center bg-surface ring-1 ring-border-base/70",
         isSmall ? "size-9 rounded-lg" : "size-12 rounded-xl",
       )}
     >
       {item.provider ? (
         <IntegrationLogo provider={item.provider} size={isSmall ? 16 : 22} />
       ) : (
-        <Icon
-          icon={fallback.icon}
-          size={isSmall ? 16 : 20}
-          role="img"
-          aria-label={fallback.label}
-          className="text-zinc-600"
-        />
+        <span className="inline-flex text-foreground-secondary">
+          <Icon
+            icon={fallback.icon}
+            size={isSmall ? 16 : 20}
+            role="img"
+            aria-label={fallback.label}
+          />
+        </span>
       )}
     </span>
   );

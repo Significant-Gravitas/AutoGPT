@@ -26,40 +26,40 @@ function getHeroContent(
   switch (status) {
     case SubmissionStatus.APPROVED:
       return {
-        title: "Agent approved",
+        title: "Workflow approved",
         description:
-          "Your agent has been approved and is now live on the AutoGPT marketplace.",
+          "Your workflow has been approved and is now live on the AutoGPT marketplace.",
         Icon: Tick02Icon,
-        pulse: "bg-emerald-400/40",
-        gradient: "from-emerald-400 to-emerald-600",
+        pulse: "bg-success/40",
+        gradient: "from-success/70 to-success",
       };
     case SubmissionStatus.REJECTED:
       return {
-        title: "Agent needs changes",
+        title: "Workflow needs changes",
         description:
           "Your submission was not approved. Review the feedback and resubmit.",
         Icon: Cancel01Icon,
-        pulse: "bg-rose-400/40",
-        gradient: "from-rose-400 to-rose-600",
+        pulse: "bg-error/40",
+        gradient: "from-error/70 to-error-hover",
       };
     case SubmissionStatus.DRAFT:
       return {
         title: "Draft saved",
         description:
-          "This agent isn't submitted yet. Finish the details and submit it for review.",
+          "This workflow isn't submitted yet. Finish the details and submit it for review.",
         Icon: NoteEditIcon,
-        pulse: "bg-zinc-400/40",
-        gradient: "from-zinc-400 to-zinc-600",
+        pulse: "bg-foreground-subtle/40",
+        gradient: "from-foreground-subtle to-foreground-secondary",
       };
     default:
       return {
         title: "Submission received",
         description: isDashboardPage
-          ? "We'll notify you once review is complete. Approved agents go live on the marketplace."
+          ? "We'll notify you once review is complete. Approved workflows go live on the marketplace."
           : "We'll notify you once review is complete. Track progress from the Creator Dashboard.",
         Icon: Tick02Icon,
-        pulse: "bg-purple-400/40",
-        gradient: "from-purple-400 to-purple-600",
+        pulse: "bg-brand/40",
+        gradient: "from-brand/80 to-brand-hover",
       };
   }
 }

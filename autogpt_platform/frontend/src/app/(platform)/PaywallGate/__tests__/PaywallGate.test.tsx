@@ -142,6 +142,8 @@ describe("PaywallGate", () => {
     for (const path of [
       "/profile/credits",
       "/profile/account",
+      "/settings/billing",
+      "/settings/profile",
       "/admin/users",
       "/auth/callback",
       "/login",

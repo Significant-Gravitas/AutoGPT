@@ -10,14 +10,23 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from backend.blocks.airtable.schema import AirtableCreateTableBlock
 from backend.blocks.ayrshare.post_to_x import PostToXBlock
 from backend.blocks.code_executor import ExecuteCodeStepBlock
 from backend.blocks.google.gmail import GmailSendBlock
 from backend.blocks.google.sheets import GoogleSheetsUpdateRowBlock
 from backend.blocks.http import SendWebRequestBlock
+from backend.copilot.constants import step_card_id
+from backend.copilot.gate import Ruling
 from backend.copilot.gate.policy import Effect
-from backend.copilot.gate.review import payload_headline, review_id_for, review_payload
+from backend.copilot.gate.review import (
+    WorkflowStep,
+    payload_headline,
+    review_id_for,
+    review_payload,
+)
 from backend.copilot.gate.subject import block_subject, workflow_subject
+from backend.copilot.gate.workflow import step_card_payload, step_subject
 from backend.data.graph import GraphModel, NodeModel
 
 FIXTURE = (
@@ -111,6 +120,25 @@ _BLOCKS: list[tuple[str, Any, dict[str, Any]]] = [
         },
     ),
     (
+        "Airtable Create Table",
+        AirtableCreateTableBlock(),
+        {
+            "base_id": "appK7rB2xQ9mN4pLs",
+            "table_name": "Printify orders",
+            "table_fields": [
+                {"name": "Order number", "type": "singleLineText"},
+                {"name": "Customer", "type": "singleLineText"},
+                {"name": "Total", "type": "currency", "options": {"precision": 2}},
+                {
+                    "name": "Status",
+                    "type": "singleSelect",
+                    "options": {"choices": [{"name": "New"}, {"name": "Shipped"}]},
+                },
+                {"name": "Ordered on", "type": "dateTime"},
+            ],
+        },
+    ),
+    (
         "Gmail Newsletter",
         GmailSendBlock(),
         {
@@ -126,6 +154,7 @@ def build_cards() -> list[dict[str, Any]]:
     cards = [_block_card(*entry) for entry in _BLOCKS]
     cards.append(_workflow_card())
     cards.append(_sandbox_command_card())
+    cards.append(_workflow_step_card())
     return json.loads(json.dumps(cards, default=str))
 
 
@@ -187,6 +216,46 @@ def _workflow_card() -> dict[str, Any]:
         "story": "Workflow",
         "review": _row("run_agent", args, workflow_subject(graph)),
         "schema": None,
+    }
+
+
+def _workflow_step_card() -> dict[str, Any]:
+    """A Gmail Send step of a workflow Otto started, parked on its own review."""
+    send = GmailSendBlock()
+    inputs = dict(_BLOCKS[0][2])
+    step = WorkflowStep(
+        graph_exec_id="run-digest",
+        node_exec_id="node-exec-send",
+        graph_id="g-digest",
+        graph_version=1,
+        name="Morning digest",
+    )
+    subject = step_subject(send, inputs, step.name)
+    payload = step_card_payload(
+        send,
+        inputs,
+        step,
+        Ruling(run=False, reason=subject.reason, reason_kind="subject"),
+        mode="auto",
+        turn=1,
+    )
+    review_id = step_card_id("user-1", step.node_exec_id)
+    return {
+        "story": "Workflow Step",
+        "review": {
+            "node_exec_id": review_id,
+            "node_id": review_id.split(":")[0],
+            "user_id": "user-1",
+            "session_id": "s1",
+            "graph_exec_id": None,
+            "graph_id": None,
+            "graph_version": None,
+            "payload": payload,
+            "instructions": payload_headline(payload),
+            "editable": False,
+            "status": "WAITING",
+        },
+        "schema": send.input_schema.jsonschema(),
     }
 
 

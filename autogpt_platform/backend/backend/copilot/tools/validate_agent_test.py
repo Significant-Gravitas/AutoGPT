@@ -160,6 +160,39 @@ async def test_validation_exception_returns_error(tool, session):
     assert "validation_exception" in result.error
 
 
+@pytest.mark.parametrize("external_caller", [True, False])
+@pytest.mark.asyncio
+async def test_a_validator_failure_tells_an_external_caller_no_internals(
+    tool, session, external_caller
+):
+    session.external_caller = external_caller
+    agent_json = {
+        "nodes": [{"id": "n1", "block_id": "b1", "input_default": {}, "metadata": {}}],
+        "links": [],
+    }
+    mock_validator = MagicMock()
+    mock_validator.validate.side_effect = AttributeError(
+        "'Node' object has no attribute 'secret_column'"
+    )
+
+    with (
+        patch(
+            "backend.copilot.tools.validate_agent.get_blocks_as_dicts",
+            return_value=[],
+        ),
+        patch(
+            "backend.copilot.tools.validate_agent.AgentValidator",
+            return_value=mock_validator,
+        ),
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID, session=session, agent_json=agent_json
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert ("secret_column" in result.message) is not external_caller
+
+
 @pytest.mark.asyncio
 async def test_agent_json_as_json_string(tool, session):
     """agent_json passed as a raw JSON string is parsed and validated."""

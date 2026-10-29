@@ -1,6 +1,6 @@
 "use client";
 
-import { expertPastel } from "@/components/molecules/ExpertAvatar/colors";
+import type { CSSProperties } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
@@ -14,8 +14,10 @@ export type ChipSize = "small" | "medium" | "default";
 
 /** The marketplace's chip: a filter wears it on a button, a label on a span,
  *  and the two read as the same object because they are the same classes. */
+/* oxlint-disable design-system/no-restyle -- the glossy category chip restyles its Button; ToggleChip would change its shape and fill (deferred) */
+/* oxlint-disable design-system/no-arbitrary-values -- the gloss highlight and drop shadow have no shadow token */
 export const CHIP_SHAPE =
-  "inline-flex items-center rounded-full border border-[#e9e9e9] bg-transparent font-medium text-black";
+  "inline-flex items-center rounded-full border border-separator bg-transparent font-medium text-foreground-base";
 export const CHIP_SIZE: Record<ChipSize, string> = {
   small: "h-7 gap-1 px-2 text-xs",
   medium: "h-8 gap-1 px-2 text-xs",
@@ -32,7 +34,37 @@ const CHIP_ICON_SIZE: Record<ChipSize, number> = {
  *  development. Its glossy chip is too faint to read as selected next to a
  *  white row, so those chips take a plain fill instead. */
 const NEUTRAL_ACCENT = getCategoryAccent(undefined).accent;
-const NEUTRAL_SELECTED = "border-transparent bg-zinc-100 text-zinc-900";
+const NEUTRAL_SELECTED =
+  "border-transparent bg-surface-hover text-foreground-strong";
+
+// The same glossy pill for chips with no category colour (the hero's search
+// terms, "All"): a white-to-zinc fill, a top highlight and a small drop.
+const NEUTRAL_GLOSS =
+  "bg-gradient-to-b shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(16,24,40,0.05)]";
+const NEUTRAL_GLOSS_IDLE =
+  "border-border-base from-surface to-surface-muted text-foreground-body hover:border-border-strong hover:from-surface hover:to-surface-hover";
+const NEUTRAL_GLOSS_SELECTED =
+  "border-border-strong from-surface-hover to-surface-active/80 text-foreground-strong";
+/* oxlint-enable design-system/no-arbitrary-values */
+/* oxlint-enable design-system/no-restyle */
+
+/** A category chip in its own colour, with a soft top highlight so it reads
+ *  as a glossy pill: darker text for contrast, a light tint and a tinted
+ *  edge, all stronger once selected. */
+function glossyChipStyle(color: string, isSelected: boolean): CSSProperties {
+  return {
+    color: `color-mix(in srgb, ${color} ${isSelected ? 45 : 55}%, rgb(var(--color-secondary-foreground)))`,
+    backgroundColor: `color-mix(in srgb, ${color} ${isSelected ? 30 : 12}%, rgb(var(--color-card)))`,
+    borderColor: `color-mix(in srgb, ${color} ${isSelected ? 60 : 38}%, rgb(var(--color-surface)))`,
+    backgroundImage:
+      "linear-gradient(to bottom, rgb(var(--color-card) / 0.8), rgb(var(--color-card) / 0) 65%)",
+    boxShadow: isSelected
+      ? // TODO(tokens): no exact role: rgba(16,24,40) #101828
+        `inset 0 1px 0 rgb(var(--color-surface) / 0.9), 0 1px 2px rgba(16,24,40,0.08), 0 0 0 1px color-mix(in srgb, ${color} 25%, transparent)`
+      : // TODO(tokens): no exact role: rgba(16,24,40) #101828
+        "inset 0 1px 0 rgb(var(--color-surface) / 0.9), 0 1px 2px rgba(16,24,40,0.05)",
+  };
+}
 
 interface Props {
   label: string;
@@ -63,22 +95,16 @@ export function CategoryChip({
     // Outline, so a row of filters never reads as a row of actions. The
     // selected one takes the accent's glossy chip, whose gradient sits over
     // the variant's hover wash rather than being replaced by it.
+    /* oxlint-disable design-system/no-restyle -- the glossy category chip restyles its Button; ToggleChip would change its shape and fill (deferred) */
+    /* oxlint-disable design-system/require-static-classes -- the chip's classes follow its category accent and selection */
+    /* oxlint-disable design-system/no-inline-styles -- the tint is mixed at runtime from the category's own colour */
     <Button
       variant="outline"
       size={size === "default" ? "small" : "xs"}
       title={title}
       aria-pressed={isSelected}
       onClick={onClick}
-      unmask={false}
-      // Selected takes the category's wash; unselected hands the category's
-      // colour to the glyph and the label together, as the cards' tags do.
-      style={
-        color
-          ? isSelected
-            ? { backgroundColor: expertPastel(color) }
-            : { color }
-          : undefined
-      }
+      style={color ? glossyChipStyle(color, isSelected) : undefined}
       leftIcon={
         icon ? (
           <Icon
@@ -93,19 +119,28 @@ export function CategoryChip({
       className={cn(
         // The variant's #a6a6a6 is for a lone action; a row of chips reads
         // quieter with a lighter edge.
-        "min-w-0 hover:border-[#e9e9e9]",
+        "min-w-0 hover:border-separator",
         CHIP_SHAPE,
         CHIP_SIZE[size],
         !isSelected && icon && accent.icon,
         isSelected &&
           (color
-            ? "border-transparent text-zinc-900"
+            ? "border-transparent text-foreground-strong"
             : accent === NEUTRAL_ACCENT
               ? NEUTRAL_SELECTED
               : cn(accent.chip, "border-transparent")),
+        !color &&
+          accent === NEUTRAL_ACCENT &&
+          cn(
+            NEUTRAL_GLOSS,
+            isSelected ? NEUTRAL_GLOSS_SELECTED : NEUTRAL_GLOSS_IDLE,
+          ),
       )}
     >
       {label}
     </Button>
+    /* oxlint-enable design-system/no-inline-styles */
+    /* oxlint-enable design-system/require-static-classes */
+    /* oxlint-enable design-system/no-restyle */
   );
 }

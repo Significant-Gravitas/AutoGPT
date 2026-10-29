@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Optional
 
@@ -196,7 +197,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
 
         request = _StatusRecordingRequest()
         try:
-            google_creds.refresh(request)
+            await asyncio.to_thread(google_creds.refresh, request)
         except RefreshError as e:
             raise OAuthTokenRequestError(
                 str(self.PROVIDER_NAME),

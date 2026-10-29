@@ -26,17 +26,17 @@ export function SelectableCard({
       onClick={onClick}
       aria-pressed={selected}
       className={cn(
-        "relative flex h-24 w-[10.375rem] shrink-0 flex-col items-center justify-center gap-2 rounded-lg border bg-white p-4 transition-colors hover:bg-zinc-50 md:shrink",
+        "relative flex h-24 w-[10.375rem] shrink-0 flex-col items-center justify-center gap-2 rounded-lg border bg-surface p-4 transition-colors hover:bg-surface-muted md:shrink",
         className,
-        selected ? "border-zinc-400 bg-zinc-50" : "border-zinc-100",
+        selected ? "border-border-strong bg-surface-muted" : "border-separator",
       )}
     >
       {selected && (
-        <span className="absolute right-2 top-2 flex size-4 items-center justify-center rounded-full bg-zinc-900">
-          <Icon icon={Tick02Icon} size={10} className="text-white" />
+        <span className="absolute right-2 top-2 flex size-4 items-center justify-center rounded-full bg-action-hover text-action-foreground">
+          <Icon icon={Tick02Icon} size={10} />
         </span>
       )}
-      <span className="flex items-center justify-center text-zinc-500">
+      <span className="flex items-center justify-center text-foreground-tertiary">
         {icon}
       </span>
       <Text variant="body-medium" as="span" className="whitespace-nowrap">

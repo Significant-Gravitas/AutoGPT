@@ -9,24 +9,33 @@ interface Props {
 
 export function TrialDetails({ offer }: Props) {
   return (
-    <div className="space-y-5">
+    <div data-slot="trial-details" className="space-y-5">
       <Text variant="body" tone="secondary">
         {offer.duration_days} days to put AutoGPT to work.
       </Text>
-      <dl className="divide-y divide-zinc-200 border-y border-zinc-200">
-        <div className="flex justify-between gap-4 py-4">
+      <dl
+        data-slot="trial-details-list"
+        className="divide-y divide-border-base border-y border-border-base"
+      >
+        <div
+          data-slot="trial-details-row"
+          className="flex justify-between gap-4 py-4"
+        >
           <Text as="dt" variant="body">
             Today
           </Text>
-          <Text as="dd" variant="lead-medium" unmask={false}>
+          <Text as="dd" variant="lead-medium">
             {formatPlanAmount(0, offer.currency)}
           </Text>
         </div>
-        <div className="flex justify-between gap-4 py-4">
+        <div
+          data-slot="trial-details-row"
+          className="flex justify-between gap-4 py-4"
+        >
           <Text as="dt" variant="body">
             After {offer.duration_days} days
           </Text>
-          <Text as="dd" variant="lead-medium" unmask={false}>
+          <Text as="dd" variant="lead-medium">
             {formatTrialPrice(offer)}
           </Text>
         </div>
@@ -37,8 +46,8 @@ export function TrialDetails({ offer }: Props) {
         cancel before it ends.
       </Text>
       <Text variant="body" tone="secondary">
-        Trial usage is limited. Canceling ends trial access immediately. You can
-        manage or cancel your plan in billing.
+        Trial usage is limited. If you cancel, you keep access until the trial
+        ends. You can manage or cancel your plan in billing.
       </Text>
     </div>
   );

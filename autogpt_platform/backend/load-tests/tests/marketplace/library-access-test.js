@@ -3,7 +3,7 @@ import http from "k6/http";
 import { Counter } from "k6/metrics";
 
 import { getEnvironmentConfig } from "../../configs/environment.js";
-import { getPreAuthenticatedHeaders } from "../../configs/pre-authenticated-tokens.js";
+import { authHeaders, authSetupTimeout, setupAuth } from "../../lib/auth.js";
 
 const config = getEnvironmentConfig();
 const BASE_URL = config.API_BASE_URL;
@@ -48,19 +48,19 @@ export const options = {
     test_type: "marketplace_library_authorized",
     environment: __ENV.K6_ENVIRONMENT || "DEV",
   },
+  // handleSummary reports p(99), which k6 leaves out by default.
+  summaryTrendStats: ["avg", "min", "med", "max", "p(90)", "p(95)", "p(99)"],
+  setupTimeout: authSetupTimeout(),
 };
 
-export default function () {
+export function setup() {
+  return setupAuth();
+}
+
+export default function (data) {
   console.log(`📚 VU ${__VU} starting authenticated library journey...`);
 
-  // Get pre-authenticated headers
-  const headers = getPreAuthenticatedHeaders(__VU);
-  if (!headers || !headers.Authorization) {
-    console.log(`❌ VU ${__VU} authentication failed, skipping iteration`);
-    authenticationAttempts.add(1);
-    return;
-  }
-
+  const headers = authHeaders(data);
   authenticationAttempts.add(1);
   authenticationSuccesses.add(1);
 
@@ -79,7 +79,7 @@ function authenticatedLibraryJourney(headers) {
   // Step 1: Get user's library agents
   console.log(`📖 VU ${__VU} fetching user library agents...`);
   const libraryAgentsResponse = http.get(
-    `${BASE_URL}/api/library/agents?page=1&page_size=20`,
+    `${BASE_URL}/library/agents?page=1&page_size=20`,
     { headers },
   );
 
@@ -109,7 +109,7 @@ function authenticatedLibraryJourney(headers) {
   // Step 2: Get favorite agents
   console.log(`⭐ VU ${__VU} fetching favorite library agents...`);
   const favoriteAgentsResponse = http.get(
-    `${BASE_URL}/api/library/agents/favorites?page=1&page_size=10`,
+    `${BASE_URL}/library/agents/favorites?page=1&page_size=10`,
     { headers },
   );
 
@@ -141,21 +141,17 @@ function authenticatedLibraryJourney(headers) {
 
   // First get available store agents to find one to add
   const storeAgentsResponse = http.get(
-    `${BASE_URL}/api/store/agents?page=1&page_size=5`,
+    `${BASE_URL}/store/agents?page=1&page_size=5`,
   );
 
   libraryRequests.add(1);
+  // A new preview's store is empty, so an empty list still counts.
   const storeAgentsSuccess = check(storeAgentsResponse, {
     "Store agents endpoint returns 200": (r) => r.status === 200,
     "Store agents response has data": (r) => {
       try {
         const json = r.json();
-        return (
-          json &&
-          json.agents &&
-          Array.isArray(json.agents) &&
-          json.agents.length > 0
-        );
+        return json && Array.isArray(json.agents);
       } catch {
         return false;
       }
@@ -172,18 +168,20 @@ function authenticatedLibraryJourney(headers) {
           storeAgentsJson.agents[
             Math.floor(Math.random() * storeAgentsJson.agents.length)
           ];
+        const storeListingVersionId =
+          getStoreListingVersionId(randomStoreAgent);
 
-        if (randomStoreAgent?.store_listing_version_id) {
+        if (storeListingVersionId) {
           console.log(
-            `➕ VU ${__VU} adding agent "${randomStoreAgent.name || "Unknown"}" to library...`,
+            `➕ VU ${__VU} adding agent "${randomStoreAgent.agent_name || "Unknown"}" to library...`,
           );
 
           const addAgentPayload = {
-            store_listing_version_id: randomStoreAgent.store_listing_version_id,
+            store_listing_version_id: storeListingVersionId,
           };
 
           const addAgentResponse = http.post(
-            `${BASE_URL}/api/library/agents`,
+            `${BASE_URL}/library/agents`,
             JSON.stringify(addAgentPayload),
             { headers },
           );
@@ -218,7 +216,7 @@ function authenticatedLibraryJourney(headers) {
                 };
 
                 const updateAgentResponse = http.patch(
-                  `${BASE_URL}/api/library/agents/${addedAgentJson.id}`,
+                  `${BASE_URL}/library/agents/${addedAgentJson.id}`,
                   JSON.stringify(updatePayload),
                   { headers },
                 );
@@ -250,7 +248,7 @@ function authenticatedLibraryJourney(headers) {
                 // Step 5: Get specific library agent details
                 console.log(`📄 VU ${__VU} fetching agent details...`);
                 const agentDetailsResponse = http.get(
-                  `${BASE_URL}/api/library/agents/${addedAgentJson.id}`,
+                  `${BASE_URL}/library/agents/${addedAgentJson.id}`,
                   { headers },
                 );
 
@@ -281,7 +279,7 @@ function authenticatedLibraryJourney(headers) {
                 // Step 6: Fork the library agent (simulate user customization)
                 console.log(`🍴 VU ${__VU} forking agent for customization...`);
                 const forkAgentResponse = http.post(
-                  `${BASE_URL}/api/library/agents/${addedAgentJson.id}/fork`,
+                  `${BASE_URL}/library/agents/${addedAgentJson.id}/fork`,
                   "",
                   { headers },
                 );
@@ -342,7 +340,7 @@ function authenticatedLibraryJourney(headers) {
 
   console.log(`🔍 VU ${__VU} searching library for "${randomSearchTerm}"...`);
   const searchLibraryResponse = http.get(
-    `${BASE_URL}/api/library/agents?search_term=${encodeURIComponent(randomSearchTerm)}&page=1&page_size=10`,
+    `${BASE_URL}/library/agents?search_term=${encodeURIComponent(randomSearchTerm)}&page=1&page_size=10`,
     { headers },
   );
 
@@ -384,7 +382,7 @@ function authenticatedLibraryJourney(headers) {
             `🔗 VU ${__VU} fetching agent by graph ID "${randomLibraryAgent.graph_id}"...`,
           );
           const agentByGraphResponse = http.get(
-            `${BASE_URL}/api/library/agents/by-graph/${randomLibraryAgent.graph_id}`,
+            `${BASE_URL}/library/agents/by-graph/${randomLibraryAgent.graph_id}`,
             { headers },
           );
 
@@ -431,6 +429,30 @@ function authenticatedLibraryJourney(headers) {
   );
 }
 
+// Store list entries carry no listing version id; the agent's details do.
+function getStoreListingVersionId(storeAgent) {
+  if (!storeAgent?.creator || !storeAgent?.slug) return null;
+
+  const detailsResponse = http.get(
+    `${BASE_URL}/store/agents/${encodeURIComponent(storeAgent.creator)}/${encodeURIComponent(storeAgent.slug)}`,
+  );
+  libraryRequests.add(1);
+  const detailsSuccess = check(detailsResponse, {
+    "Store agent details returns 200": (r) => r.status === 200,
+  });
+  if (!detailsSuccess) {
+    failedRequests.add(1);
+    return null;
+  }
+  successfulRequests.add(1);
+
+  try {
+    return detailsResponse.json("store_listing_version_id") || null;
+  } catch {
+    return null;
+  }
+}
+
 export function handleSummary(data) {
   const summary = {
     test_type: "Marketplace Library Authorized Access Load Test",
@@ -443,11 +465,11 @@ export function handleSummary(data) {
       requests_per_vu: REQUESTS_PER_VU,
     },
     performance_metrics: {
-      total_requests: data.metrics.http_reqs?.count || 0,
+      total_requests: data.metrics.http_reqs?.values?.count || 0,
       failed_requests: data.metrics.http_req_failed?.values?.passes || 0,
       avg_response_time: data.metrics.http_req_duration?.values?.avg || 0,
-      p95_response_time: data.metrics.http_req_duration?.values?.p95 || 0,
-      p99_response_time: data.metrics.http_req_duration?.values?.p99 || 0,
+      p95_response_time: data.metrics.http_req_duration?.values?.["p(95)"] || 0,
+      p99_response_time: data.metrics.http_req_duration?.values?.["p(99)"] || 0,
     },
     custom_metrics: {
       library_requests: data.metrics.library_requests_total?.values?.count || 0,
@@ -461,9 +483,11 @@ export function handleSummary(data) {
     },
     thresholds_met: {
       p95_threshold:
-        (data.metrics.http_req_duration?.values?.p95 || 0) < THRESHOLD_P95,
+        (data.metrics.http_req_duration?.values?.["p(95)"] || 0) <
+        THRESHOLD_P95,
       p99_threshold:
-        (data.metrics.http_req_duration?.values?.p99 || 0) < THRESHOLD_P99,
+        (data.metrics.http_req_duration?.values?.["p(99)"] || 0) <
+        THRESHOLD_P99,
       error_rate_threshold:
         (data.metrics.http_req_failed?.values?.rate || 0) <
         THRESHOLD_ERROR_RATE,

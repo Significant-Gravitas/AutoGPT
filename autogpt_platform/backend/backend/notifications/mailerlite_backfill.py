@@ -10,6 +10,10 @@ the tour group is left alone: they are either mid-tour, and must not get the
 changelog yet, or they finished it and MailerLite's automation has already
 moved them across.
 
+A customer who opted out of marketing, or whom a signal places in Iran or
+Russia, is left out entirely, removals included: they never enter MailerLite
+(`consent.py`).
+
 Idempotent by construction: current membership is read first, so a second run
 finds nothing to do and a failed call is simply picked up by the next run.
 """
@@ -17,19 +21,22 @@ finds nothing to do and a failed call is simply picked up by the next run.
 import asyncio
 import logging
 import re
+from datetime import datetime
 from enum import Enum
 from typing import Any
 from urllib.parse import urlencode
 
 from pydantic import BaseModel
 
+from backend.notifications.audience_enrichment import points_at_excluded_country
+from backend.notifications.consent import KeptOut, marketing_allowed
 from backend.notifications.mailerlite import (
     API_BASE,
     MailerLiteError,
     _client,
     _headers,
-    _pseudonym,
     _require_config,
+    pseudonym,
 )
 from backend.util.settings import Settings
 
@@ -66,6 +73,8 @@ class Decision(str, Enum):
     SKIP_IN_TOUR = "skip_in_tour"
     SKIP_NO_TRIAL_GROUP = "skip_no_trial_group"
     SKIP_UNSETTLED = "skip_unsettled"
+    SKIP_OPTED_OUT = "skip_opted_out"
+    SKIP_EXCLUDED_COUNTRY = "skip_excluded_country"
     ALREADY_CORRECT = "already_correct"
 
 
@@ -101,6 +110,13 @@ class Customer(BaseModel):
     user_id: str
     email: str
     subscriptions: list[Subscription]
+    # Set when they refused marketing: they must never enter MailerLite.
+    marketing_opt_out_at: datetime | None = None
+    # The browser's IANA timezone, the Stripe billing address country, and
+    # the country a checkout recorded: any may place them in Iran or Russia.
+    timezone: str | None = None
+    billing_country: str | None = None
+    excluded_country: str | None = None
 
 
 class Audience(BaseModel):
@@ -121,6 +137,8 @@ class PlannedChange(BaseModel):
 class ApplyResult(BaseModel):
     succeeded: dict[Decision, int]
     failed: dict[Decision, int]
+    # Opted out or seen in Iran or Russia since the plan: not written.
+    skipped: int = 0
 
 
 class BatchAnswer(BaseModel):
@@ -157,6 +175,20 @@ def decide(
     customer: Customer, audience: Audience, trial_enabled: bool
 ) -> PlannedChange:
     standing = classify(customer.subscriptions)
+    if not marketing_allowed(customer):
+        return PlannedChange(
+            customer=customer, standing=standing, decisions=[Decision.SKIP_OPTED_OUT]
+        )
+    if points_at_excluded_country(
+        email=customer.email,
+        timezone=customer.timezone,
+        countries=(customer.billing_country, customer.excluded_country),
+    ):
+        return PlannedChange(
+            customer=customer,
+            standing=standing,
+            decisions=[Decision.SKIP_EXCLUDED_COUNTRY],
+        )
     email = customer.email.strip().lower()
     in_tour = email in audience.tour
     in_changelog = email in audience.changelog
@@ -202,7 +234,16 @@ async def read_audience() -> Audience:
     )
 
 
-async def apply(changes: list[PlannedChange], audience: Audience) -> ApplyResult:
+async def apply(
+    changes: list[PlannedChange],
+    audience: Audience,
+    *,
+    kept_out: KeptOut | None = None,
+) -> ApplyResult:
+    """With `kept_out`, each batch first drops anyone who may no longer be
+    written: they opted out or were seen in Iran or Russia since the plan.
+    Someone whose account can't be read then is counted as failed and left
+    for the next run; the run goes on."""
     result = ApplyResult(
         succeeded={d: 0 for d in CHANGES}, failed={d: 0 for d in CHANGES}
     )
@@ -215,12 +256,42 @@ async def apply(changes: list[PlannedChange], audience: Audience) -> ApplyResult
     for index, (decision, chunk) in enumerate(batches):
         if index:
             await asyncio.sleep(_interval_before(decision))
+        if kept_out:
+            chunk = await _writable(chunk, decision, result, kept_out)
+        if not chunk:
+            continue
         answers = await _send_batch(
             [_call_for(decision, c.customer.email, audience) for c in chunk]
         )
         for change, answer in zip(chunk, answers):
             _record(result, decision, change, answer)
     return result
+
+
+async def _writable(
+    chunk: list[PlannedChange],
+    decision: Decision,
+    result: ApplyResult,
+    kept_out: KeptOut,
+) -> list[PlannedChange]:
+    """The batch without anyone `kept_out` rejects (counted as skipped) or
+    whose account it can't read (counted as failed)."""
+    allowed: list[PlannedChange] = []
+    for change in chunk:
+        try:
+            if await kept_out(change.customer.user_id):
+                result.skipped += 1
+                continue
+        except Exception:
+            result.failed[decision] += 1
+            logger.warning(
+                f"Re-reading the account of "
+                f"{_refusal(change.customer.email, BatchAnswer(code=0))} failed; "
+                "the next run retries it"
+            )
+            continue
+        allowed.append(change)
+    return allowed
 
 
 def _interval_before(decision: Decision) -> float:
@@ -283,7 +354,7 @@ def _refusal(email: str, answer: BatchAnswer) -> str:
     """A refused call, for the log: the pseudonym, the top-level domain and
     MailerLite's reason. Enough to spot a pattern without naming anyone."""
     return (
-        f"{_pseudonym(email)} at {_top_level_domain(email)} with {answer.code} "
+        f"{pseudonym(email)} at {_top_level_domain(email)} with {answer.code} "
         f"({_failure_reason(answer.body, email)})"
     )
 
@@ -314,7 +385,7 @@ def _failure_reason(body: Any, email: str) -> str:
             listed = problems if isinstance(problems, list) else [problems]
             parts.append(f"{field}: {'; '.join(str(p) for p in listed)}")
     reason = " | ".join(parts) or "no reason given"
-    return re.sub(re.escape(email.strip()), _pseudonym(email), reason, flags=re.I)
+    return re.sub(re.escape(email.strip()), pseudonym(email), reason, flags=re.I)
 
 
 async def _send_batch(requests: list[dict]) -> list[BatchAnswer]:

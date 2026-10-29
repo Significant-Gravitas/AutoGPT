@@ -153,7 +153,7 @@ describe("AgentReviewStep", () => {
         marketplaceUrl="/marketplace/agent/creator/test-agent"
       />,
     );
-    expect(screen.getByText("Agent approved")).toBeDefined();
+    expect(screen.getByText("Workflow approved")).toBeDefined();
     expect(screen.queryByText("What happens next")).toBeNull();
     expect(screen.getByText("Live since")).toBeDefined();
     expect(screen.getByText("Runs")).toBeDefined();
@@ -207,7 +207,7 @@ describe("AgentReviewStep", () => {
         onEdit={onEdit}
       />,
     );
-    expect(screen.getByText("Agent needs changes")).toBeDefined();
+    expect(screen.getByText("Workflow needs changes")).toBeDefined();
     expect(screen.getByText("Please clarify your description.")).toBeDefined();
     expect(screen.queryByText("What happens next")).toBeNull();
     expect(screen.getByText("Reviewed")).toBeDefined();

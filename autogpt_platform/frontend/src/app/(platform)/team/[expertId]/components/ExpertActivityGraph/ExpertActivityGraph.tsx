@@ -3,7 +3,13 @@ import { ExpertActivityDay } from "@/app/api/__generated__/models/expertActivity
 import { cn } from "@/lib/utils";
 import { getActivityCells, getActivitySummary } from "./helpers";
 
-const LEVEL_OPACITY = [0, 0.18, 0.34, 0.52, 0.7] as const;
+const LEVEL_OPACITY = [
+  "opacity-0",
+  "opacity-20",
+  "opacity-35",
+  "opacity-50",
+  "opacity-70",
+] as const;
 
 interface Props {
   days: ExpertActivityDay[];
@@ -22,7 +28,7 @@ export function ExpertActivityGraph({ days, color }: Props) {
       <div
         role="img"
         aria-label={`Activity over the ${rangeLabel}`}
-        className="grid w-full auto-cols-fr grid-flow-col grid-rows-7 gap-[3px]"
+        className="grid w-full auto-cols-fr grid-flow-col grid-rows-7 gap-0.5"
         data-testid="expert-activity-graph"
       >
         {cells.map((cell) =>
@@ -35,15 +41,17 @@ export function ExpertActivityGraph({ days, color }: Props) {
               data-level={cell.level}
               style={
                 cell.level > 0 && fillColor
-                  ? {
-                      backgroundColor: fillColor,
-                      opacity: LEVEL_OPACITY[cell.level],
-                    }
+                  ? // oxlint-disable-next-line design-system/no-inline-styles -- the expert's own colour is runtime data
+                    { backgroundColor: fillColor }
                   : undefined
               }
               className={cn(
-                "aspect-square w-full rounded-[3px]",
-                cell.level === 0 ? "bg-zinc-100" : !fillColor && "bg-zinc-800",
+                "aspect-square w-full rounded-sm",
+                cell.level === 0
+                  ? "bg-surface-hover"
+                  : fillColor
+                    ? LEVEL_OPACITY[cell.level]
+                    : "bg-action",
               )}
             />
           ),

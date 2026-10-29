@@ -8,10 +8,29 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MAX_ATTACHMENTS } from "../../../helpers/workspaceAttachments";
 import { ChatInput } from "../ChatInput";
 
+// The composer also keeps the secret warning's status region mounted, empty
+// until it warns, so the cap notice is the other status region.
+function capNotice() {
+  return (
+    screen
+      .queryAllByRole("status")
+      .find((el) => el.dataset.testid !== "secret-paste-notice") ?? null
+  );
+}
+
+function findCapNotice() {
+  return waitFor(() => {
+    const notice = capNotice();
+    if (!notice) throw new Error("no attachment cap notice");
+    return notice;
+  });
+}
+
 // Only the composer's periphery is stubbed: FileChips, ComposerPlusMenu and
 // the cap notice stay real, because the cap is a claim about what the user
 // ends up seeing and being able to click.
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
+  useGetV2ListChatTransports: () => ({ data: undefined }),
   useGetV2ListChatConnections: () => ({
     data: { status: 200, data: { offers: [] } },
     isLoading: false,
@@ -21,18 +40,19 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
 }));
 
 vi.mock("@/app/(platform)/copilot/store", () => ({
-  useCopilotUIStore: () => ({
-    copilotLlmModel: "standard",
-    setCopilotLlmModel: vi.fn(),
-    copilotLlmAuth: { authProvider: "platform", credentialId: null },
-    setCopilotLlmAuth: vi.fn(),
-    isDryRun: false,
-    setIsDryRun: vi.fn(),
-    initialPrompt: null,
-    setInitialPrompt: vi.fn(),
-    sentMessageCount: 0,
-    notifyMessageSent: vi.fn(),
-  }),
+  useCopilotUIStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      copilotLlmModel: "standard",
+      setCopilotLlmModel: vi.fn(),
+      copilotLlmAuth: { authProvider: "platform", credentialId: null },
+      setCopilotLlmAuth: vi.fn(),
+      isDryRun: false,
+      setIsDryRun: vi.fn(),
+      initialPrompt: null,
+      setInitialPrompt: vi.fn(),
+      sentMessageCount: 0,
+      notifyMessageSent: vi.fn(),
+    }),
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
@@ -61,7 +81,7 @@ vi.mock("../useVoiceRecording", () => ({
   }),
 }));
 
-vi.mock("@/components/ai-elements/prompt-input", () => ({
+vi.mock("@/components/organisms/PromptInput/PromptInput", () => ({
   PromptInputSubmit: ({ disabled }: { disabled?: boolean }) => (
     <button disabled={disabled} data-testid="submit">
       Send
@@ -102,7 +122,7 @@ describe("ChatInput attachment cap — pasting", () => {
 
     pasteFiles(makeFiles(MAX_ATTACHMENTS + OVER));
 
-    const notice = await screen.findByRole("status");
+    const notice = await findCapNotice();
     expect(notice.textContent).toContain(
       `Up to ${MAX_ATTACHMENTS} attachments per message — ${OVER} not added`,
     );
@@ -125,7 +145,7 @@ describe("ChatInput attachment cap — pasting", () => {
 
     pasteFiles(makeFiles(MAX_ATTACHMENTS + OVER));
 
-    await screen.findByRole("status");
+    await findCapNotice();
     expect(textarea().value).toBe("here are my quarterly notes");
   });
 
@@ -133,11 +153,11 @@ describe("ChatInput attachment cap — pasting", () => {
     render(<ChatInput onSend={vi.fn()} />);
 
     pasteFiles(makeFiles(MAX_ATTACHMENTS - 1));
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(capNotice()).toBeNull();
 
     pasteFiles(makeFiles(3, "late"));
 
-    const notice = await screen.findByRole("status");
+    const notice = await findCapNotice();
     expect(notice.textContent).toContain("2 not added");
     expect(removeButtons()).toHaveLength(MAX_ATTACHMENTS);
   });
@@ -153,7 +173,7 @@ describe("ChatInput attachment cap — dropping", () => {
       />,
     );
 
-    const notice = await screen.findByRole("status");
+    const notice = await findCapNotice();
     expect(notice.textContent).toContain(`${OVER} not added`);
     expect(removeButtons()).toHaveLength(MAX_ATTACHMENTS);
   });
@@ -173,7 +193,7 @@ describe("ChatInput attachment cap — dropping", () => {
       />,
     );
 
-    const notice = await screen.findByRole("status");
+    const notice = await findCapNotice();
     expect(notice.textContent).toContain("2 not added");
     expect(removeButtons()).toHaveLength(MAX_ATTACHMENTS);
   });
@@ -183,23 +203,23 @@ describe("ChatInput attachment cap — the notice and the affordance", () => {
   it("dismisses the notice on request", async () => {
     render(<ChatInput onSend={vi.fn()} />);
     pasteFiles(makeFiles(MAX_ATTACHMENTS + OVER));
-    await screen.findByRole("status");
+    await findCapNotice();
 
     fireEvent.click(
       screen.getByRole("button", { name: /dismiss attachment limit/i }),
     );
 
-    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    await waitFor(() => expect(capNotice()).toBeNull());
   });
 
   it("clears the notice once a removal frees a slot", async () => {
     render(<ChatInput onSend={vi.fn()} />);
     pasteFiles(makeFiles(MAX_ATTACHMENTS + OVER));
-    await screen.findByRole("status");
+    await findCapNotice();
 
     fireEvent.click(removeButtons()[0]);
 
-    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    await waitFor(() => expect(capNotice()).toBeNull());
   });
 
   it("disables the attach affordance at the cap and re-enables it below", async () => {

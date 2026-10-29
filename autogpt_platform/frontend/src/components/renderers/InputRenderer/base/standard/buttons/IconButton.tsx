@@ -7,10 +7,8 @@ import {
   TranslatableString,
 } from "@rjsf/utils";
 import { ChevronDown, ChevronUp, Copy } from "lucide-react";
-import type { VariantProps } from "class-variance-authority";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { extendedButtonVariants } from "@/components/atoms/Button/helpers";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { Delete02Icon } from "@hugeicons/core-free-icons";
@@ -20,7 +18,7 @@ export type AutogptIconButtonProps<
   T = any,
   S extends StrictRJSFSchema = RJSFSchema,
   F extends FormContextType = any,
-> = IconButtonProps<T, S, F> & VariantProps<typeof extendedButtonVariants>;
+> = IconButtonProps<T, S, F> & { size?: "small" | "icon" };
 
 export default function IconButton(props: AutogptIconButtonProps) {
   const {
@@ -31,14 +29,15 @@ export default function IconButton(props: AutogptIconButtonProps) {
     id,
     title,
     iconType: _iconType,
+    size = "icon",
     ...otherProps
   } = props;
 
   return (
     <Button
-      size="icon"
+      size={size}
       variant="secondary"
-      className={cn(className, "w-fit border border-zinc-200 p-1.5 px-4")}
+      className={cn(className, "w-fit border border-border-base p-1.5 px-4")}
       {...otherProps}
       id={id ? getFieldDomId(id, registry.formContext) : undefined}
       title={title}
@@ -101,7 +100,13 @@ export function RemoveButton(props: AutogptIconButtonProps) {
       title={translateString(TranslatableString.RemoveButton)}
       {...props}
       className={"border-destructive"}
-      icon={<Icon icon={Delete02Icon} size={16} className="!text-zinc-800" />}
+      icon={
+        <Icon
+          icon={Delete02Icon}
+          size={16}
+          className="!text-foreground-emphasis"
+        />
+      }
     />
   );
 }
