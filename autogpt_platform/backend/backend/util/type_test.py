@@ -1,8 +1,17 @@
 from typing import Any, List, Literal, Optional
 
+import pytest
 from pydantic import BaseModel
 
 from backend.util.type import _value_satisfies_type, coerce_inputs_to_schema, convert
+
+
+@pytest.mark.parametrize(
+    "value", ["9007199254740993", "-9007199254740993", "9223372036854775807"]
+)
+def test_integer_string_conversion_preserves_precision(value: str):
+    assert convert(value, int) == int(value)
+    assert convert({"id": value}, dict[str, int]) == {"id": int(value)}
 
 
 def test_type_conversion():
