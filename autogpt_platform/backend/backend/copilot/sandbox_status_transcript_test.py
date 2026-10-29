@@ -6,7 +6,10 @@ from pathlib import Path
 import pytest
 
 from backend.copilot import transcript
-from backend.copilot.sandbox_status import SANDBOX_REPLACED_NOTICE
+from backend.copilot.sandbox_status import (
+    SANDBOX_REPLACED_NOTICE,
+    SANDBOX_REPLACED_WITHOUT_WORKSPACE_NOTICE,
+)
 from backend.copilot.sdk import service
 
 
@@ -21,6 +24,23 @@ from backend.copilot.sdk import service
         (
             [
                 {"type": "text", "text": SANDBOX_REPLACED_NOTICE},
+                {"type": "image", "source": {"type": "base64", "data": "AAAA"}},
+            ],
+            [{"type": "image", "source": {"type": "base64", "data": "AAAA"}}],
+        ),
+        (SANDBOX_REPLACED_WITHOUT_WORKSPACE_NOTICE + "continue", "continue"),
+        (
+            [
+                {
+                    "type": "text",
+                    "text": SANDBOX_REPLACED_WITHOUT_WORKSPACE_NOTICE + "continue",
+                }
+            ],
+            [{"type": "text", "text": "continue"}],
+        ),
+        (
+            [
+                {"type": "text", "text": SANDBOX_REPLACED_WITHOUT_WORKSPACE_NOTICE},
                 {"type": "image", "source": {"type": "base64", "data": "AAAA"}},
             ],
             [{"type": "image", "source": {"type": "base64", "data": "AAAA"}}],
@@ -53,7 +73,10 @@ def test_other_entries_keep_their_original_bytes(role, content):
     assert transcript.strip_for_upload(raw) == raw
 
 
-def test_cli_upload_and_restore_remove_the_notice(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "notice", [SANDBOX_REPLACED_NOTICE, SANDBOX_REPLACED_WITHOUT_WORKSPACE_NOTICE]
+)
+def test_cli_upload_and_restore_remove_the_notice(tmp_path, monkeypatch, notice):
     projects = str(tmp_path / "projects")
     monkeypatch.setattr(transcript, "projects_base", lambda: projects)
     monkeypatch.setattr(service, "projects_base", lambda: projects)
@@ -68,7 +91,7 @@ def test_cli_upload_and_restore_remove_the_notice(tmp_path, monkeypatch):
                 "uuid": "u1",
                 "message": {
                     "role": "user",
-                    "content": SANDBOX_REPLACED_NOTICE + "continue",
+                    "content": notice + "continue",
                 },
             }
         )

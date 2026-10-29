@@ -911,7 +911,8 @@ async def get_or_create_owner_sandbox(
     another turn's end cannot pause it; pass ``False`` when opening the box
     from outside a turn (turning its screen on from the UI), or when the
     release is not yet guaranteed to run and ``count_expert_turn`` follows.
-    *user_id* / *session_id* are provenance only, stamped on a newly created box.
+    *user_id* / *session_id* are stamped on a newly created box. The session
+    also receives a notice if the new box replaces a gone one.
     *providers* is the turn's ceiling on the user's connected accounts
     (``permissions.allowed_providers``), recorded when the box's egress is
     pinned; ``None`` leaves every provider usable.  Left out, a reconnect
@@ -1137,7 +1138,7 @@ async def get_or_create_owner_sandbox(
 
         logger.info("[E2B] Created sandbox %.12s for %s", sandbox.sandbox_id, owner)
         if failed_ids and session_id:
-            await _mark_replaced(session_id)
+            await _mark_replaced(session_id, workspace_attached=bool(mounts))
         if count_turn:
             await _acquire_turn(owner)
         return sandbox
@@ -1177,15 +1178,19 @@ async def get_or_create_sandbox(
     )
 
 
-async def _mark_replaced(session_id: str) -> None:
-    """Tell this turn its box replaced a gone one (``build_sandbox_replaced_notice``).
+async def _mark_replaced(session_id: str, *, workspace_attached: bool) -> None:
+    """Tell the next turn its box replaced a gone one, with its mount state.
 
     Best effort: the new box is already the owner's, and a missing notice
     costs less than failing the turn.
     """
     try:
         redis = await get_redis_async()
-        await redis.set(sandbox_replaced_key(session_id), "1", ex=REPLACED_FLAG_TTL)
+        await redis.set(
+            sandbox_replaced_key(session_id),
+            "1" if workspace_attached else "no_workspace",
+            ex=REPLACED_FLAG_TTL,
+        )
     except Exception as exc:
         logger.warning(
             "[E2B] Could not flag a replaced box for %.12s: %s", session_id, exc

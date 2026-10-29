@@ -34,7 +34,7 @@ from .hidden_rows import visible_to_model
 from .legacy_first_turn_memory import without_stored_first_turn_memory
 from .legacy_session_file import restore_session_file
 from .model import ChatMessage
-from .sandbox_status import SANDBOX_REPLACED_NOTICE, SANDBOX_STATUS_TAG
+from .sandbox_status_transcript import rewrite_sandbox_status_entry
 
 logger = logging.getLogger(__name__)
 
@@ -385,13 +385,10 @@ def strip_for_upload(content: str) -> str:
                 entry = rewritten
                 needs_reserialize = True
 
-        if SANDBOX_STATUS_TAG in line:
-            rewritten = rewrite_user_entry(
-                entry, lambda text: text.replace(SANDBOX_REPLACED_NOTICE, "")
-            )
-            if rewritten is not None:
-                entry = rewritten
-                needs_reserialize = True
+        rewritten = rewrite_sandbox_status_entry(entry, line)
+        if rewritten is not None:
+            entry = rewritten
+            needs_reserialize = True
 
         if needs_reserialize:
             result_lines.append(json.dumps(entry, separators=(",", ":")))

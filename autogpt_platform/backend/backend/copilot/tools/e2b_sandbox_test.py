@@ -29,7 +29,11 @@ from backend.blocks.desktop._common import (
     user_volume_name,
     workspace_volume_mounts,
 )
-from backend.copilot.sandbox_status import REPLACED_FLAG_TTL, sandbox_replaced_key
+from backend.copilot.sandbox_status import (
+    REPLACED_FLAG_TTL,
+    build_sandbox_replaced_notice,
+    sandbox_replaced_key,
+)
 from backend.util.e2b_template import DESKTOP_IMAGE
 from backend.util.sandbox_metadata import deployment_env
 
@@ -628,7 +632,14 @@ class TestGetOrCreateSandbox:
         redis.set = AsyncMock(return_value=True)
         redis.delete = AsyncMock()
 
-        with _patch_sdk() as mock_cls, _patch_redis(redis):
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox._resolve_volume_mounts",
+                AsyncMock(return_value={"/home/user/workspace": "workspace-volume"}),
+            ),
+        ):
             mock_cls.get_info = AsyncMock(
                 side_effect=SandboxNotFoundException("sb-gone")
             )
@@ -639,6 +650,42 @@ class TestGetOrCreateSandbox:
             call(sandbox_replaced_key(_SESSION_ID), "1", ex=REPLACED_FLAG_TTL)
             in redis.set.await_args_list
         )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_volume_failure_is_reported_in_the_replacement_notice(self):
+        redis = AsyncMock()
+        redis.get.side_effect = [b"sb-gone", None]
+        redis.set.return_value = True
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+            patch("backend.copilot.sandbox_status.get_redis_async", return_value=redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox._resolve_volume_mounts",
+                AsyncMock(return_value={"/home/user/workspace": "workspace-volume"}),
+            ),
+        ):
+            mock_cls.get_info = AsyncMock(side_effect=SandboxNotFoundException("gone"))
+            mock_cls.create = AsyncMock(
+                side_effect=[
+                    *[
+                        RuntimeError("volume unavailable")
+                        for _ in range(_SANDBOX_CREATE_MAX_RETRIES - 1)
+                    ],
+                    _mock_sandbox("sb-new"),
+                ]
+            )
+            await get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
+            marker = next(
+                c.args[1]
+                for c in redis.set.await_args_list
+                if c.args[0] == sandbox_replaced_key(_SESSION_ID)
+            )
+            redis.getdel.return_value = marker
+            notice = await build_sandbox_replaced_notice(_SESSION_ID)
+
+        assert "not available in this sandbox" in notice
+        assert "carried over" not in notice
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_new_chats_first_box_is_not_a_replacement(self):
@@ -1353,7 +1400,7 @@ class TestSandboxOwner:
     def test_session_cache_outlasts_a_long_wait_between_turns(self):
         """Turns days apart (routines, approval cards, a user back next week)
         must still find the paused box; 48 h used to orphan it."""
-        assert SandboxOwner(kind="session", id=_SESSION_ID).ttl >= 7 * 24 * 3600
+        assert SandboxOwner(kind="session", id=_SESSION_ID).ttl >= 30 * 24 * 3600
 
     def test_metadata_identifies_owner_and_kind(self):
         assert SandboxOwner(kind="expert", id=_EXPERT_ID).metadata() == {

@@ -34,6 +34,16 @@ SANDBOX_REPLACED_NOTICE = (
     "set up again what the task needs.\n"
     f"</{SANDBOX_STATUS_TAG}>\n\n"
 )
+SANDBOX_REPLACED_WITHOUT_WORKSPACE_NOTICE = (
+    f"<{SANDBOX_STATUS_TAG}>\n"
+    "Your sandbox was replaced since your last turn. Its workspace volumes "
+    "were not attached, so files from `~/workspace` (and `~/shared` on an "
+    "expert's computer) are not available in this sandbox. Saved files may "
+    "still exist on their volumes. Other files, installed tools and browser "
+    "sign-ins are gone. Check before relying on them, and set up again what "
+    "the task needs.\n"
+    f"</{SANDBOX_STATUS_TAG}>\n\n"
+)
 
 
 def sandbox_replaced_key(session_id: str) -> str:
@@ -49,7 +59,10 @@ async def build_sandbox_replaced_notice(session_id: str) -> str:
     """
     try:
         redis = await get_redis_async()
-        if await redis.getdel(sandbox_replaced_key(session_id)):
+        flag = await redis.getdel(sandbox_replaced_key(session_id))
+        if flag in (b"no_workspace", "no_workspace"):
+            return SANDBOX_REPLACED_WITHOUT_WORKSPACE_NOTICE
+        if flag:
             return SANDBOX_REPLACED_NOTICE
     except Exception:
         logger.warning("[E2B] sandbox-replaced flag unreadable", exc_info=True)
