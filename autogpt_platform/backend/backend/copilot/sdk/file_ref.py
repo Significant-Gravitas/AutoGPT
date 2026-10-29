@@ -98,6 +98,16 @@ class FileRef:
 # ---------------------------------------------------------------------------
 
 
+def text_outside_file_refs(text: str) -> str | None:
+    """Return *text* with every ``@@agptfile:`` reference cut out.
+
+    Returns None when *text* is nothing but references, since the expanded
+    content then stands in for the whole text.
+    """
+    rest = _FILE_REF_RE.sub(" ", text)
+    return rest if rest.strip() else None
+
+
 def parse_file_ref(text: str) -> FileRef | None:
     """Return a :class:`FileRef` if *text* is a bare file reference token.
 
