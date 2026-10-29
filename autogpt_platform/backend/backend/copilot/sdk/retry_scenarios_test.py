@@ -85,6 +85,7 @@ from backend.util import json
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
     _MAX_STREAM_ATTEMPTS,
+    _append_warm_context,
     _build_query_message,
     _fetch_graphiti_context,
     _maybe_prepend_skills_update,
@@ -1259,11 +1260,9 @@ class TestFollowUpWarmContextCallSite:
         queries: list[str],
         *,
         fail_first: bool = False,
-        sent_at: list[float] | None = None,
     ):
-        """Client factory recording every query sent (and, into ``sent_at``,
-        when); with ``fail_first`` the first attempt is rejected as too long
-        before streaming."""
+        """Client factory recording every query sent; with ``fail_first`` the
+        first attempt is rejected as too long before streaming."""
         attempts = [0]
 
         def _factory(*args, **kwargs):
@@ -1272,8 +1271,6 @@ class TestFollowUpWarmContextCallSite:
 
             async def _query(prompt, session_id=None):
                 queries.append(prompt)
-                if sent_at is not None:
-                    sent_at.append(asyncio.get_running_loop().time())
                 if fail_first and attempt == 1:
                     raise Exception("prompt is too long (context_length_exceeded)")
 
@@ -1410,14 +1407,22 @@ class TestFollowUpWarmContextCallSite:
         assert len(queries) == 1 and "Alice works on Atlas" in queries[0]
 
     @staticmethod
-    def _graph(search, ready_at: list[float]) -> list[tuple[str, dict]]:
-        """The real refresh over a stubbed graph read, a 300 ms join grace,
-        and a clock on the moment the query is ready (the last step before
-        the join)."""
+    def _graph(
+        search, ready_at: list[float], joined_at: list[float], grace_ms: int = 300
+    ) -> list[tuple[str, dict]]:
+        """The real refresh over a stubbed graph read, a ``grace_ms`` join
+        grace, and clocks on the moment the query is ready (the last step
+        before the join) and the moment the join's block is appended. The
+        send comes later, after steps that stall for seconds on CI runners."""
 
         async def _ready(*args, **kwargs):
             query = await _maybe_prepend_skills_update(*args, **kwargs)
             ready_at.append(asyncio.get_running_loop().time())
+            return query
+
+        async def _joined(*args, **kwargs):
+            query = await _append_warm_context(*args, **kwargs)
+            joined_at.append(asyncio.get_running_loop().time())
             return query
 
         ctx = "backend.copilot.graphiti.context"
@@ -1425,7 +1430,7 @@ class TestFollowUpWarmContextCallSite:
             (
                 "backend.copilot.graphiti.context_refresh.graphiti_config"
                 ".warm_context_refresh_join_grace_ms",
-                dict(new=300),
+                dict(new=grace_ms),
             ),
             (f"{ctx}.search_facts", dict(new=search)),
             (f"{ctx}.recent_episodes", dict(new=AsyncMock(return_value=[]))),
@@ -1434,6 +1439,7 @@ class TestFollowUpWarmContextCallSite:
                 dict(new=AsyncMock(side_effect=lambda _s, edges, eps: (edges, eps))),
             ),
             (f"{_SVC}._maybe_prepend_skills_update", dict(new=_ready)),
+            (f"{_SVC}._append_warm_context", dict(new=_joined)),
         ]
 
     @pytest.mark.asyncio
@@ -1450,7 +1456,7 @@ class TestFollowUpWarmContextCallSite:
         caplog.set_level(logging.INFO, logger=context_refresh.__name__)
         prior = self._big_prior() if forced else None
         ready_at: list[float] = []
-        sent_at: list[float] = []
+        joined_at: list[float] = []
         queries: list[str] = []
 
         async def _never_answers(*_args, **_kwargs):
@@ -1459,14 +1465,15 @@ class TestFollowUpWarmContextCallSite:
         await self._run(
             self._session("go on" if forced else "restart the executor", prior=prior),
             context_refresh.refresh_warm_context,
-            self._clients(queries, sent_at=sent_at),
+            self._clients(queries),
             extra=[
                 *(self._compacting(prior) if prior else []),
-                *self._graph(_never_answers, ready_at),
+                *self._graph(_never_answers, ready_at, joined_at),
             ],
         )
 
-        waited = sent_at[0] - ready_at[0]
+        assert len(joined_at) == 1
+        waited = joined_at[0] - ready_at[0]
         assert 0.25 <= waited <= 0.3 + 0.25, f"the turn waited {waited:.3f}s"
         assert len(queries) == 1 and "temporal_context" not in queries[0]
         late = [r for r in caplog.records if "refresh late, skipped" in r.message]
@@ -1489,17 +1496,21 @@ class TestFollowUpWarmContextCallSite:
             attributes={"status": "active"},
         )
         ready_at: list[float] = []
-        sent_at: list[float] = []
+        joined_at: list[float] = []
         queries: list[str] = []
 
         await self._run(
             self._session("restart the executor"),
             context_refresh.refresh_warm_context,
-            self._clients(queries, sent_at=sent_at),
-            extra=self._graph(AsyncMock(return_value=[edge]), ready_at),
+            self._clients(queries),
+            extra=self._graph(
+                AsyncMock(return_value=[edge]), ready_at, joined_at, grace_ms=60_000
+            ),
         )
 
-        assert sent_at[0] - ready_at[0] < 0.3
+        # A finished refresh is joined at once, so only a join that waits out
+        # the 60 s grace fails this; 20 s leaves room for a CI runner stalling.
+        assert joined_at[0] - ready_at[0] < 20
         assert len(queries) == 1 and "the executor runs on k3s" in queries[0]
         assert INJECTED_MEMORY_MARKER in queries[0]
         assert "refresh late" not in caplog.text
