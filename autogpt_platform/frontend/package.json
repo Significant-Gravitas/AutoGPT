@@ -169,7 +169,7 @@
     "eslint-config-next": "15.5.7",
     "eslint-plugin-react-hooks": "7.0.1",
     "eslint-plugin-storybook": "9.1.5",
-    "happy-dom": "20.8.9",
+    "happy-dom": "21.0.3",
     "import-in-the-middle": "2.0.2",
     "knip": "6.32.2",
     "monocart-reporter": "2.10.0",
