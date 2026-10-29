@@ -52,10 +52,11 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
       />
       {localQuery.length > 0 && (
         <Button
-          variant="legacy-ghost"
-          size={"legacy-sm"}
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Clear search"
+          withTooltip={false}
           onClick={handleClear}
-          className="p-0 hover:bg-transparent"
         >
           <Icon
             icon={Cancel01Icon}
