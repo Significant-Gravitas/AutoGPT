@@ -307,10 +307,14 @@ def is_sdk_tool_path(path: str) -> bool:
 # bounce off ``Permission denied`` repeatedly.
 #
 # Two shapes are matched:
-#   (1) anything under the SDK projects dir: /<...>/.claude/projects[/...]
-#       — files, folders and globs alike (``cd …/tool-results/``,
+#   (1) anything under the SDK projects dir — files, folders and globs
+#       alike (``cd …/tool-results/``,
 #       ``ls /root/.claude/projects/*/*/tool-results/``). The sandbox has
 #       no such folder, so any reference to it ends in ``Permission denied``.
+#       The path must start a shell token and be the configured
+#       ``SDK_PROJECTS_DIR`` or a home-level ``.claude/projects`` (``~``,
+#       ``$HOME``, ``/root``, ``/home/<name>``, or relative), so a repo
+#       folder like ``/home/user/my-repo/.claude/projects`` still runs.
 #   (2) model shorthand:    tool-(results|outputs)/<toolu|mcp>_<id>.json
 #
 # The shorthand branch requires the SDK's actual ID prefix so a user
@@ -318,7 +322,10 @@ def is_sdk_tool_path(path: str) -> bool:
 # trigger a false redirect on legitimate paths like
 # ``my-pipeline/tool-outputs/data.json``.
 _SDK_TOOL_RESULT_RE = re.compile(
-    r"(?:^|[/\s'\"])/?\.claude/projects(?![\w.-])"
+    r"(?:^|(?<=[\s'\"=(`;&|<>]))"
+    rf"(?:{re.escape(SDK_PROJECTS_DIR)}"
+    r"|(?:(?:~|\$HOME|\$\{HOME\}|/root|/home/[^/\s'\"]+)/|/)?\.claude/projects)"
+    r"(?![\w.-])"
     r"|(?:^|[/\s'\"])tool-(?:results|outputs)/(?:toolu|mcp)_[\w-]+\.json",
     re.IGNORECASE,
 )
