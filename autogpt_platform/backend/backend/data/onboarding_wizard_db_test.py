@@ -33,6 +33,7 @@ async def users_with_drafts(server: SpinTestServer):
                 "userId": user_id,
                 "wizardProgress": SafeJson(wizard_progress()),
                 "wizardRevision": DRAFT_REVISION,
+                "role": "Marketing",
             }
         )
     yield user_ids
@@ -51,6 +52,8 @@ async def test_reset_clears_only_the_users_own_draft(users_with_drafts):
         wizard_progress(),
         DRAFT_REVISION,
     )
+    # The role is kept from the draft, so it is reset with it.
+    assert (reset.role, other.role) == (None, "Marketing")
 
 
 async def test_explicit_null_clears_the_draft(users_with_drafts):

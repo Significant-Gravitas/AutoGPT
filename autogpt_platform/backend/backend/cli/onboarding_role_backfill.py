@@ -157,7 +157,10 @@ def _report(plan: "RolePlan") -> None:
     click.echo(f"  reliable, kept by the wizard: {plan.kept}")
     click.echo(f"  reliable, in the wizard draft: {plan.drafted}")
     click.echo(f"  reliable, an exact option in the understanding: {plan.exact}")
-    click.echo(f"  skipped, Other's text or an AutoPilot rewrite: {plan.skipped}")
+    click.echo(
+        "  skipped, no reliable pick (Other's text, an AutoPilot rewrite, "
+        f"or a draft not past the role step): {plan.skipped}"
+    )
     click.echo(f"Roles: {roles}")
     click.echo(
         f"\nPostHog: {len(plan.posthog)} persons ($set_once; PostHog can't be "

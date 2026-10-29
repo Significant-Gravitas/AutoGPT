@@ -132,6 +132,9 @@ async def reset_user_onboarding(user_id: str):
                 # Prisma refuses a bare None for a Json column.
                 "wizardProgress": SafeJson(None),
                 "wizardRevision": {"increment": 1},
+                # Kept from the draft at the role step, so it goes with it.
+                "role": None,
+                "roleOther": None,
                 "walletShown": False,
                 "notified": [],
                 "usageReason": None,

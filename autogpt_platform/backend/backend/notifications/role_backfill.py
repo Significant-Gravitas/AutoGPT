@@ -28,7 +28,7 @@ import logging
 from collections import Counter
 from collections.abc import Callable
 from datetime import datetime
-from functools import partial
+from functools import cached_property, partial
 
 from posthog import Posthog
 from pydantic import BaseModel, ValidationError
@@ -84,6 +84,7 @@ class RoleRecord(BaseModel):
     def kept(self) -> bool:
         return bool(self.choice)
 
+    @cached_property
     def drafted_role(self) -> OnboardingRole | None:
         """The pick in the wizard draft, once they moved on from the role
         step. A draft that no longer reads as one gives none."""
@@ -100,7 +101,7 @@ class RoleRecord(BaseModel):
     def reliable_role(self) -> OnboardingRole | None:
         if self.choice:
             return OnboardingRole(choice=self.choice, other=self.other)
-        return self.drafted_role() or OnboardingRole.from_understanding(
+        return self.drafted_role or OnboardingRole.from_understanding(
             self.understanding_role
         )
 
@@ -156,7 +157,7 @@ def plan(records: list[RoleRecord], current: Current) -> RolePlan:
             continue
         if record.kept:
             result.kept += 1
-        elif record.drafted_role():
+        elif record.drafted_role:
             result.drafted += 1
         else:
             result.exact += 1
