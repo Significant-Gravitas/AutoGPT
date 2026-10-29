@@ -870,7 +870,7 @@ def _prepare_ollama_messages(messages: list[dict]) -> list[dict]:
         if images is None:
             prepared.append(message)
             continue
-        if not isinstance(images, list):
+        if not isinstance(images, (list, tuple)):
             raise ValueError(
                 "Ollama images must be a list of base64-encoded image data"
             )

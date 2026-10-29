@@ -1102,6 +1102,26 @@ class TestOllama:
         assert captured["messages"][0]["images"] == [image]
 
     @pytest.mark.asyncio
+    async def test_accepts_tuple_of_base64_images(self):
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llava",
+                api_key="",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "describe",
+                        "images": ("aW1hZ2UtYnl0ZXM=",),
+                    }
+                ],
+                max_tokens=10,
+            )
+
+        assert captured["messages"][0]["images"] == [b"image-bytes"]
+
+    @pytest.mark.asyncio
     async def test_force_json_output_requests_json_format(self):
         """``structured_completion`` passes ``force_json_output=True`` for
         every dream phase and the dream docs promise forced JSON works on
