@@ -12,7 +12,7 @@ export function MicrosoftOAuthButton({ onClick, isLoading, disabled }: Props) {
     <Button
       type="button"
       variant="secondary"
-      className="w-full gap-3"
+      className="w-full"
       onClick={onClick}
       disabled={disabled}
       loading={isLoading}
