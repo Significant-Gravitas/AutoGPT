@@ -59,8 +59,25 @@ change it, follow
 
 `make init-env` does not generate the Web Push keys. The ones in
 `backend/.env.default` are a published development pair, so make your own
-before anyone else uses the server. Generate a pair with the snippet above
-`VAPID_PRIVATE_KEY` in `backend/.env.default`, then set:
+before anyone else uses the server. With the stack running
+(`docker compose up -d`), this prints a new pair from inside the backend
+container:
+
+```bash
+docker compose exec -T rest_server python - <<'EOF'
+import base64
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from py_vapid import Vapid
+v = Vapid()
+v.generate_keys()
+private = v.private_key.private_numbers().private_value.to_bytes(32, "big")
+public = v.public_key.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+print("VAPID_PRIVATE_KEY=" + base64.urlsafe_b64encode(private).rstrip(b"=").decode())
+print("VAPID_PUBLIC_KEY=" + base64.urlsafe_b64encode(public).rstrip(b"=").decode())
+EOF
+```
+
+Then set:
 
 | File | Setting | Value |
 |------|---------|-------|
@@ -72,8 +89,11 @@ before anyone else uses the server. Generate a pair with the snippet above
 ## 3. Set your public URLs
 
 Every default points at `localhost`, which only works in a browser on the
-server itself. From any other machine, sign-up fails until these say where
-people reach the frontend and the backend.
+server itself. From any other machine, people can still sign up and log in,
+but the browser then looks for the backend on its own machine: live updates
+never connect, and the API refuses the calls the browser makes to it directly,
+such as chatting with Otto. Set these to where people reach the frontend and
+the backend.
 
 The examples use `https://autogpt.example.com` for the frontend and
 `https://api.autogpt.example.com` for the backend, behind a reverse proxy (see
@@ -86,7 +106,7 @@ WebSocket.
 |------|---------|---------|----------------|
 | `autogpt_platform/.env` | `FRONTEND_BASE_URL` | `https://autogpt.example.com` | Links the backend sends people: OAuth redirects, emails, Stripe |
 | `autogpt_platform/.env` | `NEXT_PUBLIC_FRONTEND_BASE_URL` | `https://autogpt.example.com` | The frontend's own address |
-| `frontend/.env` | `BETTER_AUTH_URL` | `https://autogpt.example.com` | The login service's address; it refuses sign-ups and logins from any other origin |
+| `frontend/.env` | `BETTER_AUTH_URL` | `https://autogpt.example.com` | The login service's own address, used in password-reset and verification links and social sign-in callbacks |
 | `frontend/.env` | `NEXT_PUBLIC_AGPT_SERVER_URL` | `https://api.autogpt.example.com/api` | The backend API, as the browser reaches it |
 | `frontend/.env` | `NEXT_PUBLIC_AGPT_WS_SERVER_URL` | `wss://api.autogpt.example.com/ws` | The WebSocket server, as the browser reaches it |
 | `backend/.env` | `PLATFORM_BASE_URL` | `https://api.autogpt.example.com` | Webhook and MCP URLs the backend hands to other services |
@@ -94,6 +114,11 @@ WebSocket.
 
 `FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` are not in
 `autogpt_platform/.env` yet: add both lines. Leave out the trailing `/`.
+
+Give `FRONTEND_BASE_URL`, `NEXT_PUBLIC_FRONTEND_BASE_URL` and
+`BETTER_AUTH_URL` the same value. The backend sends password-reset and
+verification emails only for links on `FRONTEND_BASE_URL`; to allow other
+origins as well, list them in `TRUSTED_FRONTEND_ORIGINS` in `backend/.env`.
 
 The `NEXT_PUBLIC_*` values are built into the frontend, so rebuild it after
 changing one:
@@ -202,7 +227,7 @@ Redis Cluster, not a single Redis server.
 - [ ] A TLS reverse proxy in front of `3000`, `8001` and `8006`, those ports firewalled, and `TRUSTED_PROXY_COUNT` set
 - [ ] Sign-ups limited, if the server is public
 - [ ] `docker compose up -d --build`
-- [ ] From another machine: sign up, log in, and open a workflow in the builder
+- [ ] From another machine: sign up, log in, and check the browser console shows no `localhost` connection errors
 
 ## Related documentation
 
