@@ -81,7 +81,7 @@ export function SectionNavItem({ item, isActive }: Props) {
         aria-current={isActive ? "page" : undefined}
         className={cn(
           "flex h-[38px] w-full items-center gap-2 rounded-lg px-3 text-foreground-body transition-colors",
-          isActive ? "bg-surface-hover" : "hover:bg-surface-muted",
+          isActive ? "bg-surface-hover" : "hover:bg-surface-hover/60",
         )}
       >
         <NavItemContent

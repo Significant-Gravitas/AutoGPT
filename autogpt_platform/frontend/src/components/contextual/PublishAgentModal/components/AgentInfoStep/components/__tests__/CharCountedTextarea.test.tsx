@@ -25,6 +25,6 @@ describe("CharCountedTextarea", () => {
 
     const badge = screen.getByTestId("char-count");
     expect(badge.textContent).toBe("8 / 3");
-    expect(badge.className).toMatch(/text-error-hover/);
+    expect(badge.className).toMatch(/text-error-foreground/);
   });
 });
