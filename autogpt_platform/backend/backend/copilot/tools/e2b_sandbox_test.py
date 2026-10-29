@@ -618,7 +618,8 @@ class TestGetOrCreateSandbox:
         # Redis delete called at least once to clear stale id
         redis.delete.assert_awaited()
 
-    def test_a_box_replacing_a_gone_one_flags_the_turn(self):
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_box_replacing_a_gone_one_flags_the_turn(self):
         """The chat had a box and E2B no longer has it: the turn that gets the
         new one is told, so the model does not find out from a failed cd."""
         new_sb = _mock_sandbox("sb-fresh")
@@ -632,18 +633,19 @@ class TestGetOrCreateSandbox:
                 side_effect=SandboxNotFoundException("sb-gone")
             )
             mock_cls.create = AsyncMock(return_value=new_sb)
-            asyncio.run(get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT))
+            await get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
 
         assert (
             call(sandbox_replaced_key(_SESSION_ID), "1", ex=REPLACED_FLAG_TTL)
             in redis.set.await_args_list
         )
 
-    def test_a_new_chats_first_box_is_not_a_replacement(self):
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_new_chats_first_box_is_not_a_replacement(self):
         redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
         with _patch_sdk() as mock_cls, _patch_redis(redis):
             mock_cls.create = AsyncMock(return_value=_mock_sandbox("sb-new"))
-            asyncio.run(get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT))
+            await get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
 
         flagged = [
             c

@@ -34,6 +34,7 @@ from .hidden_rows import visible_to_model
 from .legacy_first_turn_memory import without_stored_first_turn_memory
 from .legacy_session_file import restore_session_file
 from .model import ChatMessage
+from .sandbox_status import SANDBOX_REPLACED_NOTICE, SANDBOX_STATUS_TAG
 
 logger = logging.getLogger(__name__)
 
@@ -271,8 +272,8 @@ def strip_stale_thinking_blocks(content: str) -> str:
 
 
 def strip_for_upload(content: str) -> str:
-    """Strip progress, mention attachments, stale thinking and matched-skill
-    hints in a single parse.
+    """Strip progress, mention attachments, stale thinking, matched-skill
+    hints and sandbox replacement notices in a single parse.
 
     Like ``strip_stale_thinking_blocks(strip_progress_entries(content))``, but
     it also drops ``MENTION_ATTACHMENT_TYPES`` attachments and parses the JSONL
@@ -379,6 +380,14 @@ def strip_for_upload(content: str) -> str:
         if "matched_skills" in line:
             rewritten = rewrite_user_entry(
                 entry, lambda text: _MATCHED_SKILLS_RE.sub("", text)
+            )
+            if rewritten is not None:
+                entry = rewritten
+                needs_reserialize = True
+
+        if SANDBOX_STATUS_TAG in line:
+            rewritten = rewrite_user_entry(
+                entry, lambda text: text.replace(SANDBOX_REPLACED_NOTICE, "")
             )
             if rewritten is not None:
                 entry = rewritten
