@@ -4,8 +4,8 @@ import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal, cast
+from urllib.parse import urlsplit, urlunsplit
 
-import posthog
 import stripe
 from prisma.enums import (
     CreditRefundRequestStatus,
@@ -23,9 +23,10 @@ from prisma.types import (
 from pydantic import BaseModel
 
 from backend.api.features.admin.model import UserHistoryResponse
+from backend.data import subscription_activation, subscription_trial_stripe
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.credit_history import get_credit_history
-from backend.data.db import query_raw_with_schema
+from backend.data.db import query_raw_with_schema, transaction
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
 from backend.data.model import (
     AutoTopUpConfig,
@@ -34,23 +35,42 @@ from backend.data.model import (
     TransactionHistory,
 )
 from backend.data.model import User as AppUser
-from backend.data.model import UserTransaction
+from backend.data.model import UserCreditTransactionAdminView
 from backend.data.notifications import NotificationEventModel, OpsData
+from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_checkout import (
     ensure_no_unconverted_trial,
     expire_other_subscription_checkouts,
     subscription_checkout_lock,
 )
-from backend.data.subscription_trial_stripe import reconcile_trial_subscription
+from backend.data.subscription_lookup_cache import (
+    ActiveSubscription,
+    invalidate_active_subscription_cache,
+    read_active_subscription,
+)
+from backend.data.subscription_pending_cache import (
+    PENDING_CHANGES,
+    PendingChange,
+    invalidate_pending_subscription_change,
+)
+from backend.data.subscription_trial import get_subscription_trial
+from backend.data.subscription_upgrade_cache import discard_subscription_upgrade_preview
+from backend.data.subscription_upgrade_models import (
+    StoredUpgradePreview,
+    UpgradePreviewUnavailable,
+)
 from backend.data.user import get_user_by_id, get_user_email_by_id
+from backend.data.wallet_payment_state import invoice_paid_from_wallet
 from backend.notifications.queue import queue_notification_async
+from backend.util import posthog_client
 from backend.util.cache import cached
-from backend.util.exceptions import InsufficientBalanceError
+from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.json import SafeJson, dumps
 from backend.util.metrics import DiscordChannel, discord_send_alert
 from backend.util.models import Pagination
+from backend.util.posthog_events import PostHogEvent
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
 
@@ -60,9 +80,6 @@ if TYPE_CHECKING:
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
-if settings.secrets.posthog_api_key:
-    posthog.api_key = settings.secrets.posthog_api_key
-    posthog.host = settings.secrets.posthog_host
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
@@ -76,6 +93,8 @@ BillingCycle = Literal["monthly", "yearly"]
 class UsageTransactionMetadata(BaseModel):
     graph_exec_id: str | None = None
     graph_id: str | None = None
+    # Set instead of the graph fields when the usage came from an AutoPilot chat.
+    chat_session_id: str | None = None
     node_id: str | None = None
     node_exec_id: str | None = None
     block_id: str | None = None
@@ -367,10 +386,23 @@ class UserCreditBase(ABC):
         pass
 
     @staticmethod
-    async def create_billing_portal_session(user_id: str) -> str:
+    async def create_billing_portal_session(user_id: str) -> str | None:
+        """Return a Stripe billing-portal URL, or None when there is nothing
+        to manage.
+
+        The billing page requests this on load, so it must NOT create a Stripe
+        Customer as a side effect (same contract as ``list_invoices``). A user
+        with no customer has no card, invoices, or subscription to manage, and
+        creating one here would make an admin-granted plan look Stripe-billed
+        to the reconciliation sweep, which would then revoke it to NO_TIER.
+        Checkout still provisions the customer when the user actually buys.
+        """
+        user = await get_user_by_id(user_id)
+        if not user.stripe_customer_id:
+            return None
         session = await stripe_call(
             stripe.billing_portal.Session.create_async,
-            customer=await get_stripe_customer_id(user_id),
+            customer=user.stripe_customer_id,
             return_url=base_url + "/settings/billing",
         )
         return session.url
@@ -751,7 +783,7 @@ class UserCredit(UserCreditBase):
         what the person on call triages by, and every timestamp is absolute —
         the email is read hours later."""
         now = datetime.now(tz=timezone.utc)
-        stamp = f"{now.day} {now.strftime('%B')} at {now.strftime('%H:%M')}"
+        stamp = f"{now.day} {now.strftime('%b %Y')} at {now.strftime('%H:%M')} UTC"
         await queue_notification_async(
             NotificationEventModel[OpsData](
                 user_id=user.id,
@@ -801,13 +833,16 @@ class UserCredit(UserCreditBase):
 
         # Auto top-up if balance is below threshold.
         auto_top_up = await get_auto_top_up(user_id)
-        if auto_top_up.threshold and balance < auto_top_up.threshold:
+        if (
+            auto_top_up.threshold
+            and balance < auto_top_up.threshold
+            and not await _legacy_chat_top_up_exists(user_id, metadata)
+        ):
             try:
                 await self._top_up_credits(
                     user_id=user_id,
                     amount=auto_top_up.amount,
-                    # Avoid multiple auto top-ups within the same graph execution.
-                    key=f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id}",
+                    key=_auto_top_up_key(user_id, metadata),
                     ceiling_balance=auto_top_up.threshold,
                     top_up_type=TopUpType.AUTO,
                 )
@@ -874,7 +909,7 @@ class UserCredit(UserCreditBase):
     async def top_up_refund(
         self, user_id: str, transaction_key: str, metadata: dict[str, str]
     ) -> int:
-        transaction = await CreditTransaction.prisma().find_first_or_raise(
+        transaction = await CreditTransaction.prisma().find_first(
             where={
                 "transactionKey": transaction_key,
                 "userId": user_id,
@@ -882,6 +917,8 @@ class UserCredit(UserCreditBase):
                 "type": CreditTransactionType.TOP_UP,
             }
         )
+        if transaction is None:
+            raise NotFoundError(f"Top-up {transaction_key} not found")
         balance = await self.get_credits(user_id)
         amount = transaction.amount
         refund_key_format = settings.config.refund_request_time_key_format
@@ -938,13 +975,9 @@ class UserCredit(UserCreditBase):
             )
             return
 
-        transaction = await CreditTransaction.prisma().find_first_or_raise(
-            where={
-                "transactionKey": str(request.payment_intent),
-                "isActive": True,
-                "type": CreditTransactionType.TOP_UP,
-            }
-        )
+        transaction = await self._find_top_up(request)
+        if not transaction:
+            return
         if request.amount <= 0 or request.amount > transaction.amount:
             raise AssertionError(
                 f"Invalid amount to deduct ${request.amount / 100} from ${transaction.amount / 100} top-up"
@@ -984,13 +1017,9 @@ class UserCredit(UserCreditBase):
         )
 
     async def handle_dispute(self, dispute: stripe.Dispute):
-        transaction = await CreditTransaction.prisma().find_first_or_raise(
-            where={
-                "transactionKey": str(dispute.payment_intent),
-                "isActive": True,
-                "type": CreditTransactionType.TOP_UP,
-            }
-        )
+        transaction = await self._find_top_up(dispute)
+        if not transaction:
+            return
         user_id = transaction.userId
         amount = dispute.amount
         balance = await self.get_credits(user_id)
@@ -1045,6 +1074,47 @@ class UserCredit(UserCreditBase):
             "uncategorized_text": evidence_text[:20000],
         }
         await stripe_call(stripe.Dispute.modify_async, dispute.id, evidence=evidence)
+
+    async def _find_top_up(
+        self, request: stripe.Refund | stripe.Dispute
+    ) -> CreditTransaction | None:
+        transaction = await CreditTransaction.prisma().find_first(
+            where={
+                "transactionKey": str(request.payment_intent),
+                "isActive": True,
+                "type": CreditTransactionType.TOP_UP,
+            }
+        )
+        if transaction:
+            return transaction
+        # A Checkout top-up stays keyed by its session until fulfilled, so a miss
+        # raises (Stripe retries) unless the payment cannot have bought credits.
+        if not request.payment_intent or not await self._paid_invoice_without_credits(
+            str(request.payment_intent)
+        ):
+            raise RuntimeError(
+                f"No active top-up matches {request.id} (payment intent "
+                f"{request.payment_intent}); retrying until one is fulfilled"
+            )
+        # A dispute is a chargeback someone must answer in Stripe; only ERROR reaches Sentry.
+        log = logger.error if isinstance(request, stripe.Dispute) else logger.warning
+        log(
+            f"Ignoring {request.id} (${request.amount / 100:.2f}): payment intent "
+            f"{request.payment_intent} paid a subscription invoice, which grants no credits"
+        )
+        return None
+
+    async def _paid_invoice_without_credits(self, payment_intent_id: str) -> bool:
+        # With the grant on, a paid subscription invoice buys credits too.
+        if settings.config.enable_subscription_credit_grant:
+            return False
+        # Pinned: 2025-03-31.basil dropped PaymentIntent.invoice for InvoicePayment.
+        payment_intent = await stripe_call(
+            stripe.PaymentIntent.retrieve_async,
+            payment_intent_id,
+            stripe_version="2025-02-24.acacia",
+        )
+        return bool(payment_intent.invoice)
 
     async def _top_up_credits(
         self,
@@ -1105,6 +1175,7 @@ class UserCredit(UserCreditBase):
 
         successful_transaction = None
         new_transaction_key = None
+        charged: stripe.PaymentIntent | None = None
         for payment_method in payment_methods:
             if transaction_type == CreditTransactionType.CARD_CHECK:
                 setup_intent = await stripe_call(
@@ -1142,6 +1213,7 @@ class UserCredit(UserCreditBase):
                         {"payment_intent": payment_intent}
                     )
                     new_transaction_key = payment_intent.id
+                    charged = payment_intent
                     break
 
         if not successful_transaction:
@@ -1160,11 +1232,13 @@ class UserCredit(UserCreditBase):
         # webhook/retry replays don't double-emit.
         if activation is not None and amount > 0:
             _track_billing_event(
-                "credit_topup_success",
+                PostHogEvent.TOPUP_COMPLETED,
                 user_id,
                 {
                     "amount_credits": amount,
                     "top_up_type": top_up_type.value,
+                    "amount_cents": charged.amount if charged else None,
+                    "currency": charged.currency if charged else None,
                 },
             )
 
@@ -1303,11 +1377,13 @@ class UserCredit(UserCreditBase):
             )
             if activation is not None:
                 _track_billing_event(
-                    "credit_topup_success",
+                    PostHogEvent.TOPUP_COMPLETED,
                     credit_transaction.userId,
                     {
                         "amount_credits": credit_transaction.amount,
                         "top_up_type": "CHECKOUT",
+                        "amount_cents": checkout_session.amount_total,
+                        "currency": checkout_session.currency,
                     },
                 )
 
@@ -1398,6 +1474,28 @@ class UserCredit(UserCreditBase):
             )
             for invoice in invoices.data
         ]
+
+
+def _auto_top_up_key(user_id: str, metadata: UsageTransactionMetadata) -> str:
+    """One auto top-up per graph execution or chat. A top-up stays inactive
+    until its charge succeeds, so the key is what stops a repeat charge."""
+    return f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id or metadata.chat_session_id}"
+
+
+async def _legacy_chat_top_up_exists(
+    user_id: str, metadata: UsageTransactionMetadata
+) -> bool:
+    """A chat's auto top-up keyed before chats had their own id (only a failed
+    or still-pending one keeps its key; a charged one takes the payment's)."""
+    if not metadata.chat_session_id:
+        return False
+    legacy_key = f"AUTO-TOP-UP-{user_id}-copilot-session-{metadata.chat_session_id}"
+    return (
+        await CreditTransaction.prisma().find_first(
+            where={"transactionKey": legacy_key, "userId": user_id}
+        )
+        is not None
+    )
 
 
 class DisabledUserCredit(UserCreditBase):
@@ -1519,16 +1617,42 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
     get_user_by_id.cache_delete(user_id)
 
 
-async def set_subscription_tier(
-    user_id: str,
-    tier: SubscriptionTier,
-) -> None:
-    """Set the user's subscription tier."""
+async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
+    """Set the user's subscription tier. No lifecycle sync: the subscription
+    status doesn't read the tier, and the Stripe change that comes with a
+    tier change syncs through its own webhook.
+
+    A drop from a plan or trial to NO_TIER stamps ``subscriptionEndedAt``, which
+    keeps product mail going for the win-back window; any other tier clears it."""
     data: UserUpdateInput = {
         "subscriptionTier": tier,
     }
-    await User.prisma().update(where={"id": user_id}, data=data)
+    if tier == SubscriptionTier.NO_TIER:
+        # One conditional write, so the tier and the stamp change together and
+        # a repeated NO_TIER write doesn't restart the window.
+        await User.prisma().update_many(
+            where={
+                "id": user_id,
+                "subscriptionTier": {"not": SubscriptionTier.NO_TIER},
+            },
+            data={**data, "subscriptionEndedAt": datetime.now(timezone.utc)},
+        )
+    else:
+        data["subscriptionEndedAt"] = None
+        await User.prisma().update(where={"id": user_id}, data=data)
     invalidate_subscription_caches(user_id)
+
+
+async def invalidate_billing_lookups(customer_id: str) -> None:
+    """Drop the customer's cached billing lookups on every worker: the active
+    subscription and any pending change. Every path that changes the
+    customer's subscription in Stripe calls this after the change; it never
+    raises. Both at once, so a Redis outage costs the caller one deadline,
+    not two in a row."""
+    await asyncio.gather(
+        invalidate_active_subscription_cache(customer_id),
+        invalidate_pending_subscription_change(customer_id),
+    )
 
 
 def invalidate_subscription_caches(user_id: str) -> None:
@@ -1538,12 +1662,15 @@ def invalidate_subscription_caches(user_id: str) -> None:
     from backend.copilot.rate_limit import get_user_tier  # local import avoids circular
 
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
-    # Invalidate the pending-change cache too — an admin tier override or the
-    # webhook-driven phase transition means any cached pending-change state
-    # (schedule, cancel_at_period_end) is likely stale. Without this the
-    # billing page can show a pending change for up to 30s after the tier
-    # has already flipped.
-    get_pending_subscription_change.cache_delete(user_id)
+    # The billing lookups need nothing here: they are read from the Stripe
+    # subscription alone, and every path that changes it in Stripe
+    # (including the payment-failure cancel) calls invalidate_billing_lookups.
+
+
+# Set as ``cancellation_details.comment`` when a failed renewal finds that the
+# customer replaced that subscription with another plan. The deletion webhook
+# reads it so that cancel is not reported as the customer leaving.
+REPLACED_PLAN_CANCELLATION_COMMENT = "autogpt:replaced_by_another_plan"
 
 
 async def _cancel_customer_subscriptions(
@@ -1569,6 +1696,22 @@ async def _cancel_customer_subscriptions(
     # filter at a time (no OR), and we explicitly want to skip canceled/incomplete/
     # past_due subs rather than filter them out client-side via status="all".
     seen_ids: set[str] = set()
+    try:
+        await _cancel_listed_subscriptions(
+            customer_id, seen_ids, exclude_sub_id, at_period_end
+        )
+    finally:
+        if seen_ids:
+            await invalidate_billing_lookups(customer_id)
+    return len(seen_ids)
+
+
+async def _cancel_listed_subscriptions(
+    customer_id: str,
+    seen_ids: set[str],
+    exclude_sub_id: str | None,
+    at_period_end: bool,
+) -> None:
     for status in ("active", "trialing"):
         subscriptions = await stripe_call(
             stripe.Subscription.list_async,
@@ -1606,14 +1749,25 @@ async def _cancel_customer_subscriptions(
                 canceled = await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    invoice_now=False,
-                    prorate=False,
+                    **_cancel_params(trial=True),
                 )
                 if (sub.get("metadata") or {}).get("trial_enrollment_id"):
                     await sync_subscription_from_stripe(dict(canceled))
             else:
-                await stripe_call(stripe.Subscription.cancel_async, sub_id)
-    return len(seen_ids)
+                await stripe_call(
+                    stripe.Subscription.cancel_async,
+                    sub_id,
+                    **_cancel_params(trial=False),
+                )
+
+
+def _cancel_params(*, trial: bool) -> stripe.Subscription.CancelParams:
+    """A trial ends without an invoice or proration."""
+    params: stripe.Subscription.CancelParams = {}
+    if trial:
+        params["invoice_now"] = False
+        params["prorate"] = False
+    return params
 
 
 async def cancel_stripe_subscription(user_id: str) -> bool:
@@ -1645,10 +1799,9 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
             customer_id, at_period_end=True
         )
         if cancelled_count > 0:
-            get_pending_subscription_change.cache_delete(user_id)
             current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
             _track_billing_event(
-                "subscription_cancellation_scheduled",
+                PostHogEvent.SUBSCRIPTION_CANCELLATION_SCHEDULED,
                 user_id,
                 {"subscription_tier": current_tier.value},
             )
@@ -1682,10 +1835,12 @@ async def get_proration_credit_cents(user_id: str, monthly_cost_cents: int) -> i
         # Proration only applies to a paid, active subscription — a trialing
         # sub has no paid time to prorate. Matches the previous active-only
         # query (status="active") while sharing the cached lookup.
-        if sub is None or sub.get("status") != "active":
+        if sub is None or sub.status != "active":
             return 0
-        period_start: int = sub["current_period_start"]
-        period_end: int = sub["current_period_end"]
+        period_start = sub.current_period_start
+        period_end = sub.current_period_end
+        if period_start is None or period_end is None:
+            return 0
         now = int(time.time())
         total_seconds = period_end - period_start
         remaining_seconds = max(period_end - now, 0)
@@ -1728,7 +1883,7 @@ def is_tier_downgrade(current: SubscriptionTier, target: SubscriptionTier) -> bo
 
 class PendingChangeUnknown(Exception):
     """Raised when pending-change state cannot be determined (e.g. LaunchDarkly
-    price-id lookup failed). Propagates past the @cached wrapper so the next
+    price-id lookup failed). Propagates past the pending-change cache so the next
     request retries instead of serving a stale `None` for the TTL window."""
 
 
@@ -1743,10 +1898,9 @@ async def _get_active_subscription(customer_id: str) -> stripe.Subscription | No
     return None
 
 
-@cached(ttl_seconds=15, maxsize=2048, cache_none=True)
 async def _get_active_subscription_cached(
     customer_id: str,
-) -> stripe.Subscription | None:
+) -> ActiveSubscription | None:
     """Short-TTL per-customer cache over :func:`_get_active_subscription`.
 
     ``get_subscription_status`` resolves the active subscription up to three
@@ -1757,14 +1911,17 @@ async def _get_active_subscription_cached(
     per request, and again on every page view. A brief cache collapses them
     into one lookup per customer per window.
 
-    Read-only display helpers use this. Subscription mutation flows keep calling
-    :func:`_get_active_subscription` directly so they always act on fresh Stripe
-    state; the 15-second window here only affects display fields (billing cycle,
-    next-invoice date, proration estimate), which the frontend re-fetches and
-    which self-correct well inside the tolerances already used elsewhere (the
-    pending-change lookup is cached for 30s).
+    The cache lives in Redis and is versioned per customer, so a subscription
+    change (``invalidate_active_subscription_cache``) is seen by every API
+    worker on its next read rather than only by the one that made it. Redis
+    trouble falls through to Stripe within a short deadline (see
+    ``backend.data.subscription_lookup_cache``). Subscription mutation flows
+    keep calling :func:`_get_active_subscription` directly so they always act
+    on fresh Stripe state.
     """
-    return await _get_active_subscription(customer_id)
+    return await read_active_subscription(
+        customer_id, lambda: _get_active_subscription(customer_id)
+    )
 
 
 async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
@@ -1787,15 +1944,9 @@ async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
             "get_user_billing_cycle: Stripe lookup failed for user %s", user_id
         )
         return None
-    if sub is None:
+    if sub is None or not sub.price_id:
         return None
-    items = sub["items"].data
-    if not items:
-        return None
-    price = items[0].price
-    current_price_id = price if isinstance(price, str) else price.id
-    if not current_price_id:
-        return None
+    current_price_id = sub.price_id
 
     priceable = (
         SubscriptionTier.BASIC,
@@ -1837,8 +1988,7 @@ async def get_active_subscription_period_end(user_id: str) -> int | None:
         return None
     if sub is None:
         return None
-    period_end = sub.current_period_end
-    return int(period_end) if period_end else None
+    return sub.current_period_end or None
 
 
 # Substrings Stripe uses in InvalidRequestError messages when the schedule is
@@ -2010,11 +2160,14 @@ async def modify_stripe_subscription_for_tier(
     user_id: str,
     tier: SubscriptionTier,
     billing_cycle: BillingCycle = "monthly",
+    *,
+    proration_date: int | None = None,
+    upgrade_preview: StoredUpgradePreview | None = None,
 ) -> bool:
     """Change a Stripe subscription to a new paid tier.
 
     Upgrades (e.g. PRO→BUSINESS) apply immediately via ``stripe.Subscription.modify``
-    with ``proration_behavior="create_prorations"``: Stripe credits unused time on
+    with ``proration_behavior="always_invoice"``: Stripe credits unused time on
     the old plan and charges the pro-rated amount for the new plan in the same
     billing cycle.
 
@@ -2052,6 +2205,18 @@ async def modify_stripe_subscription_for_tier(
     if not items:
         return False
     sub_id = sub.id
+    if upgrade_preview and (
+        upgrade_preview.user_id != user_id
+        or upgrade_preview.subscription_id != sub_id
+        or upgrade_preview.target_price_id != price_id
+        or upgrade_preview.item_id != items[0].id
+        or upgrade_preview.current_price_id != items[0].price.id
+        or upgrade_preview.quantity != items[0].quantity
+        or upgrade_preview.preview.proration_date != proration_date
+    ):
+        raise UpgradePreviewUnavailable(
+            "Your subscription changed. Review the upgrade again."
+        )
 
     # Invalidate the cache unconditionally on exit (success OR failure): any
     # Stripe mutation below — clearing cancel_at_period_end, releasing an old
@@ -2111,10 +2276,32 @@ async def modify_stripe_subscription_for_tier(
                 "billing_cycle": billing_cycle,
             },
         }
+        if proration_date is not None:
+            modify_kwargs["proration_date"] = proration_date
+        if upgrade_preview is not None:
+            modify_kwargs["items"][0]["quantity"] = upgrade_preview.quantity
+            modify_kwargs["idempotency_key"] = (
+                f"subscription-upgrade:{upgrade_preview.preview.preview_id}"
+            )
         if sub.cancel_at_period_end:
             modify_kwargs["cancel_at_period_end"] = False
 
-        await stripe_call(stripe.Subscription.modify_async, sub_id, **modify_kwargs)
+        # Retire definitive failures cached by Stripe. Connection errors and
+        # 5xx may have charged, so they must retain the same idempotency key.
+        try:
+            await stripe_call(stripe.Subscription.modify_async, sub_id, **modify_kwargs)
+        except stripe.CardError:
+            if upgrade_preview is not None:
+                await discard_subscription_upgrade_preview(
+                    user_id, upgrade_preview.preview.preview_id
+                )
+            raise
+        except stripe.InvalidRequestError as exc:
+            if upgrade_preview is not None and exc.http_status in {400, 402}:
+                await discard_subscription_upgrade_preview(
+                    user_id, upgrade_preview.preview.preview_id
+                )
+            raise
         # Flip the DB tier immediately. The customer.subscription.updated webhook
         # will also fire and set it again — idempotent. Without this synchronous
         # update, the UI refetches before the webhook lands and shows the old
@@ -2153,9 +2340,10 @@ async def modify_stripe_subscription_for_tier(
         # the DB flip fails, so gating here avoids double-firing on success.
         if db_flip_succeeded and is_tier_upgrade(current_tier, tier):
             _track_billing_event(
-                "subscription_upgraded",
+                PostHogEvent.SUBSCRIPTION_CHANGED,
                 user_id,
                 {
+                    "change_type": "upgrade",
                     "previous_subscription_tier": current_tier.value,
                     "subscription_tier": tier.value,
                     "billing_cycle": billing_cycle,
@@ -2163,7 +2351,7 @@ async def modify_stripe_subscription_for_tier(
             )
         return True
     finally:
-        get_pending_subscription_change.cache_delete(user_id)
+        await invalidate_billing_lookups(user.stripe_customer_id)
 
 
 async def release_pending_subscription_schedule(user_id: str) -> bool:
@@ -2232,11 +2420,10 @@ async def release_pending_subscription_schedule(user_id: str) -> bool:
             )
     finally:
         if did_anything:
-            get_pending_subscription_change.cache_delete(user_id)
+            await invalidate_billing_lookups(user.stripe_customer_id)
     return did_anything
 
 
-@cached(ttl_seconds=30, maxsize=512, cache_none=True, shared_cache=True)
 async def get_pending_subscription_change(
     user_id: str,
 ) -> tuple[SubscriptionTier, datetime, BillingCycle | None] | None:
@@ -2245,34 +2432,55 @@ async def get_pending_subscription_change(
     Reflects both Subscription Schedule phase transitions (paid→paid downgrade)
     and ``cancel_at_period_end=True`` (paid→BASIC cancel).
 
-    Cached for 30 seconds per user_id. *Why the cache exists:* this function
+    Cached for 30 seconds per Stripe customer, for every API worker
+    (``PENDING_CHANGES``, a versioned cache). *Why the cache exists:* this function
     runs on every dashboard/home fetch and would otherwise fire
     2× Subscription.list + 1× Schedule.retrieve per page load. A busy user
     polling the billing page would quickly brush up against Stripe's per-API
     rate limits; the 30s TTL absorbs dashboard polling while being short
     enough that the UI reconciles quickly after a downgrade / cancel action.
 
-    *Invalidation contract.* Every call-site that mutates Stripe state which
-    could change the pending-change answer MUST call
-    ``get_pending_subscription_change.cache_delete(user_id)`` so the UI never
-    shows a stale pending badge after a user-visible action. Current
-    invalidators (keep this list in sync when adding new mutators):
+    *Invalidation contract.* The answer is read from the customer's Stripe
+    subscription alone (``cancel_at_period_end`` and its schedule), never from
+    the DB tier. Every call-site that changes those in Stripe MUST await
+    ``invalidate_billing_lookups(customer_id)`` after the change,
+    so the UI never shows a stale pending badge after a user-visible action;
+    a read already in flight then can't store its old answer. Current
+    invalidators (keep this list in sync when adding new mutators), each
+    through ``invalidate_billing_lookups``, which drops the active-subscription
+    lookup too:
 
-    - ``set_subscription_tier`` — admin or webhook-driven tier flip.
+    - ``sync_subscription_from_stripe`` — ``finally`` block: every
+      subscription and schedule webhook, Stripe-side changes (billing portal,
+      dashboard) and trial transitions, whether or not the tier changed.
+    - ``_cancel_customer_subscriptions`` — ``finally`` block: user cancels,
+      stale-subscription cleanup, and the payment-failure cancel.
     - ``modify_stripe_subscription_for_tier`` — ``finally`` block (covers
       upgrade path clear + downgrade-schedule create + any partial failure).
     - ``release_pending_subscription_schedule`` — ``finally`` block when a
       schedule release OR ``cancel_at_period_end`` clear succeeded.
-    - ``cancel_stripe_subscription`` — after scheduling period-end cancel.
-    - ``sync_subscription_from_stripe`` — webhook entry point.
-    - ``set_user_tier`` (``backend.copilot.rate_limit``) — admin tier override
-      invalidates any cached pending state keyed off the old tier.
+    - ``handle_subscription_payment_failure`` — after paying a past-due
+      invoice from the balance; ``handle_subscription_payment_success``.
+    - The trial conversion (``_save_conversion``), after saving the plan.
+
+    ``PendingChangeUnknown`` and Stripe errors reach every caller and are not
+    cached, so the next request retries.
     """
     user = await get_user_by_id(user_id)
-    if not user.stripe_customer_id:
+    customer_id = user.stripe_customer_id
+    if not customer_id:
         # Short-circuit for users with no Stripe customer (admin-granted tiers,
         # BASIC-only users): skip the Stripe API calls entirely.
         return None
+    pending = await PENDING_CHANGES.read(
+        customer_id, lambda: _fetch_pending_subscription_change(customer_id)
+    )
+    if pending is None:
+        return None
+    return pending.tier, pending.effective_at, pending.billing_cycle
+
+
+async def _fetch_pending_subscription_change(customer_id: str) -> PendingChange | None:
 
     priceable = (
         SubscriptionTier.BASIC,
@@ -2306,22 +2514,31 @@ async def get_pending_subscription_change(
             "Stripe price lookup failed; pending-change state cannot be determined"
         )
 
-    sub = await _get_active_subscription(user.stripe_customer_id)
+    sub = await _get_active_subscription(customer_id)
     if sub is None:
+        return None
+    if sub.get("status") == "trialing" and (sub.get("metadata") or {}).get(
+        "trial_enrollment_id"
+    ):
+        # A cancel-pending trial is not a paid plan with a downgrade queued.
         return None
     period_end = sub.current_period_end
     if not isinstance(period_end, int):
         return None
     effective_at = datetime.fromtimestamp(period_end, tz=timezone.utc)
     if sub.cancel_at_period_end:
-        return SubscriptionTier.NO_TIER, effective_at, None
+        return PendingChange(tier=SubscriptionTier.NO_TIER, effective_at=effective_at)
     if not sub.schedule:
         return None
     schedule_id = sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
     schedule = await stripe_call(
         stripe.SubscriptionSchedule.retrieve_async, schedule_id
     )
-    return _next_phase_tier_and_start(schedule, price_to_tier, price_to_cycle)
+    next_phase = _next_phase_tier_and_start(schedule, price_to_tier, price_to_cycle)
+    if next_phase is None:
+        return None
+    tier, starts_at, cycle = next_phase
+    return PendingChange(tier=tier, effective_at=starts_at, billing_cycle=cycle)
 
 
 def _next_phase_tier_and_start(
@@ -2484,6 +2701,11 @@ def _is_stripe_reconcilable(user: AppUser) -> bool:
     and are not on ENTERPRISE. Manual/admin grants are modeled as a paid tier
     with no Stripe customer, or as ENTERPRISE — both are managed out-of-band and
     must never be auto-revoked by Stripe reconciliation.
+
+    That model only holds while read paths never provision a customer: anything
+    the billing page requests on load (``create_billing_portal_session``,
+    ``list_invoices``) must return empty for a user without one, otherwise an
+    admin grant becomes reconcilable and the sweep revokes it (SECRT-2770).
     """
     return (
         user.stripe_customer_id is not None
@@ -2601,6 +2823,10 @@ async def _create_subscription_checkout(
     await _expire_open_subscription_sessions(customer_id)
     await ensure_no_unconverted_trial(user_id, customer_id)
     datafast = _datafast_metadata(datafast_visitor_id, datafast_session_id)
+    destination = urlsplit(success_url)
+    return_to = urlunsplit(
+        ("", "", destination.path or "/", destination.query, destination.fragment)
+    )
     session = await stripe_call(
         stripe.checkout.Session.create_async,
         customer=customer_id,
@@ -2613,6 +2839,11 @@ async def _create_subscription_checkout(
                 "user_id": user_id,
                 "tier": tier.value,
                 "billing_cycle": billing_cycle,
+                **(
+                    {"pro_activation_return_to": return_to}
+                    if len(return_to) <= 500
+                    else {}
+                ),
                 **datafast,
             }
         },
@@ -2667,7 +2898,37 @@ async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> Non
         )
 
 
-async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
+async def replaced_by_newer_plan(customer_id: str, subscription: dict) -> bool:
+    """Whether the customer has an active or trialing plan created after this one.
+
+    An older plan never replaces a newer one, even when a failed cleanup left
+    it active. A trial cancelled to end at ``trial_end`` does not count: it
+    ends without an invoice and never becomes a plan. Without a ``created``,
+    nothing is treated as newer.
+    """
+    created = subscription.get("created")
+    if not created:
+        return False
+    for status in ("active", "trialing"):
+        subscriptions = await stripe_call(
+            stripe.Subscription.list_async,
+            customer=customer_id,
+            status=status,
+            limit=10,
+        )
+        async for other in stripe_list_items(subscriptions):
+            if other["id"] == subscription["id"]:
+                continue
+            if status == "trialing" and other.get("cancel_at_period_end"):
+                continue
+            if (other.get("created") or 0) > created:
+                return True
+    return False
+
+
+async def sync_subscription_from_stripe(
+    stripe_subscription: dict, *, track_lifecycle: bool = True
+) -> None:
     """Update User.subscriptionTier from a Stripe subscription object.
 
     Expected shape of stripe_subscription (subset of Stripe's Subscription object):
@@ -2675,7 +2936,34 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         status:   str                  — "active" | "trialing" | "canceled" | ...
         id:       str                  — Stripe subscription ID
         items.data[].price.id: str     — Stripe price ID identifying the tier
+
+    Every ``customer.subscription.*`` webhook and every trial transition ends
+    up here, so this is also where the PostHog lifecycle properties are
+    refreshed (in the background, from the customer's current state).
+    ``track_lifecycle=False`` is for the periodic tier sweep, which would
+    otherwise fan out one Stripe call per trial; the daily lifecycle sweep
+    covers those users.
+
+    The payload is Stripe's latest word on the subscription, so afterwards
+    the cached lookups the billing page reads (the active subscription and
+    any pending change) are dropped on every worker, whether or not the tier
+    changed: a cancellation or downgrade scheduled in Stripe changes neither.
+    Only afterwards: saving the tier can change Stripe too (a rejected trial
+    is canceled), and a read in between would cache the state before that.
     """
+    customer_id = stripe_subscription.get("customer")
+    try:
+        await _sync_subscription_tier_from_stripe(stripe_subscription)
+    finally:
+        if isinstance(customer_id, str) and customer_id:
+            await invalidate_billing_lookups(customer_id)
+    if track_lifecycle:
+        schedule_posthog_lifecycle_sync(
+            stripe_customer_id=stripe_subscription.get("customer")
+        )
+
+
+async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None:
     customer_id = stripe_subscription.get("customer")
     if not customer_id:
         logger.warning(
@@ -2725,10 +3013,29 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
             stripe_subscription.get("status", ""),
         )
         return
-    status = stripe_subscription.get("status", "")
     new_sub_id = stripe_subscription.get("id", "")
-    if metadata.get("trial_enrollment_id") and new_sub_id:
-        trial_result = await reconcile_trial_subscription(user.id, new_sub_id)
+    if not new_sub_id:
+        return
+    # Webhook payloads can be stale. Only current Stripe state changes access.
+    stripe_subscription = dict(
+        await stripe_call(stripe.Subscription.retrieve_async, new_sub_id)
+    )
+    subscription_activation.verify_subscription_owner(user, stripe_subscription)
+    metadata = stripe_subscription.get("metadata") or {}
+    status = stripe_subscription.get("status", "")
+    enrollment = await get_subscription_trial(user.id)
+    owns_trial = enrollment is not None and (
+        enrollment.subscription_id == new_sub_id
+        or (
+            not enrollment.subscription_id
+            and enrollment.converted_at is None
+            and stripe_subscription.get("trial_end") is not None
+        )
+    )
+    if metadata.get("trial_enrollment_id") or owns_trial:
+        trial_result = await subscription_trial_stripe.reconcile_trial_subscription(
+            user.id, new_sub_id
+        )
         if trial_result is None:
             raise ValueError("Stripe trial is missing its matching enrollment")
         stripe_subscription, trial_tier = trial_result
@@ -2736,6 +3043,18 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         if trial_tier is not None:
             invalidate_subscription_caches(user.id)
             return
+    price_id = ""
+    if status == "active" and await replaced_by_newer_plan(
+        customer_id, stripe_subscription
+    ):
+        # Paying an old past-due plan revives it next to the plan that
+        # replaced it. Keep the newer plan and its tier; end this one.
+        from backend.data.subscription_payment_failure import (  # local import avoids circular
+            end_revived_plan,
+        )
+
+        await end_revived_plan(new_sub_id)
+        return
     if status in ("active", "trialing"):
         price_id = ""
         items = stripe_subscription.get("items", {}).get("data", [])
@@ -2743,6 +3062,18 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
             price_id = items[0].get("price", {}).get("id", "")
         price_to_tier = await build_price_to_tier_map()
         matched = price_to_tier.get(price_id) if price_id else None
+        if (
+            matched is None
+            and enrollment is not None
+            and enrollment.converted_at is not None
+            and enrollment.subscription_id == new_sub_id
+        ):
+            async with transaction() as tx:
+                target = await subscription_activation.accepted_conversion_target(
+                    enrollment, stripe_subscription, tx
+                )
+            if target:
+                matched = target[0]
         if matched is not None:
             tier = matched
         else:
@@ -2814,6 +3145,51 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
             )
             return
         tier = SubscriptionTier.NO_TIER
+    if tier in subscription_activation.PAID_CONVERSION_TIERS:
+        if status != "active":
+            return
+        async with transaction() as tx:
+            locked_user = await subscription_activation.lock_activation_user(
+                user.id, tx
+            )
+            if locked_user.subscriptionTier == SubscriptionTier.ENTERPRISE:
+                return
+            # Refetch after acquiring the lock so competing deliveries cannot
+            # publish an older snapshot over a newer reconciliation.
+            current = dict(
+                await stripe_call(stripe.Subscription.retrieve_async, new_sub_id)
+            )
+            if (
+                current.get("items", {}).get("data", [{}])[0].get("price", {}).get("id")
+                != price_id
+            ):
+                raise ValueError(
+                    "Subscription changed during activation reconciliation"
+                )
+            if not await subscription_activation.publish_initial_pro_activation(
+                locked_user, current, price_id, tx
+            ):
+                return
+            if locked_user.subscriptionTier != tier:
+                await tx.user.update(
+                    where={"id": user.id},
+                    data={"subscriptionTier": tier, "subscriptionEndedAt": None},
+                )
+        invalidate_subscription_caches(user.id)
+        if locked_user.subscriptionTier != tier:
+            await _cleanup_stale_subscriptions(customer_id, new_sub_id)
+            if is_tier_upgrade(SubscriptionTier(locked_user.subscriptionTier), tier):
+                _track_billing_event(
+                    PostHogEvent.SUBSCRIPTION_CHANGED,
+                    user.id,
+                    {
+                        "change_type": "upgrade",
+                        "previous_subscription_tier": locked_user.subscriptionTier,
+                        "subscription_tier": tier.value,
+                        "billing_cycle": metadata.get("billing_cycle"),
+                    },
+                )
+        return
     # Idempotency: Stripe retries webhooks on delivery failure, and several event
     # types map to the same final tier. Skip the DB write + cache invalidation
     # when the tier is already correct to avoid redundant writes on replay.
@@ -2846,17 +3222,15 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None
         )
         _track_billing_event(
-            "subscription_upgraded",
+            PostHogEvent.SUBSCRIPTION_CHANGED,
             user.id,
             {
+                "change_type": "upgrade",
                 "previous_subscription_tier": current_tier.value,
                 "subscription_tier": tier.value,
                 "billing_cycle": billing_cycle,
             },
         )
-    # Tier changed — bust any cached pending-change view so the next
-    # dashboard fetch reflects the new state immediately.
-    get_pending_subscription_change.cache_delete(user.id)
 
 
 async def sync_subscription_schedule_from_stripe(stripe_schedule: dict) -> None:
@@ -2920,7 +3294,7 @@ def _invoice_subscription_id(invoice: dict) -> str:
     return legacy if isinstance(legacy, str) and legacy else ""
 
 
-TIER_RECONCILIATION_DISCREPANCY_EVENT = "subscription_tier_reconciliation_discrepancy"
+TIER_RECONCILIATION_DISCREPANCY_EVENT = PostHogEvent.SUBSCRIPTION_TIER_RECONCILED
 
 
 def log_tier_reconciliation_discrepancy(
@@ -2981,28 +3355,19 @@ async def alert_tier_reconciliation_discrepancy(message: str) -> None:
 
 
 def _track_billing_event(
-    event: str, distinct_id: str, properties: dict[str, Any]
+    event: PostHogEvent,
+    distinct_id: str,
+    properties: dict[str, Any],
+    *,
+    dedup_key: str | None = None,
 ) -> None:
-    if not settings.secrets.posthog_api_key:
-        return
-
-    try:
-        posthog.capture(
-            event=event,
-            distinct_id=distinct_id,
-            properties=properties,
-        )
-    except Exception:
-        logger.warning(
-            "failed to track billing event %s for user %s",
-            event,
-            distinct_id,
-            exc_info=True,
-        )
+    # The shared client, never the posthog module's globals: another library
+    # (graphiti-core) configures those for its own telemetry (SECRT-2710).
+    posthog_client.capture(distinct_id, event, properties, dedup_key=dedup_key)
 
 
 async def _track_subscription_payment_success(user: User, invoice: dict) -> None:
-    if not settings.secrets.posthog_api_key:
+    if posthog_client.get_posthog_client() is None:
         return
 
     try:
@@ -3015,13 +3380,20 @@ async def _track_subscription_payment_success(user: User, invoice: dict) -> None
             await get_user_billing_cycle(user.id) or "monthly"
         )
 
-        posthog.capture(
-            event="subscription_payment_success",
-            distinct_id=user.id,
-            properties={
+        _track_billing_event(
+            PostHogEvent.PAYMENT_SUCCEEDED,
+            user.id,
+            {
                 "subscription_tier": tier,
                 "billing_cycle": billing_cycle,
+                "amount_cents": invoice.get("amount_paid"),
+                "currency": invoice.get("currency"),
             },
+            # One invoice is one payment: Stripe delivers both
+            # invoice.payment_succeeded and invoice_payment.paid for it, and
+            # redelivers either on a failed handler, so the revenue sum would
+            # count it twice without this.
+            dedup_key=invoice.get("id") or None,
         )
     except Exception:
         logger.warning(
@@ -3044,127 +3416,6 @@ def _invoice_subscription_metadata(invoice: dict) -> dict:
 
     metadata = subscription_details.get("metadata") or {}
     return metadata if isinstance(metadata, dict) else {}
-
-
-async def handle_subscription_payment_failure(invoice: dict) -> None:
-    """Handle a failed Stripe subscription payment.
-
-    Tries to cover the invoice amount from the user's credit balance.
-
-    - Balance sufficient  → deduct from balance, then pay the Stripe invoice so
-      Stripe stops retrying it. The sub stays intact and the user keeps their tier.
-    - Balance insufficient → cancel Stripe sub immediately, downgrade to BASIC.
-      Cancelling here avoids further Stripe retries on an invoice we cannot cover.
-    """
-    customer_id = invoice.get("customer")
-    if not customer_id:
-        logger.warning(
-            "handle_subscription_payment_failure: missing customer in invoice; skipping"
-        )
-        return
-
-    user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
-    if not user:
-        logger.warning(
-            "handle_subscription_payment_failure: no user found for customer %s",
-            customer_id,
-        )
-        return
-
-    current_tier = user.subscriptionTier or SubscriptionTier.NO_TIER
-    if current_tier == SubscriptionTier.ENTERPRISE:
-        logger.warning(
-            "handle_subscription_payment_failure: skipping ENTERPRISE user %s"
-            " (customer %s) — tier is admin-managed",
-            user.id,
-            customer_id,
-        )
-        return
-
-    amount_due: int = invoice.get("amount_due", 0)
-    sub_id = _invoice_subscription_id(invoice)
-    invoice_id: str = invoice.get("id", "")
-
-    if amount_due <= 0:
-        logger.info(
-            "handle_subscription_payment_failure: amount_due=%d for user %s;"
-            " nothing to deduct",
-            amount_due,
-            user.id,
-        )
-        return
-
-    credit_model = UserCredit()
-    try:
-        await credit_model._add_transaction(
-            user_id=user.id,
-            amount=-amount_due,
-            transaction_type=CreditTransactionType.SUBSCRIPTION,
-            fail_insufficient_credits=True,
-            # Use invoice_id as the idempotency key so that Stripe webhook retries
-            # (e.g. on a transient stripe.Invoice.pay failure) do not double-charge.
-            transaction_key=invoice_id or None,
-            metadata=SafeJson(
-                {
-                    "stripe_customer_id": customer_id,
-                    "stripe_subscription_id": sub_id,
-                    "reason": "subscription_payment_failure_covered_by_balance",
-                }
-            ),
-        )
-        # Balance covered the invoice. Pay the Stripe invoice with
-        # ``paid_out_of_band=True`` so Stripe marks the invoice paid without
-        # retrying the card charge — the card already failed and the user is
-        # paying via their AutoGPT balance, so a card retry here would
-        # double-bill the user (card charge + balance debit). Stripe still
-        # fires ``invoice.payment_succeeded`` on the transition; the success
-        # handler reads ``paid_out_of_band`` and skips its grant path so the
-        # balance debit isn't reversed if the credit-grant flag is on.
-        if invoice_id:
-            try:
-                await stripe_call(
-                    stripe.Invoice.pay_async, invoice_id, paid_out_of_band=True
-                )
-            except stripe.StripeError:
-                logger.warning(
-                    "handle_subscription_payment_failure: balance deducted for user"
-                    " %s but failed to mark invoice %s as paid; Stripe may retry",
-                    user.id,
-                    invoice_id,
-                )
-        logger.info(
-            "handle_subscription_payment_failure: deducted %d cents from balance"
-            " for user %s; Stripe invoice %s paid, sub %s intact, tier preserved",
-            amount_due,
-            user.id,
-            invoice_id,
-            sub_id,
-        )
-    except InsufficientBalanceError:
-        # Balance insufficient — cancel Stripe subscription first, then downgrade DB.
-        # Order matters: if we downgrade the DB first and the Stripe cancel fails, the
-        # user is permanently stuck on BASIC while Stripe continues billing them.
-        # Cancelling Stripe first is safe: if the DB write then fails, the webhook
-        # customer.subscription.deleted will fire and correct the tier eventually.
-        logger.info(
-            "handle_subscription_payment_failure: insufficient balance for user %s;"
-            " cancelling Stripe sub %s then downgrading to BASIC",
-            user.id,
-            sub_id,
-        )
-        try:
-            await _cancel_customer_subscriptions(customer_id)
-        except stripe.StripeError:
-            logger.warning(
-                "handle_subscription_payment_failure: failed to cancel Stripe sub %s"
-                " for user %s (customer %s); skipping tier downgrade to avoid"
-                " inconsistency — Stripe may continue retrying the invoice",
-                sub_id,
-                user.id,
-                customer_id,
-            )
-            return
-        await set_subscription_tier(user.id, SubscriptionTier.NO_TIER)
 
 
 async def handle_subscription_payment_success(invoice: dict) -> None:
@@ -3190,7 +3441,7 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
     - Non-subscription invoices (no ``subscription`` field).
     - Zero-amount invoices (e.g. card-validation checks, $0 trials).
     - ENTERPRISE users (admin-managed; they don't pay via self-service).
-    - Invoices already covered from balance via ``paid_out_of_band``.
+    - Invoices covered from balance by the failure handler.
     """
     customer_id = invoice.get("customer")
     if not customer_id:
@@ -3202,6 +3453,11 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
     if not sub_id:
         # Non-subscription invoices (one-off invoices, etc.) — no credit grant.
         return
+    # A paid invoice can start a new period (a renewal, a plan's first
+    # charge). Nothing below changes Stripe, so dropping the billing page's
+    # cached lookups now is as good as after; it doesn't wait for the
+    # customer.subscription.updated webhook that usually follows.
+    await invalidate_billing_lookups(customer_id)
     user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
     if not user:
         logger.warning(
@@ -3220,6 +3476,9 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
         )
         return
 
+    current_subscription = await stripe_call(stripe.Subscription.retrieve_async, sub_id)
+    await sync_subscription_from_stripe(dict(current_subscription))
+
     amount_paid: int = invoice.get("amount_paid", 0)
     invoice_id: str = invoice.get("id", "")
     if amount_paid <= 0 or not invoice_id:
@@ -3229,12 +3488,14 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
     # invoice from the user's balance and marked it paid out of band — the
     # balance was debited there, granting matching credits here would reverse
     # the debit and give the user a free billing period.
-    if invoice.get("paid_out_of_band"):
+    # The wallet record decides; ``paid_out_of_band`` is gone from the
+    # Invoice since Stripe API 2025-03-31.basil.
+    if invoice.get("paid_out_of_band") or await invoice_paid_from_wallet(
+        user.id, invoice_id
+    ):
         logger.info(
-            "handle_subscription_payment_success: skipping invoice %s for user %s"
-            " (paid_out_of_band — covered by balance in failure handler)",
-            invoice_id,
-            user.id,
+            f"handle_subscription_payment_success: skipping invoice {invoice_id}"
+            f" for user {user.id} (covered by balance in failure handler)"
         )
         return
 
@@ -3339,7 +3600,7 @@ async def admin_get_user_history(
         balance, _ = await user_credit_model._get_credits(tx.userId)
 
         history.append(
-            UserTransaction(
+            UserCreditTransactionAdminView(
                 transaction_key=tx.transactionKey,
                 transaction_time=tx.createdAt,
                 transaction_type=tx.type,
@@ -3381,7 +3642,7 @@ async def admin_export_user_history(
     transaction_type: CreditTransactionType | None = None,
     user_id: str | None = None,
     include_inactive: bool = False,
-) -> list[UserTransaction]:
+) -> list[UserCreditTransactionAdminView]:
     """Return all CreditTransactions in the [start, end] window for export.
 
     Caps the window at CREDIT_EXPORT_MAX_DAYS and the row count at
@@ -3443,7 +3704,7 @@ async def admin_export_user_history(
         admin_id_to_email[admin_id] = email
         return email
 
-    history: list[UserTransaction] = []
+    history: list[UserCreditTransactionAdminView] = []
     for tx in transactions:
         metadata: dict = cast(dict, tx.metadata) or {}
         admin_id = metadata.get("admin_id") or ""
@@ -3455,7 +3716,7 @@ async def admin_export_user_history(
             raw_reason = raw_reason.get("reason", "")
         reason = str(raw_reason) if raw_reason is not None else ""
         history.append(
-            UserTransaction(
+            UserCreditTransactionAdminView(
                 transaction_key=tx.transactionKey,
                 transaction_time=tx.createdAt,
                 transaction_type=tx.type,

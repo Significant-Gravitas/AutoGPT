@@ -1,8 +1,13 @@
 import datetime
+import json
 
 import prisma.enums
 import prisma.models
 import pytest
+
+from backend.api.features.library.triggers import setup_triggered_preset
+from backend.blocks.io import AgentGoogleDriveFileInputBlock
+from backend.util.service import _build_return_adapter
 
 from . import model as library_model
 
@@ -13,6 +18,8 @@ def _make_library_agent(
     executions: list | None = None,
     name: str | None = None,
     description: str | None = None,
+    graph_owner_id: str = "u1",
+    nodes: list | None = None,
 ) -> prisma.models.LibraryAgent:
     return prisma.models.LibraryAgent(
         id="la1",
@@ -36,11 +43,12 @@ def _make_library_agent(
             version=1,
             name="Agent",
             description="Desc",
-            userId="u1",
+            userId=graph_owner_id,
             isActive=True,
             createdAt=datetime.datetime.now(),
             visibility=prisma.enums.ResourceVisibility.PRIVATE,
             Executions=executions,
+            Nodes=nodes,
         ),
     )
 
@@ -81,6 +89,119 @@ def test_from_db_preserves_empty_marketplace_description():
     assert result.description == ""
 
 
+def _store_listing(
+    *, is_deleted: bool = False, with_active_version: bool = True
+) -> prisma.models.StoreListing:
+    now = datetime.datetime.now(datetime.timezone.utc)
+    version = prisma.models.StoreListingVersion(
+        id="slv1",
+        version=3,
+        createdAt=now,
+        updatedAt=now,
+        agentGraphId="g1",
+        agentGraphVersion=3,
+        name="Listed name",
+        subHeading="",
+        imageUrls=[],
+        description="",
+        categories=[],
+        isFeatured=False,
+        isDeleted=False,
+        isAvailable=True,
+        submissionStatus=prisma.enums.SubmissionStatus.APPROVED,
+        storeListingId="sl1",
+    )
+    profile = prisma.models.Profile(
+        id="p1",
+        createdAt=now,
+        updatedAt=now,
+        userId="creator",
+        name="Creator",
+        username="creator-slug",
+        description="",
+        links=[],
+        avatarUrl=None,
+        isFeatured=False,
+    )
+    return prisma.models.StoreListing(
+        id="sl1",
+        createdAt=now,
+        updatedAt=now,
+        isDeleted=is_deleted,
+        hasApprovedVersion=True,
+        slug="listed-agent",
+        useForOnboarding=False,
+        activeVersionId="slv1",
+        agentGraphId="g1",
+        owningUserId="creator",
+        ActiveVersion=version if with_active_version else None,
+        CreatorProfile=profile,
+    )
+
+
+def test_from_db_shows_the_store_listing_it_is_given():
+    """The library agent page reads `marketplace_listing` for the update
+    banner, the changelog and the creator byline; it must come through even
+    when the library agent runs an older version than the listing."""
+    agent = _make_library_agent()
+
+    result = library_model.LibraryAgent.from_db(agent, store_listing=_store_listing())
+
+    assert result.marketplace_listing == library_model.MarketplaceListing(
+        id="sl1",
+        name="Listed name",
+        slug="listed-agent",
+        creator=library_model.MarketplaceListingCreator(
+            name="Creator", id="p1", slug="creator-slug"
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "listing",
+    [
+        None,
+        _store_listing(is_deleted=True),
+        _store_listing(with_active_version=False),
+    ],
+    ids=["no listing", "deleted listing", "no active version"],
+)
+def test_from_db_shows_no_listing_unless_it_is_live(listing):
+    result = library_model.LibraryAgent.from_db(
+        _make_library_agent(), store_listing=listing
+    )
+
+    assert result.marketplace_listing is None
+
+
+def _file_input_node(graph_id: str) -> prisma.models.AgentNode:
+    """An agent-level Google Drive file input whose default file was picked
+    with the owner's credentials."""
+    picked = {"_credentials_id": "owner-cred", "id": "sheet-1", "name": "Budget"}
+    return prisma.models.AgentNode(
+        id="file-input",
+        agentBlockId=AgentGoogleDriveFileInputBlock().id,
+        agentGraphId=graph_id,
+        agentGraphVersion=1,
+        constantInput=json.dumps({"name": "file", "value": picked}),
+        metadata="{}",
+    )
+
+
+def test_from_db_hides_the_publishers_picked_file_from_other_libraries():
+    """[SECRT-1772] A marketplace agent in another user's library: its input
+    schema mustn't offer the publisher's picked file, and the credentials
+    embedded in it, as a default. The runner picks their own file."""
+    agent = _make_library_agent(
+        graph_owner_id="publisher", nodes=[_file_input_node("g1")]
+    )
+
+    result = library_model.LibraryAgent.from_db(agent)
+
+    assert "default" not in result.input_schema["properties"]["file"]
+    assert "file" in result.input_schema["required"]
+
+
 def test_from_db_execution_count_override_covers_success_rate():
     """Covers execution_count_override is not None branch and executions/count > 0 block."""
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -103,6 +224,36 @@ def test_from_db_execution_count_override_covers_success_rate():
     assert result.execution_count == 1
     assert result.success_rate is not None
     assert result.success_rate == 100.0
+
+
+def test_from_db_success_rate_uses_the_included_runs_not_the_full_count():
+    """The override reports every run, but only the latest few are loaded;
+    dividing their successes by the full count made 100 good runs read 1%."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    completed = prisma.models.AgentGraphExecution(
+        id="exec-1",
+        agentGraphId="g1",
+        agentGraphVersion=1,
+        userId="u1",
+        executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        createdAt=now,
+        updatedAt=now,
+        isDeleted=False,
+        isShared=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+    )
+    failed = completed.model_copy(
+        update={
+            "id": "exec-2",
+            "executionStatus": prisma.enums.AgentExecutionStatus.FAILED,
+        }
+    )
+    agent = _make_library_agent(executions=[completed, failed])
+
+    result = library_model.LibraryAgent.from_db(agent, execution_count_override=100)
+
+    assert result.execution_count == 100
+    assert result.success_rate == 50.0
 
 
 @pytest.mark.asyncio
@@ -144,40 +295,48 @@ async def test_agent_preset_from_db(test_user_id: str):
     assert agent.inputs == {"input1": {"type": "string", "value": "test value"}}
 
 
+def _preset_row_with_webhook() -> prisma.models.AgentPreset:
+    """A trigger preset as the library loads it: webhook row included, signing
+    material and all."""
+    return prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
+        id="preset-1",
+        createdAt=datetime.datetime.now(),
+        updatedAt=datetime.datetime.now(),
+        agentGraphId="g1",
+        agentGraphVersion=1,
+        name="p",
+        description="",
+        isActive=True,
+        userId="u1",
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        InputPresets=[],
+        webhookId="wh-1",
+        Webhook=prisma.models.IntegrationWebhook.model_validate(
+            {
+                "id": "wh-1",
+                "createdAt": datetime.datetime.now(),
+                "userId": "u1",
+                "provider": "github",
+                "credentialsId": "cred-1",
+                "webhookType": "repo",
+                "resource": "owner/repo",
+                "events": ["pull_request"],
+                "config": "{}",
+                "secret": "super-secret-signing-key",
+                "providerWebhookId": "gh-provider-123",
+                "visibility": prisma.enums.ResourceVisibility.PRIVATE,
+            }
+        ),
+    )
+
+
 def test_preset_serialization_redacts_webhook_signing_material():
     """A serialized preset must never leak the webhook's signing secret or
     provider webhook id (GHSA-4m2w-qfr5-9f3v), while still exposing the ingress
     URL and non-sensitive metadata the frontend needs."""
-    from backend.data.integrations import Webhook
-    from backend.integrations.providers import ProviderName
-
-    webhook = Webhook(
-        id="wh-1",
-        user_id="u1",
-        provider=ProviderName.GITHUB,
-        credentials_id="cred-1",
-        webhook_type="repo",
-        resource="owner/repo",
-        events=["pull_request"],
-        config={},
-        secret="super-secret-signing-key",
-        provider_webhook_id="gh-provider-123",
-    )
-    preset = library_model.LibraryAgentPreset(
-        id="preset-1",
-        user_id="u1",
-        created_at=datetime.datetime.now(),
-        updated_at=datetime.datetime.now(),
-        graph_id="g1",
-        graph_version=1,
-        inputs={},
-        credentials={},
-        name="p",
-        description="",
-        is_active=True,
-        webhook_id="wh-1",
-        webhook=webhook,
-    )
+    preset = library_model.LibraryAgentPreset.from_db(_preset_row_with_webhook())
 
     dumped = preset.model_dump(mode="json")
     assert dumped["webhook"] is not None
@@ -191,3 +350,25 @@ def test_preset_serialization_redacts_webhook_signing_material():
     serialized = preset.model_dump_json()
     assert "super-secret-signing-key" not in serialized
     assert "gh-provider-123" not in serialized
+
+
+def test_preset_with_webhook_survives_the_rpc_round_trip():
+    """The copilot executor gets presets from the database manager as JSON and
+    rebuilds them with the RPC client's validator. A preset whose webhook cannot
+    make that trip reaches the copilot tools as a dict, and every read of
+    ``.webhook`` on it fails."""
+    preset = library_model.LibraryAgentPreset.from_db(_preset_row_with_webhook())
+    assert preset.webhook is not None
+    adapter = _build_return_adapter(
+        setup_triggered_preset,
+        library_model.LibraryAgentPreset,
+        "setup_triggered_preset",
+    )
+    assert adapter is not None
+
+    delivered = adapter.validate_python(json.loads(preset.model_dump_json()))
+
+    assert isinstance(delivered, library_model.LibraryAgentPreset)
+    assert delivered.webhook is not None
+    assert delivered.webhook.url == preset.webhook.url
+    assert delivered.webhook.provider == preset.webhook.provider

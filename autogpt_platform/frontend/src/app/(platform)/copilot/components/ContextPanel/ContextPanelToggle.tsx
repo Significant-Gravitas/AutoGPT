@@ -1,120 +1,158 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { useCopilotUIStore } from "../../store";
-import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
-import { fileItemToArtifactRef } from "./components/FilesTab/helpers";
+import { Text } from "@/components/atoms/Text/Text";
+import { Button } from "@/components/atoms/Button/Button";
 import {
-  useSessionFiles,
-  type SessionFile,
-} from "./components/FilesTab/useSessionFiles";
-import { LicenseDraftIcon } from "@hugeicons/core-free-icons";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
+import { cn } from "@/lib/utils";
+import { useCopilotUIStore, type ContextPanelExpert } from "../../store";
+import { ComputerIcon, LicenseDraftIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useIsMobile } from "../../useIsMobile";
+import { IntegrationsToggle } from "./components/IntegrationsToggle/IntegrationsToggle";
+import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
 
 interface Props {
   sessionId?: string | null;
+  /** The chat's live expert, whose integrations lead the controls. */
+  expert?: ContextPanelExpert | null;
+  /** The composer's tab shows the integrations on mobile instead (new
+   *  layout, see ComposerPanelTab). */
+  hideIntegrationsOnMobile?: boolean;
 }
 
-function getLastGeneratedFile(generated: SessionFile[]): SessionFile | null {
-  if (generated.length === 0) return null;
-  return generated.reduce((latest, file) =>
-    new Date(file.item.created_at).getTime() >
-    new Date(latest.item.created_at).getTime()
-      ? file
-      : latest,
-  );
-}
+// Sized and stroked like the sidebar's nav icons so the chat's top-right
+// controls read as the same family.
+const toggleClass =
+  "shrink-0 rounded-full transition-[background-color,transform] duration-150 ease-out hover:bg-surface-hover active:scale-[0.97] motion-reduce:transition-none";
 
-/** The chat's one top-right control: the artifacts toggle. It wears the name
- *  of the session's most recently generated file so the current working
- *  document stays visible, and clicking it opens that file directly in the
- *  artifact panel. Workspace files open from the thread chip instead. */
-export function ContextPanelToggle({ sessionId = null }: Props) {
-  const isOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
-  const hasArtifact = useCopilotUIStore(
-    (s) => s.artifactPanel.activeArtifact != null,
+/** The chat's top-right controls: the expert's integrations, the files
+ *  toggle and the Computer toggle, each opening its face of the side panel. The
+ *  Computer toggle is always there for a chat with a session: the panel's
+ *  own "Turn on screen" button lives on that face, so it must be reachable
+ *  before any desktop exists. */
+export function ContextPanelToggle({
+  sessionId = null,
+  expert = null,
+  hideIntegrationsOnMobile = false,
+}: Props) {
+  const { deliverables, documentCount: liveDocumentCount } =
+    useSessionFiles(sessionId);
+  const documentCount = Math.max(deliverables.length, liveDocumentCount);
+  const isFilesOpen = useCopilotUIStore(
+    (s) =>
+      s.artifactPanel.isOpen &&
+      s.artifactPanel.activeTab === "files" &&
+      s.artifactPanel.activeArtifact == null &&
+      !s.artifactPanel.isComputerOpen,
   );
-  const activeTab = useCopilotUIStore((s) => s.artifactPanel.activeTab);
   const toggleContextPanelTab = useCopilotUIStore(
     (s) => s.toggleContextPanelTab,
   );
-  const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
-  const lastArtifact = useCopilotUIStore((s) => s.artifactPanel.lastArtifact);
-  const openArtifact = useCopilotUIStore((s) => s.openArtifact);
-  const { generated } = useSessionFiles(sessionId);
-  const lastGenerated = getLastGeneratedFile(generated);
-  const isFilesCardOpen = useAreWorkspaceFileCardsOpen();
-  const isArtifactsOpen = isOpen && activeTab === "artifacts";
-  // An open artifact preview and the artifacts tab are both faces of the
-  // right sidebar, so the toggle reads active for either and is the one
-  // control that closes them — the panel carries no close button.
-  const isRightSidebarOpen = hasArtifact || isArtifactsOpen;
+  const isComputerOpen = useCopilotUIStore(
+    (s) => s.artifactPanel.isComputerOpen,
+  );
+  const openComputer = useCopilotUIStore((s) => s.openComputer);
+  const closeComputer = useCopilotUIStore((s) => s.closeComputer);
+  const isMobile = useIsMobile();
+  // The mobile sheet has no computer face to open, and mobile already floats
+  // a files button over the chat's top-left corner.
+  const showComputerToggle = !!sessionId && !isMobile;
+  const showFilesToggle = !isMobile;
+  const showIntegrations = !!expert && !(isMobile && hideIntegrationsOnMobile);
 
-  // The open activity card already lists the same file, so the labeled
-  // button floating above it is pure duplication — the card's rows are the
-  // way in while it shows.
-  if (isFilesCardOpen) return null;
-
-  // With the panel open its own header already names the document, so the
-  // button collapses to the bare icon; closed, the name is the reminder of
-  // what's being worked on.
-  const showFileName = lastGenerated != null && !isRightSidebarOpen;
-
-  function handleSidebarToggle() {
-    if (hasArtifact) {
-      closeArtifactPanel();
-      return;
-    }
-    if (isArtifactsOpen) {
-      toggleContextPanelTab("artifacts");
-      return;
-    }
-    // Straight to the document: the freshest generated file, then the
-    // remembered preview, and only then the tabs view.
-    const target =
-      (lastGenerated ? fileItemToArtifactRef(lastGenerated.item) : null) ??
-      lastArtifact;
-    if (target) {
-      openArtifact(target);
-      return;
-    }
-    toggleContextPanelTab("artifacts");
+  function handleComputerToggle() {
+    // Back to whatever the computer was covering: the preview, the tab, or
+    // nothing at all.
+    if (isComputerOpen) closeComputer();
+    else openComputer();
   }
 
+  if (!showIntegrations && !showComputerToggle && !showFilesToggle) return null;
+
   return (
-    <div className="flex shrink-0 items-center gap-1 p-2">
-      <Button
-        type="button"
-        variant="ghost"
-        size={showFileName ? "sm" : "icon"}
-        onClick={handleSidebarToggle}
-        aria-label={
-          isRightSidebarOpen
-            ? "Hide artifacts"
-            : lastGenerated
-              ? `Open ${lastGenerated.item.name}`
-              : "Open artifacts"
-        }
-        aria-pressed={isRightSidebarOpen}
-        className={cn(
-          // Sized and stroked like the sidebar's nav icons so the chat's
-          // top-right control reads as the same family.
-          "shrink-0 rounded-md transition-[background-color,transform] duration-150 ease-out hover:bg-zinc-100 active:scale-[0.97] motion-reduce:transition-none",
-          showFileName ? "h-8 gap-1.5 px-2" : "size-8",
-          isRightSidebarOpen && "bg-zinc-100",
-        )}
-      >
-        <Icon
-          icon={LicenseDraftIcon}
-          className="!size-4 text-sidebar-foreground/90"
-        />
-        {showFileName && (
-          <span className="max-w-[9rem] truncate text-xs font-medium text-sidebar-foreground/90">
-            {lastGenerated.item.name}
-          </span>
-        )}
-      </Button>
+    // The same translucent pill as the thread chip on the left (ThreadHeader),
+    // level with it and as tall, so the two corners read as one header.
+    <div className="mr-4 mt-3 flex shrink-0 items-center gap-1 rounded-full border border-border-base/70 bg-surface/75 p-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md">
+      {showIntegrations && expert && (
+        <IntegrationsToggle expert={expert} className={toggleClass} />
+      )}
+      {showFilesToggle && (
+        <Tooltip inheritDelay>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="compact-ghost"
+              size="compact-icon"
+              onClick={() => toggleContextPanelTab("files")}
+              aria-label={`${isFilesOpen ? "Hide" : "Open"} files${
+                documentCount > 0
+                  ? ` (${documentCount} ${documentCount === 1 ? "document" : "documents"})`
+                  : ""
+              }`}
+              aria-pressed={isFilesOpen}
+              className={cn(
+                toggleClass,
+                "h-8",
+                documentCount > 0 ? "w-auto gap-1 px-2 tabular-nums" : "w-8",
+                isFilesOpen && "bg-surface-hover",
+              )}
+            >
+              <Icon
+                icon={LicenseDraftIcon}
+                className="!size-4 text-sidebar-foreground/90"
+              />
+              {documentCount > 0 && (
+                <Text
+                  variant="small-medium-tight"
+                  as="span"
+                  className="text-sidebar-foreground/90"
+                >
+                  {documentCount}
+                </Text>
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipPortal>
+            <TooltipContent side="bottom">
+              {isFilesOpen ? "Hide files" : "Files"}
+            </TooltipContent>
+          </TooltipPortal>
+        </Tooltip>
+      )}
+      {showComputerToggle && (
+        <Tooltip inheritDelay>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="compact-ghost"
+              size="compact-icon"
+              onClick={handleComputerToggle}
+              aria-label={isComputerOpen ? "Hide computer" : "Open computer"}
+              aria-pressed={isComputerOpen}
+              className={cn(
+                toggleClass,
+                "size-8",
+                isComputerOpen && "bg-surface-hover",
+              )}
+            >
+              <Icon
+                icon={ComputerIcon}
+                className="!size-4 text-sidebar-foreground/90"
+              />
+            </Button>
+          </TooltipTrigger>
+          <TooltipPortal>
+            <TooltipContent side="bottom">
+              {isComputerOpen ? "Hide computer" : "Computer"}
+            </TooltipContent>
+          </TooltipPortal>
+        </Tooltip>
+      )}
     </div>
   );
 }

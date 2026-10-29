@@ -3,16 +3,22 @@
 import logging
 from typing import Any, Literal
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
-from backend.api.features.library.db import get_library_agent
+from backend.api.features.schedule_visibility import (
+    hidden_expert_ids,
+    is_visible_schedule,
+)
 from backend.copilot.model import ChatSession
 from backend.data.activity_event import ActivityEventDraft
+from backend.data.db_accessors import library_db, scheduled_chats_db
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .base import BaseTool
+from .external_scope import external_tenant, in_tenant
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -21,7 +27,39 @@ logger = logging.getLogger(__name__)
 def _is_in_session_scope(
     job: GraphExecutionJobInfo | CopilotTurnJobInfo, session: ChatSession
 ) -> bool:
-    return job.expert_id == session.expert_id
+    """Personal AutoPilot manages every schedule on the account; an expert
+    only its own, and an External API call only its organization's. None of them
+    sees a chat's resume or send at the budget reset: the user set those from the
+    chat, and cancels them there."""
+    if isinstance(job, CopilotTurnJobInfo) and job.purpose != "followup":
+        return False
+    return (
+        session.expert_id is None or job.expert_id == session.expert_id
+    ) and in_tenant(job.organization_id or None, external_tenant(session))
+
+
+async def _find_scoped_schedule(
+    scheduler: Any, user_id: str, session: ChatSession, schedule_id: str
+) -> GraphExecutionJobInfo | CopilotTurnJobInfo | None:
+    # include_paused: a paused expert schedule or fired one-shot must still be
+    # reachable — the default listing hides them.
+    jobs = await scheduler.get_execution_schedules(user_id=user_id, include_paused=True)
+    match = next(
+        (
+            job
+            for job in jobs
+            if job.id == schedule_id and _is_in_session_scope(job, session)
+        ),
+        None,
+    )
+    if match is None or not match.expert_id or match.next_run_time:
+        return match
+    # An archived expert's paused schedules are the ones the archive flow keeps
+    # for re-hire; the REST listing already hides them, and delete/resume here
+    # would lose or revive them behind that flow's back.
+    return (
+        None if match.expert_id in await hidden_expert_ids([match], user_id) else match
+    )
 
 
 class ScheduleSummary(BaseModel):
@@ -32,6 +70,10 @@ class ScheduleSummary(BaseModel):
     name: str
     timezone: str
     next_run_time: str
+    # Owning expert; None for personal AutoPilot schedules.
+    expert_id: str | None = None
+    # No next fire is scheduled: paused, or a one-shot that already ran.
+    paused: bool = False
     # Either cron (recurring) or run_at (one-shot) is populated, never both.
     cron: str | None = None
     run_at: str | None = None
@@ -57,6 +99,8 @@ def _to_summary(
         return ScheduleSummary(
             schedule_id=job.id,
             kind="graph",
+            expert_id=job.expert_id,
+            paused=not job.next_run_time,
             name=job.name,
             timezone=job.timezone,
             next_run_time=job.next_run_time,
@@ -68,6 +112,8 @@ def _to_summary(
     return ScheduleSummary(
         schedule_id=job.id,
         kind="copilot_turn",
+        expert_id=job.expert_id,
+        paused=not job.next_run_time,
         name=job.name,
         timezone=job.timezone,
         next_run_time=job.next_run_time,
@@ -99,10 +145,14 @@ class ListSchedulesTool(BaseTool):
         return "list_schedules"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_SCHEDULE]
+
+    @property
     def description(self) -> str:
         return (
             "List the user's scheduled jobs (agent runs and copilot "
-            "follow-ups). Use before delete_schedule. Pending follow-ups "
+            "follow-ups). Use before tool:delete_schedule. Pending follow-ups "
             "for this session are already summarised in <session_context>."
         )
 
@@ -147,24 +197,32 @@ class ListSchedulesTool(BaseTool):
         # Resolve library_agent_id → graph_id (also verifies ownership)
         if library_agent_id:
             try:
-                lib_agent = await get_library_agent(
+                lib_agent = await library_db().get_library_agent(
                     id=library_agent_id, user_id=user_id
                 )
             except NotFoundError as e:
                 return ErrorResponse(
-                    message=f"Library agent not found: {e}",
+                    message=f"Library workflow not found: {e}",
                     error="library_agent_not_found",
                     session_id=session_id,
                 )
             graph_id = lib_agent.graph_id
 
+        # include_paused: a paused schedule must stay listable so its id can
+        # be handed to resume_schedule or delete_schedule later.
         jobs = await get_scheduler_client().get_execution_schedules(
             graph_id=graph_id,
             user_id=user_id,
+            include_paused=True,
         )
 
+        # Same rule as the mutation tools and the REST listing: an archived
+        # expert's paused rows are held for re-hire, so showing one the model
+        # cannot then delete or resume is worse than not showing it.
+        in_scope = [job for job in jobs if _is_in_session_scope(job, session)]
+        hidden = await hidden_expert_ids(in_scope, user_id)
         schedules = [
-            _to_summary(job) for job in jobs if _is_in_session_scope(job, session)
+            _to_summary(job) for job in in_scope if is_visible_schedule(job, hidden)
         ]
 
         message = (
@@ -190,11 +248,15 @@ class DeleteScheduleTool(BaseTool):
         return "delete_schedule"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_SCHEDULE]
+
+    @property
     def description(self) -> str:
         return (
             "Delete a scheduled job (agent run or copilot follow-up) by "
             "schedule_id. For 'cancel that' on a follow-up listed in "
-            "<session_context>, look up its schedule_id via list_schedules."
+            "<session_context>, look up its schedule_id via tool:list_schedules."
         )
 
     @property
@@ -209,6 +271,7 @@ class DeleteScheduleTool(BaseTool):
                 "schedule_id": {
                     "type": "string",
                     "description": "Schedule ID from list_schedules.",
+                    "entity": "schedule",
                 },
             },
             "required": ["schedule_id"],
@@ -252,19 +315,7 @@ class DeleteScheduleTool(BaseTool):
             )
 
         scheduler = get_scheduler_client()
-        # include_paused: a paused expert schedule or fired one-shot must
-        # still be deletable — the default listing hides them.
-        jobs = await scheduler.get_execution_schedules(
-            user_id=user_id, include_paused=True
-        )
-        current = next(
-            (
-                job
-                for job in jobs
-                if job.id == schedule_id and _is_in_session_scope(job, session)
-            ),
-            None,
-        )
+        current = await _find_scoped_schedule(scheduler, user_id, session, schedule_id)
         if current is None:
             return ErrorResponse(
                 message=f"Schedule '{schedule_id}' not found.",
@@ -290,8 +341,151 @@ class DeleteScheduleTool(BaseTool):
                 session_id=session_id,
             )
 
+        await _forget_streak(user_id, schedule_id)
         return ScheduleDeletedResponse(
             message=f"Schedule {schedule_id} deleted.",
             schedule_id=schedule_id,
             session_id=session_id,
         )
+
+
+async def _forget_streak(user_id: str, schedule_id: str) -> None:
+    """A follow-up's failure streak is keyed by its schedule id: kept, a
+    paused one would stay listed with a Resume, and its alert up. The schedule
+    is gone either way, so a failure is logged, not answered, as the delete
+    route does. The executor has no Prisma of its own, so through the
+    DatabaseManager."""
+    try:
+        await scheduled_chats_db().forget_scheduled_chat(user_id, schedule_id)
+    except Exception:
+        logger.warning(
+            "Could not clear the failure streak of deleted schedule %s",
+            schedule_id,
+            exc_info=True,
+        )
+
+
+class ScheduleToggledResponse(ToolResponseBase):
+    type: ResponseType = ResponseType.SCHEDULE_TOGGLED
+    schedule_id: str
+    paused: bool
+    # False when the schedule was already in that state. The activity log is
+    # append-only, so a no-op must not leave an entry in it.
+    changed: bool = True
+
+
+class _ToggleScheduleTool(BaseTool):
+    _pause: bool = True
+
+    @property
+    def requires_auth(self) -> bool:
+        return True
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "schedule_id": {
+                    "type": "string",
+                    "description": "Schedule ID from list_schedules.",
+                    "entity": "schedule",
+                },
+            },
+            "required": ["schedule_id"],
+        }
+
+    async def _execute(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        schedule_id: str = "",
+        **kwargs,
+    ) -> ToolResponseBase:
+        session_id = session.session_id
+        if not user_id:
+            return ErrorResponse(
+                message="Authentication required.",
+                error="auth_required",
+                session_id=session_id,
+            )
+        if not schedule_id:
+            return ErrorResponse(
+                message="schedule_id is required.",
+                error="missing_schedule_id",
+                session_id=session_id,
+            )
+        scheduler = get_scheduler_client()
+        if (
+            await _find_scoped_schedule(scheduler, user_id, session, schedule_id)
+            is None
+        ):
+            return ErrorResponse(
+                message=f"Schedule '{schedule_id}' not found.",
+                error="schedule_not_found",
+                session_id=session_id,
+            )
+        try:
+            if self._pause:
+                changed = await scheduler.pause_schedule(schedule_id, user_id)
+            else:
+                changed = await scheduler.resume_schedule(schedule_id, user_id)
+        except NotAuthorizedError as e:
+            return ErrorResponse(
+                message=f"Not authorized: {e}",
+                error="not_authorized",
+                session_id=session_id,
+            )
+        state = "paused" if self._pause else "resumed"
+        return ScheduleToggledResponse(
+            schedule_id=schedule_id,
+            paused=self._pause,
+            changed=changed,
+            message=(
+                f"Schedule {schedule_id} {state}."
+                if changed
+                else f"Schedule {schedule_id} was already {state}."
+            ),
+            session_id=session_id,
+        )
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        # Halting an expert's automation is the one new action here that stops
+        # work, so it belongs in the owner's feed beside schedule.deleted.
+        if not isinstance(result, ScheduleToggledResponse) or not result.changed:
+            return None
+        return ActivityEventDraft(
+            category="SCHEDULE",
+            event_type="schedule.paused" if self._pause else "schedule.resumed",
+            title="Paused a schedule" if self._pause else "Resumed a schedule",
+            schedule_id=result.schedule_id,
+        )
+
+
+class PauseScheduleTool(_ToggleScheduleTool):
+    _pause = True
+
+    @property
+    def name(self) -> str:
+        return "pause_schedule"
+
+    @property
+    def description(self) -> str:
+        return "Pause a schedule without deleting it. Resume with tool:resume_schedule."
+
+
+class ResumeScheduleTool(_ToggleScheduleTool):
+    _pause = False
+
+    @property
+    def name(self) -> str:
+        return "resume_schedule"
+
+    @property
+    def description(self) -> str:
+        return "Resume a paused schedule. Missed fires are not replayed."

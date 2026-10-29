@@ -1,4 +1,3 @@
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { FileUIPart } from "ai";
 import {
   globalRegistry,
@@ -12,18 +11,28 @@ import {
   ContentCardSubtitle,
 } from "../../ToolAccordion/AccordionContent";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
+import { isPreviewableImage } from "../../ArtifactPanel/helpers";
+import type { ArtifactRef } from "../../../store";
 import { filePartToArtifactRef } from "../helpers";
-import { Download04Icon, File02Icon } from "@hugeicons/core-free-icons";
+import { MessageImageThumbnail } from "./MessageImageThumbnail";
+import {
+  Download04Icon,
+  File02Icon,
+  Folder01Icon,
+  LinkSquare01Icon,
+} from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import Link from "next/link";
+import { folderSummary } from "@/app/(platform)/artifacts/components/WorkspaceFolders/folderTree";
+import type { WorkspaceFolderPartData } from "../../../helpers/workspaceAttachments";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   files: FileUIPart[];
+  /** Folders attached to the message — a pointer for the model, never
+   *  expanded into files, so they never take the ArtifactCard path. */
+  folders?: WorkspaceFolderPartData[];
   isUser?: boolean;
-  /** Force the artifact-card rendering path regardless of the
-   *  ``ARTIFACTS`` flag.  The public share viewer passes this so
-   *  anonymous readers always get the rich treatment — the flag
-   *  defaults off and we don't want it to gate the viewer UX. */
-  forceArtifacts?: boolean;
   /** URL→file-ID pattern used by ``filePartToArtifactRef``.  Owner
    *  side defaults to the workspace-file URL shape; the public viewer
    *  passes a per-token pattern from ``lib/share/routes.ts``. */
@@ -53,33 +62,49 @@ function renderFileContent(file: FileUIPart): React.ReactNode | null {
 
 export function MessageAttachments({
   files,
+  folders = [],
   isUser,
-  forceArtifacts,
   filePattern,
   readOnly,
 }: Props) {
-  const isArtifactsFlagEnabled = useGetFlag(Flag.ARTIFACTS);
-  const isArtifactsEnabled = forceArtifacts || isArtifactsFlagEnabled;
-  if (files.length === 0) return null;
+  if (files.length === 0 && folders.length === 0) return null;
+
+  const { images, otherFiles } = splitUserImages(files, isUser, filePattern);
 
   return (
     <div className="mt-2 flex flex-col gap-2">
-      {files.map((file, i) => {
-        if (isArtifactsEnabled) {
-          const artifactRef = filePartToArtifactRef(
-            file,
-            isUser ? "user-upload" : "agent",
-            filePattern,
+      {images.length > 0 && (
+        <div className="flex flex-wrap justify-end gap-2">
+          {images.map((image, i) => (
+            <MessageImageThumbnail
+              key={`image-${image.id}-${i}`}
+              artifact={image}
+              readOnly={readOnly}
+            />
+          ))}
+        </div>
+      )}
+      {folders.map((folder) => (
+        <FolderAttachmentCard
+          key={folder.id}
+          folder={folder}
+          readOnly={readOnly}
+        />
+      ))}
+      {otherFiles.map((file, i) => {
+        const artifactRef = filePartToArtifactRef(
+          file,
+          isUser ? "user-upload" : "agent",
+          filePattern,
+        );
+        if (artifactRef) {
+          return (
+            <ArtifactCard
+              key={`artifact-${artifactRef.id}-${i}`}
+              artifact={artifactRef}
+              readOnly={readOnly}
+            />
           );
-          if (artifactRef) {
-            return (
-              <ArtifactCard
-                key={`artifact-${artifactRef.id}-${i}`}
-                artifact={artifactRef}
-                readOnly={readOnly}
-              />
-            );
-          }
         }
         const rendered = renderFileContent(file);
         return rendered ? (
@@ -87,14 +112,16 @@ export function MessageAttachments({
             key={`${file.filename}-${i}`}
             className={`inline-block rounded-lg border p-1.5 ${
               isUser
-                ? "border-purple-300 bg-purple-50"
-                : "border-neutral-200 bg-neutral-50"
+                ? "border-brand/70 bg-accent-surface"
+                : "border-border-base bg-background"
             }`}
           >
             {rendered}
             <div
               className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${
-                isUser ? "text-zinc-600" : "text-neutral-500"
+                isUser
+                  ? "text-foreground-secondary"
+                  : "text-foreground-tertiary"
               }`}
             >
               <span className="truncate">{file.filename || "file"}</span>
@@ -113,21 +140,30 @@ export function MessageAttachments({
         ) : isUser ? (
           <div
             key={`${file.filename}-${i}`}
-            className="min-w-0 rounded-lg border border-purple-300 bg-purple-100 p-3"
+            className="min-w-0 rounded-lg border border-brand/70 bg-accent-surface p-3"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">
                 <Icon
                   icon={File02Icon}
-                  className="h-5 w-5 shrink-0 text-neutral-400"
+                  className="h-5 w-5 shrink-0 text-foreground-subtle"
                 />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-zinc-800">
+                  <Text
+                    variant="body-medium-tight"
+                    tone="emphasis"
+                    className="truncate"
+                  >
                     {file.filename || "file"}
-                  </p>
-                  <p className="mt-0.5 truncate font-mono text-xs text-zinc-800">
+                  </Text>
+                  <Text
+                    variant="small-mono-tight"
+                    as="p"
+                    tone="emphasis"
+                    className="mt-0.5 truncate"
+                  >
                     {file.mediaType || "file"}
-                  </p>
+                  </Text>
                 </div>
               </div>
               {file.url && (
@@ -135,7 +171,7 @@ export function MessageAttachments({
                   href={file.url}
                   download
                   aria-label="Download file"
-                  className="shrink-0 text-purple-400 hover:text-purple-600"
+                  className="shrink-0 text-brand hover:text-brand-hover"
                 >
                   <Icon icon={Download04Icon} className="h-5 w-5" />
                 </a>
@@ -151,7 +187,7 @@ export function MessageAttachments({
                     href={file.url}
                     download
                     aria-label="Download file"
-                    className="shrink-0 text-neutral-400 hover:text-neutral-600"
+                    className="shrink-0 text-foreground-subtle hover:text-foreground-secondary"
                   >
                     <Icon icon={Download04Icon} className="h-5 w-5" />
                   </a>
@@ -161,7 +197,7 @@ export function MessageAttachments({
               <div className="flex items-center gap-2">
                 <Icon
                   icon={File02Icon}
-                  className="h-5 w-5 shrink-0 text-neutral-400"
+                  className="h-5 w-5 shrink-0 text-foreground-subtle"
                 />
                 <div className="min-w-0">
                   <ContentCardTitle>{file.filename || "file"}</ContentCardTitle>
@@ -174,6 +210,69 @@ export function MessageAttachments({
           </ContentCard>
         );
       })}
+    </div>
+  );
+}
+
+/** Images the user sent show as pictures; everything else keeps its card. */
+function splitUserImages(
+  files: FileUIPart[],
+  isUser: boolean | undefined,
+  filePattern: RegExp | undefined,
+) {
+  const images: ArtifactRef[] = [];
+  const otherFiles: FileUIPart[] = [];
+  for (const file of files) {
+    const ref =
+      isUser && isPreviewableImage(file.mediaType)
+        ? filePartToArtifactRef(file, "user-upload", filePattern)
+        : null;
+    if (ref) images.push(ref);
+    else otherFiles.push(file);
+  }
+  return { images, otherFiles };
+}
+
+function FolderAttachmentCard({
+  folder,
+  readOnly,
+}: {
+  folder: WorkspaceFolderPartData;
+  readOnly?: boolean;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-lg border border-brand/70 bg-accent-surface p-3">
+      <Icon
+        icon={Folder01Icon}
+        size={20}
+        className="shrink-0 text-foreground-body"
+      />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Text
+          variant="body-medium-tight"
+          as="span"
+          tone="emphasis"
+          className="truncate"
+        >
+          {folder.name}
+        </Text>
+        <Text variant="small-tight" as="span" tone="secondary">
+          {/* The part counts direct files only, so zero is not "Empty". */}
+          {folder.fileCount > 0
+            ? `Folder · ${folderSummary(folder.fileCount, 0)}`
+            : "Folder"}
+        </Text>
+      </div>
+      {/* The share viewer has no Files page to send anyone to. */}
+      {readOnly ? null : (
+        <Link
+          href={`/artifacts?folder=${encodeURIComponent(folder.id)}`}
+          aria-label={`Open folder ${folder.name} in Files`}
+          className="shrink-0 rounded-md p-1 text-foreground-tertiary transition-colors hover:bg-brand/50 hover:text-foreground-emphasis"
+        >
+          <Icon icon={LinkSquare01Icon} size={16} />
+        </Link>
+      )}
     </div>
   );
 }

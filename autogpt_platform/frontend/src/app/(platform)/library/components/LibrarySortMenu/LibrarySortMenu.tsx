@@ -7,7 +7,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/__legacy__/ui/select";
+} from "@/components/atoms/Select/components/SelectPrimitives";
+// oxlint-disable-next-line design-system/hugeicons-only -- glyph swap is P11's
 import { ArrowDownNarrowWideIcon } from "lucide-react";
 import { useLibrarySortMenu } from "./useLibrarySortMenu";
 
@@ -19,11 +20,14 @@ export function LibrarySortMenu({ setLibrarySort }: Props) {
   const { handleSortChange } = useLibrarySortMenu({ setLibrarySort });
   return (
     <div className="flex items-center" data-testid="sort-by-dropdown">
-      <span className="hidden whitespace-nowrap text-sm text-zinc-500 sm:inline">
+      <span className="hidden whitespace-nowrap text-sm text-foreground-tertiary sm:inline">
         sort by
       </span>
       <Select onValueChange={handleSortChange}>
-        <SelectTrigger className="!m-0 ml-1 w-fit space-x-1 border-none !bg-transparent px-[1rem] text-sm underline underline-offset-4 !shadow-none !ring-offset-transparent">
+        <SelectTrigger
+          // oxlint-disable-next-line design-system/no-restyle -- Select has no inline link-style trigger variant
+          className="!m-0 ml-1 w-fit space-x-1 border-none !bg-transparent px-4 text-sm underline underline-offset-4 !shadow-none !ring-offset-transparent"
+        >
           <ArrowDownNarrowWideIcon className="h-4 w-4 sm:hidden" />
           <SelectValue placeholder="Last Modified" />
         </SelectTrigger>

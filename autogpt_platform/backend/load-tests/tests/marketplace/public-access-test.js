@@ -61,6 +61,8 @@ export const options = {
     test_type: "marketplace_public_access",
     environment: __ENV.K6_ENVIRONMENT || "DEV",
   },
+  // handleSummary reports p(99), which k6 leaves out by default.
+  summaryTrendStats: ["avg", "min", "med", "max", "p(90)", "p(95)", "p(99)"],
 };
 
 export default function () {
@@ -76,7 +78,7 @@ function marketplaceBrowsingJourney() {
   // Step 1: Browse marketplace homepage - get featured agents
   console.log(`🏪 VU ${__VU} browsing marketplace homepage...`);
   const featuredAgentsResponse = http.get(
-    `${BASE_URL}/api/store/agents?featured=true&page=1&page_size=10`,
+    `${BASE_URL}/store/agents?featured=true&page=1&page_size=10`,
   );
   logHttpError(
     featuredAgentsResponse,
@@ -108,22 +110,18 @@ function marketplaceBrowsingJourney() {
   // Step 2: Browse all agents with pagination
   console.log(`📋 VU ${__VU} browsing all agents...`);
   const allAgentsResponse = http.get(
-    `${BASE_URL}/api/store/agents?page=1&page_size=20`,
+    `${BASE_URL}/store/agents?page=1&page_size=20`,
   );
   logHttpError(allAgentsResponse, "/api/store/agents", "GET");
 
   marketplaceRequests.add(1);
+  // A new preview's store is empty, so an empty list still counts.
   const allAgentsSuccess = check(allAgentsResponse, {
     "All agents endpoint returns 200": (r) => r.status === 200,
     "All agents response has data": (r) => {
       try {
         const json = r.json();
-        return (
-          json &&
-          json.agents &&
-          Array.isArray(json.agents) &&
-          json.agents.length > 0
-        );
+        return json && Array.isArray(json.agents);
       } catch {
         return false;
       }
@@ -150,7 +148,7 @@ function marketplaceBrowsingJourney() {
 
   console.log(`🔍 VU ${__VU} searching for "${randomQuery}" agents...`);
   const searchResponse = http.get(
-    `${BASE_URL}/api/store/agents?search_query=${encodeURIComponent(randomQuery)}&page=1&page_size=10`,
+    `${BASE_URL}/store/agents?search_query=${encodeURIComponent(randomQuery)}&page=1&page_size=10`,
   );
   logHttpError(searchResponse, "/api/store/agents (search)", "GET");
 
@@ -176,13 +174,19 @@ function marketplaceBrowsingJourney() {
   }
 
   // Step 4: Browse agents by category
-  const categories = ["AI", "PRODUCTIVITY", "COMMUNICATION", "DATA", "SOCIAL"];
+  const categories = [
+    "marketing",
+    "sales",
+    "research",
+    "content",
+    "development",
+  ];
   const randomCategory =
     categories[Math.floor(Math.random() * categories.length)];
 
   console.log(`📂 VU ${__VU} browsing "${randomCategory}" category...`);
   const categoryResponse = http.get(
-    `${BASE_URL}/api/store/agents?category=${randomCategory}&page=1&page_size=15`,
+    `${BASE_URL}/store/agents?category=${randomCategory}&page=1&page_size=15`,
   );
   logHttpError(categoryResponse, "/api/store/agents (category)", "GET");
 
@@ -217,12 +221,12 @@ function marketplaceBrowsingJourney() {
             Math.floor(Math.random() * allAgentsJson.agents.length)
           ];
 
-        if (randomAgent?.creator_username && randomAgent?.slug) {
+        if (randomAgent?.creator && randomAgent?.slug) {
           console.log(
             `📄 VU ${__VU} viewing agent details for "${randomAgent.slug}"...`,
           );
           const agentDetailsResponse = http.get(
-            `${BASE_URL}/api/store/agents/${encodeURIComponent(randomAgent.creator_username)}/${encodeURIComponent(randomAgent.slug)}`,
+            `${BASE_URL}/store/agents/${encodeURIComponent(randomAgent.creator)}/${encodeURIComponent(randomAgent.slug)}`,
           );
           logHttpError(
             agentDetailsResponse,
@@ -236,7 +240,12 @@ function marketplaceBrowsingJourney() {
             "Agent details response has data": (r) => {
               try {
                 const json = r.json();
-                return json && json.id && json.name && json.description;
+                return (
+                  json &&
+                  json.store_listing_version_id &&
+                  json.agent_name &&
+                  typeof json.description === "string"
+                );
               } catch {
                 return false;
               }
@@ -263,7 +272,7 @@ function marketplaceBrowsingJourney() {
   // Step 6: Browse creators
   console.log(`👥 VU ${__VU} browsing creators...`);
   const creatorsResponse = http.get(
-    `${BASE_URL}/api/store/creators?page=1&page_size=20`,
+    `${BASE_URL}/store/creators?page=1&page_size=20`,
   );
   logHttpError(creatorsResponse, "/api/store/creators", "GET");
 
@@ -290,7 +299,7 @@ function marketplaceBrowsingJourney() {
   // Step 7: Get featured creators
   console.log(`⭐ VU ${__VU} browsing featured creators...`);
   const featuredCreatorsResponse = http.get(
-    `${BASE_URL}/api/store/creators?featured=true&page=1&page_size=10`,
+    `${BASE_URL}/store/creators?featured=true&page=1&page_size=10`,
   );
   logHttpError(
     featuredCreatorsResponse,
@@ -334,11 +343,11 @@ function marketplaceBrowsingJourney() {
             `👤 VU ${__VU} viewing creator details for "${randomCreator.username}"...`,
           );
           const creatorDetailsResponse = http.get(
-            `${BASE_URL}/api/store/creator/${encodeURIComponent(randomCreator.username)}`,
+            `${BASE_URL}/store/creators/${encodeURIComponent(randomCreator.username)}`,
           );
           logHttpError(
             creatorDetailsResponse,
-            "/api/store/creator/{username}",
+            "/api/store/creators/{username}",
             "GET",
           );
 
@@ -389,11 +398,11 @@ export function handleSummary(data) {
       ramp_down: RAMP_DOWN,
     },
     performance_metrics: {
-      total_requests: data.metrics.http_reqs?.count || 0,
+      total_requests: data.metrics.http_reqs?.values?.count || 0,
       failed_requests: data.metrics.http_req_failed?.values?.passes || 0,
       avg_response_time: data.metrics.http_req_duration?.values?.avg || 0,
-      p95_response_time: data.metrics.http_req_duration?.values?.p95 || 0,
-      p99_response_time: data.metrics.http_req_duration?.values?.p99 || 0,
+      p95_response_time: data.metrics.http_req_duration?.values?.["p(95)"] || 0,
+      p99_response_time: data.metrics.http_req_duration?.values?.["p(99)"] || 0,
     },
     custom_metrics: {
       marketplace_requests:
@@ -404,9 +413,11 @@ export function handleSummary(data) {
     },
     thresholds_met: {
       p95_threshold:
-        (data.metrics.http_req_duration?.values?.p95 || 0) < THRESHOLD_P95,
+        (data.metrics.http_req_duration?.values?.["p(95)"] || 0) <
+        THRESHOLD_P95,
       p99_threshold:
-        (data.metrics.http_req_duration?.values?.p99 || 0) < THRESHOLD_P99,
+        (data.metrics.http_req_duration?.values?.["p(99)"] || 0) <
+        THRESHOLD_P99,
       error_rate_threshold:
         (data.metrics.http_req_failed?.values?.rate || 0) <
         THRESHOLD_ERROR_RATE,

@@ -1,13 +1,15 @@
 "use client";
 
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-import { ConnectProviderRow } from "@/app/(platform)/copilot/components/OnboardingWelcomeDialog/ConnectProviderRow";
+import { ConnectProviderRow } from "@/app/(platform)/copilot/components/ConnectToolsDialog/ConnectProviderRow";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   formatCredentialName,
-  formatProviderName,
+  groupServiceIdentity,
+  serviceIcon,
+  serviceKey,
 } from "@/components/contextual/IntegrationsPanel/helpers";
 import type { ConnectableProvider } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -38,16 +40,23 @@ function groupByProvider(
 ): ProviderGroup[] {
   const groups = new Map<string, CredentialsMetaResponse[]>();
   for (const credential of credentials) {
-    groups.set(credential.provider, [
-      ...(groups.get(credential.provider) ?? []),
-      credential,
-    ]);
+    const id = serviceKey(credential);
+    groups.set(id, [...(groups.get(id) ?? []), credential]);
   }
   return [...groups.entries()]
-    .map(([id, list]) => ({
-      provider: { id, name: formatProviderName(id), supportedAuthTypes: [] },
-      credentials: list,
-    }))
+    .map(([id, list]) => {
+      const { name, icon } = groupServiceIdentity(list);
+      return {
+        provider: {
+          id,
+          serviceId: id,
+          name,
+          supportedAuthTypes: [],
+          iconId: icon,
+        },
+        credentials: list,
+      };
+    })
     .sort((a, b) => a.provider.name.localeCompare(b.provider.name));
 }
 
@@ -116,12 +125,12 @@ export function UseExistingCredentialsDialog({
               <button
                 type="button"
                 onClick={() => setSelectedProvider(null)}
-                className="flex w-fit items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
+                className="flex w-fit items-center gap-1 text-sm text-foreground-tertiary hover:text-foreground-emphasis"
               >
                 <Icon icon={ArrowLeft02Icon} size={14} />
                 All connections
               </button>
-              <Text variant="body" tone="muted" className="leading-5">
+              <Text variant="body-tight" tone="muted">
                 You have {selected.credentials.length} {selected.provider.name}{" "}
                 connections. Choose which one {expertName} should use.
               </Text>
@@ -137,10 +146,10 @@ export function UseExistingCredentialsDialog({
                   return (
                     <li
                       key={credential.id}
-                      className="flex items-center gap-3 rounded-xl bg-neutral-100 px-3 py-2.5"
+                      className="flex items-center gap-3 rounded-xl bg-surface-hover px-3 py-2.5"
                     >
                       <IntegrationLogo
-                        provider={credential.provider}
+                        provider={serviceIcon(credential)}
                         size={24}
                       />
                       <Text
@@ -167,7 +176,7 @@ export function UseExistingCredentialsDialog({
             </>
           ) : (
             <>
-              <Text variant="body" tone="muted" className="leading-5">
+              <Text variant="body-tight" tone="muted">
                 These connections are already set up on your account but{" "}
                 {expertName} can&apos;t use them yet. Choose one to give{" "}
                 {expertName} access. Nothing is re-authorised, and you can
@@ -202,7 +211,7 @@ export function UseExistingCredentialsDialog({
                               ? formatCredentialName(
                                   group.credentials[0].title ??
                                     group.provider.name,
-                                  group.provider.id,
+                                  group.credentials[0].provider,
                                 )
                               : `${group.credentials.length} connections · choose one`
                           }
@@ -214,7 +223,7 @@ export function UseExistingCredentialsDialog({
                   <div
                     aria-hidden="true"
                     className={cn(
-                      "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent transition-opacity duration-200",
+                      "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent transition-opacity duration-200",
 
                       hasMoreBelow ? "opacity-100" : "opacity-0",
                     )}

@@ -1,18 +1,17 @@
 "use client";
 
-import { Button } from "@/components/atoms/Button/Button";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import { AUTOPILOT_AVATAR } from "@/components/molecules/BotAvatar/helpers";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { cn } from "@/lib/utils";
 import { useRef } from "react";
+import { HireStepActions } from "./components/HireStepActions";
 import {
   EXPERT_CARD_CLASS,
   RecommendedExpertCard,
 } from "./components/RecommendedExpertCard";
-import { continueLabel, hireDiagnosis, hireTitle, raiseNote } from "./helpers";
+import { hireDiagnosis, hireTitle, raiseNote } from "./helpers";
 import { useHireStep } from "./useHireStep";
 import { useScrollEdges } from "./useScrollEdges";
 
@@ -20,17 +19,18 @@ const SKELETON_CARDS = 3;
 // Three across at the container's max width, two on tablets, one on phones.
 const CARD_WIDTH_CLASS = "w-full sm:w-[calc(50%-0.375rem)] lg:w-72";
 const EDGE_FADE_CLASS =
+  // TODO(tokens): no exact role for from-gray-100 (#F3F4F6), via-gray-100/70 (#F3F4F6)
   "pointer-events-none absolute inset-x-0 z-10 h-16 from-gray-100 via-gray-100/70 to-transparent transition-opacity duration-200";
 
 // Otto's first act as Head of AI: right after the brain dump, before the
 // user is asked to pay for anything, it proposes the experts that take the
-// problems it heard off the user's plate. Hiring here is one click per card;
-// the voice pick waits for the expert's own page.
+// problems it heard off the user's plate. One click hires the whole team, or
+// one card at a time; the voice pick waits for the expert's own page.
 export function HireStep() {
   const step = useHireStep();
   const note = raiseNote(step.raiseRole);
   const diagnosis = hireDiagnosis(step.team, step.isPending);
-  const isHiring = step.hiringTemplateId !== null;
+  const isBusy = step.isCardHiring || step.isHiringAll;
   const gridRef = useRef<HTMLDivElement>(null);
   const { hiddenAbove, hiddenBelow } = useScrollEdges(gridRef);
 
@@ -38,13 +38,7 @@ export function HireStep() {
     <FadeIn>
       <div className="flex w-full flex-col items-center gap-8 px-4">
         <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-4 px-4 text-center">
-          <BotAvatar
-            config={AUTOPILOT_AVATAR}
-            status={step.isPending ? "working" : "idle"}
-            size={120}
-            trackPointer
-            showBadge={false}
-          />
+          <AutopilotAvatar size={120} transparent />
           <Text variant="h4" as="h1">
             {hireTitle(step.team, step.isPending)}
           </Text>
@@ -94,7 +88,7 @@ export function HireStep() {
                     className={cn(
                       EXPERT_CARD_CLASS,
                       CARD_WIDTH_CLASS,
-                      "border-zinc-200",
+                      "border-border-base",
                     )}
                     data-testid="hire-step-pending"
                   >
@@ -116,11 +110,13 @@ export function HireStep() {
                       isHired={step.hiredTemplateIds.includes(
                         expert.template_id,
                       )}
-                      isHiringThis={
-                        step.hiringTemplateId === expert.template_id
-                      }
-                      disabled={isHiring}
+                      isHiringThis={step.isHiringCard(expert.template_id)}
+                      isIncluded={step.isIncluded(expert.template_id)}
+                      disabled={isBusy}
                       onHire={() => step.hire(expert, index)}
+                      onToggleIncluded={() =>
+                        step.toggleIncluded(expert.template_id)
+                      }
                     />
                   </div>
                 ))}
@@ -138,15 +134,15 @@ export function HireStep() {
           </Text>
         ) : null}
 
-        <Button
-          type="button"
-          size="small"
-          onClick={step.handleContinue}
-          disabled={isHiring}
-          className="h-10 w-56 rounded-xl"
-        >
-          {continueLabel(step.hiredTemplateIds.length)}
-        </Button>
+        <HireStepActions
+          isPending={step.isPending}
+          isHiringAll={step.isHiringAll}
+          isCardHiring={step.isCardHiring}
+          primaryLabel={step.primaryLabel}
+          secondaryLabel={step.secondaryLabel}
+          onPrimary={step.handlePrimary}
+          onSecondary={step.handleSecondary}
+        />
       </div>
     </FadeIn>
   );

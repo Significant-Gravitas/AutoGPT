@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Input } from "@/components/__legacy__/ui/input";
-import { Button } from "@/components/__legacy__/ui/button";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
+import { Text } from "@/components/atoms/Text/Text";
+import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { CronScheduler } from "@/components/contextual/CronScheduler/cron-scheduler";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -100,8 +101,10 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
         <div className="flex flex-col gap-4">
           {props.mode === "with-name" && (
             <div className="flex max-w-[448px] flex-col space-y-2">
-              <label className="text-sm font-medium">Schedule Name</label>
-              <Input
+              <Text variant="body-medium-tight" as="label" tone="inherit">
+                Schedule Name
+              </Text>
+              <BaseInput
                 value={scheduleName}
                 onChange={(e) => setScheduleName(e.target.value)}
                 placeholder="Enter a name for this schedule"
@@ -117,30 +120,35 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
 
           {/* Timezone info */}
           {userTimezone === "not-set" ? (
-            <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
-              <InfoIcon className="h-4 w-4 text-amber-600" />
-              <p className="text-sm text-amber-800">
+            <div className="flex items-center gap-2 rounded-md border border-warning-border bg-warning-surface p-3">
+              <InfoIcon
+                // TODO(tokens): no exact role for text-amber-600 #d97706
+                className="h-4 w-4 text-amber-600"
+              />
+              <Text variant="body-tight" tone="warning-strong">
                 No timezone set. Schedule will run in UTC.
                 <a href="/settings/account" className="ml-1 underline">
                   Set your timezone
                 </a>
-              </p>
+              </Text>
             </div>
           ) : (
             <div className="flex items-center gap-2 rounded-md bg-muted/50 p-3">
               <InfoIcon className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
+              <Text variant="body-tight" className="text-muted-foreground">
                 Schedule will run in your timezone:{" "}
                 <span className="font-medium">{timezoneDisplay}</span>
-              </p>
+              </Text>
             </div>
           )}
         </div>
         <div className="mt-8 flex justify-end space-x-2">
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="legacy-outline" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button onClick={handleDone}>Done</Button>
+          <Button variant="legacy-default" onClick={handleDone}>
+            Done
+          </Button>
         </div>
       </Dialog.Content>
     </Dialog>

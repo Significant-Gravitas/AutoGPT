@@ -137,6 +137,36 @@ describe("validateSession", () => {
       `/login?next=${encodeURIComponent("/library")}`,
     );
   });
+
+  it("returns an invalid session instead of throwing when the path is missing", async () => {
+    const warnSpy = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+    getServerSessionMock.mockResolvedValue(null);
+
+    const result = await validateSession(undefined);
+
+    expect(result).toEqual({
+      user: null,
+      isValid: false,
+      redirectPath: undefined,
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      "validateSession called without a valid currentPath:",
+      undefined,
+    );
+  });
+
+  it("does not rethrow from the catch block when the path is missing", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    getServerSessionMock.mockRejectedValue(new Error("db unavailable"));
+
+    const result = await validateSession(null);
+
+    expect(result.isValid).toBe(false);
+    expect(result.user).toBeNull();
+    expect(result.redirectPath).toBeUndefined();
+  });
 });
 
 describe("getCurrentUser", () => {

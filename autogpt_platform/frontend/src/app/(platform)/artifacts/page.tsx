@@ -1,23 +1,22 @@
 "use client";
 
-import { useEffect } from "react";
-import { notFound } from "next/navigation";
-import { motion, useReducedMotion } from "framer-motion";
-import type { Transition, Variants } from "framer-motion";
-import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Text } from "@/components/atoms/Text/Text";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
-import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
 import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
-import { ArtifactsSearchBar } from "./components/ArtifactsSearchBar/ArtifactsSearchBar";
+import { Text } from "@/components/atoms/Text/Text";
+import type { Transition, Variants } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import { useEffect } from "react";
 import { ArtifactsList } from "./components/ArtifactsList/ArtifactsList";
 import { getEmptyState } from "./components/ArtifactsList/helpers";
-import { NewMenu } from "./components/NewMenu/NewMenu";
+import { ArtifactsSearchBar } from "./components/ArtifactsSearchBar/ArtifactsSearchBar";
 import { ExpertFilter } from "./components/ExpertFilter/ExpertFilter";
+import { NewMenu } from "./components/NewMenu/NewMenu";
 import { OriginFilter } from "./components/OriginFilter/OriginFilter";
-import { StorageUsage } from "./components/StorageUsage/StorageUsage";
 import { ViewToggle } from "./components/ViewToggle/ViewToggle";
 import { FolderBreadcrumb } from "./components/WorkspaceFolders/FolderBreadcrumb";
+import {
+  ancestorsOf,
+  childrenOf,
+} from "./components/WorkspaceFolders/folderTree";
 import { useArtifactsFolders } from "./useArtifactsFolders";
 import { useArtifactsPage } from "./useArtifactsPage";
 
@@ -38,19 +37,17 @@ const REDUCED_SECTION_VARIANTS: Variants = {
   show: { opacity: 1, transition: { duration: 0.2 } },
 };
 
-// The sidebar-inset dashboard layout the artifacts page was redesigned for.
-const NEW_LAYOUT_MAIN =
+const MAIN_CLASS_NAME =
   "mx-auto min-h-screen w-full max-w-7xl space-y-6 px-6 pb-20 pt-2 md:px-8";
-// Classic navbar layout — kept intact when the new-layout flag is off.
-const CLASSIC_MAIN =
-  "container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12";
 
 export default function ArtifactsPage() {
-  const { enabled: isEnabled, ready: flagReady } = useFlagStatus(
-    Flag.ARTIFACTS_PAGE,
-  );
-  const { showNewLayout } = usePlatformChrome();
   const reduceMotion = useReducedMotion();
+  const {
+    folders,
+    isLoading: isFoldersLoading,
+    isError: isFoldersError,
+    error: foldersError,
+  } = useArtifactsFolders();
   const {
     files,
     isLoading,
@@ -62,7 +59,8 @@ export default function ArtifactsPage() {
     originFilter,
     setOriginFilter,
     selectedFolderId,
-    setSelectedFolderId,
+    openFolder,
+    closeFolder,
     expertFilter,
     setExpertFilter,
     view,
@@ -70,59 +68,41 @@ export default function ArtifactsPage() {
     hasMore,
     isLoadingMore,
     loadMore,
-  } = useArtifactsPage();
-  const {
-    folders,
-    isLoading: isFoldersLoading,
-    isError: isFoldersError,
-    error: foldersError,
-  } = useArtifactsFolders();
+  } = useArtifactsPage({ folders, isFoldersLoading, isFoldersError });
   const { activeExperts, expertsById } = useExpertMap();
 
   const isSearching = searchTerm.length > 0;
   const isInFolder = selectedFolderId !== null;
-  const isFilteringByExpert = expertFilter !== null;
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
-  const showFolders = !isInFolder && !isSearching && !isFilteringByExpert;
-  const hasFolders = showFolders && folders.length > 0;
-  // At the root the empty state depends on whether folders exist, so hold
-  // the loading state until both queries have settled.
+  // Folders are the container an expert filter narrows inside, so only a
+  // search — which spans every folder — replaces them with a flat list.
+  const showFolders = !isSearching;
+  const hasFolders =
+    showFolders && childrenOf(folders, selectedFolderId).length > 0;
+  // The empty state depends on whether child folders exist, so hold the
+  // loading state until both queries have settled.
   const isListLoading = isLoading || (showFolders && isFoldersLoading);
+  // Until the folders query settles the open folder's name is unknown, so the
+  // crumb stands in with the generic label rather than flickering a wrong one.
+  const breadcrumbItems = isInFolder
+    ? selectedFolder
+      ? ancestorsOf(folders, selectedFolder.id).map((folder) => ({
+          id: folder.id,
+          name: folder.name,
+        }))
+      : [{ id: selectedFolderId, name: "Folder" }]
+    : [];
 
   useEffect(() => {
     document.title = "Files – AutoGPT Platform";
   }, []);
 
-  function handleExpertFilterChange(expertId: string | null) {
-    setExpertFilter(expertId);
-    if (expertId) setSelectedFolderId(null);
-  }
-
-  if (!flagReady) {
-    return <ArtifactsPageSkeleton showNewLayout={showNewLayout} />;
-  }
-  if (!isEnabled) {
-    notFound();
-  }
-
   const variants = reduceMotion ? REDUCED_SECTION_VARIANTS : SECTION_VARIANTS;
 
   return (
-    <main className={showNewLayout ? NEW_LAYOUT_MAIN : CLASSIC_MAIN}>
-      {/* Under the new layout the chrome's inset header owns the title row and
-          shows storage usage beside it (see InsetHeaderActions). */}
-      {!showNewLayout ? (
-        <motion.div
-          className="flex items-center justify-between gap-4"
-          variants={variants}
-          initial="hidden"
-          animate="show"
-          transition={{ delay: 0 }}
-        >
-          <Text variant="h3">Files</Text>
-          <StorageUsage />
-        </motion.div>
-      ) : null}
+    <main className={MAIN_CLASS_NAME}>
+      {/* The chrome's inset header owns the title row and shows storage usage
+          beside it (see InsetHeaderActions). */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <motion.div
           variants={variants}
@@ -131,8 +111,8 @@ export default function ArtifactsPage() {
           transition={{ delay: 0 }}
         >
           <Text
-            variant={showNewLayout ? "large" : "body"}
-            className="max-w-prose text-zinc-600"
+            variant="large"
+            className="max-w-prose text-foreground-secondary"
           >
             Find here every file generated by your team or uploaded by you.
           </Text>
@@ -148,7 +128,10 @@ export default function ArtifactsPage() {
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
           />
-          <NewMenu selectedFolderId={selectedFolderId} />
+          <NewMenu
+            selectedFolderId={selectedFolderId}
+            selectedFolderName={selectedFolder?.name}
+          />
         </motion.div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -163,7 +146,7 @@ export default function ArtifactsPage() {
           <ExpertFilter
             experts={activeExperts}
             value={expertFilter}
-            onChange={handleExpertFilterChange}
+            onChange={setExpertFilter}
           />
         </motion.div>
         <motion.div
@@ -183,8 +166,10 @@ export default function ArtifactsPage() {
           transition={{ delay: reduceMotion ? 0 : 0.24 }}
         >
           <FolderBreadcrumb
-            folderName={selectedFolder?.name ?? "Folder"}
-            onBack={() => setSelectedFolderId(null)}
+            items={breadcrumbItems}
+            onNavigate={(folderId) =>
+              folderId === null ? closeFolder() : openFolder(folderId)
+            }
           />
         </motion.div>
       ) : null}
@@ -218,33 +203,10 @@ export default function ArtifactsPage() {
           listKey={`${originFilter}|${expertFilter ?? "everyone"}|${debouncedSearch}|${selectedFolderId ?? "root"}`}
           view={view}
           showFolders={showFolders}
-          onSelectFolder={setSelectedFolderId}
+          folderParentId={selectedFolderId}
+          onSelectFolder={openFolder}
         />
       </motion.div>
-    </main>
-  );
-}
-
-interface Props {
-  showNewLayout: boolean;
-}
-
-function ArtifactsPageSkeleton({ showNewLayout }: Props) {
-  return (
-    <main
-      className={showNewLayout ? NEW_LAYOUT_MAIN : CLASSIC_MAIN}
-      data-testid="artifacts-flag-loading"
-    >
-      <Skeleton className="h-8 w-48 rounded-md" />
-      <Skeleton className="h-4 w-80 rounded-md" />
-      <div className="flex flex-col divide-y divide-zinc-100">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-4 py-3">
-            <Skeleton className="h-10 w-10 rounded-xl" />
-            <Skeleton className="h-4 w-56" />
-          </div>
-        ))}
-      </div>
     </main>
   );
 }

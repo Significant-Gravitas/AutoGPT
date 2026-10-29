@@ -1,7 +1,9 @@
 import asyncio
+import hashlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from e2b import Template
 from e2b.api.client.models import TemplateAliasResponse, TemplateBuildStatus
 
 from backend.copilot.config import ChatConfig
@@ -10,6 +12,7 @@ from backend.util.e2b_template import (
     DESKTOP_IMAGE,
     TemplateSpec,
     TemplateState,
+    desktop_image,
     ensure_template,
     forget_ready_templates,
     get_template_state,
@@ -43,6 +46,15 @@ class TestSpec:
     def test_the_managed_image_is_the_copilot_default(self):
         assert ChatConfig().e2b_sandbox_template == DESKTOP_IMAGE.alias
         assert DESKTOP_IMAGE.cpu_count == 1 and DESKTOP_IMAGE.memory_mb == 2048
+
+    def test_the_alias_names_the_image_it_builds(self):
+        # Teams keep a ready alias forever, so a changed image needs a new alias.
+        steps = Template.to_json(desktop_image(DESKTOP_IMAGE.source))
+        digest = hashlib.sha256(steps.encode()).hexdigest()[:8]
+        assert DESKTOP_IMAGE.alias == f"agpt-desktop-1x2-{digest}", (
+            "desktop_image() changed: rename DESKTOP_IMAGE and the "
+            "ChatConfig.e2b_sandbox_template default to this alias"
+        )
 
     def test_tags_are_docker_safe_and_resolve_the_bare_alias(self):
         tags = TemplateSpec(

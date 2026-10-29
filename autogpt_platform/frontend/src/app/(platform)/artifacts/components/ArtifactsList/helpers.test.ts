@@ -227,6 +227,43 @@ describe("getFileTypeLabel + getFileTypeIcon", () => {
       expect(typeof Icon).toBe("object");
     }
   });
+
+  test.each([
+    [
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      undefined,
+      "Presentation",
+    ],
+    ["application/vnd.ms-powerpoint", undefined, "Presentation"],
+    [
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      undefined,
+      "Document",
+    ],
+    ["application/msword", undefined, "Document"],
+    ["text/plain", "deck.pptx", "Presentation"],
+    ["application/octet-stream", "deck.ppt", "Presentation"],
+    [undefined, "report.docx", "Document"],
+    ["application/octet-stream", "report.doc", "Document"],
+    ["application/octet-stream", "sheet.xlsx", "Spreadsheet"],
+    [undefined, "sheet.xls", "Spreadsheet"],
+  ])("getFileTypeLabel(%s, %s) === %s", (mime, name, expected) => {
+    expect(getFileTypeLabel(mime, name)).toBe(expected);
+  });
+
+  test("office files get their own icons, by MIME or by extension", () => {
+    const presentation = getFileTypeIcon(
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    );
+    expect(getFileTypeIcon("text/plain", "deck.pptx")).toBe(presentation);
+    expect(getFileTypeIcon(undefined, "report.docx")).toBe(
+      getFileTypeIcon("text/plain"),
+    );
+    expect(getFileTypeIcon("application/octet-stream", "sheet.xlsx")).toBe(
+      getFileTypeIcon("text/csv"),
+    );
+    expect(presentation).not.toBe(getFileTypeIcon("application/octet-stream"));
+  });
 });
 
 describe("getPreviewKind", () => {
@@ -432,5 +469,75 @@ describe("getEmptyMessage", () => {
         hasFolders: false,
       }),
     ).toBe("No files yet");
+  });
+});
+
+describe("getEmptyMessage - nested folders and the expert filter", () => {
+  test("a folder with subfolders but no direct files says so", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: true,
+      }),
+    ).toBe("No files directly in this folder");
+  });
+
+  test("a folder with neither is simply empty", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+      }),
+    ).toBe("This folder is empty");
+  });
+
+  test("an expert filter inside a folder names the expert and says 'here'", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+        hasExpertFilter: true,
+        expertName: "Maria",
+      }),
+    ).toBe("No files from Maria here");
+  });
+
+  test("an expert filter at a root with folders says 'here' too", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: true,
+        hasExpertFilter: true,
+        expertName: "Maria",
+      }),
+    ).toBe("No files from Maria here");
+  });
+
+  test("an expert filter with nowhere else to look keeps 'yet'", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: false,
+        hasExpertFilter: true,
+        expertName: "Maria",
+      }),
+    ).toBe("No files from this expert yet");
+  });
+
+  test("falls back to 'this expert' when the name is unknown", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+        hasExpertFilter: true,
+        expertName: null,
+      }),
+    ).toBe("No files from this expert here");
   });
 });

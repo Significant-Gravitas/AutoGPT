@@ -23,6 +23,7 @@ vi.mock("../tokenDevtool/usageTap", () => ({
     createUsageCapturingFetch(sessionId),
 }));
 
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { createCopilotTransport } from "../copilotStreamTransport";
 import { buildKickoffMessage } from "../expertKickoff";
 
@@ -70,6 +71,45 @@ describe("copilotStreamTransport devtool wiring", () => {
     createCopilotTransport({ sessionId: "s-1", ...makeRefs() });
 
     expect(createUsageCapturingFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("copilotStreamTransport refusals", () => {
+  it("keeps a 402's status, so the chat can offer plans", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            detail:
+              "A subscription is required to use this feature. Upgrade to continue.",
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    try {
+      const transport = createCopilotTransport({
+        sessionId: "sess-no-plan",
+        ...makeRefs(),
+      });
+      const sent = transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "sess-no-plan",
+        messageId: undefined,
+        messages: lastMessage("one more thing"),
+        abortSignal: undefined,
+      });
+
+      await expect(sent).rejects.toBeInstanceOf(ApiError);
+      await expect(sent).rejects.toMatchObject({
+        status: 402,
+        message:
+          "A subscription is required to use this feature. Upgrade to continue.",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
@@ -265,5 +305,61 @@ describe("copilotStreamTransport — expert kickoff routing", () => {
 
     expect(out.body.message_id).toMatch(UUID_RE);
     expect(out.body.expert_kickoff).toBe(false);
+  });
+});
+
+describe("copilotStreamTransport - folder attachments", () => {
+  async function prepare(parts: unknown[]) {
+    const transport = createCopilotTransport({
+      sessionId: "sess-folders",
+      ...makeRefs(),
+    });
+    return (
+      transport as unknown as {
+        prepareSendMessagesRequest: (args: { messages: unknown[] }) => Promise<{
+          body: { file_ids: string[] | null; folder_ids: string[] | null };
+        }>;
+      }
+    ).prepareSendMessagesRequest({
+      messages: [
+        { id: "m1", role: "user" as const, parts, metadata: undefined },
+      ],
+    });
+  }
+
+  const FILE_PART = {
+    type: "file" as const,
+    mediaType: "text/plain",
+    filename: "a.txt",
+    url: "/api/proxy/api/workspace/files/file-1/download",
+  };
+  const FOLDER_PART = {
+    type: "data-workspace-folder" as const,
+    data: { id: "fld-1", name: "Reports", fileCount: 3 },
+  };
+
+  it("sends folder ids beside file ids", async () => {
+    const { body } = await prepare([
+      { type: "text", text: "look" },
+      FILE_PART,
+      FOLDER_PART,
+    ]);
+    expect(body.file_ids).toEqual(["file-1"]);
+    expect(body.folder_ids).toEqual(["fld-1"]);
+  });
+
+  it("sends folder ids with no files at all", async () => {
+    const { body } = await prepare([
+      { type: "text", text: "look" },
+      FOLDER_PART,
+    ]);
+    expect(body.file_ids).toBeNull();
+    expect(body.folder_ids).toEqual(["fld-1"]);
+  });
+
+  it("sends null rather than an empty list when nothing is attached", async () => {
+    const { body } = await prepare([{ type: "text", text: "hi" }]);
+    expect(body.file_ids).toBeNull();
+    expect(body.folder_ids).toBeNull();
   });
 });

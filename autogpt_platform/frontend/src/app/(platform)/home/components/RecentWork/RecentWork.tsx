@@ -4,6 +4,7 @@ import { WorkHistoryIcon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import type { HomeRecentWorkGroup } from "@/app/api/__generated__/models/homeRecentWorkGroup";
 import { Text } from "@/components/atoms/Text/Text";
+import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { BriefingByline } from "./components/BriefingByline";
@@ -25,6 +26,10 @@ export function RecentWork({ dashboard, className }: Props) {
   const failed = dashboard.recent_work?.failed_count ?? 0;
   const isEmpty = groups.length === 0 && !briefing.narrative;
 
+  // An exposure event: the briefing is an inline byline with no expand step,
+  // so it counts as opened once its content actually renders.
+  useTrackFunnelViewOnce("briefing_opened", Boolean(briefing.narrative));
+
   return (
     <HomeTile
       className={className}
@@ -40,7 +45,10 @@ export function RecentWork({ dashboard, className }: Props) {
           >
             This week
           </Text>
-          <span aria-hidden="true" className="hidden text-zinc-300 sm:inline">
+          <span
+            aria-hidden="true"
+            className="hidden text-foreground-disabled sm:inline"
+          >
             ·
           </span>
           <Text variant="small" as="span" tone="muted" className="tabular-nums">
@@ -49,8 +57,9 @@ export function RecentWork({ dashboard, className }: Props) {
           {failed > 0 ? (
             <Text
               variant="small"
+              tone="danger"
               as="span"
-              className="tabular-nums text-rose-600"
+              className="tabular-nums"
             >
               {failed} failed
             </Text>
@@ -64,7 +73,7 @@ export function RecentWork({ dashboard, className }: Props) {
           description="Runs, files, integrations and schedules from your experts and workflows will appear here."
         />
       ) : (
-        <div className="divide-y divide-zinc-200">
+        <div className="divide-y divide-border-base">
           {briefing.narrative ? <BriefingByline briefing={briefing} /> : null}
           {[...team, ...workflows].map((group) => (
             <WorkGroup

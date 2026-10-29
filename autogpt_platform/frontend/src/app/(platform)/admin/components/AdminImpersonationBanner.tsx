@@ -11,7 +11,7 @@ export function AdminImpersonationBanner() {
   }
 
   return (
-    <div className="mb-4 rounded-md border border-amber-500 bg-amber-50 p-4 text-amber-900">
+    <div className="mb-4 rounded-md border border-warning bg-warning-surface p-4 text-warning-foreground">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <strong className="font-semibold">
@@ -19,14 +19,14 @@ export function AdminImpersonationBanner() {
           </strong>
           <span>
             You are currently acting as user:{" "}
-            <code className="rounded bg-amber-100 px-1 font-mono text-sm">
+            <code className="rounded bg-warning-surface px-1 font-mono text-sm">
               {impersonatedUserId}
             </code>
           </span>
         </div>
         <button
           onClick={stopImpersonating}
-          className="ml-4 flex h-8 items-center rounded-md border border-amber-300 bg-transparent px-3 text-sm hover:bg-amber-100"
+          className="ml-4 flex h-8 items-center rounded-md border border-warning-border bg-transparent px-3 text-sm hover:bg-warning-surface"
         >
           Stop Impersonation
         </button>

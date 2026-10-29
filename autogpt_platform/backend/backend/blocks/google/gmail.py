@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -471,6 +472,7 @@ class GmailReadBlock(GmailBase):
                 ],
                 "_send_email": lambda *args, **kwargs: {"id": "1", "status": "sent"},
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -622,6 +624,8 @@ class GmailSendBlock(GmailBase):
             test_mock={
                 "_send_email": lambda *args, **kwargs: {"id": "1", "status": "sent"},
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -730,6 +734,7 @@ class GmailCreateDraftBlock(GmailBase):
                     "message": {"id": "msg1"},
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -810,6 +815,7 @@ class GmailListLabelsBlock(GmailBase):
                     {"id": "Label_2", "name": "Work"},
                 ],
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -873,6 +879,7 @@ class GmailAddLabelBlock(GmailBase):
                     "label_id": "Label_1",
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -959,6 +966,7 @@ class GmailRemoveLabelBlock(GmailBase):
                     "label_id": "Label_1",
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1074,6 +1082,7 @@ class GmailGetThreadBlock(GmailBase):
                     "historyId": "645006",
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -1349,6 +1358,8 @@ class GmailReplyBlock(GmailBase):
                     "threadId": "t1",
                 }
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -1477,6 +1488,7 @@ class GmailDraftReplyBlock(GmailBase):
                     "message": {"id": "m2", "threadId": "t1"},
                 }
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1565,6 +1577,7 @@ class GmailGetProfileBlock(GmailBase):
                     "historyId": "12345",
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -1663,6 +1676,8 @@ class GmailForwardBlock(GmailBase):
                     "threadId": "t1",
                 },
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

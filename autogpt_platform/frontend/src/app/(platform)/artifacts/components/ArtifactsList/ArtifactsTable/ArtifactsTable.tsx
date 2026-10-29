@@ -22,6 +22,7 @@ interface Props {
   compactEmpty: boolean;
   listKey: string;
   showFolders: boolean;
+  folderParentId: string | null;
   onSelectFolder: (folderId: string) => void;
   onOpen: (file: WorkspaceFileItem) => void;
 }
@@ -40,6 +41,7 @@ export function ArtifactsTable({
   compactEmpty,
   listKey,
   showFolders,
+  folderParentId,
   onSelectFolder,
   onOpen,
 }: Props) {
@@ -57,20 +59,20 @@ export function ArtifactsTable({
         />
       ) : (
         <div className={cn(ROW_GRID_CLASS, "px-2 pb-2")}>
-          <Text variant="body" as="span" className="text-zinc-500">
+          <Text variant="body" as="span" className="text-foreground-tertiary">
             Name
           </Text>
           <Text
             variant="body"
             as="span"
-            className={cn(DATE_CELL_CLASS, "text-zinc-500")}
+            className={cn(DATE_CELL_CLASS, "text-foreground-tertiary")}
           >
             Modified
           </Text>
           <Text
             variant="body"
             as="span"
-            className={cn(SIZE_CELL_CLASS, "text-zinc-500")}
+            className={cn(SIZE_CELL_CLASS, "text-foreground-tertiary")}
           >
             Size
           </Text>
@@ -80,16 +82,21 @@ export function ArtifactsTable({
       <TooltipProvider delayDuration={450} skipDelayDuration={300}>
         <motion.ul
           key={listKey}
-          className="divide-y divide-zinc-100"
+          className="divide-y divide-separator"
           data-testid="artifacts-list"
           variants={reduceMotion ? undefined : LIST_VARIANTS}
           initial={reduceMotion ? false : "hidden"}
           animate={reduceMotion ? undefined : "show"}
         >
-          {showFolders ? <FolderRows onSelectFolder={onSelectFolder} /> : null}
+          {showFolders ? (
+            <FolderRows
+              parentId={folderParentId}
+              onSelectFolder={onSelectFolder}
+            />
+          ) : null}
           {isLoading ? (
             <li
-              className="divide-y divide-zinc-100"
+              className="divide-y divide-separator"
               data-testid="artifacts-loading"
             >
               {Array.from({ length: 6 }).map((_, i) => (

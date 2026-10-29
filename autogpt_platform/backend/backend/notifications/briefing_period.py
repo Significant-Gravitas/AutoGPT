@@ -96,7 +96,7 @@ def period_window(
     else:
         start_date, end_date = today - timedelta(days=7), today
         label = (
-            f"{_format_day(start_date)} – {_format_day(end_date - timedelta(days=1))}"
+            f"{_format_day(start_date)} to {_format_day(end_date - timedelta(days=1))}"
         )
         noun = "last week"
 
@@ -118,4 +118,4 @@ def _utc_midnight(day: date, zone: ZoneInfo) -> datetime:
 
 
 def _format_day(day: date) -> str:
-    return f"{day.strftime('%a')} {day.day} {day.strftime('%b')}"
+    return f"{day.strftime('%a')} {day.day} {day.strftime('%b %Y')}"

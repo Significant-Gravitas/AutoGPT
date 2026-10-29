@@ -55,10 +55,14 @@ def main(argv: list[str] | None = None) -> int:
                 f"unexpected: {sorted(actual - expected)}"
             )
         problems = []
+        # No secrets in this job, so secret-gated IDs are accepted and left out
+        # of the staleness sweep; the per-shard step is the strict check.
         for version in policy.python_versions:
             allowed = policy.for_python_version(version)
             try:
-                observed = validate_shard_reports(args.reports_dir, version, allowed)
+                observed = validate_shard_reports(
+                    args.reports_dir, version, allowed | policy.secret_gated_ids()
+                )
                 if stale := allowed - observed:
                     raise ValueError(
                         f"Python {version} has stale skip IDs in {args.allow_skips_from}: "

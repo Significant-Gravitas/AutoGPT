@@ -50,7 +50,9 @@ gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews
 
 **Security:** input validation at boundaries, no injection (command, XSS, SQL), secrets not logged, file paths sanitized (`os.path.basename()` in error messages).
 
-**Code quality:** apply rules from backend/frontend CLAUDE.md files.
+**Code quality:** apply rules from backend/frontend CLAUDE.md files and root `AGENTS.md`, including its "User-facing copy" section (text a person reads says workflow, never agent or graph).
+
+**Design system (frontend):** hold changed code under `autogpt_platform/frontend/src/**/*.{tsx,ts,css}` to the rules in `docs/engineering/design-system.md`. `pnpm lint` fails new violations (raw palette classes, hex colours, `dark:` classes, legacy imports, restyled primitives, reason-less suppressions) and any file whose count goes over its entry in `scripts/eslint-rules/design-system-baseline.json`; grandfathered counts at or below the baseline pass. Review what lint cannot see: a raised baseline count for a file that was not moved, renamed or split, a colour swapped to a role with a different value (pixels change), global CSS for DOM we render as JSX, a repeated class string that should be a variant, and missing before/after screenshots for changes to `src/components/**`, `globals.css` or `tailwind*.ts`.
 
 **Architecture:** DRY, single responsibility, modular functions. `Security()` vs `Depends()` for FastAPI auth. `data:` for SSE events, `: comment` for heartbeats. `transaction=True` for Redis pipelines.
 

@@ -1,10 +1,10 @@
 # This file contains a lot of prompt block strings that would trigger "line too long"
 # flake8: noqa: E501
 import asyncio
+import hashlib
 import logging
 import math
 import re
-import secrets
 import time
 from abc import ABC
 from collections.abc import Iterable
@@ -17,10 +17,13 @@ import openai
 from anthropic.types import ToolParam
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
 from pydantic import BaseModel, SecretStr
+from pydantic.json_schema import SkipJsonSchema
+from pydantic_core import PydanticUndefined
 
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -40,7 +43,8 @@ from backend.data.model import (
     NodeExecutionStats,
     SchemaField,
 )
-from backend.integrations.providers import ProviderName
+from backend.integrations.credentials_store import is_system_credential
+from backend.integrations.providers import ProviderName, provider_key
 from backend.util import json
 
 # ``ToolCall`` and ``ToolContentBlock`` live in the shared
@@ -49,6 +53,12 @@ from backend.util import json
 # them here so existing ``from backend.blocks.llm import
 # ToolContentBlock`` imports keep working.
 from backend.util.llm.conversions import ToolCall, ToolContentBlock
+from backend.util.llm.prompt_refusal import PromptRefusedError, is_prompt_refused
+from backend.util.llm.provider_billing import (
+    ProviderUnavailableError,
+    is_provider_out_of_credits,
+    report_provider_out_of_credits,
+)
 from backend.util.llm.providers import timeout_error
 from backend.util.llm.saturation import track_llm_call
 from backend.util.logging import TruncatedLogger
@@ -89,7 +99,9 @@ LLMProviderName = Literal[
     ProviderName.LLAMA_API,
     ProviderName.V0,
 ]
-AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
+AICredentials = (
+    CredentialsMetaInput[LLMProviderName, Literal["api_key"]] | SkipJsonSchema[None]
+)
 # Providers whose credential use is a model call rather than an action taken
 # on the user's behalf; activity feeds leave these out.
 LLM_PROVIDER_NAMES: frozenset[str] = frozenset(
@@ -111,13 +123,21 @@ TEST_CREDENTIALS_INPUT = {
 }
 
 
-def AICredentialsField() -> AICredentials:
+def AICredentialsField(*, allow_credential_free: bool = True) -> AICredentials:
     return CredentialsField(
         description="API key for the LLM provider.",
         discriminator="model",
         discriminator_mapping={
-            model.value: model.metadata.provider for model in LLMModel
+            model.value: model.metadata.provider
+            for model in LLMModel
+            if model.metadata.provider != ProviderName.OLLAMA
         },
+        credential_free_discriminator_values={
+            model.value
+            for model in LLMModel
+            if allow_credential_free and model.metadata.provider == ProviderName.OLLAMA
+        },
+        default=None if allow_credential_free else PydanticUndefined,
     )
 
 
@@ -241,7 +261,7 @@ def get_parallel_tool_calls_param(
 
 
 async def llm_call(
-    credentials: APIKeyCredentials,
+    credentials: APIKeyCredentials | None,
     llm_model: LLMModel,
     prompt: list[dict],
     max_tokens: int | None,
@@ -300,10 +320,35 @@ async def llm_call(
             if isinstance(e, asyncio.TimeoutError):
                 raise _block_timeout_error(llm_model, max_tokens) from e
             raise
+        except Exception as e:
+            if is_provider_out_of_credits(e) and _is_platform_credential(credentials):
+                ctx = execution_context
+                report_provider_out_of_credits(
+                    provider=provider_key(llm_model.metadata.provider),
+                    model=llm_model.value,
+                    surface="block",
+                    error=e,
+                    user_id=ctx.user_id if ctx else None,
+                    graph_exec_id=ctx.graph_exec_id if ctx else None,
+                    node_exec_id=ctx.node_exec_id if ctx else None,
+                )
+                raise ProviderUnavailableError() from e
+            if is_prompt_refused(e):
+                raise PromptRefusedError() from e
+            raise
+
+
+def _is_platform_credential(credentials: APIKeyCredentials | None) -> bool:
+    """A key the platform pays for, as opposed to one the user brought.
+
+    A user's own key running dry is theirs to top up, so the provider's
+    wording is exactly what they need and is left alone.
+    """
+    return credentials is not None and is_system_credential(credentials.id)
 
 
 async def _llm_call(
-    credentials: APIKeyCredentials,
+    credentials: APIKeyCredentials | None,
     llm_model: LLMModel,
     prompt: list[dict],
     max_tokens: int | None,
@@ -335,6 +380,11 @@ async def _llm_call(
     """
     provider = llm_model.metadata.provider
     context_window = llm_model.context_window
+    if credentials is None and provider != ProviderName.OLLAMA:
+        raise ValueError(
+            f"Credentials are required for {provider_key(provider)}/{llm_model.value}."
+        )
+    api_key = credentials.api_key.get_secret_value() if credentials else ""
 
     if compress_prompt_to_fit:
         # Pass the model so compaction measures in the same corrected token
@@ -387,7 +437,7 @@ async def _llm_call(
     provider_response = await call_provider(
         provider=cast(Any, provider),
         model=llm_model.value,
-        api_key=credentials.api_key.get_secret_value(),
+        api_key=api_key,
         messages=prompt,
         max_tokens=max_tokens,
         tools=tools,
@@ -545,11 +595,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 ),
                 "get_collision_proof_output_tag_id": lambda *args: "test123456",
             },
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(
         self,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         llm_model: LLMModel,
         prompt: list[dict],
         max_tokens: int | None,
@@ -577,7 +628,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
         logger.debug(f"Calling LLM with input data: {input_data}")
         prompt = [json.to_dict(p) for p in input_data.conversation_history or [] if p]
@@ -592,8 +647,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         if input_data.sys_prompt:
             prompt.append({"role": "system", "content": input_data.sys_prompt})
 
-        # Use a one-time unique tag to prevent collisions with user/LLM content
-        output_tag_id = self.get_collision_proof_output_tag_id()
+        # Deterministic collision-proof tag from the output spec keeps the Anthropic
+        # ephemeral system-prefix cache stable across calls with the same format.
+        output_tag_id = self.get_collision_proof_output_tag_id(
+            input_data.expected_format
+        )
         output_tag_start = f'<json_output id="{output_tag_id}">'
         if input_data.expected_format:
             sys_prompt = self.response_format_instructions(
@@ -619,6 +677,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 return f"JSON decode error: {e}"
 
         error_feedback_message = ""
+        refusal: PromptRefusedError | None = None
         llm_model = input_data.model
         total_provider_cost: float | None = None
 
@@ -756,6 +815,15 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     yield "prompt", self.prompt
                     return
             except Exception as e:
+                if isinstance(e, ProviderUnavailableError):
+                    # Already alerted at the llm_call seam, and an empty
+                    # account stays empty however many times we ask.
+                    error_feedback_message = str(e)
+                    break
+                if isinstance(e, PromptRefusedError):
+                    # A judgement on the prompt itself, like the user errors below.
+                    refusal = e
+                    break
                 is_user_error = (
                     isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
                     and e.status_code in USER_ERROR_STATUS_CODES
@@ -803,6 +871,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     provider_cost_type="cost_usd",
                 )
             )
+        if refusal is not None:
+            raise refusal
         raise RuntimeError(error_feedback_message)
 
     def response_format_instructions(
@@ -917,8 +987,14 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
         return json.loads(json_output)
 
-    def get_collision_proof_output_tag_id(self) -> str:
-        return secrets.token_hex(8)
+    def get_collision_proof_output_tag_id(
+        self, expected_format: dict[str, str] | None = None
+    ) -> str:
+        # Hash the output spec so the tag is identical across calls with the same
+        # format (stable Anthropic cache_control prefix) while remaining
+        # collision-resistant against user/LLM content.
+        spec = repr(sorted((expected_format or {}).items()))
+        return hashlib.sha256(spec.encode("utf-8")).hexdigest()[:16]
 
 
 def trim_prompt(s: str) -> str:
@@ -1045,12 +1121,13 @@ class AITextGeneratorBlock(AIBlockBase):
                 ("prompt", list),
             ],
             test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
@@ -1064,7 +1141,11 @@ class AITextGeneratorBlock(AIBlockBase):
         return response["response"]
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
         object_input_data = AIStructuredResponseGeneratorBlock.Input(
             **{
@@ -1155,10 +1236,15 @@ class AITextSummarizerBlock(AIBlockBase):
                     else {"summary": "Summary of a chunk of text"}
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
         async for output_name, output_data in self._run(
             input_data, credentials, kwargs.get("execution_context")
@@ -1168,7 +1254,7 @@ class AITextSummarizerBlock(AIBlockBase):
     async def _run(
         self,
         input_data: Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> BlockOutput:
         chunks = self._split_text(
@@ -1219,7 +1305,7 @@ class AITextSummarizerBlock(AIBlockBase):
     async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
@@ -1236,7 +1322,7 @@ class AITextSummarizerBlock(AIBlockBase):
         self,
         chunk: str,
         input_data: Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> str:
         prompt = f"Summarize the following text in a {input_data.style} form. Focus your summary on the topic of `{input_data.focus}` if present, otherwise just provide a general summary:\n\n```{chunk}```"
@@ -1271,7 +1357,7 @@ class AITextSummarizerBlock(AIBlockBase):
         self,
         summaries: list[str],
         input_data: Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> str:
         combined_text = "\n\n".join(summaries)
@@ -1390,12 +1476,13 @@ class AIConversationBlock(AIBlockBase):
                     response="The 2020 World Series was played at Globe Life Field in Arlington, Texas."
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
@@ -1409,7 +1496,11 @@ class AIConversationBlock(AIBlockBase):
         return response
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
         has_messages = any(
             isinstance(m, dict)
@@ -1543,12 +1634,13 @@ class AIListGeneratorBlock(AIBlockBase):
                     ]
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         execution_context: "ExecutionContext | None" = None,
     ) -> dict[str, Any]:
         llm_block = AIStructuredResponseGeneratorBlock()
@@ -1562,7 +1654,11 @@ class AIListGeneratorBlock(AIBlockBase):
         return response
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
         logger.debug(f"Starting AIListGeneratorBlock.run with input data: {input_data}")
 

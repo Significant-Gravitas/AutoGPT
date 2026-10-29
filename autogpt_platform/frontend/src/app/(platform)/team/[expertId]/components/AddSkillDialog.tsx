@@ -1,7 +1,7 @@
 "use client";
 
 import { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
-import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
+import { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -31,11 +31,11 @@ interface Props {
   isLoading: boolean;
   marketQuery: string;
   onMarketQueryChange: (query: string) => void;
-  marketplaceSkills: StoreAgent[];
+  marketplaceSkills: MarketplaceSkill[];
   isMarketplaceLoading: boolean;
   isSaving: boolean;
   onAdd: (name: string) => void;
-  onAddMarketplace: (agent: StoreAgent) => void;
+  onAddMarketplace: (skill: MarketplaceSkill) => void;
   onClose: () => void;
 }
 
@@ -134,13 +134,11 @@ export function AddSkillDialog({
                   ))}
                 </ul>
               )}
-              <NextLink href="/library/skills">
-                <Text
-                  variant="body"
-                  as="span"
-                  tone="muted"
-                  className="underline underline-offset-2"
-                >
+              <NextLink
+                href="/library/skills"
+                className="text-foreground-tertiary underline underline-offset-2"
+              >
+                <Text variant="body" as="span" tone="inherit">
                   Upload a new skill in your library
                 </Text>
               </NextLink>
@@ -167,14 +165,14 @@ export function AddSkillDialog({
                   className="flex flex-col gap-2 overflow-y-auto pr-1"
                   aria-label="Marketplace skills"
                 >
-                  {marketplaceSkills.map((agent) => (
+                  {marketplaceSkills.map((skill) => (
                     <SkillOption
-                      key={`${agent.creator}/${agent.slug}`}
-                      name={agent.agent_name}
-                      description={agent.sub_heading || agent.description}
+                      key={skill.slug}
+                      name={skill.title}
+                      description={skill.description}
                       icon={Store01Icon}
                       disabled={isSaving}
-                      onAdd={() => onAddMarketplace(agent)}
+                      onAdd={() => onAddMarketplace(skill)}
                     />
                   ))}
                 </ul>
@@ -208,8 +206,10 @@ function SkillOption({
   onAdd,
 }: OptionProps) {
   return (
-    <li className="flex items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2.5">
-      <Icon icon={icon} size={18} className="shrink-0 text-zinc-500" />
+    <li className="flex items-center gap-3 rounded-lg border border-border-base px-3 py-2.5">
+      <span className="inline-flex shrink-0 text-foreground-tertiary">
+        <Icon icon={icon} size={18} />
+      </span>
       <span className="min-w-0 flex-1">
         <Text
           variant="body-medium"

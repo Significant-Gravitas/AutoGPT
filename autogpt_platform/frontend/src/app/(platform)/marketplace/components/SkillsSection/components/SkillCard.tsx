@@ -16,7 +16,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { getCategoryAccent } from "../../ExpertsSection/helpers";
-import { formatSkillTitle } from "../helpers";
+import { formatCategoryLabel } from "../helpers";
 
 interface Props {
   skill: MarketplaceSkill;
@@ -25,14 +25,15 @@ interface Props {
 
 export function SkillCard({ skill, isInstalled }: Props) {
   const { accent, icon } = getCategoryAccent(skill.categories[0]);
-  const title = formatSkillTitle(skill.name);
+  const title = skill.title;
   const providers = skill.required_providers;
 
   return (
     <Link
       href={`/marketplace/skills/${skill.slug}`}
       data-testid="skill-card"
-      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-[transform,box-shadow,border-color] duration-200 ease-out [touch-action:manipulation] hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
+      // TODO(tokens): no exact role: focus-visible:ring-violet-600 #7C3AED, shadow-[…] #101828, hover:shadow-[…] #101828
+      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-[transform,box-shadow,border-color] duration-200 ease-out [touch-action:manipulation] hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
     >
       <div
         className={cn(
@@ -42,7 +43,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
       />
       <div className="relative flex flex-1 flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-3">
-          <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white ring-1 ring-inset ring-zinc-200/70">
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-surface ring-1 ring-inset ring-border-base/70">
             <Icon
               icon={BookOpen01Icon}
               size={24}
@@ -58,7 +59,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
               )}
             >
               <Icon icon={icon} size={14} aria-hidden />
-              {formatSkillTitle(skill.categories[0])}
+              {formatCategoryLabel(skill.categories[0])}
             </span>
           ) : null}
         </div>
@@ -66,11 +67,11 @@ export function SkillCard({ skill, isInstalled }: Props) {
         <div className="min-w-0">
           <h3
             title={title}
-            className="line-clamp-1 text-lg font-semibold tracking-[-0.01em] text-zinc-900"
+            className="line-clamp-1 text-lg font-semibold tracking-title text-foreground-strong"
           >
             {title}
           </h3>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-zinc-500">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm leading-inherit text-foreground-tertiary">
             <span className="inline-flex items-center gap-1.5">
               <Avatar className="h-5 w-5">
                 {skill.creator_avatar ? (
@@ -83,6 +84,12 @@ export function SkillCard({ skill, isInstalled }: Props) {
               </Avatar>
               by {skill.creator ?? "AutoGPT"}
             </span>
+            {skill.source_repo ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden>·</span>
+                From {skill.source_repo}
+              </span>
+            ) : null}
             {providers.length > 0 ? (
               <span className="inline-flex items-center gap-1.5">
                 <span aria-hidden>·</span>
@@ -92,13 +99,13 @@ export function SkillCard({ skill, isInstalled }: Props) {
               </span>
             ) : null}
           </div>
-          <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-zinc-600">
+          <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-foreground-secondary">
             {skill.description}
           </p>
         </div>
 
         <div className="mt-auto flex items-center justify-between pt-2">
-          <span className="flex items-center gap-2 text-base text-zinc-600">
+          <span className="flex items-center gap-2 text-base text-foreground-secondary">
             <Icon
               icon={Download04Icon}
               size={18}
@@ -111,12 +118,15 @@ export function SkillCard({ skill, isInstalled }: Props) {
               : `${skill.install_count.toLocaleString()} installed`}
           </span>
           {isInstalled ? (
-            <span className="flex items-center gap-1.5 text-base font-medium text-emerald-600">
+            <span
+              // TODO(tokens): no exact role: text-emerald-600 #059669
+              className="flex items-center gap-1.5 text-base font-medium text-emerald-600"
+            >
               <Icon icon={CheckmarkCircle02Icon} size={18} aria-hidden />
               Added
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-base font-medium text-zinc-500 transition-colors duration-200 group-hover:text-zinc-900">
+            <span className="flex items-center gap-1.5 text-base font-medium text-foreground-tertiary transition-colors duration-200 group-hover:text-foreground-strong">
               View
               <Icon
                 icon={ArrowRight02Icon}

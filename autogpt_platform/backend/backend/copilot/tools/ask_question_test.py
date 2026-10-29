@@ -66,6 +66,103 @@ async def test_single_question_with_options(
 
 
 @pytest.mark.asyncio
+async def test_allow_multiple_marks_the_question_multi_select(
+    tool: AskQuestionTool, session: ChatSession
+):
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[
+            {
+                "question": "What areas should they own?",
+                "options": ["Research", "Outreach", "Reporting"],
+                "allow_multiple": True,
+                "keyword": "areas",
+            }
+        ],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert result.questions[0].allow_multiple is True
+
+
+@pytest.mark.asyncio
+async def test_questions_are_single_select_by_default(
+    tool: AskQuestionTool, session: ChatSession
+):
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[
+            {
+                "question": "Which channel?",
+                "options": ["Email", "Slack"],
+                "keyword": "channel",
+            }
+        ],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert result.questions[0].allow_multiple is False
+
+
+@pytest.mark.asyncio
+async def test_allow_multiple_accepts_the_string_a_model_may_send(
+    tool: AskQuestionTool, session: ChatSession
+):
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[
+            {
+                "question": "Which areas?",
+                "options": ["Research", "Outreach"],
+                "allow_multiple": " TRUE ",
+                "keyword": "areas",
+            },
+            {
+                "question": "Which channel?",
+                "options": ["Email", "Slack"],
+                "allow_multiple": "no",
+                "keyword": "channel",
+            },
+        ],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert [q.allow_multiple for q in result.questions] == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_allow_multiple_is_dropped_without_options(
+    tool: AskQuestionTool, session: ChatSession
+):
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[
+            {
+                "question": "Anything else?",
+                "allow_multiple": True,
+                "keyword": "notes",
+            }
+        ],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert result.questions[0].allow_multiple is False
+
+
+@pytest.mark.asyncio
+async def test_allow_multiple_is_advertised_in_the_tool_schema(
+    tool: AskQuestionTool,
+):
+    item = tool.parameters["properties"]["questions"]["items"]
+    assert item["properties"]["allow_multiple"]["type"] == "boolean"
+    assert "allow_multiple" not in item["required"]
+
+
+@pytest.mark.asyncio
 async def test_options_are_stripped_and_deduped(
     tool: AskQuestionTool, session: ChatSession
 ):

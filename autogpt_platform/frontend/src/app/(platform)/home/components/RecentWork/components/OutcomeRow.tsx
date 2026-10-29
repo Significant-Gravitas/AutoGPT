@@ -4,6 +4,7 @@ import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBri
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { formatWorkTime, getRunTriggerLabel } from "../helpers";
 
 interface Props {
@@ -16,7 +17,7 @@ interface Props {
 
 const ROW_CLASS = "flex items-center gap-2 py-2";
 const LINK_CLASS =
-  "-mx-1 rounded px-1 outline-none transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50";
+  "-mx-1 rounded px-1 outline-none transition-colors hover:bg-surface-muted focus-visible:bg-surface-muted";
 
 /** One line per run: what it did, then how and when it ran. The AI summary
  *  only shows on hover; the row itself opens the run. */
@@ -27,7 +28,9 @@ export function OutcomeRow({ outcome, timezone, showAgentName }: Props) {
       <span
         className={cn(
           "flex size-[18px] shrink-0 items-center justify-center rounded-md",
-          failed ? "bg-rose-50 text-rose-600" : "bg-zinc-100 text-zinc-500",
+          failed
+            ? "bg-error-surface text-error-hover"
+            : "bg-surface-hover text-foreground-tertiary",
         )}
       >
         <Icon
@@ -61,6 +64,9 @@ export function OutcomeRow({ outcome, timezone, showAgentName }: Props) {
   return (
     <Link
       href={outcome.link}
+      onClick={() =>
+        trackFunnel("briefing_outcome_clicked", { status: outcome.status })
+      }
       title={outcome.summary}
       className={cn(ROW_CLASS, LINK_CLASS)}
     >
@@ -72,12 +78,15 @@ export function OutcomeRow({ outcome, timezone, showAgentName }: Props) {
 function RunMeta({ outcome, timezone, showAgentName }: Props) {
   const parts = [
     outcome.status === "failed" ? (
-      <span key="status" className="font-medium text-rose-600">
+      <span key="status" className="font-medium text-error-hover">
         Failed
       </span>
     ) : null,
     showAgentName ? (
-      <span key="agent" className="max-w-40 truncate font-medium text-zinc-500">
+      <span
+        key="agent"
+        className="max-w-40 truncate font-medium text-foreground-tertiary"
+      >
         {outcome.agent_name}
       </span>
     ) : null,

@@ -1,5 +1,6 @@
 import { isValidUUID } from "@/lib/utils";
 import type { UIMessage } from "ai";
+import { v4 as uuidv4 } from "uuid";
 
 const EXPERT_KICKOFF_KIND = "expert_kickoff";
 const KICKOFF_STORAGE_PREFIX = "expert-kickoff-status:";
@@ -13,8 +14,9 @@ const PENDING_TTL_MS = 2 * 60 * 1000;
 // so any redesign of this message, including this one, stays ask-first.
 const KICKOFF_PROMPT =
   "You were just hired. Call expert_onboarding once, and nothing else, this " +
-  "turn: a greeting of 1-2 sentences introducing yourself in your voice, " +
-  "then 3-5 questions the user can answer by tapping. Every question and " +
+  "turn: a one-sentence greeting introducing yourself in your voice, with " +
+  "no dashes, then " +
+  "2-3 short questions the user can answer by tapping. Every question and " +
   "every option must come from your own role and area of expertise and from " +
   "the workflows installed on you — ask which outcome in your area to start " +
   "with, and which of the services your work depends on you should be " +
@@ -118,18 +120,20 @@ export function isKickoffMessage(message: UIMessage): boolean {
 }
 
 export function shouldClearKickoffParam(
-  isExpertsEnabled: boolean,
   hasExpertsSettled: boolean,
   expertId: string | null,
 ): boolean {
-  return !isExpertsEnabled || (hasExpertsSettled && expertId === null);
+  return hasExpertsSettled && expertId === null;
 }
 
 // The kickoff prompt is a control turn the client sends on the user's behalf.
 // It reads as an instruction, not as something the user typed, so the thread
 // never shows it. The backend marks the persisted row hidden for the same
 // reason.
+// Returns `messages` itself when there is nothing to hide, so memoised
+// consumers keyed on the array see no change.
 export function hideKickoffMessages<T extends UIMessage>(messages: T[]): T[] {
+  if (!messages.some(isKickoffMessage)) return messages;
   return messages.filter((message) => !isKickoffMessage(message));
 }
 
@@ -166,7 +170,8 @@ export function markKickoffPending(
   userId: string,
   expertId: string,
 ): KickoffAttemptToken {
-  const attemptToken = `${Date.now()}:${crypto.randomUUID()}`;
+  // uuidv4({}) rather than crypto.randomUUID, which is missing on plain HTTP.
+  const attemptToken = `${Date.now()}:${uuidv4({})}`;
   if (typeof window === "undefined") return attemptToken;
   try {
     window.localStorage.setItem(

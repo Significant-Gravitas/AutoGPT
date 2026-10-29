@@ -5,10 +5,20 @@ import {
 } from "@/lib/autogpt-server-api/helpers";
 import * as Sentry from "@sentry/nextjs";
 
+import {
+  isAccountBannedResponse,
+  signOutBannedAccount,
+} from "@/lib/auth/account-banned";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
+import {
+  fetchWithFailureLog,
+  logClientRequestFailure,
+  logServerRequestFailure,
+} from "./request-failure-log";
 
 function getBaseURL(): string {
   if (!environment.isServerSide()) {
@@ -39,6 +49,7 @@ const getBody = async <T>(c: Response | Request): Promise<T> => {
   if (
     contentType &&
     (contentType.includes("application/pdf") ||
+      contentType.includes("application/zip") ||
       contentType.startsWith("image/") ||
       contentType.startsWith("video/"))
   ) {
@@ -75,6 +86,7 @@ export const customMutator = async <
     }
     Object.assign(headers, getSystemHeaders());
     Object.assign(headers, getDatafastAttribution());
+    Object.assign(headers, getPostHogSessionHeader());
   }
 
   const isFormData = data instanceof FormData;
@@ -107,7 +119,7 @@ export const customMutator = async <
     }
   }
 
-  const response = await fetch(fullUrl, {
+  const response = await fetchWithFailureLog(fullUrl, {
     ...requestOptions,
     method,
     headers,
@@ -147,9 +159,11 @@ export const customMutator = async <
           .join("; ")
       : typeof rawDetail === "string"
         ? rawDetail
-        : rawDetail != null
-          ? JSON.stringify(rawDetail)
-          : undefined;
+        : typeof rawDetail?.message === "string"
+          ? rawDetail.message
+          : rawDetail != null
+            ? JSON.stringify(rawDetail)
+            : undefined;
 
     const errorMessage =
       detail ||
@@ -157,16 +171,22 @@ export const customMutator = async <
       response.statusText ||
       `HTTP ${response.status}`;
 
-    console.error(
-      `Request failed ${environment.isServerSide() ? "on server" : "on client"}`,
-      {
-        status: response.status,
-        method,
-        url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
-        errorMessage,
-        responseData: responseData || "No response data",
-      },
-    );
+    const failure = {
+      status: response.status,
+      method,
+      url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
+      errorMessage,
+      responseData,
+    };
+
+    if (environment.isServerSide()) {
+      logServerRequestFailure(failure);
+    } else {
+      logClientRequestFailure(failure);
+      if (isAccountBannedResponse(response.status, responseData)) {
+        signOutBannedAccount();
+      }
+    }
 
     throw new ApiError(errorMessage, response.status, responseData);
   }

@@ -2,19 +2,17 @@ import { GetV2ListStoreAgentsParams } from "@/app/api/__generated__/models/getV2
 import { SearchFilterChips } from "@/components/__legacy__/SearchFilterChips";
 import { SortDropdown } from "@/components/__legacy__/SortDropdown";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { AgentsSection } from "../../../components/AgentsSection/AgentsSection";
+import { ExpertCard } from "../../../components/ExpertsSection/components/ExpertCard";
 import { FeaturedCreators } from "../../../components/FeaturedCreators/FeaturedCreators";
 import { MainSearchResultPageLoading } from "../../../components/MainSearchResultPageLoading";
 import { SearchBar } from "../../../components/SearchBar/SearchBar";
 import { SectionHeader } from "../../../components/SectionHeader";
 import { SkillCard } from "../../../components/SkillsSection/components/SkillCard";
-import { ExpertCard } from "../../../components/ExpertsSection/components/ExpertCard";
-import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
-import { BookOpen01Icon } from "@hugeicons/core-free-icons";
 import { useMainSearchResultPage } from "./useMainSearchResultPage";
-import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 
 type MarketplaceSearchSort = GetV2ListStoreAgentsParams["sorted_by"];
 
@@ -43,7 +41,6 @@ export const MainSearchResultPage = ({
     showSkills,
     showExperts,
     isExpertsVisible,
-    isSkillsHubEnabled,
     isAgentsLoading,
     isCreatorsLoading,
     isExpertsLoading,
@@ -89,10 +86,16 @@ export const MainSearchResultPage = ({
         </div>
         <div className="flex flex-col gap-4 md:flex-row md:items-center">
           <div className="flex-1">
-            <h2 className="text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+            <h2
+              // TODO(tokens): no exact role: text-neutral-800 #262626
+              className="text-base font-medium leading-normal text-neutral-800"
+            >
               Showing results for:
             </h2>
-            <h1 className="font-poppins text-2xl font-semibold leading-[32px] text-neutral-800 dark:text-neutral-100">
+            <h1
+              // TODO(tokens): no exact role: text-neutral-800 #262626
+              className="font-poppins text-2xl font-semibold leading-8 text-neutral-800"
+            >
               &quot;{searchTerm}&quot;
             </h1>
           </div>
@@ -108,7 +111,7 @@ export const MainSearchResultPage = ({
                 totalCount={totalCount}
                 agentsCount={agentsCount}
                 creatorsCount={creatorsCount}
-                skillsCount={isSkillsHubEnabled ? skillsCount : undefined}
+                skillsCount={skillsCount}
                 expertsCount={isExpertsVisible ? expertsCount : undefined}
                 onFilterChange={handleFilterChange}
               />
@@ -121,7 +124,6 @@ export const MainSearchResultPage = ({
               {showExperts && expertsCount > 0 ? (
                 <section aria-labelledby="search-experts-heading">
                   <SectionHeader
-                    titleIcon={<AITeamIcon size={30} />}
                     title="Experts"
                     titleId="search-experts-heading"
                   />
@@ -142,9 +144,6 @@ export const MainSearchResultPage = ({
               {showSkills && skillsCount > 0 ? (
                 <section aria-labelledby="search-skills-heading">
                   <SectionHeader
-                    titleIcon={
-                      <Icon icon={BookOpen01Icon} size={30} aria-hidden />
-                    }
                     title="Skills"
                     titleId="search-skills-heading"
                   />
@@ -161,19 +160,22 @@ export const MainSearchResultPage = ({
               ) : null}
               <div className="h-[1rem] w-full" />
               {showCreators && creatorsCount > 0 && creators && (
-                <FeaturedCreators
-                  featuredCreators={creators}
-                  title="Creators"
-                />
+                <FeaturedCreators featuredCreators={creators} />
               )}
             </div>
           </>
         ) : (
           <div className="flex min-h-[60vh] flex-col items-center justify-center">
-            <h3 className="mb-2 text-xl font-medium text-neutral-600 dark:text-neutral-300">
+            <h3
+              // TODO(tokens): no exact role: text-neutral-600 #525252
+              className="mb-2 text-xl font-medium text-neutral-600"
+            >
               No results found
             </h3>
-            <p className="text-neutral-500 dark:text-neutral-400">
+            <p
+              // TODO(tokens): no exact role: text-neutral-500 #737373
+              className="text-neutral-500"
+            >
               Try adjusting your search terms or filters
             </p>
           </div>

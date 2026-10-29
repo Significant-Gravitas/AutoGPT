@@ -24,9 +24,9 @@ export const ControlPanelButton: React.FC<Props> = ({
       role={as === "div" ? "button" : undefined}
       disabled={as === "button" ? disabled : undefined}
       className={cn(
-        "flex w-auto items-center justify-center whitespace-normal bg-white px-4 py-4 text-zinc-800 shadow-none hover:cursor-pointer hover:bg-zinc-100 hover:text-zinc-950 focus:ring-0",
+        "flex w-auto items-center justify-center whitespace-normal bg-surface px-4 py-4 text-foreground-emphasis shadow-none hover:cursor-pointer hover:bg-surface-hover hover:text-foreground-base focus:ring-0",
         selected &&
-          "bg-violet-50 text-violet-700 hover:cursor-default hover:bg-violet-50 hover:text-violet-700 active:bg-violet-50 active:text-violet-700",
+          "bg-accent-surface text-accent-strong hover:cursor-default hover:bg-accent-surface hover:text-accent-strong active:bg-accent-surface active:text-accent-strong",
         disabled && "cursor-not-allowed opacity-50 hover:cursor-not-allowed",
         className,
       )}

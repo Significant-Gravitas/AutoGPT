@@ -40,7 +40,7 @@ export function MemoryScopeSelector({
   ];
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border bg-white p-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="flex flex-col gap-2 rounded-md border bg-surface p-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="w-full sm:max-w-sm">
         <Select
           id="memory-scope"
@@ -53,13 +53,21 @@ export function MemoryScopeSelector({
         />
       </div>
       <div aria-live="polite" className="flex flex-col gap-1 text-xs">
-        {loading ? <p className="text-gray-500">Loading experts…</p> : null}
-        {value !== AUTOPILOT_MEMORY_SCOPE ? (
-          <p className="text-gray-500">Expert memory is read-only.</p>
+        {loading ? (
+          <p className="text-foreground-tertiary">Loading experts…</p>
         ) : null}
-        {error ? <p className="text-red-700">Failed to load experts.</p> : null}
+        {value !== AUTOPILOT_MEMORY_SCOPE ? (
+          <p className="text-foreground-tertiary">
+            Expert memory is read-only.
+          </p>
+        ) : null}
+        {error ? (
+          <p className="text-error-foreground">Failed to load experts.</p>
+        ) : null}
         {!loading && !error && experts.length === 0 ? (
-          <p className="text-gray-500">No experts for this account.</p>
+          <p className="text-foreground-tertiary">
+            No experts for this account.
+          </p>
         ) : null}
       </div>
     </div>

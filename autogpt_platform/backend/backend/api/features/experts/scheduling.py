@@ -15,9 +15,11 @@ from typing import TYPE_CHECKING
 import prisma.models
 from prisma.enums import ResourceVisibility
 
+from backend.api.features.experts import routine_jobs
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import ExpertDetachPreview
 from backend.copilot import db as chat_db
+from backend.copilot.dream.registry import sync_expert_scope
 from backend.data.expert_spend import get_weekly_spend, reset_weekly_spend
 from backend.data.model import CredentialsMetaInput
 from backend.data.user import get_user_by_id
@@ -297,6 +299,11 @@ async def detach_expert_triggers(user_id: str, expert_id: str) -> None:
         },
         data={"isActive": False, "deactivatedByExpertArchive": True},
     )
+    # Routines are copilot-turn schedules, which `_get_expert_schedules` does
+    # not see (it is graph-only), so they need their own pass. Without it an
+    # archived expert's routines keep their next run time, re-arm on every
+    # tick, and stay listed as scheduled chats for an expert the owner let go.
+    await routine_jobs.pause_routines_for_archive(user_id, expert_id)
     scheduler = get_scheduler_client()
     for schedule in await _get_expert_schedules(user_id, expert_id):
         try:
@@ -309,6 +316,73 @@ async def detach_expert_triggers(user_id: str, expert_id: str) -> None:
                 f"Failed to pause schedule #{schedule.id} while detaching "
                 f"expert #{expert_id}: {type(e).__name__}: {e}"
             )
+
+
+async def suspend_workflow_triggers(
+    user_id: str,
+    expert_id: str,
+    graph_id: str,
+    *,
+    except_schedule_id: str | None = None,
+) -> list[str]:
+    """Stop the expert's remaining triggers for *graph_id*, and name them.
+
+    ``ExpertWorkflow.scheduleId`` records only the install-time schedule. A cron
+    the expert made through ``run_agent`` and a webhook preset it set up are
+    stored separately, so without this an uninstalled workflow keeps firing
+    under the expert's attribution and spending the owner's money. Paused
+    rather than deleted, because a schedule the user made themselves is theirs
+    to keep.
+    """
+    stopped: list[str] = []
+    presets = await prisma.models.AgentPreset.prisma().find_many(
+        where={
+            "expertId": expert_id,
+            "userId": user_id,
+            "agentGraphId": graph_id,
+            "isDeleted": False,
+            "isActive": True,
+        }
+    )
+    if presets:
+        await prisma.models.AgentPreset.prisma().update_many(
+            where={
+                "expertId": expert_id,
+                "userId": user_id,
+                "agentGraphId": graph_id,
+                "isDeleted": False,
+                "isActive": True,
+            },
+            data={"isActive": False},
+        )
+        stopped.extend(p.name for p in presets)
+
+    try:
+        scheduler = get_scheduler_client()
+        schedules = await _get_expert_schedules(user_id, expert_id)
+    except Exception as e:
+        # Best-effort: an unreachable scheduler must not fail the uninstall
+        # itself. The survivors stay expert-attributed, so the detach preview
+        # and the archive sweep still find them.
+        logger.warning(
+            f"Could not list schedules while removing graph #{graph_id} from "
+            f"expert #{expert_id}: {type(e).__name__}: {e}"
+        )
+        return stopped
+    for schedule in schedules:
+        if schedule.graph_id != graph_id or schedule.id == except_schedule_id:
+            continue
+        try:
+            await scheduler.pause_schedule(schedule.id, user_id=user_id)
+            stopped.append(schedule.name or schedule.cron or schedule.id)
+        except Exception as e:
+            # Unlike detach, no run-time gate catches a survivor: the expert
+            # stays active and execution never checks membership (#14607).
+            logger.warning(
+                f"Failed to pause schedule #{schedule.id} while removing graph "
+                f"#{graph_id} from expert #{expert_id}: {type(e).__name__}: {e}"
+            )
+    return stopped
 
 
 async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
@@ -341,6 +415,10 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
             "teamId": team_id,
         },
     )
+    # Scoped to the routines archiving paused, never one the owner had already
+    # switched off — the same distinction `deactivatedByExpertArchive` draws
+    # for presets just above.
+    await routine_jobs.resume_routines_after_revive(user_id, expert_id)
     scheduler = get_scheduler_client()
     for schedule in await _get_expert_schedules(
         user_id, expert_id, include_paused=True
@@ -357,6 +435,8 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
 async def pause_expert_schedules(user_id: str, expert_id: str, reason: str) -> bool:
     """Pause the expert's scheduled/triggered runs (chat is untouched) and
     log the pause. Returns False when already paused (no double events).
+    Its memory crons (nightly dream, weekly community rebuild) pause with
+    them; that part is bounded by the registry deadline and fails soft.
 
     Refuses archived experts so a pause can't silently mutate a row the rest
     of the API reports as not-found; the archive flow itself pauses BEFORE
@@ -377,6 +457,7 @@ async def pause_expert_schedules(user_id: str, expert_id: str, reason: str) -> b
     await prisma.models.ExpertPauseEvent.prisma().create(
         data={"expertId": expert_id, "reason": reason}
     )
+    await sync_expert_scope(user_id, expert_id, active=False)
     return True
 
 
@@ -393,7 +474,11 @@ async def resume_expert_schedules(user_id: str, expert_id: str) -> bool:
     Refuses archived experts: resuming one would un-pause schedules for an
     expert every other surface 404s on (the route would then report 404
     anyway, AFTER the mutation already landed). Revival goes through the
-    re-hire flow, which clears ``isArchived`` before resuming."""
+    re-hire flow, which clears ``isArchived`` before resuming.
+
+    The expert's memory crons resume with the schedules (registered if the
+    expert never had any); that part is bounded by the registry deadline
+    and fails soft."""
     updated = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,
@@ -411,6 +496,7 @@ async def resume_expert_schedules(user_id: str, expert_id: str) -> bool:
         where={"expertId": expert_id, "clearedAt": None},
         data={"clearedAt": datetime.now(timezone.utc)},
     )
+    await sync_expert_scope(user_id, expert_id, active=True)
     return True
 
 

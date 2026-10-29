@@ -10,7 +10,7 @@ injection -- analogous to parameterized SQL queries.
 import base64
 import json
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -18,15 +18,20 @@ from backend.blocks.code_executor import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     ExecuteCodeBlock,
+    ExecuteCodeStepBlock,
+    InstantiateCodeSandboxBlock,
     ProgrammingLanguage,
 )
 from backend.blocks.code_executor_helpers import (
+    MAX_ENV_PAYLOAD_BYTES,
     MAX_VARIABLES_PAYLOAD_BYTES,
     VARIABLES_ENV_KEY,
+    VARIABLES_FILE_ENV_KEY,
+    VARIABLES_FILE_PATH,
     UnsupportedLanguageError,
     build_variable_injection,
 )
-from backend.executor.utils import ExecutionContext
+from backend.data.execution import ExecutionContext
 
 
 def _b64_json(variables: dict) -> str:
@@ -74,13 +79,15 @@ async def _run(block: ExecuteCodeBlock, input_data: ExecuteCodeBlock.Input):
 class TestBuildVariableInjection:
     def test_empty_variables_returns_noop(self):
         """No variables -> no env var, no prepended code (don't touch anything)."""
-        envs, prefix = build_variable_injection({}, ProgrammingLanguage.PYTHON)
-        assert envs == {}
-        assert prefix == ""
+        injection = build_variable_injection({}, ProgrammingLanguage.PYTHON)
+        assert injection.envs == {}
+        assert injection.files == {}
+        assert injection.prefix == ""
 
     def test_python_serializes_to_env_and_unpacks_to_globals(self):
         variables = {"x": 42, "name": "Blake", "items": [1, 2, 3]}
-        envs, prefix = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+        injection = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+        envs, prefix = injection.envs, injection.prefix
 
         # Data travels in the env var, JSON-encoded then base64-encoded.
         assert envs == {VARIABLES_ENV_KEY: _b64_json(variables)}
@@ -96,9 +103,8 @@ class TestBuildVariableInjection:
 
     def test_javascript_serializes_to_env_and_unpacks_to_globalthis(self):
         variables = {"x": 42, "name": "Blake"}
-        envs, prefix = build_variable_injection(
-            variables, ProgrammingLanguage.JAVASCRIPT
-        )
+        injection = build_variable_injection(variables, ProgrammingLanguage.JAVASCRIPT)
+        envs, prefix = injection.envs, injection.prefix
 
         assert envs == {VARIABLES_ENV_KEY: _b64_json(variables)}
         assert "base64" in prefix
@@ -110,7 +116,8 @@ class TestBuildVariableInjection:
     def test_malicious_value_cannot_break_out_of_code_channel(self):
         """A value that looks like code stays inert: it's only ever JSON data."""
         variables = {"evil": "'); import os; os.system('rm -rf /'); ('"}
-        envs, prefix = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+        injection = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+        envs, prefix = injection.envs, injection.prefix
         # The dangerous string lives only in the env payload, never in the code.
         assert "os.system" not in prefix
         assert envs[VARIABLES_ENV_KEY] == _b64_json(variables)
@@ -146,12 +153,21 @@ class TestBuildVariableInjection:
         with pytest.raises(ValueError, match="too large"):
             build_variable_injection(big, ProgrammingLanguage.PYTHON)
 
+    def test_payload_over_the_env_limit_goes_to_a_file(self):
+        variables = {"data": "x" * MAX_ENV_PAYLOAD_BYTES}
+        injection = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+
+        assert injection.envs == {VARIABLES_FILE_ENV_KEY: VARIABLES_FILE_PATH}
+        assert json.loads(injection.files[VARIABLES_FILE_PATH]) == variables
+        assert VARIABLES_FILE_ENV_KEY in injection.prefix
+        assert "x" * 100 not in injection.prefix
+
     def test_real_emoji_survives_sanitization_untouched(self):
         """Properly-paired surrogates (real emoji) are valid Unicode and must
         round-trip through the injection helper untouched.
         """
         variables = {"note": "Holidays \U0001f385\U0001f3fb"}
-        envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+        envs = build_variable_injection(variables, ProgrammingLanguage.PYTHON).envs
 
         assert _decode_env_payload(envs) == variables
 
@@ -169,7 +185,7 @@ class TestBuildVariableInjection:
         there's nothing left for any downstream layer to misparse.
         """
         variables = {"note": "Holidays \U0001f385\U0001f3fb"}
-        envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+        envs = build_variable_injection(variables, ProgrammingLanguage.PYTHON).envs
 
         payload = envs[VARIABLES_ENV_KEY]
         assert "\\u" not in payload
@@ -263,3 +279,154 @@ class TestExecuteCodeBlockRun:
 
         assert any(name == "error" for name, _ in outputs)
         mock.assert_not_called()
+
+
+class TestExecuteCodeWritesFiles:
+    async def test_files_are_written_before_the_code_runs(self):
+        block = ExecuteCodeBlock()
+        calls: list[str] = []
+        execution = MagicMock(error=None, results=[], text="")
+        execution.logs.stdout, execution.logs.stderr = [], []
+
+        async def write(*_):
+            calls.append("write")
+
+        async def command(*_):
+            calls.append("setup")
+
+        async def run_code(*_, **__):
+            calls.append("run_code")
+            return execution
+
+        sandbox = MagicMock(sandbox_id="sb")
+        sandbox.commands.run = AsyncMock(side_effect=command)
+        sandbox.files.write = AsyncMock(side_effect=write)
+        sandbox.run_code = AsyncMock(side_effect=run_code)
+        with patch(
+            "backend.blocks.code_executor.create_sandbox",
+            AsyncMock(return_value=sandbox),
+        ):
+            await block.execute_code(
+                api_key="k",
+                code="print(1)",
+                language=ProgrammingLanguage.PYTHON,
+                setup_commands=["echo setup"],
+                envs={VARIABLES_FILE_ENV_KEY: VARIABLES_FILE_PATH},
+                input_files={VARIABLES_FILE_PATH: b"{}"},
+            )
+
+        assert calls == ["setup", "write", "run_code"]
+        sandbox.files.write.assert_awaited_once_with(VARIABLES_FILE_PATH, b"{}")
+        assert sandbox.run_code.await_args.kwargs["envs"] == {
+            VARIABLES_FILE_ENV_KEY: VARIABLES_FILE_PATH
+        }
+
+
+class TestConnectToExistingSandbox:
+    """A sandbox id is caller input; under the platform key any id connects,
+    so the box's stamped user decides whether it may be used."""
+
+    def _sandbox(self, stamped: dict) -> AsyncMock:
+        sandbox = AsyncMock()
+        sandbox.get_info = AsyncMock(return_value=AsyncMock(metadata=stamped))
+        return sandbox
+
+    @staticmethod
+    def _sdk(cls: MagicMock, box: AsyncMock) -> None:
+        """The stamp is read through the static ``get_info`` before any connect."""
+        cls.get_info = AsyncMock(return_value=box.get_info.return_value)
+        cls.connect = AsyncMock(return_value=box)
+
+    async def test_another_users_sandbox_is_refused_and_left_alone(self):
+        block = ExecuteCodeBlock()
+        context = ExecutionContext(user_id="user-b", graph_exec_id="gexec-1")
+        theirs = self._sandbox(
+            {
+                "service": "autogpt-platform",
+                "autogpt_owner": "user:user-a",
+                "autogpt_kind": "code",
+                "autogpt_source": "block",
+                "autogpt_env": "dev",
+                "autogpt_user": "user-a",
+            }
+        )
+        with patch("backend.blocks.code_executor.AsyncSandbox") as cls:
+            self._sdk(cls, theirs)
+            with pytest.raises(PermissionError, match="does not belong"):
+                await block.execute_code(
+                    api_key="k",
+                    code="print(1)",
+                    language=ProgrammingLanguage.PYTHON,
+                    sandbox_id="sb-theirs",
+                    dispose_sandbox=True,
+                    execution_context=context,
+                )
+        cls.get_info.assert_awaited_once_with("sb-theirs", api_key="k")
+        # Connecting would resume the other user's box on their bill.
+        cls.connect.assert_not_awaited()
+        theirs.run_code.assert_not_awaited()
+        # Not ours to kill either, even with dispose_sandbox set.
+        theirs.kill.assert_not_awaited()
+
+    async def test_step_block_hands_the_caller_to_the_ownership_check(self):
+        """The step block always reconnects by id, so without the caller's
+        context every run would be refused as not the user's box."""
+        block = ExecuteCodeStepBlock()
+        context = ExecutionContext(user_id="user-a", graph_exec_id="gexec-1")
+        with patch.object(
+            block, "execute_code", AsyncMock(return_value=([], "", "", "", "sb", []))
+        ) as execute:
+            async for _ in block.run(
+                ExecuteCodeStepBlock.Input(
+                    credentials=TEST_CREDENTIALS_INPUT,
+                    sandbox_id="sb-mine",
+                    step_code="print(1)",
+                ),
+                credentials=TEST_CREDENTIALS,
+                execution_context=context,
+            ):
+                pass
+        assert execute.await_args.kwargs["execution_context"] is context
+        assert execute.await_args.kwargs["sandbox_id"] == "sb-mine"
+
+    async def test_instantiate_block_hands_the_caller_to_the_box_it_creates(self):
+        """The box is created for this user: without the context its egress
+        credential would name nobody, and the proxy could swap nothing in."""
+        block = InstantiateCodeSandboxBlock()
+        context = ExecutionContext(user_id="user-a", graph_exec_id="gexec-1")
+        with patch.object(
+            block, "execute_code", AsyncMock(return_value=([], "", "", "", "sb", []))
+        ) as execute:
+            async for _ in block.run(
+                InstantiateCodeSandboxBlock.Input(
+                    credentials=TEST_CREDENTIALS_INPUT, setup_code="print(1)"
+                ),
+                credentials=TEST_CREDENTIALS,
+                execution_context=context,
+            ):
+                pass
+        assert execute.await_args.kwargs["execution_context"] is context
+
+    async def test_without_a_user_no_existing_sandbox_can_be_used(self):
+        block = ExecuteCodeBlock()
+        box = self._sandbox(
+            {
+                "service": "autogpt-platform",
+                "autogpt_owner": "user:user-a",
+                "autogpt_kind": "code",
+                "autogpt_source": "block",
+                "autogpt_env": "dev",
+                "autogpt_user": "user-a",
+            }
+        )
+        with patch("backend.blocks.code_executor.AsyncSandbox") as cls:
+            self._sdk(cls, box)
+            with pytest.raises(PermissionError):
+                await block.execute_code(
+                    api_key="k",
+                    code="print(1)",
+                    language=ProgrammingLanguage.PYTHON,
+                    sandbox_id="sb-theirs",
+                    execution_context=None,
+                )
+        cls.connect.assert_not_awaited()

@@ -13,6 +13,7 @@ just passes the task on with the other tool.
 """
 
 import logging
+from typing import Any
 
 from backend.api.features.experts.models import Expert
 from backend.copilot.model import ChatSession, get_chat_session
@@ -33,6 +34,25 @@ MAX_DELEGATION_DEPTH = MAX_DEPTH
 # The preamble delimits itself with square brackets, so a name containing them
 # can close the framing early and open a block of its own.
 _FRAMING_DELIMITERS = str.maketrans("", "", "[]")
+
+
+def sent_from_metadata(
+    session: ChatSession, expert_name: str | None = None
+) -> dict[str, Any]:
+    """Provenance stamped on the message a spawn tool sends to another thread.
+
+    The receiving thread renders it as a "Sent from <expert>" badge that links
+    back to the session the work came from. ``from_expert_id`` is ``None``
+    for a plain Otto session; the name is a display hint only, the frontend
+    falls back to its expert roster (or "Otto") when it is absent.
+    """
+    metadata: dict[str, Any] = {
+        "from_session_id": session.session_id,
+        "from_expert_id": session.expert_id,
+    }
+    if expert_name:
+        metadata["from_expert_name"] = expert_name
+    return metadata
 
 
 def safe_caller_name(caller: str) -> str:

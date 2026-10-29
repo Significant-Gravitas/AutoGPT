@@ -1,0 +1,118 @@
+"use client";
+
+import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
+import { Badge } from "@/components/atoms/Badge/Badge";
+import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { trackFunnel } from "@/services/experts/experts-analytics";
+import { useHireFlow } from "@/services/experts/useHireFlow";
+import { AddTeamIcon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
+
+// A small secondary pill, like the team cards' corner buttons.
+const HIRE_ICON = <Icon icon={AddTeamIcon} size={16} aria-hidden />;
+
+interface Props {
+  expert: ExpertTemplate;
+  isHired: boolean;
+}
+
+/** The card's corner: Hire, or the badge once the expert is on the team.
+ *
+ *  One component for both, deliberately. Hiring refetches the roster, which
+ *  flips `isHired` while the flow is still mid-air; if the badge replaced the
+ *  button as a separate component, the flow's state — the voice picker, the
+ *  hand-off to the expert's first thread — would unmount with it. Here the
+ *  flow runs the expert page's own hook and outlives the swap. */
+export function ExpertHireControl({ expert, isHired }: Props) {
+  const { isLoggedIn } = useAuth();
+  const {
+    hire,
+    isHiring,
+    isVoicePickOpen,
+    hireResult,
+    pickVoice,
+    skipVoice,
+    dismissVoicePick,
+    isSavingVoice,
+  } = useHireFlow(expert);
+  const isInFlight = isHiring || isVoicePickOpen || hireResult !== null;
+
+  // The card runs the expert page's hire flow, which reports the hire as
+  // `expert_page`, so its hire_started does too.
+  function handleHire() {
+    trackFunnel("hire_started", {
+      template_id: expert.id,
+      surface: "expert_page",
+    });
+    hire();
+  }
+
+  let control;
+  if (isHired && !isInFlight) {
+    control = (
+      <Badge
+        variant="success"
+        // TODO(tokens): no exact role: shadow-[…] #101828
+        className="rounded-full px-2.5 py-1 shadow-[0_1px_2px_rgba(16,24,40,0.05)]"
+      >
+        <Icon icon={CheckmarkCircle02Icon} size={14} aria-hidden />
+        On your team
+      </Badge>
+    );
+  } else if (!isLoggedIn) {
+    const next = encodeURIComponent(`/marketplace/experts/${expert.id}`);
+    control = (
+      <Button
+        as="NextLink"
+        href={`/signup?next=${next}`}
+        variant="secondary"
+        size="small"
+        leftIcon={HIRE_ICON}
+      >
+        Hire
+      </Button>
+    );
+  } else {
+    control = (
+      <Button
+        variant="secondary"
+        size="small"
+        loading={isHiring}
+        leftIcon={HIRE_ICON}
+        onClick={handleHire}
+      >
+        Hire
+      </Button>
+    );
+  }
+
+  return (
+    <>
+      {control}
+      <Dialog
+        styling={{ width: "640px" }}
+        controlled={{
+          isOpen: isVoicePickOpen,
+          set: (open) => {
+            if (!open) dismissVoicePick();
+          },
+        }}
+      >
+        <Dialog.Content>
+          {isVoicePickOpen && hireResult ? (
+            <VoicePicker
+              name={hireResult.expert.name}
+              samples={expert.voice_samples ?? []}
+              onPick={pickVoice}
+              onSkip={skipVoice}
+              isSubmitting={isSavingVoice}
+            />
+          ) : null}
+        </Dialog.Content>
+      </Dialog>
+    </>
+  );
+}

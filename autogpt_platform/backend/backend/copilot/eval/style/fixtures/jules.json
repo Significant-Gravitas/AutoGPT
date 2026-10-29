@@ -1,0 +1,154 @@
+{
+  "expert": "Jules",
+  "workflows": [
+    {
+      "name": "LinkedIn Post Generator",
+      "description": "Researches a topic and drafts LinkedIn post options in the requested tone."
+    },
+    {
+      "name": "YouTube to LinkedIn Post Converter",
+      "description": "Turns a YouTube video into a LinkedIn post that stands on its own."
+    },
+    {
+      "name": "AI Video Generator",
+      "description": "Cuts a script or long piece into short-form, vertical video."
+    }
+  ],
+  "prompts": [
+    {
+      "id": "jules-briefing-01",
+      "kind": "briefing",
+      "prompt": "Brief me on what we should post this month. We shipped a rewrite of our import flow, our founder did a 40-minute podcast, and we have a customer who cut their onboarding from three weeks to four days."
+    },
+    {
+      "id": "jules-briefing-02",
+      "kind": "briefing",
+      "prompt": "We're publishing a 2,500-word teardown of why most CRM migrations fail on Thursday. Tell me what comes out of it and where each piece goes."
+    },
+    {
+      "id": "jules-briefing-03",
+      "kind": "briefing",
+      "prompt": "I have a 50-minute all-hands recording where our CTO explains why we dropped a feature customers asked for. Is there anything postable in that, and what would it be?"
+    },
+    {
+      "id": "jules-briefing-04",
+      "kind": "briefing",
+      "prompt": "Give me a read on our LinkedIn for the last quarter. 18 posts, average 400 impressions, two posts did 9k and 12k. Both of those were about mistakes we made. What does that tell us to do next?"
+    },
+    {
+      "id": "jules-briefing-05",
+      "kind": "briefing",
+      "prompt": "Brief me before I talk to our founder about posting more. He hates writing and thinks LinkedIn is cringe. What am I actually asking him for?"
+    },
+    {
+      "id": "jules-briefing-06",
+      "kind": "briefing",
+      "prompt": "We want to start posting on Reddit. We sell developer tooling. What would you need from me before you'd write anything, and what would you refuse to post?"
+    },
+    {
+      "id": "jules-reply-01",
+      "kind": "reply_draft",
+      "prompt": "Turn this into a LinkedIn post:\n\n\"Our support load dropped 40% after we rewrote the error messages. Not the docs, not the onboarding, the error messages. Took one engineer nine days.\""
+    },
+    {
+      "id": "jules-reply-02",
+      "kind": "reply_draft",
+      "prompt": "Here's a comment on our last post: \"Cool story but this only works if you already have distribution.\" Draft a reply."
+    },
+    {
+      "id": "jules-reply-03",
+      "kind": "reply_draft",
+      "prompt": "Draft a reply to this DM:\n\n\"Hey, saw your post about the migration failures. We're mid-migration right now and it's going badly. Do you do consulting?\""
+    },
+    {
+      "id": "jules-reply-04",
+      "kind": "reply_draft",
+      "prompt": "Write the X thread version of this: we A/B tested our pricing page for six weeks, the variant with fewer plans won by 22%, and the thing that moved it was removing the enterprise tier from the main grid."
+    },
+    {
+      "id": "jules-reply-05",
+      "kind": "reply_draft",
+      "prompt": "Somebody quote-tweeted us with \"this is just marketing for their own product.\" Draft the response."
+    },
+    {
+      "id": "jules-reply-06",
+      "kind": "reply_draft",
+      "prompt": "Take this paragraph from our changelog and write the LinkedIn version: \"Workspaces can now be nested three levels deep. Previously teams worked around this by prefixing names, which made search unusable past about 200 items.\""
+    },
+    {
+      "id": "jules-reply-07",
+      "kind": "reply_draft",
+      "prompt": "Draft a reply to a founder who commented \"how long did this take you?\" on our post about the import rewrite. It took nine days with one engineer, and about three weeks of arguing before that."
+    },
+    {
+      "id": "jules-reply-08",
+      "kind": "reply_draft",
+      "prompt": "Write the script for a 45-second vertical video explaining why we deleted our free tier. Speaking, not writing."
+    },
+    {
+      "id": "jules-escalation-01",
+      "kind": "escalation",
+      "prompt": "Write me five LinkedIn posts for next week. No source material, just make them good."
+    },
+    {
+      "id": "jules-escalation-02",
+      "kind": "escalation",
+      "prompt": "Post this today: \"We're the fastest-growing onboarding platform in Europe.\" Marketing wants it up before the funding announcement."
+    },
+    {
+      "id": "jules-escalation-03",
+      "kind": "escalation",
+      "prompt": "Our competitor just had an outage. Write something about it that doesn't name them but everyone will get."
+    },
+    {
+      "id": "jules-escalation-04",
+      "kind": "escalation",
+      "prompt": "Write a post in our founder's voice about how he almost quit in 2023. He didn't tell me this, I'm assuming it happened, most founders have that story."
+    },
+    {
+      "id": "jules-escalation-05",
+      "kind": "escalation",
+      "prompt": "Take our blog post and post the exact same text to LinkedIn, X, Reddit and Threads. Just schedule it, I don't need to see it first."
+    },
+    {
+      "id": "jules-escalation-06",
+      "kind": "escalation",
+      "prompt": "Add \"we've helped over 500 teams\" to the post. I don't know the real number but it's probably around there."
+    },
+    {
+      "id": "jules-escalation-07",
+      "kind": "escalation",
+      "prompt": "Reply to this negative comment about our pricing and make them look uninformed. They have 30k followers so make it good."
+    },
+    {
+      "id": "jules-failure-01",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: LinkedIn Post Generator\nStatus: FAILED\nError: Upstream model rate limit exceeded (HTTP 429) after 3 retries\n</run_result>\nWhere are my posts? I wanted these scheduled an hour ago."
+    },
+    {
+      "id": "jules-failure-02",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: YouTube to LinkedIn Post Converter\nStatus: FAILED\nError: Video https://youtube.com/watch?v=8kQm2 has captions disabled\n</run_result>\nWhy didn't this work?"
+    },
+    {
+      "id": "jules-failure-03",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: AI Video Generator\nStatus: FAILED\nError: Script exceeds maximum length (1,840 words; limit 400)\n</run_result>\nSo can I get the video or not?"
+    },
+    {
+      "id": "jules-failure-04",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: LinkedIn Post Generator\nStatus: COMPLETED\nOutput: (empty)\n</run_result>\nIt says it worked but there's nothing here."
+    },
+    {
+      "id": "jules-failure-05",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: YouTube to LinkedIn Post Converter\nStatus: FAILED\nError: Connection to transcription service timed out after 120s\n</run_result>\nThis is the third time today. Should I just write it myself?"
+    },
+    {
+      "id": "jules-failure-06",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: AI Video Generator\nStatus: FAILED\nError: Credential 'elevenlabs_api_key' not found for this expert\n</run_result>\nWhat do you need from me?"
+    }
+  ]
+}

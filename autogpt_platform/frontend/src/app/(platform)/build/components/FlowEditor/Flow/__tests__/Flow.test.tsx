@@ -75,11 +75,6 @@ vi.mock("../../../../stores/graphStore", () => ({
     selector(graphState),
 }));
 
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { BUILDER_CHAT_PANEL: "builder-chat-panel" },
-  useGetFlag: () => false,
-}));
-
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
   useGetV1GetSpecificGraph: () => ({ data: { id: "graph-1" } }),
 }));
@@ -144,6 +139,11 @@ describe("Flow read-only gating", () => {
   beforeEach(() => {
     mockIsReadOnly = false;
     mockHasWebhookNodes = false;
+  });
+
+  test("builder chat is available without a feature flag", () => {
+    render(<Flow />);
+    expect(screen.getByTestId("builder-chat")).toBeDefined();
   });
 
   test("owned graph: shows builder actions, hides read-only banner, controls editable", () => {

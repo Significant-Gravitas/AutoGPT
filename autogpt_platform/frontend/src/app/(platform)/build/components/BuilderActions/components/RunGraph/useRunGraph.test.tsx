@@ -28,9 +28,26 @@ vi.mock("@/app/(platform)/build/hooks/useSaveGraph", () => ({
 
 const mockExecuteGraph = vi.fn();
 const mockStopGraph = vi.fn();
+interface ExecutionVariables {
+  data: { dry_run?: boolean };
+}
+
+interface ExecutionOptions {
+  mutation: {
+    onSuccess: (
+      response: { status: number; data: Record<string, unknown> },
+      variables: ExecutionVariables,
+    ) => void;
+  };
+}
+
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
-  usePostV1ExecuteGraphAgent: () => ({
-    mutateAsync: mockExecuteGraph,
+  usePostV1ExecuteGraphAgent: (options: ExecutionOptions) => ({
+    async mutateAsync(variables: ExecutionVariables) {
+      const response = await mockExecuteGraph(variables);
+      options.mutation.onSuccess(response, variables);
+      return response;
+    },
     isPending: false,
   }),
   usePostV1StopGraphExecution: () => ({
@@ -78,6 +95,10 @@ import { useRunGraph } from "./useRunGraph";
 describe("useRunGraph", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockExecuteGraph.mockResolvedValue({
+      status: 200,
+      data: { id: "run-1", graph_id: "graph-1" },
+    });
   });
 
   afterEach(() => {
@@ -113,6 +134,36 @@ describe("useRunGraph", () => {
 
     expect(mockExecuteGraph).toHaveBeenCalledWith(
       expect.objectContaining({ graphId: "graph-1", graphVersion: 1 }),
+    );
+  });
+
+  it("does not run anything when the save is refused", async () => {
+    // A refused save resolves to null after telling the user why; running
+    // the URL's version would run the graph from before their edits.
+    mockSaveGraph.mockResolvedValue(null);
+
+    const { result } = renderHook(() => useRunGraph());
+
+    await act(async () => {
+      await result.current.handleRunGraph();
+    });
+
+    expect(mockExecuteGraph).not.toHaveBeenCalled();
+    expect(graphState.setIsGraphRunning).not.toHaveBeenCalled();
+  });
+
+  it("sends a simulation as a dry run", async () => {
+    mockSaveGraph.mockResolvedValue({ id: "graph-1", version: 1 });
+    const { result } = renderHook(() => useRunGraph());
+
+    await act(async () => {
+      await result.current.handleRunGraph({ dryRun: true });
+    });
+
+    expect(mockExecuteGraph).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ dry_run: true }),
+      }),
     );
   });
 });

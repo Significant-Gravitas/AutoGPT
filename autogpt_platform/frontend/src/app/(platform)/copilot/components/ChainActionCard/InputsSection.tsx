@@ -4,6 +4,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { formatInputsTitle, type InputsRequest } from "./helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   requests: InputsRequest[];
@@ -22,19 +23,28 @@ export function InputsSection({ requests }: Props) {
       {visible.map((request) => (
         <div
           key={request.id}
-          className="overflow-hidden rounded-3xl border border-zinc-100 bg-white"
+          className="overflow-hidden rounded-3xl border border-separator bg-surface"
         >
-          <div className="flex items-center gap-2.5 border-b border-zinc-100 px-4 py-3">
-            <Icon icon={PencilEdit02Icon} size={18} className="text-zinc-400" />
-            <span className="text-sm font-medium text-zinc-900">
+          <div className="flex items-center gap-2.5 border-b border-separator px-4 py-3">
+            <Icon
+              icon={PencilEdit02Icon}
+              size={18}
+              className="text-foreground-subtle"
+            />
+            <Text variant="body-medium-tight" as="span" tone="primary">
               {request.title
                 ? formatInputsTitle(request.title)
                 : "Fill in the details"}
-            </span>
+            </Text>
             {request.title && (
-              <span className="ml-auto text-xs text-zinc-400">
+              <Text
+                variant="small-tight"
+                as="span"
+                tone="subtle"
+                className="ml-auto"
+              >
                 Fill in the details
-              </span>
+              </Text>
             )}
           </div>
 

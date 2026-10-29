@@ -12,7 +12,7 @@ export function APIKeyListEmpty() {
         <Text variant="large-medium" as="span" className="text-textBlack">
           No API key found
         </Text>
-        <Text variant="body" className="max-w-[360px] text-zinc-500">
+        <Text variant="body" className="max-w-[360px] text-foreground-tertiary">
           You haven&apos;t created an API key yet. Create one to start using the
           AutoGPT Platform API.
         </Text>

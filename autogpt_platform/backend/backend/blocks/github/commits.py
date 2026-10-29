@@ -8,6 +8,7 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -155,6 +156,7 @@ class GithubListCommitsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -301,6 +303,7 @@ class GithubMultiFileCommitBlock(Block):
                     "https://github.com/owner/repo/commit/newcommitsha",
                 )
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

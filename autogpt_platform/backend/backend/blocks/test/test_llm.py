@@ -14,8 +14,14 @@ import backend.blocks.llm as llm
 from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
+from backend.util.exceptions import BlockExecutionError
 from backend.util.llm import saturation
-from backend.util.llm.providers import FAST_FAIL_TIMEOUT_SECONDS
+from backend.util.llm.prompt_refusal import PROMPT_REFUSED_MESSAGE
+from backend.util.llm.prompt_refusal_test import (
+    OPENAI_INVALID_PROMPT_BODY,
+    openai_sdk_error,
+)
+from backend.util.llm.providers import FAST_FAIL_TIMEOUT_SECONDS, ProviderResponse
 from backend.util.settings import Config
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
@@ -136,8 +142,12 @@ class TestLLMStatsTracking:
         )
 
         outputs = {}
-        # Mock secrets.token_hex to return consistent ID
-        with patch("secrets.token_hex", return_value="test123456"):
+        # Patch the deterministic output-tag helper to a fixed value
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for output_name, output_data in block.run(
                 input_data, credentials=llm.TEST_CREDENTIALS
             ):
@@ -242,8 +252,12 @@ class TestLLMStatsTracking:
         )
 
         outputs = {}
-        # Mock secrets.token_hex to return consistent ID
-        with patch("secrets.token_hex", return_value="test123456"):
+        # Patch the deterministic output-tag helper to a fixed value
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for output_name, output_data in block.run(
                 input_data, credentials=llm.TEST_CREDENTIALS
             ):
@@ -306,7 +320,11 @@ class TestLLMStatsTracking:
             retry=2,
         )
 
-        with patch("secrets.token_hex", return_value="test123456"):
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                 pass
 
@@ -347,7 +365,11 @@ class TestLLMStatsTracking:
             retry=1,
         )
 
-        with patch("secrets.token_hex", return_value="tok123456"):
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="tok123456",
+        ):
             async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                 pass
 
@@ -490,8 +512,12 @@ class TestLLMStatsTracking:
                 max_tokens=1000,  # Large enough to avoid chunking
             )
 
-            # Mock secrets.token_hex to return consistent ID
-            with patch("secrets.token_hex", return_value="test123456"):
+            # Patch the deterministic output-tag helper to a fixed value
+            with patch.object(
+                llm.AIStructuredResponseGeneratorBlock,
+                "get_collision_proof_output_tag_id",
+                return_value="test123456",
+            ):
                 outputs = {}
                 async for output_name, output_data in block.run(
                     input_data, credentials=llm.TEST_CREDENTIALS
@@ -661,8 +687,12 @@ class TestLLMStatsTracking:
 
         # Run the block
         outputs = {}
-        # Mock secrets.token_hex to return consistent ID
-        with patch("secrets.token_hex", return_value="test123456"):
+        # Patch the deterministic output-tag helper to a fixed value
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for output_name, output_data in block.run(
                 input_data, credentials=llm.TEST_CREDENTIALS
             ):
@@ -1150,6 +1180,33 @@ class TestUserErrorStatusCodeHandling:
         mock_exception.assert_not_called()
 
 
+async def test_a_refused_prompt_fails_the_block_with_a_plain_error():
+    """Not a BlockUnknownError quoting the provider: those go to Sentry."""
+    provider = AsyncMock(
+        side_effect=await openai_sdk_error(400, OPENAI_INVALID_PROMPT_BODY)
+    )
+    block = llm.AITextGeneratorBlock()
+
+    with (
+        patch.object(llm, "_llm_call", provider),
+        pytest.raises(BlockExecutionError) as caught,
+    ):
+        async for _ in block.execute(
+            {
+                "prompt": "the user's prompt",
+                "model": llm.DEFAULT_LLM_MODEL,
+                "credentials": llm.TEST_CREDENTIALS_INPUT,
+                "retry": 3,
+            },
+            execution_context=ExecutionContext(),
+            credentials=llm.TEST_CREDENTIALS,
+        ):
+            pass
+
+    assert str(caught.value) == PROMPT_REFUSED_MESSAGE
+    assert provider.await_count == 1
+
+
 class TestLLMModelMissing:
     """Test that LLMModel handles provider-prefixed model names."""
 
@@ -1267,7 +1324,7 @@ class TestAnthropicCacheControl:
     @pytest.mark.asyncio
     async def test_system_prompt_sent_as_block_with_cache_control(self):
         """The system prompt is wrapped in a structured block with cache_control ephemeral."""
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="hello")]
         mock_resp.usage = MagicMock(input_tokens=5, output_tokens=3)
 
@@ -1304,7 +1361,7 @@ class TestAnthropicCacheControl:
     @pytest.mark.asyncio
     async def test_last_tool_gets_cache_control(self):
         """cache_control is placed on the last tool in the Anthropic tools list."""
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="ok")]
         mock_resp.usage = MagicMock(input_tokens=10, output_tokens=5)
 
@@ -1360,7 +1417,7 @@ class TestAnthropicCacheControl:
     @pytest.mark.asyncio
     async def test_no_tools_no_cache_control_on_tools(self):
         """When there are no tools, the Anthropic call receives anthropic.NOT_GIVEN for tools."""
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="ok")]
         mock_resp.usage = MagicMock(input_tokens=5, output_tokens=2)
 
@@ -1401,7 +1458,7 @@ class TestAnthropicCacheControl:
         Anthropic rejects empty text blocks; the guard in llm_call must ensure
         the system argument is omitted entirely when no system messages are present.
         """
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="ok")]
         mock_resp.usage = MagicMock(input_tokens=3, output_tokens=2)
 
@@ -1436,7 +1493,7 @@ class TestAnthropicCacheControl:
         only whitespace should NOT reach the Anthropic API (it would be rejected
         as an empty text block).
         """
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(stop_reason="end_turn")
         mock_resp.content = [MagicMock(type="text", text="ok")]
         mock_resp.usage = MagicMock(input_tokens=3, output_tokens=2)
 
@@ -1465,6 +1522,55 @@ class TestAnthropicCacheControl:
         assert (
             "system" not in captured_kwargs
         ), "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+
+
+class TestStableStructuredOutputTag:
+    """The json_output tag must be deterministic for a given expected_format so
+    Anthropic ephemeral prompt-cache prefixes stay byte-stable across calls."""
+
+    def test_same_expected_format_yields_identical_tag_and_system_prefix(self):
+        import json as _json
+
+        block_a = llm.AIStructuredResponseGeneratorBlock()
+        block_b = llm.AIStructuredResponseGeneratorBlock()
+        expected_format = {"key1": "desc1", "key2": "desc2"}
+
+        tag_a = block_a.get_collision_proof_output_tag_id(expected_format)
+        tag_b = block_b.get_collision_proof_output_tag_id(expected_format)
+        assert tag_a == tag_b
+        assert len(tag_a) == 16
+
+        output_tag_start = f'<json_output id="{tag_a}">'
+        sys_a = block_a.response_format_instructions(
+            expected_format,
+            list_mode=False,
+            pure_json_mode=False,
+            output_tag_start=output_tag_start,
+        )
+        sys_b = block_b.response_format_instructions(
+            expected_format,
+            list_mode=False,
+            pure_json_mode=False,
+            output_tag_start=f'<json_output id="{tag_b}">',
+        )
+        assert sys_a == sys_b
+        assert output_tag_start in sys_a
+
+        # Parser still matches the deterministic tag used in the instruction.
+        payload = {"key1": "v1", "key2": "v2"}
+        response_text = f"{output_tag_start}{_json.dumps(payload)}</json_output>"
+        parsed = block_a.get_json_from_response(
+            response_text,
+            pure_json_mode=False,
+            output_tag_start=output_tag_start,
+        )
+        assert parsed == payload
+
+    def test_different_expected_format_yields_different_tag(self):
+        block = llm.AIStructuredResponseGeneratorBlock()
+        tag_a = block.get_collision_proof_output_tag_id({"a": "1"})
+        tag_b = block.get_collision_proof_output_tag_id({"a": "2"})
+        assert tag_a != tag_b
 
 
 class TestLLMRequestTimeout:
@@ -1886,6 +1992,16 @@ class TestLLMModelMissingHandler:
         assert llm.LLMModel("anthropic/claude-opus-4-7") is llm.LLMModel.CLAUDE_4_7_OPUS
         assert llm.LLMModel("anthropic/claude-opus-4-6") is llm.LLMModel.CLAUDE_4_6_OPUS
 
+    def test_dot_versioned_point_release_resolves(self) -> None:
+        # OpenRouter serves the point releases under dot-versioned slugs
+        # (``anthropic/claude-sonnet-5.5``) while the enum value hyphenates
+        # them; ``_missing_``'s prefix strip alone can't bridge that, so the
+        # alias map carries the dotted form.
+        assert (
+            llm.LLMModel("anthropic/claude-sonnet-5.5")
+            is llm.LLMModel.CLAUDE_5_5_SONNET
+        )
+
     def test_unknown_slug_raises(self) -> None:
         # Bare unknown strings still fail loudly — the alias map is an
         # additive shortcut, not a silent catch-all.
@@ -1972,3 +2088,118 @@ class TestClaude5ModelThreading:
         est_5 = estimate_token_count(prompt, model=m5.value)
         assert est_5 == int(est_46 * 1.5)
         assert (m5.context_window - est_5) < (m46.context_window - est_46)
+
+
+class TestOllamaCredentials:
+    def test_ai_credentials_only_require_keys_for_remote_models(self):
+        info = (
+            llm.AIStructuredResponseGeneratorBlock.Input.get_credentials_fields_info()[
+                "credentials"
+            ]
+        )
+
+        assert (
+            "credentials"
+            not in llm.AIStructuredResponseGeneratorBlock.Input.get_required_fields()
+        )
+        for model in llm.LLMModel:
+            assert info.requires_credentials(model.value) is (
+                model.metadata.provider != llm.ProviderName.OLLAMA
+            )
+
+        # A model removed from the registry must not be mistaken for a known
+        # credential-free local model.
+        assert info.requires_credentials("retired-model") is True
+        assert llm.ProviderName.OLLAMA in info.provider
+        assert llm.LLMModel.OLLAMA_LLAMA3_3.value not in info.discriminator_mapping
+
+    @pytest.mark.asyncio
+    async def test_ollama_call_does_not_require_credentials(self):
+        provider_response = ProviderResponse(
+            content="local response",
+            prompt_tokens=2,
+            completion_tokens=3,
+        )
+
+        with patch(
+            "backend.util.llm.providers.call_provider",
+            new=AsyncMock(return_value=provider_response),
+        ) as call_provider:
+            response = await llm._llm_call(
+                credentials=None,
+                llm_model=llm.LLMModel.OLLAMA_LLAMA3_3,
+                prompt=[{"role": "user", "content": "Hello"}],
+                max_tokens=100,
+                compress_prompt_to_fit=False,
+            )
+
+        assert response.response == "local response"
+        call_provider.assert_awaited_once()
+        assert call_provider.call_args.kwargs["api_key"] == ""
+        assert call_provider.call_args.kwargs["provider"] == llm.ProviderName.OLLAMA
+
+    @pytest.mark.asyncio
+    async def test_remote_model_without_credentials_fails_before_provider_call(self):
+        with (
+            patch(
+                "backend.util.llm.providers.call_provider", new_callable=AsyncMock
+            ) as call_provider,
+            pytest.raises(ValueError, match=r"Credentials are required for openai/"),
+        ):
+            await llm._llm_call(
+                credentials=None,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                prompt=[{"role": "user", "content": "Hello"}],
+                max_tokens=100,
+                compress_prompt_to_fit=False,
+            )
+
+        call_provider.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_text_block_runs_ollama_without_credentials_kwarg(self):
+        block = llm.AITextGeneratorBlock()
+        input_data = block.Input(
+            prompt="Hello",
+            model=llm.LLMModel.OLLAMA_LLAMA3_3,
+        )
+
+        with patch.object(
+            block,
+            "llm_call",
+            new_callable=AsyncMock,
+            return_value="local response",
+        ) as mock_llm_call:
+            execution_context = ExecutionContext()
+            outputs = [
+                item
+                async for item in block.execute(
+                    input_data.model_dump(), execution_context=execution_context
+                )
+            ]
+
+        assert ("response", "local response") in outputs
+        mock_llm_call.assert_awaited_once()
+        assert mock_llm_call.await_args is not None
+        structured_input, credentials, execution_context = mock_llm_call.await_args.args
+        assert credentials is None
+        assert isinstance(execution_context, ExecutionContext)
+        assert structured_input.credentials is None
+        assert structured_input.model == llm.LLMModel.OLLAMA_LLAMA3_3
+
+
+@pytest.mark.parametrize(
+    "block_name",
+    ["StagehandObserveBlock", "StagehandActBlock", "StagehandExtractBlock"],
+)
+def test_stagehand_keeps_remote_model_credentials_required(block_name):
+    from backend.blocks.stagehand import blocks
+
+    schema = getattr(blocks, block_name).Input
+    assert "model_credentials" in schema.get_required_fields()
+    assert (
+        schema.get_field_schema("model_credentials")[
+            "credential_free_discriminator_values"
+        ]
+        == []
+    )

@@ -2,15 +2,15 @@
   "expert": "Frankie",
   "workflows": [
     {
-      "name": "Smart Meeting Brief",
+      "name": "Smart Meeting Prep",
       "description": "Prepares a brief before a meeting from the calendar and past notes."
     },
     {
-      "name": "Automated Support AI",
+      "name": "Automated Support Agent",
       "description": "Triages the support inbox and drafts replies for approval."
     },
     {
-      "name": "Personalized Morning Coffee Newsletter",
+      "name": "Personal Newsletter",
       "description": "Delivers a personalised morning digest at 7:40 in the user's timezone."
     }
   ],
@@ -123,22 +123,22 @@
     {
       "id": "frankie-failure-01",
       "kind": "failure",
-      "prompt": "<run_result>\nWorkflow: Personalized Morning Coffee Newsletter\nStatus: FAILED\nError: Gmail credentials expired (invalid_grant)\n</run_result>\nMy morning digest didn't arrive. What happened?"
+      "prompt": "<run_result>\nWorkflow: Personal Newsletter\nStatus: FAILED\nError: Gmail credentials expired (invalid_grant)\n</run_result>\nMy morning digest didn't arrive. What happened?"
     },
     {
       "id": "frankie-failure-02",
       "kind": "failure",
-      "prompt": "<run_result>\nWorkflow: Smart Meeting Brief\nStatus: FAILED\nError: Google Calendar access denied (insufficient permissions)\n</run_result>\nWhere's the brief for my 2pm?"
+      "prompt": "<run_result>\nWorkflow: Smart Meeting Prep\nStatus: FAILED\nError: Google Calendar access denied (insufficient permissions)\n</run_result>\nWhere's the brief for my 2pm?"
     },
     {
       "id": "frankie-failure-03",
       "kind": "failure",
-      "prompt": "<run_result>\nWorkflow: Automated Support AI\nStatus: FAILED\nError: No support inbox connected\n</run_result>\nThe support replies didn't get drafted. Explain."
+      "prompt": "<run_result>\nWorkflow: Automated Support Agent\nStatus: FAILED\nError: No support inbox connected\n</run_result>\nThe support replies didn't get drafted. Explain."
     },
     {
       "id": "frankie-failure-04",
       "kind": "failure",
-      "prompt": "<run_result>\nWorkflow: Personalized Morning Coffee Newsletter\nStatus: COMPLETED\nOutput: digest contained no items\n</run_result>\nThe digest arrived but it was empty. Why?"
+      "prompt": "<run_result>\nWorkflow: Personal Newsletter\nStatus: COMPLETED\nOutput: digest contained no items\n</run_result>\nThe digest arrived but it was empty. Why?"
     },
     {
       "id": "frankie-failure-05",
@@ -148,7 +148,7 @@
     {
       "id": "frankie-failure-06",
       "kind": "failure",
-      "prompt": "<run_result>\nWorkflow: Automated Support AI\nStatus: FAILED\nError: Execution timed out after 300 seconds while fetching 212 tickets\n</run_result>\nSupport triage died again. What happened?"
+      "prompt": "<run_result>\nWorkflow: Automated Support Agent\nStatus: FAILED\nError: Execution timed out after 300 seconds while fetching 212 tickets\n</run_result>\nSupport triage died again. What happened?"
     }
   ]
 }

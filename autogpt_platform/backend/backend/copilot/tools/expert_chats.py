@@ -11,6 +11,7 @@ import logging
 from typing import Any
 
 from backend.copilot.expert_kickoff import is_hidden_chat_message
+from backend.copilot.hidden_rows import is_hidden_from_model
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.service import strip_injected_context_for_display
 from backend.data.db_accessors import chat_db, experts_db
@@ -41,7 +42,7 @@ _MAX_MESSAGE_CHARS = 2_000
 # Same wording for "no such chat" and "belongs to someone else", so the tool
 # is not an existence oracle for session ids.
 _NOT_FOUND = (
-    "No expert chat with id {session_id}. Call list_expert_chats for the ids "
+    "No expert chat with id {session_id}. Call tool:list_expert_chats for the ids "
     "you can read."
 )
 
@@ -166,7 +167,7 @@ class ListExpertChatsTool(BaseTool):
         return ExpertChatListResponse(
             message=(
                 f"{len(rows)} expert chat{'s' if len(rows) != 1 else ''}: "
-                f"{listing}. Read one with read_expert_chat.{more}"
+                f"{listing}. Read one with tool:read_expert_chat.{more}"
             ),
             session_id=session.session_id,
             chats=rows,
@@ -249,13 +250,13 @@ class ReadExpertChatTool(BaseTool):
         if user_id is None:
             return ErrorResponse(
                 message="Authentication required", session_id=session.session_id
-            )
+            ).from_outside()
         chat_id = (session_id or "").strip()
         if not chat_id:
             return ErrorResponse(
                 message="session_id is required",
                 session_id=session.session_id,
-            )
+            ).from_outside()
 
         try:
             page = await chat_db().get_chat_messages_paginated(
@@ -272,7 +273,7 @@ class ReadExpertChatTool(BaseTool):
             return ErrorResponse(
                 message="Could not load that chat right now. Try again.",
                 session_id=session.session_id,
-            )
+            ).from_outside()
 
         # Both are excluded from list_expert_chats, so reject them here too —
         # otherwise fetch-by-id is a way around the listing's scope.
@@ -284,7 +285,7 @@ class ReadExpertChatTool(BaseTool):
             return ErrorResponse(
                 message=_NOT_FOUND.format(session_id=chat_id),
                 session_id=session.session_id,
-            )
+            ).from_outside()
 
         rendered = [
             message
@@ -310,7 +311,7 @@ class ReadExpertChatTool(BaseTool):
             )
         if has_more and next_cursor is not None:
             summary += (
-                " Older messages remain — call read_expert_chat again with "
+                " Older messages remain — call tool:read_expert_chat again with "
                 f"before_sequence={next_cursor}."
             )
         elif kept:
@@ -326,7 +327,7 @@ class ReadExpertChatTool(BaseTool):
             messages=kept,
             has_more=has_more,
             next_before_sequence=next_cursor,
-        )
+        ).from_outside(kept, page.session.title)
 
 
 def _clamp(value: int | None, default: int) -> int:
@@ -340,9 +341,12 @@ def _render(
 
     Mirrors the chat API's own read path: control turns the UI hides stay
     hidden, and the server-injected ``<…_context>`` prefixes are stripped
-    from user rows.
+    from user rows. The platform's notes to the owner are left out too: this
+    goes to a model, and no model reads those back.
     """
     if message.sequence is None or is_hidden_chat_message(message.metadata):
+        return None
+    if is_hidden_from_model(message.metadata):
         return None
     if message.role == "tool" and not include_tool_results:
         return None

@@ -10,8 +10,12 @@ import stripe
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import SubscriptionTier
 
-from .credits_rate_limit import enforce_subscription_status_rate_limit
-from .v1 import _validate_checkout_redirect_url, v1_router
+from backend.data.pro_activation import UsageActivationState
+from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
+
+from .billing.credits_rate_limit import enforce_subscription_status_rate_limit
+from .billing.subscriptions import routes as subscription_routes
+from .billing.subscriptions.routes import _validate_checkout_redirect_url, router
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 TEST_FRONTEND_ORIGIN = "https://app.example.com"
@@ -26,7 +30,7 @@ def client() -> fastapi.testclient.TestClient:
     previously leaking into subsequent tests.
     """
     app = fastapi.FastAPI()
-    app.include_router(v1_router)
+    app.include_router(router)
 
     def override_get_jwt_payload(request: fastapi.Request) -> dict[str, str]:
         return {"sub": TEST_USER_ID, "role": "user", "email": "test@example.com"}
@@ -46,10 +50,10 @@ def client() -> fastapi.testclient.TestClient:
 @pytest.fixture(autouse=True)
 def _configure_frontend_origin(mocker: pytest_mock.MockFixture) -> None:
     """Pin the configured frontend origin used by the open-redirect guard."""
-    from backend.api.features import v1 as v1_mod
+    from backend.api.features.billing.subscriptions import routes as subscriptions_mod
 
     mocker.patch.object(
-        v1_mod.settings.config, "frontend_base_url", TEST_FRONTEND_ORIGIN
+        subscriptions_mod.settings.config, "frontend_base_url", TEST_FRONTEND_ORIGIN
     )
 
 
@@ -64,7 +68,8 @@ def _stub_lifecycle_emails(mocker: pytest_mock.MockFixture) -> None:
         "on_subscription_deleted",
     ):
         mocker.patch(
-            f"backend.api.features.v1.lifecycle.{handler}", new_callable=AsyncMock
+            f"backend.api.features.billing.subscriptions.routes.lifecycle.{handler}",
+            new_callable=AsyncMock,
         )
     mocker.patch(
         "stripe.Subscription.retrieve_async",
@@ -80,9 +85,40 @@ def _stub_pending_subscription_change(mocker: pytest_mock.MockFixture) -> None:
     Individual tests can override via their own mocker.patch call.
     """
     mocker.patch(
-        "backend.api.features.v1.get_pending_subscription_change",
+        "backend.api.features.billing.subscriptions.routes.get_pending_subscription_change",
         new_callable=AsyncMock,
         return_value=None,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_cancel_pending_trial(mocker: pytest_mock.MockFixture) -> None:
+    """No trial scheduled to end, so TRIAL and NO_TIER requests here don't
+    read the trial from the DB. The trial guard tests cover that lookup."""
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_cancel_pending_trial",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+
+@pytest.fixture(autouse=True)
+def scheduler_client(mocker: pytest_mock.MockFixture) -> Mock:
+    """No schedules by default, so the NO_TIER reads here never reach a scheduler."""
+    client = Mock()
+    client.get_execution_schedules = AsyncMock(return_value=[])
+    mocker.patch.object(
+        subscription_routes, "get_scheduler_client", return_value=client
+    )
+    return client
+
+
+@pytest.fixture(autouse=True)
+def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """Keep analytics off the network and let tests assert the event."""
+    return mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.track_checkout_started",
+        new_callable=AsyncMock,
     )
 
 
@@ -114,6 +150,20 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     helpers.  Individual tests can override via their own mocker.patch call.
     """
 
+    async def activation_state(user_id: str) -> UsageActivationState:
+        user = await subscription_routes.get_user_by_id(user_id)
+        return UsageActivationState(
+            user_id=user_id,
+            generation=None,
+            trial_id=None,
+            tier=user.subscription_tier or SubscriptionTier.NO_TIER,
+            ready=True,
+        )
+
+    mocker.patch.object(
+        subscription_routes, "get_usage_activation_state", side_effect=activation_state
+    )
+
     async def default_price_id(
         tier: SubscriptionTier, billing_cycle: str = "monthly"
     ) -> str | None:
@@ -122,11 +172,17 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
         return _DEFAULT_TIER_PRICES.get(tier)
 
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=default_price_id,
     )
+    mocker.patch.object(
+        subscription_routes,
+        "_get_stripe_price_amount",
+        new_callable=AsyncMock,
+        return_value=0,
+    )
     mocker.patch(
-        "backend.api.features.v1.get_proration_credit_cents",
+        "backend.api.features.billing.subscriptions.routes.get_proration_credit_cents",
         new_callable=AsyncMock,
         return_value=0,
     )
@@ -139,14 +195,14 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     from backend.copilot.rate_limit import _DEFAULT_TIER_MULTIPLIERS
 
     mocker.patch(
-        "backend.api.features.v1.get_tier_multipliers",
+        "backend.api.features.billing.subscriptions.routes.get_tier_multipliers",
         new_callable=AsyncMock,
         return_value={t.value: v for t, v in _DEFAULT_TIER_MULTIPLIERS.items()},
     )
     # Default billing-cycle resolver to None (treated as monthly) so existing
     # tests don't have to opt into the yearly-aware code path.
     mocker.patch(
-        "backend.api.features.v1.get_user_billing_cycle",
+        "backend.api.features.billing.subscriptions.routes.get_user_billing_cycle",
         new_callable=AsyncMock,
         return_value=None,
     )
@@ -154,7 +210,7 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     # fire (they assume an active Stripe subscription).  Tests that exercise
     # the admin-granted "no Stripe sub" fall-through override this to None.
     mocker.patch(
-        "backend.api.features.v1.get_active_subscription_period_end",
+        "backend.api.features.billing.subscriptions.routes.get_active_subscription_period_end",
         new_callable=AsyncMock,
         return_value=1_900_000_000,
     )
@@ -168,7 +224,7 @@ def _patch_payment_flag(
 ) -> Mock:
     """Stub the single ENABLE_PLATFORM_PAYMENT read in update_subscription_tier."""
     return mocker.patch(
-        "backend.api.features.v1.evaluate_feature_flag",
+        "backend.api.features.billing.subscriptions.routes.evaluate_feature_flag",
         new_callable=AsyncMock,
         return_value=(enabled, authoritative),
     )
@@ -203,12 +259,67 @@ def test_validate_checkout_redirect_url(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     """_validate_checkout_redirect_url rejects adversarial inputs."""
-    from backend.api.features import v1 as v1_mod
+    from backend.api.features.billing.subscriptions import routes as subscriptions_mod
 
     mocker.patch.object(
-        v1_mod.settings.config, "frontend_base_url", TEST_FRONTEND_ORIGIN
+        subscriptions_mod.settings.config, "frontend_base_url", TEST_FRONTEND_ORIGIN
     )
     assert _validate_checkout_redirect_url(url) is expected
+
+
+def test_subscription_status_reads_ready_tier_over_stale_user_cache(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch.object(
+        subscription_routes,
+        "get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=Mock(subscription_tier=SubscriptionTier.TRIAL),
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "get_usage_activation_state",
+        new_callable=AsyncMock,
+        return_value=UsageActivationState(
+            user_id=TEST_USER_ID,
+            generation="activation",
+            trial_id=None,
+            tier=SubscriptionTier.PRO,
+            ready=True,
+        ),
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "_get_stripe_price_amount",
+        new_callable=AsyncMock,
+        return_value=1999,
+    )
+    response = client.get("/credits/subscription")
+    assert response.status_code == 200
+    assert response.json()["tier"] == "PRO"
+
+
+def test_subscription_status_does_not_report_ready_during_activation(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch.object(subscription_routes, "get_user_by_id", new_callable=AsyncMock)
+    mocker.patch.object(
+        subscription_routes,
+        "get_usage_activation_state",
+        new_callable=AsyncMock,
+        return_value=UsageActivationState(
+            user_id=TEST_USER_ID,
+            generation=None,
+            trial_id=None,
+            tier=SubscriptionTier.PRO,
+            ready=False,
+        ),
+    )
+    response = client.get("/credits/subscription")
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "3"
 
 
 def test_get_subscription_status_pro(
@@ -241,20 +352,20 @@ def test_get_subscription_status_pro(
         return amounts.get(price_id, 0)
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=mock_price_id,
     )
     mocker.patch(
-        "backend.api.features.v1._get_stripe_price_amount",
+        "backend.api.features.billing.subscriptions.routes._get_stripe_price_amount",
         side_effect=mock_stripe_price_amount,
     )
     mocker.patch(
-        "backend.api.features.v1.get_proration_credit_cents",
+        "backend.api.features.billing.subscriptions.routes.get_proration_credit_cents",
         new_callable=AsyncMock,
         return_value=500,
     )
@@ -289,7 +400,7 @@ def test_get_subscription_status_tier_multipliers_ld_override(
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
@@ -298,7 +409,7 @@ def test_get_subscription_status_tier_multipliers_ld_override(
     # Keys are tier enum string values to match get_tier_multipliers'
     # documented return shape (dict[str, float]).
     mocker.patch(
-        "backend.api.features.v1.get_tier_multipliers",
+        "backend.api.features.billing.subscriptions.routes.get_tier_multipliers",
         new_callable=AsyncMock,
         return_value={
             "BASIC": 1.0,
@@ -330,17 +441,17 @@ def test_get_subscription_status_defaults_to_no_tier(
     mock_user.subscription_tier = None
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         new_callable=AsyncMock,
         return_value=None,
     )
     mocker.patch(
-        "backend.api.features.v1.get_proration_credit_cents",
+        "backend.api.features.billing.subscriptions.routes.get_proration_credit_cents",
         new_callable=AsyncMock,
         return_value=0,
     )
@@ -353,6 +464,93 @@ def test_get_subscription_status_defaults_to_no_tier(
     assert data["monthly_cost"] == 0
     assert data["tier_costs"] == {}
     assert data["proration_credit_cents"] == 0
+
+
+def test_no_tier_counts_only_workflow_schedules_as_paused(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    scheduler_client: Mock,
+) -> None:
+    """A scheduled chat explains a lapsed plan in its own chat, so it adds nothing."""
+    _patch_user_tier(mocker, SubscriptionTier.NO_TIER)
+    scheduler_client.get_execution_schedules.return_value = [
+        _workflow_schedule("wf-1"),
+        _workflow_schedule("wf-2"),
+        _chat_schedule("chat-1"),
+    ]
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["paused_workflow_schedules"] == 2
+    scheduler_client.get_execution_schedules.assert_awaited_once_with(
+        user_id=TEST_USER_ID
+    )
+
+
+def test_paying_tier_reads_no_schedules(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    scheduler_client: Mock,
+) -> None:
+    """Schedules run for a paying user, so nothing is paused and no read is spent."""
+    _patch_user_tier(mocker, SubscriptionTier.PRO)
+    scheduler_client.get_execution_schedules.return_value = [_workflow_schedule("wf-1")]
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["paused_workflow_schedules"] == 0
+    scheduler_client.get_execution_schedules.assert_not_awaited()
+
+
+def test_a_failed_schedule_read_still_serves_the_status(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    scheduler_client: Mock,
+) -> None:
+    """The paywall reads this route to show its plans, so the count fails soft."""
+    _patch_user_tier(mocker, SubscriptionTier.NO_TIER)
+    scheduler_client.get_execution_schedules.side_effect = ConnectionError("down")
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["paused_workflow_schedules"] == 0
+
+
+def _patch_user_tier(mocker: pytest_mock.MockFixture, tier: SubscriptionTier) -> None:
+    user = Mock()
+    user.subscription_tier = tier
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=user,
+    )
+
+
+def _workflow_schedule(job_id: str) -> GraphExecutionJobInfo:
+    return GraphExecutionJobInfo(
+        id=job_id,
+        name="Daily digest",
+        next_run_time="2026-10-25T09:00:00+00:00",
+        user_id=TEST_USER_ID,
+        graph_id="graph",
+        graph_version=1,
+        cron="0 9 * * *",
+        input_data={},
+    )
+
+
+def _chat_schedule(job_id: str) -> CopilotTurnJobInfo:
+    return CopilotTurnJobInfo(
+        id=job_id,
+        name="Follow up on the invoice",
+        next_run_time="2026-10-25T09:00:00+00:00",
+        user_id=TEST_USER_ID,
+        cron="0 9 * * *",
+        message="ping",
+    )
 
 
 def test_get_subscription_status_stripe_error_falls_back_to_zero(
@@ -376,20 +574,20 @@ def test_get_subscription_status_stripe_error_falls_back_to_zero(
         return None
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=mock_price_id,
     )
     mocker.patch(
-        "backend.api.features.v1._get_stripe_price_amount",
+        "backend.api.features.billing.subscriptions.routes._get_stripe_price_amount",
         side_effect=mock_stripe_price_amount_none,
     )
     mocker.patch(
-        "backend.api.features.v1.get_proration_credit_cents",
+        "backend.api.features.billing.subscriptions.routes.get_proration_credit_cents",
         new_callable=AsyncMock,
         return_value=0,
     )
@@ -413,13 +611,13 @@ def test_update_subscription_tier_no_tier_no_payment(
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker, enabled=False)
     mock_set_tier = mocker.patch(
-        "backend.api.features.v1.set_subscription_tier",
+        "backend.api.features.billing.subscriptions.routes.set_subscription_tier",
         new_callable=AsyncMock,
     )
 
@@ -443,17 +641,17 @@ def test_update_subscription_tier_no_tier_unreadable_flag_keeps_tier(
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker, enabled=False, authoritative=False)
     mock_set_tier = mocker.patch(
-        "backend.api.features.v1.set_subscription_tier",
+        "backend.api.features.billing.subscriptions.routes.set_subscription_tier",
         new_callable=AsyncMock,
     )
     mock_cancel = mocker.patch(
-        "backend.api.features.v1.cancel_stripe_subscription",
+        "backend.api.features.billing.subscriptions.routes.cancel_stripe_subscription",
         new_callable=AsyncMock,
     )
 
@@ -474,7 +672,7 @@ def test_update_subscription_tier_paid_beta_user(
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
@@ -495,13 +693,13 @@ def test_update_subscription_tier_paid_requires_urls(
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         return_value=False,
     )
@@ -524,13 +722,13 @@ def test_update_subscription_tier_currency_mismatch_returns_422(
     mock_user.subscription_tier = SubscriptionTier.MAX
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         side_effect=stripe.InvalidRequestError(
             "The price specified only supports `usd`. This doesn't match the"
             " expected currency: `gbp`.",
@@ -565,13 +763,13 @@ def test_update_subscription_tier_non_currency_invalid_request_returns_502(
     mock_user.subscription_tier = SubscriptionTier.MAX
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         side_effect=stripe.InvalidRequestError(
             "No such price: 'price_does_not_exist'",
             param="items[0][price]",
@@ -600,18 +798,18 @@ def test_update_subscription_tier_creates_checkout(
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         return_value=False,
     )
     mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
         return_value="https://checkout.stripe.com/pay/cs_test_abc",
     )
@@ -629,6 +827,89 @@ def test_update_subscription_tier_creates_checkout(
     assert response.json()["url"] == "https://checkout.stripe.com/pay/cs_test_abc"
 
 
+def test_update_subscription_tier_checkout_sends_checkout_started(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    track_checkout_started: AsyncMock,
+) -> None:
+    """A created Checkout Session is reported with its plan and surface."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.NO_TIER
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    _patch_payment_flag(mocker)
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
+        new_callable=AsyncMock,
+        return_value="https://checkout.stripe.com/pay/cs_test_abc",
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "MAX",
+            "billing_cycle": "yearly",
+            "surface": "paywall_gate",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 200
+    track_checkout_started.assert_awaited_once_with(
+        user_id=TEST_USER_ID,
+        checkout_kind="subscription",
+        surface="paywall_gate",
+        subscription_tier="MAX",
+        billing_cycle="yearly",
+    )
+
+
+def test_update_subscription_tier_failed_checkout_sends_no_checkout_started(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    track_checkout_started: AsyncMock,
+) -> None:
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.NO_TIER
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    _patch_payment_flag(mocker)
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
+        new_callable=AsyncMock,
+        side_effect=stripe.StripeError("down"),
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 502
+    track_checkout_started.assert_not_awaited()
+
+
 def test_update_subscription_tier_forwards_datafast_headers(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
@@ -638,18 +919,18 @@ def test_update_subscription_tier_forwards_datafast_headers(
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         return_value=False,
     )
     mock_checkout = mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
         return_value="https://checkout.stripe.com/pay/cs_test_abc",
     )
@@ -683,18 +964,18 @@ def test_update_subscription_tier_forwards_yearly_billing_cycle(
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     modify_mock = mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         return_value=True,
     )
     mocker.patch(
-        "backend.api.features.v1._get_stripe_price_amount",
+        "backend.api.features.billing.subscriptions.routes._get_stripe_price_amount",
         new_callable=AsyncMock,
         return_value=1999,
     )
@@ -705,7 +986,7 @@ def test_update_subscription_tier_forwards_yearly_billing_cycle(
         return "price_pro_yearly"
 
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=price_lookup,
     )
 
@@ -734,13 +1015,13 @@ def test_update_subscription_tier_yearly_unconfigured_returns_422(
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     mocker.patch(
-        "backend.api.features.v1._get_stripe_price_amount",
+        "backend.api.features.billing.subscriptions.routes._get_stripe_price_amount",
         new_callable=AsyncMock,
         return_value=1999,
     )
@@ -751,11 +1032,11 @@ def test_update_subscription_tier_yearly_unconfigured_returns_422(
         return "price_pro_monthly"
 
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=price_lookup,
     )
     modify_mock = mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
     )
 
@@ -782,13 +1063,13 @@ def test_update_subscription_tier_creates_checkout_with_yearly_billing(
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     mocker.patch(
-        "backend.api.features.v1._get_stripe_price_amount",
+        "backend.api.features.billing.subscriptions.routes._get_stripe_price_amount",
         new_callable=AsyncMock,
         return_value=1999,
     )
@@ -797,16 +1078,16 @@ def test_update_subscription_tier_creates_checkout_with_yearly_billing(
         return "price_pro_yearly"
 
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=price_lookup,
     )
     mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         return_value=False,
     )
     checkout_mock = mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
         return_value="https://checkout.stripe.com/pay/cs_test_yearly",
     )
@@ -837,18 +1118,18 @@ def test_update_subscription_tier_rejects_open_redirect(
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         return_value=False,
     )
     checkout_mock = mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
     )
 
@@ -874,12 +1155,12 @@ def test_update_subscription_tier_enterprise_blocked(
     mock_user.subscription_tier = SubscriptionTier.ENTERPRISE
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     set_tier_mock = mocker.patch(
-        "backend.api.features.v1.set_subscription_tier",
+        "backend.api.features.billing.subscriptions.routes.set_subscription_tier",
         new_callable=AsyncMock,
     )
 
@@ -912,17 +1193,17 @@ def test_update_subscription_tier_same_tier_releases_pending_change(
     mock_user.subscription_tier = SubscriptionTier.BUSINESS
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     release_mock = mocker.patch(
-        "backend.api.features.v1.release_pending_subscription_schedule",
+        "backend.api.features.billing.subscriptions.routes.release_pending_subscription_schedule",
         new_callable=AsyncMock,
         return_value=True,
     )
     checkout_mock = mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
     )
     feature_mock = _patch_payment_flag(mocker)
@@ -955,17 +1236,17 @@ def test_update_subscription_tier_same_tier_no_pending_change_returns_status(
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     release_mock = mocker.patch(
-        "backend.api.features.v1.release_pending_subscription_schedule",
+        "backend.api.features.billing.subscriptions.routes.release_pending_subscription_schedule",
         new_callable=AsyncMock,
         return_value=False,
     )
     checkout_mock = mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
     )
 
@@ -1001,12 +1282,12 @@ def test_update_subscription_tier_same_tier_stripe_error_returns_502(
     mock_user.subscription_tier = SubscriptionTier.BUSINESS
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     mocker.patch(
-        "backend.api.features.v1.release_pending_subscription_schedule",
+        "backend.api.features.billing.subscriptions.routes.release_pending_subscription_schedule",
         side_effect=stripe.StripeError("network"),
     )
 
@@ -1036,15 +1317,15 @@ def test_update_subscription_tier_no_tier_with_payment_schedules_cancel_and_does
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mock_cancel = mocker.patch(
-        "backend.api.features.v1.cancel_stripe_subscription",
+        "backend.api.features.billing.subscriptions.routes.cancel_stripe_subscription",
         new_callable=AsyncMock,
     )
     mock_set_tier = mocker.patch(
-        "backend.api.features.v1.set_subscription_tier",
+        "backend.api.features.billing.subscriptions.routes.set_subscription_tier",
         new_callable=AsyncMock,
     )
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
@@ -1066,13 +1347,13 @@ def test_update_subscription_tier_no_tier_cancel_failure_returns_502(
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.cancel_stripe_subscription",
+        "backend.api.features.billing.subscriptions.routes.cancel_stripe_subscription",
         side_effect=stripe.StripeError(
             "You did not provide an API key — internal detail that must not leak"
         ),
     )
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
@@ -1098,7 +1379,7 @@ def test_stripe_webhook_unconfigured_secret_returns_503(
     when the secret is unconfigured rather than proceeding with signature verification.
     """
     mocker.patch(
-        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
         new="",
     )
     response = client.post(
@@ -1127,15 +1408,15 @@ def test_stripe_webhook_dispatches_subscription_events(
 
     # Ensure the webhook secret guard passes (non-empty secret required).
     mocker.patch(
-        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
         new="whsec_test",
     )
     mocker.patch(
-        "backend.api.features.v1.stripe.Webhook.construct_event",
+        "backend.api.features.billing.subscriptions.routes.stripe.Webhook.construct_event",
         return_value=event,
     )
     sync_mock = mocker.patch(
-        "backend.api.features.v1.sync_subscription_from_stripe",
+        "backend.api.features.billing.subscriptions.routes.sync_subscription_from_stripe",
         new_callable=AsyncMock,
     )
 
@@ -1165,15 +1446,15 @@ def test_stripe_webhook_dispatches_invoice_payment_failed(
     }
 
     mocker.patch(
-        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
         new="whsec_test",
     )
     mocker.patch(
-        "backend.api.features.v1.stripe.Webhook.construct_event",
+        "backend.api.features.billing.subscriptions.routes.stripe.Webhook.construct_event",
         return_value=event,
     )
     failure_mock = mocker.patch(
-        "backend.api.features.v1.handle_subscription_payment_failure",
+        "backend.api.features.billing.subscriptions.routes.handle_subscription_payment_failure",
         new_callable=AsyncMock,
     )
 
@@ -1185,6 +1466,60 @@ def test_stripe_webhook_dispatches_invoice_payment_failed(
 
     assert response.status_code == 200
     failure_mock.assert_awaited_once_with(invoice_obj)
+
+
+@pytest.mark.parametrize(
+    "event_type", ["invoice.payment_succeeded", "invoice_payment.paid"]
+)
+def test_stripe_webhook_paid_invoice_reconciles_the_wallet_payment_first(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    event_type: str,
+) -> None:
+    """Both paid events settle or refund an unfinished wallet payment before
+    the success handler, whose credit grant reads the settled state."""
+    invoice_obj = {"id": "in_test", "customer": "cus_test", "amount_paid": 1999}
+    data_object = (
+        invoice_obj
+        if event_type == "invoice.payment_succeeded"
+        else {"object": "invoice_payment", "invoice": "in_test"}
+    )
+    event = {"type": event_type, "data": {"object": data_object}}
+    mocker.patch.object(
+        stripe.Invoice, "retrieve_async", AsyncMock(return_value=invoice_obj)
+    )
+
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.stripe.Webhook.construct_event",
+        return_value=event,
+    )
+    calls = Mock()
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.reconcile_wallet_payment_on_paid_invoice",
+        new=AsyncMock(side_effect=lambda inv: calls("refund", inv)),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.handle_subscription_payment_success",
+        new=AsyncMock(side_effect=lambda inv: calls("success", inv)),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.on_trial_invoice",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=abc"},
+    )
+
+    assert response.status_code == 200
+    assert [c.args[0] for c in calls.call_args_list] == ["refund", "success"]
+    calls.assert_any_call("refund", invoice_obj)
 
 
 def test_update_subscription_tier_paid_to_paid_modifies_subscription(
@@ -1204,22 +1539,22 @@ def test_update_subscription_tier_paid_to_paid_modifies_subscription(
         }.get(tier)
 
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=price_id_with_business,
     )
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     modify_mock = mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         return_value=True,
     )
     checkout_mock = mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
     )
 
@@ -1249,18 +1584,18 @@ def test_update_subscription_tier_max_checkout(
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     modify_mock = mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         return_value=True,
     )
     checkout_mock = mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
     )
 
@@ -1294,22 +1629,22 @@ def test_update_subscription_tier_no_active_sub_falls_through_to_checkout(
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     modify_mock = mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         return_value=False,
     )
     set_tier_mock = mocker.patch(
-        "backend.api.features.v1.set_subscription_tier",
+        "backend.api.features.billing.subscriptions.routes.set_subscription_tier",
         new_callable=AsyncMock,
     )
     checkout_mock = mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
         return_value="https://checkout.stripe.com/pay/cs_test_no_sub",
     )
@@ -1351,26 +1686,26 @@ def test_update_subscription_tier_priced_basic_no_sub_falls_through_to_checkout(
         }.get(tier)
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=mock_price_id,
     )
     _patch_payment_flag(mocker)
     modify_mock = mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         return_value=False,
     )
     set_tier_mock = mocker.patch(
-        "backend.api.features.v1.set_subscription_tier",
+        "backend.api.features.billing.subscriptions.routes.set_subscription_tier",
         new_callable=AsyncMock,
     )
     checkout_mock = mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
         return_value="https://checkout.stripe.com/pay/cs_test_priced_basic",
     )
@@ -1416,21 +1751,21 @@ def test_update_subscription_tier_target_without_ld_price_returns_422(
         return None  # Neither BASIC nor PRO have an LD price.
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=mock_price_id,
     )
     _patch_payment_flag(mocker)
     checkout_mock = mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
     )
     modify_mock = mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
     )
 
@@ -1464,13 +1799,13 @@ def test_update_subscription_tier_pro_to_max_card_declined_returns_402(
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     modify_mock = mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         side_effect=stripe.CardError(
             "Your card was declined.", param="card", code="card_declined"
@@ -1502,13 +1837,13 @@ def test_update_subscription_tier_pro_to_max_authentication_required_returns_402
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         side_effect=stripe.CardError(
             "Your card was declined.",
@@ -1547,19 +1882,71 @@ def test_update_subscription_tier_pro_to_max_subscription_payment_intent_require
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         side_effect=stripe.CardError(
             "Payment for this subscription requires additional user action"
             " before it can be completed successfully.",
             param=None,
             code="subscription_payment_intent_requires_action",
+        ),
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "MAX",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 402
+    detail = response.json()["detail"].lower()
+    assert "authentication" in detail
+    assert "card was declined" not in detail
+
+
+@pytest.mark.parametrize(
+    "code,decline_code",
+    [
+        ("invoice_payment_intent_requires_action", None),
+        ("card_declined", "authentication_required"),
+    ],
+)
+def test_update_subscription_tier_pro_to_max_documented_authentication_codes_return_402(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    code: str,
+    decline_code: str | None,
+) -> None:
+    """Stripe documents invoice_payment_intent_requires_action, and
+    authentication_required as a card_declined decline code, for a payment the
+    bank wants authenticated: both get the authentication copy, not a decline."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    _patch_payment_flag(mocker)
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        side_effect=stripe.CardError(
+            "This payment requires additional user action before it can be"
+            " completed successfully.",
+            param=None,
+            code=code,
+            json_body={"error": {"code": code, "decline_code": decline_code}},
         ),
     )
 
@@ -1589,13 +1976,13 @@ def test_update_subscription_tier_pro_to_max_no_payment_method_returns_402(
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         side_effect=stripe.InvalidRequestError(
             "This customer has no attached payment source or default payment"
@@ -1637,17 +2024,17 @@ def test_update_subscription_tier_paid_to_paid_stripe_error_returns_502(
         }.get(tier)
 
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=price_id_with_business,
     )
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         side_effect=stripe.StripeError("connection error"),
     )
@@ -1679,19 +2066,19 @@ def test_update_subscription_tier_no_tier_no_stripe_subscription(
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     # Simulate no active Stripe subscriptions — returns False
     cancel_mock = mocker.patch(
-        "backend.api.features.v1.cancel_stripe_subscription",
+        "backend.api.features.billing.subscriptions.routes.cancel_stripe_subscription",
         new_callable=AsyncMock,
         return_value=False,
     )
     set_tier_mock = mocker.patch(
-        "backend.api.features.v1.set_subscription_tier",
+        "backend.api.features.billing.subscriptions.routes.set_subscription_tier",
         new_callable=AsyncMock,
     )
 
@@ -1722,21 +2109,21 @@ def test_get_subscription_status_includes_pending_tier(
         return None
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=mock_price_id,
     )
     mocker.patch(
-        "backend.api.features.v1.get_proration_credit_cents",
+        "backend.api.features.billing.subscriptions.routes.get_proration_credit_cents",
         new_callable=AsyncMock,
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.v1.get_pending_subscription_change",
+        "backend.api.features.billing.subscriptions.routes.get_pending_subscription_change",
         new_callable=AsyncMock,
         return_value=(SubscriptionTier.PRO, effective_at, "monthly"),
     )
@@ -1759,22 +2146,22 @@ def test_get_subscription_status_no_pending_tier(
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         new_callable=AsyncMock,
         return_value=None,
     )
     mocker.patch(
-        "backend.api.features.v1.get_proration_credit_cents",
+        "backend.api.features.billing.subscriptions.routes.get_proration_credit_cents",
         new_callable=AsyncMock,
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.v1.get_pending_subscription_change",
+        "backend.api.features.billing.subscriptions.routes.get_pending_subscription_change",
         new_callable=AsyncMock,
         return_value=None,
     )
@@ -1804,22 +2191,22 @@ def test_update_subscription_tier_downgrade_paid_to_paid_schedules(
         }.get(tier)
 
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=price_id_with_business,
     )
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     modify_mock = mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         return_value=True,
     )
     checkout_mock = mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
     )
 
@@ -1849,15 +2236,15 @@ def test_stripe_webhook_dispatches_subscription_schedule_released(
         "data": {"object": schedule_obj},
     }
     mocker.patch(
-        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
         new="whsec_test",
     )
     mocker.patch(
-        "backend.api.features.v1.stripe.Webhook.construct_event",
+        "backend.api.features.billing.subscriptions.routes.stripe.Webhook.construct_event",
         return_value=event,
     )
     sync_mock = mocker.patch(
-        "backend.api.features.v1.sync_subscription_schedule_from_stripe",
+        "backend.api.features.billing.subscriptions.routes.sync_subscription_schedule_from_stripe",
         new_callable=AsyncMock,
     )
 
@@ -1887,15 +2274,15 @@ def test_stripe_webhook_ignores_subscription_schedule_updated(
         "data": {"object": schedule_obj},
     }
     mocker.patch(
-        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
         new="whsec_test",
     )
     mocker.patch(
-        "backend.api.features.v1.stripe.Webhook.construct_event",
+        "backend.api.features.billing.subscriptions.routes.stripe.Webhook.construct_event",
         return_value=event,
     )
     sync_mock = mocker.patch(
-        "backend.api.features.v1.sync_subscription_schedule_from_stripe",
+        "backend.api.features.billing.subscriptions.routes.sync_subscription_schedule_from_stripe",
         new_callable=AsyncMock,
     )
 
@@ -1941,20 +2328,20 @@ def test_get_subscription_status_yearly_only_tier_visible(
         return amounts.get(price_id, 0)
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=price_lookup,
     )
     mocker.patch(
-        "backend.api.features.v1._get_stripe_price_amount",
+        "backend.api.features.billing.subscriptions.routes._get_stripe_price_amount",
         side_effect=stripe_amount,
     )
     mocker.patch(
-        "backend.api.features.v1.get_user_billing_cycle",
+        "backend.api.features.billing.subscriptions.routes.get_user_billing_cycle",
         new_callable=AsyncMock,
         return_value="yearly",
     )
@@ -2003,20 +2390,20 @@ def test_get_subscription_status_yearly_user_both_cycles_uses_yearly_cost(
         return amounts.get(price_id, 0)
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=price_lookup,
     )
     mocker.patch(
-        "backend.api.features.v1._get_stripe_price_amount",
+        "backend.api.features.billing.subscriptions.routes._get_stripe_price_amount",
         side_effect=stripe_amount,
     )
     mocker.patch(
-        "backend.api.features.v1.get_user_billing_cycle",
+        "backend.api.features.billing.subscriptions.routes.get_user_billing_cycle",
         new_callable=AsyncMock,
         return_value="yearly",
     )
@@ -2054,27 +2441,27 @@ def test_update_subscription_tier_same_tier_cycle_change_routes_to_modify(
         return None
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     _patch_payment_flag(mocker)
     mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=price_lookup,
     )
     # User is currently on monthly Pro.
     mocker.patch(
-        "backend.api.features.v1.get_user_billing_cycle",
+        "backend.api.features.billing.subscriptions.routes.get_user_billing_cycle",
         new_callable=AsyncMock,
         return_value="monthly",
     )
     release_mock = mocker.patch(
-        "backend.api.features.v1.release_pending_subscription_schedule",
+        "backend.api.features.billing.subscriptions.routes.release_pending_subscription_schedule",
         new_callable=AsyncMock,
     )
     modify_mock = mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         return_value=True,
     )
@@ -2104,22 +2491,22 @@ def test_update_subscription_tier_same_tier_same_cycle_still_releases_pending(
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     mocker.patch(
-        "backend.api.features.v1.get_user_billing_cycle",
+        "backend.api.features.billing.subscriptions.routes.get_user_billing_cycle",
         new_callable=AsyncMock,
         return_value="yearly",
     )
     release_mock = mocker.patch(
-        "backend.api.features.v1.release_pending_subscription_schedule",
+        "backend.api.features.billing.subscriptions.routes.release_pending_subscription_schedule",
         new_callable=AsyncMock,
         return_value=True,
     )
     modify_mock = mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
     )
 
@@ -2151,19 +2538,19 @@ def test_update_subscription_tier_same_tier_no_stripe_sub_falls_through_to_check
     mock_user.subscription_tier = SubscriptionTier.PRO
 
     mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
     # No active Stripe subscription — period_end is None.
     mocker.patch(
-        "backend.api.features.v1.get_active_subscription_period_end",
+        "backend.api.features.billing.subscriptions.routes.get_active_subscription_period_end",
         new_callable=AsyncMock,
         return_value=None,
     )
     _patch_payment_flag(mocker)
     release_mock = mocker.patch(
-        "backend.api.features.v1.release_pending_subscription_schedule",
+        "backend.api.features.billing.subscriptions.routes.release_pending_subscription_schedule",
         new_callable=AsyncMock,
     )
     # Admin-granted user has no active Stripe sub, so the modify path returns
@@ -2171,12 +2558,12 @@ def test_update_subscription_tier_same_tier_no_stripe_sub_falls_through_to_check
     # real backend.data.credit.modify_stripe_subscription_for_tier (which
     # would try to read from Prisma + call Stripe).
     modify_mock = mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
         return_value=False,
     )
     checkout_mock = mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
         return_value="https://checkout.example.com/sess_admingranted",
     )

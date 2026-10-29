@@ -2,7 +2,7 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { markHireStarted } from "@/services/experts/hire-timing";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 
 // Sized and shaped like the small button beside it so the pair reads as one row.
@@ -11,7 +11,8 @@ const STATUS_CLASS = "h-9 rounded-full px-3.5 text-sm";
 // A white, hairline-bordered secondary so the button sits quietly next to
 // the status badge instead of reading as a solid grey slab.
 const SECONDARY_CLASS =
-  "border-zinc-200 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-zinc-300 hover:bg-zinc-50";
+  // TODO(tokens): no exact role: shadow-[…] #101828
+  "border-border-base bg-surface shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-border-strong hover:bg-surface-muted";
 
 interface Props {
   expert: Expert;
@@ -47,8 +48,11 @@ export function ExpertHireActions({
 
   if (hiredExpert) {
     return (
-      <div className="flex flex-wrap items-center gap-3">
-        <Badge variant="success" className={STATUS_CLASS}>
+      <div className="flex flex-col gap-2">
+        <Badge
+          variant="success"
+          className={`${STATUS_CLASS} w-full justify-center`}
+        >
           <Icon icon={CheckmarkCircle02Icon} size={16} />
           On your team
         </Badge>
@@ -65,10 +69,11 @@ export function ExpertHireActions({
     );
   }
 
-  // The clock starts on the click, not on the request: the hire flow finishes
-  // in a dialog, and sometimes on another page entirely.
   function handleHire() {
-    markHireStarted(expert.id);
+    trackFunnel("hire_started", {
+      template_id: expert.id,
+      surface: "expert_page",
+    });
     onHire();
   }
 

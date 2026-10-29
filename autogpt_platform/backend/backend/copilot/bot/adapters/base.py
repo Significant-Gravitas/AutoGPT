@@ -9,13 +9,17 @@ Telegram, Teams, WhatsApp).
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Awaitable, Callable, Literal, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
+
+from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
+from backend.copilot.bot.options import TurnOptions
+from backend.platform_linking.models import CardTurn
 
 # Callback signature: (ctx, adapter) -> awaitable None
 MessageCallback = Callable[["MessageContext", "PlatformAdapter"], Awaitable[None]]
@@ -104,7 +108,23 @@ class ChannelInfo(BaseModel):
     id: str
     name: str
     server_id: str
-    server_name: Optional[str] = None
+    server_name: str | None = None
+
+
+class EditOutcome(Enum):
+    """Result of a proactive edit — see ``PlatformAdapter.edit_channel_message``.
+
+    Distinct from a bool so the caller can surface *why* an edit didn't land:
+    the platform never supports edits at all (``UNSUPPORTED``), the target
+    message is gone or too old to touch (``NOT_FOUND``), or the platform
+    rejected the call for another reason — wrong author, no permission, body
+    too long (``FAILED``).
+    """
+
+    OK = "ok"
+    UNSUPPORTED = "unsupported"
+    NOT_FOUND = "not_found"
+    FAILED = "failed"
 
 
 class PostedRef(BaseModel):
@@ -113,10 +133,28 @@ class PostedRef(BaseModel):
     ``url`` is a best-effort permalink (Discord ``jump_url``) so callers can
     surface a clickable link in their confirmation; platforms without
     permalinks leave it ``None``.
+
+    ``id`` is always a *message* reference — the thing ``edit_channel_message``
+    takes. ``channel_id`` is where that message lives when it differs from the
+    channel the caller posted to: creating a thread posts the body inside the
+    new thread, so an edit has to target the thread, not its parent. Follow-up
+    posts use it too, so a thread stays one conversation. ``None`` means "the
+    channel you posted to".
+
+    ``chunk_count`` and ``editable`` describe what ``id`` can still be done
+    to. A post split across the platform's message cap has ``id`` pointing at
+    the *first* chunk only, so editing it would rewrite the opening and leave
+    the rest stale. ``editable=False`` marks a ref with no message behind it
+    at all — a thread that was created but whose body failed to post — which
+    is surfaced so the caller doesn't retry into a duplicate thread, but
+    cannot be edited. Both are refused rather than half-applied.
     """
 
     id: str
     url: Optional[str] = None
+    channel_id: Optional[str] = None
+    chunk_count: int = 1
+    editable: bool = True
 
 
 @dataclass
@@ -132,6 +170,21 @@ class MessageContext:
     username: str
     text: str  # with bot mentions stripped
     bot_mentioned: bool = False
+    # The message replies to one of the bot's own messages (with or without
+    # pinging it): it is addressed to the bot even when not @mentioned.
+    replied_to_bot: bool = False
+    # Where the message was sent, for the per-turn location header the model
+    # sees. The `public_*` ids are the platform's own ids (never the encoded
+    # target in `channel_id`); `post_channel_id` is exactly what
+    # `post_to_chat_platform` accepts as `channel` to post here, None when
+    # that tool can't post to this channel. On Telegram the channel is the
+    # group and the thread a forum topic.
+    server_name: str | None = None
+    channel_name: str | None = None
+    public_channel_id: str | None = None
+    thread_name: str | None = None
+    public_thread_id: str | None = None
+    post_channel_id: str | None = None
     thread_history: tuple[MessageHistoryEntry, ...] = ()
     # Users the bot may @-mention back in this turn: the author and anyone
     # mentioned in the inbound message (excluding the bot itself), as
@@ -151,6 +204,14 @@ class MessageContext:
     # failed), as ``(filename, reason)`` pairs — surfaced to the user and the
     # model so neither thinks the file was read.
     skipped_attachments: tuple[tuple[str, str], ...] = ()
+    # Set by a click that answered a card: carry the turn it woke, say nothing.
+    follow: Optional[CardTurn] = None
+    # Expert / model tier for this turn, from a slash command's fields or the
+    # message's leading ``expert=`` / ``mode=`` tokens.
+    options: TurnOptions = field(default_factory=TurnOptions)
+
+    def with_changes(self, **changes) -> "MessageContext":
+        return replace(self, **changes)
 
     @property
     def is_dm(self) -> bool:
@@ -200,6 +261,62 @@ class PlatformAdapter(ABC):
         the URL inline in the text.
         """
         ...
+
+    @property
+    def max_choice_label_length(self) -> int:
+        """Longest option label this platform's native widget shows in full.
+
+        Past it the widget silently clips, so two options sharing a prefix
+        render identically while still dispatching their own full text — the
+        user cannot tell which button they are pressing. A question with any
+        option over this goes as numbered text instead, which shows all of
+        it. Discord buttons 80, Slack 75, Telegram 64, Teams 60.
+        """
+        return 80
+
+    @property
+    def max_choice_options(self) -> int:
+        """How many options this platform's native widget renders legibly.
+
+        `base` documents that an adapter decides whether `options` fits its
+        native widget, so the number belongs here rather than as one
+        platform-blind constant in the caller: Teams' Adaptive Cards render
+        roughly six actions and silently drop the tail, while Discord rows,
+        Slack action blocks and Telegram keyboards take the full ten.
+        """
+        return 10
+
+    @property
+    def supports_choice_buttons(self) -> bool:
+        """Whether `send_choice_buttons` can render native option buttons.
+
+        Default False — only platforms overriding `send_choice_buttons`
+        below flip this. Checked before spending a `bot.choices` token on a
+        question, so unsupported adapters never pay that cost.
+        """
+        return False
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+        kind: ButtonKind = QUESTION_KIND,
+    ) -> bool:
+        """Send `text` with native clickable option buttons/select where the
+        platform supports it, returning True once sent.
+
+        A click carries `kind`, `token` and the clicked option's index (not
+        the option text -- Telegram's callback_data caps at 64 bytes); the
+        adapter resolves it via `bot.choices.answer_button` and feeds the
+        reply through its own `on_message` callback, exactly as if the user
+        had typed it. Returns False when the platform doesn't
+        implement this (or `options` doesn't fit its native widget), telling
+        the caller to fall back to plain numbered text. Default: unsupported.
+        """
+        return False
 
     @abstractmethod
     async def send_reply(
@@ -398,6 +515,20 @@ class PlatformAdapter(ABC):
         the platform/channel doesn't support it.
         """
         ...
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        """Edit a message this bot previously posted via ``post_channel_message``.
+
+        ``channel_id``/``ref_id`` are exactly what that call (or
+        ``create_channel_thread``) returned — adapters that encode extra state
+        into those ids (Slack) must decode the same way as their send path.
+        Default: unsupported — platforms without a wired edit call (or not yet
+        implemented) simply inherit this rather than every caller special-casing
+        ``NotImplementedError``.
+        """
+        return EditOutcome.UNSUPPORTED
 
 
 class SocketAdapter(PlatformAdapter):

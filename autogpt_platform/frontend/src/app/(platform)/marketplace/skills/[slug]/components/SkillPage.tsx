@@ -9,6 +9,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import { SkillFileViewer } from "@/components/contextual/SkillPackage/SkillFileViewer";
+import { SkillPackageFileList } from "@/components/contextual/SkillPackage/SkillPackageFileList";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { cn } from "@/lib/utils";
@@ -18,7 +20,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCategoryAccent } from "../../../components/ExpertsSection/helpers";
 import { SkillCard } from "../../../components/SkillsSection/components/SkillCard";
-import { formatSkillTitle } from "../../../components/SkillsSection/helpers";
+import { formatCategoryLabel } from "../../../components/SkillsSection/helpers";
 import { ExpertSection } from "../../../experts/[expertId]/components/ExpertSection";
 import { ConnectStep } from "./ConnectStep";
 import { SkillActions } from "./SkillActions";
@@ -41,13 +43,17 @@ export function SkillPage({ slug }: Props) {
     isNotFound,
     refetch,
     isReady,
-    flagEnabled,
-    flagReady,
     isAdded,
     isAdding,
+    experts,
     addToAutoPilot,
+    addToExpert,
     pendingConnections,
     moreSkills,
+    files,
+    openFilePath,
+    openFile,
+    closeFile,
     isConnectOpen,
     openConnect,
     setIsConnectOpen,
@@ -56,10 +62,9 @@ export function SkillPage({ slug }: Props) {
 
   // A bookmarked URL reaches this page without passing the marketplace shelf,
   // so the shelf being hidden is not what keeps the feature dark.
-  if (flagReady && !flagEnabled) notFound();
   if (isNotFound) notFound();
 
-  if (!flagReady || isLoading) return <SkillPageSkeleton />;
+  if (isLoading) return <SkillPageSkeleton />;
 
   if (isError || !skill) {
     return (
@@ -76,7 +81,7 @@ export function SkillPage({ slug }: Props) {
     );
   }
 
-  const title = formatSkillTitle(skill.name);
+  const title = skill.title;
   const { accent, icon } = getCategoryAccent(skill.categories[0]);
   const providers = skill.required_providers;
 
@@ -86,7 +91,10 @@ export function SkillPage({ slug }: Props) {
 
       <header>
         <div className="flex flex-wrap items-center gap-4 sm:gap-5">
-          <span className="inline-flex h-18 w-18 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+          <span
+            // TODO(tokens): no fitting role for ring-black/5 #141414; #141414 is foreground-base (a text colour)
+            className="inline-flex h-18 w-18 shrink-0 items-center justify-center rounded-2xl bg-surface shadow-sm ring-1 ring-black/5"
+          >
             <Icon
               icon={BookOpen01Icon}
               size={32}
@@ -95,7 +103,7 @@ export function SkillPage({ slug }: Props) {
             />
           </span>
           <div className="min-w-0 flex-1">
-            <h1 className="text-[28px] font-semibold leading-8 tracking-[-0.02em] text-zinc-900">
+            <h1 className="text-heading font-semibold leading-8 tracking-heading text-foreground-strong">
               {title}
             </h1>
             {icon && skill.categories[0] ? (
@@ -106,7 +114,7 @@ export function SkillPage({ slug }: Props) {
                 )}
               >
                 <Icon icon={icon} size={12} aria-hidden />
-                {formatSkillTitle(skill.categories[0])}
+                {formatCategoryLabel(skill.categories[0])}
               </span>
             ) : null}
           </div>
@@ -116,15 +124,20 @@ export function SkillPage({ slug }: Props) {
             isReady={isReady}
             isAdded={isAdded}
             isAdding={isAdding}
+            experts={experts}
             onAdd={addToAutoPilot}
+            onAddToExpert={addToExpert}
           />
         </div>
 
-        <p className="mt-5 max-w-[60ch] text-[17px] leading-7 text-zinc-600">
+        <p
+          // TODO(tokens): SECRT-3152 rare size: text-[17px]
+          className="mt-5 max-w-[60ch] text-[17px] leading-7 text-foreground-secondary"
+        >
           {skill.description}
         </p>
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-zinc-600">
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm leading-inherit text-foreground-secondary">
           <span className="inline-flex items-center gap-1.5">
             <Avatar className="h-5 w-5">
               {skill.creator_avatar ? (
@@ -149,6 +162,33 @@ export function SkillPage({ slug }: Props) {
               <span>Updated {formatTimeAgo(String(skill.updated_at))}</span>
             </>
           ) : null}
+          {skill.source_repo ? (
+            <>
+              <span aria-hidden>·</span>
+              <span>
+                From{" "}
+                {skill.source_url ? (
+                  <a
+                    href={skill.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    // TODO(tokens): no fitting role for decoration-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour), border-strong (a border colour)
+                    className="underline decoration-zinc-300 underline-offset-2 hover:text-foreground-strong"
+                  >
+                    {skill.source_repo}
+                  </a>
+                ) : (
+                  skill.source_repo
+                )}
+              </span>
+            </>
+          ) : null}
+          {skill.license ? (
+            <>
+              <span aria-hidden>·</span>
+              <span>License: {skill.license}</span>
+            </>
+          ) : null}
           {providers.length > 0 ? (
             <>
               <span aria-hidden>·</span>
@@ -166,7 +206,7 @@ export function SkillPage({ slug }: Props) {
         ) : null}
       </header>
 
-      <div className="mt-8 flex flex-col gap-10 border-t border-zinc-200 pt-8">
+      <div className="mt-8 flex flex-col gap-10 border-t border-border-base pt-8">
         <ExpertSection
           title="Instructions"
           description={
@@ -176,9 +216,24 @@ export function SkillPage({ slug }: Props) {
           }
         >
           {skill.body.trim() ? (
-            <SkillBody body={skill.body} title={title} />
+            <SkillBody
+              body={skill.body}
+              title={title}
+              packagePaths={files.map((file) => file.path)}
+              onOpenFile={openFile}
+            />
           ) : null}
         </ExpertSection>
+
+        {files.length > 0 ? (
+          <ExpertSection
+            title="Package contents"
+            count={files.length}
+            description="Files installed alongside these instructions."
+          >
+            <SkillPackageFileList files={files} onOpenFile={openFile} />
+          </ExpertSection>
+        ) : null}
 
         {skill.triggers.length > 0 ? (
           <ExpertSection
@@ -190,7 +245,7 @@ export function SkillPage({ slug }: Props) {
               {skill.triggers.map((trigger) => (
                 <span
                   key={trigger}
-                  className="rounded-lg bg-zinc-100 px-2.5 py-1 text-sm font-medium text-zinc-600"
+                  className="rounded-lg bg-surface-hover px-2.5 py-1 text-sm font-medium text-foreground-secondary"
                 >
                   {trigger}
                 </span>
@@ -210,7 +265,14 @@ export function SkillPage({ slug }: Props) {
         ) : null}
       </div>
 
+      <SkillFileViewer
+        source={{ kind: "listing", slug }}
+        path={openFilePath}
+        onClose={closeFile}
+      />
+
       <ConnectServiceDialog
+        preferMcp
         open={isConnectOpen}
         onOpenChange={setIsConnectOpen}
         title={`Connect ${formatProviderList(providers)}`}
@@ -225,7 +287,7 @@ function BackToMarketplaceLink() {
   return (
     <Link
       href="/marketplace#skills"
-      className="mb-6 inline-flex w-fit items-center gap-1.5 text-[13px] text-zinc-500 transition-colors hover:text-zinc-900"
+      className="mb-6 inline-flex w-fit items-center gap-1.5 text-body-sm leading-inherit text-foreground-tertiary transition-colors hover:text-foreground-strong"
       data-testid="skill-back-to-marketplace"
     >
       <Icon icon={ArrowLeft02Icon} size={14} aria-hidden />
@@ -249,7 +311,7 @@ function SkillPageSkeleton() {
       </div>
       <Skeleton className="mt-5 h-6 w-4/5" />
       <Skeleton className="mt-3 h-4 w-3/5" />
-      <div className="mt-8 space-y-3 border-t border-zinc-200 pt-8">
+      <div className="mt-8 space-y-3 border-t border-border-base pt-8">
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-2/3" />

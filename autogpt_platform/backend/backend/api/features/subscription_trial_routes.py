@@ -1,30 +1,51 @@
-from datetime import datetime
-from typing import Annotated, Literal
+import logging
+from typing import Annotated, Awaitable
 
 import stripe
 from autogpt_libs.auth import get_user_id
 from fastapi import APIRouter, Depends, Header, HTTPException, Security
-from pydantic import BaseModel, Field
+from prisma.enums import SubscriptionTier
 
-from backend.api.features.credits_rate_limit import (
+from backend.api.features.billing.client_country import (  # noqa: F401 -- re-exported
+    CLIENT_COUNTRY_SCOPE,
+    ClientCountry,
+    attested_country,
+)
+from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
-from backend.data.credit import _datafast_metadata, sync_subscription_from_stripe
+from backend.api.features.subscription_trial_models import (
+    TrialCheckoutRequest,
+    TrialCheckoutResponse,
+    TrialOfferResponse,
+    TrialStatusResponse,
+)
+from backend.data.checkout_audience import schedule_checkout_opened
+from backend.data.credit import _datafast_metadata
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_trial import (
     get_subscription_trial,
     has_received_onboarding_credit,
 )
+from backend.data.subscription_trial_cancel import (
+    TrialChangeRefused,
+    resume_trial_subscription,
+    schedule_trial_cancellation,
+)
+from backend.data.subscription_trial_capacity import trial_seat_available
 from backend.data.subscription_trial_checkout import (
     TrialUnavailable,
     confirm_trial_checkout,
     create_trial_checkout,
     resolve_trial_price,
 )
-from backend.data.subscription_trial_config import AcceptedTrialOffer, get_trial_offer
-from backend.data.subscription_trial_rejection import TrialRejectionReason
+from backend.data.subscription_trial_config import get_trial_offer
+from backend.data.subscription_trial_invoice import get_trial_payment_due
 from backend.data.user import get_user_by_id
+from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/credits/trial",
@@ -34,52 +55,21 @@ router = APIRouter(
 CurrentUser = Annotated[str, Security(get_user_id)]
 
 
-class TrialOfferResponse(BaseModel):
-    token: str
-    version: str
-    duration_days: int
-    tier: Literal["BASIC", "PRO", "MAX", "BUSINESS"]
-    billing_cycle: Literal["monthly", "yearly"]
-    unit_amount: int
-    currency: str
-    onboarding_credit_amount: int
-
-    @classmethod
-    def from_offer(cls, offer: AcceptedTrialOffer) -> "TrialOfferResponse":
-        return cls(**offer.model_dump(), token=offer.token)
-
-
-class TrialStatusResponse(BaseModel):
-    eligible: bool = False
-    offer: TrialOfferResponse | None = None
-    status: str | None = None
-    rejection_reason: TrialRejectionReason | None = None
-    ends_at: datetime | None = None
-    cancel_at_period_end: bool = False
-    allowance_used_percent: float | None = None
-    active: bool = False
-    converted: bool = False
-    onboarding_credits_previously_received: bool = False
-
-
-class TrialCheckoutRequest(BaseModel):
-    offer_token: str = Field(pattern=r"^[a-f0-9]{64}$")
-    return_to: Literal["onboarding", "billing"] = "billing"
-
-
-class TrialCheckoutResponse(BaseModel):
-    url: str
-
-
 @router.get("")
-async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
+async def get_trial_status(
+    user_id: CurrentUser, country: ClientCountry = None
+) -> TrialStatusResponse:
     trial = await get_subscription_trial(user_id)
     if trial:
         return TrialStatusResponse(
             eligible=(
                 trial.status == "checkout_pending"
                 and trial.consumed_at is None
-                and await get_trial_offer(user_id) is not None
+                and (offer := await get_trial_offer(user_id, country=country))
+                is not None
+                and await trial_seat_available(offer, trial_id=trial.id)
+                and (await get_user_by_id(user_id)).subscription_tier
+                == SubscriptionTier.NO_TIER
             ),
             offer=TrialOfferResponse.from_offer(trial.offer),
             status=trial.status,
@@ -94,9 +84,16 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
             allowance_used_percent=min(
                 100, 100 * trial.cost_microdollars / trial.offer.total_cost_limit
             ),
+            usage_policy=(
+                "lifetime"
+                if trial.offer.daily_cost_limit >= trial.offer.total_cost_limit
+                and trial.offer.weekly_cost_limit >= trial.offer.total_cost_limit
+                else "rolling"
+            ),
+            payment_due=await get_trial_payment_due(trial),
         )
-    offer = await get_trial_offer(user_id)
-    if offer is None:
+    offer = await get_trial_offer(user_id, country=country)
+    if offer is None or not await trial_seat_available(offer):
         return TrialStatusResponse()
     user = await get_user_by_id(user_id)
     has_history = False
@@ -138,6 +135,7 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
 async def start_trial_checkout(
     body: TrialCheckoutRequest,
     user_id: CurrentUser,
+    country: ClientCountry = None,
     x_datafast_visitor_id: Annotated[str | None, Header()] = None,
     x_datafast_session_id: Annotated[str | None, Header()] = None,
 ) -> TrialCheckoutResponse:
@@ -156,12 +154,31 @@ async def start_trial_checkout(
             success_url=f"{destination}?trial=success",
             cancel_url=f"{destination}?trial=cancelled",
             metadata=_datafast_metadata(x_datafast_visitor_id, x_datafast_session_id),
+            country=country,
         )
     except TrialUnavailable as exc:
         raise HTTPException(409, str(exc)) from exc
     except stripe.StripeError as exc:
         raise HTTPException(502, "Unable to start checkout. Please try again.") from exc
+    await _track_trial_checkout_started(user_id, surface=body.return_to)
+    schedule_checkout_opened(user_id, ip_country=country)
     return TrialCheckoutResponse(url=url)
+
+
+async def _track_trial_checkout_started(user_id: str, *, surface: str) -> None:
+    """Best-effort: the reserved trial names the plan the card is set up for."""
+    try:
+        trial = await get_subscription_trial(user_id)
+    except Exception:
+        logger.warning("Could not read the trial for checkout_started", exc_info=True)
+        trial = None
+    await track_checkout_started(
+        user_id=user_id,
+        checkout_kind="trial",
+        surface=surface,
+        subscription_tier=trial.offer.tier if trial else None,
+        billing_cycle=trial.offer.billing_cycle if trial else None,
+    )
 
 
 @router.post(
@@ -180,28 +197,39 @@ async def cancel_trial(user_id: CurrentUser) -> TrialStatusResponse:
         or trial.converted_at is not None
     ):
         raise HTTPException(409, "No trial subscription is available to cancel")
-    try:
-        subscription = await stripe_call(
-            stripe.Subscription.retrieve_async, trial.subscription_id
-        )
-        if subscription.customer != trial.customer_id or subscription.status not in (
-            "trialing",
-            "canceled",
-        ):
-            raise HTTPException(
-                409, "This trial has ended. Manage the plan in billing."
-            )
-        if subscription.status == "trialing":
-            subscription = await stripe_call(
-                stripe.Subscription.cancel_async,
-                trial.subscription_id,
-                invoice_now=False,
-                prorate=False,
-            )
-    except stripe.StripeError as exc:
-        raise HTTPException(502, "Unable to cancel your trial. Please retry.") from exc
-    await sync_subscription_from_stripe(dict(subscription))
+    await _apply_trial_change(
+        schedule_trial_cancellation(trial), "Unable to cancel your trial. Please retry."
+    )
     return await get_trial_status(user_id)
+
+
+@router.post(
+    "/resume",
+    responses={
+        409: {
+            "description": (
+                "No live cancel-pending trial to resume, another plan is active,"
+                " or the trial is already being updated"
+            )
+        },
+        502: {"description": "Stripe update temporarily unavailable"},
+    },
+)
+async def resume_trial(user_id: CurrentUser) -> TrialStatusResponse:
+    trial = await get_subscription_trial(user_id)
+    await _apply_trial_change(
+        resume_trial_subscription(trial), "Unable to resume your trial. Please retry."
+    )
+    return await get_trial_status(user_id)
+
+
+async def _apply_trial_change(change: Awaitable[None], retry: str) -> None:
+    try:
+        await change
+    except TrialChangeRefused as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except stripe.StripeError as exc:
+        raise HTTPException(502, retry) from exc
 
 
 @router.post(

@@ -1,6 +1,6 @@
 import { useListExpertIdentities } from "@/app/api/__generated__/endpoints/experts/experts";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useMemo } from "react";
+import type { AutopilotMode } from "./autopilotModeStore";
 
 /**
  * Why a thread is read-only. `fired` is the only reason we can state as fact;
@@ -15,8 +15,11 @@ export interface ExpertIdentity {
   avatarUrl: string | null;
   color?: string | null;
   role: string | null;
+  jobTitle?: string | null;
   isArchived: boolean;
   readOnlyReason: ExpertReadOnlyReason | null;
+  /** The approval mode a new chat with this expert starts on. */
+  autopilotMode?: AutopilotMode | null;
 }
 
 export type ExpertIdentityMap = Map<string, ExpertIdentity>;
@@ -71,10 +74,8 @@ export function resolveExpertIdentity(
  * separate `activeExperts` projection instead of iterating this map.
  */
 export function useExpertMap() {
-  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const expertsQuery = useListExpertIdentities({
     query: {
-      enabled: isExpertsEnabled,
       select: (response) =>
         response.status === 200 ? response.data : undefined,
     },
@@ -82,7 +83,9 @@ export function useExpertMap() {
 
   // Memoized on purpose: the identities read out of this map are passed as
   // props (`expertIdentity`) down the whole chat tree, so rebuilding it every
-  // render would hand every consumer a fresh object identity each time.
+  // render would hand every consumer a fresh object identity each time. Kept
+  // with the compiler on: `activeExpertIds` is an effect dependency of the
+  // recipient picker, which writes the URL when it runs.
   const expertCollections = useMemo(() => {
     const experts = expertsQuery.data;
     if (!experts)
@@ -97,8 +100,10 @@ export function useExpertMap() {
       avatarUrl: expert.avatar_url ?? null,
       color: expert.color ?? null,
       role: expert.role,
+      jobTitle: expert.job_title ?? null,
       isArchived: expert.is_archived,
       readOnlyReason: expert.is_archived ? ("fired" as const) : null,
+      autopilotMode: expert.autopilot_mode ?? null,
     }));
     const activeExperts = identities.filter((expert) => !expert.isArchived);
     return {
@@ -108,11 +113,10 @@ export function useExpertMap() {
     };
   }, [expertsQuery.data]);
 
-  const canAddressExperts = isExpertsEnabled && !expertsQuery.isError;
+  const canAddressExperts = !expertsQuery.isError;
 
   return {
-    isExpertsEnabled,
-    expertsById: isExpertsEnabled ? expertCollections.expertsById : EMPTY_MAP,
+    expertsById: expertCollections.expertsById,
     activeExperts: canAddressExperts
       ? expertCollections.activeExperts
       : EMPTY_EXPERTS,
@@ -121,15 +125,11 @@ export function useExpertMap() {
     activeExpertIds: canAddressExperts
       ? expertCollections.activeExpertIds
       : EMPTY_IDS,
-    // A disabled query reports `isPending` forever, so all flags stay gated
-    // on the feature flag to remain honest when experts are off.
-    isLoadingExperts: isExpertsEnabled && expertsQuery.isFetching,
-    hasExpertsErrored:
-      isExpertsEnabled && expertsQuery.isError && !expertsQuery.isFetching,
+    isLoadingExperts: expertsQuery.isFetching,
+    hasExpertsErrored: expertsQuery.isError && !expertsQuery.isFetching,
     // Settled = success OR error. resolveExpertIdentity keys off this so an
     // errored roster fetch fails closed (read-only) instead of open.
     hasExpertsSettled:
-      isExpertsEnabled &&
       !expertsQuery.isFetching &&
       (expertsQuery.isSuccess || expertsQuery.isError),
   };

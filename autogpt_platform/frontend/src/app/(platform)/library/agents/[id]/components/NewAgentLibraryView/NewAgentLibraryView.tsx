@@ -25,8 +25,10 @@ import { SelectedTriggerAgentView } from "./components/selected-views/SelectedTr
 import { SelectedTriggerView } from "./components/selected-views/SelectedTriggerView/SelectedTriggerView";
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
-import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
-import { AGENT_LIBRARY_SECTION_PADDING_X } from "./helpers";
+import {
+  AGENT_LIBRARY_SECTION_PADDING_X,
+  isNewAgentTaskDisabled,
+} from "./helpers";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
@@ -45,6 +47,7 @@ export function NewAgentLibraryView() {
     selectedTriggerKind,
     retryTriggerLists,
     sidebarLoading,
+    sidebarHasError,
     activeTab,
     setActiveTab,
     handleSelectRun,
@@ -68,7 +71,6 @@ export function NewAgentLibraryView() {
   } = useMarketplaceUpdate({ agent });
 
   const [changelogOpen, setChangelogOpen] = useState(false);
-  const { isNewLayoutActive } = usePlatformChrome();
 
   useEffect(() => {
     if (agent) {
@@ -158,7 +160,7 @@ export function NewAgentLibraryView() {
             <ErrorCard
               responseError={{
                 message:
-                  "Could not load this agent's triggers. Check your connection and try again.",
+                  "Could not load this workflow's triggers. Check your connection and try again.",
               }}
               context="triggers"
               onRetry={retryTriggerLists}
@@ -183,7 +185,7 @@ export function NewAgentLibraryView() {
       <ErrorCard
         isSuccess={false}
         responseError={error || undefined}
-        context="agent"
+        context="workflow"
         onRetry={() => window.location.reload()}
       />
     );
@@ -227,27 +229,15 @@ export function NewAgentLibraryView() {
 
   return (
     <>
-      <div
-        className={cn(
-          isNewLayoutActive
-            ? // New sidebar layout: detail panel sits next to the app sidebar,
-              // the runs list becomes a fixed column on the right, and both
-              // panels own their scroll on desktop (h-svh + minmax rows)
-              // instead of assuming a top-navbar page. Children's mb-3 (from
-              // the classic layout) would overflow the viewport-sized rows.
-              "grid h-full w-full min-w-0 grid-cols-1 gap-4 px-4 pb-3 pt-3 lg:h-svh lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)] lg:[&>*]:mb-0"
-            : "mx-4 grid h-full w-full grid-cols-1 gap-0 pt-3 md:ml-4 md:mr-0 md:gap-4 lg:grid-cols-[25%_70%]",
-        )}
-      >
-        <SectionWrap
-          className={cn(
-            "mb-3 block",
-            isNewLayoutActive && "lg:order-2 lg:flex lg:min-h-0 lg:flex-col",
-          )}
-        >
+      {/* The detail panel sits next to the app sidebar, the runs list is a
+          fixed column on the right, and both panels own their scroll on
+          desktop (h-svh + minmax rows). Children's mb-3 would overflow the
+          viewport-sized rows. */}
+      <div className="grid h-full w-full min-w-0 grid-cols-1 gap-4 px-4 pb-3 pt-3 lg:h-svh lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)] lg:[&>*]:mb-0">
+        <SectionWrap className="mb-3 block lg:order-2 lg:flex lg:min-h-0 lg:flex-col">
           <div
             className={cn(
-              "border-b border-zinc-100 pb-5",
+              "border-b border-separator pb-5",
               AGENT_LIBRARY_SECTION_PADDING_X,
             )}
           >
@@ -257,9 +247,14 @@ export function NewAgentLibraryView() {
                   variant="outline"
                   size="small"
                   className="w-full"
-                  disabled={isTemplateLoading && activeTab === "templates"}
+                  disabled={isNewAgentTaskDisabled({
+                    sidebarLoading,
+                    sidebarHasError,
+                    isTemplateLoading,
+                    activeTab,
+                  })}
                 >
-                  <Icon icon={PlusSignIcon} size={16} /> New agent task
+                  <Icon icon={PlusSignIcon} size={16} /> New workflow task
                 </Button>
               }
               agent={agent}
@@ -313,6 +308,16 @@ export function NewAgentLibraryView() {
               banner={renderMarketplaceUpdateBanner()}
             />
           )
+        ) : sidebarHasError ? (
+          <SelectedViewLayout
+            agent={agent}
+            banner={renderMarketplaceUpdateBanner()}
+          >
+            <ErrorCard
+              context="workflow tasks"
+              hint="Use Try Again in the sidebar to reload your tasks."
+            />
+          </SelectedViewLayout>
         ) : sidebarLoading ? (
           <LoadingSelectedContent agent={agent} />
         ) : activeTab === "scheduled" ? (

@@ -174,6 +174,7 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
         <Form
           form={form}
           onSubmit={(values) => onSubmit(values)}
+          // oxlint-disable-next-line design-system/no-restyle -- the folder form spaces its fields; Form has no gap or padding option
           className="flex flex-col justify-center gap-2 px-1"
         >
           <FormField
@@ -215,6 +216,7 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
                       icon: (
                         <div
                           className="h-4 w-4 rounded-full"
+                          // oxlint-disable-next-line design-system/no-inline-styles -- the swatch shows the folder colour, a runtime value
                           style={{ backgroundColor: color.value }}
                         />
                       ),
@@ -238,17 +240,19 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
             render={({ field }) => (
               <FormItem>
                 <div className="flex flex-col gap-2">
-                  <Text variant="large-medium" as="span" className="text-black">
+                  <Text variant="large-medium" as="span">
                     Folder icon
                   </Text>
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center gap-3">
-                      <Text variant="small" className="text-zinc-500">
+                      <Text variant="small" tone="muted">
                         Selected:
                       </Text>
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-2xl">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-base bg-surface-muted text-2xl">
                         {form.watch("folderIcon") || (
-                          <span className="text-sm text-zinc-400">—</span>
+                          <span className="text-sm text-foreground-subtle">
+                            —
+                          </span>
                         )}
                       </div>
                     </div>

@@ -8,6 +8,7 @@ import {
   humanizeKey,
   inline,
   integrationIconSrc,
+  isWebhookIngressUrl,
   resultItemKey,
   safeHostname,
   str,
@@ -181,5 +182,24 @@ describe("result formatting", () => {
     expect(inline("text")).toBe("text");
     expect(inline(3)).toBe("3");
     expect(inline(false)).toBe("false");
+  });
+});
+
+describe("isWebhookIngressUrl", () => {
+  it("matches backend webhook ingress URLs", () => {
+    expect(
+      isWebhookIngressUrl(
+        "https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress",
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores ordinary links", () => {
+    expect(isWebhookIngressUrl("https://example.com/webhooks/docs")).toBe(
+      false,
+    );
+    expect(
+      isWebhookIngressUrl("https://example.com/webhooks/wh-1/ingress-guide"),
+    ).toBe(false);
   });
 });
