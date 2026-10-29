@@ -28,7 +28,7 @@ import {
   countHeldCalls,
   getHeldCallRowKind,
 } from "./heldCallRows";
-import { extractReviewTarget, getLatestCompactionPhase } from "./helpers";
+import { extractReviewTargets, getLatestCompactionPhase } from "./helpers";
 import {
   buildMessageIndexById,
   isMidTurnSegmentRow,
@@ -345,7 +345,7 @@ export function ChatMessagesContainer({
   const lastUserMessageID = showPendingSend
     ? PENDING_UPLOAD_MESSAGE_ID
     : (renderRows.findLast((row) => row.role === "user")?.id ?? null);
-  const reviewTarget = extractReviewTarget(messages);
+  const reviewTargets = extractReviewTargets(messages);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
   // yields a ``StreamError`` SSE event on final-failure paths. Both surface
@@ -632,16 +632,13 @@ export function ChatMessagesContainer({
               </MessageContent>
             </Message>
           )}
-          {!readOnly && reviewTarget?.kind === "graph" && (
-            <CopilotPendingReviews
-              graphExecId={reviewTarget.graphExecId}
-              graphId={reviewTarget.graphId}
-            />
+          {!readOnly && reviewTargets.runs.length > 0 && (
+            <CopilotPendingReviews runs={reviewTargets.runs} />
           )}
           {!readOnly && sessionID && (
             <CopilotPendingReviews
               chatSessionId={sessionID}
-              pollWhileEmpty={reviewTarget?.kind === "chat"}
+              pollWhileEmpty={reviewTargets.chat}
               refetchKey={countHeldCalls(messages)}
               expertName={expertIdentity?.name ?? null}
               expert={expertIdentity ?? null}

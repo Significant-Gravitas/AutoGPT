@@ -156,6 +156,14 @@ export function insertIntegrationMention(
 /** Phone-sized send button: the default 32px target is too small for a thumb. */
 export const MOBILE_SEND_BUTTON_CLASS = "max-md:size-10";
 
+// Every focus the composer takes by itself goes through here, so none of
+// them can close a menu the user has open.
+export function focusComposer(inputId: string) {
+  const input = document.getElementById(inputId);
+  if (isFocusInOtherOverlay(input)) return;
+  input?.focus();
+}
+
 // One on its way out (a sheet closing after a chat is picked) still holds
 // focus through its exit animation, but no longer counts.
 const OVERLAY_SELECTOR = ["dialog", "alertdialog", "menu"]
@@ -165,7 +173,7 @@ const OVERLAY_SELECTOR = ["dialog", "alertdialog", "menu"]
 // Whether focus sits in a menu or dialog the composer is not part of: one
 // the user opened while the page was still loading. Taking focus from it
 // would close it (Radix dismisses on focus-out).
-export function isFocusInOtherOverlay(input: HTMLElement | null) {
+function isFocusInOtherOverlay(input: HTMLElement | null) {
   const overlay = document.activeElement?.closest(OVERLAY_SELECTOR);
   return Boolean(overlay && input && !overlay.contains(input));
 }
