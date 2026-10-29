@@ -40,7 +40,7 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
       <Text variant="h3" size="large-semibold">
         Notifications
       </Text>
-      <Text variant="body" tone="subtle" className="mt-2">
+      <Text variant="body" tone="muted" className="mt-2">
         Billing and account messages are always sent — they are about your
         account, not a promotion.
       </Text>
