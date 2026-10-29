@@ -42,6 +42,7 @@ import {
   FolderOpenIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   part: ToolUIPart;
@@ -64,8 +65,9 @@ function ToolStatusIcon({
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
-  // TODO(tokens): no exact role for neutral-400 #A3A3A3
-  return <Icon icon={Folder01Icon} size={14} className="text-neutral-400" />;
+  return (
+    <Icon icon={Folder01Icon} size={14} className="text-foreground-subtle" />
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -83,8 +85,11 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
               style={{ backgroundColor: folder.color }}
             />
           ) : (
-            // TODO(tokens): no exact role for neutral-600 #525252
-            <Icon icon={Folder01Icon} size={14} className="text-neutral-600" />
+            <Icon
+              icon={Folder01Icon}
+              size={14}
+              className="text-foreground-secondary"
+            />
           )}
           <ContentCardTitle>{folder.name}</ContentCardTitle>
         </div>
@@ -95,19 +100,17 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
           ` · ${folder.subfolder_count} subfolder${folder.subfolder_count !== 1 ? "s" : ""}`}
       </ContentHint>
       {folder.agents && folder.agents.length > 0 && (
-        // TODO(tokens): no exact role for neutral-200 #E5E5E5
-        <div className="mt-2 space-y-1 border-t border-neutral-200 pt-2">
+        <div className="mt-2 space-y-1 border-t border-border-base pt-2">
           {folder.agents.map((a) => (
             <div key={a.id} className="flex items-center gap-1.5">
               <Icon
                 icon={FileEmpty02Icon}
                 size={12}
-                // TODO(tokens): no exact role for neutral-600 #525252
-                className="text-neutral-600"
+                className="text-foreground-secondary"
               />
-              <span className="text-xs text-foreground-secondary">
+              <Text variant="small-tight" as="span" tone="secondary">
                 {a.name}
-              </span>
+              </Text>
             </div>
           ))}
         </div>
@@ -153,12 +156,18 @@ function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
       initialExpandedItems={allIDs}
       elements={elements}
       openIcon={
-        // TODO(tokens): no exact role for neutral-600 #525252
-        <Icon icon={FolderOpenIcon} size={16} className="text-neutral-600" />
+        <Icon
+          icon={FolderOpenIcon}
+          size={16}
+          className="text-foreground-secondary"
+        />
       }
       closeIcon={
-        // TODO(tokens): no exact role for neutral-600 #525252
-        <Icon icon={Folder01Icon} size={16} className="text-neutral-600" />
+        <Icon
+          icon={Folder01Icon}
+          size={16}
+          className="text-foreground-secondary"
+        />
       }
       className="max-h-64"
     >
@@ -175,11 +184,16 @@ function FolderTreeNodes({ element }: { element: TreeNode }) {
       <TreeFile
         value={element.id}
         fileIcon={
-          // TODO(tokens): no exact role for neutral-600 #525252
-          <Icon icon={FileEmpty02Icon} size={14} className="text-neutral-600" />
+          <Icon
+            icon={FileEmpty02Icon}
+            size={14}
+            className="text-foreground-secondary"
+          />
         }
       >
-        <span className="text-sm text-foreground-body">{element.name}</span>
+        <Text variant="body-tight" as="span" tone="body">
+          {element.name}
+        </Text>
       </TreeFile>
     );
   }

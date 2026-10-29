@@ -37,11 +37,13 @@ const ACTOR_CHIPS: Record<HomeWorkActorKind, ActorChip> = {
   expert: {
     label: "Expert",
     className:
-      "border-blue-200 bg-info-surface text-blue-700 shadow-[0_0_8px_-1px_rgba(96,165,250,0.7)]",
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- the chip's coloured glow has no shadow token
+      "border-info/30 bg-info-surface text-info-foreground shadow-[0_0_8px_-1px_rgba(96,165,250,0.7)]",
   },
   workflow: {
     label: "Workflow",
     className:
+      // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-arbitrary-values -- mustard yellow has no role (the warning roles are amber, deferred until approved), nor does its glow
       "border-yellow-200 bg-yellow-50 text-yellow-700 shadow-[0_0_8px_-1px_rgba(247,205,51,0.9)]",
   },
   autopilot: {
