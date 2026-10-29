@@ -29,6 +29,15 @@ from backend.util.request import HTTPClientError
 # 200) where the RFC says ``invalid_grant``.
 DEFINITIVE_REFRESH_ERRORS = frozenset({"invalid_grant", "bad_refresh_token"})
 
+# Providers that answer a dead refresh token with a code that also covers a
+# malformed request, keyed by provider, then code, to the start of their
+# ``error_description`` for a refused token. X answers HTTP 400
+# ``invalid_request`` "Value passed for the token was invalid.", so that code
+# alone is not final for any other provider.
+_DEAD_TOKEN_DESCRIPTIONS: dict[str, dict[str, str]] = {
+    "twitter": {"invalid_request": "value passed for the token was invalid"},
+}
+
 # RFC 6749 §5.2 codes plus GitHub's variant. Used to recognise the code in an
 # error that only carries it as text (e.g. google-auth's RefreshError).
 _KNOWN_ERROR_CODES = DEFINITIVE_REFRESH_ERRORS | {
@@ -77,17 +86,27 @@ class OAuthTokenRequestError(Exception):
 class RefreshFailure(BaseModel):
     status_code: int | None
     error_code: str | None
+    # The provider's own wording says the token was refused, under a code
+    # that is not final on its own (see ``_DEAD_TOKEN_DESCRIPTIONS``).
+    token_refused: bool = False
 
     @property
     def definitive(self) -> bool:
         """The refresh token is dead; retrying it cannot succeed."""
-        return self.error_code in DEFINITIVE_REFRESH_ERRORS
+        return self.error_code in DEFINITIVE_REFRESH_ERRORS or self.token_refused
 
 
-def describe_refresh_failure(exc: BaseException) -> RefreshFailure:
-    """The provider's HTTP status and error code, from *exc* or its causes."""
+def describe_refresh_failure(
+    exc: BaseException, provider: str | None = None
+) -> RefreshFailure:
+    """The provider's HTTP status and error code, from *exc* or its causes.
+
+    *provider* enables the provider-specific dead-token wording; without it
+    only the codes in ``DEFINITIVE_REFRESH_ERRORS`` are final.
+    """
     status_code: int | None = None
     error_code: str | None = None
+    description: str | None = None
     seen: set[int] = set()
     current: BaseException | None = exc
     while current is not None and id(current) not in seen:
@@ -96,10 +115,25 @@ def describe_refresh_failure(exc: BaseException) -> RefreshFailure:
             status_code = _status_of(current)
         if error_code is None:
             error_code = _error_code_of(current)
-        if status_code is not None and error_code is not None:
+        if description is None:
+            description = _error_description_of(current)
+        if None not in (status_code, error_code, description):
             break
         current = current.__cause__ or current.__context__
-    return RefreshFailure(status_code=status_code, error_code=error_code)
+    return RefreshFailure(
+        status_code=status_code,
+        error_code=error_code,
+        token_refused=_names_refused_token(provider, error_code, description),
+    )
+
+
+def _names_refused_token(
+    provider: str | None, error_code: str | None, description: str | None
+) -> bool:
+    if provider is None or error_code is None or description is None:
+        return False
+    prefix = _DEAD_TOKEN_DESCRIPTIONS.get(provider, {}).get(error_code)
+    return prefix is not None and description.strip().lower().startswith(prefix)
 
 
 def _status_of(exc: BaseException) -> int | None:
@@ -125,12 +159,36 @@ def _error_code_of(exc: BaseException) -> str | None:
     return match.group(1) if match else None
 
 
-def _error_code_from_payload(body: bytes | str) -> str | None:
+def _error_description_of(exc: BaseException) -> str | None:
+    body = getattr(exc, "body", None)
+    if isinstance(body, (bytes, str)) and isinstance(
+        payload := _payload_of(body), dict
+    ):
+        return _error_description_from_mapping(payload)
+    for arg in getattr(exc, "args", ()):
+        if isinstance(arg, dict) and (
+            description := _error_description_from_mapping(arg)
+        ):
+            return description
+    return None
+
+
+def _payload_of(body: bytes | str) -> Any:
     try:
-        payload = json.loads(body)
+        return json.loads(body)
     except (TypeError, ValueError):
         return None
+
+
+def _error_code_from_payload(body: bytes | str) -> str | None:
+    payload = _payload_of(body)
     return _error_code_from_mapping(payload) if isinstance(payload, dict) else None
+
+
+def _error_description_from_mapping(payload: dict[str, Any]) -> str | None:
+    """Only matched against known wording; never logged or stored."""
+    description = payload.get("error_description")
+    return description if isinstance(description, str) and description else None
 
 
 def _error_code_from_mapping(payload: dict[str, Any]) -> str | None:

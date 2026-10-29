@@ -414,7 +414,8 @@ class IntegrationCredentialsManager:
         is not sent to the provider again: that replay can only fail, and some
         providers treat a reused rotated token as compromise. A failed refresh
         is reported with the provider's status and error code, and a
-        definitive refusal (``invalid_grant``) marks the credential so every
+        definitive refusal (``invalid_grant``, or a provider's own wording for
+        a refused token) marks the credential so every
         later caller gets ``CredentialsNeedReconnectError`` straight away.
         """
         if marker := reconnect_required(credentials):
@@ -424,10 +425,11 @@ class IntegrationCredentialsManager:
         try:
             fresh_credentials = await oauth_handler.refresh_tokens(credentials)
         except Exception as exc:
-            failure = describe_refresh_failure(exc)
+            provider = provider_key(credentials.provider)
+            failure = describe_refresh_failure(exc, provider)
             report_refresh_failure(
                 logger,
-                provider=provider_key(credentials.provider),
+                provider=provider,
                 credential_id=credentials.id,
                 failure=failure,
                 exc=exc,

@@ -24,6 +24,7 @@ from backend.integrations.oauth.refresh_failure import (
     describe_refresh_failure,
     reconnect_required,
 )
+from backend.integrations.oauth.twitter import TwitterOAuthHandler
 from backend.util.request import HTTPClientError, http_status_error
 
 CLIENT = ("client-id", "client-secret", "https://localhost/callback")
@@ -273,6 +274,80 @@ async def test_invalid_grant_marks_the_credential_and_is_never_replayed(sentry):
             assert "invalid_grant" in str(again.value)
 
     assert len(endpoint.calls) == 1
+
+
+X_DEAD_TOKEN = {
+    "error": "invalid_request",
+    "error_description": "Value passed for the token was invalid.",
+}
+
+
+@pytest.mark.asyncio
+async def test_x_refusing_the_token_marks_it_and_it_is_never_replayed(caplog, sentry):
+    """X answers a dead refresh token with 400 ``invalid_request``, not
+    ``invalid_grant``; its description is what says the token is dead."""
+    endpoint = FakeTokenEndpoint(400, X_DEAD_TOKEN)
+    manager, store = manager_with(TwitterOAuthHandler(*CLIENT), expiring("twitter"))
+
+    with endpoint.patch("backend.integrations.oauth.twitter"), caplog.at_level(
+        logging.WARNING
+    ):
+        with pytest.raises(CredentialsNeedReconnectError):
+            await manager.refresh_if_needed("user-1", expiring("twitter"), lock=True)
+        for lock in (False, True):
+            with pytest.raises(CredentialsNeedReconnectError):
+                await manager.refresh_if_needed("user-1", store.creds, lock=lock)
+
+    assert len(endpoint.calls) == 1
+    marker = reconnect_required(store.creds)
+    assert marker is not None
+    assert (marker.error_code, marker.status_code) == ("invalid_request", 400)
+    report = next(r for r in caplog.records if "OAuth refresh failed" in r.message)
+    assert report.levelno == logging.ERROR
+    assert REFRESH_TOKEN not in all_log_text(caplog)
+
+
+@pytest.mark.asyncio
+async def test_x_invalid_request_without_the_dead_token_wording_is_transient(
+    sentry,
+):
+    endpoint = FakeTokenEndpoint(
+        400, {"error": "invalid_request", "error_description": "Missing grant_type"}
+    )
+    manager, store = manager_with(TwitterOAuthHandler(*CLIENT), expiring("twitter"))
+
+    with endpoint.patch("backend.integrations.oauth.twitter"):
+        with pytest.raises(HTTPClientError) as raised:
+            await manager.refresh_if_needed("user-1", expiring("twitter"), lock=True)
+
+    assert not isinstance(raised.value, CredentialsNeedReconnectError)
+    store.update_creds.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "provider,payload,definitive",
+    [
+        ("twitter", X_DEAD_TOKEN, True),
+        (
+            "twitter",
+            {
+                **X_DEAD_TOKEN,
+                "error_description": " VALUE PASSED FOR THE TOKEN WAS INVALID",
+            },
+            True,
+        ),
+        # The wording is X's: the same answer from another provider stays transient.
+        ("linear", X_DEAD_TOKEN, False),
+        (None, X_DEAD_TOKEN, False),
+        ("twitter", {"error": "invalid_request"}, False),
+        ("twitter", {**X_DEAD_TOKEN, "error": "invalid_client"}, False),
+    ],
+)
+def test_dead_token_wording_is_final_only_for_its_provider(
+    provider, payload, definitive
+):
+    exc = http_status_error(400, "Bad Request", json.dumps(payload).encode())
+    assert describe_refresh_failure(exc, provider).definitive is definitive
 
 
 @pytest.mark.asyncio

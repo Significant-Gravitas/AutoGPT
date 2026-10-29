@@ -59,6 +59,7 @@ from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.oauth.refresh_failure import CredentialsNeedReconnectError
 from backend.monitoring.instrumentation import record_graph_run_completion
 from backend.util import json, product_analytics, tracing
 from backend.util.clients import (
@@ -1132,8 +1133,11 @@ class ExecutionProcessor:
         except BaseException as e:
             stats.error = e
 
-            if isinstance(e, ValueError):
-                # Avoid user error being marked as an actual error.
+            if isinstance(e, (ValueError, CredentialsNeedReconnectError)):
+                # Avoid user error being marked as an actual error. A
+                # credential the provider refused for good was reported once
+                # when refused; until the user reconnects it, each run fails
+                # here without contacting the provider.
                 log_metadata.info(
                     f"Expected failure on node execution {node_exec.node_exec_id}: {type(e).__name__} - {e}"
                 )
