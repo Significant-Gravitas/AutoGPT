@@ -120,6 +120,20 @@ export default defineConfig({
               useInfiniteQueryParam: "page",
             },
           },
+          list_my_memory_facts: {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "cursor",
+              useQuery: true,
+            },
+          },
+          list_my_expert_memory_facts: {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "cursor",
+              useQuery: true,
+            },
+          },
         },
       },
     },

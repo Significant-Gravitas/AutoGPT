@@ -1,7 +1,33 @@
+import type {
+  listMyExpertMemoryFacts,
+  listMyMemoryFacts,
+} from "@/app/api/__generated__/endpoints/memory/memory";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { formatDistanceToNow } from "date-fns";
 
 export const RECENT_FACTS_LIMIT = 6;
+
+/** One request covers the preview and, for most people, "Show all" too. */
+export const FACTS_PAGE_SIZE = 50;
+
+type FactsPage =
+  | Awaited<ReturnType<typeof listMyMemoryFacts>>
+  | Awaited<ReturnType<typeof listMyExpertMemoryFacts>>;
+
+export function getLoadedFacts(pages: FactsPage[] | undefined) {
+  return (pages ?? []).flatMap((page) =>
+    page.status === 200 ? page.data.items : [],
+  );
+}
+
+export function getFactsTotal(pages: FactsPage[] | undefined) {
+  const first = pages?.[0];
+  return first?.status === 200 ? first.data.total : null;
+}
+
+export function getNextFactsCursor(page: FactsPage) {
+  return page.status === 200 ? (page.data.next_cursor ?? undefined) : undefined;
+}
 
 export const AUTOPILOT_SCOPE = "autopilot";
 

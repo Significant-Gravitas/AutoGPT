@@ -98,7 +98,11 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/settings/memory");
   server.use(
     getListExpertsMockHandler200([]),
-    getListMyMemoryFactsMockHandler200({ expert_id: null, items: [] }),
+    getListMyMemoryFactsMockHandler200({
+      expert_id: null,
+      items: [],
+      total: 0,
+    }),
     getGetMyMemoryOverviewMockHandler200({
       expert_id: null,
       facts: 0,
@@ -146,7 +150,7 @@ beforeEach(() => {
 });
 
 it("shows memory data alongside personal learning controls", async () => {
-  const facts = vi.fn(() => ({ expert_id: null, items: [] }));
+  const facts = vi.fn(() => ({ expert_id: null, items: [], total: 0 }));
   const overview = vi.fn(() => ({
     expert_id: null,
     facts: 0,

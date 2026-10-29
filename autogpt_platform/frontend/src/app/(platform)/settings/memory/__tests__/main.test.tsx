@@ -70,6 +70,7 @@ const SESSION_ID = "memory-chat-session-1";
 
 const FACTS = {
   expert_id: null,
+  total: 2,
   items: [
     {
       uuid: "edge-1",
@@ -131,7 +132,11 @@ describe("Settings memory page", () => {
   it("shows the empty state when nothing is remembered yet", async () => {
     server.use(
       getListExpertsMockHandler200([]),
-      getListMyMemoryFactsMockHandler200({ expert_id: null, items: [] }),
+      getListMyMemoryFactsMockHandler200({
+        expert_id: null,
+        items: [],
+        total: 0,
+      }),
       getGetMyMemoryOverviewMockHandler200({
         expert_id: null,
         facts: 0,
@@ -213,6 +218,7 @@ describe("Settings memory page", () => {
         expertFactRequests.push(String(info.params.expertId));
         return {
           expert_id: "expert-maria",
+          total: 1,
           items: [
             {
               uuid: "edge-m1",
@@ -275,6 +281,7 @@ describe("Settings memory page", () => {
         expertFactRequests.push(String(info.params.expertId));
         return {
           expert_id: "expert-maria",
+          total: 1,
           items: [
             {
               uuid: "edge-m1",

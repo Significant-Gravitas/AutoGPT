@@ -7,8 +7,9 @@ scope from the *authenticated caller* — there is no target-user path segment,
 so these routes can never read or delete another user's memory by construction.
 
 Facts are listed and counted with the recall policy's live-fact test
-(``graphiti/recall.py``), and a single-fact forget is the chat forget tool's
-soft ``retract`` (``graphiti/recall_forget.py``): the edge is marked
+(``graphiti/recall.py``); the list comes a keyset page at a time with the
+scope's total (``graphiti/fact_list.py``). A single-fact forget is the chat
+forget tool's soft ``retract`` (``graphiti/recall_forget.py``): the edge is marked
 ``retracted`` and stops being served but stays for audit, every episode it
 came from stops being recalled, and so does every fact the dream derived
 from it (counted in the response's ``derived_forgotten``). A forget whose
@@ -36,6 +37,7 @@ from backend.api.features.memory.models import (
     MemoryScopeOverview,
     MemoryUnderstanding,
 )
+from backend.copilot.graphiti.fact_list import InvalidFactCursorError, list_live_facts
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
 from backend.copilot.graphiti.memory_model import MemoryForgetFailureCode
 from backend.copilot.graphiti.recall import live_fact_predicate
@@ -59,6 +61,11 @@ _EXPERT_ID_PATH = Path(
 )
 _FACT_UUID_PATH = Path(min_length=1, max_length=128, description="Fact edge uuid")
 _LIMIT_QUERY = Query(ge=1, le=500)
+_CURSOR_QUERY = Query(
+    min_length=1,
+    max_length=1024,
+    description="The previous page's next_cursor; omit for the first page",
+)
 
 _MISSING_GRAPH_MARKERS = ("no such graph", "does not exist", "invalid graph")
 
@@ -153,66 +160,42 @@ async def get_my_expert_memory_overview(
 
 
 async def _list_facts_impl(
-    user_id: str, expert_id: str | None, limit: int
+    user_id: str, expert_id: str | None, limit: int, cursor: str | None
 ) -> MemoryFactListResponse:
     scope = await _resolve_scope(user_id, expert_id)
-    driver = open_driver(scope)
     try:
-        result = await driver.execute_query(
-            f"""
-            MATCH (src:Entity)-[e:RELATES_TO]->(tgt:Entity)
-            WHERE e.group_id = $g AND {live_fact_predicate("e")}
-            RETURN e.uuid AS uuid,
-                   e.fact AS fact,
-                   e.name AS name,
-                   src.name AS source,
-                   tgt.name AS target,
-                   toString(e.created_at) AS created_at
-            ORDER BY e.created_at DESC
-            LIMIT $limit
-            """,
-            g=scope.group_id,
-            limit=limit,
-        )
-        rows = result[0] if result else []
-    except ResponseError as exc:
-        if not _is_missing_graph_error(exc):
-            raise
-        rows = []
-    finally:
-        await driver.close()
-
-    items = [
-        MemoryFact(
-            uuid=str(r.get("uuid", "")),
-            fact=r.get("fact"),
-            name=r.get("name"),
-            source=str(r.get("source") or ""),
-            target=str(r.get("target") or ""),
-            created_at=r.get("created_at"),
-        )
-        for r in rows
-    ]
-    return MemoryFactListResponse(expert_id=scope.expert_id, items=items)
+        page = await list_live_facts(scope, limit=limit, cursor=cursor)
+    except InvalidFactCursorError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return MemoryFactListResponse(
+        expert_id=scope.expert_id,
+        items=[MemoryFact(**fact.model_dump()) for fact in page.items],
+        total=page.total,
+        next_cursor=page.next_cursor,
+    )
 
 
 @router.get("/facts", operation_id="list_my_memory_facts")
 async def list_my_memory_facts(
     limit: Annotated[int, _LIMIT_QUERY] = 50,
+    cursor: Annotated[str | None, _CURSOR_QUERY] = None,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> MemoryFactListResponse:
-    """Live facts in the caller's account memory, newest first."""
-    return await _list_facts_impl(user_id, None, limit)
+    """Live facts in the caller's account memory, newest first, a page at a
+    time: pass the response's ``next_cursor`` back for the next page."""
+    return await _list_facts_impl(user_id, None, limit, cursor)
 
 
 @router.get("/experts/{expert_id}/facts", operation_id="list_my_expert_memory_facts")
 async def list_my_expert_memory_facts(
     expert_id: Annotated[str, _EXPERT_ID_PATH],
     limit: Annotated[int, _LIMIT_QUERY] = 50,
+    cursor: Annotated[str | None, _CURSOR_QUERY] = None,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> MemoryFactListResponse:
-    """Live facts in one expert's isolated memory, newest first."""
-    return await _list_facts_impl(user_id, expert_id, limit)
+    """Live facts in one expert's isolated memory, newest first, a page at a
+    time: pass the response's ``next_cursor`` back for the next page."""
+    return await _list_facts_impl(user_id, expert_id, limit, cursor)
 
 
 async def _forget_fact_impl(

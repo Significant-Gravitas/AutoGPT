@@ -87,6 +87,7 @@ beforeEach(() => {
     getListExpertsMockHandler200([]),
     getListMyMemoryFactsMockHandler200({
       expert_id: null,
+      total: 1,
       items: [
         {
           uuid: "edge-1",

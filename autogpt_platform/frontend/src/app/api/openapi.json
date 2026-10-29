@@ -12061,7 +12061,7 @@
       "get": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "List My Expert Memory Facts",
-        "description": "Live facts in one expert's isolated memory, newest first.",
+        "description": "Live facts in one expert's isolated memory, newest first, a page at a\ntime: pass the response's ``next_cursor`` back for the next page.",
         "operationId": "list_my_expert_memory_facts",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -12089,6 +12089,20 @@
               "default": 50,
               "title": "Limit"
             }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1, "maxLength": 1024 },
+                { "type": "null" }
+              ],
+              "description": "The previous page's next_cursor; omit for the first page",
+              "title": "Cursor"
+            },
+            "description": "The previous page's next_cursor; omit for the first page"
           }
         ],
         "responses": {
@@ -12223,7 +12237,7 @@
       "get": {
         "tags": ["v2", "memory", "memory", "private"],
         "summary": "List My Memory Facts",
-        "description": "Live facts in the caller's account memory, newest first.",
+        "description": "Live facts in the caller's account memory, newest first, a page at a\ntime: pass the response's ``next_cursor`` back for the next page.",
         "operationId": "list_my_memory_facts",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -12238,6 +12252,20 @@
               "default": 50,
               "title": "Limit"
             }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1, "maxLength": 1024 },
+                { "type": "null" }
+              ],
+              "description": "The previous page's next_cursor; omit for the first page",
+              "title": "Cursor"
+            },
+            "description": "The previous page's next_cursor; omit for the first page"
           }
         ],
         "responses": {
@@ -29835,11 +29863,17 @@
             "items": { "$ref": "#/components/schemas/MemoryFact" },
             "type": "array",
             "title": "Items"
+          },
+          "total": { "type": "integer", "title": "Total" },
+          "next_cursor": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Next Cursor"
           }
         },
         "type": "object",
-        "required": ["items"],
-        "title": "MemoryFactListResponse"
+        "required": ["items", "total"],
+        "title": "MemoryFactListResponse",
+        "description": "One page of live facts, newest first. ``total`` counts every live fact\nin the scope; ``next_cursor`` asks for the next page and is ``None`` on\nthe last one."
       },
       "MemoryForgetCandidatesResponse": {
         "properties": {
