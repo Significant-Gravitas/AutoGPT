@@ -135,12 +135,21 @@ def test_matching_skips_a_dead_credential_while_a_healthy_one_fits():
     need = requirement("linear", {"read"})
 
     assert find_matching_credential([dead, live], need) is live
-    # A picked credential that has since died does not win over a live one,
-    # and two accounts where one is dead is not a choice to ask about.
-    assert find_matching_credential([dead, live], need, {"linear": "dead"}) is live
+    # Two accounts where one is dead is not a choice to ask about.
     assert find_matching_credential([dead, live], need, ask_when_ambiguous=True) is live
     # With nothing else, keep it: the run reaches the reconnect card.
     assert find_matching_credential([dead], need) is dead
+
+
+def test_a_picked_account_is_not_swapped_when_it_dies():
+    # Running on another account than the one picked would read or write the
+    # wrong account; the pick stands and the run asks for a reconnect.
+    dead = oauth("linear", ["read"], cred_id="dead", metadata=DEAD)
+    live = oauth("linear", ["read"], cred_id="live")
+    need = requirement("linear", {"read"})
+
+    assert find_matching_credential([dead, live], need, {"linear": "dead"}) is dead
+    assert find_matching_credential([dead, live], need, {"linear": "live"}) is live
 
 
 def test_rejected_card_says_reconnect_and_why():

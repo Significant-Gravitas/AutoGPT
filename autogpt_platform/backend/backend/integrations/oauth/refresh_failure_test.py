@@ -394,12 +394,14 @@ async def test_a_reconnect_during_an_unlocked_refusal_is_not_overwritten(sentry)
         store.creds = reconnected
         return google_response
 
-    with patch(
-        "google.auth.transport.requests.Request.__call__",
-        side_effect=provider_refuses_while_the_user_reconnects,
+    with (
+        patch(
+            "google.auth.transport.requests.Request.__call__",
+            side_effect=provider_refuses_while_the_user_reconnects,
+        ),
+        pytest.raises(OAuthTokenRequestError),
     ):
-        with pytest.raises(OAuthTokenRequestError):
-            await manager.refresh_if_needed("user-1", snapshot, lock=False)
+        await manager.refresh_if_needed("user-1", snapshot, lock=False)
 
     assert store.creds is reconnected
     assert reconnect_required(store.creds) is None

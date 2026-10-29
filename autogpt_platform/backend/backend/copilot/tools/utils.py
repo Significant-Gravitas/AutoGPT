@@ -462,12 +462,10 @@ def find_matching_credential(
     the first fit there would run on whichever account was stored first.
     """
     fits = [c for c in available_creds if _credential_fits(c, field_info)]
-    # A credential whose refresh the provider refused for good only yields a
-    # reconnect card; while any other fits, it must not be picked or counted
-    # as a choice. With nothing else, keep it so the card can say why.
-    healthy = [c for c in fits if reconnect_required(c) is None]
-    fits = healthy or fits
     if selected:
+        # A pick wins even after the provider refused its refresh: the run
+        # then asks for that account to be reconnected instead of quietly
+        # switching to another one.
         for cred in fits:
             provider = _provider_slug(cred)
             key = (
@@ -477,6 +475,11 @@ def find_matching_credential(
             )
             if selected.get(key, selected.get(provider)) == cred.id:
                 return cred
+    # A credential whose refresh the provider refused for good only yields a
+    # reconnect card; while any other fits, it must not be picked or counted
+    # as a choice. With nothing else, keep it so the card can say why.
+    healthy = [c for c in fits if reconnect_required(c) is None]
+    fits = healthy or fits
     if field_info.supported_types == {"host_scoped"} and _pinned_for(field_info):
         return None
     own = [c for c in fits if not is_system_credential(c.id)]
