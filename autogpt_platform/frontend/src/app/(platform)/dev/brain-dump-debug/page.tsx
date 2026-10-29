@@ -32,7 +32,7 @@ export default function BrainDumpDebugPage() {
             <Badge variant="info">intro path {introPath}</Badge>
           ) : null}
         </div>
-        <Text variant="body" className="max-w-prose text-zinc-600">
+        <Text variant="body" tone="secondary" className="max-w-prose">
           Local recording state, the upload queue, the server pipeline and the
           processing budget for the onboarding brain dump. Not reachable in
           production.

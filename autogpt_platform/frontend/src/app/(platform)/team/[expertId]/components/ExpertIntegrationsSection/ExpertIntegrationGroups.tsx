@@ -100,35 +100,40 @@ export function ExpertIntegrationGroups({
         <motion.div
           key={group.id}
           variants={reduceMotion ? REDUCED_ITEM_VARIANTS : ITEM_VARIANTS}
+          // ui/accordion's content wrapper sets text-sm, which the profile tab
+          // ran at 15px/1.5rem; its slot takes the same size here.
+          className="overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm [&_[data-slot=accordion-panel]]:text-body-md"
         >
           <Accordion
             type="single"
             collapsible
             defaultValue={group.id}
-            className="w-full overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm"
+            className="w-full"
           >
+            {/* oxlint-disable-next-line design-system/no-restyle -- AccordionItem has no borderless variant (src/components is P9's) */}
             <AccordionItem value={group.id} className="border-b-0">
-              <AccordionTrigger className="px-3 py-2.5 pr-4 hover:no-underline [&>svg]:size-4 [&>svg]:text-foreground-tertiary">
+              <AccordionTrigger
+                textSize="body-md"
+                // oxlint-disable-next-line design-system/no-restyle -- AccordionTrigger has no compact card variant (src/components is P9's)
+                className="px-3 py-2.5 pr-4 hover:no-underline [&>svg]:size-4 [&>svg]:text-foreground-tertiary"
+              >
                 <div className="flex items-center gap-2.5">
-                  <IntegrationLogo
-                    provider={group.icon}
-                    alt={`${group.name} logo`}
-                    size={20}
-                    className="rounded-full bg-surface"
-                  />
-                  <Text variant="body-medium" as="span" tone="primary">
+                  <span className="inline-flex shrink-0 overflow-hidden rounded-full bg-surface">
+                    <IntegrationLogo
+                      provider={group.icon}
+                      alt={`${group.name} logo`}
+                      size={20}
+                    />
+                  </span>
+                  <Text variant="body-md-medium" as="span" tone="primary">
                     {group.name}
                   </Text>
-                  <Text
-                    variant="small-medium"
-                    as="span"
-                    tone="secondary"
-                    className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 tabular-nums"
-                  >
+                  <span className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 font-sans text-caption font-medium tabular-nums text-foreground-secondary">
                     {group.integrations.length}
-                  </Text>
+                  </span>
                 </div>
               </AccordionTrigger>
+              {/* oxlint-disable-next-line design-system/no-restyle -- AccordionContent has no flush variant (src/components is P9's) */}
               <AccordionContent className="px-0 pb-0 pt-0">
                 <div className="flex flex-col divide-y divide-separator border-t border-border-base">
                   {group.integrations.map((integration) => (
@@ -164,28 +169,19 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
     >
       <div className="flex flex-col gap-0.5">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" as="span" tone="primary">
+          <Text variant="body-md-medium" as="span" tone="primary">
             {name}
           </Text>
-          <Text
-            variant="small"
-            as="span"
-            tone="secondary"
-            className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 leading-4"
-          >
+          <span className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 font-sans text-caption leading-4 text-foreground-secondary">
             {TYPE_LABELS[integration.type] ?? integration.type}
-          </Text>
+          </span>
         </div>
-        <Text variant="body" as="span" tone="muted">
+        <Text variant="body-md" as="span" tone="muted">
           {CONNECTION_LABELS[integration.type] ?? "Configured"}
         </Text>
       </div>
       <div className="flex items-center gap-3">
-        <Text
-          // TODO(tokens): no exact role: text-emerald-600 #059669
-          variant="eyebrow"
-          className="text-emerald-600"
-        >
+        <Text variant="eyebrow" tone="success">
           Ready
         </Text>
         <button
@@ -194,11 +190,12 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
           disabled={isRemoving}
           aria-busy={isRemoving}
           aria-label={`Remove ${name}`}
-          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-          className="inline-flex size-7 items-center justify-center rounded-md text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-error focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex size-7 items-center justify-center rounded-md text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-error focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground-subtle disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isRemoving ? (
-            <Icon icon={Loading03Icon} size={16} className="animate-spin" />
+            <span className="inline-flex animate-spin">
+              <Icon icon={Loading03Icon} size={16} />
+            </span>
           ) : (
             <Icon icon={Delete02Icon} size={16} />
           )}

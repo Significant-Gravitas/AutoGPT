@@ -121,8 +121,7 @@ export function FileChips({
                     className={cn(
                       "inline-flex items-center gap-1 rounded-full bg-surface-hover px-3 py-1 text-sm text-foreground-body",
                       stacked &&
-                        // TODO(tokens): no exact role for shadow-[0_1px_2px_rgba(0,0,0,0.02)]
-                        "gap-1.5 border border-border-base bg-surface py-[3px] pl-2 pr-1.5 text-xs text-foreground-strong shadow-[0_1px_2px_rgba(0,0,0,0.02)]",
+                        "gap-1.5 border border-border-base bg-surface py-0.5 pl-2 pr-1.5 text-xs text-foreground-strong shadow-sm",
                     )}
                   >
                     {isPreviewableImage(mimeType) ? (

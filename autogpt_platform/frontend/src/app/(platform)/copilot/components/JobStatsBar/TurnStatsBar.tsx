@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { TurnStats } from "../../helpers/convertChatSessionToUiMessages";
 import { formatElapsed } from "./formatElapsed";
 import { getWorkDoneCounters } from "./useWorkDoneCounters";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   turnMessages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -50,10 +51,7 @@ function TimeLabel({
 
   if (!localDate) {
     return (
-      <span
-        // TODO(tokens): no exact role for text-neutral-500
-        className="text-caption-sm tabular-nums leading-inherit text-neutral-500"
-      >
+      <span className="text-caption-sm tabular-nums leading-inherit text-foreground-tertiary">
         {labelText}
       </span>
     );
@@ -63,8 +61,7 @@ function TimeLabel({
     <span
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      // TODO(tokens): no exact role for text-neutral-500, hover:text-neutral-700
-      className="cursor-default text-caption-sm tabular-nums leading-inherit text-neutral-500 transition-colors hover:text-neutral-700"
+      className="cursor-default text-caption-sm tabular-nums leading-inherit text-foreground-tertiary transition-colors hover:text-foreground-body"
     >
       <span
         key={hovered ? "date" : "label"}
@@ -95,17 +92,11 @@ export function TurnStatsBar({ turnMessages, elapsedSeconds, stats }: Props) {
         return (
           <span key={counter.category} className="flex items-center gap-1">
             {needsDot && (
-              <span
-                // TODO(tokens): no exact role for text-neutral-300
-                className="text-xs text-neutral-300"
-              >
+              <Text variant="small-tight" as="span" tone="disabled">
                 &middot;
-              </span>
+              </Text>
             )}
-            <span
-              // TODO(tokens): no exact role for text-neutral-500
-              className="text-caption-sm tabular-nums leading-inherit text-neutral-500"
-            >
+            <span className="text-caption-sm tabular-nums leading-inherit text-foreground-tertiary">
               {counter.count} {counter.label}
             </span>
           </span>

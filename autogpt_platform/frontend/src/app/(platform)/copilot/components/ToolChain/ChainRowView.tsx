@@ -205,10 +205,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           </div>
         )}
         {row.detail && (
-          <p
-            // TODO(tokens): no exact role for text-red-400
-            className="animate-fade-in truncate text-xs text-red-400 motion-reduce:animate-none"
-          >
+          <p className="animate-fade-in truncate text-xs text-error motion-reduce:animate-none">
             {row.detail}
           </p>
         )}

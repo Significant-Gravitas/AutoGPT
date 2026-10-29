@@ -34,7 +34,10 @@ vi.mock("@/components/molecules/Popover/Popover", () => {
   function PopoverContent({ children }: { children: React.ReactNode }) {
     return <div>{children}</div>;
   }
-  return { Popover, PopoverTrigger, PopoverContent };
+  function PopoverClose({ children }: { children: React.ReactNode }) {
+    return <>{children}</>;
+  }
+  return { Popover, PopoverTrigger, PopoverContent, PopoverClose };
 });
 
 const baseGroups: MenuItemGroup[] = [
@@ -80,6 +83,16 @@ const baseGroups: MenuItemGroup[] = [
 describe("AccountMenu", () => {
   beforeEach(() => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+  });
+
+  // Opening the walkthrough from it is covered with the real app chrome in
+  // PlatformChrome/__tests__/firstRunGuidance.test.tsx.
+  test("offers Show me around beside Log out", () => {
+    render(<AccountMenu userName="Ada Lovelace" menuItemGroups={baseGroups} />);
+
+    const row = screen.getByRole("button", { name: "Show me around" });
+    const logOut = screen.getByText("Log out");
+    expect(row.closest("ul")).toBe(logOut.closest("ul"));
   });
 
   afterEach(() => {

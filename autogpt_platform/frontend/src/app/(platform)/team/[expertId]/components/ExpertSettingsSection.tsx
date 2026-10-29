@@ -48,21 +48,15 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
       aria-label={`Fire ${expert.name}`}
       className="overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm"
     >
-      <div
-        // TODO(tokens): no exact role: border-red-100 #FDECEC
-        className="flex items-start gap-3 border-b border-red-100 bg-error-surface/60 px-5 py-4"
-      >
-        <span
-          // TODO(tokens): no exact role: bg-red-100 #FDECEC; no fitting role for text-red-600 #D93636; #D93636 is error-hover (a hover fill)
-          className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600"
-        >
+      <div className="flex items-start gap-3 border-b border-error/10 bg-error-surface/60 px-5 py-4">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-error-surface text-error-foreground">
           <Icon icon={UserRemove01Icon} size={20} aria-hidden />
         </span>
         <div className="min-w-0">
-          <Text variant="large-medium" className="!text-foreground-strong">
+          <Text variant="large-medium" tone="primary">
             Fire {expert.name}
           </Text>
-          <Text variant="body" className="mt-0.5 !text-foreground-secondary">
+          <Text variant="body-md" tone="secondary" className="mt-0.5">
             {expert.name} leaves your team and stops working for you. Here is
             what that means for what you have set up.
           </Text>
@@ -88,9 +82,11 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
             <button
               type="button"
               onClick={() => void retryPreview()}
-              className="mt-1 text-sm font-medium text-foreground-body underline underline-offset-2 hover:text-foreground"
+              className="mt-1 inline-flex text-foreground-body underline underline-offset-2 hover:text-foreground"
             >
-              Retry
+              <Text variant="body-md-medium" as="span" tone="inherit">
+                Retry
+              </Text>
             </button>
           ) : null}
           {pauseNames.length > 0 ? (
@@ -98,15 +94,23 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
               {pauseNames.map((item) => (
                 <span
                   key={item.id}
-                  // TODO(tokens): no exact role: text-amber-800 #92400E
-                  className="max-w-full truncate rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5 text-xs text-amber-800"
+                  className="flex min-w-0 max-w-full rounded-full border border-warning-border bg-warning-surface px-2.5 py-0.5"
                 >
-                  {item.name}
+                  <Text
+                    variant="small-tight"
+                    as="span"
+                    tone="warning-strong"
+                    className="truncate"
+                  >
+                    {item.name}
+                  </Text>
                 </span>
               ))}
               {hiddenPauseCount > 0 ? (
-                <span className="px-1 py-0.5 text-xs text-foreground-tertiary">
-                  +{hiddenPauseCount} more
+                <span className="flex px-1 py-0.5">
+                  <Text variant="small-tight" as="span" tone="muted">
+                    +{hiddenPauseCount} more
+                  </Text>
                 </span>
               ) : null}
             </div>
@@ -145,6 +149,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
         <Button
           variant="destructive"
           size="small"
+          textSize="body-md"
           onClick={onFire}
           data-testid="expert-fire-button"
         >
@@ -177,8 +182,7 @@ function Consequence({
         className={cn(
           "flex size-8 shrink-0 items-center justify-center rounded-lg border",
           isWarn
-            ? // TODO(tokens): no exact role: text-amber-600 #D97706
-              "border-warning-border bg-warning-surface text-amber-600"
+            ? "border-warning-border bg-warning-surface text-warning-foreground"
             : "border-border-base bg-surface-muted text-foreground-tertiary",
         )}
       >
@@ -186,20 +190,23 @@ function Consequence({
       </span>
       <div className="min-w-0 flex-1 pt-1">
         <div className="flex items-center justify-between gap-3">
-          <Text variant="body" className="!text-foreground-emphasis">
+          <Text variant="body-md" tone="emphasis">
             {title}
           </Text>
           {tag ? (
             <span
               className={cn(
-                "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
-                isWarn
-                  ? "bg-warning-surface text-warning-foreground"
-                  : // TODO(tokens): no exact role: bg-emerald-50 #ECFDF5, text-emerald-700 #047857
-                    "bg-emerald-50 text-emerald-700",
+                "flex shrink-0 rounded-full px-2 py-0.5",
+                isWarn ? "bg-warning-surface" : "bg-success-surface",
               )}
             >
-              {tag}
+              <Text
+                variant="small-medium-tight"
+                as="span"
+                tone={isWarn ? "warning" : "success-strong"}
+              >
+                {tag}
+              </Text>
             </span>
           ) : null}
         </div>
