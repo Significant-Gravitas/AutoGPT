@@ -140,7 +140,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
     "placeholder:font-normal placeholder:text-placeholder",
     // Focus and hover states
     // TODO(tokens): no role is purple-400 #925CF7, the focus border and ring.
-    "focus:border-purple-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-purple-400 focus:ring-offset-0",
+    "focus:border-brand focus:shadow-none focus:outline-none focus:ring-1 focus:ring-brand focus:ring-offset-0",
     className,
   );
 

@@ -14,7 +14,7 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
       role="group"
       className={cn(
         // TODO(tokens): no role holds neutral-200 #E5E5E5 (`border` is #E4E4E7).
-        "group/input-group relative flex w-full items-center rounded-xlarge border border-neutral-200 bg-surface shadow-sm outline-none transition-[color,box-shadow]",
+        "group/input-group relative flex w-full items-center rounded-xlarge border border-border-base bg-surface shadow-sm outline-none transition-[color,box-shadow]",
         "min-w-0 has-[>textarea]:h-auto",
 
         // Variants based on alignment.
@@ -23,7 +23,7 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
 
         // Focus state.
         // TODO(tokens): zinc-400 #ADADB3 is `foreground-subtle`, a text role; no border or ring role holds it (SECRT-3154).
-        "has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400 has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-zinc-400",
+        "has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-border-strong",
 
         className,
       )}

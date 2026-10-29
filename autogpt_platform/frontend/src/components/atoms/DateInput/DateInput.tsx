@@ -112,7 +112,7 @@ export const DateInput = ({
         <label
           data-slot="date-input-label"
           htmlFor={id}
-          className="text-body font-medium leading-5 text-gray-700"
+          className="text-body font-medium leading-5 text-foreground-body"
         >
           {label}
         </label>
@@ -138,12 +138,12 @@ export const DateInput = ({
             {buttonText}
           </Button>
         </PopoverTrigger>
-        {/* TODO(tokens): today's popover look. No exact role: border-neutral-200
-            #E5E5E5; text-neutral-950 #0A0A0A is the `focus` role, a ring colour,
+        {/* TODO(tokens): today's popover look. No exact role: border-border-base
+            #E5E5E5; text-foreground-base #0A0A0A is the `focus` role, a ring colour,
             not a text colour (SECRT-3154). */}
         <PopoverContent
           data-slot="date-input-popup"
-          className="w-auto rounded-medium border-neutral-200 p-0 text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
+          className="w-auto rounded-medium border-border-base p-0 text-foreground-base"
           sideOffset={6}
         >
           <Calendar

@@ -13,7 +13,7 @@ export const modalStyles = {
   iconWrap:
     "absolute top-2 right-3 bg-transparent p-2 rounded-full transition-colors duration-300 ease-in-out outline-none border-none",
   // TODO(tokens): no role for stone-800 (#292524).
-  icon: "w-4 h-4 text-stone-800",
+  icon: "w-4 h-4 text-foreground-emphasis",
 };
 
 // Compact variant: dense neutral dialog for in-app forms — smaller radius,

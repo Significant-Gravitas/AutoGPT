@@ -13,11 +13,11 @@ const alertVariants = cva(
         // TODO(tokens): no role for orange-50 at 0x80 (#FFF3E680), yellow-300
         // (#F8D554) or orange-600 (#E77B00).
         warning:
-          "bg-[#FFF3E680] border-yellow-300 text-foreground-emphasis [&>svg]:text-orange-600",
+          "bg-[#FFF3E680] border-warning-border text-foreground-emphasis [&>svg]:text-warning-foreground",
         // TODO(tokens): no role for red-100 at 0x80 (#FDECEC80) or red-300
         // (#F69999).
         error:
-          "bg-[#FDECEC80] border-red-300 text-foreground-emphasis [&>svg]:text-error",
+          "bg-[#FDECEC80] border-error/40 text-foreground-emphasis [&>svg]:text-error",
       },
     },
     defaultVariants: {

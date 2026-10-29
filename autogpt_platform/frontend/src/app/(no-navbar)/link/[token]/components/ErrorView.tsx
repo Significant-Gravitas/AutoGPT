@@ -12,14 +12,14 @@ export function ErrorView({ message }: Props) {
     <AuthCard title="Setup failed">
       <div className="flex w-full flex-col items-center gap-6">
         <div
-          // TODO(tokens): no exact role for bg-red-100 (#FDECEC)
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100"
+          // TODO(tokens): no exact role for bg-error-surface (#FDECEC)
+          className="flex h-16 w-16 items-center justify-center rounded-full bg-error-surface"
         >
           <Icon
             icon={Unlink01Icon}
             size={40}
-            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a hover fill), not a text colour
-            className="text-red-600"
+            // TODO(tokens): no fitting role for text-error-foreground #D93636; #D93636 is error-hover (a hover fill), not a text colour
+            className="text-error-foreground"
           />
         </div>
         <Text

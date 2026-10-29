@@ -60,7 +60,7 @@ export function BriefingCard({ briefing, className }: Props) {
           variant="body"
           // TODO(tokens): no role for the purple-800 to purple-600 gradient
           // stops.
-          className="bg-gradient-to-r from-purple-800 to-purple-600 bg-clip-text text-transparent"
+          className="bg-gradient-to-r from-purple-800 to-brand-hover bg-clip-text text-transparent"
         >
           {formatBriefingDate(briefing.briefing_date)}
         </Text>
@@ -164,8 +164,8 @@ function ScrollArrow({
       className={cn(
         "pointer-events-none absolute inset-x-0 flex h-12 items-center justify-center",
         isUp
-          ? "top-0 bg-gradient-to-b from-white via-white/85 to-transparent"
-          : "bottom-0 bg-gradient-to-t from-white via-white/85 to-transparent",
+          ? "top-0 bg-gradient-to-b from-surface via-surface/85 to-transparent"
+          : "bottom-0 bg-gradient-to-t from-surface via-surface/85 to-transparent",
       )}
     >
       <button

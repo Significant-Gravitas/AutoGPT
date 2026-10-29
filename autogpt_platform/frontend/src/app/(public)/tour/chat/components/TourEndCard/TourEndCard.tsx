@@ -16,21 +16,21 @@ export function TourEndCard() {
     useTourEndCard();
 
   return (
-    <div className="mx-auto w-full max-w-md rounded-2xl border border-zinc-200/70 bg-white p-5 shadow-sm duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-6">
+    <div className="mx-auto w-full max-w-md rounded-2xl border border-border-base/70 bg-surface p-5 shadow-sm duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-6">
       <div className="flex flex-col items-center gap-2 text-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1">
-          <Icon icon={Tick02Icon} className="size-3.5 text-emerald-700" />
-          <Text variant="small-medium" className="!text-emerald-700">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-success-surface px-3 py-1">
+          <Icon icon={Tick02Icon} className="size-3.5 text-success-foreground" />
+          <Text variant="small-medium" className="!text-success-foreground">
             Workflow built &amp; first run complete — {TOUR_DEMO_CLAIM_SECONDS}{" "}
             seconds
           </Text>
         </span>
-        <Text variant="h4" as="h3" className="mt-1 text-zinc-900">
+        <Text variant="h4" as="h3" className="mt-1 text-foreground-strong">
           That took {TOUR_DEMO_CLAIM_SECONDS} seconds.
           <br />
           Yours will too.
         </Text>
-        <Text variant="body" className="text-zinc-500">
+        <Text variant="body" className="text-foreground-tertiary">
           Same chat, your real tasks — hosted and running for you.
         </Text>
       </div>
@@ -63,7 +63,7 @@ export function TourEndCard() {
           target="_blank"
           rel="noopener noreferrer"
           onClick={handleSelfHostClick}
-          className="mt-1 text-center text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-700"
+          className="mt-1 text-center text-sm text-foreground-tertiary underline underline-offset-2 hover:text-foreground-body"
         >
           or self-host free
         </a>

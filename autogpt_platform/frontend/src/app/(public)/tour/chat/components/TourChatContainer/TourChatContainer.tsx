@@ -32,7 +32,7 @@ export function TourChatContainer({ chat }: Props) {
                 chat.currentUserPrompt && chat.onSend(chat.currentUserPrompt)
               }
             />
-            <p className="mt-2 flex items-center justify-center gap-1 text-sm text-zinc-400">
+            <p className="mt-2 flex items-center justify-center gap-1 text-sm text-foreground-subtle">
               <Icon icon={FlashIcon} className="size-3.5 shrink-0" />
               Simulated demo — sign up to put Otto to work on your own tasks.
             </p>

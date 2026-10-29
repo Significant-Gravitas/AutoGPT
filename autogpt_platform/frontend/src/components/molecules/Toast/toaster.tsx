@@ -12,9 +12,9 @@ const toastClassNames = {
   title: "!-mb-[0.15rem] !text-body !font-medium !text-action-foreground",
   description: "!text-caption !leading-5 !text-[#f4f4f5]",
   error:
-    "[&[data-type=error]]:!bg-red-400 [&[data-type=error]]:!border-red-400",
+    "[&[data-type=error]]:!bg-error [&[data-type=error]]:!border-error",
   success:
-    "[&[data-type=success]]:!bg-green-400 [&[data-type=success]]:!border-green-400",
+    "[&[data-type=success]]:!bg-success [&[data-type=success]]:!border-success",
   warning:
     "[&[data-type=warning]]:!bg-orange-600 [&[data-type=warning]]:!border-orange-600",
 };

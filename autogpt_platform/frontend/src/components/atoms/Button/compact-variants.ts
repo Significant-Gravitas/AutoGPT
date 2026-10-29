@@ -12,22 +12,22 @@ import { extendedButtonVariants } from "./helpers";
 // neutral-200 #E5E5E5 (border is #E4E4E7), so they stay raw. Four colours
 // whose role matches in light mode stay raw too, because the role's .dark
 // value differs from this button's dark colour (SECRT-3154):
-// ring-neutral-950 (focus: no .dark value, dark ring is neutral-300),
-// text-neutral-50 on primary (primary-foreground: .dark #18181B, dark text is
-// neutral-900 #171717), bg-red-500 (error: no .dark value, dark bg is red-900)
-// and bg-white (surface: no .dark value, dark bg is neutral-950).
+// ring-focus (focus: no .dark value, dark ring is neutral-300),
+// text-action-foreground on primary (primary-foreground: .dark #18181B, dark text is
+// neutral-900 #171717), bg-error (error: no .dark value, dark bg is red-900)
+// and bg-surface (surface: no .dark value, dark bg is neutral-950).
 const COMPACT_BASE =
-  "gap-2 rounded-md border-0 min-w-0 text-body leading-5 focus-visible:ring-neutral-950 dark:focus-visible:ring-neutral-300 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0";
+  "gap-2 rounded-md border-0 min-w-0 text-body leading-5 focus-visible:ring-focus [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0";
 
 export const compactButtonVariants = cva(
   extendedButtonVariants({ variant: null, size: null }),
   {
     variants: {
       variant: {
-        "compact-primary": `${COMPACT_BASE} bg-neutral-900 text-neutral-50 shadow hover:bg-neutral-900/90 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-50/90`,
-        "compact-destructive": `${COMPACT_BASE} bg-red-500 text-destructive-foreground shadow-sm hover:bg-red-500/90 dark:bg-red-900 dark:text-neutral-50 dark:hover:bg-red-900/90`,
-        "compact-outline": `${COMPACT_BASE} border border-neutral-200 bg-white shadow-sm hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-800 dark:bg-neutral-950 dark:hover:bg-neutral-800 dark:hover:text-neutral-50`,
-        "compact-ghost": `${COMPACT_BASE} hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50`,
+        "compact-primary": `${COMPACT_BASE} bg-action text-action-foreground shadow hover:bg-action-hover`,
+        "compact-destructive": `${COMPACT_BASE} bg-error text-destructive-foreground shadow-sm hover:bg-error/90`,
+        "compact-outline": `${COMPACT_BASE} border border-border-base bg-surface shadow-sm hover:bg-surface-hover hover:text-foreground-strong`,
+        "compact-ghost": `${COMPACT_BASE} hover:bg-surface-hover hover:text-foreground-strong`,
       },
       size: {
         compact: "h-9 px-4 py-2",

@@ -232,7 +232,7 @@ export function AvatarFallback({
         // svg stretched to fill so the marble always matches the avatar size.
         // TODO(tokens): no text role is 18px/28px (text-lg) and no colour
         // role is neutral-600 #525252.
-        "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-lg text-neutral-600",
+        "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-lg text-foreground-secondary",
         !hasCustomFallback && "[&>svg]:h-full [&>svg]:w-full",
         className,
       )}

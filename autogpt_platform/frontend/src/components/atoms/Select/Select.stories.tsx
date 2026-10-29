@@ -192,7 +192,7 @@ export const WithRenderItem: Story = {
             <div className="flex items-center gap-2">
               <span className="font-medium">{o.label}</span>
               {o.disabled && (
-                <span className="text-xs text-zinc-400">(disabled)</span>
+                <span className="text-xs text-foreground-subtle">(disabled)</span>
               )}
             </div>
           )}

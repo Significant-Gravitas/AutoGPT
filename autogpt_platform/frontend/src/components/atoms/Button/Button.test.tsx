@@ -86,7 +86,7 @@ describe("Button legacy variants", () => {
     const el = screen.getByRole("button", { name: "One Two" });
     expect(el.children).toHaveLength(2);
     expect(el.querySelector(".contents")).toBeNull();
-    expect(el.className).toContain("border-neutral-200");
+    expect(el.className).toContain("border-border-base");
     expect(el.className).toContain("h-9 px-4 py-2");
     expect(el.className).toContain("space-x-3");
   });

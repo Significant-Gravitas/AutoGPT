@@ -401,7 +401,7 @@ const SidebarInset = React.forwardRef<
         // without it, min-width:auto sizes it to its content and fixed-width
         // panels (e.g. the copilot artifact panel) push the page past the
         // viewport instead of shrinking.
-        "relative flex w-full min-w-0 flex-1 flex-col bg-white dark:bg-neutral-950",
+        "relative flex w-full min-w-0 flex-1 flex-col bg-surface",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className,
       )}
@@ -564,7 +564,7 @@ const sidebarMenuButtonVariants = cva(
       variant: {
         default: "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         outline:
-          "bg-white shadow-[0_0_0_1px_rgb(var(--color-sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_rgb(var(--color-sidebar-accent))] dark:bg-neutral-950",
+          "bg-surface shadow-[0_0_0_1px_rgb(var(--color-sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_rgb(var(--color-sidebar-accent))]",
       },
       size: {
         default: "h-8 text-body leading-5",

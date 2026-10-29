@@ -32,9 +32,9 @@ export function TourUpsellCard({ surface }: Props) {
   }
 
   return (
-    <Card className="flex flex-col gap-4 border border-zinc-200 p-4 shadow-subtle">
+    <Card className="flex flex-col gap-4 border border-border-base p-4 shadow-subtle">
       <div className="flex items-center gap-2.5">
-        <span className="flex size-9 items-center justify-center rounded-medium bg-purple-100 text-purple-700">
+        <span className="flex size-9 items-center justify-center rounded-medium bg-accent-surface text-accent-strong">
           <Icon icon={SparklesIcon} size={18} aria-hidden />
         </span>
         <Text variant="eyebrow" tone="secondary">
@@ -70,7 +70,7 @@ export function TourUpsellCard({ surface }: Props) {
           size="small"
           onClick={handleSelfHostClick}
           leftIcon={<Icon icon={GithubIcon} size={14} aria-hidden />}
-          className="w-full text-xs text-zinc-600"
+          className="w-full text-xs text-foreground-secondary"
         >
           Self-host instead
         </Button>

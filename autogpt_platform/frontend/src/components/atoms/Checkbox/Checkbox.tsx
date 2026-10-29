@@ -19,7 +19,7 @@ const Checkbox = React.forwardRef<
       // in .dark (text on the primary fill), so it doesn't fit; neutral-50
       // stays.
       // Legacy dark: classes, moved verbatim; DS6 (SECRT-3116) deletes them.
-      "peer h-4 w-4 shrink-0 rounded-sm border border-neutral-900 shadow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-neutral-900 data-[state=checked]:text-neutral-50 dark:border-neutral-50 dark:border-neutral-800 dark:focus-visible:ring-neutral-300 dark:data-[state=checked]:bg-neutral-50 dark:data-[state=checked]:text-neutral-900",
+      "peer h-4 w-4 shrink-0 rounded-sm border border-action-hover shadow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-action data-[state=checked]:text-action-foreground",
       className,
     )}
     {...props}

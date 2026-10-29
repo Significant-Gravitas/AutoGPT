@@ -66,15 +66,15 @@ export const ConversationEmptyState = ({
   >
     {children ?? (
       <>
-        {/* TODO(tokens): no exact role for text-neutral-500 #737373 */}
-        {icon && <div className="text-neutral-500">{icon}</div>}
+        {/* TODO(tokens): no exact role for text-foreground-tertiary #737373 */}
+        {icon && <div className="text-foreground-tertiary">{icon}</div>}
         <div className="space-y-1">
           <Text variant="body-medium-tight" tone="inherit" as="h3">
             {title}
           </Text>
-          {/* TODO(tokens): no exact role for text-neutral-500 #737373 */}
+          {/* TODO(tokens): no exact role for text-foreground-tertiary #737373 */}
           {description && (
-            <Text variant="body-tight" as="p" className="text-neutral-500">
+            <Text variant="body-tight" as="p" className="text-foreground-tertiary">
               {description}
             </Text>
           )}

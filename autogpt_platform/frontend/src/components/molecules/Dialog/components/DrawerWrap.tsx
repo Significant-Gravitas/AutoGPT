@@ -101,7 +101,7 @@ export function DrawerWrap({
               // TODO(tokens): no role for gray-200 (#E5E7EB).
               <div
                 data-slot="drawer-close-wrap"
-                className={`${modalStyles.iconWrap} transition-colors duration-200 hover:bg-gray-200`}
+                className={`${modalStyles.iconWrap} transition-colors duration-200 hover:bg-surface-active`}
               >
                 {closeBtn}
               </div>

@@ -18,24 +18,24 @@ export const cardVariants = cva("", {
       // (#ADADB3) and foreground-tertiary (#83838C), border and text roles;
       // there are no gradient-stop roles.
       featured:
-        "rounded-2xl bg-gradient-to-br from-zinc-300 via-zinc-400 to-zinc-500 p-px",
+        "rounded-2xl bg-gradient-to-br from-surface-active via-zinc-400 to-zinc-500 p-px",
       info: "rounded-2xl bg-info-surface text-body leading-5 text-info-foreground",
       success:
         "rounded-2xl bg-success-surface text-body leading-5 text-success-foreground",
       // TODO(tokens): no role for amber-800 (#92400E) text.
       warning:
-        "rounded-2xl bg-warning-surface text-body leading-5 text-amber-800",
+        "rounded-2xl bg-warning-surface text-body leading-5 text-warning-foreground",
       // TODO(tokens): no role for amber-900 (#78350F) text.
       "warning-strong":
-        "rounded-2xl bg-warning-surface text-left text-body leading-5 text-amber-900",
+        "rounded-2xl bg-warning-surface text-left text-body leading-5 text-warning-foreground",
       // TODO(tokens): no role for amber-900 (#78350F) text.
       "warning-outline":
-        "rounded-lg border border-warning-border bg-warning-surface text-body leading-5 text-amber-900",
+        "rounded-lg border border-warning-border bg-warning-surface text-body leading-5 text-warning-foreground",
       // TODO(tokens): no role for the yellow-150 border or yellow-25 surface.
-      caution: "rounded-xl border border-yellow-150 bg-yellow-25",
+      caution: "rounded-xl border border-warning-border bg-yellow-25",
       // TODO(tokens): no role for the red-200 (#FAC5C5) border.
       error:
-        "rounded-lg border border-red-200 bg-error-surface text-caption leading-4 text-error-foreground",
+        "rounded-lg border border-error/20 bg-error-surface text-caption leading-4 text-error-foreground",
     },
   },
   defaultVariants: { variant: "default" },
@@ -119,7 +119,7 @@ export const iconTints: Record<Variant, string> = {
   "warning-strong": "shrink-0",
   "warning-outline": "shrink-0",
   // TODO(tokens): no role for the yellow-600 icon fill.
-  caution: "fill-yellow-600 text-action-foreground",
+  caution: "fill-warning-foreground text-action-foreground",
   error: "shrink-0",
 };
 

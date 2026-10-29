@@ -81,9 +81,9 @@ export function MultiToggle({
               "border-zinc-700 bg-transparent text-foreground-base hover:bg-surface-hover",
               // Selected styles with purple-600
               isSelected &&
-                "border-brand-hover bg-purple-50 text-brand-hover hover:bg-purple-100",
+                "border-brand-hover bg-accent-surface text-brand-hover hover:bg-accent-surface",
               // Disabled styles
-              item.disabled && "border-border-base text-zinc-200 opacity-50",
+              item.disabled && "border-border-base text-foreground-disabled opacity-50",
             )}
           >
             {item.label}

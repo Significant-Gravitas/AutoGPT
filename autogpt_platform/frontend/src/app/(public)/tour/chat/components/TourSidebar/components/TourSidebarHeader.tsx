@@ -20,7 +20,7 @@ export function TourSidebarHeader() {
       aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
       onClick={toggleSidebar}
       className={cn(
-        "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200",
+        "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-surface-active",
         isCollapsed
           ? "absolute inset-0 hidden group-focus-within:flex group-hover:flex"
           : "flex",

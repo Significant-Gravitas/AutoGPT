@@ -14,8 +14,8 @@ export function SignupMarketingPanel() {
         <span key="line-2">
           deserves{" "}
           <span
-            // TODO(tokens): no exact role for text-violet-600 (#7C3AED)
-            className="text-violet-600"
+            // TODO(tokens): no exact role for text-brand (#7C3AED)
+            className="text-brand"
           >
             a team.
           </span>

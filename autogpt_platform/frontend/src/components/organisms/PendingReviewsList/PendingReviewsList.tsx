@@ -338,7 +338,7 @@ export function PendingReviewsList({
                           size={20}
                           // TODO(tokens): no role for Tailwind's default gray-600;
                           // the zinc roles are a different grey.
-                          className="text-gray-600"
+                          className="text-foreground-secondary"
                         />
                       ) : (
                         <Icon
@@ -346,7 +346,7 @@ export function PendingReviewsList({
                           size={20}
                           // TODO(tokens): no role for Tailwind's default gray-600;
                           // the zinc roles are a different grey.
-                          className="text-gray-600"
+                          className="text-foreground-secondary"
                         />
                       )}
                       <div
@@ -357,7 +357,7 @@ export function PendingReviewsList({
                           // TODO(tokens): no role for Tailwind's default gray-900; the
                           // zinc roles are a different grey.
                           variant="body"
-                          className="font-semibold text-gray-900"
+                          className="font-semibold text-foreground-base"
                         >
                           {reviewTitle}
                         </Text>
@@ -367,7 +367,7 @@ export function PendingReviewsList({
                             // TODO(tokens): no role for Tailwind's default gray-500;
                             // the zinc roles are a different grey.
                             variant="small"
-                            className="text-gray-500"
+                            className="text-foreground-tertiary"
                           >
                             {workflowName
                               ? `In workflow “${workflowName}”`
@@ -414,7 +414,7 @@ export function PendingReviewsList({
                             // TODO(tokens): no role for Tailwind's default gray-700;
                             // the zinc roles are a different grey.
                             variant="small"
-                            className="text-gray-700"
+                            className="text-foreground-body"
                           >
                             Auto-approve future executions of this node
                           </Text>

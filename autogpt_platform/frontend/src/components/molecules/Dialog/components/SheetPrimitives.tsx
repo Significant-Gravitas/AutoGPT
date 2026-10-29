@@ -45,7 +45,7 @@ SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 // The dark: classes never apply (forcedTheme="light") and are DS6's
 // (SECRT-3116) to delete.
 const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-surface p-6 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out dark:bg-neutral-950",
+  "fixed z-50 gap-4 bg-surface p-6 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out",
   {
     variants: {
       side: {
@@ -82,7 +82,7 @@ const SheetContent = React.forwardRef<
     >
       <SheetPrimitive.Close
         data-slot="sheet-close"
-        className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-surface transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-neutral-100 dark:ring-offset-neutral-950 dark:focus:ring-neutral-300 dark:data-[state=open]:bg-neutral-800"
+        className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-surface transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-surface-hover"
       >
         <Cross2Icon data-slot="sheet-close-icon" className="h-4 w-4" />
         <span data-slot="sheet-close-label" className="sr-only">
@@ -121,7 +121,7 @@ const SheetTitle = React.forwardRef<
     ref={ref}
     data-slot="sheet-title"
     className={cn(
-      "text-lg font-semibold text-neutral-950 dark:text-neutral-50",
+      "text-lg font-semibold text-foreground-base",
       className,
     )}
     {...props}
@@ -138,7 +138,7 @@ const SheetDescription = React.forwardRef<
     ref={ref}
     data-slot="sheet-description"
     className={cn(
-      "text-body leading-5 text-neutral-500 dark:text-neutral-400",
+      "text-body leading-5 text-foreground-tertiary",
       className,
     )}
     {...props}

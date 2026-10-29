@@ -62,7 +62,7 @@ export function WorthDoingPanel({ offer, endsAt }: Props) {
             <span
               data-slot="worth-doing-panel-icon"
               // TODO(tokens): no role for violet-100.
-              className="flex size-7 shrink-0 items-center justify-center rounded-full bg-violet-100"
+              className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-surface"
             >
               <Icon icon={row.icon} size={14} className="text-accent-strong" />
             </span>

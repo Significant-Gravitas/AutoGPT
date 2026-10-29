@@ -8,7 +8,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function TourHero() {
   return (
-    <section className="relative flex flex-1 flex-col overflow-hidden border-b border-neutral-100">
+    <section className="relative flex flex-1 flex-col overflow-hidden border-b border-separator">
       <TourBackground />
       <div className="relative z-10 flex flex-1 flex-col items-center overflow-y-auto px-6 pb-4 pt-16">
         <div className="flex w-full max-w-2xl flex-1 flex-col items-center justify-center text-center">
@@ -19,9 +19,9 @@ export function TourHero() {
           />
 
           <span className="relative mb-6 inline-flex overflow-hidden rounded-full bg-[linear-gradient(135deg,rgba(99,102,241,0.6),rgba(59,130,246,0.35),rgba(165,180,252,0.6))] p-px shadow-[0_6px_20px_-6px_rgba(59,130,246,0.35)]">
-            <span className="relative inline-flex items-center gap-2 rounded-full bg-white/50 px-4 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl">
-              <Icon icon={SparklesIcon} className="h-4 w-4 text-violet-600" />
-              <Text variant="small-medium" className="text-sm text-zinc-700">
+            <span className="relative inline-flex items-center gap-2 rounded-full bg-surface/50 px-4 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl">
+              <Icon icon={SparklesIcon} className="h-4 w-4 text-brand" />
+              <Text variant="small-medium" className="text-sm text-foreground-body">
                 Live demo, no signup required
               </Text>
             </span>
@@ -30,14 +30,14 @@ export function TourHero() {
           <Text
             as="h1"
             variant="h1"
-            className="text-balance text-[4rem] font-[600] leading-[1]"
+            className="text-balance text-[4rem] font-semibold leading-[1]"
           >
             Build AI agents by just chatting
           </Text>
 
           <Text
             variant="lead"
-            className="mt-5 max-w-xl text-balance text-zinc-600"
+            className="mt-5 max-w-xl text-balance text-foreground-secondary"
           >
             Describe a goal in plain English and watch Otto build and run a
             working AutoGPT workflow for you, in seconds, right in your browser.

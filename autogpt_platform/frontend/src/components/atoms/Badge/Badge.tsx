@@ -18,9 +18,9 @@ interface BadgeProps<V extends BadgeVariant> {
 // TODO(tokens): no role is emerald-50 #ECFDF5, emerald-700 #047857,
 // emerald-600 #059669 or amber-800 #92400E.
 const tintVariants: Record<TintVariant, string> = {
-  success: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+  success: "bg-success-surface text-success-foreground ring-success/20",
   error: "bg-error-surface text-error-foreground ring-error-hover/10",
-  warning: "bg-warning-surface text-amber-800 ring-warning/20",
+  warning: "bg-warning-surface text-warning-foreground ring-warning/20",
   info: "bg-surface-muted text-foreground-secondary ring-foreground-tertiary/10",
 };
 
@@ -37,7 +37,7 @@ const chipLayout =
   "inline-flex cursor-default items-center rounded-md border px-2.5 py-0.5";
 
 const chipBehaviour =
-  "transition-colors focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 dark:border-neutral-800 dark:focus:ring-neutral-300";
+  "transition-colors focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2";
 
 // TODO(tokens): no role is 0.75rem/1rem (text-xs), so caption plus leading-4,
 // or 0.625rem at the parent's line height (text-[10px]), so tiny plus
@@ -62,12 +62,12 @@ const chipSizes: Record<ChipSize, string> = {
 // and .dark alike, the text on the destructive fill.
 const chipVariants: Record<ChipVariant, string> = {
   solid:
-    "border-transparent bg-neutral-900 text-neutral-50 shadow dark:bg-neutral-50 dark:text-neutral-900",
+    "border-transparent bg-action text-action-foreground shadow",
   secondary:
-    "border-transparent bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50",
+    "border-transparent bg-surface-hover text-foreground-strong",
   destructive:
-    "border-transparent bg-red-500 text-destructive-foreground shadow dark:bg-red-900 dark:text-neutral-50",
-  outline: "border-neutral-200 text-neutral-950 dark:text-neutral-50",
+    "border-transparent bg-error text-destructive-foreground shadow",
+  outline: "border-border-base text-foreground-base",
 };
 
 function isChip(variant: BadgeVariant): variant is ChipVariant {

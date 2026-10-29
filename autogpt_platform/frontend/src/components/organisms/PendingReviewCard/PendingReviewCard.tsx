@@ -109,7 +109,7 @@ export function PendingReviewCard({
             data-slot="pending-review-card-toggle-label"
             // TODO(tokens): no role for Tailwind's default gray-500; the zinc
             // roles are a different grey.
-            className="text-sm text-gray-500"
+            className="text-sm text-foreground-tertiary"
           >
             {data ? "Enabled" : "Disabled"}
           </span>
@@ -146,7 +146,7 @@ export function PendingReviewCard({
           // TODO(tokens): no role for Tailwind's default gray-500; the zinc roles
           // are a different grey.
           variant="small"
-          className="text-gray-500"
+          className="text-foreground-tertiary"
         >
           Node #{getShortenedNodeId(nodeId)}
         </Text>
@@ -158,7 +158,7 @@ export function PendingReviewCard({
             // TODO(tokens): no role for Tailwind's default gray-900; the zinc
             // roles are a different grey.
             variant="body"
-            className="font-semibold text-gray-900"
+            className="font-semibold text-foreground-base"
           >
             {instructions}
           </Text>
@@ -173,13 +173,13 @@ export function PendingReviewCard({
             data-slot="pending-review-card-readonly"
             // TODO(tokens): no role for Tailwind's default gray-200; the zinc
             // roles are a different grey.
-            className="rounded-lg border border-gray-200 bg-surface p-3"
+            className="rounded-lg border border-border-base bg-surface p-3"
           >
             <Text
               // TODO(tokens): no role for Tailwind's default gray-600; the zinc
               // roles are a different grey.
               variant="small"
-              className="text-gray-600"
+              className="text-foreground-secondary"
             >
               {JSON.stringify(currentData, null, 2)}
             </Text>
@@ -207,7 +207,7 @@ export function PendingReviewCard({
               // TODO(tokens): no role for Tailwind's default gray-700; the zinc
               // roles are a different grey.
               variant="small"
-              className="text-gray-700"
+              className="text-foreground-body"
             >
               Auto-approve future executions of this block
             </Text>
@@ -217,7 +217,7 @@ export function PendingReviewCard({
               // TODO(tokens): no role for Tailwind's default gray-500; the zinc
               // roles are a different grey.
               variant="small"
-              className="pl-11 text-gray-500"
+              className="pl-11 text-foreground-tertiary"
             >
               Original data will be used for this and all future reviews from
               this block.

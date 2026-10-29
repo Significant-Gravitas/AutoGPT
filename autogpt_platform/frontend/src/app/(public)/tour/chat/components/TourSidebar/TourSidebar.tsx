@@ -108,7 +108,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
                     <SidebarMenuButton
                       aria-disabled="true"
                       tooltip="New Task"
-                      className="cursor-not-allowed justify-center rounded-lg bg-zinc-800 font-medium text-white opacity-50 hover:!bg-zinc-800 hover:!text-white group-data-[collapsible=icon]:justify-start"
+                      className="cursor-not-allowed justify-center rounded-lg bg-action font-medium text-action-foreground opacity-50 hover:!bg-action hover:!text-action-foreground group-data-[collapsible=icon]:justify-start"
                     >
                       <Icon icon={SparklesIcon} className="size-4" />
                       <span className="truncate">New Task</span>
@@ -129,7 +129,7 @@ export function TourSidebar({ variant = "tour" }: Props) {
                     <SidebarMenuButton
                       asChild
                       tooltip="Marketplace"
-                      className="font-normal hover:!bg-zinc-200 group-data-[collapsible=icon]:!p-1.5 [&>svg]:size-5"
+                      className="font-normal hover:!bg-surface-active group-data-[collapsible=icon]:!p-1.5 [&>svg]:size-5"
                     >
                       <Link href="/marketplace">
                         <Icon icon={Store01Icon} className="size-5" />

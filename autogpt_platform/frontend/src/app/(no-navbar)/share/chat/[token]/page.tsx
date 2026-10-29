@@ -157,14 +157,14 @@ export default function SharedChatPage() {
           // share is real) and show an inline retry instead of the
           // permanent not-found card.
           <div
-            // TODO(tokens): no exact role for text-amber-900 (#78350F)
-            className="flex shrink-0 items-center justify-between gap-3 border-b border-warning-border bg-warning-surface px-4 py-2 text-xs text-amber-900"
+            // TODO(tokens): no exact role for text-warning-foreground (#78350F)
+            className="flex shrink-0 items-center justify-between gap-3 border-b border-warning-border bg-warning-surface px-4 py-2 text-xs text-warning-foreground"
           >
             <span>Couldn&apos;t load messages. The share link is valid.</span>
             <button
               onClick={retry}
-              // TODO(tokens): no exact role for border-amber-300 (#FCD34D), hover:bg-amber-100 (#FEF3C7)
-              className="rounded border border-amber-300 bg-surface px-2 py-0.5 font-medium hover:bg-amber-100"
+              // TODO(tokens): no exact role for border-warning-border (#FCD34D), hover:bg-warning-surface (#FEF3C7)
+              className="rounded border border-warning-border bg-surface px-2 py-0.5 font-medium hover:bg-warning-surface"
             >
               Try again
             </button>

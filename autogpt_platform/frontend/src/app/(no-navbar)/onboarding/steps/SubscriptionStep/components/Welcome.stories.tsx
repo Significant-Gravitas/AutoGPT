@@ -33,7 +33,7 @@ const EXPERTS: ReadyExpert[] = [
 
 function OnboardingFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="relative flex min-h-screen w-full flex-col items-center bg-gray-100">
+    <div className="relative flex min-h-screen w-full flex-col items-center bg-surface-hover">
       <ProgressBar currentStep={6} totalSteps={6} />
       <div className="flex w-full min-w-0 flex-1 items-center justify-center pb-8 pt-14">
         {children}

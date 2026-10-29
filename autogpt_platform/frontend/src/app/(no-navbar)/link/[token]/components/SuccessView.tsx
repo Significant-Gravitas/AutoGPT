@@ -35,8 +35,8 @@ export function SuccessView({
     <AuthCard title="AutoGPT is ready!" className="max-w-[38rem] gap-6 p-8">
       <div className="flex w-full flex-col items-center gap-7">
         <div
-          // TODO(tokens): no exact role for bg-green-100 (#B7E2C7)
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100"
+          // TODO(tokens): no exact role for bg-success-surface (#B7E2C7)
+          className="flex h-16 w-16 items-center justify-center rounded-full bg-success-surface"
         >
           <Icon
             icon={CheckmarkCircle02Icon}

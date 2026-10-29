@@ -41,7 +41,7 @@ export function RunRow({ item, isHidden = false }: Props) {
               data-slot="briefing-card-run-row-status"
               // TODO(tokens): no text role for red-600 (#D93636); error-hover
               // is the hover fill.
-              className="shrink-0 rounded-full bg-error-surface px-2 py-0.5 text-caption-sm font-medium leading-inherit text-red-600"
+              className="shrink-0 rounded-full bg-error-surface px-2 py-0.5 text-caption-sm font-medium leading-inherit text-error-foreground"
             >
               Failed
             </span>

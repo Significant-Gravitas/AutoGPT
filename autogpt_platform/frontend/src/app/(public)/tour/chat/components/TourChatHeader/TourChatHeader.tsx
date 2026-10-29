@@ -17,16 +17,16 @@ export function TourChatHeader({ scenarioLabel, scenarioIcon }: Props) {
   const { isCopied, handleShare } = useTourChatHeader();
 
   return (
-    <header className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-200/70 bg-white/70 px-3 py-2 backdrop-blur-sm md:px-4">
+    <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border-base/70 bg-surface/70 px-3 py-2 backdrop-blur-sm md:px-4">
       <div className="flex min-w-0 items-center gap-1.5">
         {/* On mobile this is the only way to reach the sidebar. */}
         <div className="md:hidden">
           <SidebarTrigger />
         </div>
-        <Icon icon={scenarioIcon} className="size-4 shrink-0 text-violet-600" />
+        <Icon icon={scenarioIcon} className="size-4 shrink-0 text-brand" />
         <Text
           variant="body-medium"
-          className="truncate bg-gradient-to-r from-violet-600 to-indigo-500 bg-clip-text text-transparent"
+          className="truncate bg-gradient-to-r from-brand-hover to-indigo-500 bg-clip-text text-transparent"
         >
           {scenarioLabel}
         </Text>
@@ -37,7 +37,7 @@ export function TourChatHeader({ scenarioLabel, scenarioIcon }: Props) {
         onClick={handleShare}
         leftIcon={
           isCopied ? (
-            <Icon icon={Tick02Icon} className="size-4 text-emerald-600" />
+            <Icon icon={Tick02Icon} className="size-4 text-success" />
           ) : (
             <Icon icon={Link02Icon} className="size-4" />
           )

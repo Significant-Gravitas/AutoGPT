@@ -20,8 +20,8 @@ import { TourStreamingText } from "./TourStreamingText";
 // 1rem text) so the tour chat reads exactly like the product.
 const MESSAGE_CONTENT_CLASSES =
   "text-base leading-relaxed " +
-  "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] " +
-  "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900";
+  "group-[.is-user]:rounded-xl group-[.is-user]:bg-accent-surface group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-foreground-strong group-[.is-user]:[border-bottom-right-radius:0] " +
+  "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong";
 
 const CARD_ANIMATION_CLASSES =
   "animate-in fade-in slide-in-from-bottom-2 fill-mode-both duration-500";
