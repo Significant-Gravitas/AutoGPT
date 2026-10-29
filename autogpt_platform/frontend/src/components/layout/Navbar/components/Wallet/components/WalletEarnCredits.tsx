@@ -68,8 +68,7 @@ function EarnCreditsHeader({
       <CollapsibleTrigger asChild>
         <button
           type="button"
-          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour), not a focus ring
-          className="flex w-full flex-col gap-1 px-5 py-3 text-left outline-none transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-400"
+          className="flex w-full flex-col gap-1 px-5 py-3 text-left outline-none transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-foreground-subtle"
         >
           <span className="flex w-full items-baseline justify-between gap-3">
             <Text as="span" variant="large-medium" tone="primary">
@@ -160,8 +159,7 @@ function StatusIcon({ done }: { done: boolean }) {
         <Icon
           icon={CheckmarkBadge01Icon}
           size={18}
-          // TODO(tokens): no exact role for text-[#00a656] (#00A656)
-          className="text-[#00a656]"
+          className="text-success"
           aria-label="completed"
         />
       ) : (

@@ -139,7 +139,7 @@ function ContactCard({ contact }: { contact: VcardData }) {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-surface p-3 text-center">
       {contact.photo ? (
-        // eslint-disable-next-line @next/next/no-img-element
+        // eslint-disable-next-line @next/next/no-img-element -- a contact photo from an arbitrary host, which next/image would need configured
         <img
           src={contact.photo}
           alt={contact.name ?? "Contact"}

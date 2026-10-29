@@ -34,17 +34,13 @@ export function LlmMenuItem({
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {icon}
-          <Text variant="body" className="text-foreground-strong">
+          <Text variant="body" tone="primary">
             {title}
           </Text>
         </div>
         <div className="flex items-center gap-2">
           {isActive && (
-            <Icon
-              // TODO(tokens): no exact role for text-emerald-600 #059669
-              icon={Tick02Icon}
-              className="h-4 w-4 text-emerald-600"
-            />
+            <Icon icon={Tick02Icon} className="h-4 w-4 text-success" />
           )}
           {rightSlot}
           {showChevron && (

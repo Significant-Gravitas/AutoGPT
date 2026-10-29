@@ -81,71 +81,38 @@
   --color-edge: 131 131 140; /* zinc-500 #83838C, an untyped edge (at /50, solid on hover) */
   --color-handle: 156 163 175; /* gray-400 #9CA3AF, a node's input and output handles */
 
-  /* shadcn names, at the values their old HSL variables rendered.
-     TODO(tokens): several differ from the role of the same intent above
-     (foreground #09090B vs foreground-base #141414, muted-foreground
-     #71717A vs foreground-tertiary #83838C, border #E4E4E7 vs border-base
-     #DADADC, ring/primary #18181B vs focus/action). Hundreds of classes
-     render these today, so they keep their values until DS5 moves them. */
-  --color-background: 250 250 250; /* #FAFAFA */
-  --color-foreground: 9 9 11; /* #09090B */
-  --color-card: 255 255 255;
-  --color-card-foreground: 9 9 11;
-  --color-popover: 255 255 255;
-  --color-popover-foreground: 9 9 11;
-  --color-primary: 24 24 27; /* #18181B */
-  --color-primary-foreground: 250 250 250;
-  --color-secondary: 244 244 245; /* #F4F4F5 */
-  --color-secondary-foreground: 24 24 27;
-  --color-muted: 244 244 245;
-  --color-muted-foreground: 113 113 122; /* #71717A */
-  --color-accent: 124 59 237; /* #7C3BED */
-  --color-accent-foreground: 255 255 255;
-  --color-destructive: 239 68 68; /* #EF4444 */
-  --color-destructive-foreground: 250 250 250;
-  --color-border: 228 228 231; /* #E4E4E7, every element's default */
-  --color-input: 214 214 219; /* #D6D6DB */
-  --color-ring: 24 24 27;
-  --color-sidebar: 250 250 250;
-  --color-sidebar-foreground: 63 63 70; /* #3F3F46 */
-  --color-sidebar-primary: 24 24 27;
-  --color-sidebar-primary-foreground: 250 250 250;
-  --color-sidebar-accent: 244 244 245;
-  --color-sidebar-accent-foreground: 24 24 27;
-  --color-sidebar-border: 229 231 235; /* #E5E7EB */
-  --color-sidebar-ring: 59 130 246; /* #3B82F6 */
+  /* shadcn names, kept as aliases of the role of the same intent so the
+     classes that still use them render the roles. Each name is renamed to
+     its role class in the directory PRs; the aliases go once none is left. */
+  --color-background: var(--color-canvas);
+  --color-foreground: var(--color-foreground-base);
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-foreground-base);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-foreground-base);
+  --color-primary: var(--color-action);
+  --color-primary-foreground: var(--color-action-foreground);
+  --color-secondary: var(--color-surface-hover);
+  --color-secondary-foreground: var(--color-foreground-strong);
+  --color-muted: var(--color-surface-hover);
+  --color-muted-foreground: var(--color-foreground-tertiary);
+  --color-accent: var(--color-brand);
+  --color-accent-foreground: var(--color-action-foreground);
+  --color-destructive: var(--color-error);
+  --color-destructive-foreground: var(--color-action-foreground);
+  --color-border: var(--color-border-base);
+  --color-input: var(--color-border-strong);
+  --color-ring: var(--color-focus);
+  --color-sidebar: var(--color-surface-muted);
+  --color-sidebar-foreground: var(--color-foreground-emphasis);
+  --color-sidebar-primary: var(--color-action);
+  --color-sidebar-primary-foreground: var(--color-action-foreground);
+  --color-sidebar-accent: var(--color-surface-hover);
+  --color-sidebar-accent-foreground: var(--color-foreground-strong);
+  --color-sidebar-border: var(--color-border-base);
+  --color-sidebar-ring: var(--color-info);
 
   --radius: 0.5rem;
-}
-
-.dark {
-  --color-background: 9 9 11;
-  --color-foreground: 250 250 250;
-  --color-card: 9 9 11;
-  --color-card-foreground: 250 250 250;
-  --color-popover: 9 9 11;
-  --color-popover-foreground: 250 250 250;
-  --color-primary: 250 250 250;
-  --color-primary-foreground: 24 24 27;
-  --color-secondary: 39 39 42;
-  --color-secondary-foreground: 250 250 250;
-  --color-muted: 39 39 42;
-  --color-muted-foreground: 161 161 170;
-  --color-accent: 39 39 42;
-  --color-accent-foreground: 250 250 250;
-  --color-destructive: 127 29 29;
-  --color-destructive-foreground: 250 250 250;
-  --color-border: 39 39 42;
-  --color-input: 39 39 42;
-  --color-ring: 212 212 216;
-  --color-sidebar: 24 24 27;
-  --color-sidebar-foreground: 244 244 245;
-  --color-sidebar-primary: 29 78 216;
-  --color-sidebar-primary-foreground: 255 255 255;
-  --color-sidebar-accent: 39 39 42;
-  --color-sidebar-accent-foreground: 244 244 245;
-  --color-sidebar-border: 39 39 42;
-  --color-sidebar-ring: 59 130 246;
 }
 
 * {
@@ -175,8 +142,7 @@ textarea,
 /* *** AutoGPT Design Components *** */
 
 .agpt-border-input {
-  /* TODO(tokens): gray-400 (#9CA3AF) has no role yet. */
-  @apply m-0.5 border border-input focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400 data-[state=open]:border-gray-400 data-[state=open]:ring-1 data-[state=open]:ring-gray-400;
+  @apply m-0.5 border border-input focus:border-foreground-subtle focus:outline-none focus:ring-1 focus:ring-foreground-subtle data-[state=open]:border-foreground-subtle data-[state=open]:ring-1 data-[state=open]:ring-foreground-subtle;
 }
 
 .agpt-shadow-input {
@@ -223,7 +189,9 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* Google Drive Picker: ensure picker appears above dialogs and can receive clicks */
+/* Google Drive Picker: ensure picker appears above dialogs and can receive
+   clicks. The picker is Google's own markup, so it has no slot; !important
+   beats the z-index and pointer-events Google's script writes inline. */
 [class*="picker-dialog"] {
   z-index: 10000 !important;
   pointer-events: auto !important;
@@ -294,17 +262,6 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
    around them; display blocks keep KaTeX's size. */
 :not(.katex-display) > .katex {
   font-size: 1.1em;
-}
-
-/* Expert and Otto profile tabs: body copy inside a tab panel reads at the
-   Overview intro's 15px instead of the default 14px. Scoped to the panels so
-   the tab labels, cards' small captions and the rest of the app keep their
-   sizes. */
-[data-profile-tabs] [role="tabpanel"] .text-sm,
-[data-profile-tabs] [role="tabpanel"] .text-body,
-[data-profile-tabs] [role="tabpanel"] [class*="text-[0.875rem]"] {
-  font-size: 15px;
-  line-height: 1.5rem;
 }
 
 /* DS2b keyframes */

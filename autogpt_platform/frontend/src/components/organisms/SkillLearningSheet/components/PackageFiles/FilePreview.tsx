@@ -17,9 +17,7 @@ export function FilePreview({ file, label }: Props) {
       {file.content != null ? (
         <pre
           data-slot="skill-learning-sheet-file-preview-content"
-          // TODO(tokens): no foreground role for zinc-100 (#EFEFF0) on the dark
-          // code surface.
-          className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-action-hover p-3 text-xs text-zinc-100"
+          className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-action-hover p-3 text-xs text-action-foreground"
         >
           {file.content ||
             (file.content_truncated ? "(preview unavailable)" : "(empty file)")}

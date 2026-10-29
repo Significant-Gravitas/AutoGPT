@@ -45,7 +45,7 @@ export function ExpertSummaryCard({
         className="flex flex-col gap-2 rounded-2xl bg-surface p-4 smooth-shadow-ring-sm"
       >
         <div className="flex items-center justify-between gap-2">
-          <Text variant="body-medium" tone="primary">
+          <Text variant="body-md-medium" tone="primary">
             Activity
           </Text>
           {summary ? <ActivityStatus isActive={summary.isActive} /> : null}
@@ -81,16 +81,14 @@ export function ExpertSummaryCard({
           </Text>
         ) : (
           <div className="flex items-center justify-center gap-3 text-center">
-            <Icon
-              icon={FireIcon}
-              size={40}
-              className="shrink-0 text-foreground-subtle"
-            />
-            <div className="min-w-0">
-              <Text variant="h4" tone="primary" className="tabular-nums">
+            <span className="inline-flex shrink-0 text-foreground-subtle">
+              <Icon icon={FireIcon} size={40} />
+            </span>
+            <div className="min-w-0 tabular-nums">
+              <Text variant="h4" tone="primary">
                 {streak ?? 0}
               </Text>
-              <Text variant="body" tone="muted">
+              <Text variant="body-md" tone="muted">
                 day streak
               </Text>
             </div>
@@ -112,8 +110,7 @@ function ActivityStatus({ isActive }: ActivityStatusProps) {
         aria-hidden
         className={cn(
           "size-2 rounded-full",
-          // TODO(tokens): no exact role: bg-emerald-500 #10B981; no fitting role for bg-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour), border-strong (a border colour)
-          isActive ? "bg-emerald-500" : "bg-zinc-300",
+          isActive ? "bg-success" : "bg-border-strong",
         )}
       />
       <Text variant="small" tone="muted">

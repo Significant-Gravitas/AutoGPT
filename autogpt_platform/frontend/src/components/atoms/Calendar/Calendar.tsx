@@ -30,7 +30,6 @@ import {
 } from "react-day-picker";
 
 import { cn } from "@/lib/utils";
-import { legacyButtonVariants } from "@/components/atoms/Button/helpers";
 import {
   Select,
   SelectContent,
@@ -99,44 +98,26 @@ function Calendar({
         button_next: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
         month_grid: "w-full border-collapse space-y-1",
         weekdays: "flex",
-        // TODO(tokens): no exact role: text-neutral-500 #737373. SECRT-3152
-        // rare size: text-[0.8rem].
         weekday:
-          "text-neutral-500 rounded-md w-8 font-normal text-[0.8rem] dark:text-neutral-400",
+          "text-foreground-tertiary rounded-md w-8 font-normal text-body-sm leading-inherit",
         week: "flex w-full mt-2",
-        // TODO(tokens): no exact role: bg-neutral-100 #F5F5F5.
         day: cn(
-          "relative p-0 text-center text-body leading-5 focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-neutral-100 [&:has([aria-selected].day-outside)]:bg-neutral-100/50 [&:has([aria-selected].day-range-end)]:rounded-r-md dark:[&:has([aria-selected])]:bg-neutral-800 dark:[&:has([aria-selected].day-outside)]:bg-neutral-800/50",
+          "relative p-0 text-center text-body leading-5 focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-surface-hover [&:has([aria-selected].day-outside)]:bg-surface-hover/50 [&:has([aria-selected].day-range-end)]:rounded-r-md",
           props.mode === "range"
             ? "[&:has(>.day-range-end)]:rounded-r-md [&:has(>.day-range-start)]:rounded-l-md first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md"
             : "[&:has([aria-selected])]:rounded-md",
         ),
-        day_button: cn(
-          legacyButtonVariants({ variant: "legacy-ghost" }),
-          "h-8 w-8 p-0 font-normal aria-selected:opacity-100",
-        ),
-        range_start: "range-start",
-        range_end: "range-end",
-        // TODO(tokens): no exact role: bg-neutral-900 #171717,
-        // text-neutral-100 #F5F5F5, bg-neutral-700 #404040. text-neutral-50
-        // #FAFAFA is `primary-foreground` in :root only (#18181B in .dark),
-        // so it stays raw. SECRT-3154
+        day_button:
+          "inline-flex h-8 w-8 items-center justify-center whitespace-nowrap rounded-md p-0 text-body leading-5 font-normal transition-colors hover:bg-surface-hover hover:text-foreground-strong focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50 aria-selected:opacity-100",
         selected:
-          "bg-neutral-900 text-neutral-100 hover:bg-neutral-900 hover:text-neutral-50 focus:bg-neutral-700 focus:text-neutral-50 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-50 dark:hover:text-neutral-900 dark:focus:bg-neutral-50 dark:focus:text-neutral-900",
-        // TODO(tokens): no exact role: bg-neutral-100 #F5F5F5,
-        // text-neutral-900 #171717.
-        today:
-          "bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50",
-        // TODO(tokens): no exact role: text-neutral-500 #737373,
-        // bg-neutral-100 #F5F5F5.
+          "bg-action text-action-foreground hover:bg-action hover:text-action-foreground focus:bg-action focus:text-action-foreground",
+        today: "bg-surface-hover text-foreground-strong",
         outside:
-          "day-outside text-neutral-500 opacity-50  aria-selected:bg-neutral-100/50 aria-selected:text-neutral-500 aria-selected:opacity-30 dark:text-neutral-400 dark:aria-selected:bg-neutral-800/50 dark:aria-selected:text-neutral-400",
-        // TODO(tokens): no exact role: text-neutral-500 #737373.
-        disabled: "text-neutral-500 opacity-50 dark:text-neutral-400",
-        // TODO(tokens): no exact role: bg-neutral-100 #F5F5F5,
-        // text-neutral-900 #171717.
+          // oxlint-disable-next-line design-system/no-unknown-classes -- day-outside is a marker the day selector above matches
+          "day-outside text-foreground-tertiary opacity-50 aria-selected:bg-surface-hover/50 aria-selected:text-foreground-tertiary aria-selected:opacity-30",
+        disabled: "text-foreground-tertiary opacity-50",
         range_middle:
-          "aria-selected:bg-neutral-100 aria-selected:text-neutral-900 dark:aria-selected:bg-neutral-800 dark:aria-selected:text-neutral-50",
+          "aria-selected:bg-surface-hover aria-selected:text-foreground-strong",
         hidden: "invisible",
         ...classNames,
       }}

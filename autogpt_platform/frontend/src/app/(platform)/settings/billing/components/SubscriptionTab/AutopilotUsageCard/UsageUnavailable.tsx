@@ -24,6 +24,7 @@ export function UsageUnavailable({ onRetry }: Props) {
         <Text variant="large-medium" className="mb-2">
           We couldn’t load your usage
         </Text>
+        {/* oxlint-disable-next-line design-system/no-restyle -- caption copy at a 24px line height; no Text variant has it */}
         <Text variant="small" tone="secondary" className="leading-6">
           Your plan and your work aren’t affected. Try again in a moment.
         </Text>

@@ -7,6 +7,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator, Field, PlainSerializer
 
+from backend.copilot.config import CopilotLLMModel
+
 # File content that survives the JSON service RPC. Raw bytes stay bytes
 # in-process, but the wire format is base64 — plain ``bytes`` fields are
 # strict-UTF-8-decoded by JSON serialization, which fails on binary content.
@@ -136,6 +138,19 @@ class BotChatRequest(BaseModel):
         default_factory=list,
         max_length=20,
         description="Workspace file IDs (already uploaded) to attach to the turn.",
+    )
+    expert_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="Hired expert to run the turn as. DM context only; it must "
+        "be a live hire of the conversation owner. A cached session bound to "
+        "another expert is replaced by a new one.",
+    )
+    model: CopilotLLMModel | None = Field(
+        default=None,
+        description="Model tier: 'standard' or 'advanced'. Advanced falls back "
+        "to standard when the owner doesn't hold it. None = server default.",
     )
 
 
@@ -298,6 +313,14 @@ class EnsureSessionResult(BaseModel):
     denial: TurnDenial | None = None
 
 
+class BotExpert(BaseModel):
+    """A hired expert the bot can route a turn to."""
+
+    id: str
+    name: str
+    role: str
+
+
 class ChatTurnHandle(BaseModel):
     """Subscribe keys for a pending copilot turn.
 
@@ -311,6 +334,9 @@ class ChatTurnHandle(BaseModel):
     user_id: str
     subscribe_from: str = "0-0"
     denial: TurnDenial | None = None
+    # One line for the user about how the turn was adjusted (e.g. Advanced
+    # unavailable, so it ran on Standard). Shown ahead of the reply.
+    notice: str | None = None
 
 
 class ChannelCard(BaseModel):

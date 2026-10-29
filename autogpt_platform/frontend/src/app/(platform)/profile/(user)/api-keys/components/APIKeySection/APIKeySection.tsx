@@ -1,5 +1,6 @@
 "use client";
 
+// oxlint-disable-next-line design-system/hugeicons-only -- glyph swap is P11's
 import { Loader2, MoreVertical } from "lucide-react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -48,14 +49,11 @@ export function APIKeysSection() {
                 <TableRow key={key.id} data-testid="api-key-row">
                   <TableCell>{key.name}</TableCell>
                   <TableCell data-testid="api-key-id">
-                    <Text
-                      variant="small-tight"
-                      as="div"
-                      tone="inherit"
-                      className="rounded-md border p-1 px-2"
-                    >
-                      {`${key.head}******************${key.tail}`}
-                    </Text>
+                    <div className="rounded-md border p-1 px-2">
+                      <Text variant="small-tight" as="div" tone="inherit">
+                        {`${key.head}******************${key.tail}`}
+                      </Text>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -64,10 +62,10 @@ export function APIKeysSection() {
                       }
                       className={
                         key.status === "ACTIVE"
-                          ? // TODO(tokens): no exact role (bg-green-100 #B7E2C7, text-green-800 #0C5A29)
-                            "border-success bg-green-100 text-green-800"
-                          : // TODO(tokens): no exact role (bg-red-100 #FDECEC, text-red-800 #832525)
-                            "border-error-hover bg-red-100 text-red-800"
+                          ? // oxlint-disable-next-line design-system/no-restyle -- Badge has no bordered success chip yet; its success tint is a different shape and weight
+                            "border-success bg-success/30 text-success-foreground"
+                          : // oxlint-disable-next-line design-system/no-restyle -- Badge has no bordered error chip yet; its error tint is a different shape and weight
+                            "border-error-hover bg-error-surface text-error-foreground"
                       }
                     >
                       {key.status}
@@ -86,19 +84,18 @@ export function APIKeysSection() {
                       <DropdownMenuTrigger asChild>
                         <Button
                           data-testid="api-key-actions"
-                          variant="legacy-ghost"
-                          size="legacy-sm"
+                          variant="compact-ghost"
+                          size="compact-sm"
                         >
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
-                          className="text-destructive"
                           onClick={() => handleRevokeKey(key.id)}
                           disabled={isDeleting}
                         >
-                          Revoke
+                          <span className="text-destructive">Revoke</span>
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

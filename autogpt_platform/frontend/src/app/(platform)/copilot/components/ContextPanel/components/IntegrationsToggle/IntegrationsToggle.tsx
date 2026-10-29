@@ -108,8 +108,7 @@ export function IntegrationsToggle({ expert, className, size = "md" }: Props) {
               <TooltipTrigger asChild>
                 <span
                   className={cn(
-                    // TODO(tokens): no fitting role for ring-white #FEFEFE; #FEFEFE is surface (a fill) and action-foreground (a text colour)
-                    "flex items-center justify-center rounded-full bg-surface ring-2 ring-white smooth-shadow-ring-sm",
+                    "flex items-center justify-center rounded-full bg-surface ring-2 ring-surface smooth-shadow-ring-sm",
                     isLarge ? "size-7" : "size-6",
                   )}
                 >
