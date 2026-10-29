@@ -150,6 +150,7 @@ async def create_workspace_file(
     metadata: Optional[dict] = None,
     is_internal: bool = False,
     storage_limit_bytes: int = 0,
+    replacing_file_id: Optional[str] = None,
 ) -> WorkspaceFile:
     """
     Create a new workspace file record.
@@ -174,6 +175,8 @@ async def create_workspace_file(
         is_internal: Otto's own working file, left out of the user's lists
         storage_limit_bytes: The owner's storage quota (0 for none); a row
             that would not fit is refused with ``storage_limit_exceeded``
+        replacing_file_id: The live file at ``path`` this one replaces; it is
+            soft-deleted in the same transaction, so a refused write keeps it
 
     Returns:
         Created WorkspaceFile instance
@@ -187,6 +190,15 @@ async def create_workspace_file(
         await require_storage_room(
             tx, workspace_id, size_bytes, storage_limit_bytes, replacing=[path]
         )
+        if replacing_file_id is not None:
+            await tx.userworkspacefile.update_many(
+                where={
+                    "id": replacing_file_id,
+                    "workspaceId": workspace_id,
+                    "isDeleted": False,
+                },
+                data={"isDeleted": True, "deletedAt": datetime.now(timezone.utc)},
+            )
         file = await tx.userworkspacefile.create(
             data={
                 "id": file_id,

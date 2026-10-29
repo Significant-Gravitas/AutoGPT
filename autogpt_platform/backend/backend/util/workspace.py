@@ -317,33 +317,24 @@ class WorkspaceManager:
             name=filename, path=path, metadata=metadata
         )
 
-        # An early refusal, before the scan and the upload; the row's own
-        # transaction is what holds the quota against concurrent writes.
-        # For overwrites, subtract the existing file's size so replacing a file
-        # with a same-size or smaller file is not rejected near the cap.
+        # Both refusals come before virus scanning, so a cheap check isn't
+        # blocked by a potentially slow or unavailable scanner. The quota one
+        # is early only: the row's own transaction holds it against concurrent
+        # writes. An overwrite does not count the file it replaces.
+        db = workspace_db()
         storage_limit, current_usage = await asyncio.gather(
             get_workspace_storage_limit_bytes(self.user_id),
-            workspace_db().get_workspace_total_size(self.workspace_id),
+            db.get_workspace_total_size(self.workspace_id),
         )
-        if overwrite:
-            db = workspace_db()
-            existing = await db.get_workspace_file_by_path(self.workspace_id, path)
-            if existing is not None:
-                current_usage = max(0, current_usage - existing.size_bytes)
+        existing = await db.get_workspace_file_by_path(self.workspace_id, path)
+        if existing is not None and not overwrite:
+            raise ValueError(f"File already exists at path: {path}")
+        if existing is not None:
+            current_usage = max(0, current_usage - existing.size_bytes)
 
         projected_usage = current_usage + len(content)
         if storage_limit > 0 and projected_usage > storage_limit:
             raise storage_limit_exceeded(current_usage, storage_limit)
-
-        # Check if file exists at path (only error for non-overwrite case).
-        # Done before virus scanning so a cheap duplicate-path check isn't
-        # blocked by a potentially slow or unavailable scanner.
-        db = workspace_db()
-
-        if not overwrite:
-            existing = await db.get_workspace_file_by_path(self.workspace_id, path)
-            if existing is not None:
-                raise ValueError(f"File already exists at path: {path}")
 
         # Scan here — callers must NOT duplicate this scan.
         # WorkspaceManager owns virus scanning for all persisted files.
@@ -371,14 +362,14 @@ class WorkspaceManager:
         # Create database record - handle race condition where another request
         # created a file at the same path between our check and create
         async def _persist_db_record(
+            replacing: WorkspaceFile | None,
             retries: int = 2 if overwrite else 0,
-        ) -> WorkspaceFile:
-            """Create DB record, retrying on conflict if overwrite=True.
-
-            Cleans up the orphaned storage file on any failure.
-            """
+        ) -> tuple[WorkspaceFile, WorkspaceFile | None]:
+            """Create DB record in place of ``replacing``, retrying against
+            the file then at the path on conflict if overwrite=True; returns
+            the record and the file it replaced."""
             try:
-                return await db.create_workspace_file(
+                file = await db.create_workspace_file(
                     workspace_id=self.workspace_id,
                     file_id=file_id,
                     name=filename,
@@ -390,22 +381,21 @@ class WorkspaceManager:
                     metadata=metadata,
                     is_internal=is_internal,
                     storage_limit_bytes=storage_limit,
+                    replacing_file_id=replacing.id if replacing else None,
                 )
             except UniqueViolationError:
                 if retries > 0:
-                    # Delete conflicting file and retry
-                    existing = await db.get_workspace_file_by_path(
+                    current = await db.get_workspace_file_by_path(
                         self.workspace_id, path
                     )
-                    if existing:
-                        await self.delete_file(existing.id)
-                    return await _persist_db_record(retries=retries - 1)
+                    return await _persist_db_record(current, retries - 1)
                 if overwrite:
                     raise ValueError(
                         f"Unable to overwrite file at path: {path} "
                         f"(concurrent write conflict)"
                     ) from None
                 raise ValueError(f"File already exists at path: {path}")
+            return file, replacing
 
         replaced_storage_path: str | None = None
         replaced_file_id: str | None = None
@@ -435,7 +425,10 @@ class WorkspaceManager:
                 replaced_storage_path = publication.replaced_storage_path
                 replaced_file_id = publication.replaced_file_id
             else:
-                file = await _persist_db_record()
+                file, replaced = await _persist_db_record(existing)
+                if replaced is not None:
+                    replaced_storage_path = replaced.storage_path
+                    replaced_file_id = replaced.id
         except Exception:
             try:
                 await storage.delete(storage_path)
@@ -447,7 +440,7 @@ class WorkspaceManager:
             try:
                 await storage.delete(replaced_storage_path)
             except Exception:
-                logger.warning("Failed to clean up replaced skill blob", exc_info=True)
+                logger.warning("Failed to clean up replaced blob", exc_info=True)
 
         if replaced_file_id and replaced_file_id != file.id:
             try:
@@ -459,9 +452,7 @@ class WorkspaceManager:
                     file_id=replaced_file_id, user_id=self.user_id
                 )
             except Exception:
-                logger.warning(
-                    "Failed to clean up replaced skill embedding", exc_info=True
-                )
+                logger.warning("Failed to clean up replaced embedding", exc_info=True)
 
         logger.info(
             f"Wrote file {file.id} ({filename}) to workspace {self.workspace_id} "

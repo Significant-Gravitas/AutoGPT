@@ -90,6 +90,43 @@ async def test_replacing_a_file_near_the_quota_counts_only_the_new_copy(
     assert [f.sizeBytes for f in await _live_files(manager)] == [LIMIT - 1]
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_overwrite_racing_for_its_freed_space_never_empties_the_path(
+    manager: WorkspaceManager, tmp_path: Path
+):
+    """The other write fits only while neither copy of /a.bin is counted. It
+    starts once the old copy is retired; an overwrite that retired it outside
+    its insert is held until the other write has taken the space."""
+    with _real_storage(tmp_path):
+        old = await manager.write_file(b"o" * 600, "a.bin")
+        insert = workspace_data.create_workspace_file
+
+        async def create_workspace_file(**kwargs):
+            if kwargs["path"] == "/a.bin" and not await _is_live(old.id):
+                await _until(lambda: _path_is_live(manager, "/b.bin"))
+            return await insert(**kwargs)
+
+        async def other_write():
+            await _until(lambda: _is_gone(old.id))
+            return await manager.write_file(b"b" * 500, "b.bin")
+
+        with patch.object(
+            workspace_data, "create_workspace_file", create_workspace_file
+        ):
+            results = await asyncio.gather(
+                manager.write_file(b"n" * 600, "a.bin", overwrite=True),
+                other_write(),
+                return_exceptions=True,
+            )
+
+    refused = [r for r in results if isinstance(r, Exception)]
+    assert all(str(r).startswith("Storage limit exceeded") for r in refused), refused
+    live = await _live_files(manager)
+    assert "/a.bin" in {f.path for f in live}
+    assert sum(f.sizeBytes for f in live) <= LIMIT
+    assert len([p for p in tmp_path.rglob("*") if p.is_file()]) == len(live)
+
+
 @contextmanager
 def _real_storage(tmp_path: Path) -> Iterator[None]:
     storage = LocalWorkspaceStorage(base_dir=str(tmp_path))
@@ -114,6 +151,30 @@ async def _live_files(manager: WorkspaceManager):
     return await db.prisma.userworkspacefile.find_many(
         where={"workspaceId": manager.workspace_id, "isDeleted": False}
     )
+
+
+async def _is_live(file_id: str) -> bool:
+    row = await db.prisma.userworkspacefile.find_unique(where={"id": file_id})
+    return row is not None and not row.isDeleted
+
+
+async def _is_gone(file_id: str) -> bool:
+    return not await _is_live(file_id)
+
+
+async def _path_is_live(manager: WorkspaceManager, path: str) -> bool:
+    row = await db.prisma.userworkspacefile.find_first(
+        where={"workspaceId": manager.workspace_id, "path": path, "isDeleted": False}
+    )
+    return row is not None
+
+
+async def _until(condition, timeout: float = 2.0) -> None:
+    """Wait for ``condition``; correct code may never meet it, so go on after
+    ``timeout`` either way."""
+    deadline = asyncio.get_running_loop().time() + timeout
+    while not await condition() and asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(0.02)
 
 
 def _held_until_all_have_read(parties: int):
