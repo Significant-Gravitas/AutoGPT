@@ -39,7 +39,10 @@ export function ReleaseListSkeleton() {
               <Bar className="h-4 w-32" />
             </div>
             <div
-              className={cn(HEADLINE_LINE_HEIGHT_CLASS, "flex items-center")}
+              className={cn(
+                HEADLINE_LINE_HEIGHT_CLASS,
+                "mt-1 flex items-center",
+              )}
             >
               <Bar className="h-3.5 w-1/2" />
             </div>
