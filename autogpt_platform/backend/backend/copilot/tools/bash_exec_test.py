@@ -22,6 +22,7 @@ from e2b.exceptions import NotFoundException, TimeoutException
 from pydantic import SecretStr
 
 from backend.copilot import integration_creds
+from backend.copilot.context import bash_command_as_written
 from backend.data.model import APIKeyCredentials
 
 from ._test_data import make_session
@@ -348,6 +349,38 @@ class TestBashExecSdkToolResultRedirect:
         assert "read_tool_result" in result.message
         assert "/root/.claude/projects/" in result.message
         sandbox.commands.run.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_no_redirect_on_sdk_path_inside_expanded_file(self):
+        """An ``@@agptfile:`` ref expanded to text that mentions the SDK
+        folder is data, not a file access: the check reads the command as
+        the model wrote it."""
+        tool = _make_tool()
+        session = make_session(user_id=_USER)
+        sandbox = _make_sandbox(stdout="ok")
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_current_sandbox",
+                return_value=sandbox,
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value={}),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ),
+            bash_command_as_written("echo @@agptfile:/home/user/notes.md | wc -l"),
+        ):
+            result = await tool._execute(
+                user_id=_USER,
+                session=session,
+                command="echo 'See /root/.claude/projects' | wc -l",
+                timeout=10,
+            )
+        assert isinstance(result, BashExecResponse)
+        sandbox.commands.run.assert_called_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_no_redirect_on_user_path_containing_tool_outputs(self):

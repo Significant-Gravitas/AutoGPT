@@ -331,6 +331,28 @@ _SDK_TOOL_RESULT_RE = re.compile(
 )
 
 
+# The bash_exec command as the model wrote it, set by the SDK tool adapter
+# before it expands ``@@agptfile:`` refs. The redirect check reads this so a
+# ``.claude/projects`` path that is only text inside an inlined file does not
+# block the command.
+_bash_command_as_written: ContextVar[str | None] = ContextVar(
+    "_bash_command_as_written", default=None
+)
+
+
+@contextmanager
+def bash_command_as_written(command: str | None) -> Iterator[None]:
+    token = _bash_command_as_written.set(command)
+    try:
+        yield
+    finally:
+        _bash_command_as_written.reset(token)
+
+
+def get_bash_command_as_written() -> str | None:
+    return _bash_command_as_written.get()
+
+
 def looks_like_sdk_tool_result_path(text: str) -> bool:
     """Return True if *text* references a host-side SDK tool-result path.
 
