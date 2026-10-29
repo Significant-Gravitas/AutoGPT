@@ -29,8 +29,7 @@ export function AccountMenuOrgList() {
   const createOrgButton = (
     <button
       type="button"
-      // TODO(tokens): no exact role for bg-neutral-100 (#F5F5F5), text-neutral-700 (#404040), hover:bg-neutral-200 (#E5E5E5)
-      className="flex w-full items-center gap-2 rounded-lg bg-neutral-100 px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-200"
+      className="flex w-full items-center gap-2 rounded-lg bg-surface-hover px-2 py-1.5 text-sm text-foreground-body hover:bg-surface-active"
       onClick={handleCreateOrganization}
       data-testid="create-organization-button"
     >
@@ -44,10 +43,7 @@ export function AccountMenuOrgList() {
   if (orgs.length === 0) {
     return (
       <div className="flex flex-col gap-2 p-2">
-        <div
-          // TODO(tokens): no exact role for text-neutral-500 (#737373)
-          className="px-2 py-1 text-sm text-neutral-500"
-        >
+        <div className="px-2 py-1 text-sm text-foreground-tertiary">
           No organizations yet
         </div>
         {createOrgButton}
@@ -58,18 +54,14 @@ export function AccountMenuOrgList() {
   return (
     <div className="flex flex-col gap-2 p-2">
       <div className="flex flex-col gap-0.5">
-        <span
-          // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-          className="px-2 py-1 text-xs font-medium uppercase text-neutral-400"
-        >
+        <span className="px-2 py-1 text-xs font-medium uppercase text-foreground-subtle">
           Organizations
         </span>
         {orgs.map((org) => (
           <button
             key={org.id}
             type="button"
-            // TODO(tokens): no exact role for text-neutral-700 (#404040), hover:bg-neutral-100 (#F5F5F5)
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100"
+            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-foreground-body hover:bg-surface-hover"
             onClick={() => switchOrg(org.id)}
           >
             <Avatar className="h-5 w-5">
@@ -80,12 +72,7 @@ export function AccountMenuOrgList() {
             </Avatar>
             <span className="flex-1 truncate text-left">{org.name}</span>
             {org.isPersonal && (
-              <span
-                // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-                className="text-xs text-neutral-400"
-              >
-                Personal
-              </span>
+              <span className="text-xs text-foreground-subtle">Personal</span>
             )}
             {org.id === activeOrg?.id && (
               <Icon icon={Tick02Icon} size={14} className="text-success" />
@@ -97,31 +84,21 @@ export function AccountMenuOrgList() {
 
       {teams.length > 0 && (
         <>
-          <div
-            // TODO(tokens): no exact role for border-neutral-100 (#F5F5F5)
-            className="border-t border-neutral-100"
-          />
+          <div className="border-t border-separator" />
           <div className="flex flex-col gap-0.5">
-            <span
-              // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-              className="px-2 py-1 text-xs font-medium uppercase text-neutral-400"
-            >
+            <span className="px-2 py-1 text-xs font-medium uppercase text-foreground-subtle">
               Teams
             </span>
             {teams.map((team) => (
               <button
                 key={team.id}
                 type="button"
-                // TODO(tokens): no exact role for text-neutral-700 (#404040), hover:bg-neutral-100 (#F5F5F5)
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100"
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-foreground-body hover:bg-surface-hover"
                 onClick={() => switchTeam(team.id)}
               >
                 <span className="flex-1 truncate text-left">{team.name}</span>
                 {team.joinPolicy === "PRIVATE" && (
-                  <span
-                    // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-                    className="text-xs text-neutral-400"
-                  >
+                  <span className="text-xs text-foreground-subtle">
                     Private
                   </span>
                 )}
@@ -132,8 +109,7 @@ export function AccountMenuOrgList() {
             ))}
             <Link
               href="/org/teams"
-              // TODO(tokens): no exact role for text-neutral-500 (#737373), hover:bg-neutral-100 (#F5F5F5)
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100"
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-foreground-tertiary hover:bg-surface-hover"
             >
               <Icon icon={Settings02Icon} size={14} />
               <span>Manage teams</span>

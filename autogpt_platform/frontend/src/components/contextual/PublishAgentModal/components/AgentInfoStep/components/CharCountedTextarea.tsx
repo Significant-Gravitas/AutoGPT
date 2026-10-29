@@ -17,8 +17,7 @@ export function CharCountedTextarea({ max, value, children }: Props) {
         data-testid="char-count"
         className={cn(
           "pointer-events-none absolute right-0 top-0 z-10 text-xs tabular-nums",
-          // TODO(tokens): no exact role for text-rose-600 #e11d48
-          over ? "text-rose-600" : "text-foreground-subtle",
+          over ? "text-error-hover" : "text-foreground-subtle",
         )}
       >
         {length} / {max}

@@ -54,8 +54,7 @@ export function WalletTrigger({
               data-state={open ? "open" : "closed"}
               onClick={onClick}
               className={cn(
-                // TODO(tokens): no fitting role for focus-visible:ring-zinc-900 #2C2C30; #2C2C30 is foreground-strong (a text colour) and action-hover (the primary button's hover fill), not a focus ring
-                "group relative flex flex-nowrap items-center gap-2 rounded-md px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2",
+                "group relative flex flex-nowrap items-center gap-2 rounded-md px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-action-hover focus-visible:ring-offset-2",
                 compact
                   ? "size-8 justify-center rounded-lg p-0 text-foreground-body transition-colors hover:bg-surface-hover data-[state=open]:bg-surface-hover data-[state=open]:text-foreground-strong"
                   : "bg-surface-muted",
@@ -71,8 +70,7 @@ export function WalletTrigger({
                 <span
                   aria-hidden
                   data-testid="wallet-unseen-dot"
-                  // TODO(tokens): no exact role for bg-violet-600 (#7C3AED)
-                  className="absolute right-0.5 top-0.5 size-2 rounded-full bg-violet-600 ring-2 ring-sidebar"
+                  className="absolute right-0.5 top-0.5 size-2 rounded-full bg-brand ring-2 ring-sidebar"
                 />
               )}
               {!compact && (
@@ -88,8 +86,7 @@ export function WalletTrigger({
         <div
           aria-hidden
           className={cn(
-            // TODO(tokens): no exact role for bg-violet-400 (#A78BFA)
-            "pointer-events-none absolute inset-0 bg-violet-400 duration-2000 ease-in-out",
+            "pointer-events-none absolute inset-0 bg-brand/60 duration-2000 ease-in-out",
             compact ? "rounded-lg" : "rounded-md",
             flash ? "opacity-50 duration-0" : "opacity-0",
           )}
@@ -110,10 +107,7 @@ function ClassicBalance({
       <span className="mr-1 hidden xl:inline-block">Earn credits </span>
       <span className="text-sm font-semibold">{formattedCredits}</span>
       {completedCount !== null && completedCount < totalCount && (
-        <span
-          // TODO(tokens): no exact role for bg-violet-600 (#7C3AED)
-          className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"
-        />
+        <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-brand" />
       )}
       <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-surface px-4 py-2 shadow-md group-hover:block">
         <Text variant="body-medium">

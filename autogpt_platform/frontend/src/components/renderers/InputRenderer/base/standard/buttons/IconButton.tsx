@@ -7,10 +7,8 @@ import {
   TranslatableString,
 } from "@rjsf/utils";
 import { ChevronDown, ChevronUp, Copy } from "lucide-react";
-import type { VariantProps } from "class-variance-authority";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { extendedButtonVariants } from "@/components/atoms/Button/helpers";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { Delete02Icon } from "@hugeicons/core-free-icons";
@@ -20,7 +18,7 @@ export type AutogptIconButtonProps<
   T = any,
   S extends StrictRJSFSchema = RJSFSchema,
   F extends FormContextType = any,
-> = IconButtonProps<T, S, F> & VariantProps<typeof extendedButtonVariants>;
+> = IconButtonProps<T, S, F> & { size?: "small" | "icon" };
 
 export default function IconButton(props: AutogptIconButtonProps) {
   const {

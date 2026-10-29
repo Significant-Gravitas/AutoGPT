@@ -193,17 +193,11 @@ export function TaskGroups({ groups }: Props) {
             {/* Reward and chevron */}
             <div className="flex items-center gap-2">
               {isGroupCompleted(group) ? (
-                <div
-                  // TODO(tokens): no exact role for bg-green-200 (#94D5AC)
-                  className="rounded-full bg-green-200 px-2.5 py-0.5 font-sans text-xs font-medium text-success-foreground"
-                >
+                <div className="rounded-full bg-success/40 px-2.5 py-0.5 font-sans text-xs font-medium text-success-foreground">
                   Done
                 </div>
               ) : (
-                <div
-                  // TODO(tokens): no exact role for text-violet-600 (#7C3AED)
-                  className="text-xs font-medium leading-tight text-violet-600"
-                >
+                <div className="text-xs font-medium leading-tight text-brand">
                   $
                   {group.tasks
                     .reduce((sum, task) => sum + task.amount, 0)
@@ -211,8 +205,7 @@ export function TaskGroups({ groups }: Props) {
                 </div>
               )}
               <ChevronDown
-                // TODO(tokens): no exact role for text-slate-950 (#020617)
-                className={`h-5 w-5 text-slate-950 transition-transform duration-300 ease-in-out ${openGroups[group.name] ? "rotate-180" : ""}`}
+                className={`h-5 w-5 text-foreground-base transition-transform duration-300 ease-in-out ${openGroups[group.name] ? "rotate-180" : ""}`}
               />
             </div>
           </div>
@@ -239,17 +232,12 @@ export function TaskGroups({ groups }: Props) {
                       className={cn(
                         "flex h-4 w-4 items-center justify-center rounded-full border",
                         isTaskCompleted(task)
-                          ? // TODO(tokens): no exact role for border-emerald-600 (#059669)
-                            "border-emerald-600"
-                          : // TODO(tokens): no fitting role for border-zinc-600 #68686F; #68686F is foreground-secondary (a text colour), not a border
-                            "border-zinc-600",
+                          ? "border-success"
+                          : "border-foreground-secondary",
                       )}
                     >
                       {isTaskCompleted(task) && (
-                        <Check
-                          // TODO(tokens): no exact role for text-emerald-600 (#059669)
-                          className="h-3 w-3 text-emerald-600"
-                        />
+                        <Check className="h-3 w-3 text-success" />
                       )}
                     </div>
                     <span
@@ -280,8 +268,7 @@ export function TaskGroups({ groups }: Props) {
                   <div className="mb-1 flex w-full items-center justify-between pl-6 pr-3">
                     <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-hover">
                       <div
-                        // TODO(tokens): no exact role for bg-violet-400 (#A78BFA)
-                        className="h-full bg-violet-400 transition-all duration-500 ease-in-out"
+                        className="h-full bg-brand/60 transition-all duration-500 ease-in-out"
                         style={{
                           width: `${Math.min(
                             100,

@@ -51,14 +51,14 @@ export function ThumbnailImages({
     <div className="space-y-4">
       <div className="flex flex-col gap-1">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <Text variant="body-medium" as="h3" className="text-textBlack">
+          <Text variant="body-medium" as="h3">
             Media
           </Text>
-          <Text variant="small" as="span" className="text-foreground-tertiary">
+          <Text variant="small" as="span" tone="muted">
             {images.length}/5 images
           </Text>
         </div>
-        <Text variant="small" className="text-foreground-tertiary">
+        <Text variant="small" tone="muted">
           The selected image is submitted first and appears as the marketplace
           thumbnail.
         </Text>
@@ -76,8 +76,7 @@ export function ThumbnailImages({
               aria-disabled={isUploading}
               data-testid="thumbnail-add-image-empty"
               className={cn(
-                // TODO(tokens): no exact role for border-zinc-700 #505057, hover:border-zinc-700 #505057; #505057 is foreground-body, a text colour
-                "inline-flex h-[2.25rem] min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-foreground-base transition-colors hover:border-zinc-700 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus",
+                "inline-flex h-[2.25rem] min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-foreground-body bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-foreground-base transition-colors hover:border-foreground-body hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus",
                 isUploading && "pointer-events-none opacity-60",
               )}
             >
@@ -117,8 +116,7 @@ export function ThumbnailImages({
                     type="button"
                     onClick={() => handleImageSelect(src)}
                     className={cn(
-                      // TODO(tokens): no exact role for focus-visible:ring-zinc-900 #2C2C30; #2C2C30 is action-hover, the button fill
-                      "relative aspect-video h-28 w-44 overflow-hidden rounded-[10px] border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2",
+                      "relative aspect-video h-28 w-44 overflow-hidden rounded-lg border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action-hover focus-visible:ring-offset-2",
                       selectedImage === src
                         ? "border-action-hover"
                         : "border-transparent hover:border-border-strong",
@@ -131,7 +129,7 @@ export function ThumbnailImages({
                       unoptimized={isLocalStoreMediaUrl(src)}
                       alt={`Thumbnail ${index + 1}`}
                       fill
-                      style={{ objectFit: "cover" }}
+                      className="object-cover"
                     />
                   </button>
                   <button

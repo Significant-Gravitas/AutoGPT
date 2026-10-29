@@ -16,7 +16,7 @@ describe("CharCountedTextarea", () => {
     expect(screen.getByRole("textbox")).toBeDefined();
   });
 
-  it("turns rose-600 when the value exceeds the max", () => {
+  it("turns the error colour when the value exceeds the max", () => {
     render(
       <CharCountedTextarea max={3} value="too long">
         <textarea />
@@ -25,6 +25,6 @@ describe("CharCountedTextarea", () => {
 
     const badge = screen.getByTestId("char-count");
     expect(badge.textContent).toBe("8 / 3");
-    expect(badge.className).toMatch(/text-rose-600/);
+    expect(badge.className).toMatch(/text-error-hover/);
   });
 });

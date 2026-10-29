@@ -114,15 +114,14 @@ export function GoogleDrivePickerInput({
               key={file.id || idx}
               className={cn(
                 "flex items-center gap-2",
-                // TODO(tokens): no exact role for border-gray-300 #d1d5db, bg-gray-50 #f9fafb, text-gray-600 #4b5563
                 showRemoveButton
-                  ? "justify-between rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm"
-                  : "text-sm text-gray-600",
+                  ? "justify-between rounded-md border border-border-strong bg-surface-muted px-3 py-2 text-sm"
+                  : "text-sm text-foreground-secondary",
               )}
             >
               <div className="flex items-center gap-2 overflow-hidden">
                 {file.iconUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
+                  // eslint-disable-next-line @next/next/no-img-element -- remote URL from any host, which next/image would need configured
                   <img
                     src={file.iconUrl}
                     alt=""
