@@ -147,7 +147,7 @@ export function IncompatibleUpdateDialog({
               variant="primary"
               size="small"
               onClick={onConfirm}
-              className="border-warning-foreground bg-warning-foreground hover:bg-warning-foreground"
+              className="border-warning-foreground bg-warning-foreground hover:bg-warning-foreground/90"
             >
               Update Anyway
             </Button>
