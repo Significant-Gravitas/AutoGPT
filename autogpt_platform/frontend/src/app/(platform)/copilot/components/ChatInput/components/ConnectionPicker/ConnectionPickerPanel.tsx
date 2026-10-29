@@ -124,8 +124,7 @@ export function ConnectionPickerPanel({ picker, rows }: Props) {
           <SectionLabel>Model tier</SectionLabel>
           <div
             className={cn(
-              // TODO(tokens): no exact role for border-neutral-200
-              "overflow-hidden rounded-xl border border-neutral-200 bg-surface",
+              "overflow-hidden rounded-xl border border-border-base bg-surface",
               showMaxUpgrade && "border-0",
             )}
           >

@@ -9,9 +9,8 @@ import { IconSvgElement } from "@hugeicons/react";
 import { LinkProps } from "next/link";
 
 // Extended button variants based on our design system.
-// TODO(tokens): no role or scale value is identical for the outline border
-// #a6a6a6, min-w-[7.7rem], min-w-[5.5rem], h-[2.875rem] or rounded-[96px]
-// (rounded-full is 9999px), so they stay raw.
+// TODO(tokens): no spacing step is min-w-[7.7rem], min-w-[5.5rem] or
+// h-[2.875rem], so they stay raw.
 export const extendedButtonVariants = cva(
   "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus disabled:pointer-events-none disabled:opacity-50 font-sans leading-snug border min-w-[7.7rem]",
   {
@@ -24,10 +23,10 @@ export const extendedButtonVariants = cva(
         destructive:
           "bg-error border-error text-action-foreground hover:bg-error-hover hover:border-error-hover rounded-full disabled:text-action-foreground disabled:bg-surface-active disabled:border-border-base disabled:opacity-1",
         outline:
-          "bg-transparent border-[#a6a6a6] text-foreground-base hover:bg-surface-hover hover:border-[#a6a6a6] rounded-full disabled:border-border-base disabled:text-surface-active disabled:opacity-1",
+          "bg-transparent border-border-strong text-foreground-base hover:bg-surface-hover hover:border-border-strong rounded-full disabled:border-border-base disabled:text-surface-active disabled:opacity-1",
         ghost:
           "bg-transparent border-transparent text-foreground-base hover:bg-surface-muted hover:border-surface-muted rounded-full disabled:text-surface-active disabled:opacity-1",
-        icon: "bg-surface text-foreground-emphasis border border-border-base shadow-sm hover:bg-surface-muted hover:border-border-strong rounded-[96px] disabled:shadow-none disabled:opacity-1 !min-w-0",
+        icon: "bg-surface text-foreground-emphasis border border-border-base shadow-sm hover:bg-surface-muted hover:border-border-strong rounded-full disabled:shadow-none disabled:opacity-1 !min-w-0",
         toggle:
           "bg-transparent border-transparent text-foreground-tertiary hover:bg-transparent hover:border-transparent hover:text-foreground-emphasis aria-pressed:bg-surface-hover aria-pressed:text-foreground-strong rounded-md disabled:opacity-50",
         floating:
@@ -52,7 +51,7 @@ export const extendedButtonVariants = cva(
       {
         variant: "outline",
         size: ["xs", "icon-xs", "icon-sm"],
-        class: "border-[#a6a6a6] hover:border-[#a6a6a6]",
+        class: "border-border-strong hover:border-border-strong",
       },
       {
         variant: "icon",

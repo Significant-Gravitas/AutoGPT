@@ -20,13 +20,12 @@ export type As =
   | "button";
 
 // Typography comes from the size roles in tailwind.config.ts; each bundles
-// its line-height. TODO(tokens): SECRT-3152, the rem-based heading tracking
-// and the `label` size/tracking have no role yet and stay raw.
+// its line-height.
 export const variants = {
   // Headings
-  h1: "font-poppins text-display font-semibold tracking-[-0.033rem] text-foreground-base",
-  h2: "font-poppins text-title font-medium text-foreground-base tracking-[-0.02rem]",
-  h3: "font-poppins text-heading font-medium text-foreground-base tracking-[-0.01313rem]",
+  h1: "font-poppins text-display font-semibold tracking-title text-foreground-base",
+  h2: "font-poppins text-title font-medium text-foreground-base tracking-title",
+  h3: "font-poppins text-heading font-medium text-foreground-base tracking-title",
   // TODO(tokens): no tracking token is -0.025em (tracking-tight); h3 with it.
   "h3-tracking-tight":
     "font-poppins text-heading font-medium text-foreground-base tracking-tight",
@@ -156,7 +155,7 @@ export const variants = {
 
   // Label Text
   label:
-    "font-sans text-[0.6785rem] font-medium uppercase leading-5 tracking-[0.06785rem] text-foreground-base",
+    "font-sans text-caption-sm font-medium uppercase leading-5 tracking-eyebrow text-foreground-base",
   eyebrow:
     "font-sans text-caption font-medium uppercase leading-4 tracking-eyebrow text-foreground-tertiary",
   // TODO(tokens): no mono role at caption-sm (0.6875rem/1rem, text-[11px]).
@@ -186,9 +185,9 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-mono-bold-tight":
     "font-mono text-caption font-bold leading-4 text-foreground-base",
-  // h3 at semibold; the tracking is h3's (TODO(tokens): SECRT-3152 above).
+  // h3 at semibold.
   "h3-semibold":
-    "font-poppins text-heading font-semibold text-foreground-base tracking-[-0.01313rem]",
+    "font-poppins text-heading font-semibold text-foreground-base tracking-title",
   // The sans sibling of caption-sm-mono: caption-sm (0.6875rem/1rem) as it is.
   "caption-sm": "font-sans text-caption-sm font-normal text-foreground-base",
 } as const;
@@ -213,12 +212,11 @@ export const tones = {
   disabled: "text-foreground-disabled", // #C5C5C9
   // The parent's colour, for copy inside a control that changes it on hover.
   inherit: "text-inherit",
-  // TODO(tokens): no role for text-emerald-300 #6EE7B7 (on a dark fill).
+  // TODO(tokens): no light-green role for text on a dark fill; `success`
+  // (#149443) would lose its contrast there, so emerald-300 #6EE7B7 stays.
   "success-light": "text-emerald-300",
-  // TODO(tokens): no role for text-emerald-700 #047857.
-  "success-strong": "text-emerald-700",
-  // TODO(tokens): no role for text-amber-800 #92400E.
-  "warning-strong": "text-amber-800",
+  "success-strong": "text-success-foreground", // #107435
+  "warning-strong": "text-warning-foreground", // #B45309
 } as const;
 
 export type Tone = keyof typeof tones;

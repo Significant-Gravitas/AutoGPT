@@ -116,8 +116,8 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
               we render our own backdrop with click-to-close. */}
           <div
             onClick={clearArtifactPreview}
-            // TODO(tokens): no fitting role for bg-black/20 #141414; #141414 is foreground-base (a text colour)
-            className="fixed inset-0 z-[60] bg-black/20 backdrop-blur-[2px]"
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- a light 2px backdrop blur; backdrop-blur-sm is 4px
+            className="fixed inset-0 z-[60] bg-foreground-base/20 backdrop-blur-[2px]"
             aria-hidden="true"
           />
           <Drawer.Content
@@ -204,8 +204,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
           animate={{ width: renderedWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
-          style={{ userSelect: "text" }}
-          className="relative h-full shrink-0 bg-sidebar"
+          className="relative h-full shrink-0 select-text bg-sidebar"
         >
           {/* Sibling of the clip, not a child of it: the handle straddles the
               border, so clipping it here would halve the drag target. */}

@@ -1,9 +1,9 @@
 import type { Config } from "tailwindcss";
 import plugin from "tailwindcss/plugin";
 import tailwindcssAnimate from "tailwindcss-animate";
-import { colors } from "./src/components/styles/colors";
-import scrollbar from "./tailwind.scrollbar";
-import tailwind3Preset from "./tailwind.v3-preset";
+import { colors } from "./src/components/styles/colors.ts";
+import scrollbar from "./tailwind.scrollbar.ts";
+import tailwind3Preset from "./tailwind.v3-preset.ts";
 
 const SMOOTH_SHADOW_SM =
   "0 18px 47px 0 color-mix(in srgb, var(--smooth-shadow-color) 3%, transparent), 0 7.5px 19px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 4px 10.5px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 2.3px 5.8px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 1.2px 3.1px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 0.5px 1.3px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent)";
@@ -19,7 +19,7 @@ const smoothShadowRing = plugin(function smoothShadowRing({
       "--smooth-ring-color": "rgba(0, 0, 0, 0.05)",
       "--smooth-ring-width": "1px",
     },
-    '.dark, .dark-mode, [data-theme="dark"]': {
+    ".dark": {
       "--smooth-ring-color": "rgba(255, 255, 255, 0.18)",
     },
   });
@@ -129,10 +129,9 @@ const roleColors = Object.fromEntries(
 // bundled line-height never changes what renders.
 //
 // TODO(tokens): SECRT-3152. Left raw on purpose, still lint warnings: the
-// rare sizes 5, 6, 9, 17, 23, 26, 35, 36, 48 and 64px, fractional rems
-// (0.7, 0.8, 0.85em, 1.3rem, 12.5px), the Text `label` size 0.6785rem
-// (10.856px) and its tracking, and the rem-based Text heading tracking
-// (-0.033rem, -0.02rem, -0.01313rem, 0.06785rem).
+// rare sizes 5, 6, 9, 17, 23, 26, 35, 36, 48 and 64px and fractional rems
+// (0.7, 0.8, 0.85em, 1.3rem, 12.5px). scripts/codemod-tokens.ts snaps them
+// to the nearest role (SNAP_SIZE_TOKENS) when a directory is migrated.
 const fontSize = {
   tiny: ["0.625rem", { lineHeight: "0.875rem" }],
   "caption-sm": ["0.6875rem", { lineHeight: "1rem" }],
@@ -155,6 +154,7 @@ const lineHeight = {
   "4.5": "1.125rem",
   "5.5": "1.375rem",
   "6.5": "1.625rem",
+  "12": "3rem",
 };
 
 const letterSpacing = {
@@ -195,7 +195,9 @@ const TAILWIND_3_DEAD_CLASSES = [
 const config = {
   presets: [tailwind3Preset],
   blocklist: TAILWIND_3_DEAD_CLASSES,
-  darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
+  // `dark:` applies under a `.dark` ancestor, the one dark selector. The app
+  // forces the light theme, so no `dark:` class renders today.
+  darkMode: "class",
   content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
   prefix: "",
   theme: {

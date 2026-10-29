@@ -1035,7 +1035,7 @@ class TestSkillsRegistryACL:
         # Only the bytes the slice can reach: four per character at most.
         (100, 50, 4 * 150),
         # "From here to the end" stops at the per-read cap.
-        (10, None, 4 * (10 + 1_000_000)),
+        (10, None, 4 * (10 + 30_000)),
     ],
 )
 async def test_a_ranged_read_loads_only_the_bytes_it_can_return(
@@ -1065,7 +1065,7 @@ async def test_a_ranged_read_loads_only_the_bytes_it_can_return(
     assert isinstance(resp, WorkspaceFileContentResponse), resp.message
     manager.read_file_head_by_id.assert_awaited_once_with("f-1", reads)
     sliced = base64.b64decode(resp.content_base64).decode()
-    assert len(sliced) == (length if length is not None else 1_000_000)
+    assert len(sliced) == (length if length is not None else 30_000)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1252,3 +1252,56 @@ class TestReadingASpilledGoogleOutput:
         assert not (
             await self._read({"purpose": "tool-output"}, **read)
         ).holds_google_data
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("character", ["x", "é"])
+@pytest.mark.parametrize("source", ["workspace", "local"])
+async def test_workspace_windows_stay_readable_without_another_saved_preview(
+    character, source, tmp_path
+):
+    content = character * 35_000
+    raw = content.encode()
+    manager = AsyncMock()
+    manager.get_file_info.return_value = _text_file(len(raw))
+    manager.read_file_head_by_id.side_effect = lambda _file_id, max_bytes: raw[
+        :max_bytes
+    ]
+    local = tmp_path / "result.txt"
+    local.write_bytes(raw)
+    manager.get_file_info_by_path.return_value = None
+    reference = {"file_id": "f-1"} if source == "workspace" else {"path": str(local)}
+    session = make_session("user-1")
+    chunks = []
+    offset = 0
+    with (
+        patch(
+            "backend.copilot.tools.workspace_files.get_sdk_cwd",
+            return_value=str(tmp_path),
+        ),
+        patch(
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
+            AsyncMock(return_value=manager),
+        ),
+        patch(
+            "backend.copilot.tools.base._persist_and_summarize", AsyncMock()
+        ) as persist,
+        patch("backend.copilot.gate.reads.screen_mode", AsyncMock(return_value="off")),
+    ):
+        while offset < len(content):
+            result = await ReadWorkspaceFileTool().execute(
+                "user-1",
+                session,
+                "tc-window",
+                offset=offset,
+                length=50_000,
+                **reference,
+            )
+            persist.assert_not_awaited()
+            payload = json.loads(result.output)
+            chunk = base64.b64decode(payload["content_base64"]).decode()
+            assert chunk
+            assert len(result.output) < 45_000
+            chunks.append(chunk)
+            offset += len(chunk)
+    assert "".join(chunks) == content
