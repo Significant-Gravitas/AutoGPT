@@ -840,7 +840,7 @@ Common scripts (see `package.json` for full list):
 - `pnpm format` — Format code
 - `pnpm types` — Type-check
 - `pnpm knip` — Report unused files, exports and dependencies (run `pnpm generate:api` first)
-- `pnpm lint:ds-baseline` — Rewrite `scripts/eslint-rules/design-system-baseline.json`, the per-file counts of existing design-system violations that `pnpm lint` grandfathers (run it after removing violations or moving a file)
+- `pnpm lint:ds-baseline` — Rewrite `scripts/eslint-rules/design-system-baseline.json`, the per-file counts of existing design-system violations that `pnpm lint` grandfathers (run it after removing violations, or moving, renaming or splitting a file)
 - `pnpm test:unit` — Run integration/unit tests (Vitest + RTL + MSW)
 - `pnpm test:unit:watch` — Watch mode for integration tests
 - `pnpm test` — Run Playwright E2E tests

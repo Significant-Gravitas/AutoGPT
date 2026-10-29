@@ -10,12 +10,18 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { RuleTester } from "oxlint/plugins-dev";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import plugin, {
-  colorAdvice,
-  DESIGN_SYSTEM_BASELINE_FILE,
-} from "./design-system.mjs";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import plugin, { colorAdvice } from "./design-system.mjs";
 import { countDiagnostics } from "./update-design-system-baseline.mjs";
+
+// The rules read their baseline when first used, so point them at a fixture
+// before the plugin is imported: the real baseline shrinks to nothing as the
+// migration lands.
+const FIXTURE_BASELINE = vi.hoisted(() => {
+  const file = `${__dirname}/__fixtures__/design-system-baseline.json`;
+  process.env.DESIGN_SYSTEM_BASELINE_FILE = file;
+  return file;
+});
 
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -164,7 +170,12 @@ tester.run("no-legacy-import", rule("no-legacy-import"), {
 });
 
 tester.run("no-legacy-button-variant", rule("no-legacy-button-variant"), {
-  valid: [`<Button variant="secondary" />`, `const id = "legacy-session";`],
+  valid: [
+    `<Button variant="secondary" />`,
+    `const id = "legacy-session";`,
+    // Object.prototype names are not variants.
+    `if (key === "__proto__" || key === "constructor" || key === "toString") {}`,
+  ],
   invalid: [
     {
       code: `<Button variant="legacy-outline" size="legacy-sm" />`,
@@ -217,13 +228,11 @@ tester.run("require-suppression-reason", rule("require-suppression-reason"), {
 
 // A file that design-system-baseline.json already lists keeps its count.
 const [grandfatheredFile, grandfatheredCount] = Object.entries(
-  JSON.parse(readFileSync(DESIGN_SYSTEM_BASELINE_FILE, "utf8")) as Record<
+  JSON.parse(readFileSync(FIXTURE_BASELINE, "utf8")) as Record<
     string,
     Record<string, number>
   >,
-)
-  .map(([file, counts]) => [file, counts["no-dark-variant"] ?? 0] as const)
-  .find(([, count]) => count > 0)!;
+).map(([file, counts]) => [file, counts["no-dark-variant"]] as const)[0];
 
 function darkClasses(count: number) {
   const classes = Array.from(
@@ -356,6 +365,42 @@ describe("the ratchet, end to end", () => {
     expect(output).toMatch(/design-system\(no-dark-variant\)/);
     expect(output).not.toMatch(/design-system\(no-raw-colors\)/);
     expect(status).toBe(1);
+  });
+
+  it("does not count suppressed violations against the baseline", () => {
+    write(
+      "src/Suppressed.tsx",
+      [
+        `export const A = () => <div className="text-zinc-500" />;`,
+        `// oxlint-disable-next-line design-system/no-raw-colors -- brand colour from the partner's spec`,
+        `export const B = () => <div className="text-rose-700" />;`,
+        `/* eslint-disable design-system/no-raw-colors -- third-party markup */`,
+        `export const C = () => <div className="text-sky-500" />;`,
+        `/* eslint-enable design-system/no-raw-colors */`,
+        `// oxlint-disable-next-line design-system/no-dark-variant -- another rule`,
+        `export const D = () => <div className="text-red-500" />;`,
+        "",
+      ].join("\n"),
+    );
+    const grandfathered = {
+      [key("src/Old.tsx")]: { "no-raw-colors": 1, "no-dark-variant": 1 },
+    };
+    const atBaseline = lint({
+      ...grandfathered,
+      [key("src/Suppressed.tsx")]: { "no-raw-colors": 2 },
+    });
+    const overBaseline = lint({
+      ...grandfathered,
+      [key("src/Suppressed.tsx")]: { "no-raw-colors": 1 },
+    });
+    rmSync(path.join(root, "src/Suppressed.tsx"));
+    expect(atBaseline.output).not.toMatch(/design-system/);
+    expect(atBaseline.status).toBe(0);
+    // Only the two unsuppressed classes are reported, and counted.
+    expect(overBaseline.output).toMatch(/"text-zinc-500".*now has 2/);
+    expect(overBaseline.output).toMatch(/"text-red-500".*now has 2/);
+    expect(overBaseline.output).not.toMatch(/text-rose-700|text-sky-500/);
+    expect(overBaseline.status).toBe(1);
   });
 
   it("passes with a warning when a file has fewer than its baseline", () => {

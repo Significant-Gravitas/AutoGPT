@@ -4058,9 +4058,6 @@
   "src/lib/share/routes.ts": {
     "no-arbitrary-values": 1
   },
-  "src/lib/utils.ts": {
-    "no-legacy-button-variant": 2
-  },
   "src/services/analytics/consent-mode.ts": {
     "require-suppression-reason": 1
   },

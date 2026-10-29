@@ -10,7 +10,7 @@
  * that went up in the diff.
  */
 import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { renameSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { DESIGN_SYSTEM_BASELINE_FILE } from "./design-system.mts";
 
@@ -59,10 +59,10 @@ function main() {
     diagnostics: Diagnostic[];
   };
   const baseline = countDiagnostics(diagnostics);
-  writeFileSync(
-    DESIGN_SYSTEM_BASELINE_FILE,
-    `${JSON.stringify(baseline, null, 2)}\n`,
-  );
+  // Written beside the target and renamed, so lint never reads half a file.
+  const partial = `${DESIGN_SYSTEM_BASELINE_FILE}.${process.pid}.tmp`;
+  writeFileSync(partial, `${JSON.stringify(baseline, null, 2)}\n`);
+  renameSync(partial, DESIGN_SYSTEM_BASELINE_FILE);
   const totals: Record<string, number> = {};
   for (const counts of Object.values(baseline))
     for (const [rule, count] of Object.entries(counts))

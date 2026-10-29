@@ -1,5 +1,7 @@
-/* Read only by @shadcn/lint (components.json `tailwind.css`), so that
-   shadcn/no-unknown-classes knows every class tailwind.config.ts generates.
-   Nothing imports this file; the app's stylesheet is globals.css. */
+/* Read only by @shadcn/lint, so that design-system/no-unknown-classes knows
+   every class tailwind.config.ts generates. components.json points the shadcn
+   CLI and the lint's theme tokens at globals.css, which has no
+   `@import "tailwindcss"`, so the lint finds this file as its Tailwind entry.
+   Nothing imports it, so it never ships. */
 @import "tailwindcss";
 @config "../../tailwind.config.ts";

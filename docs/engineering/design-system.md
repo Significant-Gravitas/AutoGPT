@@ -16,6 +16,7 @@ The rules were turned on with about 9,000 existing violations, so each rule is a
 - A file at or under its count passes. A file over its count fails, and the error lists every violation of that rule in the file, since lint can't tell which one is new.
 - A file the baseline doesn't list must have none. That covers every new file.
 - A file with fewer violations than its count gets a warning (`design-system/baseline-outdated`), which doesn't fail lint.
+- A violation suppressed with an `oxlint-disable` or `eslint-disable` comment doesn't count, the same as when the baseline is written.
 
 To update the baseline, run this from `autogpt_platform/frontend`:
 
@@ -75,7 +76,7 @@ Each primitive marks its root element with `data-slot`. The contract test lists 
 
 Every class must be one this project's Tailwind generates: a typo such as `text-md` or `flex-end` silently renders nothing. Rule: `design-system/no-unknown-classes`.
 
-It reads the grammar from `src/app/tailwind-grammar.css`, which `components.json` (`tailwind.css`) points at. That file imports Tailwind and `tailwind.config.ts`, and nothing else imports it, so it never ships. A few class names that aren't Tailwind are allowed in `.oxlintrc.json`: the PostHog and xyflow markers (`ph-no-capture`, `nodrag`, `nowheel`, `nopan`) and the classes `globals.css` defines (`agpt-*`, `markdown-output`).
+`components.json` keeps `tailwind.css` at `src/app/globals.css`, the stylesheet the app loads. That is where the shadcn CLI writes, and where `@shadcn/lint` reads the colour tokens from. `globals.css` has no `@import "tailwindcss"` (Tailwind 3 compat), so for the grammar `@shadcn/lint` falls back to the one stylesheet that does: `src/app/tailwind-grammar.css`, which imports Tailwind and `tailwind.config.ts`. Nothing imports that file, so it never ships. `design-system.mts` drops the notice `@shadcn/lint` prints about this fallback. A few class names that aren't Tailwind are allowed in `.oxlintrc.json`: the PostHog and xyflow markers (`ph-no-capture`, `nodrag`, `nowheel`, `nopan`) and the classes `globals.css` defines (`agpt-*`, `markdown-output`).
 
 ## Styles
 

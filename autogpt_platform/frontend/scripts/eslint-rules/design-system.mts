@@ -24,6 +24,20 @@ import {
 // they share the baseline and so their raw-colour and arbitrary-value
 // messages can name the design token with the same value.
 
+// components.json keeps tailwind.css at globals.css, the stylesheet the app
+// loads and the shadcn CLI writes to. It has no `@import "tailwindcss"`
+// (Tailwind 3 compat), so @shadcn/lint reads the classes Tailwind knows from
+// tailwind-grammar.css instead and says so on every run; that is the setup,
+// not a fault, so the one notice is dropped.
+const EXPECTED_NOTICE =
+  "[@shadcn/lint] components.json sets tailwind.css to src/app/globals.css, which does not import Tailwind. Using src/app/tailwind-grammar.css";
+const warn = console.warn;
+console.warn = (...args: unknown[]) => {
+  if (typeof args[0] === "string" && args[0].startsWith(EXPECTED_NOTICE))
+    return;
+  warn(...args);
+};
+
 type Node = Rule.Node;
 type Report = Rule.ReportDescriptor & {
   message?: string;
@@ -72,6 +86,76 @@ function renderMessage(report: Report, messages: Record<string, string>) {
 
 type Rewrite = (message: string, report: Report) => string;
 
+// eslint-/oxlint-disable comments, so that a suppressed report never counts
+// against the baseline: the baseline is written from oxlint's output, which
+// already leaves suppressed reports out.
+interface Suppressions {
+  lines: Map<number, string[] | null>;
+  ranges: { from: number; to: number; rules: string[] | null }[];
+}
+
+const DIRECTIVE_PARTS =
+  /^\s*(?:eslint|oxlint)-(disable-next-line|disable-line|disable|enable)(?:\s+(.*))?$/s;
+
+function parseSuppressions(sourceCode: Rule.RuleContext["sourceCode"]) {
+  const found: Suppressions = { lines: new Map(), ranges: [] };
+  const open: { from: number; rules: string[] | null }[] = [];
+  for (const comment of sourceCode.getAllComments()) {
+    const directive = comment.value.split(/\s--\s/)[0];
+    const match = DIRECTIVE_PARTS.exec(directive);
+    if (!match || !comment.loc) continue;
+    const [, kind, list = ""] = match;
+    const names = list
+      .split(",")
+      .map((rule) => rule.trim())
+      .filter(Boolean);
+    const rules = names.length > 0 ? names : null;
+    const { start, end } = comment.loc;
+    if (kind === "disable-next-line") found.lines.set(end.line + 1, rules);
+    else if (kind === "disable-line")
+      for (let line = start.line; line <= end.line; line++)
+        found.lines.set(line, rules);
+    else if (kind === "disable") open.push({ from: end.line, rules });
+    else
+      for (let i = open.length - 1; i >= 0; i--) {
+        const range = open[i];
+        if (rules && range.rules && !range.rules.some((r) => rules.includes(r)))
+          continue;
+        found.ranges.push({ ...range, to: start.line });
+        open.splice(i, 1);
+      }
+  }
+  for (const range of open) found.ranges.push({ ...range, to: Infinity });
+  return found;
+}
+
+const suppressionsBySource = new WeakMap<object, Suppressions>();
+
+function reportLine(report: Report) {
+  const { loc, node } = report as {
+    loc?: { line?: number; start?: { line: number } };
+    node?: Node;
+  };
+  return loc?.start?.line ?? loc?.line ?? node?.loc?.start.line ?? 0;
+}
+
+function isSuppressed(context: Rule.RuleContext, rule: string, report: Report) {
+  const sourceCode = context.sourceCode;
+  let suppressions = suppressionsBySource.get(sourceCode);
+  if (!suppressions) {
+    suppressions = parseSuppressions(sourceCode);
+    suppressionsBySource.set(sourceCode, suppressions);
+  }
+  const id = `${PLUGIN_NAME}/${rule}`;
+  const covers = (rules: string[] | null) => !rules || rules.includes(id);
+  const line = reportLine(report);
+  if (suppressions.lines.has(line) && covers(suppressions.lines.get(line)!))
+    return true;
+  return suppressions.ranges.some(
+    (range) => line > range.from && line < range.to && covers(range.rules),
+  );
+}
+
 /**
  * Collects a rule's reports for one file and lets them through only when the
  * file has more than design-system-baseline.json allows.
@@ -109,14 +193,18 @@ function ratchet(
         "Program:exit"(program: Node) {
           innerExit?.(program);
           const file = relativeToFrontend(context.filename);
+          const live = reports.filter(
+            (report) => !isSuppressed(context, name, report),
+          ).length;
           const counts = countsByFile.get(file) ?? new Map<string, number>();
-          counts.set(name, reports.length);
+          counts.set(name, live);
           countsByFile.set(file, counts);
           const allowed = allowedCount(file, name);
-          if (reports.length <= allowed) return;
+          if (live <= allowed) return;
+          // oxlint drops the suppressed ones from what is reported.
           const over =
             allowed > 0
-              ? ` This file is allowed ${allowed} existing ${PLUGIN_NAME}/${name} violation(s) (scripts/eslint-rules/design-system-baseline.json) and now has ${reports.length}.`
+              ? ` This file is allowed ${allowed} existing ${PLUGIN_NAME}/${name} violation(s) (scripts/eslint-rules/design-system-baseline.json) and now has ${live}.`
               : "";
           for (const report of reports) {
             let message = renderMessage(report, messages);
@@ -312,15 +400,15 @@ const noDarkVariant: Rule.RuleModule = {
   },
 };
 
-const LEGACY_BUTTON_VARIANTS: Record<string, string> = {
-  "legacy-default": 'variant="primary"',
-  "legacy-destructive": 'variant="destructive"',
-  "legacy-outline": 'variant="outline"',
-  "legacy-ghost": 'variant="ghost"',
-  "legacy-link": 'variant="link"',
-  "legacy-sm": 'size="small"',
-  "legacy-icon": 'size="icon"',
-};
+const LEGACY_BUTTON_VARIANTS = new Map([
+  ["legacy-default", 'variant="primary"'],
+  ["legacy-destructive", 'variant="destructive"'],
+  ["legacy-outline", 'variant="outline"'],
+  ["legacy-ghost", 'variant="ghost"'],
+  ["legacy-link", 'variant="link"'],
+  ["legacy-sm", 'size="small"'],
+  ["legacy-icon", 'size="icon"'],
+]);
 
 const noLegacyButtonVariant: Rule.RuleModule = {
   meta: {
@@ -332,7 +420,7 @@ const noLegacyButtonVariant: Rule.RuleModule = {
     return {
       Literal(node: Node) {
         if (node.type !== "Literal" || typeof node.value !== "string") return;
-        const replacement = LEGACY_BUTTON_VARIANTS[node.value];
+        const replacement = LEGACY_BUTTON_VARIANTS.get(node.value);
         if (!replacement) return;
         context.report({
           node,
