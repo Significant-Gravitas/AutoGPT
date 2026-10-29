@@ -736,13 +736,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Profile Enrichment](block-integrations/dataforb2b/enrich.md#profile-enrichment) | Look up and enrich a professional profile from a LinkedIn URL using DataForB2B's B2B database — returns the full profile (current role, experience and skills) plus work email, personal email and GitHub |
 | [Save Campaign Sequences](block-integrations/smartlead/campaign.md#save-campaign-sequences) | Save sequences within a campaign |
 | [Treg Enrich Company](block-integrations/treg/companies.md#treg-enrich-company) | Look up a company (what it does, size, industry, founding year, headquarters and LinkedIn) from its domain, name, LinkedIn page or an employee's email, through Treg |
-| [Treg Enrich Person](block-integrations/treg/people.md#treg-enrich-person) | Look up who someone is (name, job title, company, LinkedIn and location) from an email, a LinkedIn URL, or a name and company domain, through Treg |
+| [Treg Enrich Person](block-integrations/treg/people.md#treg-enrich-person) | Look up a person (name, job title, company, LinkedIn and location) from an email, a LinkedIn URL, or a name and company domain, through Treg |
 | [Treg Find Company Jobs](block-integrations/treg/companies.md#treg-find-company-jobs) | List a company's open job listings, a strong signal of what it is investing in, through Treg |
 | [Treg Find LinkedIn From Email](block-integrations/treg/people.md#treg-find-linkedin-from-email) | Find the LinkedIn profile behind a work email, through Treg |
-| [Treg Find Personal Email](block-integrations/treg/emails.md#treg-find-personal-email) | Find someone's personal email (Gmail, Outlook and so on) from their LinkedIn URL or work email, through Treg |
-| [Treg Find Phone Number](block-integrations/treg/phone.md#treg-find-phone-number) | Find someone's phone number from their LinkedIn URL, email, or name and company domain |
+| [Treg Find Personal Email](block-integrations/treg/emails.md#treg-find-personal-email) | Find a person's personal email (Gmail, Outlook and so on) from their LinkedIn URL or work email, through Treg |
+| [Treg Find Phone Number](block-integrations/treg/phone.md#treg-find-phone-number) | Find a person's phone number from their LinkedIn URL, email, or name and company domain |
 | [Treg Find Similar Companies](block-integrations/treg/companies.md#treg-find-similar-companies) | Find companies similar to one you name, through Treg |
-| [Treg Find Work Email](block-integrations/treg/emails.md#treg-find-work-email) | Find someone's work email from their name and company domain, or their LinkedIn URL |
+| [Treg Find Work Email](block-integrations/treg/emails.md#treg-find-work-email) | Find a person's work email from their name and company domain, or their LinkedIn URL |
 | [Treg Search Companies](block-integrations/treg/companies.md#treg-search-companies) | Find companies by description, name, industry or the technology they use |
 | [Treg Search People](block-integrations/treg/people.md#treg-search-people) | Find people by description, company, job title or name |
 | [Treg Verify Email](block-integrations/treg/emails.md#treg-verify-email) | Check whether an email address accepts mail before you send to it, through Treg's cheapest available verifier |

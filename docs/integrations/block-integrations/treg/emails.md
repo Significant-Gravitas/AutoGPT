@@ -6,7 +6,7 @@ Find and check email addresses through [Treg](https://treg.to), which routes eac
 ## Treg Find Personal Email
 
 ### What it is
-Find someone's personal email (Gmail, Outlook and so on) from their LinkedIn URL or work email, through Treg.
+Find a person's personal email (Gmail, Outlook and so on) from their LinkedIn URL or work email, through Treg.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -51,7 +51,7 @@ The block sends one request to `POST https://treg.to/call/treg.people.email.find
 ## Treg Find Work Email
 
 ### What it is
-Find someone's work email from their name and company domain, or their LinkedIn URL. Treg tries 29 providers cheapest first and can check the address before you send to it.
+Find a person's work email from their name and company domain, or their LinkedIn URL. Treg tries 29 providers cheapest first and can check the address before you send to it.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

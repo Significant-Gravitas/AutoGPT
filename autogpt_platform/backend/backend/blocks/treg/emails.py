@@ -93,7 +93,7 @@ class TregFindWorkEmailBlock(TregBlockBase):
         super().__init__(
             id="b7e2d0a4-3f51-4c86-9e1a-6d4b8f2c7a90",
             description=(
-                "Find someone's work email from their name and company domain, or "
+                "Find a person's work email from their name and company domain, or "
                 "their LinkedIn URL. Treg tries 29 providers cheapest first and can "
                 "check the address before you send to it."
             ),
@@ -178,7 +178,7 @@ class TregFindPersonalEmailBlock(TregBlockBase):
         super().__init__(
             id="4c9a1e7f-8b2d-4e63-a5f0-2d7c9b1e8a34",
             description=(
-                "Find someone's personal email (Gmail, Outlook and so on) from their "
+                "Find a person's personal email (Gmail, Outlook and so on) from their "
                 "LinkedIn URL or work email, through Treg."
             ),
             categories={BlockCategory.SEARCH, BlockCategory.CRM},

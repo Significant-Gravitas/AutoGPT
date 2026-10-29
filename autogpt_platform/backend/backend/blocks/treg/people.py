@@ -1,4 +1,4 @@
-"""Treg blocks that find people and look up who someone is."""
+"""Treg blocks that find people and look up a person."""
 
 from typing import Any
 
@@ -191,7 +191,7 @@ class TregEnrichPersonBlock(TregBlockBase):
         super().__init__(
             id="c3d81f5e-2a9b-4e70-b6c4-8f1e5a3d9c27",
             description=(
-                "Look up who someone is (name, job title, company, LinkedIn and "
+                "Look up a person (name, job title, company, LinkedIn and "
                 "location) from an email, a LinkedIn URL, or a name and company "
                 "domain, through Treg."
             ),

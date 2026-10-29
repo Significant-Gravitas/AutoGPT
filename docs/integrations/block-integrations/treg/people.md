@@ -6,7 +6,7 @@ Find people and look up who someone is through [Treg](https://treg.to), which ro
 ## Treg Enrich Person
 
 ### What it is
-Look up who someone is (name, job title, company, LinkedIn and location) from an email, a LinkedIn URL, or a name and company domain, through Treg.
+Look up a person (name, job title, company, LinkedIn and location) from an email, a LinkedIn URL, or a name and company domain, through Treg.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

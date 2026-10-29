@@ -6,7 +6,7 @@ Find phone numbers through [Treg](https://treg.to), which routes each lookup acr
 ## Treg Find Phone Number
 
 ### What it is
-Find someone's phone number from their LinkedIn URL, email, or name and company domain. Treg tries 16 providers cheapest first.
+Find a person's phone number from their LinkedIn URL, email, or name and company domain. Treg tries 16 providers cheapest first.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
