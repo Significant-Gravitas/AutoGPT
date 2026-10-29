@@ -42,6 +42,16 @@ describe("codemod-tokens snap tables", () => {
     );
   });
 
+  it("leaves light green text, which sits on dark fills, to the flagged rows", () => {
+    expect(rewrite("text-green-300 bg-green-300").output).toBe(
+      "text-green-300 bg-success",
+    );
+  });
+
+  it("does not snap a size relative to the parent", () => {
+    expect(rewrite("text-[0.85em]").output).toBe("text-[0.85em]");
+  });
+
   it("leaves a use the row has no role for", () => {
     expect(rewrite("bg-gray-500 text-gray-200").output).toBe(
       "bg-gray-500 text-gray-200",

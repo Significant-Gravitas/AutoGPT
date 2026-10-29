@@ -142,7 +142,7 @@ textarea,
 /* *** AutoGPT Design Components *** */
 
 .agpt-border-input {
-  @apply m-0.5 border border-input focus:border-border-strong focus:outline-none focus:ring-1 focus:ring-border-strong data-[state=open]:border-border-strong data-[state=open]:ring-1 data-[state=open]:ring-border-strong;
+  @apply m-0.5 border border-input focus:border-foreground-subtle focus:outline-none focus:ring-1 focus:ring-foreground-subtle data-[state=open]:border-foreground-subtle data-[state=open]:ring-1 data-[state=open]:ring-foreground-subtle;
 }
 
 .agpt-shadow-input {

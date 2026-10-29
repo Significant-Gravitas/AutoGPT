@@ -391,8 +391,10 @@ const HUE_SNAPS: ColorSnap[] = [
   { step: "yellow-100", fill: "warning-surface" },
   { step: "yellow-150", fill: "warning-surface" },
   { step: "yellow-200", fill: "warning-border", line: "warning-border" },
-  everywhere("green-300", "success"),
-  everywhere("green-400", "success"),
+  // As text, 300 and 400 are light greens on dark or green fills; see the
+  // flagged rows.
+  { step: "green-300", fill: "success", line: "success" },
+  { step: "green-400", fill: "success", line: "success" },
   everywhere("green-500", "success"),
   everywhere("green-600", "success"),
   { step: "green-50", fill: "success-surface" },
@@ -433,6 +435,8 @@ const HUE_SNAPS: ColorSnap[] = [
  */
 const FLAGGED_SNAPS: ColorSnap[] = [
   { step: "red-900", text: "error-foreground" },
+  { step: "green-300", text: "success" },
+  { step: "green-400", text: "success" },
   { step: "yellow-700", text: "warning-foreground" },
   everywhere("orange-500", "warning"),
   { step: "orange-600", text: "warning-foreground" },
@@ -506,7 +510,7 @@ export const SNAP_SIZE_TOKENS: TokenMapping[] = [
   { token: "text-caption-sm", replaces: ["text-[0.7rem]", "text-[0.6785rem]"] },
   {
     token: "text-body-sm",
-    replaces: ["text-[0.8rem]", "text-[12.5px]", "text-[0.85em]"],
+    replaces: ["text-[0.8rem]", "text-[12.5px]"],
   },
   { token: "text-body-lg", replaces: ["text-[17px]", "text-[1.125rem]"] },
   { token: "text-lead", replaces: ["text-[1.3rem]"] },
