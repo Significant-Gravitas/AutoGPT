@@ -7,19 +7,18 @@ type Props = {
 };
 
 export function TransactionAmount({ amount, variant = "body-medium" }: Props) {
+  const isCredit = amount > 0;
   return (
-    <Text
-      variant={variant}
-      as="span"
-      /* oxlint-disable design-system/no-restyle -- amounts use tabular figures and credits read green; no Text tone for success-foreground yet */
+    <span
       className={
-        amount > 0
+        isCredit
           ? "whitespace-nowrap tabular-nums text-success-foreground"
           : "whitespace-nowrap tabular-nums"
       }
-      /* oxlint-enable design-system/no-restyle */
     >
-      {formatAmount(amount)}
-    </Text>
+      <Text variant={variant} as="span" tone={isCredit ? "inherit" : undefined}>
+        {formatAmount(amount)}
+      </Text>
+    </span>
   );
 }

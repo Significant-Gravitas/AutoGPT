@@ -62,12 +62,9 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           <span className="min-w-0 truncate">
             {selectedExpert?.name ?? "Otto"}
           </span>
-          <Icon
-            icon={ArrowDown01Icon}
-            size={16}
-            // oxlint-disable-next-line design-system/no-restyle -- the chevron is quieter than the scope name beside it
-            className="ml-auto shrink-0 text-foreground-tertiary"
-          />
+          <span className="ml-auto flex shrink-0 text-foreground-tertiary">
+            <Icon icon={ArrowDown01Icon} size={16} />
+          </span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

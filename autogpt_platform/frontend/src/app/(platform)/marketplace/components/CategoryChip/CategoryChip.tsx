@@ -10,15 +10,12 @@ import {
   type ExpertAccent,
 } from "../ExpertsSection/helpers";
 
-/* oxlint-disable design-system/no-restyle -- the marketplace's glossy category chip; the ToggleChip atom would change its shape and fill (deferred) */
-/* oxlint-disable design-system/require-static-classes -- the chip's classes follow its category accent and selection */
-/* oxlint-disable design-system/no-inline-styles -- the tint is mixed at runtime from the category's own colour */
-/* oxlint-disable design-system/no-arbitrary-values -- the gloss highlight and drop shadow have no shadow token */
-
 export type ChipSize = "small" | "medium" | "default";
 
 /** The marketplace's chip: a filter wears it on a button, a label on a span,
  *  and the two read as the same object because they are the same classes. */
+/* oxlint-disable design-system/no-restyle -- the glossy category chip restyles its Button; ToggleChip would change its shape and fill (deferred) */
+/* oxlint-disable design-system/no-arbitrary-values -- the gloss highlight and drop shadow have no shadow token */
 export const CHIP_SHAPE =
   "inline-flex items-center rounded-full border border-separator bg-transparent font-medium text-foreground-base";
 export const CHIP_SIZE: Record<ChipSize, string> = {
@@ -48,6 +45,8 @@ const NEUTRAL_GLOSS_IDLE =
   "border-border-base from-surface to-surface-muted text-foreground-body hover:border-border-strong hover:from-surface hover:to-surface-hover";
 const NEUTRAL_GLOSS_SELECTED =
   "border-border-strong from-surface-hover to-surface-active/80 text-foreground-strong";
+/* oxlint-enable design-system/no-arbitrary-values */
+/* oxlint-enable design-system/no-restyle */
 
 /** A category chip in its own colour, with a soft top highlight so it reads
  *  as a glossy pill: darker text for contrast, a light tint and a tinted
@@ -96,6 +95,9 @@ export function CategoryChip({
     // Outline, so a row of filters never reads as a row of actions. The
     // selected one takes the accent's glossy chip, whose gradient sits over
     // the variant's hover wash rather than being replaced by it.
+    /* oxlint-disable design-system/no-restyle -- the glossy category chip restyles its Button; ToggleChip would change its shape and fill (deferred) */
+    /* oxlint-disable design-system/require-static-classes -- the chip's classes follow its category accent and selection */
+    /* oxlint-disable design-system/no-inline-styles -- the tint is mixed at runtime from the category's own colour */
     <Button
       variant="outline"
       size={size === "default" ? "small" : "xs"}
@@ -137,5 +139,8 @@ export function CategoryChip({
     >
       {label}
     </Button>
+    /* oxlint-enable design-system/no-inline-styles */
+    /* oxlint-enable design-system/require-static-classes */
+    /* oxlint-enable design-system/no-restyle */
   );
 }
