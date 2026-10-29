@@ -5,9 +5,7 @@ import {
   DETAILS_LINE_HEIGHT_CLASS,
   HEADLINE_LINE_HEIGHT_CLASS,
   LATEST_DATE_LINE_HEIGHT_CLASS,
-  RELEASE_DETAILS_GAP_CLASS,
   RELEASE_DOT_COLUMN_CLASS,
-  RELEASE_HEADLINE_GAP_CLASS,
   RELEASE_LIST_CLASS,
   RELEASE_ROW_CLASS,
 } from "./releaseRowLayout";
@@ -41,15 +39,11 @@ export function ReleaseListSkeleton() {
               <Bar className="h-4 w-32" />
             </div>
             <div
-              className={cn(
-                RELEASE_HEADLINE_GAP_CLASS,
-                HEADLINE_LINE_HEIGHT_CLASS,
-                "flex items-center",
-              )}
+              className={cn(HEADLINE_LINE_HEIGHT_CLASS, "flex items-center")}
             >
               <Bar className="h-3.5 w-1/2" />
             </div>
-            <div className={cn(RELEASE_DETAILS_GAP_CLASS, "flex flex-col")}>
+            <div className="mt-0.5 flex flex-col">
               {Array.from({ length: detailLines }, (_, line) => (
                 <div
                   key={line}
