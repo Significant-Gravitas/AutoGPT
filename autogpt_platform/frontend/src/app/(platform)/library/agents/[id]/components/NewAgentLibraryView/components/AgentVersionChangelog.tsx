@@ -66,7 +66,7 @@ export function AgentVersionChangelog({
           <div className="flex items-center gap-3">
             <Text variant="body-semibold">v{versionInfo.version}</Text>
             {versionInfo.isCurrentVersion && (
-              <span className="rounded-full bg-info-surface px-2 py-1 text-info-foreground">
+              <span className="rounded-full bg-info/20 px-2 py-1 text-info-foreground">
                 <Text variant="small-medium-tight" as="span" tone="inherit">
                   Current
                 </Text>

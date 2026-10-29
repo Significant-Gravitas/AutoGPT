@@ -208,7 +208,7 @@ export function SubscriptionTierSection() {
                   {tier.label}
                 </Text>
                 {isCurrent && (
-                  <span className="flex rounded-full bg-accent-surface px-2 py-0.5 text-accent-strong">
+                  <span className="flex rounded-full bg-brand/10 px-2 py-0.5 text-accent-strong">
                     <Text variant="small-medium-tight" as="span" tone="inherit">
                       Current
                     </Text>

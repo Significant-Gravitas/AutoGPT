@@ -45,7 +45,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
             >
               Tip
             </Text>
-            <div className="h-px w-full bg-info-surface" />
+            <div className="h-px w-full bg-info/20" />
 
             <Text variant="body">
               For best results, run this workflow{" "}
@@ -66,7 +66,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
               Instructions
             </Text>
 
-            <div className="h-px w-full bg-accent-surface" />
+            <div className="h-px w-full bg-brand/10" />
 
             <Text variant="body">{agent.instructions}</Text>
           </div>
