@@ -75,18 +75,40 @@ describe("feature-flag mismatch report", () => {
     });
     await Sentry.flush(2000);
 
-    const [first, flipped, other] = sent;
-    expect(first.fingerprint).toEqual([
-      "feature-flag-mismatch",
-      "enable-platform-payment",
-    ]);
-    expect(flipped.fingerprint).toEqual(first.fingerprint);
-    expect(other.fingerprint).toEqual([
-      "feature-flag-mismatch",
-      "copilot-models",
-    ]);
-    expect(other.message).toBe(
-      'Feature flag mismatch: copilot-models (LaunchDarkly={"default":"a"}, PostHog=null)',
+    expect(sent).toHaveLength(3);
+    expect(sent).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fingerprint: ["feature-flag-mismatch", "enable-platform-payment"],
+          message:
+            "Feature flag mismatch: enable-platform-payment (LaunchDarkly=true, PostHog=false)",
+          tags: expect.objectContaining({
+            "feature_flag.key": "enable-platform-payment",
+            "feature_flag.launchdarkly": "true",
+            "feature_flag.posthog": "false",
+          }),
+        }),
+        expect.objectContaining({
+          fingerprint: ["feature-flag-mismatch", "enable-platform-payment"],
+          message:
+            "Feature flag mismatch: enable-platform-payment (LaunchDarkly=false, PostHog=true)",
+          tags: expect.objectContaining({
+            "feature_flag.key": "enable-platform-payment",
+            "feature_flag.launchdarkly": "false",
+            "feature_flag.posthog": "true",
+          }),
+        }),
+        expect.objectContaining({
+          fingerprint: ["feature-flag-mismatch", "copilot-models"],
+          message:
+            'Feature flag mismatch: copilot-models (LaunchDarkly={"default":"a"}, PostHog=null)',
+          tags: expect.objectContaining({
+            "feature_flag.key": "copilot-models",
+            "feature_flag.launchdarkly": '{"default":"a"}',
+            "feature_flag.posthog": "null",
+          }),
+        }),
+      ]),
     );
   });
 });
