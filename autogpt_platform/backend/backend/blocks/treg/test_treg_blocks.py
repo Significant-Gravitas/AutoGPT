@@ -194,6 +194,21 @@ async def test_phone_verification_is_off_unless_asked_for():
             {"q": "gpus", "limit": 10, "country": "gb"},
         ),
         (TregSearchSource.YOUTUBE, "call/treg.youtube.search.videos", {"q": "gpus"}),
+        (
+            TregSearchSource.NEWS,
+            "call/treg.web.search.news",
+            {"q": "gpus", "limit": 10},
+        ),
+        (
+            TregSearchSource.GOOGLE_NEWS,
+            "call/treg.google.serp.news",
+            {"q": "gpus", "limit": 10, "country": "gb"},
+        ),
+        (
+            TregSearchSource.RESEARCH_PAPERS,
+            "call/treg.web.search.publications",
+            {"q": "gpus", "limit": 10},
+        ),
     ],
 )
 async def test_web_search_routes_each_source(source, path, body):
@@ -299,7 +314,8 @@ async def test_get_tool_rejects_ids_that_are_not_tool_ids():
         (0.5, float, 0.5),
         ("0.5", float, None),
         ("", str, None),
-        (2021, str, "2021"),
+        (2021, str, None),
+        ({"city": "Paris"}, str, None),
         ("yes", bool, None),
         (False, bool, False),
     ],
@@ -404,3 +420,13 @@ async def test_a_page_with_only_html_has_no_content_output():
     outputs = await run_block(TregExtractWebPageBlock(), fake, url="https://a.co")
     assert "content" not in outputs
     assert outputs["pages"] == [page]
+
+
+@pytest.mark.asyncio
+async def test_a_work_email_miss_emits_no_name_fields():
+    fake = FakeTreg(mock_routed({"email": None, "first_name": "Jane"}))
+    outputs = await run_block(
+        TregFindWorkEmailBlock(), fake, linkedin_url="https://linkedin.com/in/jane"
+    )
+    assert "first_name" not in outputs
+    assert outputs["found"] is False

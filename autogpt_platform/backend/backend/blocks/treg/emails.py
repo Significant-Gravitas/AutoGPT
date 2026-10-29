@@ -160,10 +160,11 @@ class TregFindWorkEmailBlock(TregBlockBase):
         )
         for output in email_outputs(routed, {"confidence": float}):
             yield output
-        for output in typed_fields(
-            routed.output, {"first_name": str, "last_name": str}
-        ):
-            yield output
+        if found_email(routed) is not None:
+            for output in typed_fields(
+                routed.output, {"first_name": str, "last_name": str}
+            ):
+                yield output
         for output in self.route_details(routed, found_email(routed) is not None):
             yield output
 

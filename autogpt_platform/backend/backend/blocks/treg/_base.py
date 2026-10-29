@@ -246,7 +246,7 @@ def coerce(value: Any, kind: type) -> Any:
             return None
         return float(value)
     if kind is str:
-        return value if isinstance(value, str) else str(value)
+        return value if isinstance(value, str) else None
     if kind is list:
         return value if isinstance(value, list) else None
     return value
