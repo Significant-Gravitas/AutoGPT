@@ -1,4 +1,7 @@
-import { CHANGELOG_BASE_URL } from "./changelog-constants";
+import {
+  CHANGELOG_BASE_URL,
+  CHANGELOG_INDEX_MD_URL,
+} from "./changelog-constants";
 
 export interface ChangelogEntry {
   slug: string;
@@ -25,6 +28,18 @@ export function parseChangelogIndex(md: string): ChangelogEntry[] {
   }
 
   return entries;
+}
+
+// The published releases, newest first. Rejects when the request fails, so
+// each caller decides what an unavailable changelog looks like.
+export async function fetchChangelogEntries(
+  signal?: AbortSignal,
+): Promise<ChangelogEntry[]> {
+  const response = await fetch(CHANGELOG_INDEX_MD_URL, { signal });
+  if (!response.ok) {
+    throw new Error(`Changelog request failed with ${response.status}`);
+  }
+  return parseChangelogIndex(await response.text());
 }
 
 // A release the account is newer than holds nothing new for that user.

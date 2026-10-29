@@ -12,8 +12,8 @@ interface Props {
 }
 
 const AVATAR_CLASS =
-  // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3, ring-[#f9f9f9] #F9F9F9
-  "rounded-full border border-[#e3e3e3] ring-2 ring-[#f9f9f9]";
+  // oxlint-disable-next-line design-system/no-restyle -- ExpertAvatar and AutopilotAvatar have no bordered variant (src/components is P9's)
+  "rounded-full border border-border-base ring-2 ring-surface-muted";
 
 // Same motion as the side panel's empty-state tiles: the outer two lean out
 // and spread a little further on hover.
@@ -53,10 +53,10 @@ export function TeamPageHeader({ experts }: Props) {
           </span>
         </div>
         <div className="flex min-w-0 flex-col gap-0.5">
-          <Text variant="h4" as="h1" className="!text-foreground-strong">
+          <Text variant="h4" as="h1" tone="primary">
             Team
           </Text>
-          <Text variant="body" className="!text-foreground-tertiary">
+          <Text variant="body" tone="muted">
             Otto and your hired experts, ready to work.
           </Text>
         </div>

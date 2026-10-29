@@ -57,8 +57,7 @@ function ArtifactContentLoader({
           tone="body"
           {...BUTTON_TYPE}
           onClick={retry}
-          // TODO(tokens): no exact role for focus-visible:ring-violet-400
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
         >
           Try again
         </Text>
@@ -117,8 +116,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
             setLoaded(false);
             setRetryNonce((n) => n + 1);
           }}
-          // TODO(tokens): no exact role for focus-visible:ring-violet-400
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
         >
           Try again
         </Text>
@@ -134,7 +132,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
           className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md"
         />
       )}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- an artifact URL with a cache-busting query, not an optimisable static asset */}
       <img
         src={withCacheBust(src, retryNonce)}
         alt={alt}
@@ -170,8 +168,7 @@ function ArtifactVideo({ src }: { src: string }) {
             setLoaded(false);
             setRetryNonce((n) => n + 1);
           }}
-          // TODO(tokens): no exact role for focus-visible:ring-violet-400
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
         >
           Try again
         </Text>

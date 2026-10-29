@@ -23,6 +23,7 @@ interface FileTypeConfig {
 }
 
 const cardBase =
+  // oxlint-disable-next-line design-system/no-arbitrary-values -- the folded corner scales with the card, so it is a percentage
   "relative h-28 overflow-hidden rounded-md rounded-tr-[15%] bg-surface shadow-md shadow-black/[0.065] ring-1 ring-border-base";
 
 const DEFAULT_BADGE_POSITION = "bottom-5 -right-2";
@@ -81,7 +82,7 @@ function JsonContent() {
   return (
     <div className="space-y-1">
       <div
-        // TODO(tokens): SECRT-3152, rare size text-[6px]
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
         className="font-mono text-[6px] text-foreground-strong/40"
       >
         {"{"}
@@ -89,7 +90,7 @@ function JsonContent() {
       <div className="flex items-center gap-1 pl-1.5">
         <div className="h-[3px] w-3 rounded-full bg-action-hover/30" />
         <div
-          // TODO(tokens): SECRT-3152, rare size text-[5px]
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
           className="text-[5px] text-foreground-strong/30"
         >
           :
@@ -99,7 +100,7 @@ function JsonContent() {
       <div className="flex items-center gap-1 pl-1.5">
         <div className="h-[3px] w-4 rounded-full bg-action-hover/30" />
         <div
-          // TODO(tokens): SECRT-3152, rare size text-[5px]
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
           className="text-[5px] text-foreground-strong/30"
         >
           :
@@ -109,7 +110,7 @@ function JsonContent() {
       <div className="flex items-center gap-1 pl-1.5">
         <div className="h-[3px] w-2.5 rounded-full bg-action-hover/30" />
         <div
-          // TODO(tokens): SECRT-3152, rare size text-[5px]
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
           className="text-[5px] text-foreground-strong/30"
         >
           :
@@ -119,7 +120,7 @@ function JsonContent() {
       <div className="flex items-center gap-1 pl-1.5">
         <div className="h-[3px] w-3.5 rounded-full bg-action-hover/30" />
         <div
-          // TODO(tokens): SECRT-3152, rare size text-[5px]
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
           className="text-[5px] text-foreground-strong/30"
         >
           :
@@ -127,7 +128,7 @@ function JsonContent() {
         <div className="h-[3px] w-3 rounded-full bg-action-hover/15" />
       </div>
       <div
-        // TODO(tokens): SECRT-3152, rare size text-[6px]
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
         className="font-mono text-[6px] text-foreground-strong/40"
       >
         {"}"}
@@ -153,14 +154,14 @@ function HtmlContent() {
     return (
       <div className={cn("flex items-center gap-0.5", pl)}>
         <div
-          // TODO(tokens): SECRT-3152, rare size text-[5px]
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
           className="font-mono text-[5px] text-foreground-strong/40"
         >
           {closing ? "</" : "<"}
         </div>
         <div className={cn("h-[3px] rounded-full", color, w)} />
         <div
-          // TODO(tokens): SECRT-3152, rare size text-[5px]
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
           className="font-mono text-[5px] text-foreground-strong/40"
         >
           {selfClosing ? "/>" : ">"}
@@ -187,14 +188,9 @@ function VideoContent() {
     <div className="relative h-16 overflow-hidden rounded-sm bg-action-hover/10">
       {/* Play triangle */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-        <div
-          className="h-0 w-0"
-          style={{
-            borderTop: "5px solid transparent",
-            borderBottom: "5px solid transparent",
-            borderLeft: "7px solid rgb(24 24 27 / 0.55)",
-          }}
-        />
+        <svg viewBox="0 0 7 10" className="h-2.5 w-[7px]" aria-hidden>
+          <path d="M0 0L7 5L0 10Z" className="fill-action-hover/55" />
+        </svg>
       </div>
       {/* Timeline at the bottom */}
       <div className="absolute bottom-1 left-1 right-1 h-1 rounded-full bg-action-hover/10">
@@ -216,12 +212,11 @@ function ImgContent() {
 }
 
 function ReactContent() {
-  // TODO(tokens): no fitting role for the orbit stroke rgb(24 24 27 / 0.35); #18181B is primary, a fill
   return (
     <div className="flex h-16 items-center justify-center">
       <svg viewBox="-12 -12 24 24" className="h-10 w-10" aria-hidden>
         <circle r="2" className="fill-primary/55" />
-        <g fill="none" stroke="rgb(24 24 27 / 0.35)" strokeWidth="1">
+        <g fill="none" className="stroke-action-hover/35" strokeWidth="1">
           <ellipse rx="10" ry="4" />
           <ellipse rx="10" ry="4" transform="rotate(60)" />
           <ellipse rx="10" ry="4" transform="rotate(120)" />
@@ -247,7 +242,7 @@ function CodeContent() {
       {lines.map((line, i) => (
         <div key={i} className={cn("flex items-center gap-1", line.pl)}>
           <div
-            // TODO(tokens): SECRT-3152, rare size text-[5px]
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
             className="font-mono text-[5px] leading-none text-foreground-strong/40"
           >
             {i === 0 ? "<" : i === lines.length - 1 ? "/>" : "·"}
@@ -395,8 +390,7 @@ export function FileIllustration({
       <div className={cn(cardBase, config.cardClass)}>{config.content}</div>
       <span
         className={cn(
-          // TODO(tokens): no fitting role for bg-zinc-700 #505057; #505057 is foreground-body, a text colour
-          "absolute rounded-md bg-zinc-700 px-2 py-1 text-caption-sm font-semibold uppercase leading-inherit tracking-wide text-action-foreground shadow-md shadow-black/10",
+          "absolute rounded-md bg-action px-2 py-1 text-caption-sm font-semibold uppercase leading-inherit tracking-wide text-action-foreground shadow-md shadow-black/10",
           config.badgePositionClass ?? DEFAULT_BADGE_POSITION,
           badgeClassName,
         )}

@@ -5,6 +5,7 @@ import { Download04Icon } from "@hugeicons/core-free-icons";
 import { classifyArtifact } from "../../../../ArtifactPanel/helpers";
 import { formatFileSize, formatFileTimestamp } from "../../FilesTab/helpers";
 import type { SessionFile } from "../../FilesTab/useSessionFiles";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   file: SessionFile;
@@ -30,13 +31,23 @@ export function ArtifactMiniCard({ file, onOpen, onDownload }: Props) {
           className="shrink-0 text-foreground-tertiary"
         />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-medium text-foreground-emphasis">
+          <Text
+            variant="body-medium-tight"
+            as="span"
+            tone="emphasis"
+            className="truncate"
+          >
             {item.name}
-          </span>
-          <span className="truncate text-xs text-foreground-subtle">
+          </Text>
+          <Text
+            variant="small-tight"
+            as="span"
+            tone="subtle"
+            className="truncate"
+          >
             {formatFileSize(item.size_bytes ?? 0)} ·{" "}
             {formatFileTimestamp(item.created_at)}
-          </span>
+          </Text>
         </span>
       </button>
       <button

@@ -37,11 +37,9 @@ export function ToolbarSearch({
         className,
       )}
     >
-      <Icon
-        icon={Search01Icon}
-        size={16}
-        className="pointer-events-none absolute left-4 top-1/2 z-20 -translate-y-1/2 text-foreground-tertiary"
-      />
+      <span className="pointer-events-none absolute left-4 top-1/2 z-20 flex -translate-y-1/2 text-foreground-tertiary">
+        <Icon icon={Search01Icon} size={16} />
+      </span>
       <Input
         id={id}
         label={label}
@@ -52,6 +50,7 @@ export function ToolbarSearch({
         onChange={handleChange}
         placeholder={label}
         textSize={textSize}
+        // oxlint-disable-next-line design-system/no-restyle -- Input has no pill or leading-icon variant (src/components is P9's)
         className="rounded-full pl-10"
         wrapperClassName="!mb-0 w-full"
       />

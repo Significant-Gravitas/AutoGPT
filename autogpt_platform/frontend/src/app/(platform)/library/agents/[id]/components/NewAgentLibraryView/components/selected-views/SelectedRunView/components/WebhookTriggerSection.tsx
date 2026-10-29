@@ -38,13 +38,11 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
           <span
             className={`rounded-full px-2 py-0.5 text-xs font-medium ${
               status === "active"
-                ? // TODO(tokens): no exact role for bg-green-100 (#B7E2C7), text-green-800 (#0C5A29)
-                  "bg-green-100 text-green-800"
+                ? "bg-success/30 text-success-foreground"
                 : status === "inactive"
-                  ? // TODO(tokens): no exact role for bg-yellow-100 (#FCEBB0), text-yellow-800 (#876A00)
-                    "bg-yellow-100 text-yellow-800"
-                  : // TODO(tokens): no exact role for bg-red-100 (#FDECEC), text-red-800 (#832525)
-                    "bg-red-100 text-red-800"
+                  ? // oxlint-disable-next-line design-system/no-raw-colors -- yellow-800 #876A00 has no role; olive to orange-brown change deferred (see PR)
+                    "bg-warning-border text-yellow-800"
+                  : "bg-error-surface text-error-foreground"
             }`}
           >
             {status === "active"
@@ -56,11 +54,7 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
         </div>
 
         {!preset.webhook_id ? (
-          <Text
-            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover, a hover fill
-            variant="body"
-            className="text-red-600"
-          >
+          <Text variant="body" tone="danger">
             This trigger is not attached to a webhook. Use &quot;Set up
             trigger&quot; to fix this.
           </Text>
@@ -72,16 +66,14 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
             </Text>
             <div className="flex flex-col gap-1">
               <Text variant="small-medium">Webhook URL:</Text>
-              <div
-                // TODO(tokens): no exact role for bg-gray-50 (#F9FAFB)
-                className="flex gap-2 rounded-md bg-gray-50 p-2"
-              >
+              <div className="flex gap-2 rounded-md bg-surface-muted p-2">
                 <code className="ph-no-capture flex-1 select-all text-sm">
                   {webhook.url}
                 </code>
                 <Button
                   variant="outline"
                   size="icon"
+                  // oxlint-disable-next-line design-system/no-restyle -- a 28px round copy button; icon-xs would make it a rounded square
                   className="size-7 flex-none p-1"
                   onClick={handleCopyWebhookUrl}
                   title="Copy webhook URL"
@@ -92,7 +84,7 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
             </div>
           </div>
         ) : (
-          <Text variant="body" className="text-muted-foreground">
+          <Text variant="body" tone="muted">
             This workflow trigger is{" "}
             {preset.is_active
               ? "ready. When a trigger is received, it will run with the provided settings."

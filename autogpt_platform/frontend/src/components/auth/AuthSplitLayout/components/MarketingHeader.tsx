@@ -18,8 +18,8 @@ export function MarketingHeader({ headingLines, description }: Props) {
           <Text
             variant="h1"
             as="h1"
-            // TODO(tokens): SECRT-3152, rare size !text-[3rem]; no exact text token for !leading-[1.05]
-            className="!w-full !text-[3rem] !font-semibold !leading-[1.05] tracking-heading !text-foreground-strong"
+            tone="primary"
+            className="!w-full !text-display !font-semibold !leading-tight tracking-heading"
           >
             {headingLines.map((line, i) => (
               <span key={i} className="block">
@@ -28,10 +28,7 @@ export function MarketingHeader({ headingLines, description }: Props) {
             ))}
           </Text>
           {description ? (
-            <Text
-              variant="large"
-              className="max-w-md !text-foreground-tertiary"
-            >
+            <Text variant="large" tone="muted" className="max-w-md">
               {description}
             </Text>
           ) : null}

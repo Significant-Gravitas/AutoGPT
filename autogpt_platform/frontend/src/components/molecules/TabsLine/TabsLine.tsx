@@ -78,11 +78,8 @@ const TabsLineList = React.forwardRef<
       <TabsPrimitive.List
         ref={ref}
         data-slot="tabs-list"
-        // TODO(tokens): no role holds gray-100 (#F3F4F6) or neutral-500
-        // (#737373). The dark: classes never apply (forcedTheme="light") and
-        // are DS6's (SECRT-3116) to delete.
         className={cn(
-          "inline-flex h-10 w-80 items-center justify-center rounded-3xl bg-gray-100 p-[5px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400",
+          "inline-flex h-10 w-80 items-center justify-center rounded-3xl bg-surface-hover p-1 text-foreground-tertiary",
           className,
         )}
         {...props}
@@ -96,7 +93,7 @@ const TabsLineList = React.forwardRef<
         ref={(node) => {
           if (typeof ref === "function") ref(node);
           else if (ref) ref.current = node;
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- listRef is a read-only RefObject; the callback ref fills it
           // @ts-ignore
           listRef.current = node;
         }}
@@ -112,15 +109,16 @@ const TabsLineList = React.forwardRef<
         <div
           data-slot="tabs-indicator"
           className={cn(
-            "transition-left transition-right absolute bottom-0 h-0.5 bg-brand-hover duration-200 ease-in-out",
+            "absolute bottom-0 left-[var(--tab-left)] h-0.5 w-[var(--tab-width)] bg-brand-hover duration-200 ease-in-out will-change-[left,width]",
             isCompact && "bg-action-hover",
             indicatorClassName,
           )}
-          style={{
-            left: activeTabElement.offsetLeft,
-            width: activeTabElement.offsetWidth,
-            willChange: "left, width",
-          }}
+          style={
+            {
+              "--tab-left": `${activeTabElement.offsetLeft}px`,
+              "--tab-width": `${activeTabElement.offsetWidth}px`,
+            } as React.CSSProperties
+          }
         />
       )}
     </div>
@@ -166,21 +164,19 @@ const TabsLineTrigger = React.forwardRef<
       ref={(node) => {
         if (typeof ref === "function") ref(node);
         else if (ref) ref.current = node;
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- elementRef is a read-only RefObject; the callback ref fills it
         // @ts-ignore
         elementRef.current = node;
       }}
       data-slot="tabs-trigger"
-      // TODO(tokens): no role for neutral-400 (#A3A3A3), and in `pill` no
-      // role holds gray-500 (#6B7280).
       className={cn(
         variant === "pill" && [
-          "flex flex-1 items-start justify-center gap-2.5 whitespace-nowrap rounded-2xl px-3 py-2 text-center font-sans text-caption font-medium leading-tight text-gray-500 ring-offset-surface transition-all",
+          "flex flex-1 items-start justify-center gap-2.5 whitespace-nowrap rounded-2xl px-3 py-2 text-center font-sans text-caption font-medium leading-tight text-foreground-tertiary ring-offset-surface transition-all",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
           "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-subtle",
         ],
         variant !== "pill" &&
-          "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-3 font-sans text-body font-medium leading-6 text-foreground-body transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-brand-hover",
+          "relative inline-flex items-center justify-center whitespace-nowrap px-3 py-3 font-sans text-body font-medium leading-6 text-foreground-body transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-brand-hover",
         icon && variant !== "pill" && "gap-1.5",
         variant === "compact" &&
           "px-2.5 py-2 text-body leading-5 text-foreground-secondary data-[state=active]:text-foreground-strong",
@@ -207,9 +203,6 @@ const TabsLineContent = React.forwardRef<
     <TabsPrimitive.Content
       ref={ref}
       data-slot="tabs-panel"
-      // TODO(tokens): no role for stone-400 (#A8A29E). The dark: classes in
-      // `pill` never apply (forcedTheme="light") and are DS6's (SECRT-3116) to
-      // delete.
       // Radix marks inactive panels with the `hidden` attribute, but the UA
       // rule behind it is weaker than any author display utility — a panel
       // styled `flex`/`grid` stays laid out and keeps stealing space from the
@@ -217,8 +210,8 @@ const TabsLineContent = React.forwardRef<
       // panels keep the UA rule, as the segmented control always has.
       className={cn(
         isPill
-          ? "mt-2 ring-offset-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 dark:ring-offset-neutral-950 dark:focus-visible:ring-neutral-300"
-          : "mt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2 data-[state=inactive]:hidden",
+          ? "mt-2 ring-offset-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
+          : "mt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:ring-offset-2 data-[state=inactive]:hidden",
         className,
       )}
       {...props}

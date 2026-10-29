@@ -33,8 +33,7 @@ export function PaymentRecoveryCard({ payment, fallback }: Props) {
       <Text
         variant="h4"
         as="h2"
-        // TODO(tokens): SECRT-3152, the 23px size has no role.
-        className="mb-3 mt-4 text-[23px] leading-8 tracking-display"
+        className="mb-3 mt-4 leading-8 tracking-display"
       >
         Your payment didn’t go through
       </Text>

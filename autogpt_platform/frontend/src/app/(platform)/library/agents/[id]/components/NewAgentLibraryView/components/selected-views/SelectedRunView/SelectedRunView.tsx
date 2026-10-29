@@ -110,7 +110,10 @@ export function SelectedRunView({
               defaultValue={withReviews ? "reviews" : "output"}
               className="-mt-2 flex flex-col"
             >
-              <ScrollableTabsList className="px-4">
+              <ScrollableTabsList
+                // oxlint-disable-next-line design-system/no-restyle -- the tab underline (border-b) spans this padding; a margin would shorten it
+                className="px-4"
+              >
                 {withReviews && (
                   <ScrollableTabsTrigger value="reviews">
                     Reviews ({pendingReviews.length})
@@ -143,7 +146,7 @@ export function SelectedRunView({
                             emptyMessage="No pending reviews for this execution"
                           />
                         ) : (
-                          <Text variant="body" className="text-foreground-body">
+                          <Text variant="body" tone="body">
                             No pending reviews for this execution
                           </Text>
                         )}
@@ -178,10 +181,7 @@ export function SelectedRunView({
                   <div className="scroll-mt-4">
                     <RunDetailCard title="Output">
                       {isLoading ? (
-                        <div
-                          // TODO(tokens): no exact role for text-neutral-500 (#737373)
-                          className="text-neutral-500"
-                        >
+                        <div className="text-foreground-tertiary">
                           <LoadingSpinner />
                         </div>
                       ) : run && "outputs" in run ? (
@@ -190,11 +190,7 @@ export function SelectedRunView({
                           hiddenFromReplay
                         />
                       ) : (
-                        <Text
-                          // TODO(tokens): no exact role for text-neutral-600 (#525252)
-                          variant="body"
-                          className="text-neutral-600"
-                        >
+                        <Text variant="body" tone="secondary">
                           No output from this run.
                         </Text>
                       )}

@@ -84,8 +84,7 @@ function WalkthroughControl({ player }: { player: Player }) {
       {!player.hasStarted && (
         <div
           aria-hidden
-          // TODO(tokens): no fitting role for bg-zinc-950/15 #09090B; #09090B is foreground, a text colour
-          className="pointer-events-none absolute inset-x-0 bottom-14 top-0 bg-zinc-950/15"
+          className="pointer-events-none absolute inset-x-0 bottom-14 top-0 bg-foreground-base/15"
         />
       )}
       <div className="flex min-h-14 items-center border-t border-border-base/80 bg-surface px-4 py-2">
@@ -115,8 +114,7 @@ function WalkthroughControl({ player }: { player: Player }) {
         className={
           player.hasStarted
             ? "absolute bottom-2.5 right-3"
-            : // TODO(tokens): no exact role for bg-violet-600 (#7C3AED), focus-visible:ring-violet-600 (#7C3AED); no fitting role for hover:bg-violet-700 #6D28D9; #6D28D9 is accent-strong, a text colour
-              "absolute left-1/2 top-[calc(50%-1.75rem)] size-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-white/20 bg-violet-600 text-action-foreground shadow-xl hover:border-white/30 hover:bg-violet-700 focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-4"
+            : "absolute left-1/2 top-[calc(50%-1.75rem)] size-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-surface/20 bg-brand text-action-foreground shadow-xl hover:border-surface/30 hover:bg-accent-strong focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-4"
         }
       >
         <Icon icon={icon} size={player.hasStarted ? 14 : 26} aria-hidden />

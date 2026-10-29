@@ -6,6 +6,7 @@ import {
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   label: string;
@@ -17,10 +18,7 @@ interface Props {
 
 export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
   return (
-    <div
-      // TODO(tokens): no exact role for border-purple-200/40, bg-purple-50
-      className="mt-3 rounded-xl border border-purple-200/40 bg-purple-50 p-4"
-    >
+    <div className="mt-3 rounded-xl border border-brand/20 bg-accent-surface p-4">
       <div
         role="radio"
         aria-checked={false}
@@ -29,26 +27,30 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
         tabIndex={-1}
         className="flex items-start gap-3"
       >
-        <span
-          // TODO(tokens): no exact role for border-purple-200/60; no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
-          className="flex size-8 flex-none items-center justify-center rounded-lg border border-purple-200/60 bg-surface text-purple-600"
-        >
+        <span className="flex size-8 flex-none items-center justify-center rounded-lg border border-brand/30 bg-surface text-brand-hover">
           <Icon icon={AiBrain01Icon} size={18} aria-hidden />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-foreground-strong">
+          <Text
+            variant="body-medium-tight"
+            as="span"
+            tone="primary"
+            className="block"
+          >
             {name}
-          </span>
+          </Text>
           {model && (
-            <span className="mt-0.5 block break-words text-xs text-foreground-secondary">
+            <Text
+              variant="small-tight"
+              as="span"
+              tone="secondary"
+              className="mt-0.5 block break-words"
+            >
               {model}
-            </span>
+            </Text>
           )}
         </span>
-        <span
-          // TODO(tokens): no exact role for text-purple-700
-          className="inline-flex items-center gap-1 rounded bg-surface px-1.5 py-1 text-tiny font-semibold leading-inherit tracking-wide text-purple-700"
-        >
+        <span className="inline-flex items-center gap-1 rounded bg-surface px-1.5 py-1 text-tiny font-semibold leading-inherit tracking-wide text-accent-strong">
           <Icon icon={LockIcon} size={10} aria-hidden />
           MAX
         </span>
@@ -56,16 +58,15 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
       <p className="mb-2 mt-5 text-lg font-medium leading-snug tracking-tight text-foreground-strong">
         Unlock {name} with Max.
       </p>
-      <p className="text-xs leading-relaxed text-foreground-secondary">
+      <Text variant="small-relaxed" tone="secondary">
         {reason}
-      </p>
+      </Text>
       <Button
         as="NextLink"
         href={href}
         variant="primary"
         size="small"
-        // TODO(tokens): no exact role for hover:border-purple-700, hover:bg-purple-700; no fitting role for border-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
-        className="mt-5 h-11 w-full rounded-lg border-purple-600 bg-brand-hover text-action-foreground hover:border-purple-700 hover:bg-purple-700"
+        className="mt-5 h-11 w-full rounded-lg border-brand-hover bg-brand-hover text-action-foreground hover:border-accent-strong hover:bg-accent-strong"
       >
         Upgrade to Max
         <Icon icon={ArrowRight02Icon} size={16} aria-hidden />

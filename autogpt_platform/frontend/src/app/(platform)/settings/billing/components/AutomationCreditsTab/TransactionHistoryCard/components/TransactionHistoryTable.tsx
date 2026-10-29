@@ -50,11 +50,7 @@ export function TransactionHistoryTable({
         <thead className="border-b border-border-base bg-surface-muted">
           <tr>
             <th scope="col" className="py-3 pl-3 pr-2 sm:pl-5">
-              <Text
-                variant="small-medium"
-                as="span"
-                className="text-foreground-secondary"
-              >
+              <Text variant="small-medium" as="span" tone="secondary">
                 Activity
               </Text>
             </th>
@@ -62,17 +58,14 @@ export function TransactionHistoryTable({
               <Text
                 variant="small-medium"
                 as="span"
-                className="sr-only text-foreground-secondary sm:not-sr-only"
+                tone="secondary"
+                className="sr-only sm:not-sr-only"
               >
                 Last activity
               </Text>
             </th>
             <th scope="col" className="px-2 py-3 text-right">
-              <Text
-                variant="small-medium"
-                as="span"
-                className="text-foreground-secondary"
-              >
+              <Text variant="small-medium" as="span" tone="secondary">
                 Amount
               </Text>
             </th>
@@ -95,7 +88,7 @@ export function TransactionHistoryTable({
         </tbody>
       </table>
       <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-5">
-        <Text variant="small" className="text-foreground-secondary">
+        <Text variant="small" tone="secondary">
           Latest charges and credits first
         </Text>
         {hasMore ? (
@@ -114,7 +107,9 @@ export function TransactionHistoryTable({
             variant="small"
             id={endID}
             tabIndex={-1}
-            className="text-foreground-secondary focus:outline-none"
+            tone="secondary"
+            // oxlint-disable-next-line design-system/no-restyle -- a programmatic focus target that shows no outline
+            className="focus:outline-none"
           >
             End of history
           </Text>
@@ -123,7 +118,8 @@ export function TransactionHistoryTable({
           <Text
             variant="small"
             role="alert"
-            className="w-full text-foreground-secondary"
+            tone="secondary"
+            className="w-full"
           >
             We couldn’t load older transactions. Your loaded history is still
             available.

@@ -13,12 +13,14 @@ export function APIKeyMarquee() {
     <div
       aria-hidden
       className="relative h-[260px] w-[340px] overflow-hidden"
+      /* oxlint-disable design-system/no-inline-styles -- the marquee fades out at both ends; Tailwind 3 has no mask utility */
       style={{
         maskImage:
           "linear-gradient(to bottom, transparent 0%, black 35%, black 65%, transparent 100%)",
         WebkitMaskImage:
           "linear-gradient(to bottom, transparent 0%, black 35%, black 65%, transparent 100%)",
       }}
+      /* oxlint-enable design-system/no-inline-styles */
     >
       <motion.div
         className="flex flex-col items-center gap-4 will-change-transform"
@@ -39,12 +41,8 @@ export function APIKeyMarquee() {
 
 function GhostCard() {
   return (
-    <div className="flex h-[64px] w-[320px] items-center gap-4 rounded-xl border border-border-base/80 bg-surface px-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-      <Icon
-        icon={Key01Icon}
-        size={18}
-        className="shrink-0 text-foreground-subtle"
-      />
+    <div className="flex h-[64px] w-[320px] items-center gap-4 rounded-xl border border-border-base/80 bg-surface px-5 text-foreground-subtle shadow-message-table">
+      <Icon icon={Key01Icon} size={18} className="shrink-0" />
       <div className="h-2.5 flex-1 rounded-full bg-surface-hover" />
     </div>
   );
