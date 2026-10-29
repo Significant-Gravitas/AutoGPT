@@ -62,9 +62,10 @@ export function ConnectProviderRow({
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-1.5">
           <Text
+            tone="emphasis"
             variant="body-medium"
             as="span"
-            className="truncate text-foreground-emphasis"
+            className="truncate"
           >
             {provider.name}
           </Text>
@@ -74,8 +75,7 @@ export function ConnectProviderRow({
             <Icon
               icon={CheckmarkCircle02Icon}
               size={15}
-              // TODO(tokens): no exact role for text-emerald-500
-              className="shrink-0 text-emerald-500"
+              className="shrink-0 text-success"
             />
           )}
         </span>

@@ -4,6 +4,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import type { QuestionAnswer } from "../../../tools/clarifying-questions";
 import { getAnswerSummary, type ExpertOnboardingStep } from "../helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   steps: ExpertOnboardingStep[];
@@ -29,14 +30,13 @@ export function OnboardingReview({ steps, answers, labelId, onEdit }: Props) {
             <button
               type="button"
               onClick={() => onEdit(index)}
-              // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-              className="group flex w-full items-start gap-3 rounded-md bg-surface-muted px-3 py-2.5 text-left outline-none ring-1 ring-separator transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 [@media(hover:none)]:min-h-11"
+              className="group flex w-full items-start gap-3 rounded-md bg-surface-muted px-3 py-2.5 text-left outline-none ring-1 ring-separator transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:ring-offset-1 [@media(hover:none)]:min-h-11"
             >
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="sr-only">Change your answer to </span>
-                <span className="text-sm text-foreground-tertiary">
+                <Text variant="body-tight" as="span" tone="muted">
                   {step.question}
-                </span>
+                </Text>
                 <span className="break-words text-base text-foreground-strong sm:text-body-md">
                   {getAnswerSummary(answers[step.keyword]) || "No answer yet"}
                 </span>

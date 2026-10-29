@@ -10,11 +10,11 @@ export function NoModelNotice() {
     <div className="flex flex-1 items-center justify-center px-4 py-6">
       <Text
         variant="body-tight"
+        tone="warning"
         as="div"
         role="status"
         aria-label="No AI connection"
-        // TODO(tokens): no exact role: text-amber-900 #78350F
-        className="flex w-full items-start gap-2 rounded-2xl bg-warning-surface px-3 py-2 text-left text-amber-900"
+        className="flex w-full items-start gap-2 rounded-2xl bg-warning-surface px-3 py-2 text-left"
       >
         <Icon
           icon={Alert02Icon}

@@ -745,43 +745,22 @@
     "no-raw-colors": 4,
     "no-restyle": 10
   },
-  "src/app/(platform)/copilot/CopilotChatHost.tsx": {
-    "no-raw-colors": 1
-  },
-  "src/app/(platform)/copilot/CopilotPage.tsx": {
-    "no-arbitrary-values": 2,
-    "no-inline-styles": 1,
-    "no-raw-colors": 1
-  },
-  "src/app/(platform)/copilot/__tests__/expert-threads.test.tsx": {
-    "require-suppression-reason": 2
-  },
   "src/app/(platform)/copilot/components/AgentSavedCard/AgentSavedCard.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/AnsweredQuestions/AnsweredQuestions.tsx": {
     "no-restyle": 1
   },
-  "src/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalCard/ApprovalCard.tsx": {
-    "no-arbitrary-values": 1,
-    "no-raw-colors": 1
-  },
   "src/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalCard/ApproveSplitButton.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 12
   },
   "src/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalCard/ChangePreview.tsx": {
     "no-restyle": 1
   },
-  "src/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalCard/HeldPassage.tsx": {
-    "no-raw-colors": 1
-  },
   "src/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalCard/MoneyBlock.tsx": {
     "no-inline-styles": 1
   },
   "src/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalHeadline.tsx": {
-    "no-arbitrary-values": 1,
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/ApprovalQueue/components/CompactApprovalLine.tsx": {
@@ -794,66 +773,36 @@
     "no-restyle": 3
   },
   "src/app/(platform)/copilot/components/ArtifactCard/ArtifactCard.tsx": {
-    "no-arbitrary-values": 2,
-    "no-raw-colors": 4,
     "no-restyle": 6
   },
   "src/app/(platform)/copilot/components/ArtifactPanel/ArtifactPanel.tsx": {
-    "no-arbitrary-values": 1,
-    "no-inline-styles": 3
+    "no-inline-styles": 2
   },
   "src/app/(platform)/copilot/components/ArtifactPanel/components/ArtifactContent.tsx": {
-    "no-raw-colors": 3,
-    "no-restyle": 38,
-    "require-suppression-reason": 1
-  },
-  "src/app/(platform)/copilot/components/ArtifactPanel/components/ArtifactErrorBoundary.tsx": {
-    "no-raw-colors": 1
-  },
-  "src/app/(platform)/copilot/components/ArtifactPanel/components/ArtifactReactPreview.tsx": {
-    "no-raw-colors": 2
-  },
-  "src/app/(platform)/copilot/components/ArtifactPanel/components/ComputerPanelContent.tsx": {
-    "no-raw-colors": 2,
-    "no-restyle": 2
+    "no-restyle": 38
   },
   "src/app/(platform)/copilot/components/ChainActionCard/ConnectionsSection.tsx": {
     "no-restyle": 1
   },
-  "src/app/(platform)/copilot/components/ChainActionCard/ConnectorRow.tsx": {
-    "no-raw-colors": 1
-  },
   "src/app/(platform)/copilot/components/ChainActionCard/InputsSection.tsx": {
     "no-restyle": 1
   },
-  "src/app/(platform)/copilot/components/ChainActionCard/McpConnectorRow.tsx": {
-    "no-raw-colors": 1
-  },
   "src/app/(platform)/copilot/components/ChainActionCard/QuestionsSection.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/ChatContainer/components/ArchivedExpertNotice.tsx": {
     "no-restyle": 1
   },
-  "src/app/(platform)/copilot/components/ChatContainer/components/ChatComposerFrame.tsx": {
-    "no-arbitrary-values": 1
-  },
   "src/app/(platform)/copilot/components/ChatContainer/components/ComposerPanelTab.tsx": {
-    "no-arbitrary-values": 1,
-    "no-raw-colors": 1,
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/ChatContainer/components/PausedDraftNote.tsx": {
-    "no-restyle": 3
+    "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/ChatContainer/components/SessionNotFound.tsx": {
-    "no-arbitrary-values": 1,
     "no-restyle": 8
   },
   "src/app/(platform)/copilot/components/ChatInput/ChatInput.tsx": {
-    "no-arbitrary-values": 4,
-    "no-raw-colors": 5,
     "no-restyle": 59,
     "require-static-classes": 22
   },
@@ -861,11 +810,7 @@
     "no-inline-styles": 10
   },
   "src/app/(platform)/copilot/components/ChatInput/components/AutopilotModeSelector/AutopilotModeSelector.tsx": {
-    "no-raw-colors": 2,
     "no-restyle": 3
-  },
-  "src/app/(platform)/copilot/components/ChatInput/components/ChipThumbnail.tsx": {
-    "require-suppression-reason": 1
   },
   "src/app/(platform)/copilot/components/ChatInput/components/ComposerOverflowMenu.tsx": {
     "no-restyle": 10
@@ -874,7 +819,6 @@
     "no-restyle": 8
   },
   "src/app/(platform)/copilot/components/ChatInput/components/ConnectionPicker/ChoiceRow.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 5
   },
   "src/app/(platform)/copilot/components/ChatInput/components/ConnectionPicker/ConnectAccountRow.tsx": {
@@ -884,25 +828,15 @@
     "no-restyle": 23
   },
   "src/app/(platform)/copilot/components/ChatInput/components/ConnectionPicker/ConnectionPickerPanel.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/ChatInput/components/ConnectionPicker/MaxUpgradeCard.tsx": {
-    "no-raw-colors": 8,
     "no-restyle": 6
-  },
-  "src/app/(platform)/copilot/components/ChatInput/components/ConnectionPicker/Swap.tsx": {
-    "no-arbitrary-values": 2
   },
   "src/app/(platform)/copilot/components/ChatInput/components/ConnectionPicker/TierToggle.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 6
   },
-  "src/app/(platform)/copilot/components/ChatInput/components/DryRunToggleButton.tsx": {
-    "no-raw-colors": 1
-  },
   "src/app/(platform)/copilot/components/ChatInput/components/FileChips.tsx": {
-    "no-arbitrary-values": 2,
     "no-inline-styles": 1,
     "no-restyle": 4
   },
@@ -910,65 +844,46 @@
     "require-static-classes": 1
   },
   "src/app/(platform)/copilot/components/ChatInput/components/MentionDropdown.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 4
   },
   "src/app/(platform)/copilot/components/ChatInput/components/RecipientChip.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 5
   },
   "src/app/(platform)/copilot/components/ChatInput/components/RecordingButton.tsx": {
-    "no-raw-colors": 3,
     "no-restyle": 20
   },
   "src/app/(platform)/copilot/components/ChatInput/components/WorkspaceFilePicker/WorkspaceFileList.tsx": {
-    "no-raw-colors": 3,
-    "no-restyle": 4
+    "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/ChatInput/components/WorkspaceFilePicker/WorkspaceFilePicker.tsx": {
-    "no-restyle": 4
+    "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/ChatInput/components/WorkspaceFilePicker/WorkspaceFolderRows.tsx": {
-    "no-raw-colors": 5,
-    "no-restyle": 3,
+    "no-restyle": 1,
     "require-static-classes": 1
-  },
-  "src/app/(platform)/copilot/components/ChatInput/helpers.ts": {
-    "no-raw-colors": 5
   },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer.tsx": {
     "no-inline-styles": 1,
-    "no-raw-colors": 8,
     "no-restyle": 40,
     "require-static-classes": 1
   },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/AssistantMessageActions.tsx": {
-    "no-raw-colors": 4,
     "no-restyle": 6
   },
-  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/ChatErrorBanner/ChatErrorBanner.tsx": {
-    "no-raw-colors": 1
-  },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/ExpertAvatar/ExpertAvatar.tsx": {
-    "no-arbitrary-values": 1,
     "no-restyle": 6
   },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/FeedbackModal.tsx": {
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessageAttachments.tsx": {
-    "no-raw-colors": 15,
     "no-restyle": 3
   },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessageImageThumbnail.tsx": {
-    "no-raw-colors": 1,
-    "no-restyle": 2,
-    "require-suppression-reason": 2
+    "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessagePartRenderer.tsx": {
-    "no-raw-colors": 2,
-    "no-restyle": 1,
-    "require-suppression-reason": 1
+    "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessageRow/MessageRow.tsx": {
     "no-restyle": 17,
@@ -978,28 +893,16 @@
     "no-restyle": 11
   },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessageRow/components/UserRowActions.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 7
   },
-  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/MessageRow/helpers.ts": {
-    "no-raw-colors": 4
-  },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/PendingUploadMessage.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 25
-  },
-  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/QueueBadge.tsx": {
-    "no-raw-colors": 4
   },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/ReasoningCollapse.tsx": {
     "no-restyle": 12
   },
-  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/SentFromBadge.tsx": {
-    "no-raw-colors": 3
-  },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/StoppedTaskCard.tsx": {
-    "no-raw-colors": 2,
-    "no-restyle": 7
+    "no-restyle": 4
   },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/TailSpacer.tsx": {
     "no-inline-styles": 1
@@ -1007,46 +910,25 @@
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/ThreadHeader.tsx": {
     "no-restyle": 2
   },
-  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/UserMessageClamp.tsx": {
-    "no-raw-colors": 1
-  },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/VirtualTranscript/VirtualTranscript.tsx": {
     "no-inline-styles": 4
   },
-  "src/app/(platform)/copilot/components/ChatMessagesContainer/components/WorkspaceLink.tsx": {
-    "no-unknown-classes": 1
-  },
-  "src/app/(platform)/copilot/components/ChatMinimap/ChatMinimap.tsx": {
-    "no-arbitrary-values": 1
-  },
-  "src/app/(platform)/copilot/components/ChatMinimap/helpers.ts": {
-    "no-raw-colors": 2
-  },
   "src/app/(platform)/copilot/components/ClarificationQuestionsCard/ClarificationQuestionsCard.tsx": {
-    "no-raw-colors": 12,
-    "no-restyle": 13
+    "no-restyle": 7
   },
   "src/app/(platform)/copilot/components/CompactionCard/CompactionCard.tsx": {
-    "no-arbitrary-values": 1,
     "no-inline-styles": 1,
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/ConnectToolsDialog/ConnectProviderRow.tsx": {
-    "no-raw-colors": 1,
-    "no-restyle": 3
-  },
-  "src/app/(platform)/copilot/components/ConnectToolsDialog/ConnectToolsDialog.tsx": {
-    "no-raw-colors": 1
+    "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/ConnectToolsDialog/ConnectToolsPanel.tsx": {
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/ContextPanel/ContextPanel.tsx": {
-    "no-arbitrary-values": 1,
-    "no-dark-variant": 1,
     "no-inline-styles": 1,
-    "no-raw-colors": 1,
-    "no-restyle": 5
+    "no-restyle": 4
   },
   "src/app/(platform)/copilot/components/ContextPanel/ContextPanelToggle.tsx": {
     "no-restyle": 20
@@ -1055,99 +937,50 @@
     "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/ContextPanel/components/IntegrationsTab/IntegrationsTab.tsx": {
-    "no-raw-colors": 2,
-    "no-restyle": 19
+    "no-restyle": 16
   },
   "src/app/(platform)/copilot/components/ContextPanel/components/IntegrationsToggle/IntegrationsToggle.tsx": {
     "no-restyle": 1
   },
-  "src/app/(platform)/copilot/components/ContextPanel/components/PanelEmptyState/PanelEmptyState.tsx": {
-    "no-restyle": 2
-  },
-  "src/app/(platform)/copilot/components/CredentialMention/CredentialMentionBadge.tsx": {
-    "no-raw-colors": 2
-  },
   "src/app/(platform)/copilot/components/DrawnLineLoader/DrawnLineLoader.tsx": {
     "no-inline-styles": 2
   },
-  "src/app/(platform)/copilot/components/EmptySession/components/EditNameDialog/EditNameDialog.tsx": {
-    "no-raw-colors": 1
-  },
-  "src/app/(platform)/copilot/components/EmptySession/components/ExpertKickoffLoader/ExpertKickoffLoader.tsx": {
-    "no-raw-colors": 2
-  },
   "src/app/(platform)/copilot/components/EmptySession/components/TextGenerateEffect/TextGenerateEffect.tsx": {
-    "no-dark-variant": 2,
     "no-inline-styles": 1
   },
   "src/app/(platform)/copilot/components/ExpertOnboardingCard/ExpertOnboardingCard.tsx": {
-    "no-arbitrary-values": 1,
     "no-inline-styles": 1,
     "no-restyle": 1
   },
-  "src/app/(platform)/copilot/components/ExpertOnboardingCard/components/OnboardingChoices/OnboardingChoices.tsx": {
-    "no-raw-colors": 3
-  },
-  "src/app/(platform)/copilot/components/ExpertOnboardingCard/components/OnboardingFooter.tsx": {
-    "no-raw-colors": 3
-  },
   "src/app/(platform)/copilot/components/ExpertOnboardingCard/components/OnboardingReview.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 3
   },
   "src/app/(platform)/copilot/components/FileDropZone/FileDropZone.tsx": {
-    "no-raw-colors": 4,
     "no-restyle": 1
   },
-  "src/app/(platform)/copilot/components/JobStatsBar/TurnStatsBar.tsx": {
-    "no-raw-colors": 5
-  },
-  "src/app/(platform)/copilot/components/LocalFileImage/LocalFileImage.tsx": {
-    "require-suppression-reason": 1
-  },
   "src/app/(platform)/copilot/components/NotificationBanner/NotificationBanner.tsx": {
-    "no-arbitrary-values": 2,
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/OnboardingIntroCard/OnboardingIntroCard.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/OrbitLoader/OrbitLoader.tsx": {
-    "no-arbitrary-values": 8,
     "no-inline-styles": 2
   },
-  "src/app/(platform)/copilot/components/PanelResizeHandle.tsx": {
-    "no-inline-styles": 1,
-    "no-raw-colors": 2
-  },
-  "src/app/(platform)/copilot/components/ProviderLimitDialog/ProviderLimitDialog.tsx": {
-    "no-restyle": 5
-  },
-  "src/app/(platform)/copilot/components/QuestionDock/QuestionDock.tsx": {
-    "no-arbitrary-values": 1,
-    "no-raw-colors": 2
-  },
   "src/app/(platform)/copilot/components/RateLimitResetDialog/RateLimitResetDialog.tsx": {
-    "no-arbitrary-values": 1,
-    "no-restyle": 13
+    "no-restyle": 6
   },
   "src/app/(platform)/copilot/components/ScaleLoader/ScaleLoader.tsx": {
-    "no-arbitrary-values": 4,
     "no-inline-styles": 2
   },
   "src/app/(platform)/copilot/components/ScheduledChatNoticeCard/ScheduledChatNoticeCard.tsx": {
     "no-restyle": 2
   },
-  "src/app/(platform)/copilot/components/ScheduledChatNoticeCard/components/RunLessOftenDialog/RunLessOftenDialog.tsx": {
-    "no-restyle": 3
-  },
   "src/app/(platform)/copilot/components/SendAtReset/ScheduledSendChip.tsx": {
-    "no-raw-colors": 4,
-    "no-restyle": 3
+    "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/SetupRequirementsCard/SetupRequirementsCard.tsx": {
-    "no-restyle": 6
+    "no-restyle": 4
   },
   "src/app/(platform)/copilot/components/SuggestedTasks/SuggestedTaskCard.tsx": {
     "no-restyle": 13
@@ -1159,87 +992,61 @@
     "no-restyle": 9
   },
   "src/app/(platform)/copilot/components/TaskProgressBar/TaskProgressBar.tsx": {
-    "no-arbitrary-values": 2,
-    "no-raw-colors": 1,
-    "no-restyle": 8
+    "no-restyle": 6
   },
   "src/app/(platform)/copilot/components/TaskProgressBar/components/StatusIcon/StatusIcon.tsx": {
-    "no-arbitrary-values": 1,
-    "no-raw-colors": 1,
     "no-restyle": 5
   },
-  "src/app/(platform)/copilot/components/TaskProgressBar/components/TaskRow/TaskRow.tsx": {
-    "no-inline-styles": 1,
-    "no-raw-colors": 1
-  },
   "src/app/(platform)/copilot/components/TokenDevtoolBadge/TokenDevtoolBadge.tsx": {
-    "no-arbitrary-values": 1,
     "no-restyle": 4
   },
   "src/app/(platform)/copilot/components/TokenDevtoolBadge/components/BreakdownSection.tsx": {
     "no-inline-styles": 1
   },
   "src/app/(platform)/copilot/components/TokenDevtoolBadge/components/ContextBar.tsx": {
-    "no-inline-styles": 2,
-    "no-raw-colors": 2
-  },
-  "src/app/(platform)/copilot/components/TokenDevtoolBadge/helpers.ts": {
-    "no-raw-colors": 4
+    "no-inline-styles": 2
   },
   "src/app/(platform)/copilot/components/ToolAccordion/AccordionContent.tsx": {
-    "no-arbitrary-values": 1,
-    "no-raw-colors": 4,
     "no-restyle": 16
   },
   "src/app/(platform)/copilot/components/ToolAccordion/ToolAccordion.tsx": {
     "no-inline-styles": 1,
-    "no-raw-colors": 4,
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/ToolChain/AgentCards.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 4
   },
   "src/app/(platform)/copilot/components/ToolChain/BlockCards.tsx": {
-    "no-raw-colors": 2,
     "no-restyle": 3
   },
   "src/app/(platform)/copilot/components/ToolChain/ChainRowView.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 5
   },
   "src/app/(platform)/copilot/components/ToolChain/ConsultCard.tsx": {
-    "no-raw-colors": 1,
-    "no-restyle": 5
+    "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/ToolChain/ExecutionCard.tsx": {
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/ToolChain/ExpertCards.tsx": {
-    "no-arbitrary-values": 3,
-    "no-raw-colors": 4,
     "no-restyle": 8
   },
   "src/app/(platform)/copilot/components/ToolChain/ExpertHandoffParts.tsx": {
     "no-restyle": 4
   },
   "src/app/(platform)/copilot/components/ToolChain/FileDiff.tsx": {
-    "no-arbitrary-values": 4,
-    "no-raw-colors": 4,
     "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/ToolChain/HandoffRetry.tsx": {
     "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/ToolChain/HandoffStatusAvatar.tsx": {
-    "no-arbitrary-values": 1,
     "no-inline-styles": 2
   },
   "src/app/(platform)/copilot/components/ToolChain/HeldCallRowParts.tsx": {
     "no-restyle": 3
   },
   "src/app/(platform)/copilot/components/ToolChain/InfoCards.tsx": {
-    "no-raw-colors": 3,
     "no-restyle": 5,
     "require-static-classes": 1
   },
@@ -1247,72 +1054,47 @@
     "no-restyle": 5
   },
   "src/app/(platform)/copilot/components/ToolChain/ResultCards.tsx": {
-    "no-raw-colors": 6,
     "no-restyle": 3
   },
   "src/app/(platform)/copilot/components/ToolChain/RowIcon.tsx": {
     "no-restyle": 32
   },
-  "src/app/(platform)/copilot/components/ToolChain/ShimmerText.tsx": {
-    "no-arbitrary-values": 2
-  },
   "src/app/(platform)/copilot/components/ToolChain/SkillLoadedCard.tsx": {
     "no-restyle": 1
-  },
-  "src/app/(platform)/copilot/components/ToolChain/SubSessionLive.tsx": {
-    "no-arbitrary-values": 1
   },
   "src/app/(platform)/copilot/components/ToolChain/ToolChain.tsx": {
     "no-restyle": 2,
     "require-static-classes": 1
   },
   "src/app/(platform)/copilot/components/ToolChain/ToolResultViews.tsx": {
-    "no-arbitrary-values": 1,
-    "no-raw-colors": 3,
     "no-restyle": 3,
-    "require-static-classes": 1,
-    "require-suppression-reason": 1
-  },
-  "src/app/(platform)/copilot/components/ToolChain/ToolStatusBadge.tsx": {
-    "no-arbitrary-values": 1,
-    "no-raw-colors": 1
+    "require-static-classes": 1
   },
   "src/app/(platform)/copilot/components/ToolErrorCard/ToolErrorCard.tsx": {
-    "no-raw-colors": 3,
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/components/TurnPausedCard/components/LivePausedCard/LivePausedCard.tsx": {
-    "no-raw-colors": 3,
-    "no-restyle": 3
+    "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/TurnPausedCard/components/LivePausedCard/components/PausedCardActions.tsx": {
-    "no-restyle": 3
-  },
-  "src/app/(platform)/copilot/components/TurnPausedCard/components/PausedLine.tsx": {
-    "no-restyle": 3
-  },
-  "src/app/(platform)/copilot/components/UsageLimits/BudgetLowHint.tsx": {
     "no-restyle": 2
   },
-  "src/app/(platform)/copilot/components/UsageLimits/BudgetRing.tsx": {
-    "no-raw-colors": 1
+  "src/app/(platform)/copilot/components/TurnPausedCard/components/PausedLine.tsx": {
+    "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/UsageLimits/StorageBar.tsx": {
     "no-inline-styles": 1,
-    "no-raw-colors": 5,
-    "no-restyle": 4
+    "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/UsageLimits/UsageBar.tsx": {
     "no-inline-styles": 1,
-    "no-raw-colors": 5,
-    "no-restyle": 4
+    "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard.tsx": {
-    "no-restyle": 13
+    "no-restyle": 6
   },
   "src/app/(platform)/copilot/components/UsageLimits/UsagePopover/UsagePopover.tsx": {
-    "no-raw-colors": 1,
-    "no-restyle": 2,
+    "no-restyle": 1,
     "require-static-classes": 1
   },
   "src/app/(platform)/copilot/components/WorkspaceFileCards/WorkspaceFileCards.tsx": {
@@ -1322,86 +1104,59 @@
     "no-restyle": 6
   },
   "src/app/(platform)/copilot/components/WorkspaceFileCards/components/FilesEmptyState.tsx": {
-    "no-raw-colors": 3,
     "no-restyle": 3
   },
   "src/app/(platform)/copilot/components/WorkspaceFileCards/components/SessionActivityContent.tsx": {
-    "no-raw-colors": 2,
     "no-restyle": 3,
     "require-static-classes": 1
   },
   "src/app/(platform)/copilot/components/WorkspaceFileCards/components/StackSection.tsx": {
-    "no-restyle": 2
+    "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/WorkspaceFileCards/components/WorkspaceFileCard.tsx": {
     "no-restyle": 1
   },
-  "src/app/(platform)/copilot/components/WorkspaceFileCards/components/WorkspaceFileRow.tsx": {
-    "no-restyle": 2
-  },
   "src/app/(platform)/copilot/components/WorkspaceFileCards/components/WorkspaceFilesContent.tsx": {
     "no-restyle": 3
   },
-  "src/app/(platform)/copilot/components/usageHelpers.ts": {
-    "no-arbitrary-values": 1
-  },
-  "src/app/(platform)/copilot/sharing/ShareChatDialog.tsx": {
-    "no-raw-colors": 2,
-    "no-restyle": 2
-  },
   "src/app/(platform)/copilot/styleguide/page.tsx": {
-    "no-arbitrary-values": 5,
-    "no-raw-colors": 28,
     "no-restyle": 78
   },
   "src/app/(platform)/copilot/tools/AskQuestion/AskQuestion.tsx": {
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/tools/CreateAgent/components/SuggestedGoalCard.tsx": {
-    "no-raw-colors": 6,
-    "no-restyle": 7
+    "no-restyle": 3
   },
   "src/app/(platform)/copilot/tools/CreateAgent/helpers.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/tools/DecomposeGoal/components/StepItem.tsx": {
     "no-restyle": 6
   },
   "src/app/(platform)/copilot/tools/DecomposeGoal/helpers.tsx": {
-    "no-raw-colors": 3,
     "no-restyle": 7
   },
   "src/app/(platform)/copilot/tools/EditAgent/helpers.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/tools/FeatureRequests/helpers.tsx": {
-    "no-raw-colors": 2,
     "no-restyle": 3
   },
   "src/app/(platform)/copilot/tools/FindAgents/helpers.tsx": {
-    "no-raw-colors": 2,
     "no-restyle": 3
   },
   "src/app/(platform)/copilot/tools/FindBlocks/helpers.tsx": {
-    "no-raw-colors": 2,
     "no-restyle": 3
-  },
-  "src/app/(platform)/copilot/tools/FindCapabilities/helpers.ts": {
-    "no-raw-colors": 4
   },
   "src/app/(platform)/copilot/tools/FolderTool/FolderTool.tsx": {
     "no-inline-styles": 1,
-    "no-raw-colors": 7,
     "no-restyle": 7
   },
   "src/app/(platform)/copilot/tools/GenericTool/GenericTool.tsx": {
-    "no-raw-colors": 14,
     "no-restyle": 17
   },
   "src/app/(platform)/copilot/tools/RunAgent/helpers.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 3
   },
   "src/app/(platform)/copilot/tools/RunBlock/components/BlockDetailsCard/BlockDetailsCard.tsx": {
@@ -1414,46 +1169,30 @@
     "no-restyle": 6
   },
   "src/app/(platform)/copilot/tools/RunBlock/helpers.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 3
   },
-  "src/app/(platform)/copilot/tools/RunMCPTool/RunMCPTool.tsx": {
-    "no-raw-colors": 1
-  },
-  "src/app/(platform)/copilot/tools/RunMCPTool/components/MCPSetupCard/MCPSetupCard.tsx": {
-    "no-raw-colors": 5
-  },
   "src/app/(platform)/copilot/tools/RunMCPTool/components/MCPToolOutputCard/MCPToolOutputCard.tsx": {
-    "no-restyle": 1,
-    "require-suppression-reason": 1
+    "no-restyle": 1
   },
   "src/app/(platform)/copilot/tools/RunMCPTool/helpers.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/tools/SearchDocs/helpers.tsx": {
-    "no-raw-colors": 2,
     "no-restyle": 3
   },
   "src/app/(platform)/copilot/tools/SetupTrigger/helpers.tsx": {
-    "no-raw-colors": 1,
     "no-restyle": 2
   },
   "src/app/(platform)/copilot/tools/ViewAgentOutput/ViewAgentOutput.tsx": {
     "no-restyle": 3
   },
   "src/app/(platform)/copilot/tools/ViewAgentOutput/helpers.tsx": {
-    "no-raw-colors": 2,
     "no-restyle": 3
-  },
-  "src/app/(platform)/copilot/voice/components/VoiceModeBar.tsx": {
-    "no-raw-colors": 3
   },
   "src/app/(platform)/copilot/voice/components/VoiceModeButton.tsx": {
     "no-restyle": 12
   },
   "src/app/(platform)/copilot/voice/components/VoiceTrace.tsx": {
-    "no-arbitrary-values": 1,
     "no-inline-styles": 1
   },
   "src/app/(platform)/dev/brain-dump-debug/components/DebugPanel.tsx": {

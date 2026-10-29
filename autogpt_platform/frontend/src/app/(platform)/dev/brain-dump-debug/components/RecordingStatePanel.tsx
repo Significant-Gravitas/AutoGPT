@@ -74,13 +74,13 @@ export function RecordingStatePanel({ snapshot, onRefresh }: Props) {
       </div>
 
       {parts.length > 0 ? (
-        <div className="mt-4 overflow-hidden rounded-large border border-zinc-200">
+        <div className="mt-4 overflow-hidden rounded-large border border-border-base">
           <table className="w-full border-collapse text-left">
-            <thead className="bg-zinc-50">
+            <thead className="bg-surface-muted">
               <tr>
                 {["partIndex", "bytes", "savedAt", "uploaded"].map((column) => (
                   <th key={column} className="px-4 py-2">
-                    <Text variant="label" className="text-zinc-500">
+                    <Text variant="label" tone="muted">
                       {column}
                     </Text>
                   </th>
@@ -89,7 +89,7 @@ export function RecordingStatePanel({ snapshot, onRefresh }: Props) {
             </thead>
             <tbody>
               {parts.map((part) => (
-                <tr key={part.partIndex} className="border-t border-zinc-100">
+                <tr key={part.partIndex} className="border-t border-separator">
                   <td className="px-4 py-2 font-mono text-sm">
                     {part.partIndex}
                   </td>
