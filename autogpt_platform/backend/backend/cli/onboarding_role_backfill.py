@@ -7,20 +7,23 @@ import click
 if TYPE_CHECKING:
     from backend.notifications.role_backfill import RolePlan, RoleRecord
 
-# Every account with a role on record: the pick the wizard kept, or the copy
-# in its business understanding. Only the role is read from the
-# understanding, which can hold whole brain dump transcripts.
+# Every account with a role on record: the pick the wizard kept, the wizard
+# draft of someone who moved on from the role step, or the copy in its
+# business understanding. Only the role is read from the understanding, which
+# can hold whole brain dump transcripts.
 _ROLE_RECORDS = """
     SELECT u."id" AS user_id, u."email", u."timezone",
            u."marketingOptOutAt" AS marketing_opt_out_at,
            u."stripeCustomerId" AS stripe_customer_id,
            u."marketingExcludedCountry" AS excluded_country,
            o."role" AS choice, o."roleOther" AS other,
+           o."wizardProgress"::text AS wizard_progress,
            c."data"->'business'->>'user_role' AS understanding_role
     FROM {schema_prefix}"User" u
     LEFT JOIN {schema_prefix}"UserOnboarding" o ON o."userId" = u."id"
     LEFT JOIN {schema_prefix}"CoPilotUnderstanding" c ON c."userId" = u."id"
     WHERE o."role" IS NOT NULL
+       OR o."wizardProgress"->'completedSteps' @> '["role"]'::jsonb
        OR c."data"->'business'->>'user_role' IS NOT NULL
 """
 
@@ -31,11 +34,13 @@ _ROLE_RECORDS = """
 def onboarding_role_backfill_command(apply: bool, yes: bool):
     """Give existing accounts their onboarding role in PostHog and MailerLite.
 
-    Reliable roles only: the pick the wizard kept, which the profile step has
-    sent itself since SECRT-2852, or an exact option ID in the business
-    understanding, the only value there that can only have come from the
-    wizard. Any other value is Other's typed text or an AutoPilot rewrite, and
-    is counted and skipped.
+    Reliable roles only: the pick the wizard kept, which the wizard has sent
+    itself since SECRT-2852 (at its end) and SECRT-3036 (at the role step);
+    the pick in the wizard draft of someone who moved on from the role step
+    before that, such as everyone who stopped at the paywall; or an exact
+    option ID in the business understanding, the only value there that can
+    only have come from the wizard. Any other value is Other's typed text or
+    an AutoPilot rewrite, and is counted and skipped.
 
     PostHog gets onboarding_role and onboarding_role_other with $set_once, so
     a role it already holds stays. MailerLite gets role and role_other only on
@@ -150,6 +155,7 @@ def _report(plan: "RolePlan") -> None:
     )
     click.echo(f"Accounts with a role on record: {plan.accounts}")
     click.echo(f"  reliable, kept by the wizard: {plan.kept}")
+    click.echo(f"  reliable, in the wizard draft: {plan.drafted}")
     click.echo(f"  reliable, an exact option in the understanding: {plan.exact}")
     click.echo(f"  skipped, Other's text or an AutoPilot rewrite: {plan.skipped}")
     click.echo(f"Roles: {roles}")
