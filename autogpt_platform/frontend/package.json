@@ -38,7 +38,7 @@
     "defaults"
   ],
   "dependencies": {
-    "@ai-sdk/react": "3.0.61",
+    "@ai-sdk/react": "4.0.147",
     "@better-auth/core": "1.6.33",
     "@faker-js/faker": "10.6.0",
     "@ferrucc-io/emoji-picker": "0.1.2",
@@ -78,7 +78,7 @@
     "@types/jaro-winkler": "0.2.4",
     "@vercel/speed-insights": "1.2.0",
     "@xyflow/react": "12.12.0",
-    "ai": "6.0.134",
+    "ai": "7.0.143",
     "bcryptjs": "3.0.3",
     "better-auth": "1.6.33",
     "boring-avatars": "2.0.4",
