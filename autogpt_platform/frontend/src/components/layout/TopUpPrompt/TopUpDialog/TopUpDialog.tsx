@@ -33,7 +33,7 @@ export function TopUpDialog({
         isOutOfCredits ? (
           <span className="inline-flex items-center gap-2">
             <AlertTriangleIcon
-              // TODO(tokens): no exact role for text-orange-600 (#E77B00)
+              // oxlint-disable-next-line design-system/no-raw-colors -- orange/yellow hue kept; warning-foreground would be a hue change (deferred visual change)
               className="h-[1.125rem] w-[1.125rem] text-orange-600"
             />
             You&apos;re out of automation credits

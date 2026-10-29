@@ -182,10 +182,13 @@ async def check_action(
     tool_call_id: str = "",
     subject_of: Callable[[], Awaitable[Subject | None]] | None = None,
     context_of: Callable[[], Awaitable[dict[str, str | None] | None]] | None = None,
+    args_bound: bool = False,
 ) -> Decision:
     """``subject_of`` resolves what the call acts on; it runs only once no
     approval answers the call, so an approved call is never re-derived.
-    ``context_of`` reads the files the call runs, for the supervisor only."""
+    ``context_of`` reads the files the call runs, for the supervisor only.
+    ``args_bound``: the tool already resolved ``args``, which a held call keeps
+    so its replay does not resolve them again."""
     if not await gate_active(user_id, session):
         return ALLOW
     assert user_id is not None
@@ -283,6 +286,7 @@ async def check_action(
         tool_name=tool_name,
         tool_call_id=tool_call_id,
         args=args,
+        args_bound=args_bound,
         rule_key=rule_key,
         envelope=get_current_envelope(),
         cost_context=await capture_cost_context(user_id),

@@ -64,7 +64,7 @@ describe("RateLimitDisplay", () => {
     );
     const badge = screen.getByText("PRO");
     expect(badge).toBeDefined();
-    expect(badge.className).toContain("bg-blue-100");
+    expect(badge.className).toContain("bg-info/20");
   });
 
   it("defaults unknown tier to NO_TIER", () => {
@@ -88,7 +88,7 @@ describe("RateLimitDisplay", () => {
     );
     const badge = screen.getByText("NO_TIER");
     expect(badge).toBeDefined();
-    expect(badge.className).toContain("bg-red-100");
+    expect(badge.className).toContain("bg-error-surface");
     expect(screen.queryByText("BASIC")).toBeNull();
     expect(screen.getByText(/no access \(paywalled\)/)).toBeDefined();
 

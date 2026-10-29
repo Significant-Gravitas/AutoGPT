@@ -69,11 +69,7 @@ export const ViewMoreData = ({
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text
-            // TODO(tokens): no exact role: text-slate-900 #2A313A
-            variant="h4"
-            className="text-slate-900"
-          >
+          <Text variant="h4" tone="primary">
             Complete {dataType === "input" ? "Input" : "Output"} Data
           </Text>
 
@@ -82,22 +78,16 @@ export const ViewMoreData = ({
               {reversedExecutionResults.map((result) => (
                 <div
                   key={result.node_exec_id}
-                  // TODO(tokens): no fitting role for border-slate-200 #CFD4DB; #CFD4DB is node-border (the builder node ring), node-selected (the selected builder node ring)
-                  className="rounded-3xl border border-slate-200 bg-surface p-4 shadow-sm"
+                  className="rounded-3xl border border-node-border bg-surface p-4 shadow-sm"
                 >
                   <div className="flex items-center gap-2">
-                    <Text
-                      // TODO(tokens): no exact role: text-slate-600 #5B6A7E
-                      variant="body"
-                      className="text-slate-600"
-                    >
+                    <Text variant="body" tone="secondary">
                       Execution ID:
                     </Text>
                     <Text
                       variant="small-medium-mono-tight"
                       as="p"
-                      // TODO(tokens): no exact role: border-gray-300 #D1D5DB, bg-gray-50 #F9FAFB
-                      className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1"
+                      className="rounded-full border border-border-strong bg-surface-muted px-2 py-1"
                     >
                       {result.node_exec_id}
                     </Text>
@@ -118,27 +108,15 @@ export const ViewMoreData = ({
                         return (
                           <div key={key} className="flex flex-col gap-2">
                             <div className="flex items-center gap-2">
-                              <Text
-                                variant="body-semibold"
-                                // TODO(tokens): no exact role: text-slate-600 #5B6A7E
-                                className="text-slate-600"
-                              >
+                              <Text variant="body-semibold" tone="secondary">
                                 Pin:
                               </Text>
-                              <Text
-                                variant="body-medium"
-                                // TODO(tokens): no exact role: text-slate-700 #475263
-                                className="text-slate-700"
-                              >
+                              <Text variant="body-medium" tone="body">
                                 {beautifyString(key)}
                               </Text>
                             </div>
                             <div className="w-full space-y-2">
-                              <Text
-                                variant="body-semibold"
-                                // TODO(tokens): no exact role: text-slate-600 #5B6A7E
-                                className="text-slate-600"
-                              >
+                              <Text variant="body-semibold" tone="secondary">
                                 Data:
                               </Text>
                               <div className="relative space-y-2">
@@ -169,12 +147,10 @@ export const ViewMoreData = ({
                                       )
                                     }
                                     className={cn(
-                                      // TODO(tokens): no exact role: hover:text-slate-900 #2A313A
-                                      "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-slate-900",
+                                      "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-foreground-strong",
                                       copiedKey ===
                                         `${result.node_exec_id}-${key}` &&
-                                        // TODO(tokens): no exact role: border-green-400 #45B56E, bg-green-100 #B7E2C7, hover:border-green-400 #45B56E, hover:bg-green-200 #94D5AC
-                                        "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
+                                        "border-success bg-success/30 hover:border-success hover:bg-success/40",
                                     )}
                                   >
                                     {copiedKey ===

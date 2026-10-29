@@ -73,6 +73,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
                       <Icon
                         icon={outcome[0]}
                         size={14}
+                        // oxlint-disable-next-line design-system/require-static-classes -- the outcome map holds whole, static class strings
                         className={cn("shrink-0", outcome[1])}
                         aria-hidden
                       />
@@ -86,10 +87,7 @@ export function ReviewSidebar({ carousel, sheet = false }: Props) {
                   </span>
                 </span>
                 {carousel.isNew(item.id) ? (
-                  <span
-                    // TODO(tokens): no fitting role for text-blue-700 #1D4ED8; #1D4ED8 is sidebar-primary, a dark-theme sidebar fill (light #18181B)
-                    className="shrink-0 rounded bg-info-surface px-1.5 text-xs font-medium text-blue-700"
-                  >
+                  <span className="shrink-0 rounded bg-info-surface px-1.5 text-xs font-medium text-info-foreground">
                     new
                   </span>
                 ) : null}

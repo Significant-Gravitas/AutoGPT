@@ -41,6 +41,14 @@ class MCPServerMetadata(BaseModel):
     oauth_server_url: str | None = None
     oauth_scopes: list[str] | None = None
     oauth_write_scopes: list[str] = Field(default_factory=list)
+    oauth_request_all_scopes: bool = Field(
+        default=False,
+        exclude=True,
+        description="Request every scope the authorization server advertises, "
+        "not just the minimum the resource lists. For servers that start from "
+        "that minimum and grant more only through step-up authorization, which "
+        "this client doesn't do; their consent screen lets the user narrow it.",
+    )
     icon_id: str | None = Field(default=None, pattern=r"^[a-z0-9_-]+$")
     provider: str | None = Field(
         default=None,
@@ -103,8 +111,13 @@ class MCPServerMetadata(BaseModel):
             self.oauth_server_url
             or self.oauth_scopes is not None
             or self.oauth_write_scopes
+            or self.oauth_request_all_scopes
         ) and "oauth" not in self.auth_methods:
             raise ValueError("OAuth settings require OAuth authentication")
+        if self.oauth_request_all_scopes and self.oauth_scopes is not None:
+            raise ValueError(
+                "List default scopes or request every advertised scope, not both"
+            )
         for option in self.server_url_options:
             self.validate_public_url(option.url)
         for url in self.legacy_server_urls:
