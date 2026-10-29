@@ -1,9 +1,9 @@
 import type { Config } from "tailwindcss";
 import plugin from "tailwindcss/plugin";
 import tailwindcssAnimate from "tailwindcss-animate";
-import { colors } from "./src/components/styles/colors";
-import scrollbar from "./tailwind.scrollbar";
-import tailwind3Preset from "./tailwind.v3-preset";
+import { colors } from "./src/components/styles/colors.ts";
+import scrollbar from "./tailwind.scrollbar.ts";
+import tailwind3Preset from "./tailwind.v3-preset.ts";
 
 const SMOOTH_SHADOW_SM =
   "0 18px 47px 0 color-mix(in srgb, var(--smooth-shadow-color) 3%, transparent), 0 7.5px 19px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 4px 10.5px 0 color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent), 0 2.3px 5.8px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 1.2px 3.1px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent), 0 0.5px 1.3px 0 color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent)";
