@@ -31,7 +31,7 @@ export function PausedCardActions({ card, onStop }: Props) {
       {resume.resumesAt && (
         <div className="flex items-center gap-1.5 pr-1">
           <Icon icon={Clock01Icon} size={14} className="text-brand" />
-          <Text variant="small-medium" className="!text-foreground-body">
+          <Text tone="body" variant="small-medium">
             Resumes {resetAt(resume.resumesAt, card.now)}
           </Text>
           <Button
