@@ -1178,6 +1178,7 @@ class UserCredit(UserCreditBase):
         new_transaction_key = None
         charged: stripe.PaymentIntent | None = None
         declined: stripe.CardError | None = None
+        needs_authentication = False
         for payment_method in payment_methods:
             # Stripe raises a decline rather than returning a failed intent, so
             # catch it here or the first declined card stops the other cards
@@ -1201,6 +1202,10 @@ class UserCredit(UserCreditBase):
                         )
                         new_transaction_key = setup_intent.id
                         break
+                    # A card check on a 3D Secure card comes back this way
+                    # instead of raising.
+                    if setup_intent.status == "requires_action":
+                        needs_authentication = True
                 else:
                     payment_intent = await stripe_call(
                         stripe.PaymentIntent.create_async,
@@ -1241,6 +1246,10 @@ class UserCredit(UserCreditBase):
                 raise CardDeclinedError(
                     declined.user_message or "Your card was declined.",
                     needs_authentication=requires_authentication(declined),
+                )
+            if needs_authentication:
+                raise CardDeclinedError(
+                    "Your card was declined.", needs_authentication=True
                 )
             raise ValueError(
                 f"Out of {len(payment_methods)} payment methods tried, none is supported"
