@@ -134,7 +134,7 @@ export default function AuthorizePage() {
         <AuthCard title="Loading...">
           <div className="flex flex-col items-center gap-4 py-8">
             <LoadingSpinner size="large" />
-            <Text variant="body" tone="muted" className="text-center">
+            <Text variant="body" tone="secondary" className="text-center">
               Loading application information...
             </Text>
           </div>
@@ -279,7 +279,7 @@ export default function AuthorizePage() {
           </div>
 
           {/* Warning */}
-          <Text variant="small" tone="muted" className="text-center">
+          <Text variant="small" tone="secondary" className="text-center">
             By authorizing, you allow this application to access your AutoGPT
             account with the permissions listed above.
           </Text>

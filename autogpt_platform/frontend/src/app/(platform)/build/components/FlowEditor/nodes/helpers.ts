@@ -207,6 +207,18 @@ export const getTypeDisplayInfo = (schema: any) => {
   };
 };
 
+// Whole class names, so Tailwind finds each stroke colour in the source.
+const EDGE_STROKE_CLASSES: Record<string, string> = {
+  "!text-success": "stroke-success",
+  "!text-info": "stroke-info",
+  // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
+  "!text-yellow-500": "stroke-yellow-500",
+  "!text-brand": "stroke-brand",
+  // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
+  "!text-indigo-500": "stroke-indigo-500",
+  "!text-foreground-tertiary": "stroke-foreground-tertiary",
+};
+
 export function getEdgeColorFromOutputType(
   outputSchema: RJSFSchema | undefined,
   sourceHandle: string,
@@ -230,7 +242,10 @@ export function getEdgeColorFromOutputType(
 
     if (i === handleParts.length - 1) {
       const { hexColor, colorClass } = getTypeDisplayInfo(fieldSchema);
-      return { colorClass: colorClass.replace("!text-", "stroke-"), hexColor };
+      return {
+        colorClass: EDGE_STROKE_CLASSES[colorClass] ?? defaultColor.colorClass,
+        hexColor,
+      };
     }
 
     if (fieldSchema.properties) {

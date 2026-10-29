@@ -337,7 +337,7 @@ export default function IntegrationSetupWizardPage() {
           </div>
 
           {/* Link to integrations settings */}
-          <Text variant="small" tone="muted" className="text-center">
+          <Text variant="small" tone="secondary" className="text-center">
             You can view and manage all your integrations in your{" "}
             <Link
               href="/settings/integrations"
