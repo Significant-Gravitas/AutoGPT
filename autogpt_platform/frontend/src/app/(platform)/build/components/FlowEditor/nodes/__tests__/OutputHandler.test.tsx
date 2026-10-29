@@ -259,6 +259,72 @@ describe("OutputHandler with React Flow", () => {
     await waitFor(() => expect(sourceHandles()).toEqual(["replacement"]));
   });
 
+  it("does not remeasure output handles for bead activity or unrelated edges", async () => {
+    connect("response_#_author");
+    render(<Flow />);
+    await waitFor(() => expect(sourceHandles()).toContain("response_#_author"));
+    const updateNodeInternals = vi.spyOn(
+      flowStore.getState(),
+      "updateNodeInternals",
+    );
+
+    async function flushFrame() {
+      await act(async () => {
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve()),
+        );
+      });
+    }
+
+    act(() => useEdgeStore.getState().resetEdgeBeads());
+    await flushFrame();
+    expect(updateNodeInternals).not.toHaveBeenCalled();
+
+    act(() => {
+      useEdgeStore.getState().setEdges([
+        ...useEdgeStore.getState().edges,
+        linkToCustomEdge({
+          id: "unrelated",
+          source_id: "node-b",
+          sink_id: "node-a",
+          source_name: "output",
+          sink_name: "input",
+        }),
+      ]);
+    });
+    await flushFrame();
+    expect(updateNodeInternals).not.toHaveBeenCalled();
+
+    act(() => {
+      useEdgeStore.getState().updateEdgeBeads("node-a", {
+        user_id: "user-1",
+        graph_id: "graph-1",
+        graph_version: 1,
+        graph_exec_id: "execution-1",
+        node_exec_id: "node-execution-1",
+        node_id: "node-a",
+        block_id: "block-1",
+        status: "COMPLETED",
+        input_data: { input: "value" },
+        output_data: {},
+        add_time: new Date(),
+        queue_time: null,
+        start_time: null,
+        end_time: null,
+      });
+    });
+    await flushFrame();
+    expect(useEdgeStore.getState().edges[1].data?.beadUp).toBe(1);
+    expect(updateNodeInternals).not.toHaveBeenCalled();
+
+    act(() => connect("response_#_editor"));
+    await waitFor(() => {
+      expect(sourceHandles()).toContain("response_#_editor");
+      expect(sourceHandles()).not.toContain("response_#_author");
+    });
+    expect(updateNodeInternals).toHaveBeenCalled();
+  });
+
   it("renders hostile dictionary keys as handles without prototype mutation", async () => {
     act(() => connect("response_#___proto___#_injected"));
     try {

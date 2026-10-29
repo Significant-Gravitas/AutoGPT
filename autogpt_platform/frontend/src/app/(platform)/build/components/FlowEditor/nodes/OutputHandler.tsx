@@ -3,6 +3,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { RJSFSchema } from "@rjsf/utils";
 import { useLayoutEffect, useState } from "react";
 import { useUpdateNodeInternals } from "@xyflow/react";
+import { useShallow } from "zustand/react/shallow";
 
 import { OutputNodeHandle } from "../handlers/NodeHandle";
 import {
@@ -36,8 +37,20 @@ interface Props {
 
 export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
   const isOutputConnected = useEdgeStore((state) => state.isOutputConnected);
-  const edges = useEdgeStore((state) => state.edges);
-  const properties = augmentOutputSchemaWithEdges(outputSchema, nodeId, edges);
+  const sourceHandles = useEdgeStore(
+    useShallow((state) =>
+      state.edges.flatMap((edge) =>
+        edge.source === nodeId && typeof edge.sourceHandle === "string"
+          ? [edge.sourceHandle]
+          : [],
+      ),
+    ),
+  );
+  const properties = augmentOutputSchemaWithEdges(
+    outputSchema,
+    nodeId,
+    sourceHandles.map((sourceHandle) => ({ source: nodeId, sourceHandle })),
+  );
   const [isOutputVisible, setIsOutputVisible] = useState(true);
   const brokenOutputs = useBrokenOutputs(nodeId);
   const [expandedObjects, setExpandedObjects] = useState<
@@ -52,7 +65,7 @@ export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
   }, [
     nodeId,
     outputSchema,
-    edges,
+    sourceHandles,
     isOutputVisible,
     expandedObjects,
     brokenOutputs,
