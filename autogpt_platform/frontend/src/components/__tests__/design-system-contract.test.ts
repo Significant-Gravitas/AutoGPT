@@ -14,10 +14,17 @@ const globalsCss = readFileSync(
   "utf8",
 );
 
+// Colours declared in every top-level rule whose selector list includes
+// `selector`; empty when there is none.
 function declaredColors(selector: string) {
-  const start = globalsCss.indexOf(`${selector} {`);
-  const block = globalsCss.slice(start, globalsCss.indexOf("\n}", start));
-  return new Set([...block.matchAll(/--color-([a-z-]+):/g)].map((m) => m[1]));
+  const names = new Set<string>();
+  for (const [, selectors, block] of globalsCss.matchAll(
+    /^([^\s{}@/*][^{}]*)\{([^{}]*)\}/gm,
+  )) {
+    if (!selectors.split(",").some((s) => s.trim() === selector)) continue;
+    for (const m of block.matchAll(/--color-([a-z-]+):/g)) names.add(m[1]);
+  }
+  return names;
 }
 
 function registeredColors(value: unknown): string[] {
@@ -40,9 +47,14 @@ describe("colour tokens", () => {
   });
 
   it("only overrides names :root declares in .dark", () => {
+    expect(root.size).toBeGreaterThan(0);
     const dark = declaredColors(".dark");
-    expect(dark.size).toBeGreaterThan(0);
     expect([...dark].filter((name) => !root.has(name))).toEqual([]);
+  });
+
+  it("has one dark selector, `.dark`", () => {
+    expect(tailwindConfig.darkMode).toBe("class");
+    expect(globalsCss).not.toMatch(/\.dark-mode|data-theme=["']?dark/);
   });
 
   it("keeps the raw palette frozen; new colours are roles in globals.css", () => {

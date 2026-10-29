@@ -30,26 +30,20 @@ export function SetupNeededRow({
       {isCredential && provider ? (
         <IntegrationLogo provider={provider} size={20} className="shrink-0" />
       ) : (
-        <Icon
-          icon={Calendar03Icon}
-          size={18}
-          className="shrink-0 text-foreground-tertiary"
-          aria-hidden="true"
-        />
+        <span className="flex shrink-0 text-foreground-tertiary">
+          <Icon icon={Calendar03Icon} size={18} aria-hidden="true" />
+        </span>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
         <Text
           variant="body-medium"
           as="span"
-          className="truncate !text-foreground-emphasis"
+          tone="emphasis"
+          className="truncate"
         >
           {title}
         </Text>
-        <Text
-          variant="small"
-          as="span"
-          className="truncate !text-foreground-subtle"
-        >
+        <Text variant="small" as="span" tone="subtle" className="truncate">
           {detail}
         </Text>
       </div>
@@ -69,11 +63,7 @@ export function SetupNeededRow({
               Connect
             </Button>
           ) : (
-            <Text
-              variant="small"
-              as="span"
-              className="!text-foreground-tertiary"
-            >
+            <Text variant="small" as="span" tone="muted">
               Needs a platform key
             </Text>
           )
