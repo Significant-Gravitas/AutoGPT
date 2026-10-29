@@ -31,7 +31,7 @@ function getHeroContent(
           "Your workflow has been approved and is now live on the AutoGPT marketplace.",
         Icon: Tick02Icon,
         pulse: "bg-success/40",
-        gradient: "from-success to-success",
+        gradient: "from-success/70 to-success",
       };
     case SubmissionStatus.REJECTED:
       return {
@@ -40,7 +40,7 @@ function getHeroContent(
           "Your submission was not approved. Review the feedback and resubmit.",
         Icon: Cancel01Icon,
         pulse: "bg-error/40",
-        gradient: "from-error to-error-hover",
+        gradient: "from-error/70 to-error-hover",
       };
     case SubmissionStatus.DRAFT:
       return {
@@ -59,7 +59,7 @@ function getHeroContent(
           : "We'll notify you once review is complete. Track progress from the Creator Dashboard.",
         Icon: Tick02Icon,
         pulse: "bg-brand/40",
-        gradient: "from-brand to-brand-hover",
+        gradient: "from-brand/80 to-brand-hover",
       };
   }
 }
