@@ -4,13 +4,7 @@ import { Loading03Icon } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-const sizeClassNameMap = {
-  small: "h-4 w-4",
-  medium: "h-6 w-6",
-  large: "h-10 w-10",
-} as const;
-
-type SpinnerSize = keyof typeof sizeClassNameMap;
+type SpinnerSize = "small" | "medium" | "large";
 
 // The open-ring spinner the old shadcn `loading` primitive drew (lucide's
 // loader-circle), kept so its callers render exactly as before.
@@ -38,22 +32,22 @@ type LoadingSpinnerProps = {
   cover?: boolean;
 } & Omit<React.ComponentPropsWithoutRef<typeof Icon>, "icon" | "size">;
 
-export function LoadingSpinner(props: LoadingSpinnerProps) {
-  const {
-    size = "medium",
-    variant = "default",
-    className,
-    cover = false,
-    ...restProps
-  } = props;
-
+export function LoadingSpinner({
+  size = "medium",
+  variant = "default",
+  className,
+  cover = false,
+  ...restProps
+}: LoadingSpinnerProps) {
   const spinner = (
     <Icon
       data-slot="loading-spinner"
       icon={iconMap[variant]}
       className={cn(
         "animate-spin text-inherit",
-        sizeClassNameMap[size],
+        size === "small" && "h-4 w-4",
+        size === "medium" && "h-6 w-6",
+        size === "large" && "h-10 w-10",
         className,
       )}
       {...restProps}

@@ -42,12 +42,8 @@ export function RecordingStatus({
       {/* A dropped connection is not a lost recording, and saying so is the
           whole point of writing every chunk to the device first. */}
       {isOffline && (
-        <div className="flex items-center gap-2 rounded-md bg-surface-hover px-2.5 py-1">
-          <Icon
-            icon={CloudOffIcon}
-            size={14}
-            className="shrink-0 text-foreground-subtle"
-          />
+        <div className="flex items-center gap-2 rounded-md bg-surface-hover px-2.5 py-1 text-foreground-subtle">
+          <Icon icon={CloudOffIcon} size={14} className="shrink-0" />
           <Text variant="small" tone="muted">
             {OFFLINE_COPY}
           </Text>

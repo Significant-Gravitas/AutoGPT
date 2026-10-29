@@ -51,7 +51,8 @@ export function TrialWelcome({
           onClick={onStart}
           loading={isStarting}
           disabled={isStarting || isBlocked}
-          className="h-12 w-full text-base"
+          textSize="body-md"
+          className="h-12 w-full"
         >
           Start my free trial
         </Button>

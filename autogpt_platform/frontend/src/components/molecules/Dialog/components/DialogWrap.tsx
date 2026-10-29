@@ -119,9 +119,8 @@ export function DialogWrap({
           isCompact && compactStyles.content,
           className,
         )}
-        style={{
-          ...styling,
-        }}
+        // oxlint-disable-next-line design-system/no-inline-styles -- the public `styling` prop, passed through from callers
+        style={styling}
       >
         <div
           data-slot="dialog-header"
@@ -152,7 +151,7 @@ export function DialogWrap({
               data-slot="dialog-close"
               className={cn(
                 "absolute right-4 top-4 z-50 bg-surface",
-                isCompact ? compactStyles.close : "size-[2.5rem]",
+                isCompact ? "right-3 top-3" : "size-[2.5rem]",
               )}
               withTooltip={false}
             >
