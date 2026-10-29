@@ -330,10 +330,14 @@ test("every Windows installer closes the programs of its own install only", () =
   }
 });
 
+const INSTALLER_QUERY_TIMEOUT = 180_000;
+
 test("Windows installer process queries preserve literal install paths", {
   skip: process.platform !== "win32" && "PowerShell is a Windows installer dependency",
-  timeout: 180_000,
+  timeout: INSTALLER_QUERY_TIMEOUT,
 }, () => {
+  // node:test's timer cannot interrupt synchronous children; share one deadline.
+  const deadline = performance.now() + INSTALLER_QUERY_TIMEOUT;
   const { spawnSync } = require("node:child_process");
   const include = fs.readFileSync(INCLUDE, "utf8").replace(/\r\n/g, "\n");
   const powershell = path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
@@ -348,9 +352,11 @@ test("Windows installer process queries preserve literal install paths", {
       .replaceAll("$INSTDIR", directory)
       .replaceAll("$0", "-Force");
     const encoded = Buffer.from(`${fakeProcesses}\n${command}`, "utf16le").toString("base64");
+    const timeout = Math.floor(deadline - performance.now());
+    assert.ok(timeout > 0, "PowerShell queries exceeded the test budget");
     const result = spawnSync(powershell, ["-NoProfile", "-NonInteractive", "-EncodedCommand", encoded], {
       encoding: "utf8",
-      timeout: 15_000,
+      timeout,
       windowsHide: true,
       env: {
         ...process.env,
@@ -379,6 +385,7 @@ test("Windows installer process queries preserve literal install paths", {
     assert.equal(stopped.status, 0);
     assert.deepEqual(stopped.stdout.trim().split(/\r?\n/), ["101", "102"]);
   }
+  assert.ok(performance.now() <= deadline, "PowerShell queries exceeded the test budget");
 });
 
 test("the installer's check is electron-builder's, changed in two places", (t) => {
