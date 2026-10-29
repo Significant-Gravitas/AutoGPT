@@ -1436,7 +1436,7 @@ class TestLockedThread:
         ) as fetch:
             await handlers["on_message"](msg)
 
-        fetch.assert_awaited_once_with(msg)
+        fetch.assert_awaited_once_with(msg, thread)
         assert callback.await_args.args[0].thread_history == history
 
     @pytest.mark.asyncio

@@ -1946,7 +1946,11 @@ class TestSetupCardIsPostedOncePerThread:
                 ),
             ):
                 await handler._stream_batch(
-                    [("Nick", "u1", f"message {n}")],
+                    [
+                        PendingMessage(
+                            username="Nick", user_id="u1", text=f"message {n}"
+                        )
+                    ],
                     _ctx(channel_type="thread", channel_id="thread-1"),
                     adapter,
                     "thread-1",
@@ -2034,7 +2038,11 @@ class TestSetupCardIsPostedOncePerThread:
                 ),
             ):
                 await MessageHandler(api)._stream_batch(
-                    [("Nick", "u1", f"message {n}")],
+                    [
+                        PendingMessage(
+                            username="Nick", user_id="u1", text=f"message {n}"
+                        )
+                    ],
                     _ctx(channel_type="thread", channel_id="thread-1"),
                     adapter,
                     "thread-1",

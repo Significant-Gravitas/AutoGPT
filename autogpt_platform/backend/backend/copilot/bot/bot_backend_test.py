@@ -612,16 +612,24 @@ class TestConnectedCardIsNotASetupPrompt:
 
         queue: asyncio.Queue = asyncio.Queue()
         await queue.put(
-            StreamToolOutputAvailable(
-                toolCallId="tool-1", toolName="run_mcp_tool", output=_connected_card()
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="run_mcp_tool",
+                    output=_connected_card(),
+                ),
             )
         )
         await queue.put(
-            StreamToolOutputAvailable(
-                toolCallId="tool-2", toolName="run_mcp_tool", output=missing
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-2", toolName="run_mcp_tool", output=missing
+                ),
             )
         )
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamFinish()))
 
         setup_calls: list[dict] = []
 
@@ -630,7 +638,7 @@ class TestConnectedCardIsNotASetupPrompt:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
