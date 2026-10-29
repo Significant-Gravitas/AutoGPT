@@ -42,6 +42,7 @@ import {
 } from "./components/ComposerPlusMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
+import { MentionConnectDialog } from "./components/MentionConnectDialog";
 import { MentionDropdown } from "./components/MentionDropdown";
 import { ConnectionPickerDialog } from "./components/ConnectionPicker/ConnectionPickerDialog";
 import { NoAIConnectionNotice } from "./components/NoAIConnectionNotice/NoAIConnectionNotice";
@@ -690,6 +691,13 @@ export const ChatInput = memo(function ChatInput({
           expertName={expertName}
         />
       )}
+      <MentionConnectDialog
+        request={mentions.connectRequest}
+        expertId={expertId}
+        expertName={expertName}
+        onCancel={mentions.cancelConnect}
+        onConnected={mentions.resumeAfterConnect}
+      />
     </form>
   );
 });
