@@ -205,12 +205,12 @@ async def record_signup(email: str, fields: Fields | None = None) -> None:
 
 
 async def record_onboarding_profile(email: str, fields: Fields | None = None) -> None:
-    """The onboarding answers. On cloud the paywall comes first, so they are
-    given once the person is a checkout opener: they fill in someone MailerLite
-    already has and never create a subscriber, since only checkout openers
-    belong in MailerLite. Anyone who answers before opening checkout gets their
-    role with the checkout event instead (`checkout_audience`), and
-    onboarding-role-backfill fills in anyone missed."""
+    """The onboarding answers, for someone who already opened checkout: they
+    fill in someone MailerLite already has and never create a subscriber,
+    since only checkout openers belong in MailerLite. The role is answered
+    before the paywall, so most people get it with the checkout event instead
+    (`checkout_audience`), and onboarding-role-backfill fills in anyone
+    missed."""
     if not fields:
         return
     _require_token()

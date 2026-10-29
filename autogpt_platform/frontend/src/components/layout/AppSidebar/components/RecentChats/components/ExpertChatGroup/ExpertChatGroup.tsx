@@ -88,8 +88,7 @@ export function ExpertChatGroup({
             <AutopilotAvatar
               size={32}
               transparent
-              // TODO(tokens): no exact role for border-[#e3e3e3] (#E3E3E3)
-              className="rounded-full border border-[#e3e3e3]"
+              className="rounded-full border border-border-base"
             />
           ) : (
             <ExpertAvatar
@@ -97,8 +96,7 @@ export function ExpertChatGroup({
               avatarUrl={avatarUrl}
               color={color}
               size={32}
-              // TODO(tokens): no exact role for border-[#e3e3e3] (#E3E3E3)
-              className="rounded-full border border-[#e3e3e3]"
+              className="rounded-full border border-border-base"
             />
           )}
           <ExpertIdentityDetails
@@ -122,7 +120,7 @@ export function ExpertChatGroup({
           <Icon
             icon={ArrowDown01Icon}
             className={cn(
-              "ease-[cubic-bezier(0.33,1,0.68,1)] shrink-0 text-foreground-subtle transition-[opacity,transform] duration-200 group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none md:opacity-0",
+              "shrink-0 text-foreground-subtle transition-[opacity,transform] duration-200 group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none md:opacity-0",
               CHEVRON_SIZE_CLASS,
               !newChatHref && "ml-auto",
             )}
@@ -188,8 +186,7 @@ function NewChatLink({ href, label }: { href: string; label: string }) {
           href={href}
           aria-label={name}
           className={cn(
-            // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour), not a focus ring
-            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-foreground-tertiary transition-opacity hover:bg-surface-active hover:text-foreground-strong focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 md:opacity-0",
+            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-foreground-tertiary transition-opacity hover:bg-surface-active hover:text-foreground-strong focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 md:opacity-0",
             NEW_CHAT_SLOT_SIZE_CLASS,
             NEW_CHAT_LINK_OFFSET_CLASS,
           )}

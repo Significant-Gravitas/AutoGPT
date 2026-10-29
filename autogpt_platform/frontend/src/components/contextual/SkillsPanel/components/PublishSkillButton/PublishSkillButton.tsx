@@ -56,8 +56,7 @@ export function PublishSkillButton({ skillName }: Props) {
               <Icon
                 icon={CheckmarkCircle02Icon}
                 size={18}
-                // TODO(tokens): no exact role for text-emerald-600 #059669
-                className="mt-0.5 text-emerald-600"
+                className="mt-0.5 text-success"
               />
               <Text variant="body">
                 Submitted for review. Your skill appears in the marketplace once
@@ -67,7 +66,7 @@ export function PublishSkillButton({ skillName }: Props) {
             </div>
           ) : (
             <div className="flex flex-col gap-4">
-              <Text variant="body" className="!text-foreground-tertiary">
+              <Text variant="body" tone="muted">
                 Publishing sends a copy of <strong>{skillName}</strong> for
                 review. Say where it belongs and what it expects to be
                 connected.
@@ -82,7 +81,7 @@ export function PublishSkillButton({ skillName }: Props) {
               />
               <div className="flex flex-col gap-2">
                 <Text variant="large-medium">Works with</Text>
-                <Text variant="small" className="!text-foreground-tertiary">
+                <Text variant="small" tone="muted">
                   Integrations your instructions assume. Installers see these
                   and connect them when they first need one.
                 </Text>

@@ -58,7 +58,7 @@ export function LlmIcon({ value, size = 20 }: Props) {
       className="flex items-center justify-center rounded-xsmall bg-surface-hover"
       style={{ width: size, height: size }}
     >
-      <Text variant="small" className="text-foreground-tertiary">
+      <Text variant="small" tone="muted">
         {fallback}
       </Text>
     </div>
