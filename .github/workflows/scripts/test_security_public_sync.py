@@ -28,6 +28,17 @@ EMPTY = {"schema_version": 1, "advisories": []}
 POLICY = f"# Policy\n\n{sync.CREDIT_START}\nold\n{sync.CREDIT_END}\n\nHistorical credit stays.\n"
 
 
+def published_release(tag=TAG, **fields):
+    release = {
+        "id": 123,
+        "draft": False,
+        "published_at": "2026-01-01",
+        "tag_name": tag,
+        "body": "Notes\n",
+    }
+    return dict(release, **fields)
+
+
 class SafeDiagnosticsTests(unittest.TestCase):
     def test_both_clis_log_only_allowlisted_reasons_not_exception_text(self):
         errors = [api.PublicDataError(code) for code in api.PublicErrorCode]
@@ -269,7 +280,7 @@ class PublicProjectionTests(unittest.TestCase):
         snapshot = sync.public_snapshot([public, *private, withdrawn])
         with TemporaryDirectory() as directory, patch.object(
             sync, "fetch_advisories", return_value=[public, *private, withdrawn]
-        ):
+        ), patch.object(sync, "fetch_releases", return_value=[published_release()]):
             root = Path(directory)
             (root / sync.SNAPSHOT_PATH).parent.mkdir()
             (root / sync.SNAPSHOT_PATH).write_text(
@@ -304,12 +315,55 @@ class PublicProjectionTests(unittest.TestCase):
             self.assertIn("@researcher", notes)
             self.assertIn("Historical credit stays.", files["SECURITY.md"])
             self.assertEqual(
-                json.loads(output.getvalue()), {"added": 1, "removed": 0, "updated": 0}
+                json.loads(output.getvalue()),
+                {"added": 1, "removed": 0, "updated": 0, "unlinked": []},
             )
             self.assertEqual(
                 sync.prepare_credits(root, sync.snapshot_digest(snapshot)),
-                {"added": 0, "removed": 0, "updated": 0},
+                {"added": 0, "removed": 0, "updated": 0, "unlinked": []},
             )
+
+    def test_advisories_no_published_release_lists_are_reported(self):
+        later = "autogpt-platform-beta-v1.0.0"
+        forgotten = advisory("GHSA-dddd-eeee-ffff")
+        forgotten["description"] = "Fixed, but the release link was forgotten."
+        # Linked to a release that isn't published yet, e.g. a draft or a mistyped tag.
+        unreleased = advisory("GHSA-eeee-ffff-gggg")
+        unreleased["description"] = unreleased["description"].replace(TAG, later)
+        unreleased["vulnerabilities"] = [{"patched_versions": "1.0.0"}]
+        private = dict(advisory("GHSA-dead-beef-cafe"), state="draft")
+        private["description"] = forgotten["description"]
+        records = [advisory(), forgotten, unreleased, private]
+        snapshot = sync.public_snapshot(records)
+        releases = [published_release(), published_release(later, id=124, draft=True)]
+        expected = [forgotten["ghsa_id"], unreleased["ghsa_id"]]
+        self.assertEqual(sync.published_release_tags(releases), {TAG})
+        self.assertEqual(sync.unlinked_advisories(snapshot, {TAG}), expected)
+        with TemporaryDirectory() as directory, patch.object(
+            sync, "fetch_advisories", return_value=records
+        ), patch.object(sync, "fetch_releases", return_value=releases):
+            root = Path(directory)
+            (root / sync.SNAPSHOT_PATH).parent.mkdir()
+            (root / sync.SNAPSHOT_PATH).write_text(
+                sync.snapshot_text(EMPTY), encoding="utf-8"
+            )
+            (root / "SECURITY.md").write_text(POLICY, encoding="utf-8")
+            result = sync.prepare_credits(root, sync.snapshot_digest(snapshot))
+        self.assertEqual(result["unlinked"], expected)
+        for current, listed, text in (
+            (snapshot, releases, f"lists: {', '.join(expected)}. {sync.UNLINKED_HINT}"),
+            (sync.public_snapshot([advisory()]), releases[:1], "lists: none."),
+        ):
+            with patch.object(
+                publish, "current_snapshot", return_value=current
+            ), patch.object(publish, "public_pages", return_value=listed), patch.object(
+                publish, "public_json", return_value=(published_release(), {})
+            ):
+                preview = publish.update_releases(
+                    sync.snapshot_digest(current), preview=True
+                )["preview"]
+            self.assertIn(text, preview)
+            self.assertNotIn(private["ghsa_id"], preview)
 
     def test_snapshot_rejects_unknown_fields_and_free_text(self):
         snapshot = sync.public_snapshot([advisory()])

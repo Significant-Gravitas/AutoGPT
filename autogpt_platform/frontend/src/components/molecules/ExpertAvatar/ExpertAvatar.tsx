@@ -7,6 +7,7 @@ import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
 import { StatusDot } from "@/components/molecules/NotionAvatar/StatusDot";
 import { expertPastel } from "./colors";
 import { cn } from "@/lib/utils";
+import type { CSSProperties } from "react";
 import { getManagedAvatar, resolveExpertAvatarUrl } from "./helpers";
 
 import { ManagedExpertImage } from "./components/ManagedExpertImage";
@@ -53,21 +54,25 @@ export function ExpertAvatar({
   return (
     <span
       data-slot="expert-avatar"
-      style={{
-        width: size,
-        height: size,
-        backgroundColor: backgroundColor
-          ? expertPastel(backgroundColor)
-          : undefined,
-      }}
+      style={
+        {
+          "--avatar-size": `${size}px`,
+          "--avatar-bg": backgroundColor
+            ? expertPastel(backgroundColor)
+            : undefined,
+        } as CSSProperties
+      }
       className={cn(
         "relative inline-flex shrink-0",
         backgroundColor && "rounded-full",
         className,
+        "size-(--avatar-size)",
+        backgroundColor && "bg-(--avatar-bg)",
       )}
     >
       <Avatar
         data-slot="expert-avatar-frame"
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- follows the wrapper's radius; Tailwind has no rounded-inherit
         className="size-full rounded-[inherit]"
       >
         <AvatarImage

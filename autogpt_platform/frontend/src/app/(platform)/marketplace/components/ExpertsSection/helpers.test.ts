@@ -8,18 +8,24 @@ import {
 
 describe("getExpertAccent", () => {
   test("themes known roles and falls back to zinc", () => {
-    expect(getExpertAccent("Marketing").pill).toContain("violet");
-    expect(getExpertAccent("SEO & Content").pill).toContain("violet");
+    expect(getExpertAccent("Marketing").pill).toContain("text-accent-strong");
+    expect(getExpertAccent("SEO & Content").pill).toContain(
+      "text-accent-strong",
+    );
     expect(getExpertAccent("Social & Content Repurposing").pill).toContain(
-      "violet",
+      "text-accent-strong",
     );
     expect(getExpertAccent("Market & Competitor Intelligence").pill).toContain(
-      "violet",
+      "text-accent-strong",
     );
-    expect(getExpertAccent("Email & Lifecycle").pill).toContain("violet");
-    expect(getExpertAccent("Sales").pill).toContain("amber");
-    expect(getExpertAccent("Ops").pill).toContain("sky");
-    expect(getExpertAccent("Astrologer").pill).toContain("zinc");
+    expect(getExpertAccent("Email & Lifecycle").pill).toContain(
+      "text-accent-strong",
+    );
+    expect(getExpertAccent("Sales").pill).toContain("text-warning-foreground");
+    expect(getExpertAccent("Ops").pill).toContain("text-sky-700");
+    expect(getExpertAccent("Astrologer").pill).toContain(
+      "text-foreground-secondary",
+    );
   });
 });
 

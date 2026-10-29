@@ -339,6 +339,25 @@ def test_gpt6_1_sol_bills_at_authored_rates():
     assert sol_entry.context_window == 1050000
 
 
+def test_gpt6_1_terra_bills_at_authored_rates():
+    """GPT-6.1 Terra (OpenAI list price $1/$5 per 1M, $0.05/1M cached
+    input) — flat tier and per-1M projections must match the authored
+    catalog entry."""
+    terra = LLMModel("gpt-6.1-terra")
+    assert terra is LLMModel.GPT6_1_TERRA
+    assert MODEL_COST[terra] == 2
+    assert TOKEN_COST[terra].model_dump() == {
+        "input": 150.0,
+        "output": 750.0,
+        "cache_read": 7.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[terra].max_output_tokens == 128000
+    terra_entry = next(m for m in CATALOG.models if m.slug == "gpt-6.1-terra")
+    assert terra_entry.price_tier == 2
+    assert terra_entry.context_window == 1050000
+
+
 def test_gpt6_luna_bills_at_authored_rates():
     """GPT-6 Luna (OpenAI list price $0.10/$0.50 per 1M, the fast/cheapest
     GPT-6 tier) — flat tier and per-1M projections must match the
@@ -767,14 +786,14 @@ def test_routing_cells_use_transport_ready_spellings():
 
 
 def test_mistral_large_4_bills_at_authored_rates():
-    """Mistral Large 4 (OpenRouter live rate $1.36/$4.18 per 1M, $0.07/1M
-    cached input as of 2026-10-21) — flat tier and per-1M projections must
+    """Mistral Large 4 (OpenRouter live rate $0.70/$2.10 per 1M, $0.07/1M
+    cached input as of 2026-10-29) — flat tier and per-1M projections must
     match the authored catalog entry."""
     large = LLMModel("mistralai/mistral-large-4-0")
     assert MODEL_COST[large] == 2
     assert TOKEN_COST[large].model_dump() == {
-        "input": 204.0,
-        "output": 627.0,
+        "input": 105.0,
+        "output": 315.0,
         "cache_read": 10.5,
         "cache_creation": 0.0,
     }

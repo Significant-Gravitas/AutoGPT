@@ -1,5 +1,7 @@
 import type { HTTPValidationError } from "@/app/api/__generated__/models/hTTPValidationError";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import type { OrbScreen } from "./components/MicButton";
+import type { ScreenState } from "./useBrainDumpStep";
 
 // Pure helpers for the brain dump. Timings and copy live here so the hook
 // stays about behaviour and the component stays about pixels.
@@ -38,7 +40,7 @@ const ENCOURAGEMENT_COPY = [
   "Keep going, this is gold",
   "The more you share, the sharper Otto gets",
   "You're building Otto's memory right now",
-  "You're doing great — keep going",
+  "You're doing great. Keep going",
   "Every detail makes Otto more useful",
   "Share whatever comes to mind next",
 ] as const;
@@ -55,7 +57,8 @@ const ENCOURAGEMENTS = ENCOURAGEMENT_MILESTONES.map((atSeconds, index) => ({
 const ENCOURAGEMENT_VISIBLE_SECONDS = 6;
 const DURATION_GUIDANCE_START_SECONDS = 4;
 const DURATION_GUIDANCE_END_SECONDS = 10;
-export const DURATION_GUIDANCE_COPY = "Most people talk for 2 to 3 minutes.";
+export const DURATION_GUIDANCE_COPY =
+  "Even a minute helps. Keep going if you have more.";
 
 export function encouragementAt(elapsedSeconds: number): string | null {
   const active = ENCOURAGEMENTS.find(
@@ -162,4 +165,13 @@ export function isTypedTextTooLong(error: unknown) {
 
 function formatCount(count: number) {
   return count.toLocaleString("en-US");
+}
+
+export function toOrbScreen(screen: ScreenState): OrbScreen | null {
+  // "insufficient" gets no orb: the orb's failed state retries the same
+  // take, and re-submitting a rejected take can only be rejected again.
+  // Typing keeps the resting avatar and swaps only the control under it.
+  if (screen === "recovery" || screen === "insufficient") return null;
+  if (screen === "typing") return "rest";
+  return screen;
 }

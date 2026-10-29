@@ -35,10 +35,7 @@ function ProviderConnectRow({
   const [broken, setBroken] = useState(false);
 
   return (
-    <div
-      // TODO(tokens): no exact role for bg-neutral-100 #f5f5f5
-      className="flex h-14 w-full items-center gap-2.5 rounded-xl bg-neutral-100 px-3"
-    >
+    <div className="flex h-14 w-full items-center gap-2.5 rounded-xl bg-surface-hover px-3">
       {broken ? (
         <div
           aria-hidden
@@ -47,7 +44,7 @@ function ProviderConnectRow({
           {displayName.charAt(0)}
         </div>
       ) : (
-        // eslint-disable-next-line @next/next/no-img-element
+        // eslint-disable-next-line @next/next/no-img-element -- remote URL from any host, which next/image would need configured
         <img
           src={src}
           alt=""
@@ -124,18 +121,12 @@ export function CredentialsFlatView({
             <span className="inline-flex items-center gap-1 text-foreground-secondary">
               {displayName} credentials
               {isOptional && (
-                <span
-                  // TODO(tokens): no exact role for text-gray-500 #6b7280
-                  className="font-normal text-gray-500"
-                >
+                <span className="font-normal text-foreground-tertiary">
                   (optional)
                 </span>
               )}
               {!isOptional && !selectedCredential && (
-                <span
-                  // TODO(tokens): no exact role for text-red-600 #D93636; #D93636 is error-hover, a hover fill
-                  className="inline-flex items-center gap-1 text-red-600"
-                >
+                <span className="inline-flex items-center gap-1 text-error-foreground">
                   <ExclamationTriangleIcon className="size-3.5" />
                   <span className="font-normal">required</span>
                 </span>

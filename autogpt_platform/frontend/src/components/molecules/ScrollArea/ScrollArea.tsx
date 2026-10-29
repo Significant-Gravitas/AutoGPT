@@ -51,11 +51,17 @@ const ScrollArea = React.forwardRef<
         <ScrollAreaPrimitive.Viewport
           ref={viewportRef}
           data-slot="scroll-area-viewport"
-          className="h-full w-full rounded-[inherit]"
-          style={{
-            overflowX: orientation === "vertical" ? "hidden" : "scroll",
-            overflowY: orientation === "horizontal" ? "hidden" : "scroll",
-          }}
+          // `!` outranks the overflow Radix writes inline on the viewport.
+          className={cn(
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- follows the root's radius; Tailwind has no rounded-inherit
+            "h-full w-full rounded-[inherit]",
+            orientation === "vertical"
+              ? "!overflow-x-hidden"
+              : "!overflow-x-scroll",
+            orientation === "horizontal"
+              ? "!overflow-y-hidden"
+              : "!overflow-y-scroll",
+          )}
         >
           {children}
         </ScrollAreaPrimitive.Viewport>
@@ -69,7 +75,7 @@ const ScrollArea = React.forwardRef<
     );
   },
 );
-ScrollArea.displayName = ScrollAreaPrimitive.Root.displayName;
+ScrollArea.displayName = "ScrollArea";
 
 const ScrollBar = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>,
@@ -82,21 +88,20 @@ const ScrollBar = React.forwardRef<
     className={cn(
       "flex touch-none select-none transition-colors",
       orientation === "vertical" &&
-        "h-full w-2.5 border-l border-l-transparent p-[1px]",
+        "h-full w-2.5 border-l border-l-transparent p-px",
       orientation === "horizontal" &&
-        "h-2.5 flex-col border-t border-t-transparent p-[1px]",
+        "h-2.5 flex-col border-t border-t-transparent p-px",
       className,
     )}
     {...props}
   >
-    {/* TODO(tokens): no exact role: bg-neutral-200 #E5E5E5 */}
     <ScrollAreaPrimitive.ScrollAreaThumb
       data-slot="scroll-area-thumb"
-      className="relative flex-1 rounded-full bg-neutral-200 dark:bg-neutral-800"
+      className="relative flex-1 rounded-full bg-surface-active"
     />
   </ScrollAreaPrimitive.ScrollAreaScrollbar>
 ));
-ScrollBar.displayName = ScrollAreaPrimitive.ScrollAreaScrollbar.displayName;
+ScrollBar.displayName = "ScrollBar";
 
 function useScrolledPastThreshold(
   viewportRef: React.RefObject<HTMLDivElement | null>,

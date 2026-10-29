@@ -56,7 +56,7 @@ export function TransactionRow({
         <td className="px-2 py-4 text-right">
           <TransactionAmount amount={transaction.amount} />
           {isRunActive(transaction) && (
-            <Text variant="small" className="text-foreground-secondary">
+            <Text variant="small" tone="secondary">
               so far
             </Text>
           )}
@@ -66,6 +66,7 @@ export function TransactionRow({
             id={`transaction-details-${transaction.id}`}
             variant="ghost"
             size="small"
+            // oxlint-disable-next-line design-system/no-restyle -- a bare text toggle inside the receipt; no Button variant drops the padding
             className="min-h-11 w-full min-w-0 px-1 text-foreground-secondary"
             onClick={() => onToggle(transaction.id)}
             aria-label={`${open ? "Close" : "Open"} details for ${activityName(transaction)}, ${posted.date} at ${posted.time}`}
@@ -105,9 +106,8 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
       <span
         className={cn(
           "hidden size-8 shrink-0 items-center justify-center rounded-small sm:flex",
-          // TODO(tokens): no exact role (bg-purple-50 #F1EBFE, text-purple-700 #5424AE)
           agent
-            ? "bg-purple-50 text-purple-700"
+            ? "bg-accent-surface text-accent-strong"
             : "bg-surface-hover text-foreground-secondary",
         )}
       >
@@ -117,8 +117,8 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
         {href ? (
           <Link
             href={href}
-            // TODO(tokens): no exact role (text-purple-700 #5424AE)
-            className="inline-flex min-h-6 items-center break-words text-purple-700"
+            // oxlint-disable-next-line design-system/no-restyle -- related-run links are brand-coloured; Link has no brand variant
+            className="inline-flex min-h-6 items-center break-words text-accent-strong"
           >
             {name}
           </Link>
@@ -127,7 +127,7 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
             {name}
           </Text>
         )}
-        <Text variant="small" className="mt-1 text-foreground-secondary">
+        <Text variant="small" tone="secondary" className="mt-1">
           {isRunActive(transaction)
             ? statusLabel(transaction.execution_status || "")
             : activityDescription(transaction)}
@@ -135,7 +135,8 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
         <Text
           variant="small"
           title={posted.full}
-          className="mt-2 text-foreground-secondary sm:hidden"
+          tone="secondary"
+          className="mt-2 sm:hidden"
         >
           {posted.date} · {posted.time}
         </Text>

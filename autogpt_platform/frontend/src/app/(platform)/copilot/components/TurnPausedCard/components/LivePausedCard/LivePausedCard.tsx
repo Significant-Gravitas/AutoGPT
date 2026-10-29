@@ -32,20 +32,14 @@ export function LivePausedCard({ onStop, ...args }: Props) {
       className="my-2 overflow-hidden rounded-2xl border border-border-base bg-surface shadow-sm duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
     >
       <div className="flex items-start gap-3 px-5 py-4">
-        <span
-          // TODO(tokens): no exact role for border-purple-200, bg-purple-50; no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
-          className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-purple-200 bg-purple-50 text-purple-600"
-        >
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-brand/50 bg-accent-surface text-brand-hover">
           <Icon icon={PauseIcon} size={18} />
         </span>
         <div className="min-w-0 flex-1">
-          <Text variant="body-medium" className="!text-foreground-strong">
+          <Text tone="primary" variant="body-medium">
             {card.title}
           </Text>
-          <Text
-            variant="small"
-            className="mt-1 !leading-5 !text-foreground-tertiary"
-          >
+          <Text tone="muted" variant="small" className="mt-1 !leading-5">
             {card.body}
           </Text>
         </div>

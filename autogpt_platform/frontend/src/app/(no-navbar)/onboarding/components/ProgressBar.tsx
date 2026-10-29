@@ -13,8 +13,8 @@ export function ProgressBar({ currentStep, totalSteps }: Props) {
   return (
     <div className="absolute left-0 top-0 h-0.5 w-full bg-surface-hover">
       <div
-        className="h-full bg-action-hover transition-all duration-500 ease-out"
-        style={{ width: `${percent}%` }}
+        className="h-full w-[var(--progress)] bg-action-hover transition-all duration-500 ease-out"
+        style={{ "--progress": `${percent}%` } as React.CSSProperties}
       />
     </div>
   );

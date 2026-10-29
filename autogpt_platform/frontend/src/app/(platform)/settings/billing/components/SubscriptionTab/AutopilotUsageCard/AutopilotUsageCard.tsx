@@ -1,4 +1,5 @@
 "use client";
+import type { CSSProperties } from "react";
 
 import { motion, useReducedMotion } from "framer-motion";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
@@ -37,7 +38,7 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
           Usage
         </Text>
         {!state.inactive && (
-          <Text variant="small" className={state.status.className}>
+          <Text variant="small" tone={state.status.tone}>
             {state.status.label}
           </Text>
         )}
@@ -49,6 +50,7 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
               ? "No usage limit"
               : "Choose a plan to keep working"}
           </Text>
+          {/* oxlint-disable-next-line design-system/no-restyle -- caption copy at a 24px line height; no Text variant has it */}
           <Text variant="small" tone="secondary" className="leading-6">
             {state.unlimited
               ? "Your plan has no daily or weekly usage limits."
@@ -68,6 +70,7 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
               <Text variant="small-medium" className="mb-1">
                 One allowance for your whole trial
               </Text>
+              {/* oxlint-disable-next-line design-system/no-restyle -- caption copy at a 24px line height; no Text variant has it */}
               <Text variant="small" tone="secondary" className="leading-6">
                 This allowance lasts for your whole trial. It doesn’t refresh
                 each day or week.
@@ -76,15 +79,13 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
           )}
         </>
       )}
-      <Text
-        variant="small"
-        tone="secondary"
-        className="mt-auto pt-6 text-xs leading-5"
-      >
-        {state.inactive
-          ? "Your work stays saved."
-          : "Bigger requests use more of your allowance. Hitting the limit never adds a charge."}
-      </Text>
+      <div className="mt-auto pt-6">
+        <Text variant="small-loose" tone="secondary">
+          {state.inactive
+            ? "Your work stays saved."
+            : "Bigger requests use more of your allowance. Hitting the limit never adds a charge."}
+        </Text>
+      </div>
     </motion.section>
   );
 }
@@ -104,7 +105,7 @@ function UsageBar({
       data-testid={primary ? "featured-usage" : undefined}
     >
       <div className="mb-3 flex items-end justify-between gap-3">
-        <Text variant="body-medium" className={primary ? "pb-1.5" : ""}>
+        <Text variant="body-medium" className={primary ? "mb-1.5" : ""}>
           {window.label}
         </Text>
         {primary ? (
@@ -112,8 +113,8 @@ function UsageBar({
             <Text
               variant="h2"
               as="span"
-              // TODO(tokens): no exact text token (leading-[50px], tracking-[-0.055em])
-              className="font-sans text-display font-semibold leading-[50px] tracking-[-0.055em]"
+              // oxlint-disable-next-line design-system/no-restyle -- the usage figure is a sans display number; no Text variant has it
+              className="font-sans text-display font-semibold leading-12 tracking-display"
             >
               {label}
             </Text>
@@ -140,18 +141,14 @@ function UsageBar({
         className="h-2 overflow-hidden rounded-full bg-surface-hover"
       >
         <div
-          // TODO(tokens): no exact role (bg-orange-500 #FE8700)
-          className={`h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none ${percent >= 100 ? "bg-orange-500" : "bg-brand"}`}
-          style={{ width: `${percent}%` }}
+          // oxlint-disable-next-line design-system/no-raw-colors -- the full bar stays orange until the orange -> warning hue change is approved
+          className={`h-full w-[var(--usage-percent)] rounded-full transition-[width] duration-300 motion-reduce:transition-none ${percent >= 100 ? "bg-orange-500" : "bg-brand"}`}
+          style={{ "--usage-percent": `${percent}%` } as CSSProperties}
         />
       </div>
-      <div className="mt-3 flex items-start gap-1.5">
-        <Icon
-          icon={Clock01Icon}
-          size={14}
-          className="mt-0.5 shrink-0 text-foreground-tertiary"
-        />
-        <Text variant="small" tone="secondary" className="text-xs leading-5">
+      <div className="mt-3 flex items-start gap-1.5 text-foreground-tertiary">
+        <Icon icon={Clock01Icon} size={14} className="mt-0.5 shrink-0" />
+        <Text variant="small-loose" tone="secondary">
           {window.prefix} {window.value}
         </Text>
       </div>

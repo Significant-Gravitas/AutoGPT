@@ -6,6 +6,7 @@ import { buildRunLink } from "@/components/organisms/WorkOutputSheet/helpers";
 import { WorkOutputSheet } from "@/components/organisms/WorkOutputSheet/WorkOutputSheet";
 import { useState } from "react";
 import { type WorkRunMetadata } from "./helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   metadata: WorkRunMetadata;
@@ -23,9 +24,9 @@ export function WorkCard({ metadata, preview }: Props) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-foreground-strong">
+          <Text variant="body-medium-tight" tone="primary" className="truncate">
             {metadata.graphName}
-          </p>
+          </Text>
           <div className="mt-1">
             <RunStatusBadge status={metadata.status} />
           </div>
@@ -39,9 +40,9 @@ export function WorkCard({ metadata, preview }: Props) {
         </Button>
       </div>
       {preview ? (
-        <p className="mt-2 line-clamp-2 text-sm text-foreground-tertiary">
+        <Text variant="body-tight" tone="muted" className="mt-2 line-clamp-2">
           {preview}
-        </p>
+        </Text>
       ) : null}
 
       <WorkOutputSheet

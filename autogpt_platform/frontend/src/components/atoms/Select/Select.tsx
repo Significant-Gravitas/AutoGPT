@@ -73,14 +73,14 @@ export function Select({
     // Base styles matching Input
     "rounded-xl border border-border-base bg-surface px-4 shadow-none",
     "font-normal text-foreground-base w-full",
-    "placeholder:font-normal !placeholder:text-placeholder",
+    "placeholder:font-normal",
     // Focus and hover states
     "focus:border-foreground-subtle focus:shadow-none focus:outline-none focus:ring-1 focus:ring-foreground-subtle focus:ring-offset-0",
     // Size variants
     size === "small" && ["h-9", "py-2", "text-body", "placeholder:text-body"],
     size === "medium" && ["h-[2.875rem]", "py-2.5", "text-body leading-5"],
     // Error state
-    error && "border-1.5 border-error focus:border-error focus:ring-error",
+    error && "border-error focus:border-error focus:ring-error",
     // Placeholder styling for SelectValue when data-placeholder is present
     "[&[data-placeholder]>span]:text-foreground-subtle [&[data-placeholder]>span]:font-normal",
     className,
@@ -177,6 +177,7 @@ export function Select({
             data-slot="select-label"
             variant={labelVariant}
             as="span"
+            // oxlint-disable-next-line design-system/require-static-classes -- labelClassName is a caller override that existing call sites outside the design system still use
             className={cn("text-foreground-base", labelClassName)}
           >
             {label}

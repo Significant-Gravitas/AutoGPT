@@ -7,6 +7,7 @@ import {
   type ApprovalItem,
   type ChatRule,
   type RuleScope,
+  hiddenFieldKeys,
   isBare,
   isHeldRead,
   reasonLine,
@@ -14,9 +15,11 @@ import {
 } from "../../helpers";
 import { ApprovalHeadline } from "../ApprovalHeadline";
 import { ApproveSplitButton } from "./ApproveSplitButton";
+import { ChangePreview } from "./ChangePreview";
 import { HeldPassage } from "./HeldPassage";
 import { MoneyBlock } from "./MoneyBlock";
 import { useApprovalFields } from "./useApprovalFields";
+import { Text } from "@/components/atoms/Text/Text";
 
 export type CardStatus = "idle" | "approving" | "rejecting";
 
@@ -76,20 +79,22 @@ export function ApprovalCard({
   return (
     <article aria-busy={busy} className="flex flex-col gap-2 px-4 py-3">
       <ApprovalHeadline item={item} />
-      <div className="flex flex-col gap-3 sm:pl-[38px]">
+      <div
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- aligns the body with the headline text after its 38px icon column
+        className="flex flex-col gap-3 sm:pl-[38px]"
+      >
         {failed && (
-          <p
-            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
-            role="alert"
-            className="text-sm text-red-600"
-          >
+          <p role="alert" className="text-sm text-error-foreground">
             Couldn&apos;t send your answer. Nothing ran. Try again.
           </p>
         )}
         {reason && (
-          <p className="-mt-1 text-sm text-foreground-tertiary">{reason}</p>
+          <Text variant="body-tight" tone="muted" className="-mt-1">
+            {reason}
+          </Text>
         )}
         {item.spend && <MoneyBlock spend={item.spend} />}
+        {item.preview && <ChangePreview tables={item.preview.tables} />}
         {read ? (
           item.passage && <HeldPassage passage={item.passage} />
         ) : (
@@ -97,7 +102,7 @@ export function ApprovalCard({
             fields={fields.labels}
             values={fields.values}
             clipped={item.clipped}
-            hiddenKeys={item.headlineKeys}
+            hiddenKeys={hiddenFieldKeys(item)}
             idsWhenAlone={!item.headline.object}
             references={item.blockId ? [] : item.references}
             referenceTotals={item.referenceTotals}
