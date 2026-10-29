@@ -1,5 +1,7 @@
+import logging
 from typing import Annotated, get_args
 
+import prisma.models
 import pydantic
 from autogpt_libs.auth import get_user_id, requires_user
 from fastapi import APIRouter, HTTPException, Security
@@ -21,8 +23,11 @@ from backend.data.onboarding import (
     update_user_onboarding,
 )
 from backend.data.onboarding_audience import queue_onboarding_role
-from backend.data.onboarding_role import OnboardingRole, save_onboarding_role
-from backend.data.onboarding_wizard import OnboardingWizardConflict
+from backend.data.onboarding_role import OnboardingRole, kept_role, save_onboarding_role
+from backend.data.onboarding_wizard import (
+    OnboardingWizardConflict,
+    OnboardingWizardProgress,
+)
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -30,6 +35,8 @@ from backend.data.understanding import (
     upsert_business_understanding,
 )
 from backend.util.product_analytics import set_onboarding_role
+
+logger = logging.getLogger(__name__)
 
 # Tags stay per-route: /onboarding/completed publishes ["onboarding", "public"]
 # while the other six publish ["onboarding"].
@@ -57,9 +64,12 @@ async def update_onboarding(
     user_id: Annotated[str, Security(get_user_id)], data: UserOnboardingUpdate
 ):
     try:
-        return await update_user_onboarding(user_id, data)
+        onboarding = await update_user_onboarding(user_id, data)
     except OnboardingWizardConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if data.wizardProgress is not None:
+        await _keep_answered_role(user_id, data.wizardProgress, onboarding)
+    return onboarding
 
 
 @router.post(
@@ -144,7 +154,7 @@ async def submit_onboarding_profile(
         and existing.user_role == data.user_role
         and existing.pain_points == data.pain_points
     ):
-        await _keep_role(user_id, data.user_role)
+        await _keep_role(user_id, OnboardingRole.from_answer(data.user_role))
         return {"status": "ok"}
     await enforce_personalization_budget(user_id)
     formatted = format_onboarding_for_extraction(
@@ -165,16 +175,38 @@ async def submit_onboarding_profile(
         understanding_input.pain_points = data.pain_points
 
     await upsert_business_understanding(user_id, understanding_input)
-    await _keep_role(user_id, data.user_role)
+    await _keep_role(user_id, OnboardingRole.from_answer(data.user_role))
 
     return {"status": "ok"}
 
 
-async def _keep_role(user_id: str, answer: str) -> None:
+async def _keep_answered_role(
+    user_id: str,
+    progress: OnboardingWizardProgress,
+    onboarding: prisma.models.UserOnboarding,
+) -> None:
+    """Keep the role once the person moves on from the role step, not only at
+    the end of the wizard, which most people who stop at the paywall never
+    reach. Kept on the account, the checkout event that follows carries it to
+    MailerLite (`checkout_audience`); PostHog, and a MailerLite subscriber
+    who already opened checkout, get it now.
+
+    Only a pick that differs from the kept one is written, so the draft saves
+    of every later step cost nothing. The draft is saved whatever happens
+    here: the profile step at the end keeps the role again."""
+    role = OnboardingRole.from_wizard(progress)
+    if role is None or role == kept_role(onboarding):
+        return
+    try:
+        await _keep_role(user_id, role)
+    except Exception:
+        logger.exception(f"Could not keep the onboarding role of {user_id}")
+
+
+async def _keep_role(user_id: str, role: OnboardingRole) -> None:
     """Keep the pick apart from the understanding, whose copy AutoPilot
     rewrites, and send it to MailerLite and PostHog. An unchanged profile
     keeps it too, so a retry repairs a write an earlier attempt lost."""
-    role = OnboardingRole.from_answer(answer)
     await save_onboarding_role(user_id, role)
     await queue_onboarding_role(user_id, role)
     set_onboarding_role(user_id=user_id, role=role)

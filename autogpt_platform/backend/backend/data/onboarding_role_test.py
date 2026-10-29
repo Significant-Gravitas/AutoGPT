@@ -9,6 +9,7 @@ import pytest
 
 from backend.data import onboarding_role
 from backend.data.onboarding_role import OnboardingRole
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 
 
 # The root conftest spins a full test server for every test via an autouse
@@ -36,6 +37,51 @@ def server():
 def test_the_answer_is_an_option_or_others_text(answer, choice, other, label):
     role = OnboardingRole.from_answer(answer)
     assert (role.choice, role.other, role.label) == (choice, other, label)
+
+
+def _draft(**fields) -> OnboardingWizardProgress:
+    return OnboardingWizardProgress(
+        **{
+            "version": 1,
+            "currentStep": "painPoints",
+            "completedSteps": ["team", "autopilot", "role"],
+            "role": "Marketing",
+            "otherRole": "",
+            "painPoints": [],
+            "otherPainPoint": "",
+            "selectedBilling": "monthly",
+            "hasUserSelectedBilling": False,
+            "selectedCountryCode": "US",
+            "hiredTemplateIds": [],
+            **fields,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "fields, role",
+    [
+        ({}, OnboardingRole(choice="Marketing")),
+        ({"currentStep": "subscription"}, OnboardingRole(choice="Marketing")),
+        (
+            {"role": "Other", "otherRole": " Dentist "},
+            OnboardingRole(choice="Other", other="Dentist"),
+        ),
+        # Read like the profile submit: an option's ID typed under Other.
+        (
+            {"role": "Other", "otherRole": "Engineering"},
+            OnboardingRole(choice="Engineering"),
+        ),
+        # What Other was showing before another pick is not the pick.
+        ({"otherRole": "Dentist"}, OnboardingRole(choice="Marketing")),
+        ({"currentStep": "role"}, None),
+        ({"completedSteps": ["team", "autopilot"]}, None),
+        ({"role": ""}, None),
+        ({"role": "Other", "otherRole": "  "}, None),
+    ],
+)
+def test_the_draft_gives_the_pick_once_the_role_step_is_left(fields, role):
+    assert OnboardingRole.from_wizard(_draft(**fields)) == role
 
 
 @pytest.mark.parametrize(

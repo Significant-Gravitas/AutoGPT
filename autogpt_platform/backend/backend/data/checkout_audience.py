@@ -95,8 +95,8 @@ async def queue_checkout_opened(
             user, AudienceAction.CHECKOUT_OPENED, (ip_country, stripe_country)
         ):
             return
-        # The profile step sends the role to PostHog itself; only MailerLite
-        # gets it here.
+        # The wizard sends the role to PostHog itself once its role step is
+        # answered (onboarding routes); only MailerLite gets it here.
         if role := await _role(user_id):
             fields.update(role_fields(role))
         await queue_fields(user_id, user.email, fields, AudienceAction.CHECKOUT_OPENED)
