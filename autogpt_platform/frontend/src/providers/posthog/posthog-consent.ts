@@ -5,6 +5,10 @@ import {
 } from "@/services/analytics/anonymous-id";
 import { environment } from "@/services/environment";
 import {
+  deleteCookie,
+  readCookieNames,
+} from "@/services/consent/browser-cookies";
+import {
   hasConsentFor,
   hasDeclinedConsentFor,
   subscribeToConsent,
@@ -184,9 +188,7 @@ function clearPostHogStorage(token: string) {
   clearStorage(() => window.localStorage, prefix);
   clearStorage(() => window.sessionStorage, prefix);
   clearPostHogOptIn();
-  document.cookie
-    .split(";")
-    .map((part) => part.trim().split("=")[0])
+  readCookieNames()
     .filter((name) => name.startsWith(prefix))
     .forEach(deleteCookie);
 }
@@ -202,17 +204,5 @@ function clearStorage(getStorage: () => Storage, prefix: string) {
       .forEach((key) => storage.removeItem(key));
   } catch {
     // Storage blocked: nothing was stored there.
-  }
-}
-
-// PostHog sets its cookie on the widest domain it can (.agpt.co from
-// platform.agpt.co), so delete the host-only cookie and every parent
-// domain's.
-function deleteCookie(name: string) {
-  const expired = `${name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-  document.cookie = expired;
-  const labels = window.location.hostname.split(".");
-  for (let index = 0; index < labels.length - 1; index++) {
-    document.cookie = `${expired}; Domain=.${labels.slice(index).join(".")}`;
   }
 }
