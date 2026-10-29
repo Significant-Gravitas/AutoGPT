@@ -88,7 +88,7 @@ class TregSearchCompaniesBlock(TregBlockBase):
             id="2b8f6e1a-4c3d-4a95-b7e0-5d1c9a8f3e46",
             description=(
                 "Find companies by description, name, industry or the technology "
-                "they use. Treg routes the search across 24 company-data providers."
+                "they use. Treg routes the search across many company-data providers."
             ),
             categories={BlockCategory.SEARCH, BlockCategory.CRM},
             input_schema=self.Input,

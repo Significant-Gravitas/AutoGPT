@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from backend.blocks.treg._api import TregError, TregResponse
+from backend.blocks.treg._api import TregError, TregResponse, usd_header
 from backend.blocks.treg._base import coerce
 from backend.blocks.treg._config import (
     PLATFORM_CREDENTIALS_ID,
@@ -430,3 +430,29 @@ async def test_a_work_email_miss_emits_no_name_fields():
     )
     assert "first_name" not in outputs
     assert outputs["found"] is False
+
+
+@pytest.mark.parametrize(
+    "usd, header", [(0.5, "0.5"), (25.0, "25"), (0.00005, "0.00005"), (0.0, "0")]
+)
+def test_spending_caps_are_sent_as_plain_decimals(usd, header):
+    assert usd_header(usd) == header
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "verification, verdict",
+    [
+        ({"checked": True, "verdict": "live"}, "live"),
+        ({"checked": False, "verdict": "unknown", "reason": "not_international"}, None),
+    ],
+)
+async def test_phone_verification_is_reported_only_when_the_check_ran(
+    verification, verdict
+):
+    fake = FakeTreg(mock_routed({"phone": "+14155550123"}, verification=verification))
+    outputs = await run_block(
+        TregFindPhoneNumberBlock(), fake, email="jane@outerbounds.com", verify=True
+    )
+    assert fake.calls[0]["headers"]["X-Treg-Route-Verify"] == "true"
+    assert outputs.get("verification") == verdict

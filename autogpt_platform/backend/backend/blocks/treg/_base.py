@@ -15,7 +15,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._api import HttpMethod, TregError, TregResponse, error_message, send
+from ._api import HttpMethod, TregError, TregResponse, error_message, send, usd_header
 from ._config import treg
 
 # Routed calls stop spending past this unless the block says otherwise.
@@ -203,7 +203,7 @@ def rows(routed: TregRouted, field: str) -> list[dict[str, Any]]:
 
 
 def route_headers(input_data: TregRoutedInput) -> dict[str, str]:
-    headers = {"X-Treg-Route-Max-Cost": f"{input_data.max_cost_usd:g}"}
+    headers = {"X-Treg-Route-Max-Cost": usd_header(input_data.max_cost_usd)}
     if not input_data.try_more_providers:
         headers["X-Treg-Route-Waterfall"] = "0"
     return headers

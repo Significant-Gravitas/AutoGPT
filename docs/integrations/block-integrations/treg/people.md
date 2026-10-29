@@ -99,7 +99,7 @@ The block sends one request to `POST https://treg.to/call/treg.people.identity.r
 ## Treg Search People
 
 ### What it is
-Find people by description, company, job title or name. Treg routes the search across 26 people-data providers, cheapest first.
+Find people by description, company, job title or name. Treg routes the search across many people-data providers, cheapest first.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

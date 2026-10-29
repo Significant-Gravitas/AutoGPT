@@ -101,7 +101,7 @@ class TregFindWorkEmailBlock(TregBlockBase):
             id="b7e2d0a4-3f51-4c86-9e1a-6d4b8f2c7a90",
             description=(
                 "Find a person's work email from their name and company domain, or "
-                "their LinkedIn URL. Treg tries 29 providers cheapest first and can "
+                "their LinkedIn URL. Treg tries providers cheapest first and can "
                 "check the address before you send to it."
             ),
             categories={BlockCategory.SEARCH, BlockCategory.CRM},

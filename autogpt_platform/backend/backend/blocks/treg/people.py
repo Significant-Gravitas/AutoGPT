@@ -101,7 +101,7 @@ class TregSearchPeopleBlock(TregBlockBase):
             id="5a0e3c9d-7b14-4f2e-86a1-c4d9e2b7f051",
             description=(
                 "Find people by description, company, job title or name. Treg routes "
-                "the search across 26 people-data providers, cheapest first."
+                "the search across many people-data providers, cheapest first."
             ),
             categories={BlockCategory.SEARCH, BlockCategory.CRM},
             input_schema=self.Input,

@@ -56,7 +56,7 @@ class TregFindPhoneNumberBlock(TregBlockBase):
             id="e1f86c3b-0d7a-4b52-8c9e-3a5f1d7b2e68",
             description=(
                 "Find a person's phone number from their LinkedIn URL, email, or name "
-                "and company domain. Treg tries 16 providers cheapest first."
+                "and company domain. Treg tries providers cheapest first."
             ),
             categories={BlockCategory.SEARCH, BlockCategory.CRM},
             input_schema=self.Input,

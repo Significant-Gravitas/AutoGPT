@@ -184,6 +184,11 @@ def _parse(response: Response) -> TregResponse:
     )
 
 
+def usd_header(value: float) -> str:
+    """A USD amount in plain decimal: "5e-05" may not parse as a spending cap."""
+    return f"{value:.6f}".rstrip("0").rstrip(".") or "0"
+
+
 def micro_to_usd(value: Any) -> float:
     """Treg reports money as integer micro-USD; anything unreadable is zero."""
     try:

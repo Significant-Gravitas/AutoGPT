@@ -144,7 +144,7 @@ The block sends one request to `POST https://treg.to/call/treg.companies.similar
 ## Treg Search Companies
 
 ### What it is
-Find companies by description, name, industry or the technology they use. Treg routes the search across 24 company-data providers.
+Find companies by description, name, industry or the technology they use. Treg routes the search across many company-data providers.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

@@ -12,7 +12,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._api import CATALOG_ID, HttpMethod, TregError, validate_tool
+from ._api import CATALOG_ID, HttpMethod, TregError, usd_header, validate_tool
 from ._base import MAX_COST_CEILING_USD, TregBlockBase, TregInput
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, is_platform_key
 from ._test import TEST_CALL_ID, mock_response
@@ -172,7 +172,7 @@ class TregCallToolBlock(TregBlockBase):
             body=input_data.body,
             headers={
                 **headers,
-                "X-Treg-Route-Max-Cost": f"{input_data.max_cost_usd:g}",
+                "X-Treg-Route-Max-Cost": usd_header(input_data.max_cost_usd),
             },
         )
         if response.upstream_failed:

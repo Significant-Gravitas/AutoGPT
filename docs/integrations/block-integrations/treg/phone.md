@@ -1,12 +1,12 @@
 # Treg Phone
 <!-- MANUAL: file_description -->
-Find phone numbers through [Treg](https://treg.to), which routes each lookup across 16 contact-data providers and bills per call. Needs a Treg API key from treg.to (`TREG_API_KEY` for a platform key). Every paid call is billed by Treg from your team's prepaid balance at the provider's price, and the block reports the charge as `cost_usd`. On a platform-provided key the run is charged in credits from that same amount; on your own Treg key it is free on the platform.
+Find phone numbers through [Treg](https://treg.to), which routes each lookup across many contact-data providers and bills per call. Needs a Treg API key from treg.to (`TREG_API_KEY` for a platform key). Every paid call is billed by Treg from your team's prepaid balance at the provider's price, and the block reports the charge as `cost_usd`. On a platform-provided key the run is charged in credits from that same amount; on your own Treg key it is free on the platform.
 <!-- END MANUAL -->
 
 ## Treg Find Phone Number
 
 ### What it is
-Find a person's phone number from their LinkedIn URL, email, or name and company domain. Treg tries 16 providers cheapest first.
+Find a person's phone number from their LinkedIn URL, email, or name and company domain. Treg tries providers cheapest first.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
