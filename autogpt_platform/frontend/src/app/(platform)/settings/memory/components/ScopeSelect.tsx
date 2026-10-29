@@ -24,12 +24,9 @@ interface Props {
 function ScopeCheck({ selected }: { selected: boolean }) {
   if (!selected) return null;
   return (
-    <Icon
-      icon={Tick02Icon}
-      size={16}
-      // oxlint-disable-next-line design-system/no-restyle -- the selected scope's tick is brand-coloured
-      className="ml-auto shrink-0 text-brand"
-    />
+    <span className="ml-auto flex shrink-0 text-brand">
+      <Icon icon={Tick02Icon} size={16} />
+    </span>
   );
 }
 
