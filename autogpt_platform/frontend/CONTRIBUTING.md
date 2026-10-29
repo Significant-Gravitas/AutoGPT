@@ -840,6 +840,7 @@ Common scripts (see `package.json` for full list):
 - `pnpm format` — Format code
 - `pnpm types` — Type-check
 - `pnpm knip` — Report unused files, exports and dependencies (run `pnpm generate:api` first)
+- `pnpm ds:guard` — Fail on new raw palette classes, arbitrary colours, `dark:` classes or legacy imports beyond `scripts/ds-guard/baseline.json`; `pnpm ds:guard:update` rewrites the baseline
 - `pnpm test:unit` — Run integration/unit tests (Vitest + RTL + MSW)
 - `pnpm test:unit:watch` — Watch mode for integration tests
 - `pnpm test` — Run Playwright E2E tests

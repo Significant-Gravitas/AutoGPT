@@ -4,4 +4,18 @@ classic/forge/ @Significant-Gravitas/forge-maintainers
 classic/benchmark/ @Significant-Gravitas/benchmark-maintainers
 classic/frontend/ @Significant-Gravitas/frontend-maintainers
 autogpt_platform/infra @Significant-Gravitas/devops
+
+# Frontend design system (SECRT-3097). Maintainers stay listed so existing
+# approvers can still approve; any one listed owner is enough.
+# TODO(design-system): confirm the owning team (a dedicated design-system team,
+# or @Significant-Gravitas/design once it has members) and replace these.
+autogpt_platform/frontend/src/components/atoms/ @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
+autogpt_platform/frontend/src/components/molecules/ @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
+autogpt_platform/frontend/src/components/styles/ @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
+autogpt_platform/frontend/src/components/tokens/ @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
+autogpt_platform/frontend/src/app/globals.css @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
+autogpt_platform/frontend/tailwind.config.ts @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
+autogpt_platform/frontend/tailwind.v3-preset.ts @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
+autogpt_platform/frontend/scripts/ds-guard/ @Significant-Gravitas/maintainers @Significant-Gravitas/frontend-maintainers
+
 .github/CODEOWNERS @Significant-Gravitas/admins

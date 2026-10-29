@@ -15,6 +15,8 @@
     "format": "next lint --fix; prettier --write .",
     "types": "tsc --noEmit",
     "knip": "knip",
+    "ds:guard": "node scripts/ds-guard/ds-guard.mts",
+    "ds:guard:update": "node scripts/ds-guard/ds-guard.mts --update",
     "test": "NEXT_PUBLIC_PW_TEST=true next build --turbo && pnpm test:e2e:no-build",
     "test-ui": "NEXT_PUBLIC_PW_TEST=true next build --turbo && pnpm test:e2e:ui",
     "test:unit": "vitest run --coverage",

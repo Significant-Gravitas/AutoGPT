@@ -32,6 +32,13 @@ Write None if no agents were used, or unknown for unavailable model details. -->
   - [ ] Edit an agent from monitor, and confirm it executes correctly
 </details>
 
+#### For frontend UI changes (design system):
+
+- [ ] I used design-system components from `src/components` (atoms, molecules, organisms), not `src/components/__legacy__` or `LegacyButton` / `legacy-*` Button variants
+- [ ] I used colour role tokens (`bg-surface`, `text-foreground-secondary`, `border-border-base`...), not raw palette classes (`bg-zinc-200`), arbitrary colours (`bg-[#fff]`) or `dark:` classes
+- [ ] `pnpm ds:guard` passes; if I lowered counts, I ran `pnpm ds:guard:update` and committed `scripts/ds-guard/baseline.json`
+- [ ] Any baseline increase is explained in the description (e.g. a moved or split file)
+
 #### For configuration changes:
 
 - [ ] `.env.default` is updated or already compatible with my changes
