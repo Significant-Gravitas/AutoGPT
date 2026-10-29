@@ -19,6 +19,7 @@ import {
   resultItemKey,
   str,
 } from "./resultHelpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface SchedulesProps {
   schedules: Record<string, unknown>[];
@@ -49,13 +50,17 @@ export function FeatureRequestList({ results }: ResultsProps) {
           className={CARD + " flex items-start gap-2.5 p-2.5"}
         >
           <div className="min-w-0 flex-1">
-            <p className="truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+            <Text
+              variant="body-sm-medium-inherit"
+              tone="emphasis"
+              className="truncate"
+            >
               {str(request, "title") ?? inline(request)}
-            </p>
+            </Text>
             {str(request, "description") && (
-              <p className="truncate text-xs text-foreground-tertiary">
+              <Text variant="small-tight" tone="muted" className="truncate">
                 {str(request, "description")}
-              </p>
+              </Text>
             )}
           </div>
           {str(request, "identifier") && (
@@ -88,14 +93,22 @@ export function ScheduleList({ schedules }: SchedulesProps) {
               />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+              <Text
+                variant="body-sm-medium-inherit"
+                tone="emphasis"
+                className="truncate"
+              >
                 {str(schedule, "name", "message") ?? inline(schedule)}
-              </p>
+              </Text>
               {next && (
-                <p className="flex items-center gap-1 text-xs text-foreground-tertiary">
+                <Text
+                  variant="small-tight"
+                  tone="muted"
+                  className="flex items-center gap-1"
+                >
                   {recurring && <Icon icon={RepeatIcon} size={11} />}
                   {formatWhen(next)}
-                </p>
+                </Text>
               )}
             </div>
             {str(schedule, "kind") && (
@@ -122,16 +135,24 @@ export function ScheduleCreatedCard({ output }: OutputProps) {
         />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="truncate"
+        >
           Follow-up scheduled
-        </p>
+        </Text>
         {next && (
-          <p className="flex items-center gap-1 text-xs text-foreground-tertiary">
+          <Text
+            variant="small-tight"
+            tone="muted"
+            className="flex items-center gap-1"
+          >
             {output.is_recurring === true && (
               <Icon icon={RepeatIcon} size={11} />
             )}
             {formatWhen(next)}
-          </p>
+          </Text>
         )}
       </div>
     </div>
@@ -156,13 +177,22 @@ export function FolderList({ folders }: FoldersProps) {
                 className="text-foreground-secondary"
               />
             </div>
-            <p className="min-w-0 flex-1 truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+            <Text
+              variant="body-sm-medium-inherit"
+              tone="emphasis"
+              className="min-w-0 flex-1 truncate"
+            >
               {str(folder, "name") ?? inline(folder)}
-            </p>
+            </Text>
             {count !== null && (
-              <span className="shrink-0 text-xs text-foreground-subtle">
+              <Text
+                variant="small-tight"
+                as="span"
+                tone="subtle"
+                className="shrink-0"
+              >
                 {count} workflow{count === 1 ? "" : "s"}
-              </span>
+              </Text>
             )}
           </div>
         );
@@ -189,13 +219,23 @@ export function FileList({ files }: FilesProps) {
               size={14}
               className="shrink-0 text-foreground-subtle"
             />
-            <p className="min-w-0 flex-1 truncate font-mono text-xs text-foreground-body">
+            <Text
+              variant="small-mono-tight"
+              as="p"
+              tone="body"
+              className="min-w-0 flex-1 truncate"
+            >
               {str(file, "path", "name") ?? inline(file)}
-            </p>
+            </Text>
             {size !== null && (
-              <span className="shrink-0 text-xs text-foreground-subtle">
+              <Text
+                variant="small-tight"
+                as="span"
+                tone="subtle"
+                className="shrink-0"
+              >
                 {formatBytes(size)}
-              </span>
+              </Text>
             )}
           </div>
         );
@@ -224,9 +264,13 @@ export function DocsList({ results }: ResultsProps) {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <p className="min-w-0 truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+                <Text
+                  variant="body-sm-medium-inherit"
+                  tone="emphasis"
+                  className="min-w-0 truncate"
+                >
                   {str(doc, "title", "path") ?? inline(doc)}
-                </p>
+                </Text>
                 {section && (
                   <span className="shrink-0 truncate text-caption-sm leading-inherit text-foreground-subtle">
                     {section}
@@ -234,9 +278,9 @@ export function DocsList({ results }: ResultsProps) {
                 )}
               </div>
               {str(doc, "snippet") && (
-                <p className="truncate text-xs text-foreground-tertiary">
+                <Text variant="small-tight" tone="muted" className="truncate">
                   {str(doc, "snippet")}
-                </p>
+                </Text>
               )}
             </div>
             {docUrl && (

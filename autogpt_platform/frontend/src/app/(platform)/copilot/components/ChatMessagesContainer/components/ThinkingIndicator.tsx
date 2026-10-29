@@ -3,6 +3,7 @@ import { formatElapsed } from "../../JobStatsBar/formatElapsed";
 import { getElapsedSeconds } from "../../JobStatsBar/useElapsedTimer";
 import { DrawnLineLoader } from "../../DrawnLineLoader/DrawnLineLoader";
 import { SwapText } from "../../ToolChain/SwapText";
+import { Text } from "@/components/atoms/Text/Text";
 
 /** Only show elapsed time after this many seconds. */
 const SHOW_TIME_AFTER_SECONDS = 20;
@@ -40,10 +41,13 @@ export function ThinkingIndicator({
   const showTime = active && seconds >= SHOW_TIME_AFTER_SECONDS;
 
   return (
-    <span
+    <Text
+      variant="body-tight"
+      as="span"
+      tone="secondary"
       role="status"
       aria-live="polite"
-      className="inline-flex w-fit items-center gap-2.5 text-sm text-foreground-secondary"
+      className="inline-flex w-fit items-center gap-2.5"
     >
       <DrawnLineLoader className="text-foreground-secondary" size={16} />
       <SwapText
@@ -52,10 +56,15 @@ export function ThinkingIndicator({
         className="text-sm"
       />
       {showTime && (
-        <span className="font-mono text-xs tabular-nums text-foreground-subtle">
+        <Text
+          variant="small-mono-tight"
+          as="span"
+          tone="subtle"
+          className="tabular-nums"
+        >
           {formatElapsed(seconds)}
-        </span>
+        </Text>
       )}
-    </span>
+    </Text>
   );
 }

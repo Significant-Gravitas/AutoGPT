@@ -16,6 +16,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { formatWhen } from "../../ToolChain/resultHelpers";
 import type { SessionRun, SessionSchedule } from "../helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 const RUN_STATUS: Record<
   string,
@@ -27,10 +28,12 @@ const RUN_STATUS: Record<
     spin: false,
   },
   FAILED: { icon: CancelCircleIcon, className: "text-error", spin: false },
-  // TODO(tokens): no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
-  RUNNING: { icon: Loading03Icon, className: "text-purple-600", spin: true },
-  // TODO(tokens): no exact role for text-amber-600
-  QUEUED: { icon: ClockIcon, className: "text-amber-600", spin: false },
+  RUNNING: { icon: Loading03Icon, className: "text-brand-hover", spin: true },
+  QUEUED: {
+    icon: ClockIcon,
+    className: "text-warning-foreground",
+    spin: false,
+  },
 };
 
 const FALLBACK_STATUS = {
@@ -95,9 +98,13 @@ function RunRow({ run }: { run: SessionRun }) {
         )}
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-foreground-emphasis">{name}</p>
+        <Text variant="body-tight" tone="emphasis" className="truncate">
+          {name}
+        </Text>
         {meta && (
-          <p className="truncate text-xs text-foreground-subtle">{meta}</p>
+          <Text variant="small-tight" tone="subtle" className="truncate">
+            {meta}
+          </Text>
         )}
       </div>
     </>
@@ -134,16 +141,20 @@ function ScheduleRow({ schedule }: { schedule: SessionSchedule }) {
         className="mt-0.5 shrink-0 text-foreground-body"
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-foreground-emphasis">
+        <Text variant="body-tight" tone="emphasis" className="truncate">
           {schedule.name}
-        </p>
+        </Text>
         {schedule.detail && (
-          <p className="line-clamp-2 text-xs text-foreground-tertiary">
+          <Text variant="small-tight" tone="muted" className="line-clamp-2">
             {schedule.detail}
-          </p>
+          </Text>
         )}
         {(when || schedule.cron) && (
-          <p className="flex min-w-0 items-center gap-1.5 text-xs text-foreground-subtle">
+          <Text
+            variant="small-tight"
+            tone="subtle"
+            className="flex min-w-0 items-center gap-1.5"
+          >
             {when && <span className="truncate">{when}</span>}
             {when && schedule.cron && <span aria-hidden>·</span>}
             {schedule.cron && (
@@ -152,7 +163,7 @@ function ScheduleRow({ schedule }: { schedule: SessionSchedule }) {
             {schedule.timezone && (
               <span className="shrink-0">{schedule.timezone}</span>
             )}
-          </p>
+          </Text>
         )}
       </div>
     </div>

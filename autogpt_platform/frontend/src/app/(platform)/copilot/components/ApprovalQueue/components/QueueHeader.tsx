@@ -1,5 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { approveAllLabel, modeLabel } from "../helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   count: number;
@@ -19,15 +20,20 @@ export function QueueHeader({
 }: Props) {
   return (
     <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-separator bg-surface-muted/60 px-4 py-2">
-      <span className="flex items-baseline gap-2 text-sm font-medium text-foreground-strong">
+      <Text
+        variant="body-medium-tight"
+        as="span"
+        tone="primary"
+        className="flex items-baseline gap-2"
+      >
         Waiting for you
         <span className="tabular-nums text-foreground-tertiary">{count}</span>
-      </span>
+      </Text>
       <div className="flex items-center gap-3">
         {modeLabel(mode) && (
-          <span className="text-xs text-foreground-tertiary">
+          <Text variant="small-tight" as="span" tone="muted">
             {modeLabel(mode)}
-          </span>
+          </Text>
         )}
         {onShow ? (
           <Button

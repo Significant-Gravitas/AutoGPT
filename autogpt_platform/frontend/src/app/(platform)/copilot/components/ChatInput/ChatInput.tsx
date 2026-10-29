@@ -466,19 +466,17 @@ export const ChatInput = memo(function ChatInput({
           keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
         className={cn(
-          // TODO(tokens): no exact role for shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)]
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- the pill composer's 2rem radius and two-layer lift; no radius or shadow token has them
           "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-border-base shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
           // Card composer: a hairline border and a shallow drop instead of
           // the pill's deep shadow, so it reads as a surface the text sits on.
           stacked &&
-            // TODO(tokens): no exact role for shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)]
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- the card composer's shallow two-layer drop; no shadow token has it
             "gap-3 !rounded-3xl border-border-base px-3.5 pb-3.5 pt-3 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
           isCompact &&
-            // TODO(tokens): no exact role for shadow-[0_1px_2px_rgba(0,0,0,0.04)]; no fitting role for has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-            "!rounded-xl border-border-base shadow-[0_1px_2px_rgba(0,0,0,0.04)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400",
+            "!rounded-xl border-border-base shadow-message-table has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
           isRecording &&
-            // TODO(tokens): no exact role for border-red-400, ring-red-400, has-[[data-slot=input-group-control]:focus-visible]:border-red-400, has-[[data-slot=input-group-control]:focus-visible]:ring-red-400
-            "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
+            "border-error ring-1 ring-error has-[[data-slot=input-group-control]:focus-visible]:border-error has-[[data-slot=input-group-control]:focus-visible]:ring-error",
         )}
       >
         {voiceBar}

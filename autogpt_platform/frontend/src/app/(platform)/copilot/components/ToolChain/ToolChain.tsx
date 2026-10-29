@@ -54,6 +54,7 @@ import {
 } from "./helpers";
 import { SwapText } from "./SwapText";
 import { ToolResult } from "./ToolResult";
+import { Text } from "@/components/atoms/Text/Text";
 
 const COLLAPSED_WINDOW = 2;
 
@@ -476,7 +477,12 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             still need somewhere to send from. */}
         {!readOnly && pendingActions.length > 0 && !hasCardWork && (
           <div className="mt-1 flex flex-col items-start gap-2">
-            <span className="flex items-center gap-1.5 text-sm text-foreground-secondary">
+            <Text
+              variant="body-tight"
+              as="span"
+              tone="secondary"
+              className="flex items-center gap-1.5"
+            >
               <Icon
                 icon={SentIcon}
                 size={16}
@@ -485,7 +491,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               {allActionsReady
                 ? "Everything's filled in"
                 : "Complete the steps above to continue"}
-            </span>
+            </Text>
             <Button
               variant="primary"
               size="small"

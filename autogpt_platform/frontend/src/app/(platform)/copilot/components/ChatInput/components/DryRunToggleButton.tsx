@@ -35,8 +35,7 @@ export function DryRunToggleButton({ isDryRun, onToggle }: Props) {
           className={cn(
             "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-surface-hover",
             isDryRun
-              ? // TODO(tokens): no exact role for text-amber-600
-                "text-amber-600 hover:text-warning-foreground"
+              ? "text-warning-foreground hover:text-warning-foreground"
               : "text-foreground-tertiary hover:text-foreground-body",
           )}
           aria-label={ariaLabel}

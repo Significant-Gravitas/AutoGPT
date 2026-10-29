@@ -24,6 +24,7 @@ import { asObject, str } from "./resultHelpers";
 import { RowIcon } from "./RowIcon";
 import { SwapText } from "./SwapText";
 import { getCatalogLabel } from "./toolCatalog";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   subSessionId: string;
@@ -139,7 +140,11 @@ function LiveNotice({
   subSessionId: string;
 }) {
   return (
-    <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-foreground-subtle">
+    <Text
+      variant="small-tight"
+      tone="subtle"
+      className="mt-1.5 flex flex-wrap items-center gap-1.5"
+    >
       {text}
       <Link
         href={`/copilot?sessionId=${subSessionId}`}
@@ -147,7 +152,7 @@ function LiveNotice({
       >
         Open sub-session
       </Link>
-    </p>
+    </Text>
   );
 }
 
@@ -162,7 +167,7 @@ function LiveSteps({ rows }: { rows: ChainRow[] }) {
           </div>
           {!isLastRow && <div className="w-px flex-1 bg-surface-active" />}
         </div>
-        <div className={cn("min-w-0 flex-1 pt-[2px]", !isLastRow && "pb-2.5")}>
+        <div className={cn("min-w-0 flex-1 pt-0.5", !isLastRow && "pb-2.5")}>
           <SwapText
             text={row.text}
             shimmer={row.state === "running"}
@@ -289,14 +294,18 @@ export function SubSessionPendingCard({
           color={expert?.color}
           size={28}
         />
-        <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground-emphasis">
+        <Text
+          variant="body-medium-tight"
+          tone="emphasis"
+          className="min-w-0 flex-1 truncate"
+        >
           {expert?.name ?? "Expert"}
           {expert?.role && (
             <span className="ml-1.5 font-normal text-foreground-subtle">
               {expert.role}
             </span>
           )}
-        </p>
+        </Text>
         {/* Once the poll dies the card no longer knows the run is going —
             keeping the spinner up would be a guess dressed as a fact. */}
         <StatusPill

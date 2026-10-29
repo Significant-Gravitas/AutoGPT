@@ -18,6 +18,7 @@ import { isKey } from "@/lib/keyboard";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { useId, useState } from "react";
 import type { McpConnectorRequest } from "./helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 function hostOf(serverUrl: string): string | null {
   try {
@@ -65,21 +66,36 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
         </span>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm font-medium text-foreground-strong">
+          <Text
+            variant="body-medium-tight"
+            as="span"
+            tone="primary"
+            className="truncate"
+          >
             {request.service}
-          </span>
+          </Text>
           {host && (
-            <span className="truncate text-sm text-foreground-tertiary">
+            <Text
+              variant="body-tight"
+              as="span"
+              tone="muted"
+              className="truncate"
+            >
               {host}
-            </span>
+            </Text>
           )}
         </div>
 
         {request.connected ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-foreground-tertiary">
+          <Text
+            variant="body-medium-tight"
+            as="span"
+            tone="muted"
+            className="flex shrink-0 items-center gap-1.5"
+          >
             <Icon icon={CheckmarkCircle02Icon} size={16} />
             Connected
-          </span>
+          </Text>
         ) : request.grantable ? (
           <Button
             variant="primary"
@@ -104,10 +120,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
       </div>
 
       {request.error && !request.connected && (
-        <div
-          // TODO(tokens): no exact role for border-red-200
-          className="mx-4 mb-3 rounded-xl border border-red-200 bg-error-surface px-3 py-2 text-sm text-error-foreground"
-        >
+        <div className="mx-4 mb-3 rounded-xl border border-error/30 bg-error-surface px-3 py-2 text-sm text-error-foreground">
           {request.error}
         </div>
       )}
@@ -123,9 +136,9 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
             labelClassName="text-xs font-medium text-foreground-body"
             selectClassName="rounded-xl bg-surface-muted px-3 py-2 text-sm text-foreground-emphasis ring-1 ring-separator"
           />
-          <p id={hintId} className="text-xs text-foreground-tertiary">
+          <Text variant="small-tight" tone="muted" id={hintId}>
             {mcpAuthTokenHint(authScheme)}
-          </p>
+          </Text>
           <div className="flex gap-2">
             <input
               type="password"
