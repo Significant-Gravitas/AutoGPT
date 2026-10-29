@@ -2,7 +2,8 @@
 
 The wizard's role is answered before the paywall, so most people are not in
 MailerLite yet: they get their role with the checkout event
-(`checkout_audience`), which reads the kept pick. This only fills in someone
+(`checkout_audience`), which reads the kept pick, or else the one in a valid
+saved wizard draft (`get_answered_role`). This only fills in someone
 who already opened checkout, such as a person who went back and changed
 their pick; it never creates a subscriber, since only checkout openers belong
 in MailerLite (`mailerlite.record_onboarding_profile`).
