@@ -710,9 +710,12 @@ describe("proxy: admin impersonation header", () => {
     } as never);
   }
 
-  async function forwardedActAs(cookieRecord: string | null) {
+  async function forwardedActAs(
+    cookieRecord: string | null,
+    requested = "target-a",
+  ) {
     const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
-      headers: { [ACT_AS]: "target-a" },
+      headers: { [ACT_AS]: requested },
     });
     // The test Request drops a Cookie header, so set it on the cookie jar.
     if (cookieRecord)
@@ -743,5 +746,15 @@ describe("proxy: admin impersonation header", () => {
   it("drops a header no impersonation cookie backs", async () => {
     sessionAs("admin-1", "admin");
     expect(await forwardedActAs(null)).toBeNull();
+  });
+
+  it("drops a target the owner's cookie doesn't name", async () => {
+    sessionAs("admin-1", "admin");
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+        "target-b",
+      ),
+    ).toBeNull();
   });
 });
