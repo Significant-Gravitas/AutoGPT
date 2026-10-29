@@ -14,9 +14,5 @@ interface Props {
  */
 export function RelativeTime({ date }: Props) {
   useNowMinute();
-  return (
-    <span data-slot="relative-time">
-      {formatDistanceToNow(date, { addSuffix: true })}
-    </span>
-  );
+  return <>{formatDistanceToNow(date, { addSuffix: true })}</>;
 }

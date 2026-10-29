@@ -5,7 +5,7 @@ import { Text } from "@/components/atoms/Text/Text";
 
 // Rounded-md outline buttons; the Button atom's outline variant is a pill.
 const pageButtonClassName =
-  "inline-flex h-9 items-center justify-center whitespace-nowrap rounded-md border border-border-base bg-surface px-4 py-2 text-body font-medium leading-5 shadow-sm transition-colors hover:bg-surface-hover hover:text-foreground-strong focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex h-9 items-center justify-center whitespace-nowrap rounded-md border border-border-base bg-surface px-4 py-2 text-body font-medium leading-5 shadow-sm transition-colors hover:bg-surface-hover hover:text-foreground-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus disabled:pointer-events-none disabled:opacity-50";
 
 interface Props {
   currentPage: number;

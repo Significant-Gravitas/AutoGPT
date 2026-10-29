@@ -169,40 +169,42 @@ function RecordingControlButton({
   }
 
   return (
-    <span
+    <Button
+      variant="icon"
+      size="icon"
+      onClick={handleClick}
+      aria-disabled={pendingAction !== null}
+      aria-label={isLoading ? pendingLabel : label}
+      aria-busy={isLoading}
       className={cn(
-        "flex transition-[transform,opacity] duration-150 ease-out active:scale-[0.97]",
+        /* oxlint-disable design-system/no-restyle -- the recording controls' press scale and dark send fill; the icon variant keeps the tooltip, primary has none */
+        "border transition-[transform,opacity,background-color] duration-150 ease-out active:scale-[0.97]",
+        primary
+          ? "border-action-hover bg-action-hover text-action-foreground hover:bg-action"
+          : "border-border-base bg-surface hover:bg-surface-muted",
         isInactive && "opacity-40",
+        /* oxlint-enable design-system/no-restyle */
       )}
     >
-      <Button
-        variant={primary ? "primary" : "icon"}
-        size="icon"
-        onClick={handleClick}
-        aria-disabled={pendingAction !== null}
-        aria-label={isLoading ? pendingLabel : label}
-        aria-busy={isLoading}
-      >
-        <span className="grid size-[22px] place-items-center [&>*]:[grid-area:1/1]">
-          <SwapFade
-            swapKey={isLoading ? "loading" : "idle"}
-            mode="sync"
-            className="flex size-[22px] items-center justify-center"
-          >
-            {isLoading ? (
-              <span className="flex motion-safe:animate-spin">
-                <Icon
-                  icon={Loading03Icon}
-                  size={22}
-                  data-testid="recording-control-loader"
-                />
-              </span>
-            ) : (
-              <Icon icon={icon} size={22} />
-            )}
-          </SwapFade>
-        </span>
-      </Button>
-    </span>
+      <span className="grid size-[22px] place-items-center [&>*]:[grid-area:1/1]">
+        <SwapFade
+          swapKey={isLoading ? "loading" : "idle"}
+          mode="sync"
+          className="flex size-[22px] items-center justify-center"
+        >
+          {isLoading ? (
+            <span className="flex motion-safe:animate-spin">
+              <Icon
+                icon={Loading03Icon}
+                size={22}
+                data-testid="recording-control-loader"
+              />
+            </span>
+          ) : (
+            <Icon icon={icon} size={22} />
+          )}
+        </SwapFade>
+      </span>
+    </Button>
   );
 }

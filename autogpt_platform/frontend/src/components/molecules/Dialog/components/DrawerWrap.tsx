@@ -41,7 +41,7 @@ export function DrawerWrap({
       aria-label="Close"
       onClick={handleClose}
       data-slot="drawer-close"
-      className="inline-flex h-9 items-center justify-center rounded-md text-foreground-strong transition-colors focus-visible:outline-none"
+      className="inline-flex h-9 items-center justify-center rounded-md text-foreground-strong transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
     >
       <Icon
         data-slot="drawer-close-icon"
