@@ -47,17 +47,19 @@ const TRACKERS: readonly Tracker[] = [
  * Returns the unsubscribe.
  */
 export function followConsentForTrackerCookies(): () => void {
-  let observed = false;
-  let previous: string | null = null;
+  // uc.js starts without a response and then reads the stored answer, so an
+  // answer appearing is not one given on this page; a new stored answer is.
+  let previousIdentity = getConsentAnswerIdentity();
+  let previousAnswer: ConsentState | null = null;
 
   function sync() {
     if (isConsentAnswerUnconfirmed()) return;
     const answer = getConsentAnswer();
     const identity = getConsentAnswerIdentity();
-    const current = answer ? describeAnswer(answer, identity) : null;
-    const answeredOnThisPage = observed && current !== previous;
-    observed = true;
-    previous = current;
+    const answeredOnThisPage =
+      identity !== previousIdentity || isChangedAnswer(previousAnswer, answer);
+    previousIdentity = identity;
+    previousAnswer = answer;
     if (!answer) return;
 
     const declined = TRACKERS.filter(({ category }) => !answer[category]);
@@ -73,8 +75,16 @@ export function followConsentForTrackerCookies(): () => void {
   return subscribeToConsentAnswerPending(sync);
 }
 
-function describeAnswer(answer: ConsentState, identity: string | null) {
-  return `${identity}|${answer.analytics}|${answer.advertising}`;
+// A withdrawal Cookiebot reports before it stores the new answer.
+function isChangedAnswer(
+  previous: ConsentState | null,
+  next: ConsentState | null,
+): boolean {
+  if (!previous || !next) return false;
+  return (
+    previous.analytics !== next.analytics ||
+    previous.advertising !== next.advertising
+  );
 }
 
 function forgetTrackers(declined: Tracker[]) {

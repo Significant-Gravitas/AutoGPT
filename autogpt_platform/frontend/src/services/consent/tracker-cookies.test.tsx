@@ -57,6 +57,28 @@ function storeAnswer(answer: Answer, id: string) {
   document.cookie = `CookieConsent=${encodeURIComponent(value)}; Path=/`;
 }
 
+// uc.js starts without a response, then reads the stored answer and fires
+// the events a returning visitor gets on every page load.
+function loadStoredAnswer(answer: Answer) {
+  const cookiebot = window.Cookiebot;
+  if (!cookiebot) throw new Error("installCookiebot() first");
+  const statistics = Boolean(answer.statistics);
+  const marketing = Boolean(answer.marketing);
+  cookiebot.consent = {
+    necessary: true,
+    preferences: false,
+    statistics,
+    marketing,
+  };
+  cookiebot.hasResponse = true;
+  cookiebot.consented = statistics || marketing;
+  cookiebot.declined = !cookiebot.consented;
+  window.dispatchEvent(new Event("CookiebotOnConsentReady"));
+  window.dispatchEvent(
+    new Event(cookiebot.consented ? "CookiebotOnAccept" : "CookiebotOnDecline"),
+  );
+}
+
 // The visitor answers the banner on this page.
 function answerOnPage(answer: Answer, id: string) {
   act(() => {
@@ -217,7 +239,20 @@ describe("trackers after an answer given on the page", () => {
     );
   });
 
-  it("cleans even when the same answer was cleaned on an earlier page", () => {
+  it("cleans a withdrawal Cookiebot reports before storing it, though the stored answer was cleaned", () => {
+    storeAnswer({ marketing: true }, "stored-1");
+    installCookiebot({ marketing: true });
+    render(<TrackerCookieCleanup />).unmount();
+    seedTrackers();
+    render(<TrackerCookieCleanup />);
+    expectAllTrackersKept();
+
+    act(() => answerCookiebot({}));
+
+    expectAllTrackersGone();
+  });
+
+  it("cleans a new decline given on the page after an earlier one was cleaned", () => {
     installCookiebot();
     const first = render(<TrackerCookieCleanup />);
     answerOnPage({}, "decline-1");
@@ -227,7 +262,7 @@ describe("trackers after an answer given on the page", () => {
 
     installCookiebot();
     render(<TrackerCookieCleanup />);
-    answerOnPage({}, "decline-1");
+    answerOnPage({}, "decline-2");
 
     expectAllTrackersGone();
   });
@@ -258,6 +293,32 @@ describe("trackers after an answer found on page load", () => {
       window.dispatchEvent(new Event("CookiebotOnConsentReady"));
       window.dispatchEvent(new Event("CookiebotOnDecline"));
     });
+
+    expectAllTrackersKept();
+  });
+
+  it("does not take uc.js reading the stored answer for a new one once it was cleaned", () => {
+    storeAnswer({}, "stored-1");
+    render(<TrackerCookieCleanup />).unmount();
+    seedTrackers();
+
+    installCookiebot();
+    render(<TrackerCookieCleanup />);
+    act(() => loadStoredAnswer({}));
+
+    expectAllTrackersKept();
+  });
+
+  it("cleans once when uc.js reads a stored answer not cleaned yet", () => {
+    storeAnswer({}, "stored-1");
+    installCookiebot();
+    render(<TrackerCookieCleanup />);
+    expectAllTrackersKept();
+
+    act(() => loadStoredAnswer({}));
+    expectAllTrackersGone();
+    seedTrackers();
+    act(() => loadStoredAnswer({}));
 
     expectAllTrackersKept();
   });
