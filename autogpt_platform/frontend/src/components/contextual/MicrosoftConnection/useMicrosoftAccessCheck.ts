@@ -9,6 +9,8 @@ export function useMicrosoftAccessCheck(credentialID?: string) {
   return useQuery({
     queryKey: getMicrosoftAccessQueryKey(credentialID ?? ""),
     enabled: Boolean(credentialID),
+    // A 400 is Microsoft refusing the grant; retrying only repeats it.
+    retry: false,
     queryFn: async () => {
       const response = await postV1VerifyMicrosoftConnectionCapabilities({
         credential_id: credentialID ?? "",

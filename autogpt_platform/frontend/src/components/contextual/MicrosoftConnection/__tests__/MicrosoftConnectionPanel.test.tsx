@@ -143,6 +143,11 @@ describe("Microsoft connection", () => {
     expect(
       await screen.findByRole("button", { name: "Sign in with Microsoft" }),
     ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Connecting lets Otto read and send your email, manage your calendar and work with your OneDrive files when you ask\./,
+      ),
+    ).toBeTruthy();
   });
 
   it("falls back to a sign-in code when the server has no app secret", async () => {
@@ -228,6 +233,14 @@ describe("Microsoft connection", () => {
     const list = await screen.findByRole("list", {
       name: "Microsoft services",
     });
+    expect(
+      within(list).getByText("Lets Otto read, draft and send your email"),
+    ).toBeTruthy();
+    expect(
+      within(list).getByText(
+        "Lets Otto read and send messages in your Teams chats",
+      ),
+    ).toBeTruthy();
     expect(within(list).getByText("Needs your permission")).toBeTruthy();
     expect(
       within(list).getByText("Needs your Microsoft admin's approval"),
@@ -278,7 +291,7 @@ describe("Microsoft connection", () => {
           scopes: ["Chat.ReadWrite"],
         },
         {
-          ...capability("work_iq", "Work IQ", "permission_needed"),
+          ...capability("work_iq", "Work IQ", "admin_required"),
           scopes: [WORK_IQ],
         },
       ],
@@ -299,7 +312,7 @@ describe("Microsoft connection", () => {
       ...workCheck,
       capabilities: [
         {
-          ...capability("work_iq", "Work IQ", "permission_needed"),
+          ...capability("work_iq", "Work IQ", "admin_required"),
           scopes: [WORK_IQ],
         },
       ],
@@ -379,6 +392,39 @@ describe("Microsoft connection", () => {
     expect(
       screen.getByRole("button", { name: "Connect Microsoft" }),
     ).toBeTruthy();
+  });
+
+  it("asks to sign in again when Microsoft no longer accepts the connection", async () => {
+    credentials = [work];
+    server.use(
+      http.post("*/api/integrations/microsoft/check", () =>
+        HttpResponse.json(
+          {
+            detail: {
+              reason: "reconnect_required",
+              message: "Microsoft needs you to sign in to this account again.",
+              error_code: "AADSTS70043",
+            },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+    render(<MicrosoftConnectionPanel browserAvailable onDone={vi.fn()} />);
+
+    expect(
+      await screen.findByText(
+        "Microsoft needs you to sign in to this account again.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Couldn't check this account/)).toBeNull();
+    // Only a new sign-in replaces the grant; there is nothing for an admin.
+    expect(
+      screen.queryByRole("button", { name: "Copy setup link for my admin" }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign in again" }));
+    await waitFor(() => expect(loginRequests).toHaveLength(1));
   });
 
   it("lets an admin approve everything for the organization", async () => {

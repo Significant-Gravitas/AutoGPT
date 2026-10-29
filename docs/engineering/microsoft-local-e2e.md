@@ -16,15 +16,40 @@ one `microsoft` connection per Microsoft account:
   needs organization setup (Work IQ), or work accounts only.
 - An admin can choose **Approve for my whole organization**, after which
   everyone in that tenant gets every service in one click.
-- Work IQ is always its own **Allow**, never part of "Allow everything
-  listed" or the organization approval: until Microsoft has set Work IQ up for
-  the organization, asking for it fails everything asked with it
-  (`AADSTS650052`), and nothing shows that before someone asks. An admin
-  approving it there can consent for everyone.
+- Work IQ is never asked for together with anything else, neither in "Allow
+  everything listed" nor in the organization approval: until Microsoft has set
+  Work IQ up for the organization, asking for it fails everything asked with
+  it (`AADSTS650052`), and nothing shows that before someone asks. Its
+  permission is admin-consent only (Microsoft marks `WorkIQAgent.Ask`
+  AdminConsentRequired), so it shows "needs your admin" until an admin
+  approves it, from its own **Allow** or for the whole organization. After
+  that every existing connection gets Work IQ from its own refresh token, with
+  no new sign-in.
+- If Microsoft stops accepting a connection (an expired or revoked grant), the
+  panel asks the person to sign in again.
 
 Copilot chats run on a work connection that has Copilot's permissions; there
 is no separate Copilot sign-in. Copilot connections made before this keep
 working until they are disconnected.
+
+## What each permission is for
+
+The panel, the Copilot card and the admin setup page (`/microsoft-setup`) say
+this wherever someone grants a permission.
+
+| Service | Permissions | What it lets AutoGPT do |
+|---|---|---|
+| Mail | `Mail.ReadWrite`, `Mail.Send` | Otto reads, drafts and sends the person's email. |
+| Calendar | `Calendars.ReadWrite` | Otto sees, adds and changes their calendar events. |
+| Files | `Files.ReadWrite` | Otto opens, creates and edits their OneDrive files. |
+| Teams chats | `Chat.ReadWrite` | Otto reads and sends messages in their Teams chats. |
+| Microsoft 365 Copilot | Copilot's read permissions (`Sites.Read.All`, `Mail.Read`, `Chat.Read`, …) | Microsoft 365 Copilot answers chats routed to it, from what the account can open. |
+| Work IQ | `WorkIQAgent.Ask` | Otto asks Work IQ, which can read and change the person's Microsoft 365 content. |
+
+Every sign-in also asks for `User.Read` and `openid profile email
+offline_access`, to identify the account and keep it connected. Today the
+Copilot chat route is the only thing that runs on the connection; Otto's mail,
+calendar, files, Teams and Work IQ tools follow it.
 
 ## How it works
 
@@ -33,8 +58,9 @@ working until they are disconnected.
   credential, recording which app issued it.
 - `microsoft_tokens.py`: token requests. Every request goes out as the app
   that issued the grant; only the deployment's own app sends its secret.
-  Work IQ tokens are minted from the same refresh token, because Microsoft
-  refresh tokens cover every permission the person consented to.
+  Work IQ tokens are minted from the same refresh token: a Microsoft refresh
+  token isn't tied to one resource, and gets tokens for any resource the app
+  has consent for, including consent an admin gives after the sign-in.
 - `microsoft_services.py`: services and their permissions. A sign-in may ask
   consent for Graph and Work IQ together; the stored token is always Graph.
 - `microsoft_access.py`: the per-service status and the organization
@@ -60,10 +86,12 @@ On the environment's app (dev: `autogpt-dev`, prod: `AutoGPT`):
 Then set `MICROSOFT_BROWSER_SIGN_IN=true`. A secret alone doesn't turn browser
 sign-in on, because the bot's app has one long before it has the redirect.
 Until the flag is on, Microsoft connects with sign-in codes through the same
-app.
+app, at `/common` (the Copilot-only connection used `/organizations`). So step
+1 is needed before an environment gets this release, not only before the
+flag: without it, personal accounts can't sign in.
 
-Dev's app is configured (2026-10-26) but still needs the flag; prod needs
-steps 1 and 2 and then the flag.
+Dev's app is configured (2026-10-26) but still needs the flag. Prod needs step
+1 before this release reaches it, then step 2 and the flag.
 
 ## Environment variables
 

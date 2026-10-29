@@ -278,6 +278,17 @@ def test_recovery_keeps_a_safe_reason_without_upstream_text(code, reason) -> Non
     assert "secret-token" not in result.model_dump_json()
 
 
+def test_a_grant_microsoft_no_longer_accepts_asks_for_a_new_sign_in() -> None:
+    # An expired or revoked grant: no admin can fix it, only a new sign-in.
+    result = microsoft_recovery("invalid_grant", "AADSTS70043: secret-token")
+
+    assert result.reason == "reconnect_required"
+    assert "secret-token" not in result.model_dump_json()
+    # A missing consent arrives as invalid_grant too, and stays the consent's.
+    missing = microsoft_recovery("invalid_grant", "AADSTS65001: secret-token")
+    assert missing.reason == "admin_consent_required"
+
+
 def test_same_email_never_merges_personal_and_work_identities() -> None:
     personal, work = _connection(PERSONAL_TENANT), _connection("company")
     personal.metadata["microsoft_identity"]["account_id"] = "personal-id"

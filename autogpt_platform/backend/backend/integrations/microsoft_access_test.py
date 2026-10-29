@@ -112,7 +112,9 @@ async def test_missing_permissions_name_what_to_ask_for(mocker) -> None:
     assert by_service["files"].scopes == ["Files.ReadWrite"]
     assert by_service["teams"].scopes == ["Chat.ReadWrite"]
     assert by_service["copilot"].status == "permission_needed"
-    assert by_service["work_iq"].status == "permission_needed"
+    # Microsoft marks Work IQ's permission AdminConsentRequired: no one but an
+    # admin can grant it, so a missing consent is the admin's to give.
+    assert by_service["work_iq"].status == "admin_required"
     assert result.verified
 
 
@@ -209,7 +211,7 @@ async def test_no_organization_approval_when_only_work_iq_is_pending(mocker) -> 
 
     result = await check_microsoft_access(_connection("company", every_graph_scope))
 
-    assert _statuses(result)["work_iq"] == "permission_needed"
+    assert _statuses(result)["work_iq"] == "admin_required"
     assert result.admin_consent_url is None
 
 

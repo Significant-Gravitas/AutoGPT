@@ -1,3 +1,4 @@
+import type { MicrosoftCapabilityService } from "@/app/api/__generated__/models/microsoftCapabilityService";
 import type { MicrosoftCapabilityStatus } from "@/app/api/__generated__/models/microsoftCapabilityStatus";
 
 export const MICROSOFT_PROVIDER = "microsoft";
@@ -34,11 +35,27 @@ export const MICROSOFT_STATUS_LABELS: Record<
   unavailable: "Not available for this account",
 };
 
+// What each service's permissions are for, shown wherever someone grants them.
+export const MICROSOFT_SERVICE_PURPOSES: Record<
+  MicrosoftCapabilityService,
+  string
+> = {
+  mail: "Lets Otto read, draft and send your email",
+  calendar: "Lets Otto see, add and change your calendar events",
+  files: "Lets Otto open, create and edit your OneDrive files",
+  teams: "Lets Otto read and send messages in your Teams chats",
+  copilot:
+    "Lets Copilot answer your chats from the mail, files, meetings and messages you can open",
+  work_iq:
+    "Lets Otto ask Work IQ, which can read and change your Microsoft 365 content",
+};
+
 export type MicrosoftSetupReason =
   | "tenant_setup_required"
   | "admin_consent_required"
   | "app_setup_required"
   | "access_denied"
+  | "reconnect_required"
   | "sign_in_failed";
 
 export const MICROSOFT_SETUP_MESSAGES: Record<MicrosoftSetupReason, string> = {
@@ -49,6 +66,7 @@ export const MICROSOFT_SETUP_MESSAGES: Record<MicrosoftSetupReason, string> = {
     "Browser sign-in needs configuration by the application owner.",
   access_denied:
     "Microsoft access was declined. Your existing connections are still available.",
+  reconnect_required: "Microsoft needs you to sign in to this account again.",
   sign_in_failed:
     "Microsoft sign-in did not finish. Try again or open setup help.",
 };

@@ -31,8 +31,9 @@ export function WorkIQInstructions() {
         >
           Work IQ permission
         </a>
-        , then return to Microsoft sign-in to approve it. Company policies may
-        also require approval for mail, calendar, files, or Teams.
+        . Only an admin can approve it: connect Microsoft in AutoGPT, then
+        approve Work IQ for your organization from that connection. Company
+        policies may also require approval for mail, calendar, files, or Teams.
       </li>
       <li>
         Confirm a Copilot Studio usage-based billing plan is configured and the

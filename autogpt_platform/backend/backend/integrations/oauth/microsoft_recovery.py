@@ -9,6 +9,7 @@ MicrosoftRecoveryReason = Literal[
     "admin_consent_required",
     "app_setup_required",
     "access_denied",
+    "reconnect_required",
     "sign_in_failed",
 ]
 
@@ -24,6 +25,7 @@ MESSAGES: dict[MicrosoftRecoveryReason, str] = {
     "admin_consent_required": "Your Microsoft administrator needs to approve access.",
     "app_setup_required": "Microsoft sign-in needs configuration by the application owner.",
     "access_denied": "Microsoft access was declined. Your existing connections are still available.",
+    "reconnect_required": "Microsoft needs you to sign in to this account again.",
     "sign_in_failed": "Microsoft sign-in did not finish. You can try again or open setup help.",
 }
 
@@ -48,6 +50,10 @@ def microsoft_recovery(
         reason = "app_setup_required"
     elif 65004 in codes or error in {"access_denied", "authorization_declined"}:
         reason = "access_denied"
+    elif error == "invalid_grant":
+        # An expired or revoked grant (a password change, a revoked session):
+        # only a new sign-in replaces it.
+        reason = "reconnect_required"
     code = f"AADSTS{min(codes)}" if codes else None
     return MicrosoftRecovery(reason=reason, message=MESSAGES[reason], error_code=code)
 
