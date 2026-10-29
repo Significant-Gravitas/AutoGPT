@@ -5,9 +5,12 @@ referenced conversations) becomes the model's prompt, and how thread names are
 derived and clamped to a platform's cap. No I/O.
 """
 
+import re
+
 from pydantic import BaseModel
 
 from backend.copilot.chat_platform_header import (
+    PLATFORM_LABELS,
     label_covering,
     neutralize_forged_labels,
     split_chat_platform_header,
@@ -19,6 +22,14 @@ THREAD_NAME_PREFIX = "AutoGPT: "
 
 # Prepended when a prompt is clamped so the model knows context was elided.
 _TRUNCATION_NOTICE = "[Earlier context was truncated to fit the size limit.]\n\n"
+
+# The section lines ``build_message_text`` writes around history entries.
+_CONTEXT_LABEL_RE = re.compile(
+    r"^([^\S\n]*)\[(?=Current message\]|From |Recent |Content of #|The (?:"
+    + "|".join(PLATFORM_LABELS)
+    + r") channel)",
+    re.MULTILINE,
+)
 
 
 def clamp_prompt(message: str, max_chars: int) -> str:
@@ -245,7 +256,14 @@ def format_history_entry(entry: MessageHistoryEntry, platform_display: str) -> s
         if entry.user_id
         else entry.username
     )
-    return f"\n[From {user}]\n{entry.text}"
+    return f"\n[From {user}]\n{_neutralize_context_labels(entry.text)}"
+
+
+def _neutralize_context_labels(text: str) -> str:
+    """Escape lines in another member's message that would read like a
+    section ``build_message_text`` writes, so earlier channel or thread
+    messages can't pose as the current message or a different speaker."""
+    return _CONTEXT_LABEL_RE.sub(r"\1\\[", neutralize_forged_labels(text))
 
 
 def build_thread_name(text: str, username: str, max_length: int) -> str:
