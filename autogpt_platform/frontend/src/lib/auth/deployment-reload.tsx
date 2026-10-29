@@ -1,3 +1,4 @@
+import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { environment } from "@/services/environment";
 import { SessionKey } from "@/services/storage/session-storage";
@@ -35,7 +36,7 @@ export function reloadForNewDeployment(
     }
   }
 
-  promptForRefresh();
+  promptForRefresh(reload);
   return false;
 }
 
@@ -60,12 +61,17 @@ function writeReloadGuard(value: string): boolean {
   }
 }
 
-function promptForRefresh(): void {
+function promptForRefresh(reload: () => void): void {
   if (hasPromptedForRefresh) return;
   hasPromptedForRefresh = true;
   toast({
     title: "A new version of AutoGPT is available",
     description: "Refresh the page to keep going.",
     duration: Infinity,
+    action: (
+      <Button variant="secondary" size="small" onClick={reload}>
+        Refresh
+      </Button>
+    ),
   });
 }

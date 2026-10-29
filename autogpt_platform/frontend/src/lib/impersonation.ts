@@ -137,7 +137,7 @@ export const ImpersonationCookie = {
   clear(): void {
     if (!environment.isClientSide()) return;
     expireCookie(IMPERSONATION_COOKIE_NAME);
-    // Written separately by an earlier version; never read any more.
+    // Older clients kept the owner in a cookie of its own: cleared, never read.
     expireCookie(IMPERSONATION_OWNER_COOKIE_NAME);
   },
 
@@ -206,7 +206,7 @@ export const ImpersonationSession = {
 
     try {
       sessionStorage.removeItem(IMPERSONATION_STORAGE_KEY);
-      // Written separately by an earlier version; never read any more.
+      // Older clients kept the owner under a key of its own: cleared, never read.
       sessionStorage.removeItem(`${IMPERSONATION_STORAGE_KEY}-owner`);
     } catch (error) {
       console.error(

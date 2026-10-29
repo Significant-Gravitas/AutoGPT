@@ -1,3 +1,5 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const toast = vi.hoisted(() => vi.fn());
@@ -50,6 +52,18 @@ describe("reloading onto a new deployment", () => {
         title: "A new version of AutoGPT is available",
       }),
     );
+  });
+
+  it("asks with a button that refreshes the page", async () => {
+    const reload = vi.fn();
+
+    await loadPageAndHitDeploySkew(reload);
+    await loadPageAndHitDeploySkew(reload);
+    const [{ action }] = toast.mock.calls[0] as [{ action: ReactElement }];
+    render(action);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(reload).toHaveBeenCalledTimes(2);
   });
 
   it("reloads again for a later deployment", async () => {
