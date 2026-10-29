@@ -29,6 +29,9 @@ HttpMethod = Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
 # Headers the caller may not set on a call: the credential is ours to send.
 RESERVED_HEADERS = frozenset({"x-treg-token", "authorization", "cookie", "host"})
 
+# A catalog tool id, e.g. "treg.people.search".
+CATALOG_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
 # A catalog id ("treg.people.search"), a team tool and its path
 # ("intercom/conversations"), or an upstream URL behind the prefix
 # ("https://api.stripe.com/v1/charges"). The query goes in its own input.
@@ -168,11 +171,15 @@ def _parse(response: Response) -> TregResponse:
     return TregResponse(
         status=response.status,
         body=body,
-        cost_usd=micro_to_usd(headers.get("X-Treg-Cost-Micro")),
+        # A call still pending reports only what it reserved; that is what
+        # Treg will settle against the team's balance if the task finishes.
+        cost_usd=micro_to_usd(
+            headers.get("X-Treg-Cost-Micro") or headers.get("X-Treg-Reserved-Micro")
+        ),
         call_id=headers.get("X-Treg-Call-Id"),
         served_by=headers.get("X-Treg-Served-By"),
         async_task=async_task,
-        cached=headers.get("X-Treg-Cache", "").lower() == "hit",
+        cached=headers.get("X-Treg-Cache", "").lower() in ("hit", "stale"),
         upstream_failed=bool(headers.get("X-Treg-Upstream-Failed")),
     )
 

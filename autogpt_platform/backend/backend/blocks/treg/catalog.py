@@ -1,6 +1,5 @@
 """Treg blocks that search the tool catalog and describe a tool."""
 
-import re
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -14,12 +13,10 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._api import TregError
+from ._api import CATALOG_ID, TregError
 from ._base import TregBlockBase, TregInput
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from ._test import mock_response
-
-_TOOL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 class TregTool(BaseModel):
@@ -228,7 +225,7 @@ class TregGetToolBlock(TregBlockBase):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         tool_id = input_data.tool_id.strip()
-        if not _TOOL_ID.match(tool_id):
+        if not CATALOG_ID.match(tool_id):
             raise TregError(f"'{tool_id}' is not a Treg tool id.")
         response = await self.request(
             credentials, "GET", f"catalog/endpoints/{tool_id}"

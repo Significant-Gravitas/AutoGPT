@@ -246,7 +246,8 @@ class TregMapWebsiteBlock(TregBlockBase):
             input_data,
         )
         # Some providers list bare URL strings rather than objects.
-        listed = routed.get("results") or []
+        listed = routed.get("results")
+        listed = listed if isinstance(listed, list) else []
         results = [r if isinstance(r, dict) else {"url": r} for r in listed]
         urls = [r["url"] for r in results if isinstance(r.get("url"), str)]
         yield "urls", urls

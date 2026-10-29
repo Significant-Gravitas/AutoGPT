@@ -278,7 +278,8 @@ class TregVerifyEmailBlock(TregBlockBase):
         routed = await self.route(
             credentials, "people.email.verify", {"email": input_data.email}, input_data
         )
-        found = routed.get("status") is not None or routed.get("valid") is not None
+        # Treg's contract: a verification miss is a null status.
+        found = routed.get("status") is not None
         if found:
             fields: dict[str, Any] = {"valid": bool, "status": str, "score": int}
             for output in typed_fields(routed.output, fields):

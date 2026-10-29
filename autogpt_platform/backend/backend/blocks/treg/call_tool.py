@@ -12,9 +12,9 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._api import HttpMethod, TregError, validate_tool
+from ._api import CATALOG_ID, HttpMethod, TregError, validate_tool
 from ._base import MAX_COST_CEILING_USD, TregBlockBase, TregInput
-from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, is_platform_key
 from ._test import TEST_CALL_ID, mock_response
 
 
@@ -26,6 +26,19 @@ class TregCallMethod(str, Enum):
     PATCH = "PATCH"
     DELETE = "DELETE"
 
+
+# Treg options a caller may set. Every other X-Treg-* header is the block's to
+# send (the spending cap) or Treg's own (billing attribution, team choice).
+CALLER_TREG_HEADERS = frozenset(
+    {
+        "x-treg-route-verify",
+        "x-treg-route-confirm",
+        "x-treg-route-waterfall",
+        "x-treg-route-prefer",
+        "x-treg-route-exclude",
+        "x-treg-route-strict-filters",
+    }
+)
 
 TEST_ANSWER = {"data": {"username": "tiktok", "followers": 92000000}}
 
@@ -68,8 +81,8 @@ class TregCallToolBlock(TregBlockBase):
             le=MAX_COST_CEILING_USD,
             advanced=True,
             description=(
-                "The most this call may cost, in USD. Treg refuses a call priced "
-                "above it, without charge."
+                "The most this call may cost, in USD. Treg refuses, without "
+                "charge, a call it prices above this before sending it."
             ),
         )
 
@@ -137,6 +150,15 @@ class TregCallToolBlock(TregBlockBase):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         tool = validate_tool(input_data.tool)
+        if is_platform_key(credentials) and not CATALOG_ID.match(tool):
+            # The platform's Treg team is shared by every user on its key, so
+            # its registered tools and connections are not theirs to call.
+            raise TregError(
+                f"'{tool}' is a team tool. The platform's Treg key can only call "
+                "catalog tools such as 'tikhub.tiktok.user.profile'; connect your "
+                "own Treg key to call your team's tools."
+            )
+        headers = caller_headers(input_data.headers)
         method = call_method(input_data.method, input_data.body)
         if method == "GET" and input_data.body is not None:
             raise TregError(
@@ -149,7 +171,7 @@ class TregCallToolBlock(TregBlockBase):
             params=input_data.query,
             body=input_data.body,
             headers={
-                **input_data.headers,
+                **headers,
                 "X-Treg-Route-Max-Cost": f"{input_data.max_cost_usd:g}",
             },
         )
@@ -169,6 +191,23 @@ class TregCallToolBlock(TregBlockBase):
         yield "cached", response.cached
         if response.async_task:
             yield "async_task", response.async_task
+
+
+def caller_headers(headers: dict[str, str]) -> dict[str, str]:
+    """The caller's headers, refusing Treg headers that are not theirs to set."""
+    refused = sorted(
+        name
+        for name in headers
+        if name.lower().startswith("x-treg-")
+        and name.lower() not in CALLER_TREG_HEADERS
+    )
+    if refused:
+        raise TregError(
+            f"{', '.join(refused)} cannot be set here. Use max_cost_usd for the "
+            "spending cap; the Treg route options (X-Treg-Route-Verify, "
+            "-Waterfall, -Prefer, -Exclude, -Confirm, -Strict-Filters) are allowed."
+        )
+    return headers
 
 
 def call_method(method: TregCallMethod, body: Any) -> HttpMethod:

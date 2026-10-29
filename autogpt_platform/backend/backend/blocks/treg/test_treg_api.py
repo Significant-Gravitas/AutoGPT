@@ -243,3 +243,21 @@ def test_validate_tool_rejects_anything_that_leaves_the_call_route(tool):
 )
 def test_micro_to_usd(value, usd):
     assert _api.micro_to_usd(value) == usd
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "headers, cost, cached",
+    [
+        ({"X-Treg-Reserved-Micro": "50000"}, 0.05, False),
+        ({"X-Treg-Cost-Micro": "1000", "X-Treg-Reserved-Micro": "50000"}, 0.001, False),
+        ({"X-Treg-Cache": "stale"}, 0.0, True),
+    ],
+)
+async def test_send_reads_reservations_and_stale_archive_answers(
+    fake_requests, headers, cost, cached
+):
+    fake_requests.response = answer(202, {}, headers)
+    response = await _api.send(TEST_CREDENTIALS, "POST", "call/treg.people.search")
+    assert response.cost_usd == cost
+    assert response.cached is cached

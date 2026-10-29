@@ -6,7 +6,11 @@ import pytest
 
 from backend.blocks.treg._api import TregError, TregResponse
 from backend.blocks.treg._base import coerce
-from backend.blocks.treg._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.treg._config import (
+    PLATFORM_CREDENTIALS_ID,
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+)
 from backend.blocks.treg._test import mock_miss, mock_response, mock_routed
 from backend.blocks.treg.call_tool import TregCallToolBlock
 from backend.blocks.treg.catalog import TregGetToolBlock
@@ -39,22 +43,26 @@ class FakeTreg:
         return self.response
 
 
-async def run_block(block, fake: FakeTreg, **inputs) -> dict[str, Any]:
+async def run_block(
+    block, fake: FakeTreg, credentials=TEST_CREDENTIALS, **inputs
+) -> dict[str, Any]:
     block.call_treg = fake
     input_data = block.Input(credentials=TEST_CREDENTIALS_INPUT, **inputs)
     return {
         name: value
-        async for name, value in block.run(input_data, credentials=TEST_CREDENTIALS)
+        async for name, value in block.run(input_data, credentials=credentials)
     }
 
 
-async def run_until_error(block, fake: FakeTreg, **inputs) -> list[str]:
+async def run_until_error(
+    block, fake: FakeTreg, credentials=TEST_CREDENTIALS, **inputs
+) -> list[str]:
     """Run the block expecting an error, and return what it emitted first."""
     emitted: list[str] = []
     block.call_treg = fake
     input_data = block.Input(credentials=TEST_CREDENTIALS_INPUT, **inputs)
     with pytest.raises(TregError) as error:
-        async for name, _ in block.run(input_data, credentials=TEST_CREDENTIALS):
+        async for name, _ in block.run(input_data, credentials=credentials):
             emitted.append(name)
     assert emitted == [], f"emitted {emitted} before failing"
     return [str(error.value)]
@@ -119,12 +127,14 @@ async def test_a_failed_call_records_its_charge_before_raising():
 
 
 @pytest.mark.asyncio
-async def test_a_call_still_pending_after_treg_waited_is_an_error():
-    fake = FakeTreg(mock_response({"_treg": {"outcome": "pending"}}, status=202))
-    [message] = await run_until_error(
-        TregSearchPeopleBlock(), fake, company_domain="modal.com"
+async def test_a_call_still_pending_after_treg_waited_is_an_error_billed_as_reserved():
+    block = TregSearchPeopleBlock()
+    fake = FakeTreg(
+        mock_response({"_treg": {"outcome": "pending"}}, status=202, cost_usd=0.05)
     )
+    [message] = await run_until_error(block, fake, company_domain="modal.com")
     assert "still working" in message
+    assert block.execution_stats.provider_cost == 0.05
 
 
 @pytest.mark.asyncio
@@ -292,3 +302,47 @@ async def test_get_tool_rejects_ids_that_are_not_tool_ids():
 )
 def test_coerce_keeps_only_values_of_the_declared_type(value, kind, expected):
     assert coerce(value, kind) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "header",
+    ["X-Treg-Route-Max-Cost", "x-treg-route-max-cost", "X-TREG-ORG", "x-treg-meta"],
+)
+async def test_call_tool_refuses_treg_headers_that_are_not_the_callers(header):
+    # A second spending-cap header in another case would reach Treg first and
+    # lift the cap; team and billing headers are Treg's own.
+    fake = FakeTreg(mock_response({}))
+    [message] = await run_until_error(
+        TregCallToolBlock(), fake, tool="x.y", headers={header: "500"}
+    )
+    assert "cannot be set here" in message
+    assert fake.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tool", ["intercom/conversations", "https://api.stripe.com/v1/charges"]
+)
+async def test_the_platform_key_cannot_reach_the_platform_teams_own_tools(tool):
+    fake = FakeTreg(mock_response({}))
+    [message] = await run_until_error(
+        TregCallToolBlock(), fake, credentials=PLATFORM_KEY, tool=tool
+    )
+    assert "is a team tool" in message
+    assert fake.calls == []
+
+
+@pytest.mark.asyncio
+async def test_the_platform_key_can_call_catalog_tools():
+    fake = FakeTreg(mock_response({"ok": True}))
+    outputs = await run_block(
+        TregCallToolBlock(),
+        fake,
+        credentials=PLATFORM_KEY,
+        tool="tikhub.tiktok.user.profile",
+    )
+    assert outputs["response"] == {"ok": True}
+
+
+PLATFORM_KEY = TEST_CREDENTIALS.model_copy(update={"id": PLATFORM_CREDENTIALS_ID})
