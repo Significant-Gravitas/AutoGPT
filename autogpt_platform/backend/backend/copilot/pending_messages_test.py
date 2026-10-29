@@ -32,6 +32,8 @@ from backend.copilot.pending_messages import (
     push_pending_message,
     release_client_message,
     stash_pending_for_persist,
+    take_pending_message_by_id,
+    was_pending_message_read,
 )
 from backend.copilot.tool_image import ToolImage
 
@@ -45,6 +47,7 @@ class _FakeRedis:
         # handle both and our tests exercise both.
         self.lists: dict[str, list[str | bytes]] = {}
         self.strings: dict[str, str] = {}
+        self.sets: dict[str, set[str]] = {}
         self.ttls: dict[str, int | None] = {}
         self.published: list[tuple[str, str]] = []
 
@@ -97,6 +100,14 @@ class _FakeRedis:
             return list(lst[start:])
         return list(lst[start : stop + 1])
 
+    async def lrem(self, key: str, count: int, value: str) -> int:
+        lst = self.lists.get(key, [])
+        for index, item in enumerate(lst):
+            if (item.decode() if isinstance(item, bytes) else item) == value:
+                del lst[index]
+                return 1
+        return 0
+
     async def delete(self, key: str) -> int:
         if key in self.lists:
             del self.lists[key]
@@ -112,6 +123,15 @@ class _FakeRedis:
         self.ttls[key] = ex
         return True
 
+    async def sadd(self, key: str, *members: str) -> int:
+        bucket = self.sets.setdefault(key, set())
+        before = len(bucket)
+        bucket.update(members)
+        return len(bucket) - before
+
+    async def sismember(self, key: str, member: str) -> int:
+        return int(member in self.sets.get(key, set()))
+
     async def get(self, key: str) -> str | None:
         return self.strings.get(key)
 
@@ -119,17 +139,16 @@ class _FakeRedis:
         self,
         script: str,
         numkeys: int,
-        key: str,
-        *args: Any,
+        *keys_and_args: Any,
     ) -> int | list[str | bytes]:
-        if "LRANGE" in script:
-            current = self.lists.get(key, [])[: len(args)]
-            decoded = [
-                item.decode() if isinstance(item, bytes) else item for item in current
-            ]
-            if decoded != list(args):
-                return []
-            return await self.lpop(key, len(args)) or []
+        keys, args = keys_and_args[:numkeys], keys_and_args[numkeys:]
+        if "SREM" in script:
+            return self._put_back_unread(*keys, *args)
+        if "cjson.decode" in script:
+            return self._pop_recording_reads(*keys, *args)
+        if "LREM" in script:
+            return self._take_recording_read(*keys, *args)
+        [key] = keys
         expected, new, ttl_seconds, or_missing = args
         current = self.strings.get(key)
         if current != expected and not (current is None and or_missing == "1"):
@@ -139,6 +158,63 @@ class _FakeRedis:
             self.ttls[key] = int(ttl_seconds)
         else:
             self.strings.pop(key, None)
+        return 1
+
+    def _pop_recording_reads(
+        self, key: str, read_key: str, held_key: str, count: int, ttl: int, *prefix: str
+    ) -> list[str | bytes]:
+        """``pending_reads.pop_recording_reads``, in one step like the Lua."""
+        current = self.lists.get(key, [])
+        decoded = [i.decode() if isinstance(i, bytes) else i for i in current]
+        if prefix and decoded[: len(prefix)] != list(prefix):
+            return []
+        taken = len(prefix) if prefix else int(count)
+        popped, self.lists[key] = current[:taken], current[taken:]
+        if not popped:
+            return []
+        for item in popped:
+            try:
+                entry = json.loads(item)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(entry, dict) and isinstance(entry.get("id"), str):
+                self.sets.setdefault(read_key, set()).add(entry["id"])
+                self.ttls[read_key] = int(ttl)
+        self.strings.pop(held_key, None)
+        return popped
+
+    def _put_back_unread(
+        self,
+        key: str,
+        read_key: str,
+        payload: str,
+        pending_id: str,
+        ttl: int,
+        enqueued_at: float,
+    ) -> int:
+        """``pending_reads.put_back_unread``, in one step like the Lua."""
+        lst = self.lists.setdefault(key, [])
+        later = [
+            index
+            for index, item in enumerate(lst)
+            if json.loads(item).get("enqueued_at", 0) > float(enqueued_at)
+        ]
+        lst.insert(later[0] if later else len(lst), payload)
+        self.ttls[key] = int(ttl)
+        self.sets.get(read_key, set()).discard(pending_id)
+        return len(self.lists[key])
+
+    def _take_recording_read(
+        self, key: str, read_key: str, payload: str, pending_id: str, ttl: int
+    ) -> int:
+        """``pending_reads.take_recording_read``, in one step like the Lua."""
+        current = self.lists.get(key, [])
+        decoded = [i.decode() if isinstance(i, bytes) else i for i in current]
+        if payload not in decoded:
+            return 0
+        del current[decoded.index(payload)]
+        self.sets.setdefault(read_key, set()).add(pending_id)
+        self.ttls[read_key] = int(ttl)
         return 1
 
     async def exists(self, key: str) -> int:
@@ -557,6 +633,47 @@ async def test_peek_pending_messages_returns_all_without_consuming(
 
 
 @pytest.mark.asyncio
+async def test_drain_returns_what_it_popped_even_when_the_held_marker_cannot_be_cleared(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await push_pending_message("sess1", PendingMessage(content="status?"))
+
+    async def failing_delete(key: str) -> int:
+        raise ConnectionError("redis blip")
+
+    monkeypatch.setattr(fake_redis, "delete", failing_delete)
+
+    drained = await drain_pending_messages("sess1")
+
+    assert [m.content for m in drained] == ["status?"]
+
+
+@pytest.mark.asyncio
+async def test_take_pending_message_by_id_takes_that_message_once(
+    fake_redis: _FakeRedis,
+) -> None:
+    await push_pending_message("sess1", PendingMessage(id="a", content="status?"))
+    await push_pending_message("sess1", PendingMessage(id="b", content="status?"))
+
+    taken = await take_pending_message_by_id("sess1", "b")
+
+    assert taken is not None and taken.id == "b"
+    assert [m.id for m in await peek_pending_messages("sess1")] == ["a"]
+    assert await take_pending_message_by_id("sess1", "b") is None
+    assert await was_pending_message_read("sess1", "b")
+
+
+@pytest.mark.asyncio
+async def test_a_drain_records_what_it_read(fake_redis: _FakeRedis) -> None:
+    await push_pending_message("sess1", PendingMessage(id="a", content="status?"))
+
+    await drain_pending_messages("sess1")
+
+    assert await was_pending_message_read("sess1", "a")
+    assert not await was_pending_message_read("sess1", "never-queued")
+
+
+@pytest.mark.asyncio
 async def test_peek_pending_messages_empty_buffer(fake_redis: _FakeRedis) -> None:
     """Peek on a missing key returns an empty list without raising."""
     result = await peek_pending_messages("no_such_session")
@@ -784,10 +901,12 @@ async def test_text_hook_drops_corrupt_prefix_without_consuming_images(
 
 async def test_text_hook_redis_error_does_not_drop_the_queue(fake_redis, monkeypatch):
     await push_pending_message("images", PendingMessage(content="before"))
+    working_eval = fake_redis.eval
     monkeypatch.setattr(
         fake_redis, "eval", AsyncMock(side_effect=ConnectionError("offline"))
     )
     assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    monkeypatch.setattr(fake_redis, "eval", working_eval)
     assert [message.content for message in await drain_pending_messages("images")] == [
         "before"
     ]
@@ -896,7 +1015,7 @@ async def test_client_message_reservation_is_short_and_acceptance_long(
     await claim_client_message("sess-1", "msg-a", "first")
     assert fake_redis.ttls[key] == pm_module._CLIENT_MESSAGE_RESERVE_TTL_SECONDS
     await accept_client_message("sess-1", "msg-a", "first")
-    assert fake_redis.ttls[key] == pm_module._PENDING_TTL_SECONDS
+    assert fake_redis.ttls[key] == pm_module.PENDING_TTL_SECONDS
 
 
 @pytest.mark.asyncio

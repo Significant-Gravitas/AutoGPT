@@ -618,6 +618,8 @@ class CoPilotProcessor:
         cost_context_stack = AsyncExitStack()
         scheduled_watch = ScheduledTurnWatch.for_entry(entry)
         credit_turn: CreditBilledTurn | None = None
+        # A pause is how a turn ends at a limit; its unread follow-ups say so.
+        paused = False
 
         try:
             from backend.copilot.model import get_chat_session
@@ -693,6 +695,7 @@ class CoPilotProcessor:
                 if pause is not None and credit_turn is None:
                     log.info(f"Turn not started: the {pause.reason} limit is used up")
                     await _refuse_turn(entry, session, pause, scheduled_watch)
+                    paused = True
                     return
                 if credit_turn is not None:
                     log.info(
@@ -920,6 +923,8 @@ class CoPilotProcessor:
                         error_msg = chunk.errorText
                         error_code = chunk.code
                         break
+                    if isinstance(chunk, StreamTurnPaused):
+                        paused = True
 
                     current_time = time.monotonic()
                     if current_time - last_refresh >= refresh_interval:
@@ -969,6 +974,7 @@ class CoPilotProcessor:
                         error_message=error_msg,
                         error_code=error_code,
                         turn_id=entry.turn_id,
+                        paused=paused,
                     )
                 except Exception as mark_err:
                     log.error(f"Failed to mark session completed: {mark_err}")

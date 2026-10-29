@@ -27,7 +27,9 @@ export function BuilderChatPanel({ className }: Props) {
     error,
     stop,
     onSend,
-    queuedMessages,
+    queuedChips,
+    sessionChatStatus,
+    turnStats,
     isBootstrapping,
     hasNoModel,
     revertTargetVersion,
@@ -131,7 +133,9 @@ export function BuilderChatPanel({ className }: Props) {
                       error={error}
                       isLoading={false}
                       sessionID={sessionId}
-                      queuedMessages={queuedMessages}
+                      queuedChips={queuedChips}
+                      sessionChatStatus={sessionChatStatus}
+                      turnStats={turnStats}
                     />
                   </div>
                   <div

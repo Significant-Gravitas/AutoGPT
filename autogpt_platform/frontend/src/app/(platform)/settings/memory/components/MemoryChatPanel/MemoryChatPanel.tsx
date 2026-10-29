@@ -16,9 +16,11 @@ interface Props {
   messages: React.ComponentProps<typeof ChatMessagesContainer>["messages"];
   status: React.ComponentProps<typeof ChatMessagesContainer>["status"];
   error: React.ComponentProps<typeof ChatMessagesContainer>["error"];
-  queuedMessages: React.ComponentProps<
+  queuedChips: React.ComponentProps<
     typeof ChatMessagesContainer
-  >["queuedMessages"];
+  >["queuedChips"];
+  sessionChatStatus: string | undefined;
+  turnStats: React.ComponentProps<typeof ChatMessagesContainer>["turnStats"];
   onSend: (message: string) => Promise<void>;
   onStop: () => void;
   onRetry: () => void;
@@ -34,7 +36,9 @@ export function MemoryChatPanel({
   messages,
   status,
   error,
-  queuedMessages,
+  queuedChips,
+  sessionChatStatus,
+  turnStats,
   onSend,
   onStop,
   onRetry,
@@ -100,7 +104,9 @@ export function MemoryChatPanel({
                     error={error}
                     isLoading={false}
                     sessionID={sessionId}
-                    queuedMessages={queuedMessages}
+                    queuedChips={queuedChips}
+                    sessionChatStatus={sessionChatStatus}
+                    turnStats={turnStats}
                   />
                 </div>
                 <div className="relative shrink-0 border-t border-separator bg-surface px-3 pb-2 pt-2">

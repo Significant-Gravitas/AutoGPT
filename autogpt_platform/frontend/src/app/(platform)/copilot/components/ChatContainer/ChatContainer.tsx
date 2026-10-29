@@ -63,6 +63,7 @@ import {
   stripLegacyKickoffMarker,
   type ExpertKickoffMetadata,
 } from "../../expertKickoff";
+import type { QueuedChips } from "../../useCopilotPendingChips";
 
 export interface ChatContainerProps {
   isUsageRefused?: boolean;
@@ -113,8 +114,8 @@ export interface ChatContainerProps {
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
   onEnqueue?: (message: string) => void | Promise<void>;
-  /** Pending queued messages waiting to be injected, shown at the end of chat. */
-  queuedMessages?: string[];
+  /** Follow-ups waiting on the server, shown at the end of the chat. */
+  queuedChips?: QueuedChips;
   isUploadingFiles?: boolean;
   /** The message whose attachments are still uploading, shown as a
    *  placeholder bubble until the real one lands in `messages`. */
@@ -173,7 +174,7 @@ export const ChatContainer = ({
   onStartTask,
   onStop,
   onEnqueue,
-  queuedMessages,
+  queuedChips,
   isUploadingFiles,
   pendingSend,
   hasMoreMessages,
@@ -531,7 +532,7 @@ export const ChatContainer = ({
                 onLoadMore={onLoadMore}
                 onRetry={handleRetry}
                 turnStats={turnStats}
-                queuedMessages={queuedMessages}
+                queuedChips={queuedChips}
                 pendingSend={pendingSend}
                 bottomContentPadding={usageCardHeight + composerTabInset}
                 expertIdentity={expertIdentity}

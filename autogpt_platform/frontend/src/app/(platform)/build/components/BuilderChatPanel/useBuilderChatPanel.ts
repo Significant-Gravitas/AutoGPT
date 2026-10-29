@@ -16,10 +16,9 @@ import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
-import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
+import { readSessionForStream } from "@/app/(platform)/copilot/helpers/readSessionForStream";
 import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
 import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
 import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -30,8 +29,6 @@ import { getDeploymentModelStatus, isNoModelError } from "./helpers";
 interface UseBuilderChatPanelArgs {
   panelRef?: React.RefObject<HTMLElement | null>;
 }
-
-type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
 
 /**
  * Normalize a tool part's `output` to a plain object.
@@ -144,37 +141,32 @@ export function useBuilderChatPanel({
     },
   });
 
-  const hasActiveStream =
-    sessionQuery.data?.status === 200
-      ? !!sessionQuery.data.data.active_stream
-      : false;
+  const { hydratedMessages, hasActiveStream, sessionChatStatus, turnStats } =
+    useMemo(
+      () => readSessionForStream(sessionId, sessionQuery.data),
+      [sessionId, sessionQuery.data],
+    );
 
   // Memoize so the hydration effect in useCopilotStream doesn't infinite-loop
   // on a new array reference every render. Re-derives only when query data,
   // session id, or stream-active state changes.
-  const hydratedMessages = useMemo<UiMessages | undefined>(() => {
-    if (sessionQuery.data?.status !== 200 || !sessionId) return undefined;
-    return convertChatSessionMessagesToUiMessages(
-      sessionId,
-      sessionQuery.data.data.messages ?? [],
-      { isComplete: !hasActiveStream },
-    ).messages as UiMessages;
-  }, [sessionQuery.data, sessionId, hasActiveStream]);
 
   const { messages, setMessages, sendMessage, stop, status, error } =
     useCopilotStream({
       sessionId,
       hydratedMessages,
       hasActiveStream,
+      sessionChatStatus,
       refetchSession: sessionQuery.refetch,
       copilotModel: undefined,
     });
 
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+  const { queuedChips, queueMessage } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
     setMessages,
+    resend: (text, metadata) => sendMessage({ text, metadata }),
   });
 
   // Track the currently-selected graph so the async bind effect can
@@ -530,12 +522,14 @@ export function useBuilderChatPanel({
     if (!sessionId) return;
     const isInFlight = status === "streaming" || status === "submitted";
     if (isInFlight) {
-      queueMessage(trimmed);
       try {
         const { queueFollowUpMessage } = await import(
           "@/app/(platform)/copilot/helpers/queueFollowUpMessage"
         );
-        await queueFollowUpMessage(sessionId, trimmed);
+        // The chip keeps the server's id, so its Retry and the strip's
+        // reconciliation name that very message.
+        const queued = await queueFollowUpMessage(sessionId, trimmed);
+        queueMessage(trimmed, queued.pending_id);
       } catch (err) {
         Sentry.captureException(err);
         // The composer restores the draft and shows the one toast for it.
@@ -586,7 +580,9 @@ export function useBuilderChatPanel({
     error,
     stop,
     onSend,
-    queuedMessages,
+    queuedChips,
+    sessionChatStatus,
+    turnStats,
     isBootstrapping,
     hasNoModel,
     revertTargetVersion,

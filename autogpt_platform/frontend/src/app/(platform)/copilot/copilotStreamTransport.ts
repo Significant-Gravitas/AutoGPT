@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getAutopilotModeChoice } from "./autopilotModeStore";
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
+import { getResendPendingId } from "./helpers/resendMetadata";
 import { getCopilotAuthHeaders } from "./helpers";
 import { createShadowFetch } from "./stream/turnShadow";
 import { isVoiceTurn } from "./voice/pendingVoiceStart";
@@ -130,6 +131,7 @@ export function streamRequestBody(
   model: CopilotLlmModel | undefined,
 ) {
   const kickoffExpertId = getKickoffExpertIdFromMetadata(last.metadata);
+  const resendPendingId = getResendPendingId(last.metadata);
   // Extract file_ids from FileUIPart entries on the message
   const fileIds = last.parts
     ?.filter((p): p is FileUIPart => p.type === "file")
@@ -170,7 +172,10 @@ export function streamRequestBody(
     // getRandomValues path. Unlike crypto.randomUUID,
     // getRandomValues is available on plain-HTTP LAN origins used
     // by the local single-container appliance.
-    message_id: uuidv4({}),
+    // A Retry's key comes from the follow-up it resends, so a second click
+    // or a retransmit of it is the same send to the server.
+    message_id: resendPendingId ? `resend-${resendPendingId}` : uuidv4({}),
+    resend_pending_id: resendPendingId,
     // Asks the reply to speak before it starts working. Text turns
     // send false and pay nothing for it.
     voice: isVoiceTurn(),

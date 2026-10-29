@@ -1,4 +1,4 @@
-import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
+import { readSessionForStream } from "@/app/(platform)/copilot/helpers/readSessionForStream";
 import { queueFollowUpMessage } from "@/app/(platform)/copilot/helpers/queueFollowUpMessage";
 import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
 import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
@@ -7,11 +7,8 @@ import {
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import * as Sentry from "@sentry/nextjs";
-import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MEMORY_CHAT_PROMPTS, type MemoryChatSeed } from "../../helpers";
-
-type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
 
 interface Args {
   scopeExpertID: string | null;
@@ -43,34 +40,28 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
       refetchOnMount: true,
     },
   });
-  const hasActiveStream =
-    sessionQuery.data?.status === 200
-      ? !!sessionQuery.data.data.active_stream
-      : false;
-
-  const hydratedMessages = useMemo<UiMessages | undefined>(() => {
-    if (sessionQuery.data?.status !== 200 || !sessionId) return undefined;
-    return convertChatSessionMessagesToUiMessages(
-      sessionId,
-      sessionQuery.data.data.messages ?? [],
-      { isComplete: !hasActiveStream },
-    ).messages as UiMessages;
-  }, [sessionQuery.data, sessionId, hasActiveStream]);
+  const { hydratedMessages, hasActiveStream, sessionChatStatus, turnStats } =
+    useMemo(
+      () => readSessionForStream(sessionId, sessionQuery.data),
+      [sessionId, sessionQuery.data],
+    );
 
   const { messages, setMessages, sendMessage, stop, status, error } =
     useCopilotStream({
       sessionId,
       hydratedMessages,
       hasActiveStream,
+      sessionChatStatus,
       refetchSession: sessionQuery.refetch,
       copilotModel: undefined,
     });
 
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+  const { queuedChips, queueMessage } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
     setMessages,
+    resend: (text, metadata) => sendMessage({ text, metadata }),
   });
 
   // The seed fires from an effect so it runs only after the stream hook has
@@ -142,8 +133,8 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     const isInFlight = status === "streaming" || status === "submitted";
     if (isInFlight) {
       try {
-        await queueFollowUpMessage(sessionId, trimmed);
-        queueMessage(trimmed);
+        const queued = await queueFollowUpMessage(sessionId, trimmed);
+        queueMessage(trimmed, queued.pending_id);
       } catch (err) {
         // The turn finished while we were queueing — send normally instead.
         if (
@@ -175,6 +166,8 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     error,
     stop,
     onSend,
-    queuedMessages,
+    queuedChips,
+    sessionChatStatus,
+    turnStats,
   };
 }

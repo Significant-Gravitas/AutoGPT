@@ -8,7 +8,7 @@ import {
   withKickoffLock,
 } from "@/app/(platform)/copilot/expertKickoff";
 import { describeChatError } from "@/app/(platform)/copilot/chatErrorGuidance";
-import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
+import { readSessionForStream } from "@/app/(platform)/copilot/helpers/readSessionForStream";
 import { queueFollowUpMessage } from "@/app/(platform)/copilot/helpers/queueFollowUpMessage";
 import {
   hasAttachments,
@@ -31,12 +31,9 @@ import {
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import * as Sentry from "@sentry/nextjs";
-import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { textMessage, type ChatTarget } from "./helpers";
 import { recoverUnsentMessage, useExpertChatSend } from "./useExpertChatSend";
-
-type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
 
 class SessionStartingError extends Error {}
 
@@ -186,19 +183,11 @@ export function useExpertChatDrawer({
       refetchOnMount: true,
     },
   });
-  const hasActiveStream =
-    sessionQuery.data?.status === 200
-      ? !!sessionQuery.data.data.active_stream
-      : false;
-
-  const hydratedMessages = useMemo<UiMessages | undefined>(() => {
-    if (sessionQuery.data?.status !== 200 || !sessionId) return undefined;
-    return convertChatSessionMessagesToUiMessages(
-      sessionId,
-      sessionQuery.data.data.messages ?? [],
-      { isComplete: !hasActiveStream },
-    ).messages as UiMessages;
-  }, [sessionQuery.data, sessionId, hasActiveStream]);
+  const { hydratedMessages, hasActiveStream, sessionChatStatus, turnStats } =
+    useMemo(
+      () => readSessionForStream(sessionId, sessionQuery.data),
+      [sessionId, sessionQuery.data],
+    );
 
   const {
     messages,
@@ -214,6 +203,7 @@ export function useExpertChatDrawer({
     sessionId,
     hydratedMessages,
     hasActiveStream,
+    sessionChatStatus,
     refetchSession: sessionQuery.refetch,
     copilotModel: undefined,
   });
@@ -281,11 +271,20 @@ export function useExpertChatDrawer({
     setSessionId(pending);
   }, [pendingOnboarding.sessionId, sessionId]);
 
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+  const { queuedChips, queueMessage } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
     setMessages,
+    resend: (text, metadata) => {
+      if (!sessionId) return Promise.resolve();
+      const message: OutgoingMessage = { text, files: [], parts: [], metadata };
+      return send(sessionId, message).catch((err: unknown) =>
+        recoverUnsentMessage(message, err),
+      );
+    },
+    // While the kickoff is still being decided, a held chip stays as it is.
+    canRetry: () => !needsKickoff(),
   });
 
   const threadKeyRef = useRef(threadKey);
@@ -487,8 +486,8 @@ export function useExpertChatDrawer({
     const isInFlight = status === "streaming" || status === "submitted";
     if (isInFlight) {
       try {
-        await queueFollowUpMessage(sessionId, message.text);
-        queueMessage(message.text);
+        const queued = await queueFollowUpMessage(sessionId, message.text);
+        queueMessage(message.text, queued.pending_id);
       } catch (err) {
         if (
           err instanceof Error &&
@@ -562,7 +561,9 @@ export function useExpertChatDrawer({
     stop,
     onSend,
     onActionSend,
-    queuedMessages,
+    queuedChips,
+    sessionChatStatus,
+    turnStats,
     isResolvingSession,
     isCreating,
     pendingSend,

@@ -43,6 +43,7 @@ from .config import ChatConfig
 from .constants import STREAM_LOCK_PREFIX
 from .dream_events import StreamDreamOperations
 from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS, get_session_lock_key
+from .held_follow_ups import held_reason_for, hold_follow_ups_at_turn_end
 from .response_model import (
     ResponseType,
     StreamBaseResponse,
@@ -51,6 +52,7 @@ from .response_model import (
     StreamError,
     StreamFinish,
     StreamFinishStep,
+    StreamFollowUpHeld,
     StreamFollowUpQueued,
     StreamHeartbeat,
     StreamModeChanged,
@@ -59,6 +61,7 @@ from .response_model import (
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
+    StreamSendAccepted,
     StreamStart,
     StreamStartStep,
     StreamStatus,
@@ -70,6 +73,7 @@ from .response_model import (
     StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamTurnPaused,
+    StreamTurnQueued,
     StreamUsage,
 )
 
@@ -986,6 +990,7 @@ async def mark_session_completed(
     error_code: str | None = None,
     skip_error_publish: bool = False,
     turn_id: str = "",
+    paused: bool = False,
 ) -> bool:
     """Mark a session as completed, then publish StreamFinish.
 
@@ -1011,6 +1016,8 @@ async def mark_session_completed(
             published to the stream (e.g. via stream_and_publish).
         turn_id: The finishing turn. When given, a session whose meta already
             belongs to a later turn is left alone.
+        paused: The turn stopped at a budget or step limit; reported with any
+            follow-ups it left unread.
 
     Returns:
         True if session was newly marked completed, False if already completed/failed
@@ -1094,6 +1101,23 @@ async def mark_session_completed(
         await after_turn.run_after_turn(
             turn_id, lambda: wake_for_held_calls(user_id, session_id)
         )
+
+    # The CAS above closed the pending queue to new follow-ups, so whatever
+    # is in it now was left unread by this turn and is answered by nobody.
+    held = await hold_follow_ups_at_turn_end(
+        session_id,
+        turn_id,
+        held_reason_for(
+            failed=bool(error_message),
+            cancelled=error_message == CANCELLED_MESSAGE,
+            paused=paused,
+        ),
+    )
+    if held is not None:
+        try:
+            await publish_chunk(turn_id, held)
+        except Exception as e:
+            logger.warning(f"Failed to publish held follow-ups for {session_id}: {e}")
 
     if error_message and not skip_error_publish:
         try:
@@ -1360,6 +1384,9 @@ CHUNK_TYPE_TO_CLASS: dict[str, type[StreamBaseResponse]] = {
     ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
     ResponseType.PENDING_DRAINED.value: StreamPendingDrained,
     ResponseType.FOLLOW_UP_QUEUED.value: StreamFollowUpQueued,
+    ResponseType.SEND_ACCEPTED.value: StreamSendAccepted,
+    ResponseType.FOLLOW_UP_HELD.value: StreamFollowUpHeld,
+    ResponseType.TURN_QUEUED.value: StreamTurnQueued,
     ResponseType.MODE_CHANGED.value: StreamModeChanged,
     ResponseType.PROVIDER_FAILURE.value: StreamProviderFailure,
     ResponseType.TURN_PAUSED.value: StreamTurnPaused,

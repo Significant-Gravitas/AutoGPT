@@ -105,6 +105,27 @@ def cost_context(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_queue_position_counts_from_one_for_the_next_turn() -> None:
+    queued = [MagicMock(session_id="sess-a"), MagicMock(session_id="sess-b")]
+    with patch.object(
+        turn_queue, "list_queued_sessions", new=AsyncMock(return_value=queued)
+    ):
+        assert await turn_queue.queue_position("u1", "sess-a") == 1
+        assert await turn_queue.queue_position("u1", "sess-b") == 2
+        assert await turn_queue.queue_position("u1", "sess-c") is None
+
+
+@pytest.mark.asyncio
+async def test_queue_position_is_unknown_when_the_queue_cannot_be_read() -> None:
+    with patch.object(
+        turn_queue,
+        "list_queued_sessions",
+        new=AsyncMock(side_effect=RuntimeError("database unavailable")),
+    ):
+        assert await turn_queue.queue_position("u1", "sess-a") is None
+
+
+@pytest.mark.asyncio
 async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
     """Non-message dispatch params (file_ids, model, permissions,
     context, request_arrival_at) land in the ChatMessage row's

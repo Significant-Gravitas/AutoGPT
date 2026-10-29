@@ -198,13 +198,17 @@ class MockIntersectionObserver {
   thresholds = [];
 }
 
+function queuedChips(messages: string[]) {
+  return { messages, heldReason: null, onRetry: vi.fn() };
+}
+
 const baseProps = {
   messages: [] as Message[],
   status: "ready",
   error: undefined,
   isLoading: false,
   sessionID: "sess-123",
-  queuedMessages: [] as string[],
+  queuedChips: queuedChips([]),
   hasMoreMessages: true,
   isLoadingMore: false,
   onLoadMore: vi.fn(),
@@ -370,7 +374,7 @@ describe("ChatMessagesContainer — assistant rendering", () => {
 
 // ── queued-messages rendering ─────────────────────────────────────────────
 
-describe("ChatMessagesContainer — queuedMessages", () => {
+describe("ChatMessagesContainer — queuedChips", () => {
   beforeEach(() => {
     mockScrollEl.scrollHeight = 100;
     mockScrollEl.scrollTop = 0;
@@ -384,8 +388,10 @@ describe("ChatMessagesContainer — queuedMessages", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders nothing extra when queuedMessages is empty", () => {
-    render(<ChatMessagesContainer {...baseProps} queuedMessages={[]} />);
+  it("renders nothing extra when no follow-up is queued", () => {
+    render(
+      <ChatMessagesContainer {...baseProps} queuedChips={queuedChips([])} />,
+    );
     expect(screen.queryByText("Queued")).toBeNull();
   });
 
@@ -393,7 +399,7 @@ describe("ChatMessagesContainer — queuedMessages", () => {
     render(
       <ChatMessagesContainer
         {...baseProps}
-        queuedMessages={["What about section 3?"]}
+        queuedChips={queuedChips(["What about section 3?"])}
       />,
     );
     expect(screen.getByText("What about section 3?")).toBeDefined();
@@ -404,9 +410,9 @@ describe("ChatMessagesContainer — queuedMessages", () => {
     const { container } = render(
       <ChatMessagesContainer
         {...baseProps}
-        queuedMessages={[
+        queuedChips={queuedChips([
           "Check [Work Gmail](credential://google/work-credential-id)",
-        ]}
+        ])}
       />,
     );
     expect(screen.getByText("Work Gmail")).toBeDefined();
@@ -418,7 +424,7 @@ describe("ChatMessagesContainer — queuedMessages", () => {
     render(
       <ChatMessagesContainer
         {...baseProps}
-        queuedMessages={["First follow-up", "Second follow-up"]}
+        queuedChips={queuedChips(["First follow-up", "Second follow-up"])}
       />,
     );
     expect(screen.getByText("First follow-up")).toBeDefined();
@@ -432,7 +438,7 @@ describe("ChatMessagesContainer — queuedMessages", () => {
       <ChatMessagesContainer
         {...baseProps}
         status="streaming"
-        queuedMessages={["queued during stream"]}
+        queuedChips={queuedChips(["queued during stream"])}
       />,
     );
     expect(screen.getByText("queued during stream")).toBeDefined();
@@ -440,7 +446,7 @@ describe("ChatMessagesContainer — queuedMessages", () => {
   });
 
   it("renders no queued messages when prop is undefined", () => {
-    const { queuedMessages: _, ...propsWithoutQueued } = baseProps;
+    const { queuedChips: _, ...propsWithoutQueued } = baseProps;
     render(<ChatMessagesContainer {...propsWithoutQueued} />);
     expect(screen.queryByText("Queued")).toBeNull();
   });
@@ -1172,11 +1178,11 @@ describe("ChatMessagesContainer — readOnly mode", () => {
     ).toBeNull();
   });
 
-  it("hides queued messages even when queuedMessages is non-empty", () => {
+  it("hides queued messages even when some are queued", () => {
     render(
       <ChatMessagesContainer
         {...baseProps}
-        queuedMessages={["should not show"]}
+        queuedChips={queuedChips(["should not show"])}
         readOnly
       />,
     );

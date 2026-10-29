@@ -5,12 +5,29 @@ import { CopilotAuthError } from "../helpers";
 import {
   ChatUnavailableError,
   MessageTooLongError,
+  SendNotDeliveredError,
   SendRefusedError,
 } from "../stream/turnRuntime";
 
 const RESEND = /send (it|your message) again|try sending/i;
 
 describe("describeChatError", () => {
+  it("a send nothing took says it didn't go through and to send it again", () => {
+    const { title, action } = describeChatError(new SendNotDeliveredError());
+    expect(title).toMatch(/didn't go through/);
+    expect(title).toMatch(RESEND);
+    expect(action).toBeNull();
+  });
+
+  it("a lost send with attachments asks for them again", () => {
+    const { title } = describeChatError(
+      new SendNotDeliveredError("", ["q3-plan.pdf"]),
+    );
+    expect(title).toBe(
+      "Your message didn't go through. Attach your files again and send it.",
+    );
+  });
+
   it("a message over the length limit says to shorten it", () => {
     const guidance = describeChatError(
       new MessageTooLongError('{"detail":[…]}', 422),

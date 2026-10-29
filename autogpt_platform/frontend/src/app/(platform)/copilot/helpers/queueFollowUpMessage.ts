@@ -7,6 +7,8 @@ export interface QueueFollowUpResult {
   buffer_length: number;
   max_buffer_length: number;
   turn_in_flight: boolean;
+  /** The queued message's id, as GET /messages/pending lists it. */
+  pending_id?: string | null;
 }
 
 export class QueueFollowUpNotActiveError extends Error {

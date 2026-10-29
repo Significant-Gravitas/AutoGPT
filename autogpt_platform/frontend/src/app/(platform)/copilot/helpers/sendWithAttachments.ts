@@ -7,7 +7,7 @@ import {
   type PendingUploadAttachment,
   type PendingUploadSend,
 } from "../copilotStreamStore";
-import type { ExpertKickoffMetadata } from "../expertKickoff";
+import type { SendMetadata } from "./resendMetadata";
 import type { SendInput } from "../stream/turnRuntime";
 import {
   isFolderPart,
@@ -24,7 +24,7 @@ export interface OutgoingMessage {
   text: string;
   files: File[];
   parts: StoredAttachmentPart[];
-  metadata?: ExpertKickoffMetadata;
+  metadata?: SendMetadata;
 }
 
 interface UploadedFile {
@@ -207,7 +207,7 @@ function buildFileParts(uploaded: UploadedFile[]): FileUIPart[] {
 function messageInput(
   text: string,
   parts: StoredAttachmentPart[],
-  metadata?: ExpertKickoffMetadata,
+  metadata?: SendMetadata,
 ) {
   // `{ text, files }` only accepts FileUIParts, so a message carrying a
   // folder is built from its parts instead.

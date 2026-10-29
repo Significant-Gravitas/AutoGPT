@@ -54,6 +54,12 @@ from backend.copilot.expert_kickoff import (
     scoped_client_message_id,
 )
 from backend.copilot.gate.card_approval import record_card_decisions
+from backend.copilot.held_follow_ups import (
+    follow_up_state,
+    held_follow_up_reason,
+    restore_held_follow_up,
+    take_follow_up,
+)
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
@@ -90,6 +96,7 @@ from backend.copilot.pending_message_helpers import (
     resolve_attachments_for_http,
 )
 from backend.copilot.pending_messages import (
+    PendingMessage,
     accept_client_message,
     claim_client_message,
     clear_pending_messages_unsafe,
@@ -117,14 +124,17 @@ from backend.copilot.rate_limit import (
     reset_daily_usage,
 )
 from backend.copilot.response_model import (
+    FollowUpHeldReason,
     StreamError,
     StreamFinish,
     StreamFinishStep,
     StreamFollowUpQueued,
     StreamHeartbeat,
+    StreamSendAccepted,
     StreamStart,
     StreamStartStep,
     StreamStatus,
+    StreamTurnQueued,
 )
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.session_permissions import resolve_session_permissions
@@ -412,6 +422,17 @@ class StreamChatRequest(BaseModel):
             "guarantees that."
         ),
     )
+    resend_pending_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Id of a follow-up the last turn left unread (from GET "
+            "/messages/pending) that this send resends. The server takes that "
+            "very message off the queue and runs it as a turn, keeping its "
+            "files, page and provenance; if a turn has read it meanwhile, the "
+            "send is answered as queued and nothing runs twice."
+        ),
+    )
     expert_kickoff: bool = Field(
         default=False,
         description=(
@@ -444,6 +465,11 @@ class QueuePendingMessageRequest(BaseModel):
     )
 
 
+class PendingMessageItem(BaseModel):
+    id: str
+    content: str
+
+
 class PeekPendingMessagesResponse(BaseModel):
     """Response for the pending-message peek (GET) endpoint.
 
@@ -455,6 +481,17 @@ class PeekPendingMessagesResponse(BaseModel):
 
     messages: list[str]
     count: int
+    items: list[PendingMessageItem] = Field(
+        default_factory=list,
+        description="The same messages with their ids, in queue order; a "
+        "Retry names the one it resends by its id.",
+    )
+    held_reason: FollowUpHeldReason | None = Field(
+        default=None,
+        description="Set when the turn that should have read these messages "
+        "ended first (error, stopped, paused or ended), so nothing will "
+        "answer them unless they are sent again.",
+    )
 
 
 class CreateSessionRequest(BaseModel):
@@ -1809,6 +1846,65 @@ async def _apply_autopilot_mode(
     session.metadata.autopilot_mode = mode
 
 
+async def _own_resend_row(
+    session_id: str, message_id: str | None
+) -> Literal["answered", "unanswered"] | None:
+    """Whether this resend's own row (stored under its id by an earlier
+    attempt) exists, and whether a reply follows it. None when there is no
+    such row: another turn read the follow-up from the queue."""
+    if message_id is None:
+        return None
+    has_reply = await chat_message_has_assistant_reply(message_id, session_id)
+    if has_reply is None:
+        return None
+    return "answered" if has_reply else "unanswered"
+
+
+async def _put_back_unless_stored(
+    session_id: str, message_id: str | None, resent: PendingMessage | None
+) -> None:
+    """Put back a resent follow-up whose send was refused, unless its row was
+    already stored under this send's id before the refusal: the chat has it
+    then, and the next turn reading the queue copy too would run it twice."""
+    if resent is None:
+        return
+    stored = None
+    try:
+        if message_id is not None:
+            stored = await chat_message_has_assistant_reply(message_id, session_id)
+    except Exception:
+        logger.warning(
+            f"Could not check whether session {session_id} stored a refused "
+            "resend; putting it back",
+            exc_info=True,
+        )
+    if stored is None:
+        await restore_held_follow_up(session_id, resent)
+
+
+async def _carry_resent_payload(
+    resent: PendingMessage,
+    *,
+    user_id: str,
+    session_id: str,
+    expert_id: str | None,
+    message: str,
+    file_ids: list[str] | None,
+    context: dict[str, str] | None,
+) -> tuple[str, list[str] | None, dict[str, str] | None]:
+    """A resend carries only the follow-up's text; the held copy it replaces
+    keeps the files and page context sent with it the first time."""
+    if resent.file_ids and not file_ids:
+        files = await resolve_attachments_for_http(
+            user_id, resent.file_ids, session_id=session_id, expert_id=expert_id
+        )
+        file_ids = [wf.id for wf in files] or None
+        message += build_files_block(files, [])
+    if resent.context and not context:
+        context = resent.context.model_dump(exclude_none=True)
+    return message, file_ids, context
+
+
 def _ui_message_stream_headers() -> dict[str, str]:
     return {
         "Cache-Control": "no-cache",
@@ -1820,33 +1916,48 @@ def _ui_message_stream_headers() -> dict[str, str]:
 
 def _empty_ui_message_stream_response(
     follow_up_queued: bool = False,
+    turn_queued: StreamTurnQueued | None = None,
+    send_accepted: bool = False,
 ) -> StreamingResponse:
+    return StreamingResponse(
+        _empty_stream_frames(
+            follow_up_queued=follow_up_queued,
+            turn_queued=turn_queued,
+            send_accepted=send_accepted,
+        ),
+        media_type="text/event-stream",
+        headers=_ui_message_stream_headers(),
+    )
+
+
+async def _empty_stream_frames(
+    *,
+    follow_up_queued: bool = False,
+    turn_queued: StreamTurnQueued | None = None,
+    send_accepted: bool = False,
+) -> AsyncGenerator[str, None]:
     # Stable placeholder messageId for the empty queued-mid-turn stream.
     # Real turns generate per-message UUIDs via the executor; this stream
     # has no message to attach to, but the AI SDK parser still requires a
     # non-empty ``messageId`` field on ``StreamStart``.
-    message_id = uuid4().hex
-
-    async def event_generator() -> AsyncGenerator[str, None]:
-        # Vercel AI SDK's UI-message-stream parser expects symmetric
-        # start/finish framing at both stream and step level — every
-        # non-empty turn emits the pair.  Without an opener, today's parser
-        # tolerates the closer (no active parts to flush) but a future SDK
-        # tightening would silently break the queue-mid-turn UX.  Emit the
-        # full empty pair so the contract stays correct.
-        yield StreamStart(messageId=message_id).to_sse()
-        yield StreamStartStep().to_sse()
-        if follow_up_queued:
-            yield StreamFollowUpQueued().to_sse()
-        yield StreamFinishStep().to_sse()
-        yield StreamFinish().to_sse()
-        yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers=_ui_message_stream_headers(),
-    )
+    #
+    # Vercel AI SDK's UI-message-stream parser expects symmetric
+    # start/finish framing at both stream and step level — every
+    # non-empty turn emits the pair.  Without an opener, today's parser
+    # tolerates the closer (no active parts to flush) but a future SDK
+    # tightening would silently break the queue-mid-turn UX.  Emit the
+    # full empty pair so the contract stays correct.
+    yield StreamStart(messageId=uuid4().hex).to_sse()
+    yield StreamStartStep().to_sse()
+    if follow_up_queued:
+        yield StreamFollowUpQueued().to_sse()
+    if turn_queued is not None:
+        yield turn_queued.to_sse()
+    if send_accepted:
+        yield StreamSendAccepted().to_sse()
+    yield StreamFinishStep().to_sse()
+    yield StreamFinish().to_sse()
+    yield "data: [DONE]\n\n"
 
 
 @router.post(
@@ -2001,6 +2112,12 @@ async def stream_chat_post(
                 status_code=409,
                 detail="expert kickoff requires an idle session",
             )
+        if request.resend_pending_id and (
+            await follow_up_state(session_id, request.resend_pending_id) != "unknown"
+        ):
+            # Still waiting, the running turn reads it; already read, a turn
+            # did. Either way a second copy would have Otto read it twice.
+            return _empty_ui_message_stream_response(follow_up_queued=True)
         try:
             await queue_pending_for_http(
                 session_id=session_id,
@@ -2100,7 +2217,57 @@ async def stream_chat_post(
         if claim == "claimed" and client_message_id is not None:
             await accept_client_message(session_id, client_message_id, claim_owner)
 
+    # A follow-up the last turn left unread, resent by its id: take that very
+    # message off the queue so this turn runs it, and the next turn's start
+    # does not read it again. One a turn read meanwhile is not sent twice.
+    resent: PendingMessage | None = None
+    resume_stored_resend = False
+    if request.resend_pending_id and claim != "accepted":
+        read = False
+        own_row: Literal["answered", "unanswered"] | None = None
+        try:
+            resent = await take_follow_up(session_id, request.resend_pending_id)
+            if resent is None:
+                state = await follow_up_state(session_id, request.resend_pending_id)
+                read = state == "read"
+                if read:
+                    own_row = await _own_resend_row(session_id, message_id)
+        except BaseException:
+            # These lookups run before the guard below that frees the key;
+            # a Redis or database error here must free it too, or a quick
+            # Retry under the same key waits on it and fails.
+            await release_client_message_claim()
+            raise
+        if resent is None and read:
+            if own_row != "unanswered":
+                await release_client_message_claim()
+                return _empty_ui_message_stream_response(
+                    follow_up_queued=own_row is None,
+                    send_accepted=own_row == "answered",
+                )
+            # An earlier resend stored this row and its turn never ran: run
+            # it now, as an orphaned kickoff row is, instead of leaving it
+            # unanswered behind a "queued".
+            resume_stored_resend = True
+        if resent is not None:
+            message = resent.content
+
+    turn_context = request.context
     try:
+        if resent is not None:
+            message, sanitized_file_ids, turn_context = await _carry_resent_payload(
+                resent,
+                user_id=user_id,
+                session_id=session_id,
+                expert_id=session.expert_id,
+                message=message,
+                file_ids=sanitized_file_ids,
+                context=turn_context,
+            )
+            # Another session's message keeps its provenance, as the turn's
+            # own read of the queue would have stored it.
+            if resent.metadata and message_metadata is None:
+                message_metadata = dict(resent.metadata)
         if claim == "accepted":
             turn_id = None
         else:
@@ -2113,12 +2280,14 @@ async def stream_chat_post(
                 # drop a resend after a turn stopped before it wrote a reply.
                 dedupe_content=client_message_id is None,
                 message_metadata=message_metadata,
-                message_already_persisted=resume_persisted_kickoff,
+                message_already_persisted=(
+                    resume_persisted_kickoff or resume_stored_resend
+                ),
                 is_user_message=request.is_user_message,
                 expert_id=session.expert_id,
                 session_origin=session.metadata.origin,
                 session_source_platform=session.metadata.source_platform,
-                context=request.context,
+                context=turn_context,
                 voice=request.voice,
                 file_ids=sanitized_file_ids,
                 organization_id=turn_org_id,
@@ -2131,7 +2300,12 @@ async def stream_chat_post(
                 impersonated=is_impersonated_request(http_request),
             )
     except ConcurrentTurnLimitError as exc:
-        if resume_persisted_kickoff:
+        if resume_persisted_kickoff or resume_stored_resend:
+            # Raised inside this handler, so the outer clause that frees the
+            # client key never sees it: free it here, or a quick Retry under
+            # the same key waits on it and fails.
+            await release_client_message_claim()
+            await _put_back_unless_stored(session_id, message_id, resent)
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         # Soft running cap (default 5) hit. Fall through to the queue:
         # if total in-flight (running + queued) is still under the hard
@@ -2148,7 +2322,7 @@ async def stream_chat_post(
                 message_id=message_id,
                 message_metadata=message_metadata,
                 is_user_message=request.is_user_message,
-                context=request.context,
+                context=turn_context,
                 file_ids=sanitized_file_ids,
                 model=request.model,
                 llm_auth_provider=session.metadata.llm_auth_provider,
@@ -2163,6 +2337,7 @@ async def stream_chat_post(
             )
         except turn_queue.InflightCapExceeded:
             await release_client_message_claim()
+            await _put_back_unless_stored(session_id, message_id, resent)
             raise HTTPException(
                 status_code=429,
                 detail=inflight_turn_limit_message(inflight_cap),
@@ -2171,19 +2346,28 @@ async def stream_chat_post(
             # Raised inside the handler above, so the outer BaseException
             # clause never sees it.
             await release_client_message_claim()
+            await _put_back_unless_stored(session_id, message_id, resent)
             raise
         await accept_client_message_claim()
+        position = await turn_queue.queue_position(user_id, session_id)
         logger.info(
             f"[STREAM] Queued turn for session={session_id} "
-            f"(running cap reached; inflight cap={inflight_cap})"
+            f"(running cap reached; inflight cap={inflight_cap}; "
+            f"position={position})"
         )
-        return _empty_ui_message_stream_response()
+        return _empty_ui_message_stream_response(
+            turn_queued=StreamTurnQueued(position=position)
+        )
     except BaseException:
         await release_client_message_claim()
+        await _put_back_unless_stored(session_id, message_id, resent)
         raise
     await accept_client_message_claim()
 
     if turn_id is None:
+        # The chat already holds this message (stored under its id, or the
+        # same words a running turn just stored), so a resent follow-up stays
+        # taken: putting it back would have the next turn read it again.
         logger.info(
             f"[STREAM] Duplicate message detected for session {session_id}, skipping enqueue"
         )
@@ -2243,6 +2427,13 @@ async def stream_chat_post(
             )
 
             if subscriber_queue is None:
+                if turn_id is None:
+                    # This send's row was stored before and no turn runs
+                    # now: say it landed, or the client takes the bare end
+                    # for a send that went nowhere.
+                    async for frame in _empty_stream_frames(send_accepted=True):
+                        yield frame
+                    return
                 yield StreamFinish().to_sse()
                 return
 
@@ -2452,7 +2643,30 @@ async def get_pending_messages(
     return PeekPendingMessagesResponse(
         messages=[m.content for m in pending],
         count=len(pending),
+        items=[PendingMessageItem(id=m.id, content=m.content) for m in pending],
+        held_reason=(
+            await _held_reason_while_idle(session_id, pending) if pending else None
+        ),
     )
+
+
+async def _held_reason_while_idle(
+    session_id: str, pending: list[PendingMessage]
+) -> FollowUpHeldReason | None:
+    """A running turn reads the queue, so its messages are held only while
+    none runs, and only when the hold covers every one of them. An unknown
+    registry state reads as running."""
+    try:
+        if await is_turn_in_flight(session_id):
+            return None
+        return await held_follow_up_reason(session_id, covering=pending)
+    except Exception:
+        # The hold only labels the strip; the peek itself must still answer.
+        logger.warning(
+            f"Could not read the follow-up hold of session {session_id}",
+            exc_info=True,
+        )
+        return None
 
 
 class StreamResumeRefusal(BaseModel):

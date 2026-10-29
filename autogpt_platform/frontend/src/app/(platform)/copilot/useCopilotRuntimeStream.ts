@@ -21,6 +21,7 @@ import {
   getKickoffExpertIdFromMetadata,
   withKickoffLock,
 } from "./expertKickoff";
+import { getResendPendingId } from "./helpers/resendMetadata";
 import {
   convertChatSessionMessagesToUiMessages,
   type TurnStatsMap,
@@ -42,10 +43,13 @@ import {
   type RuntimePhase,
   type RuntimeSnapshot,
   type SendInput,
+  SendNotDeliveredError,
   type SessionView,
   type TurnRuntime,
 } from "./stream/turnRuntime";
 import type { PersistedRow } from "./stream/turnLog";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import { SESSION_COMPOSER_ID } from "./components/SendAtReset/helpers";
 import { useCopilotStop } from "./useCopilotStop";
 
 const NOTICE_TEXT = {
@@ -137,12 +141,53 @@ export function useCopilotRuntimeStream({
     // and drop the bubble.
     function restoreUnsentSend() {
       if (!coord.lastSubmittedMessageText) return;
-      if (kickoffExpertId) clearRecovery();
+      // A refused Retry is still held on the server and its chip comes back.
+      if (kickoffExpertId || coord.lastSubmittedWasResend) clearRecovery();
       else if (isComposerEmpty()) {
         setInitialPrompt(coord.lastSubmittedMessageText);
         clearRecovery();
       }
       runtime?.dropUnsentUserRow();
+    }
+    function releaseKickoffPending() {
+      if (!userId || !kickoffExpertId || !kickoffAttemptToken) return;
+      void withKickoffLock(userId, kickoffExpertId, async () => {
+        clearKickoffPending(userId, kickoffExpertId, kickoffAttemptToken);
+      }).catch(() => undefined);
+    }
+    // The banner says it didn't go through; that send's text goes back to
+    // resend, never a newer send's, and its bubble is already gone. (A
+    // kickoff never lands here: the runtime leaves it to the kickoff hook.)
+    if (error instanceof SendNotDeliveredError) {
+      // Sent files can't be put back in the composer: name them, so a
+      // message that was only files is not lost without a word.
+      if (error.files.length > 0)
+        toast({
+          title: "Your files weren't sent",
+          description: `Attach ${error.files.join(", ")} again and send.`,
+        });
+      if (!error.text) return;
+      // A Retry the server didn't run is still its held chip, or already in
+      // the chat: never a composer copy as well.
+      if (
+        coord.lastSubmittedWasResend &&
+        coord.lastSubmittedMessageText === error.text
+      ) {
+        clearRecovery();
+        return;
+      }
+      if (isComposerEmpty()) {
+        setInitialPrompt(error.text);
+        if (coord.lastSubmittedMessageText === error.text) clearRecovery();
+        return;
+      }
+      // A new draft is in the composer: keep the recovery slot, as a refused
+      // send does, and show the text so it can be sent again.
+      toast({
+        title: "Your earlier message didn't go through",
+        description: error.text,
+      });
+      return;
     }
     handleStreamError({
       error,
@@ -162,11 +207,7 @@ export function useCopilotRuntimeStream({
       isUserStoppingRef,
     });
     if (!kickoffExpertId) return;
-    if (userId && kickoffAttemptToken) {
-      void withKickoffLock(userId, kickoffExpertId, async () => {
-        clearKickoffPending(userId, kickoffExpertId, kickoffAttemptToken);
-      }).catch(() => undefined);
-    }
+    releaseKickoffPending();
     clearRecovery();
     runtime?.dropUnsentUserRow();
   }
@@ -230,6 +271,7 @@ export function useCopilotRuntimeStream({
       lastSubmittedKickoffExpertId: getKickoffExpertIdFromMetadata(metadata),
       lastSubmittedKickoffAttemptToken:
         getKickoffAttemptTokenFromMetadata(metadata),
+      lastSubmittedWasResend: getResendPendingId(metadata) !== null,
     });
     await runtime.send(input, copilotModel);
   }
@@ -443,10 +485,11 @@ function textOf(input: { parts: UIMessage["parts"] }) {
   return input.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
 }
 
+// An open chat's composer, or the new-chat one; a draft in either is kept.
 function isComposerEmpty() {
-  const composer = document.getElementById(
-    "chat-input",
-  ) as HTMLTextAreaElement | null;
+  const composer = document.querySelector<HTMLTextAreaElement>(
+    `#${SESSION_COMPOSER_ID}, #chat-input`,
+  );
   return !composer || composer.value.length === 0;
 }
 

@@ -251,6 +251,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         lastSubmittedMessageText: null,
         lastSubmittedKickoffExpertId: null,
         lastSubmittedKickoffAttemptToken: null,
+        lastSubmittedWasResend: false,
       });
       expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
       const userRows =
@@ -644,3 +645,63 @@ describe.each(STREAM_PATHS)(
     }, 15_000);
   },
 );
+
+// Only the stream runtime has a "didn't go through" state for a send.
+describe("on the stream runtime path, a stored kickoff answered with a bare stream", () => {
+  beforeEach(() => {
+    streamPath.runtime = true;
+  });
+
+  it("does not report a kickoff the server already stored as undelivered", async () => {
+    const expertId = "3f8b0f7e-9f30-4a3b-a6a1-000000000002";
+    server.use(
+      http.get("*/api/experts/identities", () =>
+        HttpResponse.json([
+          {
+            id: expertId,
+            name: "Maria",
+            avatar_url: null,
+            role: "Operations expert",
+            is_archived: false,
+          },
+        ]),
+      ),
+      // The route answers and closes, as it does for a send it neither
+      // runs, queues nor stores: framing only, no stream ids.
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        () =>
+          new HttpResponse(
+            [
+              { type: "start", messageId: "nowhere" },
+              { type: "start-step" },
+              { type: "finish-step" },
+              { type: "finish" },
+            ]
+              .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+              .concat("data: [DONE]\n\n")
+              .join(""),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      ),
+    );
+
+    renderHost({
+      searchParams: `?sessionId=${TEST_SESSION_ID}&expertId=${expertId}&kickoff=1`,
+      sessionOverride: { expert_id: expertId },
+    });
+
+    // Past the runtime's recovery probes (about 4 s after the stream closed).
+    await waitFor(
+      () =>
+        expect(getTurnRuntime(TEST_SESSION_ID).getSnapshot().phase).not.toBe(
+          "connecting",
+        ),
+      { timeout: 10_000 },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 6_000));
+    expect(getTurnRuntime(TEST_SESSION_ID).getSnapshot().error).toBeNull();
+    // The hidden kickoff prompt never surfaces in the composer.
+    expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
+  }, 20_000);
+});

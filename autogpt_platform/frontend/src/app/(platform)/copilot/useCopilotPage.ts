@@ -24,7 +24,6 @@ import {
   getKickoffAttemptToken,
   isKickoffMessage,
   shouldClearKickoffParam,
-  type ExpertKickoffMetadata,
 } from "./expertKickoff";
 import {
   concatWithAssistantMerge,
@@ -35,6 +34,7 @@ import {
   rememberHeldFollowUp,
   takeHeldFollowUps,
 } from "./helpers/heldFollowUps";
+import type { SendMetadata } from "./helpers/resendMetadata";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
@@ -193,6 +193,7 @@ function useCopilotPageSession() {
     activeTurnStartMessageId,
     activeTurnStartedAt: activeStreamStartedAt,
     hasActiveStream,
+    sessionChatStatus,
     refetchSession,
     // Sent whenever the picker can set it. The tier control is not behind
     // CHAT_MODE_OPTION -- it renders from the server's connection offer --
@@ -417,7 +418,7 @@ function useCopilotPageChat(
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+  const { queuedChips, queueMessage } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
@@ -427,6 +428,13 @@ function useCopilotPageChat(
           appendLocalUserRows: stream.appendLocalUserRows,
           drainedCount: stream.drainedCount,
         }),
+    resend: (text, metadata) =>
+      sendOrQueue(text, undefined, undefined, metadata).catch((err: unknown) =>
+        recoverFailedDeferredSend(text, [], err),
+      ),
+    // Locked (an expert being resolved or let go), or a send just went out:
+    // the chip stays as it is.
+    canRetry: () => !isExpertSendLocked && !isInflightRef.current,
   });
 
   useCopilotNotifications(sessionId);
@@ -450,7 +458,7 @@ function useCopilotPageChat(
     message: string,
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
-    metadata?: ExpertKickoffMetadata,
+    metadata?: SendMetadata,
   ) {
     const trimmed = message.trim();
     const hasAttachments =
@@ -490,9 +498,9 @@ function useCopilotPageChat(
       }
 
       try {
-        await queueFollowUpMessage(sessionId, trimmed);
+        const queued = await queueFollowUpMessage(sessionId, trimmed);
         if (heldForLocalSettle) releaseFollowUp(sessionId, trimmed);
-        queueMessage(trimmed);
+        queueMessage(trimmed, queued.pending_id);
         return;
       } catch (err) {
         // Any other failure propagates to the composer, which restores the
@@ -608,10 +616,15 @@ function useCopilotPageChat(
     // onEnqueue delegates to onSend, which internally routes to the queue
     // endpoint when isInflightRef.current is true.
     onEnqueue: onSend,
-    queuedMessages:
+    // Locally held follow-ups are still on their way, never held by the server.
+    queuedChips:
       heldFollowUps.length > 0
-        ? [...queuedMessages, ...heldFollowUps]
-        : queuedMessages,
+        ? {
+            ...queuedChips,
+            messages: [...queuedChips.messages, ...heldFollowUps],
+            heldReason: null,
+          }
+        : queuedChips,
     hasMoreMessages: hasMore,
     isLoadingMore,
     loadMore,

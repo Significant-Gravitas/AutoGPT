@@ -30,12 +30,16 @@ from typing import Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot.pending_reads import (
+    pop_recording_reads,
+    put_back_unread,
+    take_recording_read,
+)
 from backend.copilot.tool_image import ToolImage
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import (
     capped_rpush,
     capped_rpush_if_hash_field,
-    pop_matching_list_prefix,
     string_compare_and_set,
 )
 
@@ -49,7 +53,9 @@ MAX_PENDING_MESSAGES = 10
 # Ephemeral buffer: undrained messages are safe to drop at TTL expiry.
 _PENDING_KEY_PREFIX = "copilot:pending:"
 _PENDING_CHANNEL_PREFIX = "copilot:pending:notify:"
-_PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
+_HELD_KEY_PREFIX = "copilot:pending:held:"
+_READ_KEY_PREFIX = "copilot:pending:read:"
+PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
 
 # Secondary queue: carries drained-but-awaiting-persist PendingMessages from
 # the tool wrapper (which injects them into tool output) to sdk/service.py
@@ -116,6 +122,18 @@ def _buffer_key(session_id: str) -> str:
     # on the same Redis Cluster slot, which the gated-rpush Lua script needs
     # (multi-key scripts return CROSSSLOT when KEYS hash to different slots).
     return f"{_PENDING_KEY_PREFIX}{{{session_id}}}"
+
+
+def _read_key(session_id: str) -> str:
+    """Ids of messages a turn took off the queue, so a resend of one is not
+    taken for a message that expired unread."""
+    return f"{_READ_KEY_PREFIX}{{{session_id}}}"
+
+
+def held_marker_key(session_id: str) -> str:
+    """Set when a turn ended with follow-ups unread (see ``held_follow_ups``);
+    any drain that takes something clears it, as that turn reads them."""
+    return f"{_HELD_KEY_PREFIX}{{{session_id}}}"
 
 
 def _notify_channel(session_id: str) -> str:
@@ -229,7 +247,7 @@ async def _accept_client_message(session_id: str, message_id: str, owner: str) -
             _client_message_key(session_id, message_id),
             expected=_CLIENT_MESSAGE_RESERVED + owner,
             new=_CLIENT_MESSAGE_ACCEPTED,
-            ttl_seconds=_PENDING_TTL_SECONDS,
+            ttl_seconds=PENDING_TTL_SECONDS,
             or_missing=True,
         )
     except Exception as e:
@@ -293,7 +311,7 @@ async def push_pending_message(
     """Append a pending message to the session's buffer, capped at
     ``MAX_PENDING_MESSAGES`` (oldest trimmed). Returns the new buffer length.
 
-    The buffer survives consumer crashes until ``_PENDING_TTL_SECONDS``
+    The buffer survives consumer crashes until ``PENDING_TTL_SECONDS``
     expires; messages not drained within that window are dropped.
     """
     redis = await get_redis_async()
@@ -305,7 +323,7 @@ async def push_pending_message(
         key,
         payload,
         max_len=MAX_PENDING_MESSAGES,
-        ttl_seconds=_PENDING_TTL_SECONDS,
+        ttl_seconds=PENDING_TTL_SECONDS,
     )
 
     # Fire-and-forget wake-up hint via sharded pub/sub (SPUBLISH routes to
@@ -346,7 +364,7 @@ async def push_pending_message_if_session_running(
         list_key=key,
         value=payload,
         max_len=MAX_PENDING_MESSAGES,
-        ttl_seconds=_PENDING_TTL_SECONDS,
+        ttl_seconds=PENDING_TTL_SECONDS,
     )
     if new_length is None:
         logger.info(
@@ -379,14 +397,16 @@ async def drain_pending_messages(
 
     Returns them in enqueue order (oldest first). Text-only consumers
     stop before the first image, atomically removing just the inspected
-    prefix if it has not changed. Other consumers drain with ``LPOP``.
+    prefix if it has not changed. Other consumers drain from the head. The
+    same step records what it read and ends any hold.
     """
     redis = await get_redis_async()
     key = _buffer_key(session_id)
+    prefix: list[str] | None = None
 
     if text_only:
         items = await cast("Any", redis.lrange(key, 0, MAX_PENDING_MESSAGES - 1))
-        prefix: list[str] = []
+        prefix = []
         for item in items:
             payload = _decode_redis_item(item)
             try:
@@ -397,12 +417,16 @@ async def drain_pending_messages(
             if message.model_image is not None:
                 break
             prefix.append(payload)
-        lpop_result = await pop_matching_list_prefix(redis, key, prefix)
-    else:
-        lpop_result = await cast("Any", redis.lpop(key, MAX_PENDING_MESSAGES))
-    if not lpop_result:
+    raw_popped = await pop_recording_reads(
+        redis,
+        queue_key=key,
+        read_key=_read_key(session_id),
+        held_key=held_marker_key(session_id),
+        count=MAX_PENDING_MESSAGES,
+        prefix=prefix,
+    )
+    if not raw_popped:
         return []
-    raw_popped: list[Any] = list(lpop_result)
 
     # redis-py may return bytes or str depending on decode_responses.
     decoded: list[str] = [_decode_redis_item(item) for item in raw_popped]
@@ -470,6 +494,60 @@ async def peek_pending_messages(session_id: str) -> list[PendingMessage]:
     return messages
 
 
+async def take_pending_message_by_id(
+    session_id: str, pending_id: str
+) -> PendingMessage | None:
+    """Remove the waiting message whose ``id`` is *pending_id* and return it;
+    None when it no longer waits (read by a turn, taken already, or expired).
+
+    Removes the exact stored payload (``LREM``), so of two callers racing for
+    the same message only one gets it, and nothing else in the queue moves;
+    the same step records it as read.
+    """
+    redis = await get_redis_async()
+    key = _buffer_key(session_id)
+    items = await cast("Any", redis.lrange(key, 0, -1))
+    for item in items:
+        payload = _decode_redis_item(item)
+        try:
+            message = _from_buffer(json.loads(payload))
+        except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
+            continue
+        if message.id != pending_id:
+            continue
+        taken = await take_recording_read(
+            redis,
+            queue_key=key,
+            read_key=_read_key(session_id),
+            payload=payload,
+            pending_id=message.id,
+        )
+        return message if taken else None
+    return None
+
+
+async def put_back_pending_message(session_id: str, message: PendingMessage) -> None:
+    """Return a message taken by id to its place in the queue, unread again
+    in the same step: a refused resend leaves it waiting where it was, never
+    read and gone."""
+    redis = await get_redis_async()
+    await put_back_unread(
+        redis,
+        queue_key=_buffer_key(session_id),
+        read_key=_read_key(session_id),
+        payload=message.model_dump_json(),
+        pending_id=message.id,
+        enqueued_at=message.enqueued_at,
+        ttl_seconds=PENDING_TTL_SECONDS,
+    )
+
+
+async def was_pending_message_read(session_id: str, pending_id: str) -> bool:
+    """Whether a turn (or a resend) has taken *pending_id* off the queue."""
+    redis = await get_redis_async()
+    return bool(await cast("Any", redis.sismember(_read_key(session_id), pending_id)))
+
+
 async def clear_pending_messages_unsafe(session_id: str) -> None:
     """Drop the session's pending buffer — operator/debug escape hatch.
 
@@ -520,7 +598,7 @@ async def stash_pending_for_persist(
         key = _persist_queue_key(session_id)
         payloads = [m.model_dump_json() for m in messages]
         await redis.rpush(key, *payloads)  # type: ignore[misc]
-        await redis.expire(key, _PENDING_TTL_SECONDS)  # type: ignore[misc]
+        await redis.expire(key, PENDING_TTL_SECONDS)  # type: ignore[misc]
     except Exception:
         logger.warning(
             "pending_messages: failed to stash %d message(s) for persist "

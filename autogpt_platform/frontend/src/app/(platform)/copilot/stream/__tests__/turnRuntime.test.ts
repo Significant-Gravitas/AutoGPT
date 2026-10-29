@@ -17,6 +17,7 @@ import {
   LIVENESS_MS,
   MessageTooLongError,
   ROTATE_AFTER_MS,
+  SendNotDeliveredError,
   SendRefusedError,
   TurnRuntime,
   type RuntimeDeps,
@@ -551,6 +552,106 @@ describe("recovery", () => {
     expect(snapshot().ownedFrom).toBe(1);
     expect(textsOf(render())).toEqual([FIRST_TEXT]);
     expect(snapshot().error).toBeNull();
+  });
+
+  it("a send queued at the running cap keeps its prompt and is not reported", async () => {
+    backend.queueNextTurn();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+
+    expect(snapshot().error).toBeNull();
+  });
+
+  it("a send whose stream closed with nothing taking it says it didn't go through", async () => {
+    const onError = vi.fn();
+    runtime.bind({ onError }, null);
+    backend.respond(({ method }) => (method === "POST" ? "empty" : "stream"));
+    void runtime.send({ text: "What is my team working on?" }, undefined);
+    await advance(10_000);
+
+    // Never idle without a word, and never a sent bubble nothing stored.
+    expect(snapshot().error).toBeInstanceOf(SendNotDeliveredError);
+    expect(onError).toHaveBeenCalledWith(snapshot().error, null);
+    expect(textsOf(render())).toEqual([]);
+  });
+
+  it("a retransmit of a send the backend already holds is not reported as undelivered", async () => {
+    const onError = vi.fn();
+    runtime.bind({ onError }, null);
+    // Its row is stored and no turn is left to stream: the route says so.
+    backend.respond(({ method }) =>
+      method === "POST" ? "accepted" : "stream",
+    );
+    void runtime.send({ text: "What is my team working on?" }, undefined);
+    await advance(10_000);
+
+    expect(snapshot().error).not.toBeInstanceOf(SendNotDeliveredError);
+    expect(onError).not.toHaveBeenCalled();
+    // The stored row stands for it; no second, unsent bubble.
+    expect(textsOf(render())).toEqual([]);
+  });
+
+  it("a lost send of only files reports them by name", async () => {
+    backend.respond(({ method }) => (method === "POST" ? "empty" : "stream"));
+    void runtime.send(
+      {
+        parts: [
+          {
+            type: "file",
+            url: "/api/proxy/api/workspace/files/file-1/download",
+            mediaType: "application/pdf",
+            filename: "q3-plan.pdf",
+          },
+          {
+            type: "data-workspace-folder",
+            data: { id: "folder-1", name: "Launch notes", fileCount: 2 },
+          },
+        ],
+      },
+      undefined,
+    );
+    await advance(10_000);
+
+    const error = snapshot().error;
+    expect(error).toBeInstanceOf(SendNotDeliveredError);
+    expect((error as SendNotDeliveredError).text).toBe("");
+    expect((error as SendNotDeliveredError).files).toEqual([
+      "q3-plan.pdf",
+      "Launch notes",
+    ]);
+  });
+
+  it.each(["silent", "heartbeat-then-silent"] as const)(
+    "a send this tab gave up on for silence (%s) is not reported as undelivered",
+    async (answer) => {
+      // No byte for the liveness window: the server may still be running it.
+      backend.respond(({ method }) => (method === "POST" ? answer : "stream"));
+      void runtime.send({ text: "What is my team working on?" }, undefined);
+      await advance(LIVENESS_MS + 15_000);
+
+      expect(snapshot().error).not.toBeInstanceOf(SendNotDeliveredError);
+    },
+  );
+
+  it("a newer send made while a lost one is recovered keeps its bubble; the lost one is reported", async () => {
+    const onError = vi.fn();
+    runtime.bind({ onError }, null);
+    let posts = 0;
+    backend.respond(({ method }) => {
+      if (method !== "POST") return "stream";
+      posts += 1;
+      // The first send goes nowhere; the second waits on its admission.
+      return posts === 1 ? "empty" : "silent";
+    });
+    void runtime.send({ text: "First, lost" }, undefined);
+    await advance(600);
+    void runtime.send({ text: "Second, still sending" }, undefined);
+    await advance(10_000);
+
+    const error = snapshot().error;
+    expect(error).toBeInstanceOf(SendNotDeliveredError);
+    expect((error as SendNotDeliveredError).text).toBe("First, lost");
+    expect(textsOf(render())).toEqual(["Second, still sending"]);
   });
 
   it("stops reading the session once its queued turn is cancelled", async () => {

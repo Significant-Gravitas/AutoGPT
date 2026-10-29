@@ -66,6 +66,15 @@ class ResponseType(str, Enum):
     # Written by the stream route when a send joins a running turn's pending
     # queue, so the client can tell it from a turn that never started.
     FOLLOW_UP_QUEUED = "data-follow-up-queued"
+    # Written by the turn's end when follow-ups are still in the pending
+    # queue: nothing will answer them unless the user sends them again.
+    FOLLOW_UP_HELD = "data-follow-up-held"
+    # Written by the stream route when a send waits behind the user's
+    # running-turn cap: its row is stored and the turn starts later.
+    TURN_QUEUED = "data-turn-queued"
+    # Written by the stream route when a send's row was already stored (a
+    # retransmit of a send it took), so no new turn starts for it.
+    SEND_ACCEPTED = "data-send-accepted"
     MODE_CHANGED = "data-mode-changed"
     # Live context-compaction progress — phase transitions plus token/message
     # deltas.  Transient (never persisted); the durable record is the
@@ -587,4 +596,60 @@ class StreamFollowUpQueued(StreamBaseResponse):
 
     def to_sse(self) -> str:
         data = {"type": self.type.value, "data": {}, "transient": True}
+        return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamSendAccepted(StreamBaseResponse):
+    """The send's row was already stored, so this request starts no turn:
+    a retransmit of a send the server took. Transient, like
+    :class:`StreamFollowUpQueued`; tells the client the send landed even
+    when no turn is left to stream.
+    """
+
+    type: ResponseType = ResponseType.SEND_ACCEPTED
+
+    def to_sse(self) -> str:
+        data = {"type": self.type.value, "data": {}, "transient": True}
+        return f"data: {json.dumps(data)}\n\n"
+
+
+FollowUpHeldReason = Literal["error", "stopped", "paused", "ended"]
+
+
+class StreamFollowUpHeld(StreamBaseResponse):
+    """The turn ended with follow-ups still queued, so none of them was read.
+
+    ``reason`` is how the turn ended: ``error``, ``stopped`` by the user,
+    ``paused`` at a limit, or ``ended`` before it reached them. Transient: the
+    pending-message peek reports the same state after a reload.
+    """
+
+    type: ResponseType = ResponseType.FOLLOW_UP_HELD
+    reason: FollowUpHeldReason
+    count: int = Field(ge=1, description="How many follow-ups were held")
+
+    def to_sse(self) -> str:
+        data = {
+            "type": self.type.value,
+            "data": {"reason": self.reason, "count": self.count},
+            "transient": True,
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamTurnQueued(StreamBaseResponse):
+    """The send's row is stored and its turn waits for one of the user's
+    running turns to finish. ``position`` is its place in that queue, 1 for
+    next. Transient, like :class:`StreamFollowUpQueued`.
+    """
+
+    type: ResponseType = ResponseType.TURN_QUEUED
+    position: int | None = Field(default=None, ge=1)
+
+    def to_sse(self) -> str:
+        data = {
+            "type": self.type.value,
+            "data": {"position": self.position},
+            "transient": True,
+        }
         return f"data: {json.dumps(data)}\n\n"

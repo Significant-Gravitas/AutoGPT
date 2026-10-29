@@ -1,7 +1,7 @@
 import { useEffect, useInsertionEffect, useRef } from "react";
 import { pendingUploadKey, useCopilotStreamStore } from "./copilotStreamStore";
 import { toastSendFailure } from "./helpers/sendFailureToast";
-import type { ExpertKickoffMetadata } from "./expertKickoff";
+import type { SendMetadata } from "./helpers/resendMetadata";
 import {
   describePendingUpload,
   hasAttachments,
@@ -92,7 +92,7 @@ export function useSendMessage({
     message: string,
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
-    metadata?: ExpertKickoffMetadata,
+    metadata?: SendMetadata,
   ) {
     const trimmed = message.trim();
     const workspaceParts = buildStoredAttachmentParts(workspaceFiles ?? []);

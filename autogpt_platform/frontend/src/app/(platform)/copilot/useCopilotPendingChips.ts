@@ -1,11 +1,24 @@
 import { getV2GetPendingMessages } from "@/app/api/__generated__/endpoints/chat/chat";
+import type { PeekPendingMessagesResponseHeldReason } from "@/app/api/__generated__/models/peekPendingMessagesResponseHeldReason";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { UIMessage } from "ai";
 import { useEffect, useInsertionEffect, useRef, useState } from "react";
 
+import { dropQueuedSendBubbles } from "./helpers/dropQueuedSendBubbles";
+import {
+  adoptOrAppend,
+  type QueuedMessage,
+  rebasedToServer,
+  serverItemsOf,
+  withUnknownRestored,
+} from "./helpers/pendingChipQueue";
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
 import { v4 as uuidv4 } from "uuid";
 import { PENDING_DRAINED_PART_TYPE } from "./messageParts";
+import {
+  type ResendFollowUp,
+  usePendingChipRetry,
+} from "./usePendingChipRetry";
 
 // Backstop only. Promotion is normally driven instantly by the backend's
 // ``data-pending-drained`` SSE hint (see ``useMidTurnDrainPromotion``); this
@@ -14,9 +27,15 @@ const MID_TURN_BACKSTOP_POLL_MS = 10_000;
 
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
 
-interface QueuedMessage {
-  id: string;
-  text: string;
+export type HeldReason = NonNullable<PeekPendingMessagesResponseHeldReason>;
+
+/** The follow-ups waiting on the server, as every chat draws them. */
+export interface QueuedChips {
+  messages: string[];
+  /** Set when nothing will answer them unless they are resent. */
+  heldReason: HeldReason | null;
+  /** Resends the chip at this index of `messages`. */
+  onRetry: (index: number) => void;
 }
 
 type QueueUpdater = (prev: QueuedMessage[]) => QueuedMessage[];
@@ -32,6 +51,10 @@ interface Args {
   appendLocalUserRows?: (entries: readonly QueuedMessage[]) => void;
   /** Drained follow-ups the runtime has rendered; replaces counting drain hints. */
   drainedCount?: number;
+  /** How this chat sends a held follow-up again when its Retry is pressed. */
+  resend: ResendFollowUp;
+  /** False leaves a held chip as it is (the chat can't send right now). */
+  canRetry?: () => boolean;
 }
 
 type Promote = (drained: QueuedMessage[], flavour?: PromotionFlavour) => void;
@@ -40,7 +63,8 @@ type Promote = (drained: QueuedMessage[], flavour?: PromotionFlavour) => void;
  * Owns the chip lifecycle: keep the local chip list in sync with Redis,
  * promote chips to user-bubbles when the backend drains (auto-continue or
  * mid-turn via the MCP wrapper), and surface the list + queue op to the
- * chat input.
+ * chat input. A follow-up the last turn ended without reading is shown as
+ * held, with a Retry that resends it through *resend*.
  *
  * Each chip carries a frontend-only ``id`` so concurrent draining and
  * appending stays race-safe — the poll captures a stale snapshot of the
@@ -67,6 +91,8 @@ export function useCopilotPendingChips({
   setMessages,
   appendLocalUserRows,
   drainedCount,
+  resend,
+  canRetry,
 }: Args) {
   const promote: Promote = (drained, flavour) => {
     if (appendLocalUserRows) appendLocalUserRows(drained);
@@ -84,8 +110,32 @@ export function useCopilotPendingChips({
   useEffect(() => {
     queueRef.current = queue;
   }, [queue]);
+  // Set when the turn that should have read the strip ended first: nothing
+  // will answer these messages unless they are sent again.
+  const [heldReason, setHeldReason] = useState<HeldReason | null>(null);
+  const isActive = status === "streaming" || status === "submitted";
 
-  usePeekOnBoundary({ sessionId, status, queueRef, promote, setQueue });
+  const messagesRef = useRef(messages);
+  useInsertionEffect(() => {
+    messagesRef.current = messages;
+  });
+  // The stream runtime drops these itself when its send is answered queued.
+  function dropQueuedSends(texts: readonly string[]) {
+    const current = messagesRef.current;
+    if (!setMessages || dropQueuedSendBubbles(current, texts) === current)
+      return;
+    setMessages((prev) => dropQueuedSendBubbles(prev, texts));
+  }
+
+  usePeekOnBoundary({
+    sessionId,
+    status,
+    queueRef,
+    promote,
+    setQueue,
+    setHeldReason,
+    dropQueuedSends,
+  });
 
   useAutoContinuePromotion({
     sessionId,
@@ -105,14 +155,40 @@ export function useCopilotPendingChips({
     setQueue,
   });
 
-  function queueMessage(text: string) {
+  // `serverId` is the queued message's id from the send's answer; a peek that
+  // answered first may already have listed it.
+  function queueMessage(text: string, serverId?: string | null) {
     // Options force uuid's getRandomValues path: crypto.randomUUID does not
     // exist on a plain-HTTP LAN origin, and this updater runs during render,
     // so there it took the whole chat page down instead of queueing.
-    setQueue((prev) => [...prev, { id: uuidv4({}), text }]);
+    setQueue((prev) => adoptOrAppend(prev, { id: uuidv4({}), text, serverId }));
   }
 
-  return { queuedMessages, queueMessage };
+  // The strip entry a resend replaces; its bubble comes from the send.
+  function takeQueuedMessage(id: string) {
+    setQueue((prev) => prev.filter((entry) => entry.id !== id));
+  }
+
+  const retry = usePendingChipRetry({
+    sessionId,
+    queue,
+    takeQueuedMessage,
+    resend,
+    canRetry,
+  });
+
+  const queuedChips: QueuedChips = {
+    messages: queuedMessages,
+    heldReason: isActive || queue.length === 0 ? null : heldReason,
+    onRetry: (index) => void retry(index),
+  };
+
+  return {
+    queuedChips,
+    queuedEntries: queue,
+    queueMessage,
+    takeQueuedMessage,
+  };
 }
 
 // ── 1. Peek sync ───────────────────────────────────────────────────────
@@ -127,16 +203,22 @@ function usePeekOnBoundary({
   queueRef,
   promote,
   setQueue,
+  setHeldReason,
+  dropQueuedSends,
 }: {
   sessionId: string | null;
   status: ChatStatus;
   queueRef: { current: QueuedMessage[] };
   promote: Promote;
   setQueue: (updater: QueueUpdater) => void;
+  setHeldReason: (reason: HeldReason | null) => void;
+  dropQueuedSends: (texts: readonly string[]) => void;
 }) {
   const promoteRef = useRef(promote);
+  const dropQueuedSendsRef = useRef(dropQueuedSends);
   useInsertionEffect(() => {
     promoteRef.current = promote;
+    dropQueuedSendsRef.current = dropQueuedSends;
   });
   const prevSessionIdRef = useRef<string | null>(sessionId);
   const prevStatusRef = useRef<ChatStatus>(status);
@@ -157,6 +239,9 @@ function usePeekOnBoundary({
     // resolves — otherwise the new session briefly shows the old session's
     // chips against its own messages.
     if (sessionChanged) setQueue(() => []);
+    // A running turn reads the strip; only an idle peek can say it is held.
+    if (sessionChanged || status === "submitted" || status === "streaming")
+      setHeldReason(null);
 
     if (!sessionId) return;
 
@@ -220,13 +305,8 @@ function usePeekOnBoundary({
         // Local entries keep their ids: a turn-start drain hint can already
         // have a promotion in flight for them, and rebasing them to fresh
         // ids would leave that promotion's copy stuck in the strip.
-        const unknownCount = res.data.count - inFlightIds.size;
-        if (unknownCount > 0) {
-          const restored = res.data.messages
-            .slice(0, unknownCount)
-            .map((text) => ({ id: uuidv4({}), text }));
-          setQueue((current) => [...restored, ...current]);
-        }
+        const items = serverItemsOf(res.data);
+        setQueue((current) => withUnknownRestored(current, items, inFlightIds));
         return;
       }
       // Session-load or idle-after-turn: rebase to server truth, then
@@ -235,19 +315,14 @@ function usePeekOnBoundary({
       // GET fire time).  Without this re-attach, an entry queued after
       // an "idle" transition but before the peek resolves silently
       // disappears.
-      setQueue((current) => {
-        const fromServer = res.data.messages.map((text) => ({
-          id: uuidv4({}),
-          text,
-        }));
-        const queuedDuringWindow = current.filter(
-          (entry) => !inFlightIds.has(entry.id),
-        );
-        return [...fromServer, ...queuedDuringWindow];
-      });
+      setHeldReason(res.data.held_reason ?? null);
+      // A send the server queued rather than stored is drawn by its chip.
+      dropQueuedSendsRef.current(res.data.messages);
+      const items = serverItemsOf(res.data);
+      setQueue((current) => rebasedToServer(current, items, inFlightIds));
     });
     void peek.catch(ignoreMissingSession);
-  }, [sessionId, status, queueRef, setQueue]);
+  }, [sessionId, status, queueRef, setQueue, setHeldReason]);
 }
 
 // A deleted chat, or another account's, answers 404: nothing is pending. Any

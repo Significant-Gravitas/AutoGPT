@@ -136,6 +136,7 @@ function setupHook(initialMessages: Messages) {
   const view = renderHook(
     ({ messages }) =>
       useCopilotPendingChips({
+        resend: vi.fn(),
         sessionId: "s1",
         status: "streaming",
         messages,
@@ -173,7 +174,7 @@ describe("useCopilotPendingChips", () => {
         view.result.current.queueMessage("sent while a turn was streaming");
       });
 
-      expect(view.result.current.queuedMessages).toEqual([
+      expect(view.result.current.queuedChips.messages).toEqual([
         "sent while a turn was streaming",
       ]);
     } finally {
@@ -187,7 +188,7 @@ describe("useCopilotPendingChips", () => {
     act(() => {
       view.result.current.queueMessage("follow up");
     });
-    expect(view.result.current.queuedMessages).toEqual(["follow up"]);
+    expect(view.result.current.queuedChips.messages).toEqual(["follow up"]);
 
     // The backend drains mid-turn and pushes the SSE hint: rerender with the
     // new data-pending-drained part on the streaming assistant message.
@@ -198,7 +199,7 @@ describe("useCopilotPendingChips", () => {
     await waitFor(() => {
       expect(mockGetPending).toHaveBeenCalledWith("s1");
       // Chip cleared from the strip…
-      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(view.result.current.queuedChips.messages).toEqual([]);
     });
 
     // …and promoted to a user bubble inserted before the streaming assistant.
@@ -224,7 +225,7 @@ describe("useCopilotPendingChips", () => {
 
     await waitFor(() => {
       expect(mockGetPending).toHaveBeenCalledWith("s1");
-      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(view.result.current.queuedChips.messages).toEqual([]);
     });
     expect(renderedUserRows(getMessages())).toEqual([
       { id: "midturn-pm-0", text: "follow up" },
@@ -244,7 +245,7 @@ describe("useCopilotPendingChips", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(10_000);
       });
-      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(view.result.current.queuedChips.messages).toEqual([]);
       const fallback = getMessages().find((m) =>
         m.id.startsWith("promoted-midturn-pending-chip-"),
       );
@@ -289,7 +290,7 @@ describe("useCopilotPendingChips", () => {
       rerender([assistantWithHints([{ text: "continue" }])]);
     });
     await waitFor(() => {
-      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(view.result.current.queuedChips.messages).toEqual([]);
     });
     expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
       "continue",
@@ -305,7 +306,7 @@ describe("useCopilotPendingChips", () => {
       ]);
     });
     await waitFor(() => {
-      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(view.result.current.queuedChips.messages).toEqual([]);
     });
 
     expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
@@ -328,7 +329,7 @@ describe("useCopilotPendingChips", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });
-      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(view.result.current.queuedChips.messages).toEqual([]);
 
       // No second hint ever arrives; the backstop poll sees the drained
       // buffer and must not let the first drain's text stand in for it.
@@ -338,7 +339,7 @@ describe("useCopilotPendingChips", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(10_000);
       });
-      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(view.result.current.queuedChips.messages).toEqual([]);
 
       expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
         "continue",
@@ -361,7 +362,7 @@ describe("useCopilotPendingChips", () => {
       rerender([assistantWithHints([{ text: "again" }])]);
     });
     await waitFor(() => {
-      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(view.result.current.queuedChips.messages).toEqual([]);
     });
 
     expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
@@ -407,7 +408,7 @@ describe("useCopilotPendingChips", () => {
 
     await waitFor(() => {
       expect(mockGetPending).toHaveBeenCalledWith("s1");
-      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(view.result.current.queuedChips.messages).toEqual([]);
     });
 
     const promoted = getMessages().find((m) =>
@@ -444,7 +445,7 @@ describe("useCopilotPendingChips", () => {
     });
 
     await waitFor(() => expect(mockGetPending).toHaveBeenCalledWith("s1"));
-    expect(view.result.current.queuedMessages).toEqual(["follow up"]);
+    expect(view.result.current.queuedChips.messages).toEqual(["follow up"]);
     expect(getMessages().some((m) => m.id.startsWith("promoted-"))).toBe(false);
 
     // Every later delta lands in the same message: one reconciliation per
@@ -472,7 +473,7 @@ describe("useCopilotPendingChips", () => {
 
     await waitFor(() => {
       expect(mockGetPending).toHaveBeenCalledWith("s1");
-      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(view.result.current.queuedChips.messages).toEqual([]);
     });
     const ids = getMessages().map((m) => m.id);
     expect(ids).toHaveLength(3);
@@ -515,7 +516,7 @@ describe("useCopilotPendingChips", () => {
 
         for (const index of order) await gets.resolveDrained(index);
 
-        expect(view.result.current.queuedMessages).toEqual([]);
+        expect(view.result.current.queuedChips.messages).toEqual([]);
         expect(storedFallbacks(getMessages())).toHaveLength(1);
         expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
           "follow up",
@@ -549,7 +550,7 @@ describe("useCopilotPendingChips", () => {
 
         for (const index of order) await gets.resolveDrained(index);
 
-        expect(view.result.current.queuedMessages).toEqual([]);
+        expect(view.result.current.queuedChips.messages).toEqual([]);
         expect(storedFallbacks(getMessages())).toHaveLength(1);
         expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
           "follow up",
@@ -583,7 +584,7 @@ describe("useCopilotPendingChips", () => {
         await gets.resolveDrained(1);
         await gets.resolveDrained(0);
 
-        expect(view.result.current.queuedMessages).toEqual([]);
+        expect(view.result.current.queuedChips.messages).toEqual([]);
         expect(storedFallbacks(getMessages())).toHaveLength(1);
         expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
           "follow up",
@@ -612,7 +613,7 @@ describe("useCopilotPendingChips", () => {
       await gets.resolveDrained(0);
       await gets.resolveDrained(1);
 
-      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(view.result.current.queuedChips.messages).toEqual([]);
       expect(storedFallbacks(getMessages())).toHaveLength(2);
       expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
         "continue",
@@ -643,7 +644,7 @@ describe("useCopilotPendingChips", () => {
         m.id.startsWith("promoted-midturn-pending-chip-"),
       ),
     ).toBe(false);
-    expect(view.result.current.queuedMessages).toEqual(["follow up"]);
+    expect(view.result.current.queuedChips.messages).toEqual(["follow up"]);
   });
 
   it("does not promote the previous session's chips after a session switch", async () => {
@@ -657,6 +658,7 @@ describe("useCopilotPendingChips", () => {
     const view = renderHook(
       ({ messages, sessionId }) =>
         useCopilotPendingChips({
+          resend: vi.fn(),
           sessionId,
           status: "streaming",
           messages,
@@ -673,7 +675,9 @@ describe("useCopilotPendingChips", () => {
     act(() => {
       view.result.current.queueMessage("old session chip");
     });
-    expect(view.result.current.queuedMessages).toEqual(["old session chip"]);
+    expect(view.result.current.queuedChips.messages).toEqual([
+      "old session chip",
+    ]);
 
     // Switch to s2 with a HIGHER drain-hint count than s1's baseline while
     // the old chip is still queued for this commit.  The drain effect must
@@ -685,7 +689,7 @@ describe("useCopilotPendingChips", () => {
 
     // The session-switch peek rebases the strip to the new (empty) session.
     await waitFor(() => {
-      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(view.result.current.queuedChips.messages).toEqual([]);
     });
 
     // No mid-turn promotion of the old chip leaked into the new session.
@@ -756,6 +760,7 @@ describe("useCopilotPendingChips", () => {
       const view = renderHook(
         ({ status }) =>
           useCopilotPendingChips({
+            resend: vi.fn(),
             sessionId: "s1",
             status,
             messages: [],
@@ -774,7 +779,7 @@ describe("useCopilotPendingChips", () => {
       // next new-assistant reconciliation promote the extra copy above the
       // running tool chain while the backend still held the message.
       await waitFor(() =>
-        expect(view.result.current.queuedMessages).toEqual(["follow up"]),
+        expect(view.result.current.queuedChips.messages).toEqual(["follow up"]),
       );
       expect(setMessages).not.toHaveBeenCalled();
     });
@@ -787,6 +792,7 @@ describe("useCopilotPendingChips", () => {
       const view = renderHook(
         () =>
           useCopilotPendingChips({
+            resend: vi.fn(),
             sessionId: "s1",
             status: "ready",
             messages: [],
@@ -799,7 +805,7 @@ describe("useCopilotPendingChips", () => {
       await peeks.resolveAll();
 
       await waitFor(() =>
-        expect(view.result.current.queuedMessages).toEqual(["follow up"]),
+        expect(view.result.current.queuedChips.messages).toEqual(["follow up"]),
       );
     });
 
@@ -809,6 +815,7 @@ describe("useCopilotPendingChips", () => {
       const view = renderHook(
         ({ status }) =>
           useCopilotPendingChips({
+            resend: vi.fn(),
             sessionId: "s1",
             status,
             messages: [],
@@ -831,7 +838,9 @@ describe("useCopilotPendingChips", () => {
       await peeks.resolveWith(0, []);
 
       await waitFor(() =>
-        expect(view.result.current.queuedMessages).toEqual(["typed meanwhile"]),
+        expect(view.result.current.queuedChips.messages).toEqual([
+          "typed meanwhile",
+        ]),
       );
     });
 
@@ -841,6 +850,7 @@ describe("useCopilotPendingChips", () => {
       const view = renderHook(
         ({ status }) =>
           useCopilotPendingChips({
+            resend: vi.fn(),
             sessionId: "s1",
             status,
             messages: [],
@@ -860,7 +870,9 @@ describe("useCopilotPendingChips", () => {
       await peeks.resolveWith(0, ["from before"]);
 
       await waitFor(() =>
-        expect(view.result.current.queuedMessages).toEqual(["from before"]),
+        expect(view.result.current.queuedChips.messages).toEqual([
+          "from before",
+        ]),
       );
       expect(setMessages).not.toHaveBeenCalled();
     });
@@ -871,6 +883,7 @@ describe("useCopilotPendingChips", () => {
       const view = renderHook(
         ({ status }) =>
           useCopilotPendingChips({
+            resend: vi.fn(),
             sessionId: "s1",
             status,
             messages: [],
@@ -889,7 +902,7 @@ describe("useCopilotPendingChips", () => {
       await peeks.resolveWith(0, ["from before"]);
 
       await waitFor(() =>
-        expect(view.result.current.queuedMessages).toEqual([
+        expect(view.result.current.queuedChips.messages).toEqual([
           "from before",
           "typed now",
         ]),
@@ -902,6 +915,7 @@ describe("useCopilotPendingChips", () => {
       const setMessages = vi.fn();
       const view = renderHook(() =>
         useCopilotPendingChips({
+          resend: vi.fn(),
           sessionId: "s1",
           status: "ready",
           messages: [],
@@ -916,7 +930,7 @@ describe("useCopilotPendingChips", () => {
       await peeks.resolveAll();
 
       await waitFor(() =>
-        expect(view.result.current.queuedMessages).toEqual([
+        expect(view.result.current.queuedChips.messages).toEqual([
           "from server",
           "typed meanwhile",
         ]),
@@ -935,6 +949,7 @@ describe("useCopilotPendingChips", () => {
       const { rendered, reasons } = await unhandledRejectionsDuring(() =>
         renderHook(() =>
           useCopilotPendingChips({
+            resend: vi.fn(),
             sessionId: "s1",
             status: "ready",
             messages: [],
@@ -944,7 +959,7 @@ describe("useCopilotPendingChips", () => {
       );
 
       expect(mockGetPending).toHaveBeenCalledWith("s1");
-      expect(rendered.result.current.queuedMessages).toEqual([]);
+      expect(rendered.result.current.queuedChips.messages).toEqual([]);
       expect(reasons).toEqual([]);
     });
 
@@ -955,6 +970,7 @@ describe("useCopilotPendingChips", () => {
       const { reasons } = await unhandledRejectionsDuring(() =>
         renderHook(() =>
           useCopilotPendingChips({
+            resend: vi.fn(),
             sessionId: "s1",
             status: "ready",
             messages: [],
@@ -965,6 +981,172 @@ describe("useCopilotPendingChips", () => {
 
       expect(reasons).toEqual([serverError]);
     });
+  });
+});
+
+function pendingResponse(
+  messages: string[],
+  heldReason: "error" | "stopped" | "paused" | "ended" | null = null,
+) {
+  return {
+    status: 200,
+    data: {
+      count: messages.length,
+      messages,
+      // The server names every queued message by its id.
+      items: messages.map((content, index) => ({
+        id: `pm-${index + 1}`,
+        content,
+      })),
+      held_reason: heldReason,
+    },
+    headers: new Headers(),
+  } as Awaited<ReturnType<typeof getV2GetPendingMessages>>;
+}
+
+function bufferHolds(
+  messages: string[],
+  heldReason: "error" | "stopped" | "paused" | "ended" | null = null,
+) {
+  mockGetPending.mockResolvedValue(pendingResponse(messages, heldReason));
+}
+
+const FOLLOW_UP = "What is my team working on?";
+
+describe.each([
+  ["start", "submitted", "streaming"],
+  ["end", "streaming", "ready"],
+] as const)(
+  "a follow-up the peek at a turn's %s reads around its own send",
+  (_, from, to) => {
+    beforeEach(() => mockGetPending.mockReset());
+    afterEach(cleanup);
+
+    function renderAt(status: ChatStatus) {
+      let current: Messages = [assistantMessage(0)];
+      const setMessages = vi.fn(
+        (updater: Messages | ((prev: Messages) => Messages)) => {
+          current = typeof updater === "function" ? updater(current) : updater;
+        },
+      );
+      const view = renderHook(
+        ({ status }: { status: ChatStatus }) =>
+          useCopilotPendingChips({
+            resend: vi.fn(),
+            sessionId: "s1",
+            status,
+            messages: current,
+            setMessages,
+          }),
+        { initialProps: { status } },
+      );
+      return { view, messages: () => current };
+    }
+
+    it("shows once when the peek answers before the send does", async () => {
+      vi.useFakeTimers();
+      try {
+        // The POST landed; the peek answers before the composer hears back.
+        bufferHolds([FOLLOW_UP]);
+        const { view, messages } = renderAt(from);
+        view.rerender({ status: to });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        act(() => view.result.current.queueMessage(FOLLOW_UP, "pm-1"));
+
+        expect(view.result.current.queuedChips.messages).toEqual([FOLLOW_UP]);
+        // Nothing drained, so nothing becomes a bubble no row backs.
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(10_000);
+        });
+        expect(storedFallbacks(messages())).toEqual([]);
+        expect(view.result.current.queuedChips.messages).toEqual([FOLLOW_UP]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("shows once when the send answers while the peek is out", async () => {
+      const answers: Array<(res: ReturnType<typeof pendingResponse>) => void> =
+        [];
+      mockGetPending.mockImplementation(
+        () => new Promise((resolve) => answers.push(resolve)),
+      );
+      const { view } = renderAt(from);
+      view.rerender({ status: to });
+      expect(answers.length).toBeGreaterThan(0);
+      // The send's answer lands after the GET went out, before it answers.
+      act(() => view.result.current.queueMessage(FOLLOW_UP, "pm-1"));
+      bufferHolds([FOLLOW_UP]);
+      await act(async () => {
+        answers
+          .splice(0)
+          .forEach((resolve) => resolve(pendingResponse([FOLLOW_UP])));
+      });
+
+      await waitFor(() =>
+        expect(view.result.current.queuedChips.messages).toEqual([FOLLOW_UP]),
+      );
+    });
+  },
+);
+
+describe("follow-ups the last turn ended without reading", () => {
+  beforeEach(() => mockGetPending.mockReset());
+  afterEach(cleanup);
+
+  function renderIdle(status: ChatStatus = "ready") {
+    return renderHook(
+      ({ status }: { status: ChatStatus }) =>
+        useCopilotPendingChips({
+          resend: vi.fn(),
+          sessionId: "s1",
+          status,
+          messages: [],
+          setMessages: vi.fn(),
+        }),
+      { initialProps: { status } },
+    );
+  }
+
+  it("are reported as held after a reload, with why", async () => {
+    bufferHolds(["What is my team working on?"], "error");
+
+    const view = renderIdle();
+
+    await waitFor(() =>
+      expect(view.result.current.queuedChips.heldReason).toBe("error"),
+    );
+    expect(view.result.current.queuedChips.messages).toEqual([
+      "What is my team working on?",
+    ]);
+  });
+
+  it("read as queued again once a turn runs, which will read them", async () => {
+    bufferHolds(["status?"], "stopped");
+    const view = renderIdle();
+    await waitFor(() =>
+      expect(view.result.current.queuedChips.heldReason).toBe("stopped"),
+    );
+
+    view.rerender({ status: "submitted" });
+
+    expect(view.result.current.queuedChips.heldReason).toBeNull();
+  });
+
+  it("leave the strip when one is taken out to be sent again", async () => {
+    bufferHolds(["status?", "and Monday"], "ended");
+    const view = renderIdle();
+    await waitFor(() =>
+      expect(view.result.current.queuedChips.messages).toHaveLength(2),
+    );
+
+    const [status] = view.result.current.queuedEntries;
+    expect(status.serverId).toBe("pm-1");
+    act(() => view.result.current.takeQueuedMessage(status.id));
+
+    expect(view.result.current.queuedChips.messages).toEqual(["and Monday"]);
   });
 });
 
