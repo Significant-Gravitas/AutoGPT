@@ -29,7 +29,7 @@ AutoGPT.exe / AutoGPT.app            Electron shell (src/)
        ├─ PostgreSQL + pgvector
        ├─ Valkey (one node, cluster mode)
        ├─ RabbitMQ on a bundled Erlang
-       ├─ 4 service hosts running the 9 AutoGPT backend services
+       ├─ 5 service hosts running the 9 AutoGPT backend services
        ├─ Next.js frontend server
        └─ reverse proxy on 127.0.0.1  the only address the window loads
 ```
@@ -1090,7 +1090,7 @@ patches, that still holds what an older build left in it, or that is over
 one of its budgets ([Size](#size)); run it again before packaging a bundle
 that has been run from.
 `build/smoke_test.py` boots an assembled bundle (with the machine's Claude
-Code sign-in turned off, so that every machine runs the same four service
+Code sign-in turned off, so that every machine runs the same five service
 hosts), probes it and checks that
 stopping it leaves no process behind and nothing in the bundle changed
 (a file that came and went during the run shows in its directory's

@@ -1168,7 +1168,14 @@ def test_with_a_sign_in_the_supervisor_starts_the_copilot_executor_in_a_process_
     assert [
         services for services, env in started.items() if env["HOME"] == real_home
     ] == [(apps.COPILOT_EXECUTOR,)]
-    assert len(started) == 5
+    assert set(started) == {
+        ("database-manager",),
+        ("swap-credentials",),
+        ("executor", "scheduler", "batch-executor", "notification"),
+        (apps.COPILOT_EXECUTOR,),
+        ("websocket",),
+        ("rest",),
+    }
     for services, env in started.items():
         assert env["CHAT_USE_CLAUDE_CODE_SUBSCRIPTION"] == "true"
         if services != (apps.COPILOT_EXECUTOR,):
@@ -1177,7 +1184,7 @@ def test_with_a_sign_in_the_supervisor_starts_the_copilot_executor_in_a_process_
             assert env["CLAUDE_CONFIG_DIR"] == str(data.home / ".claude")
 
 
-def test_without_a_sign_in_the_supervisor_starts_the_usual_four(
+def test_without_a_sign_in_the_supervisor_starts_the_default_hosts(
     bundle: Bundle,
     data: DataDir,
     monkeypatch: pytest.MonkeyPatch,
