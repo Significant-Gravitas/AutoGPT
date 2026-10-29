@@ -20,11 +20,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.executor.utils import TurnPublishUnconfirmed
-from backend.copilot.model import ChatMessage
+from backend.copilot.gate.card_approval import record_card_decisions
 from backend.copilot.sdk.session_waiter import SessionResult, TurnNotDispatched
 
 from ._test_data import make_session
 from .confirm_expert_change import ConfirmExpertChangeTool
+from .expert_change_test import _card_answers
 from .expert_proposal import ExpertChangeProposal, proposal_key
 from .hire_expert import HireExpertTool
 from .models import (
@@ -130,6 +131,7 @@ def _env(
         return SimpleNamespace(session_id=f"thread-{len(created)}")
 
     with (
+        _card_answers(),
         patch("backend.copilot.tools.hire_expert.experts_db", return_value=db),
         patch("backend.copilot.tools.expert_proposal.experts_db", return_value=db),
         patch("backend.copilot.tools.expert_delegation.experts_db", return_value=db),
@@ -159,9 +161,12 @@ def _env(
         )
 
 
-def _approve(session):
-    session.messages.append(
-        ChatMessage(role="user", content="approved", sequence=len(session.messages))
+async def _approve(session, confirmation_id: str):
+    """The user's Approve on the card, recorded as the chat route records it."""
+    await record_card_decisions(
+        _USER,
+        session.session_id,
+        f"Approved: hire James (confirmation_id: {confirmation_id}).",
     )
     return session
 
@@ -217,12 +222,41 @@ class TestHireAndHandOffInOneApproval:
         assert "only if they ask to hire without starting the task" in message
 
     @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("confirmed", ["plain", "hand_off"])
+    async def test_not_now_declines_both_choices(self, confirmed):
+        """The card's Not now names the plain hire's id; neither id applies after it."""
+        with _env() as env:
+            session = make_session(_USER)
+            preview = await _propose_with_task(session)
+            assert preview.handoff_confirmation_id
+            await record_card_decisions(
+                _USER,
+                session.session_id,
+                "Not approved: do not hire James, discard that proposal "
+                f"(confirmation_id: {preview.confirmation_id}).",
+            )
+            confirmation_id = (
+                preview.confirmation_id
+                if confirmed == "plain"
+                else preview.handoff_confirmation_id
+            )
+            resp = await _confirm(session, confirmation_id)
+
+        assert isinstance(resp, ErrorResponse)
+        assert "declined" in resp.message
+        env.db.hire_expert.assert_not_called()
+        assert not env.redis.store
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_approving_the_hand_off_hires_and_starts_the_task(self):
         with _env() as env:
             session = make_session(_USER)
             preview = await _propose_with_task(session)
             assert preview.handoff_confirmation_id
-            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+            resp = await _confirm(
+                await _approve(session, preview.handoff_confirmation_id),
+                preview.handoff_confirmation_id,
+            )
 
         assert isinstance(resp, ExpertChangeAppliedResponse)
         env.db.hire_expert.assert_awaited_once_with(
@@ -270,7 +304,10 @@ class TestHireAndHandOffInOneApproval:
         with _env() as env:
             session = make_session(_USER)
             preview = await _propose_with_task(session)
-            resp = await _confirm(_approve(session), preview.confirmation_id)
+            resp = await _confirm(
+                await _approve(session, preview.confirmation_id),
+                preview.confirmation_id,
+            )
 
         assert isinstance(resp, ExpertChangeAppliedResponse)
         env.db.hire_expert.assert_awaited_once()
@@ -290,10 +327,16 @@ class TestHireAndHandOffInOneApproval:
             assert preview.handoff_confirmation_id
             env.redis.fail_next_setex = True
             with pytest.raises(ConnectionError):
-                await _confirm(_approve(session), preview.confirmation_id)
+                await _confirm(
+                    await _approve(session, preview.confirmation_id),
+                    preview.confirmation_id,
+                )
             env.db.hire_expert.assert_not_called()
 
-            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+            resp = await _confirm(
+                await _approve(session, preview.handoff_confirmation_id),
+                preview.handoff_confirmation_id,
+            )
 
         assert isinstance(resp, ExpertChangeAppliedResponse)
         env.db.hire_expert.assert_awaited_once()
@@ -305,8 +348,14 @@ class TestHireAndHandOffInOneApproval:
             session = make_session(_USER)
             preview = await _propose_with_task(session)
             assert preview.handoff_confirmation_id
-            first = await _confirm(_approve(session), preview.confirmation_id)
-            second = await _confirm(_approve(session), preview.handoff_confirmation_id)
+            first = await _confirm(
+                await _approve(session, preview.confirmation_id),
+                preview.confirmation_id,
+            )
+            second = await _confirm(
+                await _approve(session, preview.handoff_confirmation_id),
+                preview.handoff_confirmation_id,
+            )
 
         assert isinstance(first, ExpertChangeAppliedResponse)
         assert isinstance(second, ErrorResponse)
@@ -320,7 +369,10 @@ class TestHireAndHandOffInOneApproval:
             session = make_session(_USER)
             preview = await _propose_with_task(session)
             assert preview.handoff_confirmation_id
-            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+            resp = await _confirm(
+                await _approve(session, preview.handoff_confirmation_id),
+                preview.handoff_confirmation_id,
+            )
 
         assert isinstance(resp, ExpertChangeAppliedResponse)
         env.db.hire_expert.assert_awaited_once()
@@ -348,7 +400,10 @@ class TestHandOffOnlyClaimsWhatHappened:
             session = make_session(_USER)
             preview = await _propose_with_task(session)
             assert preview.handoff_confirmation_id
-            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+            resp = await _confirm(
+                await _approve(session, preview.handoff_confirmation_id),
+                preview.handoff_confirmation_id,
+            )
 
         assert isinstance(resp, ExpertChangeAppliedResponse)
         env.turn.assert_not_called()
@@ -366,7 +421,10 @@ class TestHandOffOnlyClaimsWhatHappened:
             session = make_session(_USER)
             preview = await _propose_with_task(session)
             assert preview.handoff_confirmation_id
-            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+            resp = await _confirm(
+                await _approve(session, preview.handoff_confirmation_id),
+                preview.handoff_confirmation_id,
+            )
 
         assert isinstance(resp, ExpertChangeAppliedResponse)
         env.turn.assert_awaited_once()
@@ -381,7 +439,10 @@ class TestHandOffOnlyClaimsWhatHappened:
             session = make_session(_USER)
             preview = await _propose_with_task(session)
             assert preview.handoff_confirmation_id
-            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+            resp = await _confirm(
+                await _approve(session, preview.handoff_confirmation_id),
+                preview.handoff_confirmation_id,
+            )
 
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.handoff is not None
@@ -408,7 +469,10 @@ class TestHandOffOnlyClaimsWhatHappened:
             session = make_session(_USER)
             preview = await _propose_with_task(session)
             assert preview.handoff_confirmation_id
-            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+            resp = await _confirm(
+                await _approve(session, preview.handoff_confirmation_id),
+                preview.handoff_confirmation_id,
+            )
 
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert len(env.created) == 1
@@ -430,7 +494,10 @@ class TestHandOffOnlyClaimsWhatHappened:
             session = make_session(_USER)
             preview = await _propose_with_task(session)
             assert preview.handoff_confirmation_id
-            resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+            resp = await _confirm(
+                await _approve(session, preview.handoff_confirmation_id),
+                preview.handoff_confirmation_id,
+            )
 
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.handoff is not None
@@ -527,7 +594,7 @@ class TestProposalsParkedBeforeTheDeploy:
             "backend.copilot.tools.confirm_expert_change.get_redis_async",
             AsyncMock(return_value=redis),
         ):
-            resp = await _confirm(_approve(session), "old-id")
+            resp = await _confirm(await _approve(session, "old-id"), "old-id")
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.handoff is None
         env.db.hire_expert.assert_awaited_once()

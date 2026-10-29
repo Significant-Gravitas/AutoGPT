@@ -585,7 +585,7 @@ def test_stream_chat_skips_the_expert_gate_for_a_non_expert_session(
 def test_stream_chat_records_card_decisions_only_from_the_users_message(
     mocker: pytest_mock.MockerFixture, test_user_id: str, is_user_message: bool
 ) -> None:
-    """The only writer of the approvals the gate trusts for a proposal's confirm."""
+    """The only writer of the card answers a proposal's confirm requires."""
     _mock_stream_internals(mocker)
     record = mocker.patch(
         "backend.api.features.chat.routes.record_card_decisions",
