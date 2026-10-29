@@ -214,13 +214,12 @@ REFUSED_WRITE = re.compile(
     r"EACCES|EROFS|EPERM|Read-only file system|Permission denied|Failed to write image to cache"
 )
 
-# The whole stack, idle: memory unique to its processes (USS; on macOS the
-# physical footprint), in MB. Measured on Windows x64, 2026-10-03: balanced
-# and compact (three service hosts) 2,900-3,000; isolated (eight) 5,900. The
-# budget is that plus room for an OS that shares less, and for upstream
-# growing a little between syncs; it is there to catch a fourth interpreter
-# or a doubled import, not a few megabytes.
-MEMORY_BUDGET_MB = {"compact": 3800, "balanced": 3800, "isolated": 7200}
+# Whole-stack USS (macOS: physical footprint), in MiB. The five-host compact
+# layout measured 4,314 on hosted Windows in run 40926534438 (2026-10-29).
+# Compact and balanced share those hosts; 5,000 leaves about 16% headroom.
+# This replaces the three-host budget, not the separate exact-host check.
+# Isolated retains its existing limit; these are smoke targets, not peaks.
+MEMORY_BUDGET_MB = {"compact": 5000, "balanced": 5000, "isolated": 7200}
 
 CONTRACT_SCRIPT = (
     Path(__file__).resolve().parents[1] / "runtime" / "tests" / "backend_contract.py"

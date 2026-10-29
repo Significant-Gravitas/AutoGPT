@@ -9,6 +9,7 @@ import ast
 import importlib
 import io
 import json
+import math
 import os
 import signal
 import stat
@@ -44,8 +45,23 @@ def check_failure_records(output):
     return records
 
 
-@pytest.mark.parametrize("used", [3800, 3800.25, 4200])
-def test_check_failure_real_memory_assertion_is_identified(used, tmp_path, capsys):
+@pytest.mark.parametrize(
+    "profile,used,limit,failed",
+    [
+        ("compact", 4314, 5000, False),
+        ("balanced", 4314, 5000, False),
+        ("compact", 5000, 5000, False),
+        ("balanced", 5000, 5000, False),
+        ("compact", 5000.25, 5000, True),
+        ("balanced", 5000.25, 5000, True),
+        ("isolated", 7200, 7200, False),
+        ("isolated", 7200.25, 7200, True),
+        ("unknown", 1, 0, True),
+    ],
+)
+def test_check_failure_real_memory_assertion_is_identified(
+    profile, used, limit, failed, tmp_path, capsys
+):
     tree = ast.parse(Path(smoke_test.__file__).read_text("utf-8"))
     function = next(
         node
@@ -65,17 +81,26 @@ def test_check_failure_real_memory_assertion_is_identified(used, tmp_path, capsy
             for part in node.value.args[0].values
         )
     )
+    index = function.body.index(assertion)
     code = compile(
-        ast.Module(body=[assertion], type_ignores=[]), smoke_test.__file__, "exec"
+        ast.Module(body=function.body[index - 1 : index + 1], type_ignores=[]),
+        smoke_test.__file__,
+        "exec",
     )
     install = smoke_test.Install(False)
-    install.profile = "compact"
+    install.profile = profile
     install.start_number = 1
     report = smoke_test.Report()
 
     def checks(*args):
         exec(  # noqa: S102 - checked-in assertion only, with mocked inputs.
-            code, {"report": report, "install": install, "used": used, "budget": 3800}
+            code,
+            {
+                "report": report,
+                "install": install,
+                "used": used,
+                "MEMORY_BUDGET_MB": smoke_test.MEMORY_BUDGET_MB,
+            },
         )
         return report.failures
 
@@ -87,8 +112,8 @@ def test_check_failure_real_memory_assertion_is_identified(used, tmp_path, capsy
     packet = {}
     driver = importlib.import_module("installed_smoke_windows")
     assert not driver.lifecycle_summary(log, check_failures=packet)["completed"]
-    assert len(failures) == int(used > 3800)
-    if used <= 3800:
+    assert len(failures) == int(failed)
+    if not failed:
         assert records == []
         assert packet == {}
     else:
@@ -102,8 +127,8 @@ def test_check_failure_real_memory_assertion_is_identified(used, tmp_path, capsy
                 "checks": [
                     {
                         "line": assertion.lineno,
-                        "memory_mib": 3801 if used < 3801 else 4200,
-                        "limit_mib": 3800,
+                        "memory_mib": math.ceil(used),
+                        "limit_mib": limit,
                     }
                 ],
             }

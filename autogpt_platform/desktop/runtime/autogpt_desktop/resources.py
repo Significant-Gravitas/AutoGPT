@@ -3,7 +3,8 @@
 Every backend service imports the whole backend, about 600 MB of it, so the
 number of interpreters decides the footprint. Historical measurements of
 eight services held 5.7 GB idle separately and under half of that in three
-hosts. The current nine-service, five-host layout has not been remeasured.
+hosts. A hosted Windows compact sample of the current nine-service,
+five-host layout measured 4,314 MiB USS; see README.md for scope and limits.
 A profile says how the services are grouped into processes and how many
 agent runs and AutoPilot turns may be in flight at once. It is chosen from
 the machine and can be set in config/settings.env:

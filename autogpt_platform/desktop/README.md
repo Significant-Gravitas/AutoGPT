@@ -561,8 +561,7 @@ user's real home directory, and nothing else is to run there (see
 
 Historical measurements before the credential-swap and WebSocket host splits,
 on Windows x64 (31 GB, 24 cores), idle, 45 seconds after ready,
-memory unique to the app's processes (USS). The current layout has not been
-remeasured:
+memory unique to the app's processes (USS):
 
 | Profile | Python processes | Processes in all | Whole app |
 | --- | --- | --- | --- |
@@ -570,6 +569,17 @@ remeasured:
 | `balanced`, `compact` | 3 | 36–37 | 3.0 GB |
 | `balanced`, with the Claude Code sign-in in use | 4 | one more | 0.7 GB more (the service hosts alone: 3.2 GB against 2.5 GB, as the app became ready) |
 | `isolated` | 8 | 48 | 5.9 GB |
+
+The five-host `compact` layout measured **4,314 MiB USS** in the hosted
+[Windows dev.24 lifecycle run](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/40926534438/job/123647459636)
+on 2026-10-29, after one workflow and at least 45 seconds after readiness.
+It passed the exact-host check but exceeded the old three-host limit of
+3,800 MiB. The smoke budget is now **5,000 MiB** for `compact` and `balanced`,
+which share the five-host layout, giving about 16% headroom over that sample.
+`isolated` keeps its 7,200 MiB limit. These fixed regression limits do not
+scale with observed process counts. This single compact sample does not
+measure balanced concurrency, peak use, macOS, or performance on an 8 GB PC;
+fresh installed lifecycle validation remains required.
 
 The profile is chosen from the machine and reported in `logs/runtime.log`:
 
@@ -1259,9 +1269,10 @@ a newline to stdin instead stops it after ending what is running, for good.
 ## Known limitations
 
 - Historical idle memory measurements in [Memory](#memory) predate the
-  separate credential-swap service. Current builds start four Python service
-  hosts, plus a fifth when Claude Code subscription execution is isolated.
-  Current-source resource measurements are still required.
+  credential-swap and WebSocket host splits. Current builds start five Python
+  service hosts, plus a sixth when Claude Code subscription execution is
+  isolated. The hosted compact sample above does not establish peak memory,
+  balanced or isolated use, or suitability for an 8 GB machine.
 - AutoPilot's sandboxed shell needs either a configured, enabled E2B cloud
   sandbox or Linux with bubblewrap installed. Without either, the tool is
   hidden. Windows and macOS have no bundled local shell sandbox; E2B runs
