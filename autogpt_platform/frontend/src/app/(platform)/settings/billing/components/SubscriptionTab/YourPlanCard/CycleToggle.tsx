@@ -42,8 +42,8 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
               <>
                 Yearly{" "}
                 <span
-                  // TODO(tokens): no exact role (from-green-500 #16A34A, via-emerald-500 #10B981, to-teal-500 #14B8A6)
-                  className="ml-1 bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 bg-clip-text text-caption-sm font-semibold leading-inherit text-transparent"
+                  // TODO(tokens): no exact role (from-green-500 #16A34A, via-success #10B981, to-teal-500 #14B8A6)
+                  className="ml-1 bg-gradient-to-r from-green-500 via-success to-teal-500 bg-clip-text text-caption-sm font-semibold leading-inherit text-transparent"
                 >
                   Save 15%
                 </span>

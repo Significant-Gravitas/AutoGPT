@@ -35,8 +35,8 @@ function UndoActions({
         variant="primary"
         size="small"
         as="NextLink"
-        // TODO(tokens): no exact role: bg-neutral-200 #E5E5E5, hover:bg-neutral-300 #D4D4D4
-        className="bg-neutral-200 text-foreground-strong hover:bg-neutral-300 hover:text-foreground-emphasis"
+        // TODO(tokens): no exact role: bg-surface-active #E5E5E5, hover:bg-surface-active #D4D4D4
+        className="bg-surface-active text-foreground-strong hover:bg-surface-active hover:text-foreground-emphasis"
         href={libraryHref}
       >
         Open workflow

@@ -26,7 +26,7 @@ export function StatusColumnFilter({ value, onChange }: Props) {
   return (
     <ColumnFilter active={value.length > 0} label="Status" align="start">
       <div className="flex flex-col gap-2">
-        <Text variant="small-medium" as="span" className="px-2 text-textBlack">
+        <Text variant="small-medium" as="span" className="px-2">
           Filter by status
         </Text>
         <ul className="flex flex-col gap-1">
@@ -53,11 +53,11 @@ export function StatusColumnFilter({ value, onChange }: Props) {
                   </span>
                   <span
                     className={cn(
-                      "flex h-4 w-4 items-center justify-center rounded-[4px] border",
+                      "flex h-4 w-4 items-center justify-center rounded-xsmall border",
                       "ease-[cubic-bezier(0.16,1,0.3,1)] transition-[background-color,border-color,transform] duration-200",
                       checked
-                        ? // TODO(tokens): no exact role (border-violet-600 #7C3AED, bg-violet-600 #7C3AED)
-                          "scale-100 border-violet-600 bg-violet-600 text-action-foreground"
+                        ? // TODO(tokens): no exact role (border-violet-600 #7C3AED, bg-brand #7C3AED)
+                          "scale-100 border-brand bg-brand text-action-foreground"
                         : "scale-95 border-border-strong bg-surface text-transparent",
                     )}
                   >

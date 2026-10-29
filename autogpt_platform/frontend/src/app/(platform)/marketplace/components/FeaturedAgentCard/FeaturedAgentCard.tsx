@@ -56,7 +56,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
   return (
     <div
       // TODO(tokens): no exact role: shadow-[…] #101828, hover:shadow-[…] #101828
-      className="group relative flex h-full w-full max-w-md cursor-pointer flex-col items-start overflow-hidden rounded-2xl border border-border-base/80 bg-surface p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
+      className="group relative flex h-full w-full max-w-md cursor-pointer flex-col items-start overflow-hidden rounded-2xl border border-border-base/80 bg-surface p-5 shadow-message-table transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
       data-testid="featured-store-card"
     >
       <div
@@ -86,8 +86,8 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
           </>
         ) : (
           <div
-            // TODO(tokens): no exact role: bg-violet-100 #EDE9FE
-            className="absolute inset-0 rounded-xl bg-violet-100"
+            // TODO(tokens): no exact role: bg-brand/10 #EDE9FE
+            className="absolute inset-0 rounded-xl bg-brand/10"
           />
         )}
       </div>

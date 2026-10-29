@@ -39,7 +39,7 @@ export function APIKeyMarquee() {
 
 function GhostCard() {
   return (
-    <div className="flex h-[64px] w-[320px] items-center gap-4 rounded-xl border border-border-base/80 bg-surface px-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+    <div className="flex h-[64px] w-[320px] items-center gap-4 rounded-xl border border-border-base/80 bg-surface px-5 shadow-message-table">
       <Icon
         icon={Key01Icon}
         size={18}

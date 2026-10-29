@@ -38,11 +38,11 @@ export function TransactionHistoryCard({ index = 0 }: Props) {
           >
             Transaction history
           </Text>
-          <Text variant="small" className="mt-1 text-foreground-secondary">
+          <Text variant="small" tone="secondary" className="mt-1">
             Changes to your automation credit balance.
           </Text>
         </div>
-        <Text variant="small" className="text-foreground-secondary">
+        <Text variant="small" tone="secondary">
           USD · Your local time
         </Text>
       </div>
@@ -70,7 +70,7 @@ export function TransactionHistoryCard({ index = 0 }: Props) {
           className="flex flex-wrap items-center justify-between gap-2 px-4"
           role="alert"
         >
-          <Text variant="small" className="text-foreground-secondary">
+          <Text variant="small" tone="secondary">
             History couldn’t be refreshed. Showing previously loaded activity.
           </Text>
           <Button
@@ -82,7 +82,7 @@ export function TransactionHistoryCard({ index = 0 }: Props) {
           </Button>
         </div>
       )}
-      <Text variant="small" className="px-4 text-foreground-secondary">
+      <Text variant="small" tone="secondary" className="px-4">
         Each workflow run combines its recorded charges and adjustments. Only
         runs with credit activity appear here.
       </Text>
@@ -113,7 +113,7 @@ function EmptyHistory() {
   return (
     <div className="rounded-large border border-border-base bg-surface px-5 py-10 text-center">
       <Text variant="body-medium">No transactions yet.</Text>
-      <Text variant="small" className="mt-2 text-foreground-secondary">
+      <Text variant="small" tone="secondary" className="mt-2">
         Credit purchases and paid activity will appear here.
       </Text>
     </div>

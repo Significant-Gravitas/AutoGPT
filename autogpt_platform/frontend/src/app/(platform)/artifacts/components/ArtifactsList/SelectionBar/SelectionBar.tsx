@@ -41,11 +41,7 @@ export function SelectionBar({
       data-testid="artifacts-selection-bar"
     >
       <div className="flex items-center gap-3">
-        <Text
-          variant="body-medium"
-          as="span"
-          className="text-foreground-strong"
-        >
+        <Text variant="body-medium" as="span" tone="primary">
           {count} selected
         </Text>
         {count < totalCount ? (
@@ -74,8 +70,8 @@ export function SelectionBar({
           size="xs"
           disabled={isDeleting}
           onClick={handleDelete}
-          // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover, a hover fill
-          className="text-red-600 hover:bg-error-surface hover:text-error-foreground"
+          // TODO(tokens): no fitting role for text-error-hover #D93636; #D93636 is error-hover, a hover fill
+          className="text-error-hover hover:bg-error-surface hover:text-error-foreground"
           data-testid="artifacts-selection-delete"
         >
           <Icon icon={Delete02Icon} size={14} />

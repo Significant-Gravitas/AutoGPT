@@ -59,20 +59,22 @@ export function ArtifactsTable({
         />
       ) : (
         <div className={cn(ROW_GRID_CLASS, "px-2 pb-2")}>
-          <Text variant="body" as="span" className="text-foreground-tertiary">
+          <Text variant="body" as="span" tone="muted">
             Name
           </Text>
           <Text
             variant="body"
             as="span"
-            className={cn(DATE_CELL_CLASS, "text-foreground-tertiary")}
+            tone="muted"
+            className={cn(DATE_CELL_CLASS, "")}
           >
             Modified
           </Text>
           <Text
             variant="body"
             as="span"
-            className={cn(SIZE_CELL_CLASS, "text-foreground-tertiary")}
+            tone="muted"
+            className={cn(SIZE_CELL_CLASS, "")}
           >
             Size
           </Text>

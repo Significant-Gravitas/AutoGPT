@@ -124,8 +124,8 @@ export const STATUS_VISUAL: Record<SubmissionStatus, StatusVisual> = {
     label: "Approved",
     Icon: CheckmarkCircle02Icon,
     pillClass:
-      "bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200",
-    dotClass: "bg-emerald-500",
+      "bg-success-surface text-success-foreground ring-1 ring-inset ring-success/30",
+    dotClass: "bg-success",
   },
   [SubmissionStatus.REJECTED]: {
     label: "Needs changes",

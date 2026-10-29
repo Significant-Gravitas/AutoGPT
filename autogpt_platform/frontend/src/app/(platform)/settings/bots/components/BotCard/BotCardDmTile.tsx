@@ -45,10 +45,10 @@ export function BotCardDmTile({
           className="shrink-0 text-foreground-tertiary"
         />
         <div className="flex min-w-0 flex-col">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             {title}
           </Text>
-          <Text variant="small" as="span" className="text-foreground-tertiary">
+          <Text variant="small" as="span" tone="muted">
             {subtitle}
           </Text>
         </div>

@@ -21,13 +21,13 @@ export function PlanChoice({
   onSelect,
 }: Props) {
   return (
-    <li className="flex flex-col gap-3 rounded-[18px] border border-border-base bg-surface p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-      <Text variant="body-medium" as="h3" className="text-textBlack">
+    <li className="flex flex-col gap-3 rounded-[18px] border border-border-base bg-surface p-5 shadow-message-table">
+      <Text variant="body-medium" as="h3">
         {plan.label}
       </Text>
       <div className="flex flex-col gap-1">
         <p className="flex items-baseline gap-1.5">
-          <Text variant="h4" as="span" className="text-textBlack">
+          <Text variant="h4" as="span">
             {plan.amount}
           </Text>
           <Text variant="small" as="span" tone="muted">

@@ -37,21 +37,21 @@ const ACCENTS: Record<string, ExpertAccent> = {
     washWide:
       // TODO(tokens): no exact role: bg-[…] #8B5CF6
       "bg-[linear-gradient(180deg,rgba(139,92,246,0.10),rgba(139,92,246,0.03)_60%,transparent)]",
-    // TODO(tokens): no exact role: ring-violet-600/10 #7C3AED
-    pill: "bg-accent-surface text-accent-strong ring-1 ring-inset ring-violet-600/10",
+    // TODO(tokens): no exact role: ring-brand/10 #7C3AED
+    pill: "bg-accent-surface text-accent-strong ring-1 ring-inset ring-brand/10",
     band: "bg-accent-surface/60",
-    // TODO(tokens): no exact role: text-violet-800 #5B21B6, ring-violet-500/20 #8B5CF6, shadow-[…] #8B5CF6; no fitting role for shadow-[…] #FFFFFF; #FFFFFF is card (a surface fill), popover (a surface fill), accent-foreground (a text colour)
-    chip: "bg-gradient-to-b from-surface to-accent-surface text-violet-800 ring-1 ring-inset ring-violet-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(139,92,246,0.12),0_0_18px_-4px_rgba(139,92,246,0.45)]",
-    // TODO(tokens): no exact role: text-violet-500 #8B5CF6
-    icon: "text-violet-500",
+    // TODO(tokens): no exact role: text-accent-strong #5B21B6, ring-brand/20 #8B5CF6, shadow-[…] #8B5CF6; no fitting role for shadow-[…] #FFFFFF; #FFFFFF is card (a surface fill), popover (a surface fill), accent-foreground (a text colour)
+    chip: "bg-gradient-to-b from-surface to-accent-surface text-accent-strong ring-1 ring-inset ring-brand/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(139,92,246,0.12),0_0_18px_-4px_rgba(139,92,246,0.45)]",
+    // TODO(tokens): no exact role: text-brand #8B5CF6
+    icon: "text-brand",
     roleIcon: Megaphone01Icon,
   },
   amber: {
     wash: "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-warning)/0.10),transparent_70%)]",
     washWide:
       "bg-[linear-gradient(180deg,rgb(var(--color-warning)/0.10),rgb(var(--color-warning)/0.03)_60%,transparent)]",
-    // TODO(tokens): no exact role: ring-amber-600/10 #D97706
-    pill: "bg-warning-surface text-warning-foreground ring-1 ring-inset ring-amber-600/10",
+    // TODO(tokens): no exact role: ring-warning-foreground/10 #D97706
+    pill: "bg-warning-surface text-warning-foreground ring-1 ring-inset ring-warning-foreground/10",
     band: "bg-warning-surface/60",
     // TODO(tokens): no exact role: text-amber-800 #92400E; no fitting role for shadow-[…] #FFFFFF; #FFFFFF is card (a surface fill), popover (a surface fill), accent-foreground (a text colour); no fitting role for shadow-[…] #F59E0B; #F59E0B is warning (a status colour)
     chip: "bg-gradient-to-b from-surface to-warning-surface text-amber-800 ring-1 ring-inset ring-warning/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(245,158,11,0.12),0_0_18px_-4px_rgba(245,158,11,0.45)]",
@@ -80,11 +80,11 @@ const ACCENTS: Record<string, ExpertAccent> = {
     washWide:
       // TODO(tokens): no fitting role for bg-[…] #71717A; #71717A is muted-foreground (a text colour)
       "bg-[linear-gradient(180deg,rgba(113,113,122,0.08),rgba(113,113,122,0.02)_60%,transparent)]",
-    // TODO(tokens): no fitting role for ring-zinc-500/10 #83838C; #83838C is foreground-tertiary (a text colour), placeholder (a text colour)
-    pill: "bg-surface-hover text-foreground-secondary ring-1 ring-inset ring-zinc-500/10",
+    // TODO(tokens): no fitting role for ring-foreground-tertiary/10 #83838C; #83838C is foreground-tertiary (a text colour), placeholder (a text colour)
+    pill: "bg-surface-hover text-foreground-secondary ring-1 ring-inset ring-foreground-tertiary/10",
     band: "bg-surface-hover/60",
-    // TODO(tokens): no fitting role for ring-zinc-500/20 #83838C; #83838C is foreground-tertiary (a text colour), placeholder (a text colour); no fitting role for shadow-[…] #FFFFFF; #FFFFFF is card (a surface fill), popover (a surface fill), accent-foreground (a text colour); no fitting role for shadow-[…] #71717A; #71717A is muted-foreground (a text colour)
-    chip: "bg-gradient-to-b from-surface to-surface-muted text-foreground-body ring-1 ring-inset ring-zinc-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(113,113,122,0.12),0_0_18px_-4px_rgba(113,113,122,0.45)]",
+    // TODO(tokens): no fitting role for ring-foreground-tertiary/20 #83838C; #83838C is foreground-tertiary (a text colour), placeholder (a text colour); no fitting role for shadow-[…] #FFFFFF; #FFFFFF is card (a surface fill), popover (a surface fill), accent-foreground (a text colour); no fitting role for shadow-[…] #71717A; #71717A is muted-foreground (a text colour)
+    chip: "bg-gradient-to-b from-surface to-surface-muted text-foreground-body ring-1 ring-inset ring-foreground-tertiary/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(113,113,122,0.12),0_0_18px_-4px_rgba(113,113,122,0.45)]",
     icon: "text-foreground-tertiary",
     roleIcon: Briefcase01Icon,
   },

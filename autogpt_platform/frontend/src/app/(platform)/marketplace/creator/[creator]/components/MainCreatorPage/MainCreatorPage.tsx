@@ -80,8 +80,8 @@ export function MainCreatorPage({ params }: Props) {
                 className="max-w-[45rem] rounded-2xl bg-gradient-to-r from-blue-200 to-indigo-200 p-[1px]"
               >
                 <div
-                  // TODO(tokens): no exact role: bg-gray-50 #F9FAFB
-                  className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4"
+                  // TODO(tokens): no exact role: bg-surface-muted #F9FAFB
+                  className="flex flex-col rounded-[calc(1rem-2px)] bg-surface-muted p-4"
                 >
                   {/* Avatar */}
                   <Avatar className="mb-4 h-20 w-20 sm:h-24 sm:w-24">
@@ -107,9 +107,10 @@ export function MainCreatorPage({ params }: Props) {
 
                   {/* Handle */}
                   <Text
-                    // TODO(tokens): no exact role: text-neutral-500 #737373
+                    // TODO(tokens): no exact role: text-foreground-tertiary #737373
                     variant="body"
-                    className="mb-4 text-neutral-500"
+                    tone="muted"
+                    className="mb-4"
                   >
                     @{creator.username}
                   </Text>
@@ -117,8 +118,9 @@ export function MainCreatorPage({ params }: Props) {
                   {/* Description */}
                   <Text
                     variant="body"
-                    // TODO(tokens): no exact role: text-neutral-600 #525252
-                    className="mb-6 leading-relaxed text-neutral-600"
+                    // TODO(tokens): no exact role: text-foreground-secondary #525252
+                    tone="secondary"
+                    className="mb-6 leading-relaxed"
                     data-testid="creator-description"
                   >
                     {creator.description}
@@ -135,8 +137,8 @@ export function MainCreatorPage({ params }: Props) {
                           <Badge
                             variant="info"
                             key={index}
-                            // TODO(tokens): no exact role: border-purple-100 #EFE8FE, bg-purple-50 #F1EBFE, text-purple-800 #411C87
-                            className="border border-purple-100 bg-purple-50 text-purple-800"
+                            // TODO(tokens): no exact role: border-brand/10 #EFE8FE, bg-accent-surface #F1EBFE, text-accent-strong #411C87
+                            className="border border-brand/10 bg-accent-surface text-accent-strong"
                           >
                             {category}
                           </Badge>

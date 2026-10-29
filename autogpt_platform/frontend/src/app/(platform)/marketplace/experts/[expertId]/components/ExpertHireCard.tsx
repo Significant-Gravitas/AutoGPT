@@ -66,8 +66,8 @@ function Perk({
       <Icon
         icon={icon}
         size={16}
-        // TODO(tokens): no exact role: text-emerald-600 #059669
-        className="mt-0.5 shrink-0 text-emerald-600"
+        // TODO(tokens): no exact role: text-success #059669
+        className="mt-0.5 shrink-0 text-success"
         aria-hidden
       />
       <span>{children}</span>

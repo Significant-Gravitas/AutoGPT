@@ -110,7 +110,8 @@ export function FolderRow({
         <Text
           variant="body-medium"
           as="span"
-          className="truncate text-foreground-strong"
+          tone="primary"
+          className="truncate"
           data-testid="workspace-folder-name"
         >
           {name}
@@ -119,7 +120,8 @@ export function FolderRow({
       <Text
         variant="body"
         as="span"
-        className={cn(DATE_CELL_CLASS, "text-foreground-tertiary")}
+        tone="muted"
+        className={cn(DATE_CELL_CLASS, "")}
         title={formatFullDate(updatedAt)}
       >
         {formatDayLabel(updatedAt)}
@@ -127,7 +129,8 @@ export function FolderRow({
       <Text
         variant="body"
         as="span"
-        className={cn(SIZE_CELL_CLASS, "text-foreground-tertiary")}
+        tone="muted"
+        className={cn(SIZE_CELL_CLASS, "")}
       >
         {folderSummary(fileCount, subfolderCount)}
       </Text>

@@ -26,7 +26,8 @@ export function EmptyState({ content, compact = false }: Props) {
     return (
       <Text
         variant="body"
-        className="px-2 py-6 text-foreground-tertiary"
+        tone="muted"
+        className="px-2 py-6"
         data-testid="artifacts-empty"
       >
         {content.title}
@@ -62,12 +63,12 @@ export function EmptyState({ content, compact = false }: Props) {
 
       <div className="flex max-w-md flex-col items-center gap-2">
         <motion.div {...fadeUp(0.28)}>
-          <Text variant="h3" className="text-foreground-strong">
+          <Text variant="h3" tone="primary">
             {content.title}
           </Text>
         </motion.div>
         <motion.div {...fadeUp(0.36)}>
-          <Text variant="body" className="text-foreground-tertiary">
+          <Text variant="body" tone="muted">
             {content.description}
           </Text>
         </motion.div>

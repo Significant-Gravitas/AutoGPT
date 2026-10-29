@@ -37,15 +37,12 @@ export function FilePreviewCard({ file }: Props) {
           <Text
             variant="body-medium"
             as="span"
-            className="truncate text-foreground-strong"
+            tone="primary"
+            className="truncate"
           >
             {file.name}
           </Text>
-          <Text
-            variant="small"
-            as="span"
-            className="truncate text-foreground-tertiary"
-          >
+          <Text variant="small" as="span" tone="muted" className="truncate">
             {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
             {formatFileSize(file.size_bytes)} ·{" "}
             {formatDayLabel(file.created_at)}

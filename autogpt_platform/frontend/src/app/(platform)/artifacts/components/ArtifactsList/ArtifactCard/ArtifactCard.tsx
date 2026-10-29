@@ -85,16 +85,14 @@ export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
           <div className="flex min-w-0 flex-1 flex-col">
             <Text
               variant="body-medium"
-              className="truncate text-foreground-strong"
+              tone="primary"
+              className="truncate"
               title={file.name}
             >
               {file.name}
             </Text>
             <div className="flex min-w-0 items-center gap-2">
-              <Text
-                variant="small"
-                className="truncate text-foreground-tertiary"
-              >
+              <Text variant="small" tone="muted" className="truncate">
                 {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
                 {formatFileSize(file.size_bytes)} ·{" "}
                 {formatRelativeDate(file.created_at)}

@@ -34,21 +34,21 @@ export function BillingPlanOffer({
       className={
         quiet
           ? "flex h-full flex-col rounded-2xl border border-border-base bg-surface p-6"
-          : // TODO(tokens): no exact role (border-purple-200 #C0A1FA, from-purple-50 #F1EBFE)
-            "flex h-full flex-col rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 via-surface to-info-surface p-6"
+          : // TODO(tokens): no exact role (border-purple-200 #C0A1FA, from-accent-surface #F1EBFE)
+            "flex h-full flex-col rounded-2xl border border-brand/30 bg-gradient-to-br from-accent-surface via-surface to-info-surface p-6"
       }
     >
       <div className="flex items-center gap-2.5">
         <span
-          // TODO(tokens): no exact role (bg-purple-100 #EFE8FE, text-purple-700 #5424AE)
-          className="flex size-7 items-center justify-center rounded-lg bg-purple-100 text-purple-700"
+          // TODO(tokens): no exact role (bg-purple-100 #EFE8FE, text-accent-strong #5424AE)
+          className="flex size-7 items-center justify-center rounded-lg bg-accent-surface text-accent-strong"
         >
           <Icon icon={SparklesIcon} size={17} />
         </span>
         <Text
           // TODO(tokens): no exact role (text-purple-800 #411C87)
           variant="small-medium"
-          className="text-purple-800"
+          className="text-accent-strong"
         >
           AutoGPT {target}
         </Text>
@@ -57,7 +57,7 @@ export function BillingPlanOffer({
         variant="h4"
         as="h2"
         // TODO(tokens): SECRT-3152 rare size (text-[23px])
-        className="mb-3 mt-4 text-[23px] leading-8 tracking-display"
+        className="mb-3 mt-4 text-heading-sm leading-8 tracking-display"
       >
         {title}
       </Text>
@@ -72,7 +72,7 @@ export function BillingPlanOffer({
             variant="h2"
             as="span"
             // TODO(tokens): no exact text token (tracking-[-0.045em]); SECRT-3152 rare size (text-[36px])
-            className="font-sans text-[36px] font-semibold leading-10 tracking-[-0.045em]"
+            className="font-sans text-title font-semibold leading-10 tracking-display"
           >
             {price.split(" / ")[0]}
           </Text>
@@ -88,9 +88,9 @@ export function BillingPlanOffer({
               icon={Tick02Icon}
               size={15}
               // TODO(tokens): no exact role (text-purple-700 #5424AE)
-              className="mt-0.5 shrink-0 text-purple-700"
+              className="mt-0.5 shrink-0 text-accent-strong"
             />
-            <Text variant="small" className="text-foreground-body">
+            <Text variant="small" tone="body">
               {benefit}
             </Text>
           </li>

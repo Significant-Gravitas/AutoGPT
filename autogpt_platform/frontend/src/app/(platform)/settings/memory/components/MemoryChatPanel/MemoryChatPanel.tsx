@@ -58,7 +58,7 @@ export function MemoryChatPanel({
                 // TODO(tokens): no exact role (text-violet-600 #7C3AED)
                 icon={BrainIcon}
                 size={18}
-                className="text-violet-600"
+                className="text-brand"
               />
               <span className="text-sm font-semibold text-foreground-emphasis">
                 {scopeName}&apos;s memory

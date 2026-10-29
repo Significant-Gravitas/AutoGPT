@@ -33,7 +33,7 @@ describe("Transaction history activity and states", () => {
       render(<TransactionHistoryCard />);
       await screen.findByText(name);
       const money = screen.getByText(formatted);
-      expect(money.classList.contains("text-red-600")).toBe(false);
+      expect(money.classList.contains("text-error-hover")).toBe(false);
       expect(money.classList.contains("text-success-foreground")).toBe(
         Number(amount) > 0,
       );

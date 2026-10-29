@@ -58,7 +58,7 @@ export function ReceiptEntries({ transaction }: Props) {
       )}
       {referenceOpen && (
         <div id={referenceID} className="mt-2">
-          <Text variant="small" className="text-foreground-secondary">
+          <Text variant="small" tone="secondary">
             {referenceLabel(transaction)}
           </Text>
           <Text variant="small" as="code" className="break-all font-mono">
@@ -94,11 +94,7 @@ function ChargeEntries({ transaction }: Props) {
             return (
               <tr key={charge.id}>
                 <td className="py-2 pr-3 align-top">
-                  <Text
-                    variant="small"
-                    title={posted.full}
-                    className="text-foreground-secondary"
-                  >
+                  <Text variant="small" title={posted.full} tone="secondary">
                     {posted.date}
                     <br />
                     {posted.time}
@@ -119,7 +115,7 @@ function ChargeEntries({ transaction }: Props) {
         </tbody>
       </table>
       {transaction.charges_truncated && (
-        <Text variant="small" className="mt-2 text-foreground-secondary">
+        <Text variant="small" tone="secondary" className="mt-2">
           Showing {charges.length} of {transaction.charges_total_count} charge
           entries. The total includes every charge and adjustment.
         </Text>

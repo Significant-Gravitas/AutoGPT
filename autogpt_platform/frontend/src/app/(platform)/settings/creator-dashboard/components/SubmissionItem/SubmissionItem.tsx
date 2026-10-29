@@ -97,7 +97,7 @@ export function SubmissionItem({
     >
       <td className="px-4 py-3 align-middle">
         <div className="flex items-center gap-3">
-          <div className="relative aspect-video w-20 shrink-0 select-none overflow-hidden rounded-[8px] bg-surface-hover">
+          <div className="relative aspect-video w-20 shrink-0 select-none overflow-hidden rounded-small bg-surface-hover">
             {thumbnail ? (
               <Image
                 src={thumbnail}
@@ -126,14 +126,10 @@ export function SubmissionItem({
                   href={marketplaceUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-w-0 items-center gap-1 truncate text-textBlack hover:underline"
+                  className="inline-flex min-w-0 items-center gap-1 truncate text-foreground-base hover:underline"
                   data-testid="submission-marketplace-link"
                 >
-                  <Text
-                    variant="body-medium"
-                    as="span"
-                    className="truncate text-textBlack"
-                  >
+                  <Text variant="body-medium" as="span" className="truncate">
                     {submission.name}
                   </Text>
                   <UIIcon
@@ -144,18 +140,15 @@ export function SubmissionItem({
                   />
                 </Link>
               ) : (
-                <Text
-                  variant="body-medium"
-                  as="span"
-                  className="truncate text-textBlack"
-                >
+                <Text variant="body-medium" as="span" className="truncate">
                   {submission.name}
                 </Text>
               )}
               <Text
                 variant="small"
                 as="span"
-                className="shrink-0 text-foreground-secondary"
+                tone="secondary"
+                className="shrink-0"
               >
                 v{submission.graph_version}
               </Text>
@@ -163,7 +156,8 @@ export function SubmissionItem({
             <Text
               variant="small"
               as="span"
-              className="line-clamp-1 max-w-[420px] text-foreground-tertiary"
+              tone="muted"
+              className="line-clamp-1 max-w-[420px]"
             >
               {submission.description}
             </Text>
@@ -261,7 +255,7 @@ export function SubmissionItem({
           }}
         >
           <Dialog.Content>
-            <Text variant="body" className="text-foreground-body">
+            <Text variant="body" tone="body">
               This will remove <strong>{submission.name}</strong> from the
               store. This action cannot be undone.
             </Text>

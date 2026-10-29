@@ -23,7 +23,7 @@ export function BotConnectionNotice() {
 
   return (
     <div className="mb-6 ml-4 rounded-2xl border border-border-base bg-surface px-4 py-3">
-      <Text variant="small" className="text-foreground-body">
+      <Text variant="small" tone="body">
         Conversations that come in over a bot start on{" "}
         <span className="font-medium text-foreground-base">
           {current.label}

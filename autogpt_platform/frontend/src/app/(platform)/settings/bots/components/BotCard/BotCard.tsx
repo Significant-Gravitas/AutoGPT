@@ -38,7 +38,7 @@ export function BotCard({ platform }: Props) {
             height={32}
             className="rounded-md"
           />
-          <Text variant="large-medium" as="h2" className="text-textBlack">
+          <Text variant="large-medium" as="h2">
             {platform.display_name}
           </Text>
           {pendingInstall ? (
@@ -97,7 +97,8 @@ export function BotCard({ platform }: Props) {
         <Text
           variant="small-medium"
           as="span"
-          className="uppercase tracking-wide text-foreground-tertiary"
+          tone="muted"
+          className="uppercase tracking-wide"
         >
           Direct messages
         </Text>
@@ -115,7 +116,8 @@ export function BotCard({ platform }: Props) {
         <Text
           variant="small-medium"
           as="span"
-          className="uppercase tracking-wide text-foreground-tertiary"
+          tone="muted"
+          className="uppercase tracking-wide"
         >
           Linked {serverNoun}s
         </Text>

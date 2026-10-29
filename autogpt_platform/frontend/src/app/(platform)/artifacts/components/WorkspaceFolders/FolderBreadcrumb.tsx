@@ -110,7 +110,8 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
                   variant="small-medium"
                   as="span"
                   aria-current="page"
-                  className="max-w-[12rem] truncate text-foreground-emphasis"
+                  tone="emphasis"
+                  className="max-w-[12rem] truncate"
                   title={item.name}
                 >
                   {item.name}

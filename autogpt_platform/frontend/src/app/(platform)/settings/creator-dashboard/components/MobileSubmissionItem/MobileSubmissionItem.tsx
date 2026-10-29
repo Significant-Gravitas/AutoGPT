@@ -94,7 +94,7 @@ export function MobileSubmissionItem({
       className="flex flex-col gap-3 border-b border-separator px-3 py-3 last:border-b-0"
     >
       <div className="flex items-start gap-3">
-        <div className="relative aspect-video w-16 shrink-0 select-none overflow-hidden rounded-[8px] bg-surface-hover">
+        <div className="relative aspect-video w-16 shrink-0 select-none overflow-hidden rounded-small bg-surface-hover">
           {thumbnail ? (
             <Image
               src={thumbnail}
@@ -124,14 +124,10 @@ export function MobileSubmissionItem({
                 href={marketplaceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex min-w-0 items-center gap-1 truncate text-textBlack hover:underline"
+                className="inline-flex min-w-0 items-center gap-1 truncate text-foreground-base hover:underline"
                 data-testid="submission-marketplace-link"
               >
-                <Text
-                  variant="body-medium"
-                  as="span"
-                  className="truncate text-textBlack"
-                >
+                <Text variant="body-medium" as="span" className="truncate">
                   {submission.name}
                 </Text>
                 <UIIcon
@@ -142,18 +138,15 @@ export function MobileSubmissionItem({
                 />
               </Link>
             ) : (
-              <Text
-                variant="body-medium"
-                as="span"
-                className="truncate text-textBlack"
-              >
+              <Text variant="body-medium" as="span" className="truncate">
                 {submission.name}
               </Text>
             )}
             <Text
               variant="small"
               as="span"
-              className="shrink-0 text-foreground-secondary"
+              tone="secondary"
+              className="shrink-0"
             >
               v{submission.graph_version}
             </Text>
@@ -162,7 +155,8 @@ export function MobileSubmissionItem({
             <Text
               variant="small"
               as="span"
-              className="mt-0.5 line-clamp-2 break-words text-foreground-tertiary"
+              tone="muted"
+              className="mt-0.5 line-clamp-2 break-words"
             >
               {submission.description}
             </Text>
@@ -271,7 +265,7 @@ export function MobileSubmissionItem({
         }}
       >
         <Dialog.Content>
-          <Text variant="body" className="text-foreground-body">
+          <Text variant="body" tone="body">
             This will remove <strong>{submission.name}</strong> from the store.
             This action cannot be undone.
           </Text>

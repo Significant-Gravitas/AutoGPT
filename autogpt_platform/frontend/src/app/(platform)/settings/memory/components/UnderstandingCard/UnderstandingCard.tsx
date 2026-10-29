@@ -34,19 +34,14 @@ export function UnderstandingCard() {
   return (
     <section
       aria-labelledby="understanding-title"
-      className="flex flex-col rounded-[18px] border border-zinc-200 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]"
+      className="flex flex-col rounded-[18px] border border-border-base bg-surface px-4 py-4 shadow-message-table"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col">
-          <Text
-            variant="body-medium"
-            as="h2"
-            id="understanding-title"
-            className="text-textBlack"
-          >
+          <Text variant="body-medium" as="h2" id="understanding-title">
             What Otto knows about your work
           </Text>
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" tone="muted">
             From your onboarding and your chats. Every new chat with Otto starts
             with this.
           </Text>
@@ -63,7 +58,7 @@ export function UnderstandingCard() {
           </Dialog.Trigger>
           <Dialog.Content>
             <div className="flex flex-col gap-4">
-              <Text variant="small" as="p" className="text-zinc-600">
+              <Text variant="small" as="p" tone="secondary">
                 Otto stops starting new chats with this. Your recent memories
                 stay.
               </Text>
@@ -89,10 +84,10 @@ export function UnderstandingCard() {
         </Dialog>
       </div>
 
-      <dl className="mt-2 flex flex-col divide-y divide-zinc-100">
+      <dl className="mt-2 flex flex-col divide-y divide-separator">
         {rows.map((row) => (
           <div key={row.label} className="flex flex-col gap-0.5 py-2">
-            <Text variant="small-medium" as="dt" className="text-zinc-500">
+            <Text variant="small-medium" as="dt" tone="muted">
               {row.label}
             </Text>
             {row.values.map((value) => (
@@ -116,12 +111,12 @@ function UnderstandingValue({ value }: { value: string }) {
       : value;
 
   return (
-    <dd className="whitespace-pre-line text-sm text-zinc-800">
+    <dd className="whitespace-pre-line text-sm text-foreground-emphasis">
       {shown}
       {isLong ? (
         <button
           type="button"
-          className="ml-1 text-zinc-500 underline"
+          className="ml-1 text-foreground-tertiary underline"
           onClick={() => setIsExpanded(!isExpanded)}
         >
           {isExpanded ? "Show less" : "Show all"}

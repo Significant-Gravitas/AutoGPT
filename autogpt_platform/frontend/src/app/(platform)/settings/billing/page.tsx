@@ -162,7 +162,7 @@ function SettingsBillingPage() {
             // TODO(tokens): no exact text token (tracking-[-0.035em])
             variant="h3"
             as="h1"
-            className="tracking-[-0.035em]"
+            className="tracking-heading"
           >
             Billing &amp; usage
           </Text>

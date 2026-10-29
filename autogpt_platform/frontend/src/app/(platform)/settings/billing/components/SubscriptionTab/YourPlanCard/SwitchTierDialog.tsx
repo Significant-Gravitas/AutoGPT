@@ -50,14 +50,14 @@ export function SwitchTierDialog({
       variant="compact"
       title={
         <div className="space-y-2 pr-7">
-          <Text variant="small" className="text-foreground-tertiary">
+          <Text variant="small" tone="muted">
             {title ? "Your subscription" : `Upgrade to ${targetTierLabel}`}
           </Text>
           <Text
             variant="h3"
             as="span"
             // TODO(tokens): SECRT-3152 rare size (text-[26px])
-            className="block text-[26px] leading-8 tracking-tight"
+            className="block text-heading leading-8 tracking-tight"
           >
             {title ?? `Upgrade to ${targetTierLabel}`}
           </Text>
@@ -68,10 +68,7 @@ export function SwitchTierDialog({
     >
       <Dialog.Content>
         {usageCarriesOver && (
-          <Text
-            variant="body"
-            className="mb-5 leading-6 text-foreground-secondary"
-          >
+          <Text variant="body" tone="secondary" className="mb-5 leading-6">
             {usageMultiplier
               ? `${usageMultiplier} times the usage of Pro and priority support.`
               : "More room for demanding work and priority support."}
@@ -95,7 +92,7 @@ export function SwitchTierDialog({
                 </div>
               </div>
             )}
-            <Text variant="body" as="span" className="text-foreground-body">
+            <Text variant="body" as="span" tone="body">
               {body}
             </Text>
           </>

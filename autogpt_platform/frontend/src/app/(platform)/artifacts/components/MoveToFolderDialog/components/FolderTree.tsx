@@ -150,7 +150,8 @@ export function FolderTree({
               <Text
                 variant="small"
                 as="span"
-                className="ml-auto shrink-0 pl-2 text-foreground-subtle"
+                tone="subtle"
+                className="ml-auto shrink-0 pl-2"
               >
                 {row.disabledReason}
               </Text>

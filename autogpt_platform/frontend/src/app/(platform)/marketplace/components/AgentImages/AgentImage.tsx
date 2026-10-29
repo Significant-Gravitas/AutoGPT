@@ -61,8 +61,8 @@ export function AgentImages({ images }: AgentImagesProps) {
                 className={cn(
                   "relative h-16 w-24 shrink-0 overflow-hidden rounded-lg border transition-all sm:h-20 sm:w-32",
                   selectedIndex === index
-                    ? // TODO(tokens): no exact role: border-violet-500 #8B5CF6
-                      "border-violet-500"
+                    ? // TODO(tokens): no exact role: border-brand #8B5CF6
+                      "border-brand"
                     : "border-separator opacity-70 hover:opacity-100",
                 )}
               >
@@ -100,8 +100,8 @@ export function AgentImages({ images }: AgentImagesProps) {
                   </div>
                 ) : (
                   <div
-                    // TODO(tokens): no exact role: bg-neutral-200 #E5E5E5, text-neutral-500 #737373
-                    className="flex h-full w-full items-center justify-center bg-neutral-200 text-xs text-neutral-500"
+                    // TODO(tokens): no exact role: bg-surface-active #E5E5E5, text-foreground-tertiary #737373
+                    className="flex h-full w-full items-center justify-center bg-surface-active text-xs text-foreground-tertiary"
                   >
                     Video
                   </div>

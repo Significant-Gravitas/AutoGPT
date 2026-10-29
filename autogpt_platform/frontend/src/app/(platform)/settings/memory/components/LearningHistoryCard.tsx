@@ -35,13 +35,13 @@ export function LearningHistoryCard({
   }
   return (
     <div
-      className="flex flex-col rounded-[18px] border border-border-base bg-surface px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]"
+      className="flex flex-col rounded-[18px] border border-border-base bg-surface px-4 py-4 shadow-message-table"
       data-testid="learning-history-card"
     >
-      <Text variant="body-medium" as="span" className="text-textBlack">
+      <Text variant="body-medium" as="span">
         Learning history
       </Text>
-      <Text variant="small" as="span" className="text-foreground-tertiary">
+      <Text variant="small" as="span" tone="muted">
         What overnight learning changed, where it came from, and what it did not
         learn.
       </Text>
@@ -72,11 +72,7 @@ export function LearningHistoryCard({
             <Skeleton className="h-5 w-2/3" />
           </div>
         ) : items.length === 0 ? (
-          <Text
-            variant="small"
-            as="p"
-            className="py-3 text-foreground-tertiary"
-          >
+          <Text variant="small" as="p" tone="muted" className="py-3">
             Nothing learned yet. A quiet night means nothing needed to change.
           </Text>
         ) : (
@@ -86,7 +82,7 @@ export function LearningHistoryCard({
                 <Text
                   variant="small-medium"
                   as="span"
-                  className="min-w-0 truncate text-textBlack"
+                  className="min-w-0 truncate"
                 >
                   {item.skill_name ? (
                     <button
@@ -104,23 +100,16 @@ export function LearningHistoryCard({
                 <Text
                   variant="small"
                   as="span"
-                  className="shrink-0 text-foreground-subtle"
+                  tone="subtle"
+                  className="shrink-0"
                 >
                   {formatWhen(new Date(item.created_at).toISOString())}
                 </Text>
               </div>
-              <Text
-                variant="small"
-                as="span"
-                className="text-foreground-secondary"
-              >
+              <Text variant="small" as="span" tone="secondary">
                 {item.summary}
               </Text>
-              <Text
-                variant="small"
-                as="span"
-                className="text-foreground-tertiary"
-              >
+              <Text variant="small" as="span" tone="muted">
                 {[
                   expertName(item.expert_id),
                   item.origin_label,

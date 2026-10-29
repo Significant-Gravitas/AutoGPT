@@ -54,7 +54,7 @@ export function InvoicesCard({ index = 0 }: Props) {
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="px-1">
-        <Text variant="body-medium" as="span" className="text-textBlack">
+        <Text variant="body-medium" as="span">
           Invoices
         </Text>
       </div>
@@ -62,11 +62,7 @@ export function InvoicesCard({ index = 0 }: Props) {
       <div className="overflow-hidden rounded-2xl border border-border-base bg-surface">
         {invoices.length === 0 ? (
           <div className="px-4 py-6">
-            <Text
-              variant="small"
-              as="span"
-              className="text-foreground-tertiary"
-            >
+            <Text variant="small" as="span" tone="muted">
               No invoices yet.
             </Text>
           </div>
@@ -104,26 +100,18 @@ export function InvoicesCard({ index = 0 }: Props) {
                       <Text
                         variant="body-medium"
                         as="span"
-                        className="tabular-nums text-textBlack"
+                        className="tabular-nums"
                       >
                         {invoice.number}
                       </Text>
                     </td>
                     <td className="hidden px-2 py-4 sm:table-cell sm:px-4">
-                      <Text
-                        variant="body"
-                        as="span"
-                        className="text-foreground-secondary"
-                      >
+                      <Text variant="body" as="span" tone="secondary">
                         {invoice.date}
                       </Text>
                     </td>
                     <td className="hidden px-2 py-4 md:table-cell md:px-4">
-                      <Text
-                        variant="body"
-                        as="span"
-                        className="text-foreground-secondary"
-                      >
+                      <Text variant="body" as="span" tone="secondary">
                         {invoice.description}
                       </Text>
                     </td>
@@ -131,7 +119,7 @@ export function InvoicesCard({ index = 0 }: Props) {
                       <Text
                         variant="body-medium"
                         as="span"
-                        className="tabular-nums text-textBlack"
+                        className="tabular-nums"
                       >
                         {invoice.amount}
                       </Text>
@@ -191,7 +179,8 @@ function Th({ children, align = "left", className = "" }: ThProps) {
         variant="small-medium"
         as="span"
         // TODO(tokens): no exact text token (tracking-[0.04em])
-        className="uppercase tracking-[0.04em] text-foreground-tertiary"
+        tone="muted"
+        className="uppercase tracking-eyebrow"
       >
         {children}
       </Text>

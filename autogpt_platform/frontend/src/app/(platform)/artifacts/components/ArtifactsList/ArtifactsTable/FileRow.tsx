@@ -87,8 +87,8 @@ export function FileRow({
           type="button"
           aria-label={`Select ${file.name}`}
           aria-pressed={isSelected}
-          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle, a text colour
-          className="group/select relative my-2.5 mr-3 shrink-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+          // TODO(tokens): no fitting role for focus-visible:ring-foreground-subtle #ADADB3; #ADADB3 is foreground-subtle, a text colour
+          className="group/select relative my-2.5 mr-3 shrink-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle"
           onClick={(e) => {
             e.stopPropagation();
             onToggleSelect(file);
@@ -118,7 +118,8 @@ export function FileRow({
               <Text
                 variant="body-medium"
                 as="span"
-                className="truncate text-foreground-strong"
+                tone="primary"
+                className="truncate"
               >
                 {file.name}
               </Text>
@@ -156,7 +157,8 @@ export function FileRow({
       <Text
         variant="body"
         as="span"
-        className={cn(DATE_CELL_CLASS, "text-foreground-tertiary")}
+        tone="muted"
+        className={cn(DATE_CELL_CLASS, "")}
         title={formatFullDate(file.created_at)}
       >
         {formatDayLabel(file.created_at)}
@@ -164,7 +166,8 @@ export function FileRow({
       <Text
         variant="body"
         as="span"
-        className={cn(SIZE_CELL_CLASS, "text-foreground-tertiary")}
+        tone="muted"
+        className={cn(SIZE_CELL_CLASS, "")}
       >
         {formatFileSize(file.size_bytes)}
       </Text>

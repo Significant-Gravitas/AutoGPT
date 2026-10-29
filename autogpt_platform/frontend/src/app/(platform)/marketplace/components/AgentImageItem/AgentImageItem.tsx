@@ -38,8 +38,8 @@ export function AgentImageItem({
   return (
     <div className="relative">
       <div
-        // TODO(tokens): no exact role: border-neutral-100 #F5F5F5, bg-[#a8a8a8] #A8A8A8
-        className="h-[15rem] overflow-hidden rounded-xl border border-neutral-100 bg-[#a8a8a8] sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]"
+        // TODO(tokens): no exact role: border-separator #F5F5F5, bg-[#a8a8a8] #A8A8A8
+        className="h-[15rem] overflow-hidden rounded-xl border border-separator bg-[#a8a8a8] sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]"
       >
         {isValidVideoUrl(image) ? (
           isYouTubeUrl(image) ? (

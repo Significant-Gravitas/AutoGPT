@@ -131,8 +131,8 @@ export function SkillPage({ slug }: Props) {
         </div>
 
         <p
-          // TODO(tokens): SECRT-3152 rare size: text-[17px]
-          className="mt-5 max-w-[60ch] text-[17px] leading-7 text-foreground-secondary"
+          // TODO(tokens): SECRT-3152 rare size: text-body-lg leading-inherit
+          className="mt-5 max-w-[60ch] text-body-lg leading-7 text-foreground-secondary"
         >
           {skill.description}
         </p>
@@ -172,8 +172,8 @@ export function SkillPage({ slug }: Props) {
                     href={skill.source_url}
                     target="_blank"
                     rel="noreferrer"
-                    // TODO(tokens): no fitting role for decoration-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour), border-strong (a border colour)
-                    className="underline decoration-zinc-300 underline-offset-2 hover:text-foreground-strong"
+                    // TODO(tokens): no fitting role for decoration-foreground-disabled #C5C5C9; #C5C5C9 is foreground-disabled (a text colour), border-strong (a border colour)
+                    className="underline decoration-foreground-disabled underline-offset-2 hover:text-foreground-strong"
                   >
                     {skill.source_repo}
                   </a>

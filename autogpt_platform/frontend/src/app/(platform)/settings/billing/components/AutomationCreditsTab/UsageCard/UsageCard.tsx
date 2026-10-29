@@ -50,26 +50,22 @@ export function UsageCard({ index = 0 }: Props) {
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="px-4">
-        <Text variant="body-medium" as="span" className="text-textBlack">
+        <Text variant="body-medium" as="span">
           Usage
         </Text>
       </div>
 
-      <div className="flex flex-col gap-5 rounded-[18px] border border-border-base bg-surface p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="flex flex-col gap-5 rounded-[18px] border border-border-base bg-surface p-5 shadow-message-table">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div className="flex items-baseline gap-2">
-            <Text
-              variant="large-medium"
-              as="span"
-              className="tabular-nums text-textBlack"
-            >
+            <Text variant="large-medium" as="span" className="tabular-nums">
               ${totalSpent.toFixed(2)}
             </Text>
-            <Text variant="body" as="span" className="text-foreground-tertiary">
+            <Text variant="body" as="span" tone="muted">
               · {totalRuns} runs
             </Text>
           </div>
-          <Text variant="body" as="span" className="text-foreground-body">
+          <Text variant="body" as="span" tone="body">
             Last 30 days
           </Text>
         </div>
@@ -85,7 +81,8 @@ export function UsageCard({ index = 0 }: Props) {
                   key={i}
                   variant="small"
                   as="span"
-                  className="tabular-nums text-foreground-subtle"
+                  tone="subtle"
+                  className="tabular-nums"
                 >
                   {tick.label}
                 </Text>
@@ -108,25 +105,13 @@ export function UsageCard({ index = 0 }: Props) {
               </div>
 
               <div className="flex justify-between pl-1">
-                <Text
-                  variant="small"
-                  as="span"
-                  className="text-foreground-tertiary"
-                >
+                <Text variant="small" as="span" tone="muted">
                   {firstDate}
                 </Text>
-                <Text
-                  variant="small"
-                  as="span"
-                  className="text-foreground-tertiary"
-                >
+                <Text variant="small" as="span" tone="muted">
                   {middleDate}
                 </Text>
-                <Text
-                  variant="small"
-                  as="span"
-                  className="text-foreground-tertiary"
-                >
+                <Text variant="small" as="span" tone="muted">
                   {lastDate}
                 </Text>
               </div>
@@ -162,8 +147,8 @@ function UsageBar({
               ? `${day.date}: $0.00, 0 runs`
               : `${day.date}: $${day.amount.toFixed(2)}, ${day.runs} runs`
           }
-          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle, a text colour
-          className="group flex h-full flex-1 flex-col justify-end focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+          // TODO(tokens): no fitting role for focus-visible:ring-foreground-subtle #ADADB3; #ADADB3 is foreground-subtle, a text colour
+          className="group flex h-full flex-1 flex-col justify-end focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle"
         >
           {isEmpty ? (
             <div className="h-px w-full bg-transparent" />
@@ -182,7 +167,7 @@ function UsageBar({
                       delay: 0.15 + index * 0.015,
                     }
               }
-              className="w-full cursor-help rounded-t-[3px] border-t-2 border-brand bg-brand/30 transition-colors group-hover:bg-brand/50"
+              className="w-full cursor-help rounded-t-xsmall border-t-2 border-brand bg-brand/30 transition-colors group-hover:bg-brand/50"
             />
           )}
         </button>
@@ -191,13 +176,13 @@ function UsageBar({
         <div className="flex flex-col gap-0.5">
           <span
             // TODO(tokens): SECRT-3152 rare size (text-[0.6785rem])
-            className="text-[0.6785rem] font-medium uppercase tracking-eyebrow text-foreground-subtle"
+            className="text-caption-sm font-medium uppercase leading-inherit tracking-eyebrow text-foreground-subtle"
           >
             {day.date}
           </span>
           <span
-            // TODO(tokens): no fitting role for text-zinc-50 #F9F9FA; #F9F9FA is surface-muted, a fill
-            className="text-sm font-medium tabular-nums text-zinc-50"
+            // TODO(tokens): no fitting role for text-action-foreground #F9F9FA; #F9F9FA is surface-muted, a fill
+            className="text-sm font-medium tabular-nums text-action-foreground"
           >
             ${day.amount.toFixed(2)}
           </span>

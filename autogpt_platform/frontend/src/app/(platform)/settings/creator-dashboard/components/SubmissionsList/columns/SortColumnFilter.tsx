@@ -38,7 +38,7 @@ export function SortColumnFilter({
   return (
     <ColumnFilter active={isActive} label="Sort" align="start">
       <div className="flex flex-col gap-2">
-        <Text variant="small-medium" as="span" className="px-2 text-textBlack">
+        <Text variant="small-medium" as="span" className="px-2">
           Sort
         </Text>
         <SortOption

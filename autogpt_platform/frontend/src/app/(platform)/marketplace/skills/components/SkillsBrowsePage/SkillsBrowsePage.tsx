@@ -144,7 +144,7 @@ function EmptyResult({
           aria-hidden
         />
       </div>
-      <Text variant="h4" className="text-foreground-strong">
+      <Text variant="h4" tone="primary">
         {category
           ? `No ${categoryLabel ?? category} skills yet`
           : "Nothing published yet"}

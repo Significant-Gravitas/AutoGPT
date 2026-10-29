@@ -18,10 +18,8 @@ export function EmptyState() {
       className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center"
     >
       <Icon icon={Rocket01Icon} size={28} className="text-foreground-subtle" />
-      <Text variant="body-medium" className="text-textBlack">
-        No submissions yet
-      </Text>
-      <Text variant="small" className="max-w-[460px] text-foreground-tertiary">
+      <Text variant="body-medium">No submissions yet</Text>
+      <Text variant="small" tone="muted" className="max-w-[460px]">
         Once you submit a workflow to the store, it&apos;ll show up here with
         its status, runs, and reviews.
       </Text>

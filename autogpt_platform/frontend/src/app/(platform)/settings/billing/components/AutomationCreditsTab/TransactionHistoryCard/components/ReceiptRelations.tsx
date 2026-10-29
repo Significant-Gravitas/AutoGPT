@@ -26,7 +26,7 @@ export function ReceiptRelations({
   return (
     <div className="mt-4 space-y-2 border-t border-border-base pt-3">
       {transaction.parent_execution_id && (
-        <Text variant="small" className="text-foreground-secondary">
+        <Text variant="small" tone="secondary">
           Started by
         </Text>
       )}
@@ -44,7 +44,7 @@ export function ReceiptRelations({
         />
       )}
       {(related.length > 0 || transaction.related_executions_has_more) && (
-        <Text variant="small" className="text-foreground-secondary">
+        <Text variant="small" tone="secondary">
           Other workflows used by this run
         </Text>
       )}
@@ -57,14 +57,14 @@ export function ReceiptRelations({
           onSelectRelated={onSelectRelated}
         />
       ))}
-      <Text variant="small" className="text-foreground-secondary">
+      <Text variant="small" tone="secondary">
         Any credit charges for related runs appear separately.
         {related.length > 0
           ? " The task page includes related runs in its total."
           : ""}
       </Text>
       {transaction.related_executions_has_more && (
-        <Text variant="small" className="text-foreground-secondary">
+        <Text variant="small" tone="secondary">
           More related runs are not shown here.
         </Text>
       )}
@@ -105,7 +105,7 @@ function RelatedExecution({
           variant="ghost"
           size="small"
           // TODO(tokens): no exact role (text-purple-700 #5424AE)
-          className="min-h-11 min-w-0 whitespace-normal px-0 text-left text-purple-700"
+          className="min-h-11 min-w-0 whitespace-normal px-0 text-left text-accent-strong"
           onClick={() => onSelectRelated(execution.execution_id)}
         >
           {name}
@@ -114,7 +114,7 @@ function RelatedExecution({
         <Link
           href={href}
           // TODO(tokens): no exact role (text-purple-700 #5424AE)
-          className="inline-flex min-h-11 items-center text-purple-700"
+          className="inline-flex min-h-11 items-center text-accent-strong"
         >
           {name}
         </Link>

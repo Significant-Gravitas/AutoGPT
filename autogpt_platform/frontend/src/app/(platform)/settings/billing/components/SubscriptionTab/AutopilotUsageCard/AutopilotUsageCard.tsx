@@ -113,7 +113,7 @@ function UsageBar({
               variant="h2"
               as="span"
               // TODO(tokens): no exact text token (leading-[50px], tracking-[-0.055em])
-              className="font-sans text-display font-semibold leading-[50px] tracking-[-0.055em]"
+              className="leading-12 font-sans text-display font-semibold tracking-display"
             >
               {label}
             </Text>

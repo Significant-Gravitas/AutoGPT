@@ -26,8 +26,8 @@ export function ExpertProtectedRules({ rules }: Props) {
           >
             <span
               aria-hidden="true"
-              // TODO(tokens): no exact role: from-emerald-50 #ECFDF5, to-emerald-100/70 #D1FAE5, text-emerald-600 #059669, ring-emerald-200/70 #A7F3D0
-              className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-b from-emerald-50 to-emerald-100/70 text-emerald-600 ring-1 ring-inset ring-emerald-200/70"
+              // TODO(tokens): no exact role: from-success-surface #ECFDF5, to-emerald-100/70 #D1FAE5, text-success #059669, ring-success/20 #A7F3D0
+              className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-b from-success-surface to-emerald-100/70 text-success ring-1 ring-inset ring-success/20"
             >
               <Icon icon={SecurityCheckIcon} size={18} />
             </span>

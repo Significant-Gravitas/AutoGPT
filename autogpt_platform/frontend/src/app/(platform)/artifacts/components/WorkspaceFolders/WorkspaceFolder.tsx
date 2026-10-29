@@ -86,13 +86,14 @@ export function WorkspaceFolder({
       <div className="flex min-w-0 flex-1 flex-col">
         <Text
           variant="body-medium"
-          className="truncate text-foreground-strong"
+          tone="primary"
+          className="truncate"
           data-testid="workspace-folder-name"
           title={name}
         >
           {name}
         </Text>
-        <Text variant="small" className="text-foreground-tertiary">
+        <Text variant="small" tone="muted">
           {folderSummary(fileCount, subfolderCount)}
         </Text>
       </div>

@@ -76,8 +76,8 @@ export function FolderActionsMenu({
             e.preventDefault();
             onDelete();
           }}
-          // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover, a hover fill
-          className="text-red-600 focus:bg-error-surface focus:text-error-foreground"
+          // TODO(tokens): no fitting role for text-error-hover #D93636; #D93636 is error-hover, a hover fill
+          className="text-error-hover focus:bg-error-surface focus:text-error-foreground"
           data-testid="folder-delete-menu"
         >
           <Icon icon={Delete02Icon} size={16} className="mr-2" />

@@ -63,7 +63,7 @@ export function APIKeyRow({
         </button>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <Text variant="body-medium" as="span" className="text-textBlack">
+            <Text variant="body-medium" as="span">
               {apiKey.name}
             </Text>
             <TooltipProvider>
@@ -83,14 +83,10 @@ export function APIKeyRow({
             </TooltipProvider>
           </div>
           <div className="flex items-center gap-3 whitespace-nowrap">
-            <Text variant="label" as="span" className="text-foreground-body">
+            <Text variant="label" as="span" tone="body">
               {maskedKey}
             </Text>
-            <Text
-              variant="small"
-              as="span"
-              className="leading-5 text-foreground-tertiary"
-            >
+            <Text variant="small" as="span" tone="muted" className="leading-5">
               {lastUsedLabel}
             </Text>
           </div>
