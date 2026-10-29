@@ -6,7 +6,7 @@ export function mobileConsentPage(
     `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; form-action 'self' autogpt:; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; form-action 'self'; base-uri 'none'">
 <title>Sign in to AutoGPT</title></head>
 <body>
 <main><h1>Continue to AutoGPT</h1>

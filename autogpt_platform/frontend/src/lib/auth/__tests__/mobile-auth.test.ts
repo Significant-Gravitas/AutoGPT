@@ -4,6 +4,7 @@ import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { admin } from "better-auth/plugins";
+import { MOBILE_AUTH_CALLBACK_PATH } from "../mobile-app-links";
 import { mobileAuth } from "../mobile-auth";
 import { mobileConsentPage } from "../mobile-consent-page";
 
@@ -125,9 +126,8 @@ describe("mobile sign-in", () => {
     );
     expect(approved.status).toBe(302);
     const callback = new URL(approved.headers.get("location")!);
-    expect(callback.origin).toBe("null");
-    expect(callback.protocol).toBe("autogpt:");
-    expect(callback.hostname).toBe("auth");
+    expect(callback.origin).toBe(baseURL);
+    expect(callback.pathname).toBe(MOBILE_AUTH_CALLBACK_PATH);
     expect(callback.searchParams.get("state")).toBe(state);
     expect(callback.searchParams.has("token")).toBe(false);
     const code = callback.searchParams.get("code")!;
@@ -245,7 +245,7 @@ describe("mobile sign-in", () => {
     expect((await post("exchange", { code, verifier })).status).toBe(302);
   });
 
-  it("escapes consent fields and permits the fixed app callback in its document policy", async () => {
+  it("escapes consent fields and lets the form post only to its own origin", async () => {
     const page = await mobileConsentPage('<img src=x onerror="alert(1)">', {
       challenge: '"><script>alert(1)</script>',
       state: '"><img src=x onerror="alert(1)">',
@@ -253,7 +253,7 @@ describe("mobile sign-in", () => {
     expect(page).not.toContain("<script>");
     expect(page).not.toContain("<img");
     expect(page).toContain('http-equiv="Content-Security-Policy"');
-    expect(page).toContain("form-action 'self' autogpt:");
+    expect(page).toContain("form-action 'self';");
   });
 
   it("requires a session and the exact origin to approve sign-in", async () => {

@@ -75,13 +75,15 @@ final class ShellViewController: UIViewController, ASWebAuthenticationPresentati
   @objc func signIn() {
     guard authSession == nil else { return }
     let attempt = AuthAttempt()
+    // Only an app with this host as an associated domain can claim the callback.
     authSession = ASWebAuthenticationSession(
-      url: attempt.startURL(origin: policy.origin), callbackURLScheme: "autogpt"
+      url: attempt.startURL(origin: policy.origin),
+      callback: .https(host: policy.origin.host!, path: AuthAttempt.callbackPath)
     ) { [weak self] url, _ in
       DispatchQueue.main.async {
         guard let self else { return }
         self.authSession = nil
-        guard let url, let body = attempt.exchangeBody(callback: url) else {
+        guard let url, let body = attempt.exchangeBody(callback: url, policy: self.policy) else {
           self.showMessage("Sign-in did not finish. Tap Sign in to try again.")
           return
         }

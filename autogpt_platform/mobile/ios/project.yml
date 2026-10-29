@@ -2,13 +2,14 @@ name: AutoGPT
 options:
   bundleIdPrefix: co.agpt
   deploymentTarget:
-    iOS: '16.0'
+    iOS: '17.4'
 settings:
   base:
     SWIFT_VERSION: '5.0'
     MARKETING_VERSION: '0.1.0'
     CURRENT_PROJECT_VERSION: '1'
-    AUTOGPT_ORIGIN: https://platform.agpt.co
+    AUTOGPT_HOST: platform.agpt.co
+    AUTOGPT_ORIGIN: https://$(AUTOGPT_HOST)
 targets:
   AutoGPT:
     type: application
@@ -33,9 +34,12 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        CFBundleURLTypes:
-          - CFBundleURLName: co.agpt.autogpt.auth
-            CFBundleURLSchemes: [autogpt]
+    entitlements:
+      path: AutoGPT/AutoGPT.entitlements
+      properties:
+        com.apple.developer.associated-domains:
+          - applinks:$(AUTOGPT_HOST)
+          - webcredentials:$(AUTOGPT_HOST)
 schemes:
   AutoGPT:
     build:
