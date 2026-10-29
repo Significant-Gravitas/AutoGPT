@@ -45,8 +45,15 @@ make init-env
 
 This generates `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`,
 `BETTER_AUTH_SECRET`, and the passwords of the database, RabbitMQ, Redis and
-FalkorDB, for your install only. There is nothing to generate by hand, and the
-stack does not start without them.
+FalkorDB, for your install only. There is nothing to generate by hand. Most of
+them are required: without `ENCRYPTION_KEY` the backend refuses to start,
+without `POSTGRES_PASSWORD` Docker Compose refuses to start, without the
+FalkorDB password its container exits, without the RabbitMQ password the
+backend cannot log in to it, and without `BETTER_AUTH_SECRET` sign-in fails.
+The rest can be empty: `INTERNAL_API_KEY` is then derived from
+`ENCRYPTION_KEY`, and without `REDIS_PASSWORD` or `UNSUBSCRIBE_SECRET_KEY` the
+backend logs a warning and runs with Redis open to the other containers and
+email unsubscribe links unsigned.
 
 The database password is in three places: `POSTGRES_PASSWORD` in
 `autogpt_platform/.env`, which Docker uses for the database and for every
@@ -220,7 +227,7 @@ Redis Cluster, not a single Redis server.
 ## Checklist
 
 - [ ] `make init-env` in `autogpt_platform/`
-- [ ] Your own VAPID keys in `backend/.env` and `NEXT_PUBLIC_VAPID_PUBLIC_KEY` in `frontend/.env`
+- [ ] Your own VAPID keys and a real `mailto:` `VAPID_CLAIM_EMAIL` in `backend/.env`, and `NEXT_PUBLIC_VAPID_PUBLIC_KEY` in `frontend/.env`
 - [ ] `FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` added to `autogpt_platform/.env`
 - [ ] `BETTER_AUTH_URL`, `NEXT_PUBLIC_AGPT_SERVER_URL` and `NEXT_PUBLIC_AGPT_WS_SERVER_URL` in `frontend/.env`
 - [ ] `PLATFORM_BASE_URL` and `BACKEND_CORS_ALLOW_ORIGINS` in `backend/.env`
