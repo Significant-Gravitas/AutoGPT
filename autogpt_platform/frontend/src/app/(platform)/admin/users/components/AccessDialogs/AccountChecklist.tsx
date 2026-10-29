@@ -1,8 +1,5 @@
 "use client";
 
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// text-emerald-700 #047857.
-
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -68,21 +65,13 @@ export function AccountChecklist({
                 {account.email}
               </Text>
               {account.name.trim() ? (
-                <Text
-                  variant="small"
-                  as="span"
-                  className="text-foreground-tertiary"
-                >
+                <Text variant="small" as="span" tone="muted">
                   {account.name}
                 </Text>
               ) : null}
             </label>
             {account.banned ? (
-              <Text
-                variant="small"
-                as="span"
-                className="text-foreground-tertiary"
-              >
+              <Text variant="small" as="span" tone="muted">
                 already banned
               </Text>
             ) : (
@@ -103,9 +92,9 @@ export function AccountChecklist({
 function ResultMark({ result }: { result: BanAccountResult }) {
   if (result.ok) {
     return (
-      <span className="flex items-center gap-1 text-emerald-700">
+      <span className="flex items-center gap-1 text-success-foreground">
         <Icon icon={Tick01Icon} size={14} />
-        <Text variant="small" as="span" className="text-emerald-700">
+        <Text variant="small" as="span" tone="success-strong">
           banned
         </Text>
       </span>
@@ -114,7 +103,7 @@ function ResultMark({ result }: { result: BanAccountResult }) {
   return (
     <span className="flex items-center gap-1 text-error-foreground">
       <Icon icon={Alert02Icon} size={14} />
-      <Text variant="small" as="span" className="text-error-foreground">
+      <Text variant="small" as="span" tone="danger">
         {result.error ?? "failed"}
       </Text>
     </span>
