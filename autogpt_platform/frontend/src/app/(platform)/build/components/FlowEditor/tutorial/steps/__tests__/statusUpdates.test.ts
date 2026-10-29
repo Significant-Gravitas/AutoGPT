@@ -161,7 +161,10 @@ describe("tutorial requirement and connection status", () => {
       const step = mount(steps, id);
       step.when?.show?.();
       expect(classes(status)).toEqual(
-        expect.arrayContaining(["bg-warning-surface", "text-warning-foreground"]),
+        expect.arrayContaining([
+          "bg-warning-surface",
+          "text-warning-foreground",
+        ]),
       );
 
       useEdgeStore.setState({
