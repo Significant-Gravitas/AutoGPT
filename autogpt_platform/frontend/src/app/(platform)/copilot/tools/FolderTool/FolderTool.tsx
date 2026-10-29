@@ -2,14 +2,6 @@
 
 import type { ToolUIPart } from "ai";
 import {
-  FileIcon,
-  FolderIcon,
-  FolderPlusIcon,
-  FoldersIcon,
-  TrashIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
-import {
   File as TreeFile,
   Folder as TreeFolder,
   Tree,
@@ -40,6 +32,17 @@ import {
   type FolderToolOutput,
   type FolderTreeInfo,
 } from "./helpers";
+import {
+  AlertDiamondIcon,
+  Delete02Icon,
+  FileEmpty02Icon,
+  Folder01Icon,
+  FolderAddIcon,
+  FolderLibraryIcon,
+  FolderOpenIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   part: ToolUIPart;
@@ -57,14 +60,14 @@ function ToolStatusIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
-  return <FolderIcon size={14} weight="regular" className="text-neutral-400" />;
+  return (
+    <Icon icon={Folder01Icon} size={14} className="text-foreground-subtle" />
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -82,26 +85,32 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
               style={{ backgroundColor: folder.color }}
             />
           ) : (
-            <FolderIcon size={14} weight="fill" className="text-neutral-600" />
+            <Icon
+              icon={Folder01Icon}
+              size={14}
+              className="text-foreground-secondary"
+            />
           )}
           <ContentCardTitle>{folder.name}</ContentCardTitle>
         </div>
       </ContentCardHeader>
       <ContentHint>
-        {folder.agent_count} agent{folder.agent_count !== 1 ? "s" : ""}
+        {folder.agent_count} workflow{folder.agent_count !== 1 ? "s" : ""}
         {folder.subfolder_count > 0 &&
           ` · ${folder.subfolder_count} subfolder${folder.subfolder_count !== 1 ? "s" : ""}`}
       </ContentHint>
       {folder.agents && folder.agents.length > 0 && (
-        <div className="mt-2 space-y-1 border-t border-neutral-200 pt-2">
+        <div className="mt-2 space-y-1 border-t border-border-base pt-2">
           {folder.agents.map((a) => (
             <div key={a.id} className="flex items-center gap-1.5">
-              <FileIcon
+              <Icon
+                icon={FileEmpty02Icon}
                 size={12}
-                weight="duotone"
-                className="text-neutral-600"
+                className="text-foreground-secondary"
               />
-              <span className="text-xs text-zinc-600">{a.name}</span>
+              <Text variant="small-tight" as="span" tone="secondary">
+                {a.name}
+              </Text>
             </div>
           ))}
         </div>
@@ -128,7 +137,7 @@ function folderTreeToElements(nodes: FolderTreeInfo[]): TreeNode[] {
     ];
     return {
       id: node.id,
-      name: `${node.name} (${node.agent_count} agent${node.agent_count !== 1 ? "s" : ""})`,
+      name: `${node.name} (${node.agent_count} workflow${node.agent_count !== 1 ? "s" : ""})`,
       children: children.length > 0 ? children : undefined,
     };
   });
@@ -147,10 +156,18 @@ function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
       initialExpandedItems={allIDs}
       elements={elements}
       openIcon={
-        <FolderIcon size={16} weight="fill" className="text-neutral-600" />
+        <Icon
+          icon={FolderOpenIcon}
+          size={16}
+          className="text-foreground-secondary"
+        />
       }
       closeIcon={
-        <FolderIcon size={16} weight="duotone" className="text-neutral-600" />
+        <Icon
+          icon={Folder01Icon}
+          size={16}
+          className="text-foreground-secondary"
+        />
       }
       className="max-h-64"
     >
@@ -167,10 +184,16 @@ function FolderTreeNodes({ element }: { element: TreeNode }) {
       <TreeFile
         value={element.id}
         fileIcon={
-          <FileIcon size={14} weight="duotone" className="text-neutral-600" />
+          <Icon
+            icon={FileEmpty02Icon}
+            size={14}
+            className="text-foreground-secondary"
+          />
         }
       >
-        <span className="text-sm text-zinc-700">{element.name}</span>
+        <Text variant="body-tight" as="span" tone="body">
+          {element.name}
+        </Text>
       </TreeFile>
     );
   }
@@ -248,16 +271,15 @@ function getAccordionTitle(output: FolderToolOutput): string {
   if (isFolderMoved(output)) return `Moved "${output.folder.name}"`;
   if (isFolderDeleted(output)) return "Folder deleted";
   if (isAgentsMoved(output))
-    return `Moved ${output.count} agent${output.count !== 1 ? "s" : ""}`;
+    return `Moved ${output.count} workflow${output.count !== 1 ? "s" : ""}`;
   return "Folder operation";
 }
 
 function getAccordionIcon(output: FolderToolOutput) {
-  if (isFolderCreated(output))
-    return <FolderPlusIcon size={32} weight="light" />;
-  if (isFolderList(output)) return <FoldersIcon size={32} weight="light" />;
-  if (isFolderDeleted(output)) return <TrashIcon size={32} weight="light" />;
-  return <FolderIcon size={32} weight="light" />;
+  if (isFolderCreated(output)) return <Icon icon={FolderAddIcon} size={32} />;
+  if (isFolderList(output)) return <Icon icon={FolderLibraryIcon} size={32} />;
+  if (isFolderDeleted(output)) return <Icon icon={Delete02Icon} size={32} />;
+  return <Icon icon={Folder01Icon} size={32} />;
 }
 
 export function FolderTool({ part }: Props) {
@@ -278,7 +300,7 @@ export function FolderTool({ part }: Props) {
         <ToolStatusIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 

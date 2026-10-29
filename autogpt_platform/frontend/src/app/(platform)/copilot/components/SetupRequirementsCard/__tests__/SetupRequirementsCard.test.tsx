@@ -1,4 +1,5 @@
 import {
+  act,
   render,
   screen,
   fireEvent,
@@ -8,8 +9,20 @@ import {
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SetupRequirementsCard } from "../SetupRequirementsCard";
+import {
+  ChainActionsContext,
+  type ChainActionEntry,
+} from "../../ToolChain/chainActions";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import type { CredentialRejection } from "@/app/api/__generated__/models/credentialRejection";
 import { useConnectedProvidersStore } from "../../../connectedProvidersStore";
+import { putV2RecordCredentialPicksForThisChat } from "@/app/api/__generated__/endpoints/chat/chat";
+
+// Proceed records the picked accounts first, then sends; the reply is what
+// re-runs the tool, so it must find the pick already in place.
+vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
+  putV2RecordCredentialPicksForThisChat: vi.fn().mockResolvedValue(undefined),
+}));
 
 const mockOnSend = vi.fn();
 vi.mock("../../CopilotChatActionsProvider/useCopilotChatActions", () => ({
@@ -19,8 +32,33 @@ vi.mock("../../CopilotChatActionsProvider/useCopilotChatActions", () => ({
 vi.mock(
   "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView",
   () => ({
-    CredentialsGroupedView: () => (
-      <div data-testid="credentials-grouped-view">Credentials</div>
+    CredentialsGroupedView: ({
+      requiredCredentials,
+      onCredentialChange,
+    }: {
+      requiredCredentials: Set<string>;
+      onCredentialChange: (
+        key: string,
+        value?: { id: string; provider: string },
+      ) => void;
+    }) => (
+      <div data-testid="credentials-grouped-view">
+        Credentials
+        <button
+          data-testid="select-credential"
+          onClick={() =>
+            [...requiredCredentials].forEach((key) =>
+              // The real picker hands back the provider with the id.
+              onCredentialChange(key, {
+                id: `cred-${key}`,
+                provider: key.replace(/_credentials$/, ""),
+              }),
+            )
+          }
+        >
+          Select
+        </button>
+      </div>
     ),
   }),
 );
@@ -56,12 +94,14 @@ function makeOutput(
     message?: string;
     missingCredentials?: Record<string, unknown>;
     inputs?: unknown[];
+    rejection?: CredentialRejection;
   } = {},
 ): SetupRequirementsResponse {
   const {
     message = "Please configure credentials",
     missingCredentials,
     inputs,
+    rejection,
   } = overrides;
   return {
     type: "setup_requirements",
@@ -83,6 +123,7 @@ function makeOutput(
     },
     graph_id: null,
     graph_version: null,
+    rejection: rejection ?? null,
   } as SetupRequirementsResponse;
 }
 
@@ -156,7 +197,7 @@ describe("SetupRequirementsCard (edit mode)", () => {
     expect(proceed.closest("button")?.disabled).toBe(false);
   });
 
-  it("calls onSend and shows Connected message when Proceed is clicked", () => {
+  it("calls onSend and shows Connected message when Proceed is clicked", async () => {
     render(
       <SetupRequirementsCard
         output={makeOutput({
@@ -173,7 +214,7 @@ describe("SetupRequirementsCard (edit mode)", () => {
       />,
     );
     fireEvent.click(screen.getByText("Proceed"));
-    expect(mockOnSend).toHaveBeenCalledOnce();
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalledOnce());
     expect(screen.getByText(/Connected. Continuing/)).toBeDefined();
   });
 
@@ -300,7 +341,7 @@ describe("SetupRequirementsCard (preview mode)", () => {
     expect(screen.queryByText(/url • string/i)).toBeNull();
   });
 
-  it("labels credentials section as 'Agent credentials' by default", () => {
+  it("labels credentials section as 'Workflow credentials' by default", () => {
     render(
       <SetupRequirementsCard
         inputsMode="preview"
@@ -311,7 +352,7 @@ describe("SetupRequirementsCard (preview mode)", () => {
         })}
       />,
     );
-    expect(screen.getByText("Agent credentials")).toBeDefined();
+    expect(screen.getByText("Workflow credentials")).toBeDefined();
   });
 
   it("does not render advanced toggle even when advanced inputs exist", () => {
@@ -352,7 +393,7 @@ describe("SetupRequirementsCard (preview mode)", () => {
     expect(proceed!.closest("button")?.disabled).toBe(false);
   });
 
-  it("sends the legacy run_agent message on Proceed", () => {
+  it("sends the legacy run_agent message on Proceed", async () => {
     render(
       <SetupRequirementsCard
         inputsMode="preview"
@@ -364,8 +405,10 @@ describe("SetupRequirementsCard (preview mode)", () => {
       />,
     );
     fireEvent.click(screen.getByText("Proceed"));
-    expect(mockOnSend).toHaveBeenCalledWith(
-      "Please proceed with running the agent.",
+    await waitFor(() =>
+      expect(mockOnSend).toHaveBeenCalledWith(
+        "Please proceed with running the workflow.",
+      ),
     );
   });
 });
@@ -414,7 +457,7 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
 
     await waitFor(() =>
       expect(mockOnSend).toHaveBeenCalledWith(
-        "I've configured the required credentials. Please check if everything is ready and proceed with running the agent.",
+        "I've configured the required credentials. Please check if everything is ready and proceed with running the workflow.",
       ),
     );
   });
@@ -601,5 +644,169 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
     // risk that the microtask used to guard against).
     expect(screen.getByText(/Connected. Continuing/)).toBeDefined();
     await waitFor(() => expect(mockOnSend).toHaveBeenCalledOnce());
+  });
+});
+
+describe("SetupRequirementsCard (trigger mode)", () => {
+  it("carries the picked credential IDs back on Proceed", async () => {
+    render(
+      <SetupRequirementsCard
+        inputsMode="trigger"
+        credentialsLabel="Account"
+        output={makeOutput({
+          missingCredentials: {
+            github_credentials: { provider: "github", types: ["api_key"] },
+          },
+        })}
+      />,
+    );
+
+    // Trigger mode labels the credentials section "Account".
+    expect(screen.getByText("Account")).toBeDefined();
+
+    // Proceed stays disabled until a credential is selected.
+    expect(screen.getByText("Proceed").closest("button")?.disabled).toBe(true);
+
+    fireEvent.click(screen.getByTestId("select-credential"));
+    expect(screen.getByText("Proceed").closest("button")?.disabled).toBe(false);
+
+    fireEvent.click(screen.getByText("Proceed"));
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalledOnce());
+    // The pick reaches the backend before the reply that re-runs the tool.
+    const record = vi.mocked(putV2RecordCredentialPicksForThisChat);
+    expect(record).toHaveBeenCalledWith(expect.any(String), {
+      selections: { github: "cred-github_credentials" },
+    });
+    expect(record.mock.invocationCallOrder[0]).toBeLessThan(
+      mockOnSend.mock.invocationCallOrder[0],
+    );
+    const sent = mockOnSend.mock.calls[0][0] as string;
+    expect(sent).toContain("setup_agent_webhook_trigger");
+    expect(sent).toContain(
+      'credentials={"github_credentials":"cred-github_credentials"}',
+    );
+  });
+});
+
+describe("SetupRequirementsCard (rejected credential)", () => {
+  const rejection: CredentialRejection = {
+    provider: "openai",
+    detail: "HTTP 401 Error: invalid_api_key",
+    status_code: 401,
+    credential_id: "cred-api_key",
+    credential_title: "Work key",
+  };
+
+  function renderRejected(overrides: Partial<CredentialRejection> = {}) {
+    render(
+      <SetupRequirementsCard
+        output={makeOutput({
+          missingCredentials: {
+            api_key: { provider: "openai", types: ["api_key"] },
+          },
+          rejection: { ...rejection, ...overrides },
+        })}
+      />,
+    );
+  }
+
+  it("shows the provider's reason and the status code", () => {
+    renderRejected();
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "HTTP 401 Error: invalid_api_key",
+    );
+    expect(screen.getByRole("alert").textContent).toContain("Work key");
+  });
+
+  it("never auto-dismisses, even when the provider is already connected here", async () => {
+    useConnectedProvidersStore
+      .getState()
+      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+
+    renderRejected();
+
+    expect(screen.queryByText(/Connected. Continuing/)).toBeNull();
+    expect(screen.getByText("Proceed")).toBeDefined();
+    await waitFor(() => expect(mockOnSend).not.toHaveBeenCalled());
+  });
+
+  it("keeps Proceed disabled while the refused credential is the selected one", () => {
+    renderRejected();
+
+    fireEvent.click(screen.getByTestId("select-credential"));
+    expect(screen.getByText("Proceed").closest("button")?.disabled).toBe(true);
+  });
+
+  it("enables Proceed once a different credential is selected", () => {
+    renderRejected({ credential_id: "cred-that-was-replaced" });
+
+    fireEvent.click(screen.getByTestId("select-credential"));
+    expect(screen.getByText("Proceed").closest("button")?.disabled).toBe(false);
+  });
+
+  it("renders no rejection notice when the field is absent", () => {
+    render(
+      <SetupRequirementsCard
+        output={makeOutput({
+          missingCredentials: {
+            api_key: { provider: "openai", types: ["api_key"] },
+          },
+        })}
+      />,
+    );
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  describe("inside a chain", () => {
+    function renderInChain() {
+      const entries: ChainActionEntry[] = [];
+      render(
+        <ChainActionsContext.Provider
+          value={{
+            register: (_owner, entry) => entries.push(entry),
+            unregister: vi.fn(),
+          }}
+        >
+          <SetupRequirementsCard
+            output={makeOutput({
+              missingCredentials: {
+                api_key: { provider: "openai", types: ["api_key"] },
+              },
+              rejection,
+            })}
+          />
+        </ChainActionsContext.Provider>,
+      );
+      const latest = () => entries[entries.length - 1];
+      // Holding the refused credential is the state a sign-in has to clear.
+      act(() =>
+        latest().connectors!.onChange("api_key", {
+          id: "cred-api_key",
+          provider: "openai",
+          type: "api_key",
+        }),
+      );
+      return latest;
+    }
+
+    it("stays unready when the sign-in reported a different credential", () => {
+      const latest = renderInChain();
+
+      act(() => latest().connectors!.onConnected("cred-someone-else"));
+
+      expect(latest().justConnected).toBe(true);
+      expect(latest().ready).toBe(false);
+    });
+
+    it("is ready once the sign-in renewed the refused credential itself", () => {
+      const latest = renderInChain();
+      expect(latest().ready).toBe(false);
+
+      act(() => latest().connectors!.onConnected("cred-api_key"));
+
+      expect(latest().ready).toBe(true);
+    });
   });
 });

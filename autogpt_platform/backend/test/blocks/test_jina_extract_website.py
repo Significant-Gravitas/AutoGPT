@@ -8,7 +8,6 @@ from backend.blocks.jina._auth import (
     JinaCredentialsInput,
 )
 from backend.blocks.jina.search import (
-    NO_SEARCH_RESULTS_OUTPUT,
     ExtractWebsiteContentBlock,
     SearchTheWebBlock,
     _extract_json_body,
@@ -74,7 +73,7 @@ async def test_extract_website_content_handles_http_error(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_search_the_web_returns_sentinel_for_no_matches(monkeypatch):
+async def test_search_the_web_returns_empty_results_for_no_matches(monkeypatch):
     block = SearchTheWebBlock()
     input_data = block.Input(
         query="PES 2013 player stats historical",
@@ -96,9 +95,7 @@ async def test_search_the_web_returns_sentinel_for_no_matches(monkeypatch):
         )
     ]
 
-    assert results == [("results", NO_SEARCH_RESULTS_OUTPUT)]
-    # Jina does not bill the 422 no-results path; ensure provider cost stays unset
-    # so a future refactor cannot silently start charging users for empty searches.
+    assert results == [("results", "")]
     assert block.execution_stats.provider_cost is None
     assert block.execution_stats.provider_cost_type is None
 
@@ -216,3 +213,4 @@ async def test_search_the_web_records_cost_on_success(monkeypatch):
 
     assert results == [("results", "search content")]
     assert block.execution_stats.provider_cost == 0.01
+    assert block.execution_stats.provider_cost_type == "cost_usd"

@@ -4,12 +4,17 @@ import json
 import logging
 from typing import Any, cast
 
+from backend.api.features.library.exceptions import (
+    LibraryAgentInAnotherOrganizationError,
+)
 from backend.copilot.tools.models import (
     AgentPreviewResponse,
     AgentSavedResponse,
     ErrorResponse,
     ToolResponseBase,
 )
+from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .blocks import get_blocks_as_dicts
 from .core import get_library_agents_by_ids, save_agent_to_library
@@ -19,6 +24,24 @@ from .validator import AgentValidator
 logger = logging.getLogger(__name__)
 
 MAX_AGENT_JSON_SIZE = 1_000_000  # 1 MB
+
+# Raised with text written for whoever saves the agent. Any other exception's
+# text can name a query, a table or a provider's response.
+_CALLER_FACING_ERRORS = (
+    GraphActivationError,
+    LibraryAgentInAnotherOrganizationError,
+    NotAuthorizedError,
+    NotFoundError,
+    ValueError,
+)
+
+
+def _error_text(error: Exception, external_caller: bool) -> str:
+    """The exception's text, unless an External API client would see text
+    that wasn't written for it."""
+    if external_caller and not isinstance(error, _CALLER_FACING_ERRORS):
+        return "an internal error"
+    return str(error)
 
 
 async def fetch_library_agents(
@@ -49,12 +72,16 @@ async def fix_validate_and_save(
     session_id: str | None,
     save: bool = True,
     is_update: bool = False,
-    default_name: str = "Agent",
+    default_name: str = "Workflow",
     preview_message: str | None = None,
     save_message: str | None = None,
     library_agents: list[dict[str, Any]] | None = None,
     folder_id: str | None = None,
     is_hidden: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    move_webhook_presets: bool = True,
+    external_caller: bool = False,
 ) -> ToolResponseBase:
     """Shared pipeline: auto-fix → validate → preview or save.
 
@@ -68,6 +95,12 @@ async def fix_validate_and_save(
         preview_message: Custom preview message (optional).
         save_message: Custom save success message (optional).
         library_agents: Library agents for AgentExecutorBlock validation/fixing.
+        organization_id, team_id: Tenancy for a new graph or version; None
+            keeps the defaults.
+        move_webhook_presets: On an update, move the agent's webhook presets
+            onto the new version.
+        external_caller: An External API client is saving; a failed save
+            tells it only what was written for it.
 
     Returns:
         An appropriate ToolResponseBase subclass.
@@ -114,9 +147,9 @@ async def fix_validate_and_save(
     except Exception as e:
         logger.error(f"Validation failed with exception: {e}", exc_info=True)
         return ErrorResponse(
-            message="Failed to validate the agent. Please try again.",
+            message="Failed to validate the workflow. Please try again.",
             error="validation_exception",
-            details={"exception": str(e)},
+            details={"exception": _error_text(e, external_caller)},
             session_id=session_id,
         )
 
@@ -133,6 +166,12 @@ async def fix_validate_and_save(
         "updated agent",
         "new agent",
         "my agent",
+        "workflow",
+        "generated workflow",
+        "customized workflow",
+        "updated workflow",
+        "new workflow",
+        "my workflow",
     }
     metadata_warnings: list[str] = []
     if not agent_json.get("name") or agent_name.lower().strip() in _GENERIC_NAMES:
@@ -143,7 +182,7 @@ async def fix_validate_and_save(
     if metadata_warnings:
         missing = " and ".join(metadata_warnings)
         metadata_hint = (
-            f" Note: the agent is missing a meaningful {missing}. "
+            f" Note: the workflow is missing a meaningful {missing}. "
             f"Please update the agent_json to include them."
         )
 
@@ -152,7 +191,7 @@ async def fix_validate_and_save(
             message=(
                 (
                     preview_message
-                    or f"Agent '{agent_name}' with {node_count} blocks is ready."
+                    or f"Workflow '{agent_name}' with {node_count} blocks is ready."
                 )
                 + metadata_hint
             ),
@@ -166,7 +205,7 @@ async def fix_validate_and_save(
 
     if not user_id:
         return ErrorResponse(
-            message="You must be logged in to save agents.",
+            message="You must be logged in to save workflows.",
             error="auth_required",
             session_id=session_id,
         )
@@ -178,10 +217,13 @@ async def fix_validate_and_save(
             is_update=is_update,
             folder_id=folder_id,
             is_hidden=is_hidden,
+            organization_id=organization_id,
+            team_id=team_id,
+            move_webhook_presets=move_webhook_presets,
         )
         return AgentSavedResponse(
             message=(
-                (save_message or f"Agent '{created_graph.name}' has been saved!")
+                (save_message or f"Workflow '{created_graph.name}' has been saved!")
                 + metadata_hint
             ),
             agent_id=created_graph.id,
@@ -194,9 +236,10 @@ async def fix_validate_and_save(
         )
     except Exception as e:
         logger.error(f"Failed to save agent: {e}", exc_info=True)
+        detail = _error_text(e, external_caller)
         return ErrorResponse(
-            message=f"Failed to save the agent: {str(e)}",
+            message=f"Failed to save the workflow: {detail}",
             error="save_failed",
-            details={"exception": str(e)},
+            details={"exception": detail},
             session_id=session_id,
         )

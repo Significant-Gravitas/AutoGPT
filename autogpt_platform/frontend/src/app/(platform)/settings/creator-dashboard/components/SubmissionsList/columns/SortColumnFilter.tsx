@@ -1,13 +1,12 @@
 "use client";
-
-import { ArrowDownIcon, ArrowUpIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
 import { type SortDir, type SortKey } from "../../../helpers";
 import { ColumnFilter } from "../../ColumnFilter/ColumnFilter";
+import { ArrowDown02Icon, ArrowUp02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   sortKey: SortKey;
@@ -43,13 +42,13 @@ export function SortColumnFilter({
           Sort
         </Text>
         <SortOption
-          icon={<ArrowDownIcon size={14} weight="bold" />}
+          icon={<Icon icon={ArrowDown02Icon} size={14} />}
           label={descLabel}
           active={isActive && activeDir === "desc"}
           onClick={() => pick("desc")}
         />
         <SortOption
-          icon={<ArrowUpIcon size={14} weight="bold" />}
+          icon={<Icon icon={ArrowUp02Icon} size={14} />}
           label={ascLabel}
           active={isActive && activeDir === "asc"}
           onClick={() => pick("asc")}
@@ -90,14 +89,14 @@ function SortOption({
         "ease-[cubic-bezier(0.16,1,0.3,1)] transition-[background-color,color,transform] duration-150",
         "active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100",
         active
-          ? "bg-violet-50 text-violet-700"
-          : "text-zinc-700 hover:bg-zinc-100",
+          ? "bg-accent-surface text-accent-strong"
+          : "text-foreground-body hover:bg-surface-hover",
       )}
     >
       <span
         className={cn(
-          "flex h-5 w-5 items-center justify-center rounded text-zinc-500",
-          active && "text-violet-700",
+          "flex h-5 w-5 items-center justify-center rounded text-foreground-tertiary",
+          active && "text-accent-strong",
         )}
       >
         {icon}

@@ -5,17 +5,24 @@
 - ``AutoPilotBlock`` reads four block-input fields and builds one instance.
 - ``stream_chat_completion_sdk`` applies it when constructing
   ``ClaudeAgentOptions.allowed_tools`` / ``disallowed_tools``.
-- ``run_block`` reads it from the contextvar to gate block execution.
+- ``run_capability`` reads it from the contextvar to gate block execution.
 - Recursive (sub-agent) invocations merge parent and child so children
   can only be *more* restrictive, never more permissive.
 
 Tool names
 ----------
 Users specify the **short name** as it appears in ``TOOL_REGISTRY`` (e.g.
-``run_block``, ``web_fetch``) or as an SDK built-in (e.g. ``Read``,
+``run_capability``, ``web_fetch``) or as an SDK built-in (e.g. ``Read``,
 ``Task``, ``WebSearch``).  Internally these are mapped to the full SDK
-format (``mcp__copilot__run_block``, ``Read``, …) by
+format (``mcp__copilot__run_capability``, ``Read``, …) by
 :func:`apply_tool_permissions`.
+
+Two names are **capability gates** rather than tools: ``run_block`` and
+``run_mcp_tool`` no longer exist as tools (blocks and MCP servers run through
+``run_capability``), but denying them still denies that whole kind of
+capability, so saved graphs keep their meaning.  Retired discovery names
+(``find_block``, ``get_mcp_guide``, ``continue_run_block``) are accepted for
+saved graphs and mapped to their registry equivalents.
 
 Block identifiers
 -----------------
@@ -37,7 +44,25 @@ tools are denied and everything else is allowed.  An empty list means
 ``tools_exclude=False`` — ``tools`` is a **whitelist**; only listed tools
 are allowed.
 
-``blocks_exclude`` follows the same pattern for ``blocks``.
+``blocks_exclude`` follows the same pattern for ``blocks``, and
+``providers_exclude`` for ``providers``.
+
+Providers
+---------
+``providers`` filters the connected accounts a run's sandbox may use, by
+provider slug (``github``).  It is a ceiling on credentials, not on tools: the
+backend records it on the sandbox when the box's egress is pinned
+(``backend.util.e2b_network``), and the swap proxy's credential service
+(``backend.copilot.swap_credentials``) refuses to hand out a value for a
+provider outside it.  Nothing in the sandbox enforces it, so nothing there can
+widen it.
+
+Denying a capability denies the tools that extend it (see
+``_IMPLIED_DENIALS``); allowing a capability gate allows the tool that now
+performs it (see ``_IMPLIED_GRANTS``). Either list is written against the
+tools that exist when it is written, so a later tool that reaches the same
+resource would otherwise be silently regained by every existing blacklist,
+and a renamed one silently lost by every existing whitelist.
 
 Recursion inheritance
 ---------------------
@@ -52,9 +77,12 @@ is at most as permissive as the parent:
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Literal, get_args
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 from pydantic import BaseModel, PrivateAttr
+
+from backend.copilot.providers import SUPPORTED_PROVIDERS
+from backend.integrations.providers import ProviderName
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -71,58 +99,96 @@ if TYPE_CHECKING:
 ToolName = Literal[
     # Platform tools (must match keys in TOOL_REGISTRY)
     "add_understanding",
+    "ask_question",
     "bash_exec",
     "browser_act",
     "browser_navigate",
     "browser_screenshot",
+    "confirm_expert_change",
+    "confirm_expert_soul_update",
     "connect_integration",
-    "continue_run_block",
+    "consult_teammate",
     "create_agent",
     "create_feature_request",
     "create_folder",
     "customize_agent",
     "decompose_goal",
+    "delegate_to_expert",
     "delete_folder",
+    "delete_preset",
     "delete_schedule",
     "delete_skill",
     "delete_workspace_file",
+    "describe_capability",
     "edit_agent",
+    "edit_chat_platform_message",
+    "enter_agent_building_mode",
+    "expert_onboarding",
     "find_agent",
-    "find_block",
+    "find_capability",
     "find_library_agent",
+    "find_session",
     "fix_agent_graph",
     "get_agent_building_guide",
     "get_doc_page",
-    "get_mcp_guide",
     "get_platform_info",
     "get_sub_session_result",
+    "grant_expert_credential",
+    "handoff_to_expert",
+    "hire_expert",
+    "install_expert_workflow",
     "list_agent_triggers",
+    "list_chat_platform_channels",
+    "list_expert_chats",
+    "list_expert_credentials",
+    "list_expert_workflows",
     "list_folders",
+    "list_presets",
+    "list_routines",
     "list_schedules",
     "list_skills",
+    "list_team",
     "list_workspace_files",
     "memory_forget_confirm",
     "memory_forget_search",
     "memory_search",
     "memory_store",
+    "message_session",
     "move_agents_to_folder",
     "move_folder",
+    "pause_schedule",
+    "post_to_chat_platform",
+    "raise_expert",
+    "read_expert_chat",
     "read_skill",
     "read_workspace_file",
+    "remove_expert_workflow",
+    "request_credential_grant",
+    "resume_capability",
+    "resume_schedule",
+    "revoke_expert_credential",
     "run_agent",
-    "run_block",
-    "run_mcp_tool",
+    "run_capability",
     "run_sub_session",
     "schedule_followup",
+    "schedule_routine",
     "search_docs",
     "search_feature_requests",
+    "setup_agent_webhook_trigger",
+    "start_desktop",
     "store_skill",
+    "update_expert",
+    "update_expert_soul",
     "update_folder",
+    "update_preset",
     "validate_agent_graph",
     "view_agent_output",
     "web_fetch",
     "web_search",
     "write_workspace_file",
+    # Capability gates (not tools): deny to withhold a whole kind of capability
+    "run_block",
+    "run_mcp_tool",
     # SDK built-ins
     "Agent",
     "Edit",
@@ -138,7 +204,97 @@ ToolName = Literal[
 # Frozen set of all valid tool names — derived from the Literal.
 ALL_TOOL_NAMES: frozenset[str] = frozenset(get_args(ToolName))
 
-DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset({"ask_question"})
+# Capability gates: names a permission list may deny to withhold every block
+# (``run_block``) or every MCP server (``run_mcp_tool``) from ``run_capability``.
+BLOCK_GATE = "run_block"
+MCP_GATE = "run_mcp_tool"
+CAPABILITY_GATE_NAMES: frozenset[str] = frozenset({BLOCK_GATE, MCP_GATE})
+
+# Retired tool names -> the registry tool that replaced them.  Accepted in
+# saved ``AutoPilotBlock`` permission lists and translated on evaluation.
+LEGACY_TOOL_ALIASES: dict[str, str] = {
+    "find_block": "find_capability",
+    "get_mcp_guide": "find_capability",
+    "continue_run_block": "resume_capability",
+}
+
+DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset(LEGACY_TOOL_ALIASES)
+
+
+# What a routine reaches when nobody has bound it to anything.  A roster
+# template is read by whoever reviews the PR, not by the owner whose account it
+# will run on, so a seeded routine ships able to research, think, read its own
+# workspace and write to its own thread — and nothing else.  Denying the names
+# that carry a credential outward is what makes "a cadence may only carry work
+# that acts on nothing outside the platform" (``PreloadSeed.cron``) a boundary
+# rather than a comment.  An owner who wants their queue swept says so when they
+# switch the routine on, and that answer is what lifts this.
+#
+# The grant is the whole rule at fire time.  Where the prompt came from decides
+# what that grant STARTS as — a template arrives ungranted, and a routine the
+# owner dictated in their own chat arrives granted, because the same words typed
+# into the same chat already run with every tool here and taking ``run_agent``
+# off somebody's own morning briefing protects nobody.  Both remain the owner's
+# to change, and neither reads as permission on its own.
+UNGRANTED_ROUTINE_DENIED_TOOLS: frozenset[str] = frozenset(
+    {
+        # The two capability gates, so denying them withholds every block and
+        # every MCP server rather than one tool's worth of them.
+        BLOCK_GATE,
+        MCP_GATE,
+        "run_agent",
+        "post_to_chat_platform",
+        # ``bash_exec`` is the one that looks harmless and is not. On E2B the
+        # sandbox is handed ``get_integration_env_vars(user_id)`` — the
+        # owner's live GH_TOKEN and friends — keyed on the user alone, with no
+        # reference to this filter or to the grant. A shell plus internet
+        # access plus the owner's tokens in ``env`` is the whole mute undone by
+        # one ``echo $GH_TOKEN``, so an ungranted routine does not get a shell.
+        "bash_exec",
+    }
+)
+
+
+# Refused on EVERY routine turn, however the routine was written and whatever
+# its owner granted it.  An unattended turn reads things nobody is watching it
+# read — an issue tracker, an inbox, a web page — and text in any of them can
+# ask it to schedule more work.  Without this, one injected page buys standing
+# access to the account forever: a routine that can write a routine can grant
+# itself the credentials its own prompt was denied, and the owner sees a
+# schedule they never agreed to.  Standing work is created where somebody is
+# present to refuse it.
+ROUTINE_SELF_ESCALATION_TOOLS: frozenset[str] = frozenset(
+    {
+        "schedule_routine",
+        "schedule_followup",
+        "setup_agent_webhook_trigger",
+    }
+)
+
+
+def routine_disabled_tools(*, granted: bool) -> frozenset[str]:
+    """Tools to refuse on a routine's unattended turn.
+
+    *granted* is the owner's answer to "may this routine use my connected
+    services", which they give per routine when they switch it on.  It only ever
+    removes the outward-reaching denials; nothing makes a routine able to
+    schedule more of itself.
+
+    Deliberately a denylist of what reaches *outward*, not a narrow allowlist:
+    reading, searching, and drafting into the thread are the whole point of an
+    unattended routine, and a routine that can do none of those is not worth
+    shipping off.
+
+    Kept here rather than beside the other tool gates in ``tools/__init__``:
+    the scheduler needs it at import time, and ``executor.scheduler`` importing
+    ``copilot.tools`` closes a cycle (tools -> helpers -> executor -> scheduler).
+    ``routines_test`` asserts every name here is a live tool or gate.
+    """
+    if granted:
+        return ROUTINE_SELF_ESCALATION_TOOLS
+    return UNGRANTED_ROUTINE_DENIED_TOOLS | ROUTINE_SELF_ESCALATION_TOOLS
+
+
 """Tool names accepted only for backwards compatibility with saved graphs.
 
 These names are intentionally absent from ``ToolName`` and
@@ -151,15 +307,18 @@ the model as available tools.
 # baseline mode ships an MCP-wrapped platform version
 # (``tools/todo_write.py``), while SDK mode still uses the CLI-native
 # original via ``_SDK_BUILTIN_ALWAYS`` in ``sdk/tool_adapter.py`` — the
-# MCP copy is filtered out there.  ``Task`` remains an SDK-only built-in
+# MCP copy is never registered there (``BASELINE_ONLY_MCP_TOOLS``).
+# ``Task`` remains an SDK-only built-in
 # (for queue-backed context-isolation on baseline, use ``run_sub_session``
 # instead).
 SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
     {"Agent", "Edit", "Glob", "Grep", "Read", "Task", "WebSearch", "Write"}
 )
 
-# Platform tool names — everything that isn't an SDK built-in.
-PLATFORM_TOOL_NAMES: frozenset[str] = ALL_TOOL_NAMES - SDK_BUILTIN_TOOL_NAMES
+# Platform tool names — everything that isn't an SDK built-in or a gate.
+PLATFORM_TOOL_NAMES: frozenset[str] = (
+    ALL_TOOL_NAMES - SDK_BUILTIN_TOOL_NAMES - CAPABILITY_GATE_NAMES
+)
 
 # Compiled regex patterns for block identifier classification.
 _FULL_UUID_RE = re.compile(
@@ -167,6 +326,60 @@ _FULL_UUID_RE = re.compile(
     re.IGNORECASE,
 )
 _PARTIAL_UUID_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
+
+
+# Tools that a blacklist entry must deny alongside the capability named.
+#
+# A blacklist is written against the tools that existed when it was written,
+# so a tool added later that reaches the same resource is silently regained
+# by every blacklist already out there. An operator who revoked proactive
+# posting to their chat platforms should not find the agent able to rewrite
+# everything the bot has already said in them.
+_IMPLIED_DENIALS: dict[str, tuple[str, ...]] = {
+    "post_to_chat_platform": ("edit_chat_platform_message",),
+}
+
+
+def _with_implied_denials(denied: frozenset[str]) -> frozenset[str]:
+    """Expand a deny set with the tools its entries imply."""
+    return denied.union(
+        implied for name in denied for implied in _IMPLIED_DENIALS.get(name, ())
+    )
+
+
+# Tools that a whitelist entry must allow alongside the capability named.
+#
+# The mirror of the above: a whitelist is also written against the tools that
+# existed when it was written, and the gates are the one case where the tool
+# that does the work was renamed out from under it. A saved list naming
+# ``run_block`` meant "you may run blocks", which now happens through
+# ``run_capability`` -- a name no existing list can contain. Without this the
+# gate stays open and the tool that opens it is never handed to the model.
+_IMPLIED_GRANTS: dict[str, tuple[str, ...]] = {
+    BLOCK_GATE: ("run_capability",),
+    MCP_GATE: ("run_capability",),
+}
+
+
+def _with_implied_grants(allowed: frozenset[str]) -> frozenset[str]:
+    """Expand an allow set with the tools its entries imply.
+
+    A deferred tool is no longer handed to the model, so allowing it without
+    ``run_capability`` allows nothing: the dispatcher is the only way in.
+    """
+    grants = allowed.union(
+        implied for name in allowed for implied in _IMPLIED_GRANTS.get(name, ())
+    )
+    if grants & _deferred_tool_names():
+        grants = grants | {"run_capability"}
+    return grants
+
+
+def _deferred_tool_names() -> frozenset[str]:
+    """The registry's deferred set, imported late (heavy tool imports)."""
+    from backend.copilot.tools import DEFERRED_TOOL_NAMES  # noqa: PLC0415
+
+    return DEFERRED_TOOL_NAMES
 
 
 # ---------------------------------------------------------------------------
@@ -199,17 +412,23 @@ class CopilotPermissions(BaseModel):
     """Capability filter for a single copilot execution.
 
     Attributes:
-        tools: Tool names to filter (short names, e.g. ``run_block``).
+        tools: Tool names to filter (short names, e.g. ``run_capability``).
         tools_exclude: When True (default) ``tools`` is a blacklist;
             when False it is a whitelist.  Ignored when *tools* is empty.
         blocks: Block identifiers (name, full UUID, or 8-char partial UUID).
         blocks_exclude: Same semantics as *tools_exclude* but for blocks.
+        providers: Provider slugs (``github``) whose connected accounts the
+            run's sandbox may use.
+        providers_exclude: Same semantics as *tools_exclude* but for
+            providers.
     """
 
     tools: list[str] = []
     tools_exclude: bool = True
     blocks: list[str] = []
     blocks_exclude: bool = True
+    providers: list[str] = []
+    providers_exclude: bool = True
 
     # Private: parent permissions for recursion inheritance.
     # Set only by merged_with_parent(); never exposed in block input schema.
@@ -230,10 +449,10 @@ class CopilotPermissions(BaseModel):
         """
         if not self.tools:
             return frozenset(all_tools)
-        tool_set = frozenset(self.tools)
+        tool_set = frozenset(LEGACY_TOOL_ALIASES.get(t, t) for t in self.tools)
         if self.tools_exclude:
-            return all_tools - tool_set
-        return all_tools & tool_set
+            return all_tools - _with_implied_denials(tool_set)
+        return all_tools & _with_implied_grants(tool_set)
 
     # ------------------------------------------------------------------
     # Block helpers
@@ -262,6 +481,38 @@ class CopilotPermissions(BaseModel):
         return not matched if self.blocks_exclude else matched
 
     # ------------------------------------------------------------------
+    # Provider helpers
+    # ------------------------------------------------------------------
+
+    def is_provider_allowed(self, provider: str) -> bool:
+        """True if the run may use the user's *provider* account; the whole
+        inheritance chain must agree."""
+        if self.providers:
+            listed = provider in self.providers
+            if listed == self.providers_exclude:
+                return False
+        if self._parent is not None:
+            return self._parent.is_provider_allowed(provider)
+        return True
+
+    def flattened_providers(self) -> tuple[list[str], bool]:
+        """``(providers, providers_exclude)`` for the effective ceiling of this
+        instance and its whole parent chain, needing no parent to read.
+
+        An allow-list of the providers left, or, when none are left, a deny
+        list of every one (an empty list means no filter at all)."""
+        if not self.providers and self._parent is None:
+            return [], True
+        allowed = [p for p in SUPPORTED_PROVIDERS if self.is_provider_allowed(p)]
+        if len(allowed) == len(SUPPORTED_PROVIDERS):
+            # No filter, not an allow-list of today's providers: one added
+            # later must not be denied to an unrestricted run.
+            return [], True
+        if allowed:
+            return allowed, False
+        return list(SUPPORTED_PROVIDERS), True
+
+    # ------------------------------------------------------------------
     # Recursion / merging
     # ------------------------------------------------------------------
 
@@ -273,8 +524,9 @@ class CopilotPermissions(BaseModel):
         """Return a new instance that is at most as permissive as *parent*.
 
         - Tools: intersection of effective-allowed sets, stored as a whitelist.
-        - Blocks: parent is stored internally; both constraints are applied
-          during :meth:`is_block_allowed`.
+        - Blocks and providers: parent is stored internally; both
+          constraints are applied during :meth:`is_block_allowed` and
+          :meth:`is_provider_allowed`.
         """
         merged_tools = self.effective_allowed_tools(
             all_tools
@@ -284,8 +536,15 @@ class CopilotPermissions(BaseModel):
             tools_exclude=False,
             blocks=self.blocks,
             blocks_exclude=self.blocks_exclude,
+            # The child's own filter first, then the parent's chain on top.
+            providers=self.providers,
+            providers_exclude=self.providers_exclude,
         )
         result._parent = parent
+        # Unlike blocks, the provider ceiling is written out in full rather
+        # than left to ``_parent``: a private attribute does not survive the
+        # executor queue's JSON, and the child turn must not come back wider.
+        result.providers, result.providers_exclude = result.flattened_providers()
         return result
 
     # ------------------------------------------------------------------
@@ -294,7 +553,12 @@ class CopilotPermissions(BaseModel):
 
     def is_empty(self) -> bool:
         """Return True when no filtering is configured (allow-all passthrough)."""
-        return not self.tools and not self.blocks and self._parent is None
+        return (
+            not self.tools
+            and not self.blocks
+            and not self.providers
+            and self._parent is None
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +594,86 @@ def validate_tool_names(tools: list[str]) -> list[str]:
 
 
 _tool_names_checked = False
+
+
+def allowed_providers(
+    permissions: CopilotPermissions | None,
+) -> tuple[str, ...] | None:
+    """The providers a run may use, of those a sandbox can be handed; ``None``
+    when nothing restricts them, which is what a box's egress record stores
+    for "every provider"."""
+    if permissions is None or permissions.is_empty():
+        return None
+    allowed = tuple(
+        p for p in SUPPORTED_PROVIDERS if permissions.is_provider_allowed(p)
+    )
+    if len(allowed) == len(SUPPORTED_PROVIDERS):
+        return None
+    return allowed
+
+
+def _denied(permissions: CopilotPermissions, infos: Iterable[Any]) -> list[str]:
+    """The providers named by credential field specs *infos* that
+    *permissions* keeps from the run, of those the ceiling covers."""
+    named = {ProviderName(p).value for info in infos for p in info.provider}
+    return sorted(
+        p
+        for p in named
+        if p in SUPPORTED_PROVIDERS and not permissions.is_provider_allowed(p)
+    )
+
+
+def denied_block_providers(
+    permissions: CopilotPermissions | None, block: object
+) -> list[str]:
+    """The providers among *block*'s credential fields that *permissions*
+    keeps from the run, of those the providers ceiling covers
+    (``SUPPORTED_PROVIDERS``).  Empty when nothing restricts them."""
+    if permissions is None or allowed_providers(permissions) is None:
+        return []
+    schema = getattr(block, "input_schema", None)
+    fields = schema.get_credentials_fields_info() if schema is not None else {}
+    return _denied(permissions, fields.values())
+
+
+def denied_graph_providers(
+    permissions: CopilotPermissions | None, graph: Any
+) -> list[str]:
+    """``denied_block_providers`` for every block of an agent graph: an agent
+    run is its blocks acting with the user's credentials.
+
+    An AutoPilot block counts as acting with every provider: its turn runs in
+    the graph executor, which this run's ceiling does not reach, so it could
+    use any account the user connected."""
+    if permissions is None or allowed_providers(permissions) is None:
+        return []
+    fields = graph.aggregate_credentials_inputs()
+    denied = _denied(permissions, (info for info, _, _ in fields.values()))
+    if _runs_autopilot(graph):
+        denied += [
+            p
+            for p in SUPPORTED_PROVIDERS
+            if p not in denied and not permissions.is_provider_allowed(p)
+        ]
+    return denied
+
+
+def _runs_autopilot(graph: Any) -> bool:
+    from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
+
+    return any(
+        node.block_id == AUTOPILOT_BLOCK_ID
+        for g in [graph, *graph.sub_graphs]
+        for node in g.nodes
+    )
+
+
+def denied_tool_names(permissions: CopilotPermissions | None) -> frozenset[str]:
+    """Short names *permissions* withholds from the turn (empty when none)."""
+    if permissions is None or permissions.is_empty():
+        return frozenset()
+    all_tools = all_known_tool_names()
+    return all_tools - permissions.effective_allowed_tools(all_tools)
 
 
 def _assert_tool_names_consistent() -> None:
@@ -469,8 +813,13 @@ def apply_tool_permissions(
         elif short in TOOL_REGISTRY:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
-            # Map SDK built-in file tool to its MCP equivalent.
+            # Offer BOTH spellings and let the ``base_allowed`` filter below
+            # pick the one this mode registers: outside E2B only ``read_file``
+            # has an MCP wrapper, and the MCP spelling of Write/Edit is not in
+            # ``base_allowed``, so mapping them solely to it drops them from
+            # every filtered turn.
             names.append(f"{MCP_TOOL_PREFIX}{_SDK_TO_MCP[short]}")
+            names.append(short)
         else:
             names.append(short)  # SDK built-in — used as-is
         return names
@@ -489,3 +838,35 @@ def apply_tool_permissions(
     extra_disallowed = list(set(base_disallowed) | removed)
 
     return filtered_allowed, extra_disallowed
+
+
+# ---------------------------------------------------------------------------
+# Presets
+# ---------------------------------------------------------------------------
+
+# Dream-pass sub-agent capability filter (spec: ``dream/p0-spec.md`` §P0.5).
+#
+# The dream orchestrator runs phases 1/2/3 via direct LLM calls today, but P0.5
+# (web fact-check) and P9 (daydreaming) hand work to a sub-agent that must be
+# strictly capability-bounded: read/write the user's Graphiti memory and
+# fact-check claims against the web — nothing else.  No shell, no general web
+# browsing, no file ops, no agent-graph mutation.
+#
+# Stored as a **whitelist** (``tools_exclude=False``) so the universe of
+# permitted tools is explicit and grows only when this preset is edited.
+#
+# ``web_fact_check`` is intentionally listed even though the tool does not yet
+# exist in ``TOOL_REGISTRY`` — it lands in P0.5.  Unknown short names are
+# silently dropped by :meth:`CopilotPermissions.effective_allowed_tools` (it
+# intersects with ``all_tools``), so the preset is forward-compatible without
+# needing to be updated when the tool ships.
+DREAM_PERMISSIONS: CopilotPermissions = CopilotPermissions(
+    tools=[
+        "memory_search",
+        "memory_store",
+        "memory_forget_search",
+        "memory_forget_confirm",
+        "web_fact_check",
+    ],
+    tools_exclude=False,
+)

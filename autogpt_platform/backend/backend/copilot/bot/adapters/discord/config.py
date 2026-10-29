@@ -25,6 +25,18 @@ MAX_MESSAGE_LENGTH = 2000
 # 2000 cap so the boundary-splitter has room to reach a natural break point.
 CHUNK_FLUSH_AT = 1900
 
+# Discord's hard per-attachment cap for non-Nitro bot uploads. Bots can't have
+# Nitro and Discord shrank this from 50 MB to 25 MB years ago, so it's
+# hardcoded rather than configurable. Over-cap artifacts fall back to a
+# link-to-chat button.
+MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
+
+# Discord's hard cap on a thread name.
+MAX_THREAD_NAME_LENGTH = 100
+
+# Discord's typing indicator auto-expires after ~10s; refresh under that.
+TYPING_REFRESH_SECONDS = 8.0
+
 # Sensible default Discord permissions for the "Add to server" invite URL —
 # covers send messages, embed links, attach files, read history, add
 # reactions, use external emoji, slash commands, public threads, and sending

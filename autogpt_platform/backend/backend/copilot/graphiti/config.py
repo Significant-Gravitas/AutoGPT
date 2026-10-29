@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     DotEnvSettingsSource,
@@ -13,16 +13,43 @@ from pydantic_settings import (
 
 from backend.util.clients import OPENROUTER_BASE_URL
 
+from .models import DEFAULT_LLM_MODEL
+
 _BACKEND_ROOT = Path(__file__).resolve().parents[3]
+
+
+# Cloud defaults that ``_apply_local_graphiti_models`` rewrites under
+# local transport. Pinned as module constants so the field defaults and
+# the validator can't drift — same pattern as
+# ``copilot/config.py::_DEFAULT_TITLE_MODEL`` etc.
+_DEFAULT_LLM_MODEL = DEFAULT_LLM_MODEL
+_DEFAULT_RERANKER_MODEL = DEFAULT_LLM_MODEL
+_DEFAULT_EMBEDDER_MODEL = "text-embedding-3-small"
+
+# Local-transport defaults. Mirrors dev's chat-side ``--with-ollama``
+# default (``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``, per
+# ``docs/platform/copilot-local-llm.md`` — 9B params, ~5.8GB model file,
+# 262k native context, and OpenAI-compatible tool calling). The
+# reranker reuses the same model since the prompts are simpler than
+# extraction and pulling a second model for it would double the local
+# install's disk + RAM footprint.
+_LOCAL_LLM_MODEL = "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
+_LOCAL_RERANKER_MODEL = _LOCAL_LLM_MODEL
+# Embedder defaults to Ollama's ``nomic-embed-text`` (~270MB, 768-dim
+# vectors, well-supported by the OpenAI ``/v1/embeddings`` shim).
+# Operators on ``--with-ollama-embeddings`` get this pulled
+# automatically; everyone else needs to ``ollama pull nomic-embed-text``
+# before graphiti ingest starts working — covered in copilot-local-llm.md.
+_LOCAL_EMBEDDER_MODEL = "nomic-embed-text"
 
 
 class GraphitiConfig(BaseSettings):
     """Configuration for Graphiti memory integration.
 
-    All fields use the ``GRAPHITI_`` env-var prefix, e.g. ``GRAPHITI_ENABLED``.
-    LLM/embedder keys fall back to the AutoPilot-dedicated keys
+    All fields use the ``GRAPHITI_`` env-var prefix, e.g. ``GRAPHITI_FALKORDB_HOST``.
+    LLM/embedder keys fall back to the Otto-dedicated keys
     (``CHAT_API_KEY`` / ``CHAT_OPENAI_API_KEY``) so that memory costs are
-    tracked under AutoPilot, then to the platform-wide OpenRouter / OpenAI
+    tracked under Otto, then to the platform-wide OpenRouter / OpenAI
     keys as a last resort.
     """
 
@@ -32,10 +59,50 @@ class GraphitiConfig(BaseSettings):
     falkordb_host: str = Field(default="localhost")
     falkordb_port: int = Field(default=6380)
     falkordb_password: str = Field(default="")
+    # Transport deadlines on every FalkorDB connection this package opens
+    # (``falkordb_connect.new_falkordb_client``), for every operation on it,
+    # reads and writes alike. They are separate from the chat's asyncio budgets
+    # (``context_timeout``; ``context_refresh_timeout`` and
+    # ``warm_context_refresh_join_grace_ms``), which are shorter and cancel an
+    # interactive read before a deadline would. The deadlines also end what
+    # cancellation cannot reach: a worker thread still building a client
+    # (falkordb's constructor probes the server synchronously) and a
+    # connection to a server that stopped answering.
+    falkordb_socket_connect_timeout: float = Field(
+        default=1.0,
+        gt=0,
+        description=(
+            "Seconds to open a TCP connection to FalkorDB before giving up, on "
+            "every connection the memory code opens. Short, so an unreachable "
+            "server fails a client build or a reconnect quickly. Also caps "
+            "the constructor probe's reply timeout."
+        ),
+    )
+    falkordb_socket_timeout: float = Field(
+        default=30.0,
+        gt=0,
+        description=(
+            "Seconds any single FalkorDB reply may take before its command "
+            "fails with a timeout: a deadline per reply, on every operation the "
+            "memory code runs (reads and writes). The constructor probe uses "
+            "the shorter of this and the connect timeout. A write whose reply "
+            "times out may already have been "
+            "committed, so its outcome is unknown to the caller. Separate from "
+            "the chat's asyncio budgets (context_timeout; "
+            "context_refresh_timeout and the join grace), which are shorter and "
+            "end an interactive read first. Long by default so that a slow "
+            "write (ingestion, the dream, a forget) on a large graph normally "
+            "completes; it also ends connections to a server that stopped answering."
+        ),
+    )
 
-    # LLM for entity extraction (used by graphiti-core during ingestion)
+    # LLM for entity extraction (used by graphiti-core during ingestion).
+    # Default is a cloud OpenAI-compat slug. Under ``CHAT_USE_LOCAL=true``
+    # ``_apply_local_graphiti_models`` rewrites this to the same Ollama
+    # default that dev's PR #12993 uses for the chat path so a single
+    # ``ollama pull`` powers both surfaces.
     llm_model: str = Field(
-        default="gpt-4.1-mini",
+        default=_DEFAULT_LLM_MODEL,
         description="Model for entity extraction — must support structured output",
     )
     llm_base_url: str = Field(
@@ -47,8 +114,9 @@ class GraphitiConfig(BaseSettings):
         description="API key for LLM — empty falls back to CHAT_API_KEY, then OPEN_ROUTER_API_KEY",
     )
 
-    # Embedder (separate from LLM — embeddings go direct to OpenAI)
-    embedder_model: str = Field(default="text-embedding-3-small")
+    # Embedder (separate from LLM — embeddings go direct to OpenAI).
+    # Under local transport rewritten to ``nomic-embed-text`` (Ollama).
+    embedder_model: str = Field(default=_DEFAULT_EMBEDDER_MODEL)
     embedder_base_url: str = Field(
         default="",
         description="Base URL for embedder — empty uses OpenAI direct",
@@ -58,10 +126,68 @@ class GraphitiConfig(BaseSettings):
         description="API key for embedder — empty falls back to CHAT_OPENAI_API_KEY, then OPENAI_API_KEY",
     )
 
+    # Cross-encoder reranker (P-1.4) — used by warm-context retrieval to
+    # rerank top edges from BM25 + cosine + BFS. Graphiti's built-in
+    # OpenAIRerankerClient runs concurrent boolean-classifier prompts
+    # (one prompt per candidate; log-probabilities decide the score).
+    # This config defaults the classifier to gpt-6-luna — the same
+    # cloud slug as ``llm_model`` — so the reranker can ship with no
+    # env config, at the cost of up to 2 * context_max_facts classifier
+    # calls per session start.
+    reranker_model: str = Field(
+        default=_DEFAULT_RERANKER_MODEL,
+        description="Model for the cross-encoder reranker. Cheap, fast classifier prompts.",
+    )
+
+    # Activity-gate threshold for community rebuilds (P-1.7).
+    # ``rebuild_communities_for_user`` skips when there have been fewer
+    # than this many new episodes since the last successful rebuild —
+    # avoids paying the per-community LLM-summarization cost AND avoids
+    # clustering drift on essentially-unchanged graphs (LP tie-breaks
+    # are non-deterministic; summary text varies). Defaults to 5 — a
+    # full week of low-activity (~1 episode/day) is fine to skip; a
+    # power user blasting 20+ memories triggers rebuild within hours.
+    community_rebuild_min_new_episodes: int = Field(
+        default=5,
+        description="Skip community rebuild when fewer than this many new episodes since last rebuild.",
+    )
+
+    # Nightly community rebuild is non-interactive scheduled work — ~50%
+    # cheaper on OpenAI's ``service_tier="flex"`` (worst-case ~15min
+    # queue, typically just a few seconds slower). Interactive ingest
+    # stays on sync tier because the user expects deduped facts ready
+    # for their next turn.
+    community_rebuild_use_flex_tier: bool = Field(
+        default=True,
+        description="Run nightly community rebuilds on OpenAI's flex service tier (~50% discount).",
+    )
+
     # Concurrency
     semaphore_limit: int = Field(
         default=5,
         description="Max concurrent LLM calls during ingestion (prevents rate limits)",
+    )
+
+    # FalkorDB back-pressure retry. "Max pending queries exceeded" is a
+    # transient, self-clearing rejection when the shared server's pending-query
+    # queue is full under concurrent memory traffic; a bounded jittered backoff
+    # rides out the spike instead of dropping the memory op (and spamming
+    # Sentry). Only an exhausted budget surfaces the error. (SENTRY-1384.)
+    falkordb_query_max_attempts: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Total attempts (including the first) for a FalkorDB query before "
+            "surfacing a 'Max pending queries exceeded' backpressure error."
+        ),
+    )
+    falkordb_query_backoff_base: float = Field(
+        default=0.1,
+        ge=0.0,
+        description=(
+            "Base delay in seconds for jittered exponential backoff between "
+            "FalkorDB pending-queue overflow retries."
+        ),
     )
 
     # Warm context
@@ -69,6 +195,27 @@ class GraphitiConfig(BaseSettings):
     context_timeout: float = Field(
         default=8.0,
         description="Seconds before warm context fetch is abandoned (needs headroom for FalkorDB cold connections)",
+    )
+    context_refresh_timeout: float = Field(
+        default=3.0,
+        description=(
+            "Seconds a follow-up-turn warm-context refresh (SECRT-2378) may run "
+            "in all before it is abandoned. On the SDK engine it starts before "
+            "the query build; what it may add to time-to-first-token is bounded "
+            "separately by warm_context_refresh_join_grace_ms."
+        ),
+    )
+    warm_context_refresh_join_grace_ms: int = Field(
+        default=500,
+        ge=0,
+        description=(
+            "The most a follow-up warm-context refresh (SECRT-2378) may add to "
+            "time-to-first-token, in milliseconds. Once the turn's query is "
+            "ready it waits at most this long for the refresh; a refresh still "
+            "running then is cancelled and the turn goes on without a block. "
+            "A refresh started at that point (the baseline engine, retries, a "
+            "refresh forced by a compaction) has this as its whole budget."
+        ),
     )
 
     # Client cache
@@ -95,29 +242,138 @@ class GraphitiConfig(BaseSettings):
             DotEnvSettingsSource(settings_cls, env_file=_BACKEND_ROOT / ".env.default"),
         )
 
+    def _chat_local_fallback(self) -> tuple[str, str] | None:
+        """Return ``(api_key, base_url)`` when the active chat transport
+        is ``local`` — otherwise ``None``.
+
+        Holy-grail integration with dev's ``TransportProfile`` from
+        PR #12993: under ``CHAT_USE_LOCAL=true``, graphiti's entity
+        extraction + embedder need to hit the same self-hosted backend
+        that the chat layer was pointed at. The cloud-key fallback chain
+        (CHAT_API_KEY → OPEN_ROUTER_API_KEY) returns either nothing or
+        a stray cloud key the operator forgot to unset, which would
+        send a request to the wrong endpoint and 401.
+
+        Lazy-imports ``chat_cfg`` to keep the
+        ``copilot.sdk.env`` ↔ ``util/clients`` import cycle dev
+        already established under control. Returns ``None`` for any
+        non-local transport so the caller falls through to its
+        existing cloud-key chain (cloud users are unaffected).
+        """
+        # Local import: ``copilot.sdk.env`` instantiates a ``ChatConfig``
+        # at import time, and graphiti's config is sometimes imported
+        # at module-collection time (CI, tools) before env is fully
+        # primed. Lazy so the import only fires when a resolver is
+        # actually called.
+        from backend.copilot.sdk.env import config as chat_cfg
+
+        if chat_cfg.transport.name != "local":
+            return None
+        return chat_cfg.api_key or "", chat_cfg.base_url or ""
+
     def resolve_llm_api_key(self) -> str:
         if self.llm_api_key:
             return self.llm_api_key
-        # Prefer the AutoPilot-dedicated key so memory costs are tracked
+        # Prefer the Otto-dedicated key so memory costs are tracked
         # separately from the platform-wide OpenRouter key.
-        return os.getenv("CHAT_API_KEY") or os.getenv("OPEN_ROUTER_API_KEY", "")
+        cloud_key = os.getenv("CHAT_API_KEY") or os.getenv("OPEN_ROUTER_API_KEY")
+        if cloud_key:
+            return cloud_key
+        # Last resort: under local transport, inherit the placeholder
+        # key the operator set for the chat path so the Ollama backend
+        # accepts the bearer (any non-empty value).
+        local_fallback = self._chat_local_fallback()
+        if local_fallback is not None:
+            return local_fallback[0]
+        return ""
 
     def resolve_llm_base_url(self) -> str:
         if self.llm_base_url:
             return self.llm_base_url
+        # Under local transport, point at the same OpenAI-compat
+        # endpoint as the chat layer (e.g. http://localhost:11434/v1).
+        # Cloud transports keep the OpenRouter default.
+        local_fallback = self._chat_local_fallback()
+        if local_fallback is not None and local_fallback[1]:
+            return local_fallback[1]
         return OPENROUTER_BASE_URL
 
     def resolve_embedder_api_key(self) -> str:
         if self.embedder_api_key:
             return self.embedder_api_key
-        # Prefer the AutoPilot-dedicated OpenAI key so memory costs are
+        # Prefer the Otto-dedicated OpenAI key so memory costs are
         # tracked separately from the platform-wide OpenAI key.
-        return os.getenv("CHAT_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY", "")
+        cloud_key = os.getenv("CHAT_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        if cloud_key:
+            return cloud_key
+        # Last resort: under local transport, inherit the chat placeholder.
+        local_fallback = self._chat_local_fallback()
+        if local_fallback is not None:
+            return local_fallback[0]
+        return ""
 
     def resolve_embedder_base_url(self) -> str | None:
         if self.embedder_base_url:
             return self.embedder_base_url
+        # Under local transport, embeddings go to the same self-hosted
+        # backend (the operator pulled an embedding model into Ollama
+        # per docs/platform/copilot-local-llm.md). Cloud transports use
+        # the OpenAI SDK default (``None``).
+        local_fallback = self._chat_local_fallback()
+        if local_fallback is not None and local_fallback[1]:
+            return local_fallback[1]
         return None  # OpenAI SDK default
+
+    @model_validator(mode="after")
+    def _apply_local_graphiti_models(self) -> "GraphitiConfig":
+        """Rewrite cloud model defaults to local-friendly slugs under
+        ``CHAT_USE_LOCAL=true``.
+
+        Mirror of dev's ``_apply_local_aux_models`` pattern on
+        ``ChatConfig`` (PR #12993). Three slots get rewritten when
+        still at their cloud defaults and the operator hasn't pinned
+        a ``GRAPHITI_*_MODEL`` override:
+
+        - ``llm_model`` (``gpt-6-luna``) → ``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``
+          (matches dev's chat default — one Ollama pull powers both
+          surfaces; vetted for structured output / tool-calling shape).
+        - ``reranker_model`` (``gpt-6-luna``) → same Ornith slug.
+          Reranker prompts are simpler than extraction; reusing the
+          chat model avoids pulling a second model just for reranking.
+        - ``embedder_model`` (``text-embedding-3-small``) →
+          ``nomic-embed-text``. Operators need to ``ollama pull
+          nomic-embed-text`` separately (chat doesn't need it, so the
+          installer's ``--with-ollama`` doesn't cover it today; see
+          docs/platform/copilot-local-llm.md).
+
+        Operator overrides (custom slugs like ``qwen3:8b`` or
+        ``hf.co/...``) pass through untouched — only the literal cloud
+        defaults and the legacy ``gpt-4.1-mini`` default trigger rewriting.
+        Lazy-imports ``chat_cfg`` to avoid
+        the ``copilot.sdk.env`` ↔ ``util/clients`` cycle dev's PR
+        established.
+        """
+        try:
+            from backend.copilot.sdk.env import config as chat_cfg
+        except Exception:
+            # Defensive: if the chat config fails to import for any
+            # reason (corrupt env vars during test collection, etc.)
+            # keep the cloud defaults rather than crashing graphiti
+            # at import time. Operators on local transport see the
+            # cloud default and a clear 404 from Ollama; everyone
+            # else is unaffected.
+            return self
+
+        if chat_cfg.transport.name != "local":
+            return self
+
+        if self.llm_model in (_DEFAULT_LLM_MODEL, "gpt-4.1-mini"):
+            object.__setattr__(self, "llm_model", _LOCAL_LLM_MODEL)
+        if self.reranker_model in (_DEFAULT_RERANKER_MODEL, "gpt-4.1-mini"):
+            object.__setattr__(self, "reranker_model", _LOCAL_RERANKER_MODEL)
+        if self.embedder_model == _DEFAULT_EMBEDDER_MODEL:
+            object.__setattr__(self, "embedder_model", _LOCAL_EMBEDDER_MODEL)
+        return self
 
 
 _graphiti_config: GraphitiConfig | None = None
@@ -139,21 +395,3 @@ class _LazyConfigProxy:
 
 
 graphiti_config = _LazyConfigProxy()  # type: ignore[assignment]
-
-
-async def is_enabled_for_user(user_id: str | None) -> bool:
-    """Check if Graphiti memory is enabled for a specific user.
-
-    Gated solely by LaunchDarkly flag ``graphiti-memory``
-    (Flag.GRAPHITI_MEMORY).  When LD is not configured, defaults to False.
-    """
-    if not user_id:
-        return False
-
-    from backend.util.feature_flag import Flag, is_feature_enabled
-
-    return await is_feature_enabled(
-        Flag.GRAPHITI_MEMORY,
-        user_id,
-        default=False,
-    )

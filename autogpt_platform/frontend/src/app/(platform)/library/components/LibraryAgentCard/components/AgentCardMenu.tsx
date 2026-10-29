@@ -21,12 +21,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { DotsThree } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { MoveToFolderDialog } from "../../MoveToFolderDialog/MoveToFolderDialog";
+import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface AgentCardMenuProps {
   agent: LibraryAgent;
@@ -71,13 +72,13 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
         });
 
         toast({
-          title: "Agent duplicated",
+          title: "Workflow duplicated",
           description: `${result.data.name} has been created.`,
         });
       }
     } catch (error: unknown) {
       toast({
-        title: "Failed to duplicate agent",
+        title: "Failed to duplicate workflow",
         description:
           error instanceof Error
             ? error.message
@@ -104,7 +105,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
 
       toast({
         title: "Removed from folder",
-        description: "Agent has been moved back to your library.",
+        description: "Workflow has been moved back to your library.",
       });
     } catch (error: unknown) {
       toast({
@@ -132,12 +133,12 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
       });
 
-      toast({ title: "Agent deleted" });
+      toast({ title: "Workflow deleted" });
       setShowDeleteDialog(false);
       router.push("/library");
     } catch (error: unknown) {
       toast({
-        title: "Failed to delete agent",
+        title: "Failed to delete workflow",
         description:
           error instanceof Error
             ? error.message
@@ -154,11 +155,11 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="absolute right-2 top-1 rounded p-1.5 transition-opacity hover:bg-neutral-100"
+            className="absolute right-2 top-1 rounded p-1.5 text-foreground-secondary transition-opacity hover:bg-surface-hover"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <DotsThree className="h-5 w-5 text-neutral-600" />
+            <Icon icon={MoreHorizontalIcon} className="h-5 w-5" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -172,7 +173,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
                   data-testid="library-agent-card-open-in-builder-link"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  Edit agent
+                  Edit workflow
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -184,9 +185,8 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
               handleDuplicateAgent();
             }}
             disabled={isDuplicatingAgent}
-            className="flex items-center gap-2"
           >
-            Duplicate agent
+            Duplicate workflow
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -194,7 +194,6 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
               e.stopPropagation();
               setShowMoveDialog(true);
             }}
-            className="flex items-center gap-2"
           >
             Move to folder
           </DropdownMenuItem>
@@ -207,7 +206,6 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
                   handleRemoveFromFolder();
                 }}
                 disabled={isRemovingFromFolder}
-                className="flex items-center gap-2"
               >
                 Remove from folder
               </DropdownMenuItem>
@@ -219,9 +217,10 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
               e.stopPropagation();
               setShowDeleteDialog(true);
             }}
-            className="flex items-center gap-2 text-red-600 focus:bg-red-50 focus:text-red-600"
+            // oxlint-disable-next-line design-system/no-restyle -- DropdownMenuItem has no destructive variant
+            className="text-error-foreground focus:bg-error-surface focus:text-error-foreground"
           >
-            Delete agent
+            Delete workflow
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -232,13 +231,13 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
           set: setShowDeleteDialog,
         }}
         styling={{ maxWidth: "32rem" }}
-        title="Delete agent"
+        title="Delete workflow"
       >
         <Dialog.Content>
           <div>
             <Text variant="large">
-              Are you sure you want to delete this agent? This action cannot be
-              undone.
+              Are you sure you want to delete this workflow? This action cannot
+              be undone.
             </Text>
             <Dialog.Footer>
               <Button
@@ -253,7 +252,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
                 onClick={handleDeleteAgent}
                 loading={isDeletingAgent}
               >
-                Delete Agent
+                Delete Workflow
               </Button>
             </Dialog.Footer>
           </div>

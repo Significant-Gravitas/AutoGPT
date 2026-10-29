@@ -1,0 +1,8 @@
+{
+  "body": "{\"detail\":\"Authorization header is missing\"}",
+  "headers": {
+    "content-length": "44",
+    "content-type": "application/json"
+  },
+  "status": 401
+}

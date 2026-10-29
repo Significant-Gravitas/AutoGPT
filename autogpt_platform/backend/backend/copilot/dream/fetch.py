@@ -1,0 +1,406 @@
+"""Gather bounded inputs for a dream pass.
+
+All input lists are clamped per ``dream/p0-spec.md`` §2 — phase 1's
+prompt is the hot path for cost, so we never let it grow unbounded
+even on a power-user with thousands of episodes.
+
+Caps (copied here so they live next to the code that enforces them):
+  * Recent sessions: 10
+  * Recent episodes: 50
+  * Active facts (per scope): 500
+  * Touch window: 14 days
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Collection
+from datetime import datetime, timedelta, timezone
+
+from pydantic import BaseModel, Field
+
+from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
+from backend.copilot.graphiti.recall import (
+    forgotten_facts_clause,
+    live_fact_predicate,
+    recallable_episode_predicate,
+)
+from backend.copilot.graphiti.recall_stamp import RecallStamp, recall_stamp_columns
+from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.hidden_rows import visible_to_model
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
+from backend.copilot.model import ChatMessage, ChatSessionInfo
+from backend.data.db_accessors import chat_db
+
+from .hidden_sessions import hidden_session_ids
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_WINDOW_DAYS = 14
+MAX_EPISODES = 50
+MAX_ACTIVE_FACTS = 500
+MAX_RECENT_SESSIONS = 10
+MAX_SESSION_BODY_BYTES = 8 * 1024  # 8 KB per p0-spec.md §2
+
+
+class EpisodeRow(BaseModel):
+    uuid: str
+    name: str | None
+    content: str | None
+    source_description: str | None
+    valid_at: str | None  # ISO timestamp
+    created_at: str | None
+
+
+class FactRow(RecallStamp):
+    """An active fact and its recall stamps (all ``None``: never recalled)."""
+
+    source: str | None
+    target: str | None
+    name: str | None
+    fact: str | None
+    scope: str | None
+    confidence: float | None
+    status: str | None
+    created_at: str | None
+
+
+class SessionRow(BaseModel):
+    session_id: str
+    title: str | None
+    created_at: datetime | None
+    body: str  # truncated to MAX_SESSION_BODY_BYTES
+
+
+class DreamInput(BaseModel):
+    """The whole gather-step bundle handed to the phase 1 prompt."""
+
+    user_id: str
+    expert_id: str | None = None
+    group_id: str
+    window_start: datetime
+    window_end: datetime
+    episodes: list[EpisodeRow] = Field(default_factory=list)
+    facts: list[FactRow] = Field(default_factory=list)
+    recent_sessions: list[SessionRow] = Field(default_factory=list)
+    # Convenience — phase 3 sanitizer needs to know which uuids the dream
+    # is "aware of" so it can reject demotions for unknown edges.
+    known_fact_uuids: set[str] = Field(default_factory=set)
+    known_episode_uuids: set[str] = Field(default_factory=set)
+
+
+# Prefix stamped on every dream-authored episode name (see
+# ``apply._episode_name``: ``dream_{pass_id}_{phase}_{counter}``). Shared
+# so the novelty check and the writer can't drift.
+DREAM_EPISODE_NAME_PREFIX = "dream_"
+
+
+def parse_episode_timestamp(episode: EpisodeRow) -> datetime | None:
+    """Latest tz-aware timestamp for an episode row, for novelty checks.
+
+    Returns the *later* of ``valid_at`` (the ``reference_time`` set at
+    enqueue, which the episode fetch Cypher orders by) and ``created_at``
+    (graphiti's graph-node creation time). The two diverge when async
+    ingestion lags the gather query: an episode enqueued with a past
+    ``reference_time`` but materialized as a node only *after* a pass
+    stamped its marker has ``valid_at`` < marker yet is genuinely new.
+    Taking the max keeps it counted as new until a later pass consolidates
+    it, instead of silently dropping it once the marker moves past its
+    ``valid_at``. ``None`` means neither field parsed — callers must treat
+    that as "age unknown" and fail open.
+    """
+    parsed = [
+        ts
+        for raw in (episode.valid_at, episode.created_at)
+        if raw
+        if (ts := _parse_iso_timestamp(raw)) is not None
+    ]
+    return max(parsed) if parsed else None
+
+
+def is_dream_authored_episode(episode: EpisodeRow) -> bool:
+    """True for episodes written by the dream pipeline itself.
+
+    A productive pass enqueues its consolidations/proposals with
+    ``valid_at = now()`` — after the ``window_end`` the marker is stamped
+    with — so counting them as new activity would make every subsequent
+    nightly run a paid no-op that only re-reads its own output. They are
+    identifiable by the stable ``dream_`` name prefix
+    (:func:`apply._episode_name`); the ``dream-pass`` ``source_description``
+    is a secondary signal for robustness.
+    """
+    name = episode.name
+    if name is not None and name.startswith(DREAM_EPISODE_NAME_PREFIX):
+        return True
+    description = episode.source_description
+    return description is not None and description.startswith("dream-pass")
+
+
+def _parse_iso_timestamp(raw: str) -> datetime | None:
+    """ISO 8601 parse tolerating Cypher's ``toString(datetime)`` output
+    (trailing ``Z``); naive values are assumed UTC so the result always
+    compares safely against tz-aware datetimes."""
+    try:
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+async def _fetch_recent_episodes(
+    driver: AutoGPTFalkorDriver,
+    group_id: str,
+    window_start: datetime,
+    limit: int,
+) -> list[EpisodeRow]:
+    # FalkorDB does not implement Cypher's ``datetime()`` function, so
+    # we cannot use ``WHERE n.valid_at >= datetime($since)`` here — it
+    # raises ``Unknown function 'datetime'``. The dream window is
+    # already bounded by ``limit`` (default 50 most-recent episodes,
+    # which exceeds typical 14-day activity for any one user). The
+    # ``window_start`` argument is kept for caller bookkeeping but the
+    # Cypher itself just relies on the ORDER BY + LIMIT clamp.
+    #
+    # An episode the recall policy hides (redacted by a forget, or citing a
+    # forgotten fact) is skipped like a retracted fact: consolidating its
+    # text would re-derive the fact the user forgot.
+    _ = window_start
+    try:
+        result = await driver.execute_query(
+            forgotten_facts_clause()
+            + f"""
+            MATCH (n:Episodic {{group_id: $g}})
+            WHERE {recallable_episode_predicate("n")}
+            RETURN n.uuid AS uuid,
+                   n.name AS name,
+                   n.content AS content,
+                   n.source_description AS source_description,
+                   toString(n.valid_at) AS valid_at,
+                   toString(n.created_at) AS created_at
+            ORDER BY n.valid_at DESC
+            LIMIT $limit
+            """,
+            g=group_id,
+            limit=limit,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to fetch recent episodes for group %s — treating as empty",
+            group_id[:12],
+            exc_info=True,
+        )
+        return []
+    rows = result[0] if result else []
+    return [
+        EpisodeRow(
+            uuid=str(r.get("uuid", "")),
+            name=r.get("name"),
+            content=r.get("content"),
+            source_description=r.get("source_description"),
+            valid_at=r.get("valid_at"),
+            created_at=r.get("created_at"),
+        )
+        for r in rows
+    ]
+
+
+async def _fetch_active_facts(
+    driver: AutoGPTFalkorDriver,
+    group_id: str,
+    limit: int,
+) -> list[FactRow]:
+    # Active facts only, by recall's own live test: tentative, superseded,
+    # contradicted, retracted and forgotten edges all fail it.
+    try:
+        result = await driver.execute_query(
+            f"""
+            MATCH (src:Entity)-[e:RELATES_TO {{group_id: $g}}]->(tgt:Entity)
+            WHERE {live_fact_predicate("e", include_tentative=False)}
+            RETURN e.uuid AS uuid,
+                   src.name AS source,
+                   tgt.name AS target,
+                   e.name AS name,
+                   e.fact AS fact,
+                   e.scope AS scope,
+                   e.confidence AS confidence,
+                   e.status AS status,
+                   toString(e.created_at) AS created_at,
+                   {recall_stamp_columns("e")}
+            ORDER BY e.created_at DESC
+            LIMIT $limit
+            """,
+            g=group_id,
+            limit=limit,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to fetch active facts for group %s — treating as empty",
+            group_id[:12],
+            exc_info=True,
+        )
+        return []
+    rows = result[0] if result else []
+    return [
+        FactRow(
+            uuid=str(r.get("uuid", "")),
+            source=r.get("source"),
+            target=r.get("target"),
+            name=r.get("name"),
+            fact=r.get("fact"),
+            scope=r.get("scope"),
+            confidence=r.get("confidence"),
+            status=r.get("status"),
+            created_at=r.get("created_at"),
+            recall_count=r.get("recall_count"),
+            last_recalled_at=r.get("last_recalled_at"),
+            prev_recalled_at=r.get("prev_recalled_at"),
+        )
+        for r in rows
+    ]
+
+
+async def _fetch_recent_sessions(
+    scope: MemoryScope,
+    window_start: datetime,
+    limit: int,
+    *,
+    hidden: Collection[str] | None = (),
+) -> list[SessionRow]:
+    """Pull the most recent N chat sessions and their first chunk of content.
+
+    A ``hidden`` session (``hidden_sessions.py``) is left out. ``None``
+    means that list could not be read; chat history is raw text a forget
+    never reaches, so then no session is read at all.
+
+    Routes through ``chat_db()`` so the dream pass — which runs in the
+    Scheduler subprocess — uses the DatabaseManager RPC when Prisma
+    isn't directly connected, and the in-process Postgres path when
+    it is. Direct ``PrismaChatSession.prisma()`` calls fail with
+    ``ClientNotConnectedError`` in the Scheduler subprocess otherwise.
+
+    We only need a flavour-snapshot of each session, not the full
+    message list — phase 1's prompt cares about *what was discussed
+    recently* as context for consolidation, not about replaying it.
+    The ``window_start`` argument is informational here; the underlying
+    ``get_user_chat_sessions`` orders by most-recent and the ``limit``
+    clamp does the bounding.
+    """
+    _ = window_start
+    if hidden is None:
+        return []
+    user_id = scope.owner_user_id
+    try:
+        if scope.expert_id is None:
+            sessions = await chat_db().get_user_chat_sessions(
+                user_id, limit=limit, autopilot_only=True
+            )
+        else:
+            sessions = await chat_db().get_user_chat_sessions(
+                user_id, limit=limit, expert_id=scope.expert_id
+            )
+    except Exception:
+        logger.warning(
+            "Failed to fetch recent sessions for user %s",
+            user_id[:12],
+            exc_info=True,
+        )
+        return []
+    return [
+        await _session_row(session, user_id)
+        for session in sessions
+        if session.session_id not in hidden
+    ]
+
+
+async def _session_row(session: ChatSessionInfo, user_id: str) -> SessionRow:
+    """One session's title and the start of its messages.
+
+    ``ChatSessionInfo`` exposes ``session_id`` (not ``id``) and carries no
+    messages (it's a summary). Fetch the body lazily per-session via the
+    paginated reader so the prompt has actual content. One round-trip per
+    session is acceptable at limit=10; a bulk variant can replace this when
+    chat_db gains one.
+    """
+    sid = session.session_id
+    messages: list[ChatMessage] = []
+    try:
+        paginated = await chat_db().get_chat_messages_paginated(
+            session_id=sid, limit=20, user_id=user_id
+        )
+        if paginated is not None:
+            messages = visible_to_model(paginated.messages)
+    except Exception:
+        logger.debug(
+            "Failed to fetch messages for session %s — body left empty",
+            sid[:12],
+            exc_info=True,
+        )
+    return SessionRow(
+        session_id=sid,
+        title=session.title,
+        created_at=session.started_at,
+        body=_session_body(messages),
+    )
+
+
+def _session_body(messages: list[ChatMessage]) -> str:
+    """``role: content`` lines, cut to ``MAX_SESSION_BODY_BYTES``. The first
+    message is read without the memory block an older session stored in it
+    (``without_stored_first_turn_memory``)."""
+    body_parts: list[str] = []
+    running_len = 0
+    for m in without_stored_first_turn_memory(messages):
+        line = f"{m.role}: {m.content or ''}"
+        running_len += len(line) + 1
+        body_parts.append(line)
+        if running_len >= MAX_SESSION_BODY_BYTES:
+            break
+    return "\n".join(body_parts)[:MAX_SESSION_BODY_BYTES]
+
+
+async def gather_dream_input(
+    scope: MemoryScope,
+    *,
+    window_days: int = DEFAULT_WINDOW_DAYS,
+    max_episodes: int = MAX_EPISODES,
+    max_facts: int = MAX_ACTIVE_FACTS,
+    max_sessions: int = MAX_RECENT_SESSIONS,
+) -> DreamInput:
+    """Build the full bounded input bundle for one dream pass.
+
+    All clamps are enforced here, not in the caller. If any one of
+    the three sources fails (Cypher error, Prisma timeout) the others
+    still proceed — a partial dream is better than no dream.
+    """
+    group_id = scope.group_id
+    window_end = datetime.now(timezone.utc)
+    window_start = window_end - timedelta(days=window_days)
+
+    driver = open_driver(scope)
+    try:
+        episodes = await _fetch_recent_episodes(
+            driver, group_id, window_start, max_episodes
+        )
+        facts = await _fetch_active_facts(driver, group_id, max_facts)
+        hidden = await hidden_session_ids(driver, group_id)
+    finally:
+        await driver.close()
+
+    sessions = await _fetch_recent_sessions(
+        scope, window_start, max_sessions, hidden=hidden
+    )
+
+    return DreamInput(
+        user_id=scope.owner_user_id,
+        expert_id=scope.expert_id,
+        group_id=group_id,
+        window_start=window_start,
+        window_end=window_end,
+        episodes=episodes,
+        facts=facts,
+        recent_sessions=sessions,
+        known_fact_uuids={f.uuid for f in facts},
+        known_episode_uuids={e.uuid for e in episodes},
+    )

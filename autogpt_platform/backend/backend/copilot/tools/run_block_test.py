@@ -7,6 +7,7 @@ import pytest
 from backend.blocks._base import BlockType
 from backend.copilot.context import _current_permissions
 from backend.copilot.permissions import CopilotPermissions
+from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
 from .models import (
@@ -21,6 +22,16 @@ from .run_block import RunBlockTool
 _TEST_USER_ID = "test-user-run-block"
 
 
+@pytest.fixture(autouse=True)
+def _no_pending_reviews():
+    """No test here seeds a review; unstubbed, this lookup is an RPC to a database
+    manager that only an earlier test's ``server`` fixture would have started."""
+    reviews = MagicMock()
+    reviews.get_pending_reviews_for_chat_session = AsyncMock(return_value=[])
+    with patch("backend.copilot.tools.helpers.review_db", return_value=reviews):
+        yield
+
+
 def make_mock_block(
     block_id: str, name: str, block_type: BlockType, disabled: bool = False
 ):
@@ -30,7 +41,7 @@ def make_mock_block(
     mock.name = name
     mock.block_type = block_type
     mock.disabled = disabled
-    mock.is_sensitive_action = False
+    mock.is_irreversible_action = False
     mock.input_schema = MagicMock()
     mock.input_schema.jsonschema.return_value = {"properties": {}, "required": []}
     mock.input_schema.get_credentials_fields_info.return_value = {}
@@ -56,7 +67,7 @@ def make_mock_block_with_schema(
     mock.name = name
     mock.block_type = BlockType.STANDARD
     mock.disabled = False
-    mock.is_sensitive_action = False
+    mock.is_irreversible_action = False
     mock.description = f"Test block: {name}"
 
     input_schema = {
@@ -167,6 +178,46 @@ class TestRunBlockFiltering:
         assert "not permitted" in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_block_acting_with_a_provider_outside_the_ceiling_is_refused(
+        self,
+    ):
+        """Denying ``github`` to the run denies its GitHub blocks too, not
+        only the sandbox's placeholders."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "11111111-2222-3333-4444-666666666666"
+        github_block = make_mock_block(block_id, "Create PR", BlockType.STANDARD)
+        github_block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": MagicMock(provider=frozenset({ProviderName.GITHUB}))
+        }
+
+        perms = CopilotPermissions(providers=["github"], providers_exclude=True)
+        token = _current_permissions.set(perms)
+        try:
+            with (
+                patch(
+                    "backend.copilot.tools.helpers.get_block",
+                    return_value=github_block,
+                ),
+                patch(
+                    "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                    return_value=({}, []),
+                ),
+            ):
+                response = await RunBlockTool()._execute(
+                    user_id=_TEST_USER_ID,
+                    session=session,
+                    block_id=block_id,
+                    input_data={},
+                    dry_run=False,
+                )
+        finally:
+            _current_permissions.reset(token)
+
+        assert isinstance(response, ErrorResponse)
+        assert "GitHub account" in response.message
+        assert "not permitted" in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_allowed_by_permissions_passes_guard(self):
         """A block explicitly allowed by a whitelist CopilotPermissions passes the guard."""
         session = make_session(user_id=_TEST_USER_ID)
@@ -205,11 +256,14 @@ class TestRunBlockFiltering:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_non_excluded_block_passes_guard(self):
-        """Non-excluded blocks pass the filtering guard (may fail later for other reasons)."""
+        """A standard block passes the filtering guard and reaches the schema preview."""
         session = make_session(user_id=_TEST_USER_ID)
 
-        standard_block = make_mock_block(
-            "standard-id", "HTTP Request", BlockType.STANDARD
+        standard_block = make_mock_block_with_schema(
+            block_id="standard-id",
+            name="HTTP Request",
+            input_properties={"url": {"type": "string"}},
+            required_fields=["url"],
         )
 
         with (
@@ -231,10 +285,7 @@ class TestRunBlockFiltering:
                 dry_run=False,
             )
 
-        # Should NOT be an ErrorResponse about CoPilot exclusion
-        # (may be other errors like missing credentials, but not the exclusion guard)
-        if isinstance(response, ErrorResponse):
-            assert "cannot be run directly" not in response.message
+        assert isinstance(response, BlockDetailsResponse)
 
 
 class TestRunBlockInputValidation:
@@ -657,11 +708,133 @@ class TestRunBlockInputValidation:
             )
 
         assert isinstance(response, SetupRequirementsResponse)
-        assert "'spreadsheet'" in response.message
+        # The card shows this line to the user, so it names the field by its
+        # title (the key here, since the schema gives none), never quoted.
+        assert response.message == (
+            "Choose your spreadsheet in the card below. The step runs again "
+            "with your choice."
+        )
         inputs = response.setup_info.requirements["inputs"]
         picker_field = next((i for i in inputs if i["name"] == "spreadsheet"), None)
         assert picker_field is not None
         assert picker_field["format"] == "google-drive-picker"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_credentials_card_carries_no_plain_inputs(self):
+        """A connect card is only a connect card: the block's ordinary inputs
+        are collected in chat, so the setup card must not ship a form for
+        them alongside the credentials."""
+        from backend.data.model import CredentialsFieldInfo
+
+        from .models import SetupRequirementsResponse
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="github-search-id",
+            name="GitHub Search Issues",
+            input_properties={
+                "term": {"type": "string"},
+                "limit": {"type": "integer", "default": 10, "advanced": True},
+            },
+            required_fields=["term"],
+        )
+        info = CredentialsFieldInfo(
+            credentials_provider=frozenset({"github"}),
+            credentials_types=frozenset({"api_key"}),
+        )
+        mock_block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {
+            "credentials": MagicMock()
+        }
+        mock_block.input_schema.get_required_fields.return_value = {
+            "credentials",
+            "term",
+        }
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, [MagicMock()]),
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="github-search-id",
+                input_data={"term": "login bug"},
+            )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert "credentials" in response.setup_info.user_readiness.missing_credentials
+        assert response.setup_info.requirements["inputs"] == []
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_credentials_card_keeps_picker_inputs(self):
+        """Picker-backed fields are the one input the chat cannot supply, so
+        they stay on the card next to the credentials."""
+        from backend.data.model import CredentialsFieldInfo
+
+        from .models import SetupRequirementsResponse
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="sheets-read-id",
+            name="Google Sheets Read",
+            input_properties={
+                "spreadsheet": {
+                    "type": "object",
+                    "format": "google-drive-picker",
+                },
+                "range": {"type": "string"},
+            },
+            required_fields=["spreadsheet", "range"],
+        )
+        info = CredentialsFieldInfo(
+            credentials_provider=frozenset({"google"}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        mock_block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {
+            "credentials": MagicMock()
+        }
+        mock_block.input_schema.get_required_fields.return_value = {
+            "credentials",
+            "spreadsheet",
+            "range",
+        }
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, [MagicMock()]),
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="sheets-read-id",
+                input_data={"range": "Sheet1!A1:Z100"},
+            )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        names = [i["name"] for i in response.setup_info.requirements["inputs"]]
+        assert names == ["spreadsheet"]
 
 
 class TestRunBlockSensitiveAction:
@@ -689,7 +862,7 @@ class TestRunBlockSensitiveAction:
             },
             required_fields=["repo_url", "branch"],
         )
-        mock_block.is_sensitive_action = True
+        mock_block.is_irreversible_action = True
         mock_block.is_block_exec_need_review = AsyncMock(
             return_value=(True, input_data)
         )
@@ -715,7 +888,7 @@ class TestRunBlockSensitiveAction:
 
         assert isinstance(response, ReviewRequiredResponse)
         assert "requires human review" in response.message
-        assert "continue_run_block" in response.message
+        assert "resume_capability" in response.message
         assert response.block_name == "Delete Branch"
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -736,7 +909,7 @@ class TestRunBlockSensitiveAction:
             },
             required_fields=["repo_url", "branch"],
         )
-        mock_block.is_sensitive_action = True
+        mock_block.is_irreversible_action = True
         mock_block.is_block_exec_need_review = AsyncMock(
             return_value=(False, input_data)
         )
@@ -791,7 +964,7 @@ class TestRunBlockSensitiveAction:
             },
             required_fields=["url"],
         )
-        mock_block.is_sensitive_action = False
+        mock_block.is_irreversible_action = False
         mock_block.is_block_exec_need_review = AsyncMock(
             return_value=(False, input_data)
         )
@@ -1157,3 +1330,722 @@ class TestRunBlockCredentialsHidden:
         }
         cleaned = _strip_credentials_from_schema(schema, {"credentials"})
         assert "required" not in cleaned
+
+
+class TestExecuteBlockUserTimezoneAccessor:
+    """The user-timezone lookup must go through the connection-aware
+    ``user_db()`` accessor (sentry ClientNotConnectedError).
+
+    ``execute_block`` runs in the copilot process, where the local Prisma
+    engine is NOT connected (``db.is_connected()`` is False) and DB reads are
+    served by the DatabaseManager RPC client. PR #13247 added a user lookup via
+    the directly-imported ``backend.data.user`` module, which calls Prisma
+    directly and blew up with ``ClientNotConnectedError``. Routing through the
+    ``user_db()`` accessor picks the RPC client when disconnected.
+    """
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_timezone_lookup_uses_accessor_not_direct_prisma(self):
+        from backend.copilot.tools.helpers import execute_block
+
+        mock_block = make_mock_block_with_schema(
+            block_id="tz-block-id",
+            name="Timezone Block",
+            input_properties={},
+            required_fields=[],
+        )
+
+        captured: dict[str, object] = {}
+
+        async def _capture_ctx(_input, **kwargs):
+            captured["ctx"] = kwargs["execution_context"]
+            yield "result", "ok"
+
+        mock_block.execute = _capture_ctx
+
+        # Accessor returns the RPC client (disconnected-process behaviour);
+        # the direct ``user_db.get_user_by_id`` would raise ClientNotConnectedError.
+        rpc_client = MagicMock()
+        rpc_client.get_user_by_id = AsyncMock(
+            return_value=MagicMock(timezone="America/New_York")
+        )
+
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="ws-tz")
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.user_db",
+                return_value=rpc_client,
+            ) as mock_user_db,
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.credit_db",
+                return_value=_StubCreditDB(),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(0, {}),
+            ),
+        ):
+            response = await execute_block(
+                block=mock_block,
+                block_id="tz-block-id",
+                input_data={},
+                user_id="u-tz",
+                session_id="s-tz",
+                node_exec_id="n-tz",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(response, BlockOutputResponse)
+        assert response.success is True
+        # Went through the accessor, not the directly-imported module.
+        mock_user_db.assert_called_once()
+        rpc_client.get_user_by_id.assert_awaited_once_with("u-tz")
+        # The looked-up timezone was plumbed into the block's ExecutionContext.
+        ctx = captured["ctx"]
+        assert ctx is not None
+        assert ctx.user_timezone == "America/New_York"  # type: ignore[attr-defined]
+
+
+class TestExecuteBlockCredentialRejection:
+    """A provider that refuses a stored credential mid-run must produce the
+    reconnect card, not a bare "Block execution failed"."""
+
+    @staticmethod
+    def _block(exc: Exception):
+        from backend.data.model import CredentialsFieldInfo
+
+        block = MagicMock()
+        block.name = "AyrsharePostBlock"
+        block.id = "ayrshare-block-id"
+        block.input_schema = MagicMock()
+        block.input_schema.jsonschema.return_value = {"properties": {}, "required": []}
+        block.input_schema.get_credentials_fields.return_value = {"credentials": object}
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": CredentialsFieldInfo.model_validate(
+                {
+                    "credentials_provider": ["ayrshare"],
+                    "credentials_types": ["api_key"],
+                    "is_auto_credential": False,
+                },
+                by_alias=True,
+            )
+        }
+        block.input_schema.get_required_fields.return_value = {"credentials"}
+
+        async def _fail(_input, **_kwargs):
+            raise exc
+            yield  # pragma: no cover -- keeps this an async generator
+
+        block.execute = _fail
+        return block
+
+    @staticmethod
+    async def _run(exc: Exception, load_error: Exception | None = None):
+        from backend.copilot.tools.helpers import execute_block
+        from backend.data.model import CredentialsMetaInput
+
+        cred_meta = CredentialsMetaInput(
+            id="cred-1",
+            title="Work Ayrshare key",
+            provider="ayrshare",  # type: ignore[arg-type]
+            type="api_key",
+        )
+        stored = MagicMock()
+        stored.provider = "ayrshare"
+        stored.type = "api_key"
+
+        creds_manager = MagicMock()
+        creds_manager.get = AsyncMock(return_value=stored, side_effect=load_error)
+
+        workspace = MagicMock()
+        workspace.get_or_create_workspace = AsyncMock(return_value=MagicMock(id="ws-1"))
+
+        with (
+            patch("backend.copilot.tools.helpers.workspace_db", return_value=workspace),
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=creds_manager,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.acquire_auto_credentials",
+                new_callable=AsyncMock,
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})
+            ),
+        ):
+            return await execute_block(
+                block=TestExecuteBlockCredentialRejection._block(exc),
+                block_id="ayrshare-block-id",
+                input_data={},
+                user_id="u-1",
+                session_id="s-1",
+                node_exec_id="n-1",
+                matched_credentials={"credentials": cred_meta},
+                dry_run=False,
+            )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_refresh_the_provider_refused_returns_the_card(self, caplog):
+        # The block never runs: loading the credential refreshes it first, and a
+        # revoked grant fails there. Reconnecting is the only way out.
+        from backend.util.request import HTTPClientError
+
+        from .models import SetupRequirementsResponse
+
+        response = await self._run(
+            RuntimeError("the block must not run"),
+            load_error=HTTPClientError("HTTP 400: refresh_token=rt-secret", 400),
+        )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert response.rejection is not None
+        assert response.rejection.credential_id == "cred-1"
+        assert response.rejection.status_code is None
+        assert "rt-secret" not in response.rejection.detail
+        assert "rt-secret" not in caplog.text
+        assert "could not be refreshed" in response.message
+        assert "Work Ayrshare key" in response.message
+        assert "credentials" in response.setup_info.user_readiness.missing_credentials
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_failure_that_is_not_the_providers_is_not_a_reconnect_card(self):
+        # A store or config error is not fixed by reconnecting, so it must not
+        # be dressed up as one.
+        from .models import ErrorResponse
+
+        response = await self._run(
+            RuntimeError("the block must not run"),
+            load_error=RuntimeError("store down for user u-1 credential cred-1"),
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert response.message == "Failed to retrieve credentials for credentials"
+        # The internal detail stays out of the reply.
+        assert "u-1" not in response.message and "store down" not in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_provider_401_returns_a_card_naming_the_credential(self):
+        from backend.util.exceptions import BlockUnknownError
+        from backend.util.request import HTTPClientError
+
+        from .models import SetupRequirementsResponse
+
+        try:
+            raise HTTPClientError("HTTP 401 Error: token=sk-live-abc", 401)
+        except HTTPClientError as inner:
+            wrapped = BlockUnknownError("failed", "AyrsharePostBlock", "block-id")
+            wrapped.__cause__ = inner
+
+        response = await self._run(wrapped)
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert response.rejection is not None
+        assert response.rejection.provider == "ayrshare"
+        assert response.rejection.status_code == 401
+        assert response.rejection.credential_id == "cred-1"
+        assert "sk-live-abc" not in response.rejection.detail
+        assert "Work Ayrshare key" in response.message
+        # The picker must be offered again, or there is no way back.
+        assert "credentials" in response.setup_info.user_readiness.missing_credentials
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_scheduled_turn_gets_an_error_naming_the_rejected_credential(
+        self, caplog
+    ):
+        # Nobody answers a card on a scheduled turn (SECRT-2804): the reply has
+        # to say the step was skipped and which credential to reconnect.
+        from backend.util.exceptions import BlockUnknownError
+        from backend.util.request import HTTPClientError
+
+        try:
+            raise HTTPClientError("HTTP 401 Error: token=sk-live-abc", 401)
+        except HTTPClientError as inner:
+            wrapped = BlockUnknownError("failed", "AyrsharePostBlock", "block-id")
+            wrapped.__cause__ = inner
+
+        with patch(
+            "backend.copilot.tools.helpers.is_unattended_turn", return_value=True
+        ):
+            response = await self._run(wrapped)
+
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "credential_rejected"
+        assert "'Work Ayrshare key' (HTTP 401)" in response.message
+        assert "did not run" in response.message
+        assert "did not switch" in response.message
+        assert "sk-live-abc" not in response.message
+        assert "sk-live-abc" not in caplog.text
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_scheduled_turn_gets_an_error_when_a_refresh_is_refused(
+        self, caplog
+    ):
+        from backend.util.request import HTTPClientError
+
+        with patch(
+            "backend.copilot.tools.helpers.is_unattended_turn", return_value=True
+        ):
+            response = await self._run(
+                RuntimeError("the block must not run"),
+                load_error=HTTPClientError("HTTP 400: refresh_token=rt-secret", 400),
+            )
+
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "credential_rejected"
+        assert "'Work Ayrshare key' could not be refreshed" in response.message
+        assert "rt-secret" not in response.message
+        assert "rt-secret" not in caplog.text
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_non_auth_block_failure_still_returns_an_error(self):
+        from backend.util.exceptions import BlockExecutionError
+
+        response = await self._run(
+            BlockExecutionError("bad input", "AyrsharePostBlock", "block-id")
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert "Block execution failed" in response.message
+
+
+class TestExecuteBlockExpertAttribution:
+    """A block run from an expert chat must carry the expert on its execution
+    context, so ``workspace://`` inputs resolve inside that expert's scope."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_expert_id_is_plumbed_into_the_execution_context(self):
+        from backend.copilot.tools.helpers import execute_block
+
+        mock_block = make_mock_block_with_schema(
+            block_id="scope-block-id",
+            name="Scope Block",
+            input_properties={},
+            required_fields=[],
+        )
+
+        captured: dict[str, object] = {}
+
+        async def _capture_ctx(_input, **kwargs):
+            captured["ctx"] = kwargs["execution_context"]
+            yield "result", "ok"
+
+        mock_block.execute = _capture_ctx
+
+        rpc_client = MagicMock()
+        rpc_client.get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="ws-scope")
+        )
+
+        with (
+            patch("backend.copilot.tools.helpers.user_db", return_value=rpc_client),
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.credit_db",
+                return_value=_StubCreditDB(),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(0, {}),
+            ),
+        ):
+            response = await execute_block(
+                block=mock_block,
+                block_id="scope-block-id",
+                input_data={},
+                user_id="u-scope",
+                session_id="s-scope",
+                node_exec_id="n-scope",
+                matched_credentials={},
+                dry_run=False,
+                expert_id="expert-a",
+            )
+
+        assert isinstance(response, BlockOutputResponse)
+        ctx = captured["ctx"]
+        assert ctx is not None
+        assert ctx.expert_id == "expert-a"  # type: ignore[attr-defined]
+        assert ctx.session_id == "s-scope"  # type: ignore[attr-defined]
+
+
+class _StubCreditDB:
+    async def get_credits(self, _user_id: str) -> int:
+        return 10_000
+
+    async def spend_credits(self, **kwargs):
+        return None
+
+
+class TestSpendApproval:
+    """Seam B of SECRT-2599: a paid block in an expert's chat waits for the
+    user once she has reached her spend threshold."""
+
+    @staticmethod
+    def _needed():
+        from backend.api.features.experts.spend_approval import SpendApprovalNeeded
+
+        return SpendApprovalNeeded(
+            expert_id="expert-1",
+            expert_name="Ada",
+            spent=250,
+            threshold=250,
+            window="week",
+        )
+
+    @staticmethod
+    def _paid_block():
+        block = make_mock_block_with_schema(
+            block_id="paid-block",
+            name="Paid Block",
+            input_properties={"prompt": {"type": "string"}},
+            required_fields=["prompt"],
+        )
+        block.executed = False
+
+        async def execute(input_data, **kwargs):
+            block.executed = True
+            yield "response", "ok"
+
+        block.execute = execute
+        return block
+
+    @staticmethod
+    def _patches(block, gate, *, cost: int = 5, billing_enabled: bool = True):
+        credit = MagicMock(
+            get_credits=AsyncMock(return_value=1_000), spend_credits=AsyncMock()
+        )
+        workspace = MagicMock(
+            get_or_create_workspace=AsyncMock(return_value=MagicMock(id="ws"))
+        )
+        return [
+            patch("backend.copilot.tools.helpers.get_block", return_value=block),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(cost, {}),
+            ),
+            patch("backend.copilot.tools.helpers.spend_approval_db", return_value=gate),
+            patch("backend.copilot.tools.helpers.credit_db", return_value=credit),
+            patch("backend.copilot.tools.helpers.workspace_db", return_value=workspace),
+            patch(
+                "backend.copilot.tools.helpers.Settings",
+                return_value=MagicMock(config=MagicMock(enable_credit=billing_enabled)),
+            ),
+        ]
+
+    async def _run(self, session, block, gate, **kw):
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            for p in self._patches(block, gate, **kw):
+                stack.enter_context(p)
+            return await RunBlockTool()._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="paid-block",
+                input_data={"prompt": "hi"},
+                dry_run=False,
+            )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_expert_at_threshold_parks_a_paid_block(self):
+        session = make_session(user_id=_TEST_USER_ID, expert_id="expert-1")
+        block = self._paid_block()
+        gate = MagicMock(
+            spend_approval_required=AsyncMock(return_value=self._needed()),
+            open_chat_spend_review=AsyncMock(
+                return_value="copilot-node-expert-spend:expert-1:abcd1234"
+            ),
+        )
+
+        response = await self._run(session, block, gate)
+
+        assert isinstance(response, ReviewRequiredResponse)
+        assert response.review_id == "copilot-node-expert-spend:expert-1:abcd1234"
+        assert "graph_exec_id" not in response.model_dump()
+        assert not block.executed
+        gate.spend_approval_required.assert_awaited_once_with(_TEST_USER_ID, "expert-1")
+        assert (
+            gate.open_chat_spend_review.await_args.kwargs["block_name"] == "Paid Block"
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("expert_id,cost", [(None, 5), ("expert-1", 0)])
+    async def test_plain_sessions_and_free_blocks_are_not_gated(self, expert_id, cost):
+        session = make_session(user_id=_TEST_USER_ID, expert_id=expert_id)
+        block = self._paid_block()
+        gate = MagicMock(spend_approval_required=AsyncMock(return_value=self._needed()))
+
+        response = await self._run(session, block, gate, cost=cost)
+
+        assert isinstance(response, BlockOutputResponse)
+        assert block.executed
+        gate.spend_approval_required.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("billing_enabled", [True, False])
+    async def test_below_threshold_meters_only_when_billing_enabled_but_always_scopes(
+        self, billing_enabled
+    ):
+        """Billing controls who is metered, never whose file scope the block
+        runs in — ``workspace://`` inputs resolve against the session's expert
+        either way."""
+        session = make_session(user_id=_TEST_USER_ID, expert_id="expert-1")
+        block = self._paid_block()
+        captured: dict[str, object] = {}
+
+        async def execute(input_data, **kwargs):
+            block.executed = True
+            captured["ctx"] = kwargs["execution_context"]
+            yield "response", "ok"
+
+        block.execute = execute
+        gate = MagicMock(spend_approval_required=AsyncMock(return_value=None))
+
+        with patch(
+            "backend.copilot.tools.helpers.add_weekly_spend", AsyncMock()
+        ) as add_spend:
+            response = await self._run(
+                session, block, gate, billing_enabled=billing_enabled
+            )
+
+        assert isinstance(response, BlockOutputResponse)
+        assert block.executed
+        assert captured["ctx"].expert_id == "expert-1"
+        if billing_enabled:
+            add_spend.assert_awaited_once_with("expert-1", 5)
+        else:
+            add_spend.assert_not_awaited()
+
+
+class TestRunBlockOptionalCredentials:
+    """An optional credentials field runs empty when the user has none to
+    offer, as the executor does; a discriminated field keeps its own rules."""
+
+    @staticmethod
+    def _block(schema: type, seen: list):
+        block = make_mock_block_with_schema(
+            block_id="optional-creds-id",
+            name="Optional Key Search",
+            input_properties={},
+            required_fields=[],
+        )
+        block.input_schema = schema
+
+        async def _execute(input_data, **kwargs):
+            seen.append(kwargs.get("credentials"))
+            yield "result", "ok"
+
+        block.execute = _execute
+        return block
+
+    @staticmethod
+    async def _run(block, available: list, input_data: dict):
+        workspace = MagicMock()
+        workspace.get_or_create_workspace = AsyncMock(return_value=MagicMock(id="ws"))
+        creds_manager = MagicMock()
+        creds_manager.get = AsyncMock(side_effect=lambda _u, cid, **_: available[0])
+        reviews = MagicMock()
+        reviews.get_pending_reviews_for_chat_session = AsyncMock(return_value=[])
+        users = MagicMock()
+        users.get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+        with (
+            patch("backend.copilot.tools.helpers.get_block", return_value=block),
+            patch("backend.copilot.tools.helpers.review_db", return_value=reviews),
+            patch("backend.copilot.tools.helpers.user_db", return_value=users),
+            patch(
+                "backend.copilot.tools.helpers.credit_db", return_value=_StubCreditDB()
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})
+            ),
+            patch(
+                "backend.copilot.tools.utils.get_user_credentials",
+                new_callable=AsyncMock,
+                return_value=available,
+            ),
+            patch(
+                "backend.copilot.tools.utils.selected_credentials",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch("backend.copilot.tools.helpers.workspace_db", return_value=workspace),
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=creds_manager,
+            ),
+        ):
+            return await RunBlockTool()._execute(
+                user_id=_TEST_USER_ID,
+                session=make_session(user_id=_TEST_USER_ID),
+                block_id=block.id,
+                input_data=input_data,
+                dry_run=False,
+            )
+
+    @staticmethod
+    def _api_key():
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials
+
+        return APIKeyCredentials(
+            id="key-1", provider="openai", api_key=SecretStr("sk"), title="Key"
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_runs_without_a_credential_when_none_is_connected(self):
+        seen: list = []
+        response = await self._run(
+            self._block(_OptionalKeyInput, seen), [], {"query": "q"}
+        )
+
+        assert isinstance(response, BlockOutputResponse), response
+        assert seen == [None]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_passes_a_connected_credential(self):
+        seen: list = []
+        key = self._api_key()
+        response = await self._run(
+            self._block(_OptionalKeyInput, seen), [key], {"query": "q"}
+        )
+
+        assert isinstance(response, BlockOutputResponse), response
+        assert seen == [key]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_asks_which_key_when_several_fit(self):
+        from .models import SetupRequirementsResponse
+
+        seen: list = []
+        second = self._api_key().model_copy(update={"id": "key-2"})
+        response = await self._run(
+            self._block(_OptionalKeyInput, seen),
+            [self._api_key(), second],
+            {"query": "q"},
+        )
+
+        assert isinstance(response, SetupRequirementsResponse), response
+        assert seen == []
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_picker_credentials_are_still_reported_missing(self):
+        from backend.blocks.google.sheets import GoogleSheetsReadBlock
+
+        from .helpers import resolve_block_credentials
+
+        with (
+            patch(
+                "backend.copilot.tools.utils.get_user_credentials",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                "backend.copilot.tools.utils.selected_credentials",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+        ):
+            _, missing = await resolve_block_credentials(
+                _TEST_USER_ID, GoogleSheetsReadBlock(), {}
+            )
+
+        assert [m.id for m in missing] == ["credentials"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_optional_discriminated_field_still_asks_for_a_credential(self):
+        from .models import SetupRequirementsResponse
+
+        seen: list = []
+        response = await self._run(
+            self._block(_OptionalDiscriminatedInput, seen),
+            [],
+            {"query": "q", "model": "paid-model"},
+        )
+
+        assert isinstance(response, SetupRequirementsResponse), response
+        assert seen == []
+
+    @pytest.mark.parametrize(
+        "pinned_provider, runs", [("openai", False), ("anthropic", True)]
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_schedule_pin_on_its_provider_is_never_run_around(
+        self, pinned_provider, runs
+    ):
+        """The schedule's account is gone: running without it is the switch
+        the pin exists to prevent. A pin on another provider changes nothing."""
+        from backend.copilot.credential_selection import (
+            CredentialPin,
+            set_turn_credential_pins,
+        )
+
+        from .models import SetupRequirementsResponse
+
+        seen: list = []
+        set_turn_credential_pins(
+            {pinned_provider: CredentialPin(id="key-gone", title="Work key")}
+        )
+        try:
+            response = await self._run(
+                self._block(_OptionalKeyInput, seen), [], {"query": "q"}
+            )
+        finally:
+            set_turn_credential_pins(None)
+
+        if runs:
+            assert isinstance(response, BlockOutputResponse), response
+            assert seen == [None]
+        else:
+            assert isinstance(response, SetupRequirementsResponse), response
+            assert seen == []
+
+
+def _optional_schemas():
+    from typing import Literal
+
+    from backend.blocks._base import BlockSchemaInput
+    from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+    from backend.integrations.providers import ProviderName
+
+    OpenAIKey = CredentialsMetaInput[Literal[ProviderName.OPENAI], Literal["api_key"]]
+
+    class OptionalKeyInput(BlockSchemaInput):
+        query: str = SchemaField(description="Query")
+        credentials: OpenAIKey = CredentialsField(
+            description="Optional key", default=None
+        )
+
+    class OptionalDiscriminatedInput(BlockSchemaInput):
+        query: str = SchemaField(description="Query")
+        model: str = SchemaField(description="Model", default="paid-model")
+        credentials: OpenAIKey = CredentialsField(
+            description="Key for the model",
+            discriminator="model",
+            discriminator_mapping={"paid-model": ProviderName.OPENAI},
+            default=None,
+        )
+
+    return OptionalKeyInput, OptionalDiscriminatedInput
+
+
+_OptionalKeyInput, _OptionalDiscriminatedInput = _optional_schemas()

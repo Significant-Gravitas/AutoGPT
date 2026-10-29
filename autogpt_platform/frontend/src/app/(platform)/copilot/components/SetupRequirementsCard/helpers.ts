@@ -1,12 +1,14 @@
 import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
+import { credentialHosts } from "@/components/contextual/CredentialsInput/service-identity";
+import { putV2RecordCredentialPicksForThisChat } from "@/app/api/__generated__/endpoints/chat/chat";
+import type { CredentialRejection } from "@/app/api/__generated__/models/credentialRejection";
 import type { RJSFSchema } from "@rjsf/utils";
+import { CREDENTIALS_TYPES } from "@/lib/autogpt-server-api/types";
 
-const VALID_CREDENTIAL_TYPES = new Set([
-  "api_key",
-  "oauth2",
-  "user_password",
-  "host_scoped",
-]);
+// Used as a filter below, so it has to be total: a type missing here is
+// silently unconnectable from the card. `CREDENTIALS_TYPES` is checked against
+// `CredentialsType` at build time, so a new type cannot go missing quietly.
+const VALID_CREDENTIAL_TYPES: ReadonlySet<string> = new Set(CREDENTIALS_TYPES);
 
 export function coerceCredentialFields(rawMissingCredentials: unknown): {
   credentialFields: CredentialField[];
@@ -63,12 +65,47 @@ export function coerceCredentialFields(rawMissingCredentials: unknown): {
     if (discriminatorValues && discriminatorValues.length > 0) {
       schema.discriminator_values = discriminatorValues;
     }
+    const expertGrant = coerceExpertGrant(cred.expert_grant);
+    if (expertGrant) {
+      schema.expert_grant = expertGrant;
+    }
 
     credentialFields.push([key, schema]);
     requiredCredentials.add(key);
   });
 
   return { credentialFields, requiredCredentials };
+}
+
+/** Which expert a missing credential is for, and which of the account's
+ *  credentials could be granted to it instead of connecting a new one. Only
+ *  present on cards raised from an expert chat. */
+export interface ExpertGrant {
+  expertId: string;
+  credentials: { id: string; title: string; type: string }[];
+}
+
+/** Reads the wire `expert_grant` block. A candidate needs an id; an untitled
+ *  one is labelled by its id, and a missing type falls back to `api_key`. */
+export function coerceExpertGrant(raw: unknown): ExpertGrant | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const grant = raw as Record<string, unknown>;
+  if (typeof grant.expert_id !== "string" || !grant.expert_id) return undefined;
+  const credentials = Array.isArray(grant.credentials)
+    ? grant.credentials.flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const cred = entry as Record<string, unknown>;
+        if (typeof cred.id !== "string" || !cred.id) return [];
+        return [
+          {
+            id: cred.id,
+            title: typeof cred.title === "string" ? cred.title : cred.id,
+            type: typeof cred.type === "string" ? cred.type : "api_key",
+          },
+        ];
+      })
+    : [];
+  return { expertId: grant.expert_id, credentials };
 }
 
 /**
@@ -300,6 +337,72 @@ export function checkAllInputsComplete(
   });
 }
 
+/**
+ * True while a credential the provider just refused is still the one selected.
+ *
+ * The row is kept on file, so the picker re-selects it on mount; without this
+ * the card would report ready and the chat would re-run into the same 401.
+ */
+export function isRejectedCredentialSelected(
+  rejection: CredentialRejection | null | undefined,
+  inputCredentials: Record<string, { id?: string } | undefined>,
+): boolean {
+  const rejectedId = rejection?.credential_id;
+  if (!rejectedId) return false;
+  return Object.values(inputCredentials).some(
+    (credential) => credential?.id === rejectedId,
+  );
+}
+
+/** The chosen credentials, with host-scoped picks kept per host. */
+export function buildCredentialSelections(
+  inputCredentials: Record<
+    string,
+    { id?: string; provider?: string } | undefined
+  >,
+  fields: CredentialField[] = [],
+): Record<string, string> {
+  const selections: Record<string, string> = {};
+  const schemas = new Map(fields);
+  for (const [field, credential] of Object.entries(inputCredentials)) {
+    if (credential?.id && credential.provider) {
+      const schema = schemas.get(field);
+      const hosts = schema ? credentialHosts(schema) : [];
+      const key =
+        hosts.length === 1
+          ? `${credential.provider}:${hosts[0]}`
+          : credential.provider;
+      selections[key] = credential.id;
+    }
+  }
+  return selections;
+}
+
+/**
+ * Tell the backend which accounts were chosen, before the reply that re-runs
+ * the tool. The tools use exactly these for the rest of the chat; without them
+ * they would match on their own and could run on a different account.
+ *
+ * Failure is swallowed on purpose: with nothing recorded the backend asks
+ * again rather than guessing, so the worst case is a second card.
+ */
+export async function reportCredentialPicks(
+  sessionID: string | null,
+  inputCredentials: Record<
+    string,
+    { id?: string; provider?: string } | undefined
+  >,
+  fields: CredentialField[] = [],
+): Promise<void> {
+  const selections = buildCredentialSelections(inputCredentials, fields);
+  if (!sessionID || Object.keys(selections).length === 0) return;
+  try {
+    await putV2RecordCredentialPicksForThisChat(sessionID, { selections });
+  } catch {
+    // See above.
+  }
+}
+
 export function checkCanRun(
   needsCredentials: boolean,
   isAllCredentialsComplete: boolean,
@@ -340,6 +443,24 @@ export function buildRunMessage(
  */
 export function buildPreviewRunMessage(needsCredentials: boolean): string {
   return needsCredentials
-    ? "I've configured the required credentials. Please check if everything is ready and proceed with running the agent."
-    : "Please proceed with running the agent.";
+    ? "I've configured the required credentials. Please check if everything is ready and proceed with running the workflow."
+    : "Please proceed with running the workflow.";
+}
+
+/**
+ * Message variant for "trigger" mode (setup_agent_webhook_trigger): the chosen
+ * credential IDs are carried back so the webhook is registered under the
+ * account the user explicitly picked, rather than auto-matched on resume.
+ */
+export function buildTriggerSetupMessage(
+  inputCredentials: Record<string, { id?: string } | undefined>,
+): string {
+  const selected: Record<string, string> = {};
+  for (const [field, cred] of Object.entries(inputCredentials)) {
+    if (cred?.id) selected[field] = cred.id;
+  }
+  return (
+    "I've selected the credentials to use. Call setup_agent_webhook_trigger " +
+    `with credentials=${JSON.stringify(selected)} to finish setting up the trigger.`
+  );
 }

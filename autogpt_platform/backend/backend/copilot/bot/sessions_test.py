@@ -4,7 +4,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.bot import sessions
+from backend.copilot.bot import sessions, threads
+from backend.copilot.bot.config import SESSION_TTL
+
+
+def test_session_ttl_outlives_thread_subscription():
+    # If the session cache expires before the thread stops auto-replying, a
+    # follow-up message silently starts a fresh copilot session and loses the
+    # whole conversation. The session must live at least as long as the bot
+    # keeps replying in the thread.
+    assert SESSION_TTL >= threads.THREAD_SUBSCRIPTION_TTL
 
 
 def test_session_cache_key_format():

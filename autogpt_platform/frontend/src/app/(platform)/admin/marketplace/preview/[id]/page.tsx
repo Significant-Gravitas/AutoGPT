@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft } from "@phosphor-icons/react";
 import { AgentInfo } from "@/app/(platform)/marketplace/components/AgentInfo/AgentInfo";
 import { AgentImages } from "@/app/(platform)/marketplace/components/AgentImages/AgentImage";
 import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 import { previewAsAdmin, addToLibraryAsAdmin } from "../../actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function AdminPreviewPage() {
   const params = useParams<{ id: string }>();
@@ -88,12 +89,12 @@ export default function AdminPreviewPage() {
           onClick={() => router.back()}
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft size={16} />
+          <Icon icon={ArrowLeft02Icon} size={16} />
           Back to Admin Marketplace
         </button>
 
         <div className="flex items-center gap-3">
-          <span className="rounded-md bg-amber-500/20 px-3 py-1 text-sm font-medium text-amber-600">
+          <span className="rounded-md bg-warning/20 px-3 py-1 text-sm font-medium text-warning-foreground">
             Admin Preview
             {!data.has_approved_version && " — Pending Approval"}
           </span>
@@ -111,7 +112,6 @@ export default function AdminPreviewPage() {
         <div className="lg:col-span-2">
           <AgentInfo
             user={null}
-            agentId={data.graph_id}
             name={data.agent_name}
             creator={data.creator}
             creatorAvatar={data.creator_avatar}

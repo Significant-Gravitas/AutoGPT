@@ -9,13 +9,14 @@ import {
   SecondaryDropdownMenuItem,
   SecondaryDropdownMenuSeparator,
 } from "@/components/molecules/SecondaryMenu/SecondaryMenu";
-import {
-  ArrowSquareOutIcon,
-  CopyIcon,
-  DotsThreeOutlineVerticalIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
 import { useReactFlow } from "@xyflow/react";
+import {
+  Copy01Icon,
+  Delete02Icon,
+  LinkSquare01Icon,
+  MoreVerticalIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   nodeId: string;
@@ -44,12 +45,12 @@ export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="py-2">
-        <DotsThreeOutlineVerticalIcon size={16} weight="fill" />
+        <Icon icon={MoreVerticalIcon} size={16} />
       </DropdownMenuTrigger>
       <SecondaryDropdownMenuContent side="right" align="start">
         <SecondaryDropdownMenuItem onClick={handleCopy}>
-          <CopyIcon size={20} className="mr-2 dark:text-gray-100" />
-          <span className="dark:text-gray-100">Copy</span>
+          <Icon icon={Copy01Icon} size={20} className="mr-2" />
+          <span>Copy</span>
         </SecondaryDropdownMenuItem>
         <SecondaryDropdownMenuSeparator />
 
@@ -58,22 +59,16 @@ export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
             <SecondaryDropdownMenuItem
               onClick={() => window.open(`/build?flowID=${subGraphID}`)}
             >
-              <ArrowSquareOutIcon
-                size={20}
-                className="mr-2 dark:text-gray-100"
-              />
-              <span className="dark:text-gray-100">Open agent</span>
+              <Icon icon={LinkSquare01Icon} size={20} className="mr-2" />
+              <span>Open workflow</span>
             </SecondaryDropdownMenuItem>
             <SecondaryDropdownMenuSeparator />
           </>
         )}
 
         <SecondaryDropdownMenuItem variant="destructive" onClick={handleDelete}>
-          <TrashIcon
-            size={20}
-            className="mr-2 text-red-500 dark:text-red-400"
-          />
-          <span className="dark:text-red-400">Delete</span>
+          <Icon icon={Delete02Icon} size={20} className="mr-2 text-error" />
+          <span>Delete</span>
         </SecondaryDropdownMenuItem>
       </SecondaryDropdownMenuContent>
     </DropdownMenu>

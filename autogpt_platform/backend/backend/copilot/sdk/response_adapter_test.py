@@ -23,6 +23,7 @@ from backend.copilot.response_model import (
     StreamHeartbeat,
     StreamReasoningDelta,
     StreamReasoningEnd,
+    StreamReasoningStart,
     StreamStart,
     StreamStartStep,
     StreamStatus,
@@ -389,41 +390,10 @@ def test_empty_thinking_block_is_ignored():
     assert [type(r).__name__ for r in results] == ["StreamStartStep"]
 
 
-def test_render_reasoning_in_ui_false_still_emits_adapter_events():
-    """With the persist/render decoupling the adapter is flag-agnostic:
-    it always emits ``StreamReasoning*`` so the session transcript keeps a
-    durable reasoning record.  Wire-level suppression when
-    ``render_reasoning_in_ui=False`` happens at the SDK service yield
-    boundary, not here — see
-    ``backend/copilot/sdk/service.py::_filter_reasoning_events``.
-    """
-    adapter = SDKResponseAdapter(
-        message_id="m",
-        session_id="s",
-        render_reasoning_in_ui=False,
-    )
-    msg = AssistantMessage(
-        content=[ThinkingBlock(thinking="plan", signature="sig")],
-        model="test",
-    )
-    results = adapter.convert_message(msg)
-    types = [type(r).__name__ for r in results]
-    assert "StreamReasoningStart" in types
-    assert "StreamReasoningDelta" in types
-
-
-def test_render_reasoning_off_text_after_thinking_still_closes_reasoning():
-    """Adapter still emits a ``StreamReasoningEnd`` when text follows a
-    thinking block — decoupled from the render flag.  The service layer
-    drops the reasoning events at yield time; the adapter's structural
-    open/close pairing must not depend on the flag or downstream filters
-    would see orphan reasoning starts on the persisted transcript.
-    """
-    adapter = SDKResponseAdapter(
-        message_id="m",
-        session_id="s",
-        render_reasoning_in_ui=False,
-    )
+def test_text_after_thinking_closes_reasoning():
+    """Text following a thinking block closes the reasoning block first, so
+    the transcript never holds an orphan reasoning start."""
+    adapter = SDKResponseAdapter(message_id="m", session_id="s")
     adapter.convert_message(
         AssistantMessage(
             content=[ThinkingBlock(thinking="warming up", signature="sig")],
@@ -1260,9 +1230,9 @@ def test_flush_with_stashed_output():
     """Stashed output from PostToolUse hook is used when flushing."""
     adapter = _adapter()
 
-    # Simulate PostToolUse hook stashing output
+    # Simulate PostToolUse hook stashing output (keyed by tool name + input).
     _pto.set({})
-    _stash("WebSearch", "Search result: 5 items found")
+    _stash("WebSearch", "Search result: 5 items found", {"query": "test"})
 
     all_responses: list[StreamBaseResponse] = []
 
@@ -1296,6 +1266,65 @@ def test_flush_with_stashed_output():
     ]
     assert len(output_events) == 1
     assert output_events[0].output == "Search result: 5 items found"
+
+    # Cleanup
+    _pto.set({})  # type: ignore[arg-type]
+
+
+def test_parallel_same_tool_outputs_not_swapped():
+    """OPEN-3158: two parallel calls to the SAME tool must keep each call's
+    output attached to its OWN tool_call_id.
+
+    The outputs are stashed in COMPLETION order (call B finishes first here)
+    but the tool_result blocks arrive in CALL order (A then B).  A name-only
+    stash key would hand call A the next-oldest output (B's) and vice-versa,
+    swapping the two search-result cards in the UI.  Keying the stash by
+    (tool_name + input) keeps the pairing correct.
+    """
+    adapter = _adapter()
+    _pto.set({})
+
+    # Two parallel web_search calls with DIFFERENT queries.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="call-a",
+                    name=f"{MCP_TOOL_PREFIX}web_search",
+                    input={"query": "alpha"},
+                ),
+                ToolUseBlock(
+                    id="call-b",
+                    name=f"{MCP_TOOL_PREFIX}web_search",
+                    input={"query": "beta"},
+                ),
+            ],
+            model="test",
+        )
+    )
+
+    # Outputs stashed in COMPLETION order: B finishes before A.  Stripped of
+    # the MCP prefix exactly as the truncating wrapper stashes them.
+    _stash("web_search", "results for beta", {"query": "beta"})
+    _stash("web_search", "results for alpha", {"query": "alpha"})
+
+    # Tool results arrive in CALL order (A then B).
+    results = adapter.convert_message(
+        UserMessage(
+            content=[
+                ToolResultBlock(tool_use_id="call-a", content="truncated-a"),
+                ToolResultBlock(tool_use_id="call-b", content="truncated-b"),
+            ]
+        )
+    )
+
+    outputs = {
+        r.toolCallId: r.output
+        for r in results
+        if isinstance(r, StreamToolOutputAvailable)
+    }
+    assert outputs["call-a"] == "results for alpha"
+    assert outputs["call-b"] == "results for beta"
 
     # Cleanup
     _pto.set({})  # type: ignore[arg-type]
@@ -2136,7 +2165,7 @@ def test_real_tool_result_flag_set_by_stashed_flush():
     # Initialise the stash ContextVar (normally done by set_execution_context).
     _pto.set({})
     # Simulate PostToolUse hook stashing real output for a built-in tool.
-    _stash("ReadFile", "file content here")
+    _stash("ReadFile", "file content here", {"path": "/x"})
     adapter.convert_message(
         AssistantMessage(
             content=[ToolUseBlock(id="t-real", name="ReadFile", input={"path": "/x"})],
@@ -2190,7 +2219,10 @@ def test_error_max_budget_usd_surfaces_specific_error_not_empty_overlay():
     errors = [r for r in results if isinstance(r, StreamError)]
     assert len(errors) == 1
     assert errors[0].code == "max_budget_exhausted"
-    assert "budget" in errors[0].errorText.lower()
+    assert "spending limit" in errors[0].errorText.lower()
+    assert "follow-up" in errors[0].errorText
+    assert "account" in errors[0].errorText
+    assert "billing window" not in errors[0].errorText
     # Must NOT shadow with empty_completion overlay.
     assert all(e.code != "empty_completion" for e in errors)
 
@@ -2213,3 +2245,109 @@ def test_error_max_turns_surfaces_specific_error():
     err = next((r for r in results if isinstance(r, StreamError)), None)
     assert err is not None
     assert err.code == "max_turns_exhausted"
+
+
+# -- Every finish-step closes the blocks it would strand -----------------------
+
+
+def _assert_blocks_end_before_finish_step(events: list[StreamBaseResponse]) -> None:
+    """The AI SDK drops active text/reasoning parts on ``finish-step``; an
+    end arriving after that fails the turn.  Walk the wire order and check
+    every start has its end before the next StreamFinishStep."""
+    open_ids: set[str] = set()
+    for i, ev in enumerate(events):
+        if isinstance(ev, (StreamTextStart, StreamReasoningStart)):
+            open_ids.add(ev.id)
+        elif isinstance(ev, (StreamTextEnd, StreamReasoningEnd)):
+            assert ev.id in open_ids, f"event {i}: end for unopened block {ev.id}"
+            open_ids.discard(ev.id)
+        elif isinstance(ev, StreamFinishStep):
+            assert not open_ids, f"event {i}: finish-step with open blocks {open_ids}"
+    assert not open_ids, f"stream ended with open blocks {open_ids}"
+
+
+def test_late_tool_result_after_text_ends_text_before_finish_step():
+    """Replay of Dev session c68992f9 at 08:25:12Z on 2026-09-21.
+
+    The CLI ran ``TaskOutput`` internally and delivered its tool_result late.
+    The next AssistantMessage (text only) flushed the orphan and opened a
+    text block; the late UserMessage then closed the step.  That finish-step
+    must be preceded by the text-end, or the frontend rejects the text-end
+    the next tool call emits with "text-end for missing text part".
+    """
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ToolUseBlock(id="task-1", name="TaskOutput", input={})],
+            model="test",
+        )
+    )
+    events: list[StreamBaseResponse] = []
+    events += adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="The task finished.")], model="test")
+    )
+    events += adapter.convert_message(
+        UserMessage(content=[ToolResultBlock(tool_use_id="task-1", content="late")])
+    )
+    events += adapter.convert_message(
+        AssistantMessage(
+            content=[ToolUseBlock(id="bash-1", name="bash_exec", input={})],
+            model="test",
+        )
+    )
+
+    _assert_blocks_end_before_finish_step(events)
+    text_end = next(i for i, e in enumerate(events) if isinstance(e, StreamTextEnd))
+    step_close = next(
+        i
+        for i, e in enumerate(events)
+        if isinstance(e, StreamFinishStep) and i > text_end - 2
+    )
+    assert text_end < step_close
+
+
+def test_result_message_flush_ends_open_reasoning_before_finish_step():
+    """The ResultMessage flush of an orphan tool_use closes the step; a
+    reasoning block opened by the partial stream must end before it."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ToolUseBlock(id="fetch-1", name="web_fetch", input={})],
+            model="test",
+        )
+    )
+    events: list[StreamBaseResponse] = []
+    events += adapter.convert_message(_message_start())
+    events += adapter.convert_message(
+        _stream_event(
+            {
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "thinking", "thinking": ""},
+            }
+        )
+    )
+    events += adapter.convert_message(
+        _stream_event(
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "thinking_delta", "thinking": "hmm " * 20},
+            }
+        )
+    )
+    events += adapter.convert_message(
+        ResultMessage(
+            subtype="success",
+            duration_ms=1,
+            duration_api_ms=1,
+            is_error=False,
+            num_turns=1,
+            session_id="session-1",
+            result="done",
+        )
+    )
+
+    _assert_blocks_end_before_finish_step(events)

@@ -19,13 +19,17 @@ def normalize_model_for_transport(raw_model: str, cfg: ChatConfig | None = None)
     """Normalize a model name for the **actual** SDK CLI / OpenAI-compat
     transport.
 
-    Three transports (see ``ChatConfig.effective_transport``):
+    Four transports (see ``ChatConfig.effective_transport``):
 
     1. **OpenRouter** — return the prefixed ``vendor/model`` slug
        unchanged (``anthropic/claude-opus-4-6``,
        ``moonshotai/kimi-k2-6``, ...).  Stripping the prefix would break
        routing for non-Anthropic vendors.
-    2. **Subscription / Direct Anthropic** — strip the OpenRouter
+    2. **Local** (Ollama, vLLM, LM Studio, ...) — return the operator's
+       slug unchanged (``llama3.1:8b-instruct-q4_K_M``,
+       ``qwen3:0.6b``, ...).  Self-hosted backends use their own
+       naming and the Anthropic-prefix rewrite would 404 every call.
+    3. **Subscription / Direct Anthropic** — strip the OpenRouter
        ``anthropic/`` prefix and convert dots to hyphens
        (``claude-opus-4.6`` → ``claude-opus-4-6``).  The CLI subprocess
        (subscription mode) and the Anthropic Messages / OpenAI-compat
@@ -43,16 +47,36 @@ def normalize_model_for_transport(raw_model: str, cfg: ChatConfig | None = None)
     cache that goes stale when tests mutate env vars.
     """
     config = cfg if cfg is not None else ChatConfig()
-    if config.effective_transport == "openrouter":
+    # OpenRouter accepts ``vendor/model`` for any vendor; the local
+    # transport (Ollama, vLLM, …) speaks raw operator-chosen slugs and
+    # must never have them rewritten — both pass through unchanged.
+    if config.effective_transport in ("openrouter", "local"):
         return raw_model
+    return normalize_model_for_anthropic(
+        raw_model, caller=f"{config.effective_transport!r} transport"
+    )
+
+
+def normalize_model_for_anthropic(
+    raw_model: str, *, caller: str = "The native Anthropic API"
+) -> str:
+    """The native Anthropic API's spelling of *raw_model*, whatever the
+    chat transport: the ``anthropic/`` prefix stripped and dots turned into
+    hyphens (``anthropic/claude-opus-4.6`` → ``claude-opus-4-6``).
+
+    The Anthropic branch of :func:`normalize_model_for_transport`, and the
+    whole rule for calls that always reach Anthropic directly — the dream
+    batch submit, which runs under the OpenRouter chat transport too, and
+    the dream sync path on the ``anthropic`` provider. *caller* names the
+    path in the error raised for a non-Anthropic model.
+    """
     model = raw_model
     if "/" in model:
         vendor, model = model.split("/", 1)
         if vendor != "anthropic":
             raise ValueError(
-                f"{config.effective_transport!r} transport requires an "
-                f"Anthropic model, got vendor={vendor!r} from "
-                f"model={raw_model!r}. Set CHAT_THINKING_STANDARD_MODEL/"
+                f"{caller} requires an Anthropic model, got vendor={vendor!r} "
+                f"from model={raw_model!r}. Set CHAT_THINKING_STANDARD_MODEL/"
                 f"CHAT_THINKING_ADVANCED_MODEL/CHAT_FAST_STANDARD_MODEL/"
                 f"CHAT_FAST_ADVANCED_MODEL to an anthropic/* slug, or "
                 f"enable OpenRouter."
@@ -65,8 +89,8 @@ def normalize_model_for_transport(raw_model: str, cfg: ChatConfig | None = None)
         # ``gemini-pro``, ...) would fail with an opaque
         # ``model_not_found`` at request time — surface it here.
         raise ValueError(
-            f"{config.effective_transport!r} transport requires an "
-            f"Anthropic model slug, got model={raw_model!r}. Use an "
-            f"``anthropic/*`` or ``claude-*`` slug, or enable OpenRouter."
+            f"{caller} requires an Anthropic model slug, got "
+            f"model={raw_model!r}. Use an ``anthropic/*`` or ``claude-*`` "
+            f"slug, or enable OpenRouter."
         )
     return model.replace(".", "-")

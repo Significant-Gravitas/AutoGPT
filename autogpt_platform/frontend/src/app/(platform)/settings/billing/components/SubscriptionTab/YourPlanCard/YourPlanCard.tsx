@@ -1,10 +1,11 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowSquareOutIcon } from "@phosphor-icons/react";
-
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { BillingOffer } from "../BillingOffer";
+import { AutopilotUsageCard } from "../AutopilotUsageCard/AutopilotUsageCard";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 
@@ -16,18 +17,25 @@ import {
 import { CycleToggle } from "./CycleToggle";
 import { SwitchCycleDialog } from "./SwitchCycleDialog";
 import { SwitchTierDialog } from "./SwitchTierDialog";
-import { useYourPlanCard } from "./useYourPlanCard";
+import { ENTERPRISE_CONTACT_URL, useYourPlanCard } from "./useYourPlanCard";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   index?: number;
+  showUsage?: boolean;
 }
 
-export function YourPlanCard({ index = 0 }: Props) {
+export function YourPlanCard({ index = 0, showUsage = false }: Props) {
   const reduceMotion = useReducedMotion();
+  const controller = useYourPlanCard();
   const {
     plan,
+    isError,
+    retry,
     isLoading,
     isUpdatingTier,
+    isRedirecting,
     canManagePortal,
     canUpgrade,
     canDowngrade,
@@ -54,9 +62,12 @@ export function YourPlanCard({ index = 0 }: Props) {
     onDowngrade,
     onResume,
     onManage,
-  } = useYourPlanCard();
+  } = controller;
 
   const sectionMotion = getSectionMotionProps(index, Boolean(reduceMotion));
+
+  if (plan?.tierKey === "TRIAL") return null;
+  if (isError) return <ErrorCard context="your subscription" onRetry={retry} />;
 
   if (isLoading || !plan) {
     return (
@@ -67,17 +78,17 @@ export function YourPlanCard({ index = 0 }: Props) {
   }
 
   return (
-    <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
-      <div className="flex items-center gap-2 px-4">
+    <motion.section {...sectionMotion} className="flex w-full flex-col gap-4">
+      <div className="sr-only">
         <Text variant="body-medium" as="span" className="text-textBlack">
           Your plan
         </Text>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3 py-4">
         <div className="flex min-w-0 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Text variant="large-medium" as="span" className="text-textBlack">
+            <Text variant="large-semibold" as="h2" className="text-textBlack">
               {plan.label}
             </Text>
             <Badge
@@ -87,8 +98,10 @@ export function YourPlanCard({ index = 0 }: Props) {
                 plan.isPendingCancel ||
                 plan.isPendingDowngrade ||
                 plan.isPendingCycleSwitch
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-violet-100 text-violet-800"
+                  ? // TODO(tokens): no exact role (bg-amber-100 #FEF3C7, text-amber-800 #92400E)
+                    "bg-amber-100 text-amber-800"
+                  : // TODO(tokens): no exact role (bg-violet-100 #EDE9FE, text-violet-800 #5B21B6)
+                    "bg-violet-100 text-violet-800"
               }
             >
               {!plan.isPaidPlan
@@ -105,12 +118,24 @@ export function YourPlanCard({ index = 0 }: Props) {
               <CycleToggle
                 value={selectedCycle}
                 onChange={onCycleChange}
-                disabled={isUpdatingTier}
+                disabled={isUpdatingTier || isRedirecting}
               />
             ) : null}
           </div>
-          {plan.isPaidPlan ? (
-            <Text variant="body" as="span" className="text-zinc-700">
+          {plan.isAdminManaged ? (
+            <Text variant="body" as="span" className="text-foreground-body">
+              Managed by your AutoGPT account team.{" "}
+              <a
+                href={ENTERPRISE_CONTACT_URL}
+                // TODO(tokens): no fitting role for hover:text-purple-600 #6C2EDF; #6C2EDF is brand-hover, a hover fill
+                className="font-medium text-brand no-underline hover:text-purple-600"
+              >
+                Contact us
+              </a>{" "}
+              for changes.
+            </Text>
+          ) : plan.isPaidPlan ? (
+            <Text variant="body" as="span" className="text-foreground-body">
               {formatCents(plan.monthlyCostCents)}
               {plan.billingCycle === "yearly" ? " / year" : " / month"}
               {plan.isPendingCancel && plan.pendingEffectiveAt
@@ -124,7 +149,7 @@ export function YourPlanCard({ index = 0 }: Props) {
                       : null}
             </Text>
           ) : (
-            <Text variant="body" as="span" className="text-zinc-700">
+            <Text variant="body" as="span" className="text-foreground-body">
               Pick a plan to continue using AutoGPT.
             </Text>
           )}
@@ -132,7 +157,11 @@ export function YourPlanCard({ index = 0 }: Props) {
           plan.isPendingCycleSwitch &&
           plan.pendingEffectiveAt &&
           plan.pendingCycle ? (
-            <Text variant="small" as="span" className="text-zinc-500">
+            <Text
+              variant="small"
+              as="span"
+              className="text-foreground-tertiary"
+            >
               Switching to {plan.pendingCycle} {plan.label} on{" "}
               {formatShortDate(plan.pendingEffectiveAt)} · No charge today
             </Text>
@@ -145,7 +174,7 @@ export function YourPlanCard({ index = 0 }: Props) {
               variant="primary"
               size="small"
               onClick={onResume}
-              disabled={isUpdatingTier}
+              disabled={isUpdatingTier || isRedirecting}
               loading={isUpdatingTier}
             >
               {plan.isPendingCancel
@@ -160,13 +189,13 @@ export function YourPlanCard({ index = 0 }: Props) {
               variant="outline"
               size="small"
               onClick={onDowngrade}
-              disabled={isUpdatingTier}
+              disabled={isUpdatingTier || isRedirecting}
               loading={isUpdatingTier}
             >
               Downgrade to {plan.previousTierLabel}
             </Button>
           ) : null}
-          {plan.isPaidPlan ? (
+          {plan.isPaidPlan && !plan.isAdminManaged ? (
             <Button
               variant="secondary"
               size="small"
@@ -176,21 +205,23 @@ export function YourPlanCard({ index = 0 }: Props) {
               Manage subscription
             </Button>
           ) : null}
-          {canUpgrade && plan.nextTierLabel ? (
+          {canUpgrade &&
+          plan.nextTierLabel &&
+          (!showUsage || !plan.isPaidPlan) ? (
             <Button
               variant="primary"
               size="small"
               onClick={onUpgrade}
-              disabled={isUpdatingTier}
+              disabled={isUpdatingTier || isRedirecting}
               loading={isUpdatingTier && !plan.nextTierIsTeamLink}
               rightIcon={
                 plan.nextTierIsTeamLink ? (
-                  <ArrowSquareOutIcon size={14} aria-hidden="true" />
+                  <Icon icon={LinkSquare01Icon} size={14} aria-hidden="true" />
                 ) : undefined
               }
             >
               {!plan.isPaidPlan
-                ? `Get ${plan.nextTierLabel}`
+                ? `Start ${plan.nextTierLabel}`
                 : plan.nextTierIsTeamLink
                   ? `Talk to sales — ${plan.nextTierLabel}`
                   : `Upgrade to ${plan.nextTierLabel}`}
@@ -198,6 +229,13 @@ export function YourPlanCard({ index = 0 }: Props) {
           ) : null}
         </div>
       </div>
+
+      {showUsage ? (
+        <div className="grid items-stretch gap-4 md:grid-cols-[1.15fr_1fr]">
+          <AutopilotUsageCard index={1} />
+          <BillingOffer controller={controller} />
+        </div>
+      ) : null}
 
       {pendingCycle ? (
         <SwitchCycleDialog
@@ -221,6 +259,13 @@ export function YourPlanCard({ index = 0 }: Props) {
           }}
           targetTierLabel={pendingTierUpgradeLabel}
           body={tierUpgradeDialogBody}
+          priceCents={controller.offerPriceCents}
+          billingCycle={plan.billingCycle}
+          usageCarriesOver={
+            plan.tierKey === "PRO" && pendingTierUpgrade === "MAX"
+          }
+          usageMultiplier={controller.upgradeUsageMultiplier}
+          upgradeReview={controller.upgradeReview}
           isSaving={isUpdatingTier}
           onConfirm={onConfirmTierUpgrade}
         />

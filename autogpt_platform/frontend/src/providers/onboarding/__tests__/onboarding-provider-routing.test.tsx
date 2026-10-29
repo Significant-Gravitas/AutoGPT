@@ -1,24 +1,34 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
-import { render, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { act, render, waitFor } from "@testing-library/react";
 import OnboardingProvider from "../onboarding-provider";
 
-const routerReplace = vi.fn();
+// Stable across renders like the real router and BackendAPI instance, so an
+// effect re-runs only when its real inputs change.
+const { routerReplace, router, api } = vi.hoisted(() => {
+  const replace = vi.fn();
+  return {
+    routerReplace: replace,
+    router: { replace, push: () => {}, refresh: () => {} },
+    api: { onWebSocketMessage: () => () => {}, connectWebSocket: () => {} },
+  };
+});
+const toast = vi.hoisted(() => vi.fn());
+let completionError: Error | null = null;
+
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  useToast: () => ({ toast }),
+}));
 let mockPathname = "/signup";
-let mockSearchParams = new URLSearchParams();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    replace: routerReplace,
-    push: vi.fn(),
-    refresh: vi.fn(),
-  }),
-  useSearchParams: () => mockSearchParams,
+  useRouter: () => router,
   usePathname: () => mockPathname,
+  useSearchParams: () => new URLSearchParams(window.location.search),
 }));
 
 let mockIsLoggedIn = true;
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
     isLoggedIn: mockIsLoggedIn,
     isUserLoading: false,
     user: mockIsLoggedIn ? { id: "test-user", email: "u@example.com" } : null,
@@ -26,10 +36,7 @@ vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
 }));
 
 vi.mock("@/lib/autogpt-server-api/context", () => ({
-  useBackendAPI: () => ({
-    onWebSocketMessage: () => () => {},
-    connectWebSocket: () => {},
-  }),
+  useBackendAPI: () => api,
 }));
 
 vi.mock("@/hooks/useOnboardingTimezoneDetection", () => ({
@@ -41,6 +48,11 @@ const completedCallCount = { value: 0 };
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1CheckIfOnboardingIsCompleted: () => {
     completedCallCount.value += 1;
+    if (completionError) {
+      const error = completionError;
+      completionError = null;
+      return Promise.reject(error);
+    }
     return Promise.resolve({
       status: 200,
       data: { is_completed: mockIsCompleted },
@@ -53,13 +65,70 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
 }));
 
 describe("OnboardingProvider routing — logged-in user", () => {
+  afterEach(() => vi.restoreAllMocks());
+
   beforeEach(() => {
     routerReplace.mockClear();
-    mockSearchParams = new URLSearchParams();
+    toast.mockClear();
+    completionError = null;
+    window.history.replaceState(null, "", "/");
     mockPathname = "/signup";
     mockIsLoggedIn = true;
     mockIsCompleted = false;
     completedCallCount.value = 0;
+  });
+
+  test("silences cancellation and retries initialization after navigation", async () => {
+    mockPathname = "/onboarding";
+    completionError = new DOMException("Navigation cancelled", "AbortError");
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const { rerender } = render(
+      <OnboardingProvider>
+        <div />
+      </OnboardingProvider>,
+    );
+    await act(async () => {});
+
+    expect(completedCallCount.value).toBe(1);
+    expect(toast).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+
+    mockPathname = "/marketplace";
+    rerender(
+      <OnboardingProvider>
+        <div />
+      </OnboardingProvider>,
+    );
+    await waitFor(() => expect(completedCallCount.value).toBe(2));
+    expect(routerReplace).toHaveBeenCalledWith("/onboarding");
+    consoleError.mockRestore();
+  });
+
+  test("still reports a genuine initialization failure", async () => {
+    mockPathname = "/onboarding";
+    const error = new Error("Connection failed");
+    completionError = error;
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    render(
+      <OnboardingProvider>
+        <div />
+      </OnboardingProvider>,
+    );
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: "Failed to initialize onboarding",
+        variant: "destructive",
+      }),
+    );
+    expect(consoleError).toHaveBeenCalledWith(
+      "Failed to initialize onboarding:",
+      error,
+    );
+    consoleError.mockRestore();
   });
 
   test("incomplete user on /signup is redirected to /onboarding", async () => {
@@ -77,7 +146,7 @@ describe("OnboardingProvider routing — logged-in user", () => {
     );
   });
 
-  test("completed user on /signup is redirected to /copilot", async () => {
+  test("completed user on /signup is redirected to /home", async () => {
     mockPathname = "/signup";
     mockIsCompleted = true;
 
@@ -87,10 +156,10 @@ describe("OnboardingProvider routing — logged-in user", () => {
       </OnboardingProvider>,
     );
 
-    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/copilot"));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
   });
 
-  test("completed user on /login is redirected to /copilot", async () => {
+  test("completed user on /login is redirected to /home", async () => {
     mockPathname = "/login";
     mockIsCompleted = true;
 
@@ -100,12 +169,13 @@ describe("OnboardingProvider routing — logged-in user", () => {
       </OnboardingProvider>,
     );
 
-    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/copilot"));
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
   });
 
   test("a safe ?next= deep link defers to the auth page — no redirect from provider", async () => {
     mockPathname = "/login";
-    mockSearchParams = new URLSearchParams({ next: "/library" });
+    // The provider reads `next` off the committed URL, not useSearchParams.
+    window.history.replaceState(null, "", "/login?next=%2Flibrary");
     mockIsCompleted = true;
 
     render(
@@ -121,12 +191,38 @@ describe("OnboardingProvider routing — logged-in user", () => {
     expect(completedCallCount.value).toBe(0);
   });
 
+  test("dropping ?next= on the same auth page re-runs the redirect", async () => {
+    mockPathname = "/login";
+    window.history.replaceState(null, "", "/login?next=%2Flibrary");
+    mockIsCompleted = true;
+    const { rerender } = render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+    await new Promise((r) => setTimeout(r, 30));
+    expect(routerReplace).not.toHaveBeenCalled();
+
+    window.history.replaceState(null, "", "/login");
+    rerender(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
+  });
+
   test("an unsafe ?next= value is treated as no deep link and the provider routes normally", async () => {
     // `sanitizeAuthNext` drops absolute URLs as null. Without the alignment
     // fix, OnboardingProvider would defer (assuming the auth page handles it)
     // while the auth page silently drops the value — deadlocking the user.
     mockPathname = "/signup";
-    mockSearchParams = new URLSearchParams({ next: "https://phishing.site" });
+    window.history.replaceState(
+      null,
+      "",
+      `/signup?next=${encodeURIComponent("https://phishing.site")}`,
+    );
     mockIsCompleted = false;
 
     render(
@@ -138,6 +234,24 @@ describe("OnboardingProvider routing — logged-in user", () => {
     await waitFor(() =>
       expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
     );
+  });
+
+  test("incomplete user on /reset-password stays put (recovery session must set password first)", async () => {
+    // A Supabase recovery link signs the user in and lands them on
+    // /reset-password. Bouncing them to /onboarding would skip the password
+    // change entirely, turning the reset link into a one-time sign-in link.
+    mockPathname = "/reset-password";
+    mockIsCompleted = false;
+
+    render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await new Promise((r) => setTimeout(r, 30));
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(completedCallCount.value).toBe(0);
   });
 
   test("incomplete user already on /onboarding stays put", async () => {

@@ -7,6 +7,7 @@ export interface ExtendedFormContextType extends FormContextType {
   showHandles?: boolean;
   size?: "small" | "medium" | "large";
   showOptionalToggle?: boolean;
+  domIdPrefix?: string;
 }
 
 export type PathSegment = {

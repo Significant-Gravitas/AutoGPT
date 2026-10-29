@@ -1,11 +1,12 @@
 from typing import Literal, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, Body, HTTPException, Query, Security, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, status
 from fastapi.responses import Response
-from prisma.enums import OnboardingStep
 
-from backend.data.onboarding import complete_onboarding_step
+import backend.api.features.library._get_many as get_many
+from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 
 from .. import db as library_db
 from .. import model as library_model
@@ -24,6 +25,9 @@ router = APIRouter(
 )
 async def list_library_agents(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.get_request_context
+    ),
     search_term: Optional[str] = Query(
         None, description="Search term to filter agents"
     ),
@@ -69,6 +73,7 @@ async def list_library_agents(
         folder_id=folder_id,
         include_root_only=include_root_only,
         is_hidden=is_hidden,
+        organization_id=getattr(ctx, "org_id", None),
     )
 
 
@@ -97,6 +102,22 @@ async def list_favorite_library_agents(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/batch", summary="Get Library Agents By Ids")
+async def get_library_agents_by_ids(
+    ids: list[str] = Query(
+        ...,
+        min_length=1,
+        max_length=get_many.MAX_LIBRARY_AGENTS_PER_BATCH,
+        description="Library agent IDs; unknown or inaccessible ones are omitted",
+    ),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[library_model.LibraryAgent]:
+    """
+    Get several library agents at once, as `GET /agents/{id}` would return each.
+    """
+    return await get_many.get_library_agents_by_ids(ids=ids, user_id=user_id)
 
 
 @router.get("/{library_agent_id}", summary="Get Library Agent")
@@ -144,6 +165,7 @@ async def get_library_agent_by_store_listing_version_id(
 
 @router.post(
     "",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Add Marketplace Agent",
     status_code=status.HTTP_201_CREATED,
 )
@@ -208,11 +230,20 @@ async def delete_library_agent(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{library_agent_id}/fork", summary="Fork Library Agent")
+@router.post(
+    "/{library_agent_id}/fork",
+    summary="Fork Library Agent",
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def fork_library_agent(
     library_agent_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
+    # `library_db.fork_library_agent` activates the forked graph (validates
+    # node credentials) after the fork's own DB write. A GraphActivationError
+    # raised by that activation propagates to the app-level handler in
+    # rest_api.py and becomes a 400. Making the save itself atomic is a
+    # follow-up.
     return await library_db.fork_library_agent(
         library_agent_id=library_agent_id,
         user_id=user_id,

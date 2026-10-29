@@ -11,13 +11,14 @@ import {
   FormItem,
   FormMessage,
 } from "@/components/molecules/Form/Form";
-import { UploadSimpleIcon } from "@phosphor-icons/react";
 import { z } from "zod";
 import { useLibraryUploadAgentDialog } from "./useLibraryUploadAgentDialog";
+import { Upload03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const uploadAgentFormSchema = z.object({
-  agentFile: z.string().min(1, "Agent file is required"),
-  agentName: z.string().min(1, "Agent name is required"),
+  agentFile: z.string().min(1, "Workflow file is required"),
+  agentName: z.string().min(1, "Workflow name is required"),
   agentDescription: z.string(),
 });
 
@@ -27,7 +28,7 @@ export default function LibraryUploadAgentDialog() {
 
   return (
     <Dialog
-      title="Upload Agent"
+      title="Upload Workflow"
       styling={{ maxWidth: "30rem" }}
       controlled={{
         isOpen,
@@ -44,15 +45,15 @@ export default function LibraryUploadAgentDialog() {
           className="h-[2.78rem] w-full md:w-[12rem]"
           size="small"
         >
-          <UploadSimpleIcon width={18} height={18} />
-          <span className="">Upload agent</span>
+          <Icon icon={Upload03Icon} width={18} height={18} />
+          <span>Upload workflow</span>
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
         <Form
           form={form}
           onSubmit={onSubmit}
-          className="flex flex-col justify-center gap-0 px-1"
+          className="mx-1 flex flex-col justify-center"
         >
           <FormField
             control={form.control}
@@ -63,8 +64,8 @@ export default function LibraryUploadAgentDialog() {
                   <Input
                     {...field}
                     id={field.name}
-                    label="Agent name"
-                    className="w-full rounded-[10px]"
+                    label="Workflow name"
+                    className="w-full"
                   />
                 </FormControl>
                 <FormMessage />
@@ -81,9 +82,9 @@ export default function LibraryUploadAgentDialog() {
                   <Input
                     {...field}
                     id={field.name}
-                    label="Agent description"
+                    label="Workflow description"
                     type="textarea"
-                    className="w-full rounded-[10px]"
+                    className="w-full"
                   />
                 </FormControl>
                 <FormMessage />
@@ -102,7 +103,7 @@ export default function LibraryUploadAgentDialog() {
                     value={field.value}
                     onChange={field.onChange}
                     accept=".json,application/json"
-                    placeholder="Agent file"
+                    placeholder="Workflow file"
                     maxFileSize={10 * 1024 * 1024}
                     showStorageNote={false}
                     className="mb-8 mt-4"
@@ -121,7 +122,7 @@ export default function LibraryUploadAgentDialog() {
           >
             {isUploading ? (
               <div className="flex items-center gap-2">
-                <LoadingSpinner size="small" className="text-white" />
+                <LoadingSpinner size="small" />
                 <span>Uploading...</span>
               </div>
             ) : (

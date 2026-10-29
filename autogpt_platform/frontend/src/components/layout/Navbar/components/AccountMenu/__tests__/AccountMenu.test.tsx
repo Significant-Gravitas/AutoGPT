@@ -1,8 +1,14 @@
-import { IconType } from "@/components/__legacy__/ui/icons";
+import { IconType } from "@/components/layout/Navbar/helpers";
 import { render, screen } from "@/tests/integrations/test-utils";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AccountMenu } from "../AccountMenu";
+import { InitialAvatar } from "../components/InitialAvatar";
 import { MenuItemGroup } from "../../../helpers";
+
+function getFallbackSVG(root: HTMLElement) {
+  const svg = root.querySelector("svg");
+  return svg?.innerHTML.replace(/_r_[0-9a-z]+_/g, "id") ?? null;
+}
 
 vi.mock("next/link", () => ({
   __esModule: true,
@@ -12,6 +18,10 @@ vi.mock("next/link", () => ({
     </a>
   ),
   useLinkStatus: () => ({ pending: false }),
+}));
+
+vi.mock("@/lib/auth/actions", () => ({
+  getCurrentUser: vi.fn().mockResolvedValue({ user: null }),
 }));
 
 vi.mock("@/components/molecules/Popover/Popover", () => {
@@ -24,7 +34,10 @@ vi.mock("@/components/molecules/Popover/Popover", () => {
   function PopoverContent({ children }: { children: React.ReactNode }) {
     return <div>{children}</div>;
   }
-  return { Popover, PopoverTrigger, PopoverContent };
+  function PopoverClose({ children }: { children: React.ReactNode }) {
+    return <>{children}</>;
+  }
+  return { Popover, PopoverTrigger, PopoverContent, PopoverClose };
 });
 
 const baseGroups: MenuItemGroup[] = [
@@ -68,6 +81,24 @@ const baseGroups: MenuItemGroup[] = [
 ];
 
 describe("AccountMenu", () => {
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+  });
+
+  // Opening the walkthrough from it is covered with the real app chrome in
+  // PlatformChrome/__tests__/firstRunGuidance.test.tsx.
+  test("offers Show me around beside Log out", () => {
+    render(<AccountMenu userName="Ada Lovelace" menuItemGroups={baseGroups} />);
+
+    const row = screen.getByRole("button", { name: "Show me around" });
+    const logOut = screen.getByText("Log out");
+    expect(row.closest("ul")).toBe(logOut.closest("ul"));
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   test("renders user name and email when loaded", () => {
     render(
       <AccountMenu
@@ -134,7 +165,24 @@ describe("AccountMenu", () => {
     expect(helpLink?.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
-  test("renders profile trigger with avatar fallback", () => {
+  test("renders profile trigger with avatar fallback seeded by the user", () => {
+    render(
+      <AccountMenu
+        userName="Ada"
+        userHandle="ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+      />,
+    );
+    const reference = render(<InitialAvatar name="ada" />);
+
+    const trigger = screen.getByTestId("profile-popout-menu-trigger");
+    expect(getFallbackSVG(trigger)).not.toBeNull();
+    // The marble gradient must be seeded by the user's handle, not a constant.
+    expect(getFallbackSVG(trigger)).toBe(getFallbackSVG(reference.container));
+  });
+
+  test("renders the organization switcher header trigger", () => {
     render(
       <AccountMenu
         userName="Ada"
@@ -143,7 +191,65 @@ describe("AccountMenu", () => {
       />,
     );
 
-    expect(screen.getByTestId("profile-popout-menu-trigger")).toBeDefined();
-    expect(screen.getAllByText("A").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("account-menu-org-trigger")).toBeDefined();
+  });
+
+  test("renders the agent activity row trigger", () => {
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+      />,
+    );
+
+    expect(screen.getByTestId("account-menu-activity-trigger")).toBeDefined();
+    expect(screen.getByText("Activity")).toBeDefined();
+  });
+
+  test("renders Give feedback right after Activity", () => {
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+      />,
+    );
+
+    const activity = screen.getByTestId("account-menu-activity-trigger");
+    const feedback = screen.getByRole("button", { name: "Give feedback" });
+
+    expect(activity.closest("li")?.nextElementSibling).toBe(
+      feedback.closest("li"),
+    );
+  });
+
+  test("does not load the Tally script before feedback is asked for", () => {
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Give feedback" })).toBeDefined();
+    expect(document.querySelectorAll('script[src*="tally.so"]')).toHaveLength(
+      0,
+    );
+  });
+
+  test("leaves Give feedback out when not running in the cloud", () => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+      />,
+    );
+
+    expect(screen.getByTestId("account-menu-activity-trigger")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Give feedback" })).toBeNull();
   });
 });

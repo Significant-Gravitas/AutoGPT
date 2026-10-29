@@ -14,8 +14,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { useMainCreatorPage } from "./useMainCreatorPage";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   params: MarketplaceCreatorPageParams;
@@ -61,7 +62,7 @@ export function MainCreatorPage({ params }: Props) {
             as="NextLink"
             href="/marketplace"
             className="relative -left-2 lg:!-left-4"
-            leftIcon={<ArrowLeftIcon size={16} />}
+            leftIcon={<Icon icon={ArrowLeft02Icon} size={16} />}
           >
             Go back
           </Button>
@@ -74,8 +75,14 @@ export function MainCreatorPage({ params }: Props) {
           {/* Creator info - left side */}
           <div className="w-full lg:w-2/5">
             <div className="w-full px-4 sm:px-6 lg:px-0">
-              <div className="max-w-[45rem] rounded-2xl bg-gradient-to-r from-blue-200 to-indigo-200 p-[1px]">
-                <div className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4">
+              <div
+                // TODO(tokens): no exact role: from-blue-200 #BFDBFE, to-indigo-200 #C7D2FE
+                className="max-w-[45rem] rounded-2xl bg-gradient-to-r from-blue-200 to-indigo-200 p-[1px]"
+              >
+                <div
+                  // TODO(tokens): no exact role: bg-gray-50 #F9FAFB
+                  className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4"
+                >
                   {/* Avatar */}
                   <Avatar className="mb-4 h-20 w-20 sm:h-24 sm:w-24">
                     {creator.avatar_url && (
@@ -85,7 +92,7 @@ export function MainCreatorPage({ params }: Props) {
                       />
                     )}
                     <AvatarFallback size={96}>
-                      {creator.name.charAt(0)}
+                      {creator.username}
                     </AvatarFallback>
                   </Avatar>
 
@@ -99,13 +106,18 @@ export function MainCreatorPage({ params }: Props) {
                   </Text>
 
                   {/* Handle */}
-                  <Text variant="body" className="mb-4 text-neutral-500">
+                  <Text
+                    // TODO(tokens): no exact role: text-neutral-500 #737373
+                    variant="body"
+                    className="mb-4 text-neutral-500"
+                  >
                     @{creator.username}
                   </Text>
 
                   {/* Description */}
                   <Text
                     variant="body"
+                    // TODO(tokens): no exact role: text-neutral-600 #525252
                     className="mb-6 leading-relaxed text-neutral-600"
                     data-testid="creator-description"
                   >
@@ -123,6 +135,7 @@ export function MainCreatorPage({ params }: Props) {
                           <Badge
                             variant="info"
                             key={index}
+                            // TODO(tokens): no exact role: border-purple-100 #EFE8FE, bg-purple-50 #F1EBFE, text-purple-800 #411C87
                             className="border border-purple-100 bg-purple-50 text-purple-800"
                           >
                             {category}
@@ -149,7 +162,7 @@ export function MainCreatorPage({ params }: Props) {
           <AgentsSection
             agents={creatorAgents.agents}
             hideAvatars
-            sectionTitle={`Agents by ${creator.name}`}
+            sectionTitle={`AI Workflows by ${creator.name}`}
           />
         )}
       </main>

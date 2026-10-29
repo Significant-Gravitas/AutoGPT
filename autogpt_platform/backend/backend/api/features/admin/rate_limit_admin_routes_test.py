@@ -22,6 +22,14 @@ _MOCK_MODULE = "backend.api.features.admin.rate_limit_admin_routes"
 
 _TARGET_EMAIL = "target@example.com"
 
+_MOCK_TIER_MULTIPLIERS = {
+    "NO_TIER": 0.0,
+    "BASIC": 1.0,
+    "PRO": 5.0,
+    "BUSINESS": 20.0,
+    "ENTERPRISE": 60.0,
+}
+
 
 @pytest.fixture(autouse=True)
 def setup_app_admin_auth(mock_jwt_admin):
@@ -69,6 +77,11 @@ def _patch_rate_limit_deps(
         new_callable=AsyncMock,
         return_value=_TARGET_EMAIL,
     )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_tier_multipliers",
+        new_callable=AsyncMock,
+        return_value=dict(_MOCK_TIER_MULTIPLIERS),
+    )
 
 
 def test_get_rate_limit(
@@ -90,6 +103,8 @@ def test_get_rate_limit(
     assert data["daily_cost_used_microdollars"] == 500_000
     assert data["weekly_cost_used_microdollars"] == 3_000_000
     assert data["tier"] == "BASIC"
+    # Full per-tier map incl. admin-managed tiers (ENTERPRISE) is passed through.
+    assert data["tier_multipliers"] == _MOCK_TIER_MULTIPLIERS
 
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True) + "\n",
@@ -164,6 +179,7 @@ def test_reset_user_usage_daily_only(
     # Weekly is untouched
     assert data["weekly_cost_used_microdollars"] == 3_000_000
     assert data["tier"] == "BASIC"
+    assert data["tier_multipliers"] == _MOCK_TIER_MULTIPLIERS
 
     mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=False)
 
@@ -242,6 +258,11 @@ def test_get_rate_limit_email_lookup_failure(
         f"{_MOCK_MODULE}.get_user_email_by_id",
         new_callable=AsyncMock,
         side_effect=Exception("DB connection lost"),
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_tier_multipliers",
+        new_callable=AsyncMock,
+        return_value=dict(_MOCK_TIER_MULTIPLIERS),
     )
 
     response = client.get("/admin/rate_limit", params={"user_id": target_user_id})
@@ -341,6 +362,77 @@ def test_set_user_tier(
     assert data["user_id"] == target_user_id
     assert data["tier"] == "ENTERPRISE"
     mock_set.assert_awaited_once_with(target_user_id, SubscriptionTier.ENTERPRISE)
+
+
+def test_set_user_tier_returns_sweep_revert_warning(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """A grant the Stripe sweep will undo is still written, and the response
+    carries the warning so the admin UI can show it."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=_TARGET_EMAIL,
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.NO_TIER,
+    )
+    mock_set = mocker.patch(
+        f"{_MOCK_MODULE}.set_user_tier",
+        new_callable=AsyncMock,
+    )
+    mock_warning = mocker.patch(
+        f"{_MOCK_MODULE}.get_stripe_sweep_revert_warning",
+        new_callable=AsyncMock,
+        return_value="The Stripe reconciliation sweep will revert this grant.",
+    )
+
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "PRO"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tier"] == "PRO"
+    assert data["warning"] == "The Stripe reconciliation sweep will revert this grant."
+    mock_set.assert_awaited_once_with(target_user_id, SubscriptionTier.PRO)
+    mock_warning.assert_awaited_once_with(target_user_id, SubscriptionTier.PRO)
+
+
+def test_set_user_tier_warning_lookup_failure_does_not_fail_request(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """The tier is already written when the check runs, so a Stripe or DB
+    error there degrades to no warning rather than a 500."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=_TARGET_EMAIL,
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.NO_TIER,
+    )
+    mocker.patch(f"{_MOCK_MODULE}.set_user_tier", new_callable=AsyncMock)
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_stripe_sweep_revert_warning",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("stripe down"),
+    )
+
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "PRO"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["warning"] is None
 
 
 def test_set_user_tier_downgrade(

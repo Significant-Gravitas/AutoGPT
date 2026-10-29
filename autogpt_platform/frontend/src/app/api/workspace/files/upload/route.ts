@@ -1,5 +1,5 @@
 import { environment } from "@/services/environment";
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {

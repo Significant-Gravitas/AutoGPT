@@ -1,6 +1,7 @@
 """Tests for the dynamic-pricing branches of block_usage_cost."""
 
 import math
+from unittest.mock import patch
 
 import pytest
 
@@ -13,7 +14,7 @@ from backend.blocks.code_executor import (
 from backend.blocks.exa.search import ExaSearchBlock
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.jina.search import SearchTheWebBlock
-from backend.blocks.llm import AITextGeneratorBlock, LlmModel
+from backend.blocks.llm import AITextGeneratorBlock, LLMModel
 from backend.data.block_cost_config import (
     BLOCK_COSTS,
     MODEL_COST,
@@ -30,6 +31,15 @@ from backend.integrations.credentials_store import (
     fal_credentials,
     openai_credentials,
 )
+from backend.sdk.cost_integration import register_provider_costs_for_block
+
+
+@pytest.fixture
+def registered_exa_costs():
+    with patch.dict(BLOCK_COSTS):
+        BLOCK_COSTS.pop(ExaSearchBlock, None)
+        register_provider_costs_for_block(ExaSearchBlock)
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -200,7 +210,7 @@ def test_tokens_cost_type_uses_token_rate_table(tmp_block_costs_override, monkey
     # 2000 credits/1M output.
     monkeypatch.setitem(
         TOKEN_COST,
-        LlmModel.GPT4O_MINI,
+        LLMModel.GPT4O_MINI,
         TokenRate(input=1000, output=2000),
     )
     block = SearchTheWebBlock()
@@ -210,7 +220,7 @@ def test_tokens_cost_type_uses_token_rate_table(tmp_block_costs_override, monkey
     )
     cost, _ = block_usage_cost(
         block,
-        {"model": LlmModel.GPT4O_MINI.value},
+        {"model": LLMModel.GPT4O_MINI.value},
         stats=stats,
     )
     # 0.5 * 1000 + 0.25 * 2000 = 500 + 500 = 1000 credits.
@@ -223,7 +233,7 @@ def test_tokens_falls_back_to_flat_model_cost_when_rate_missing(
     tmp_block_costs_override([BlockCost(cost_amount=0, cost_type=BlockCostType.TOKENS)])
     block = SearchTheWebBlock()
     # Ollama models aren't in TOKEN_COST but are in MODEL_COST.
-    ollama_model = LlmModel.OLLAMA_LLAMA3_2
+    ollama_model = LLMModel.OLLAMA_LLAMA3_2
     expected = MODEL_COST[ollama_model]
     cost, _ = block_usage_cost(
         block,
@@ -231,6 +241,18 @@ def test_tokens_falls_back_to_flat_model_cost_when_rate_missing(
         stats=NodeExecutionStats(input_token_count=10_000, output_token_count=10_000),
     )
     assert cost == expected
+
+
+def test_ollama_zero_cost_entry_matches_without_credentials():
+    ollama_model = LLMModel.OLLAMA_LLAMA3_2
+
+    cost, matching_filter = block_usage_cost(
+        AITextGeneratorBlock(),
+        {"model": ollama_model.value},
+    )
+
+    assert cost == 0
+    assert matching_filter == {"model": ollama_model}
 
 
 def test_e2b_sandbox_blocks_bill_one_credit_per_ten_seconds():
@@ -273,7 +295,7 @@ def test_fal_video_block_bills_fifteen_credits_per_second():
     assert cost == 0
 
 
-def test_exa_blocks_bill_cost_usd_via_sdk_config():
+def test_exa_blocks_bill_cost_usd_via_sdk_config(registered_exa_costs):
     """End-to-end: Exa's ProviderBuilder.with_base_cost(100, COST_USD) is live."""
     block = ExaSearchBlock()
     creds = {
@@ -296,14 +318,14 @@ def test_llm_block_charges_per_token_post_flight():
     """AITextGeneratorBlock with Claude 4.6 Sonnet bills by real token counts."""
     block = AITextGeneratorBlock()
     input_data = {
-        "model": LlmModel.CLAUDE_4_6_SONNET,
+        "model": LLMModel.CLAUDE_4_6_SONNET,
         "credentials": {
             "id": anthropic_credentials.id,
             "provider": anthropic_credentials.provider,
             "type": anthropic_credentials.type,
         },
     }
-    rate = TOKEN_COST[LlmModel.CLAUDE_4_6_SONNET]
+    rate = TOKEN_COST[LLMModel.CLAUDE_4_6_SONNET]
     stats = NodeExecutionStats(
         input_token_count=200_000,
         output_token_count=50_000,
@@ -323,7 +345,7 @@ def test_llm_block_pre_flight_falls_back_to_model_cost():
     cost, _ = block_usage_cost(
         block,
         {
-            "model": LlmModel.GPT5,
+            "model": LLMModel.GPT5,
             "credentials": {
                 "id": openai_credentials.id,
                 "provider": openai_credentials.provider,
@@ -331,7 +353,7 @@ def test_llm_block_pre_flight_falls_back_to_model_cost():
             },
         },
     )
-    assert cost == MODEL_COST[LlmModel.GPT5]
+    assert cost == MODEL_COST[LLMModel.GPT5]
 
 
 def test_run_cost_type_remains_unchanged(tmp_block_costs_override):

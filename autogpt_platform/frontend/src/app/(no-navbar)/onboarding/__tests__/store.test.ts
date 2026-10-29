@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useOnboardingWizardStore } from "../store";
+import { buildStepLayout, useOnboardingWizardStore } from "../store";
 
 beforeEach(() => {
   useOnboardingWizardStore.getState().reset();
@@ -10,24 +10,47 @@ describe("useOnboardingWizardStore", () => {
     it("starts at step 1 with empty fields", () => {
       const state = useOnboardingWizardStore.getState();
       expect(state.currentStep).toBe(1);
-      expect(state.name).toBe("");
       expect(state.role).toBe("");
       expect(state.otherRole).toBe("");
       expect(state.painPoints).toEqual([]);
       expect(state.otherPainPoint).toBe("");
     });
 
-    it("defaults to yearly billing", () => {
+    it("defaults to monthly billing", () => {
       expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
-        "yearly",
+        "monthly",
+      );
+      expect(useOnboardingWizardStore.getState().hasUserSelectedBilling).toBe(
+        false,
       );
     });
   });
 
-  describe("setName", () => {
-    it("updates the name", () => {
-      useOnboardingWizardStore.getState().setName("Alice");
-      expect(useOnboardingWizardStore.getState().name).toBe("Alice");
+  describe("billing selection", () => {
+    it("tracks when the billing cycle was selected by the user", () => {
+      useOnboardingWizardStore.getState().setSelectedBilling("monthly");
+
+      const state = useOnboardingWizardStore.getState();
+      expect(state.selectedBilling).toBe("monthly");
+      expect(state.hasUserSelectedBilling).toBe(true);
+    });
+
+    it("applies experiment billing until the user has selected a cycle", () => {
+      useOnboardingWizardStore
+        .getState()
+        .applyPricingExperimentBilling("monthly");
+      expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
+        "monthly",
+      );
+
+      useOnboardingWizardStore.getState().setSelectedBilling("yearly");
+      useOnboardingWizardStore
+        .getState()
+        .applyPricingExperimentBilling("monthly");
+
+      const state = useOnboardingWizardStore.getState();
+      expect(state.selectedBilling).toBe("yearly");
+      expect(state.hasUserSelectedBilling).toBe(true);
     });
   });
 
@@ -112,10 +135,10 @@ describe("useOnboardingWizardStore", () => {
       expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
     });
 
-    it("clamps at step 5", () => {
-      useOnboardingWizardStore.getState().goToStep(5);
+    it("clamps at the last step", () => {
+      useOnboardingWizardStore.getState().goToStep(7);
       useOnboardingWizardStore.getState().nextStep();
-      expect(useOnboardingWizardStore.getState().currentStep).toBe(5);
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(7);
     });
   });
 
@@ -139,24 +162,65 @@ describe("useOnboardingWizardStore", () => {
     });
   });
 
+  describe("markHired", () => {
+    it("records each hired template once", () => {
+      useOnboardingWizardStore.getState().markHired("tpl-maria");
+      useOnboardingWizardStore.getState().markHired("tpl-maria");
+      useOnboardingWizardStore.getState().markHired("tpl-max");
+      expect(useOnboardingWizardStore.getState().hiredTemplateIds).toEqual([
+        "tpl-maria",
+        "tpl-max",
+      ]);
+    });
+  });
+
   describe("reset", () => {
     it("resets all fields to defaults", () => {
-      useOnboardingWizardStore.getState().setName("Alice");
       useOnboardingWizardStore.getState().setRole("Engineer");
       useOnboardingWizardStore.getState().setOtherRole("Other");
       useOnboardingWizardStore.getState().togglePainPoint("slow builds");
       useOnboardingWizardStore.getState().setOtherPainPoint("flaky CI");
+      useOnboardingWizardStore.getState().markHired("tpl-maria");
       useOnboardingWizardStore.getState().goToStep(3);
 
       useOnboardingWizardStore.getState().reset();
 
       const state = useOnboardingWizardStore.getState();
       expect(state.currentStep).toBe(1);
-      expect(state.name).toBe("");
       expect(state.role).toBe("");
       expect(state.otherRole).toBe("");
       expect(state.painPoints).toEqual([]);
       expect(state.otherPainPoint).toBe("");
+      expect(state.hiredTemplateIds).toEqual([]);
     });
+  });
+});
+
+describe("buildStepLayout", () => {
+  it("places the paywall after personalization and hiring", () => {
+    expect(buildStepLayout({ hasPaywall: true })).toEqual({
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      painPoints: 4,
+      hire: 5,
+      subscription: 6,
+      preparing: 7,
+    });
+  });
+
+  it("closes with the connection on self-host, never beside a paywall", () => {
+    expect(buildStepLayout({ hasConnect: true })).toEqual({
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      painPoints: 4,
+      hire: 5,
+      connect: 6,
+      preparing: 7,
+    });
+    expect(
+      buildStepLayout({ hasPaywall: true, hasConnect: true }).connect,
+    ).toBeUndefined();
   });
 });

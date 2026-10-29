@@ -1,4 +1,4 @@
-import { DownloadSimple, FileText } from "@phosphor-icons/react";
+import { Text } from "@/components/atoms/Text/Text";
 import { type ReactNode, useState } from "react";
 import {
   OutputRenderer,
@@ -8,6 +8,8 @@ import {
 } from "../types";
 import { parseWorkspaceURI, isWorkspaceURI } from "@/lib/workspace-uri";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Download04Icon, File02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const imageMimeTypes = [
   "image/jpeg",
@@ -63,11 +65,11 @@ function WorkspaceImage({ src, alt }: { src: string; alt: string }) {
       {!loaded && (
         <Skeleton className="absolute inset-0 h-full min-h-40 w-full rounded-md" />
       )}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- remote URL from any host, which next/image would need configured */}
       <img
         src={src}
         alt={alt}
-        className={`h-auto max-w-full rounded-md border border-gray-200 ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
+        className={`h-auto max-w-full rounded-md border border-border-base ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
         loading="lazy"
         onLoad={() => setLoaded(true)}
         onError={() => setLoaded(true)}
@@ -86,7 +88,7 @@ function WorkspaceVideo({ src, mimeType }: { src: string; mimeType: string }) {
       )}
       <video
         controls
-        className={`h-auto max-w-full rounded-md border border-gray-200 ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
+        className={`h-auto max-w-full rounded-md border border-border-base ${loaded ? "opacity-100" : "min-h-40 opacity-0"}`}
         preload="metadata"
         onLoadedMetadata={() => setLoaded(true)}
         onError={() => setLoaded(true)}
@@ -147,24 +149,28 @@ function renderWorkspaceFile(
   // Generic file card with icon and download link
   const label = getFileTypeLabel(mimeType);
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
-      <FileText size={28} className="flex-shrink-0 text-gray-500" />
+    <div className="flex items-center gap-3 rounded-lg border border-border-base bg-surface-muted p-3">
+      <Icon
+        icon={File02Icon}
+        size={28}
+        className="flex-shrink-0 text-foreground-tertiary"
+      />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+        <span className="truncate text-sm font-medium text-foreground-base">
           {metadata?.filename || label}
         </span>
         {mimeType && (
-          <span className="text-xs text-gray-500 dark:text-gray-400">
+          <Text variant="small-tight" as="span" tone="muted">
             {mimeType}
-          </span>
+          </Text>
         )}
       </div>
       <a
         href={downloadURL}
         download
-        className="flex-shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+        className="flex-shrink-0 rounded-md p-1.5 text-foreground-tertiary transition-colors hover:bg-surface-active hover:text-foreground-body"
       >
-        <DownloadSimple size={18} />
+        <Icon icon={Download04Icon} size={18} />
       </a>
     </div>
   );

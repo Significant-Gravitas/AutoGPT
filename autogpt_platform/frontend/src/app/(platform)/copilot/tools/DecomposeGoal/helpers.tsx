@@ -1,16 +1,17 @@
 "use client";
 
 import type { DecompositionStepModel } from "@/app/api/__generated__/models/decompositionStepModel";
-import {
-  CheckCircleIcon,
-  CircleDashedIcon,
-  ListChecksIcon,
-  SpinnerGapIcon,
-  WarningDiamondIcon,
-  XCircleIcon,
-} from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
+import {
+  AlertDiamondIcon,
+  CancelCircleIcon,
+  CheckListIcon,
+  CheckmarkCircle02Icon,
+  CircleDashedIcon,
+  Loading03Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // Re-export generated step type for consumers that need it.
 export type DecompositionStep = DecompositionStepModel;
@@ -118,57 +119,55 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
   return (
-    <ListChecksIcon size={14} weight="regular" className="text-neutral-400" />
+    <Icon icon={CheckListIcon} size={14} className="text-foreground-subtle" />
   );
 }
 
 export function AccordionIcon() {
-  return <ListChecksIcon size={32} weight="light" />;
+  return <Icon icon={CheckListIcon} size={32} />;
 }
 
 export function StepStatusIcon({ status }: { status: string }) {
   switch (status) {
     case "completed":
       return (
-        <CheckCircleIcon
+        <Icon
+          icon={CheckmarkCircle02Icon}
           size={18}
-          weight="fill"
-          className="text-emerald-500"
+          className="text-success"
           aria-label="completed"
         />
       );
     case "in_progress":
       return (
-        <SpinnerGapIcon
+        <Icon
+          icon={Loading03Icon}
           size={18}
-          weight="bold"
-          className="animate-spin text-blue-500"
+          className="animate-spin text-info"
           aria-label="in progress"
         />
       );
     case "failed":
       return (
-        <XCircleIcon
+        <Icon
+          icon={CancelCircleIcon}
           size={18}
-          weight="fill"
-          className="text-red-500"
+          className="text-error"
           aria-label="failed"
         />
       );
     default:
       return (
-        <CircleDashedIcon
+        <Icon
+          icon={CircleDashedIcon}
           size={18}
-          weight="regular"
-          className="text-neutral-400"
+          className="text-foreground-subtle"
           aria-label="pending"
         />
       );

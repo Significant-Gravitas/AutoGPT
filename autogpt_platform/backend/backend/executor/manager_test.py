@@ -32,6 +32,24 @@ def mock_embedding_functions():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _runners_belong_to_their_org():
+    """Check memberships for real here, unlike the other executor tests.
+
+    These runs are picked up by the executor service, which checks a run's
+    org/team against the database in its own process, out of a patch's reach.
+    The test server puts each run in an org no one is a member of, so a run
+    kept there would be stopped; checked here too, it moves to the user's own.
+    """
+
+
+@pytest.fixture(autouse=True)
+def _default_team_untenanted():
+    """Look up the user's own org and team for real: these tests use real
+    users, who have a personal org with a default team, and a run moved there
+    passes the executor service's check as it would in production."""
+
+
 async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Graph:
     logger.info(f"Creating graph for user {u.id}")
     return await s.agent_server.test_create_graph(CreateGraph(graph=g), u.id)
@@ -522,7 +540,7 @@ async def test_store_listing_graph(server: SpinTestServer):
         video_url=None,
         image_urls=[],
         description="Test description",
-        categories=[],
+        categories=["operations"],
     )
 
     store_listing = await server.agent_server.test_create_store_listing(
@@ -570,3 +588,78 @@ async def test_store_listing_graph(server: SpinTestServer):
 
     await assert_sample_graph_executions(test_graph, alt_test_user, graph_exec_id)
     logger.info("Completed test_agent_execution")
+
+
+def _run_completions(status: str) -> float:
+    from prometheus_client import REGISTRY
+
+    return (
+        REGISTRY.get_sample_value(
+            "autogpt_graph_run_completions_total", {"status": status}
+        )
+        or 0.0
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_wrapper_counts_only_an_applied_terminal_transition():
+    """Executor-side wrapper: a row back means the transition applied and is
+    counted once; None back (VALID_STATUS_TRANSITIONS rejected it) is not
+    counted and not broadcast."""
+    from unittest.mock import MagicMock
+
+    from backend.executor.manager import async_update_graph_execution_state
+
+    db = MagicMock()
+    before = _run_completions("COMPLETED")
+
+    with patch(
+        "backend.executor.manager.send_async_execution_update",
+        new_callable=AsyncMock,
+    ) as send:
+        db.update_graph_execution_stats = AsyncMock(return_value=MagicMock())
+        await async_update_graph_execution_state(
+            db, "ge-1", status=execution.ExecutionStatus.COMPLETED
+        )
+        assert _run_completions("COMPLETED") == before + 1
+        send.assert_awaited_once()
+
+        send.reset_mock()
+        db.update_graph_execution_stats = AsyncMock(return_value=None)
+        await async_update_graph_execution_state(
+            db, "ge-1", status=execution.ExecutionStatus.COMPLETED
+        )
+        assert _run_completions("COMPLETED") == before + 1
+        send.assert_not_awaited()
+
+
+def test_sync_wrapper_counts_only_an_applied_terminal_transition():
+    from unittest.mock import MagicMock
+
+    from backend.executor.manager import update_graph_execution_state
+
+    db = MagicMock()
+    before = _run_completions("FAILED")
+
+    with patch("backend.executor.manager.send_execution_update") as send:
+        db.update_graph_execution_stats = MagicMock(return_value=MagicMock())
+        update_graph_execution_state(
+            db, "ge-1", status=execution.ExecutionStatus.FAILED
+        )
+        assert _run_completions("FAILED") == before + 1
+        send.assert_called_once()
+
+        send.reset_mock()
+        db.update_graph_execution_stats = MagicMock(return_value=None)
+        update_graph_execution_state(
+            db, "ge-1", status=execution.ExecutionStatus.FAILED
+        )
+        assert _run_completions("FAILED") == before + 1
+        send.assert_not_called()
+
+        # Non-terminal transitions are never counted, applied or not.
+        db.update_graph_execution_stats = MagicMock(return_value=MagicMock())
+        update_graph_execution_state(
+            db, "ge-1", status=execution.ExecutionStatus.RUNNING
+        )
+        assert _run_completions("FAILED") == before + 1

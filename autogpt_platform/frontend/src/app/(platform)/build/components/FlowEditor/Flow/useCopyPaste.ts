@@ -14,12 +14,16 @@ interface CopyableData {
 
 const CLIPBOARD_PREFIX = "autogpt-flow-data:";
 
-export function useCopyPaste() {
+export function useCopyPaste(isReadOnly = false) {
   const { getViewport } = useReactFlow();
   const { toast } = useToast();
 
   const handleCopyPaste = useCallback(
     (event: KeyboardEvent) => {
+      // Read-only graphs cannot be edited, so paste (which would add nodes) is a
+      // no-op. The visual edit controls are hidden in this mode too.
+      if (isReadOnly) return;
+
       const activeElement = document.activeElement;
       const isInputField =
         activeElement?.tagName === "INPUT" ||
@@ -148,7 +152,7 @@ export function useCopyPaste() {
         }
       }
     },
-    [getViewport, toast],
+    [getViewport, toast, isReadOnly],
   );
 
   useEffect(() => {

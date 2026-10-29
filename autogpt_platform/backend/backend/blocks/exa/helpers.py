@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import Any, Dict, Literal, Optional, Union
 
+from pydantic import model_validator
+
 from backend.data.model import NodeExecutionStats
 from backend.sdk import BaseModel, Block, MediaFileType, SchemaField
 
@@ -60,11 +62,20 @@ class SummarySettings(BaseModel):
         description="Custom query for the LLM-generated summary",
         placeholder="Main developments",
     )
-    schema: Optional[dict] = SchemaField(  # type: ignore
+    output_schema: Optional[dict] = SchemaField(
         default=None,
         description="JSON schema for structured output from summary",
         advanced=True,
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_backward_compat(cls, data: Any) -> Any:
+        """Handle backward compatibility with 'schema' -> 'output_schema' rename."""
+        if isinstance(data, dict) and "schema" in data and "output_schema" not in data:
+            data = data.copy()
+            data["output_schema"] = data.pop("schema")
+        return data
 
 
 class ExtrasSettings(BaseModel):
@@ -146,86 +157,6 @@ class ContentSettings(BaseModel):
             description="Format search results into a context string for LLMs",
             advanced=True,
         )
-    )
-
-
-# Websets Models
-class WebsetEntitySettings(BaseModel):
-    type: Optional[str] = SchemaField(
-        default=None,
-        description="Entity type (e.g., 'company', 'person')",
-        placeholder="company",
-    )
-
-
-class WebsetCriterion(BaseModel):
-    description: str = SchemaField(
-        description="Description of the criterion",
-        placeholder="Must be based in the US",
-    )
-    success_rate: Optional[int] = SchemaField(
-        default=None,
-        description="Success rate percentage",
-        ge=0,
-        le=100,
-    )
-
-
-class WebsetSearchConfig(BaseModel):
-    query: str = SchemaField(
-        description="Search query",
-        placeholder="Marketing agencies based in the US",
-    )
-    count: int = SchemaField(
-        default=10,
-        description="Number of results to return",
-        ge=1,
-        le=100,
-    )
-    entity: Optional[WebsetEntitySettings] = SchemaField(
-        default=None,
-        description="Entity settings for the search",
-    )
-    criteria: Optional[list[WebsetCriterion]] = SchemaField(
-        default=None,
-        description="Search criteria",
-    )
-    behavior: Optional[str] = SchemaField(
-        default="override",
-        description="Behavior when updating results ('override' or 'append')",
-        placeholder="override",
-    )
-
-
-class EnrichmentOption(BaseModel):
-    label: str = SchemaField(
-        description="Label for the enrichment option",
-        placeholder="Option 1",
-    )
-
-
-class WebsetEnrichmentConfig(BaseModel):
-    title: str = SchemaField(
-        description="Title of the enrichment",
-        placeholder="Company Details",
-    )
-    description: str = SchemaField(
-        description="Description of what this enrichment does",
-        placeholder="Extract company information",
-    )
-    format: str = SchemaField(
-        default="text",
-        description="Format of the enrichment result",
-        placeholder="text",
-    )
-    instructions: Optional[str] = SchemaField(
-        default=None,
-        description="Instructions for the enrichment",
-        placeholder="Extract key company metrics",
-    )
-    options: Optional[list[EnrichmentOption]] = SchemaField(
-        default=None,
-        description="Options for the enrichment",
     )
 
 
@@ -356,24 +287,24 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
         content_settings["text"] = text_value
 
     # Handle highlights
-    if contents.highlights:
+    if contents.highlights is not None:
         highlights_dict: Dict[str, Any] = {
             "numSentences": contents.highlights.num_sentences,
             "highlightsPerUrl": contents.highlights.highlights_per_url,
         }
-        if contents.highlights.query:
+        if contents.highlights.query is not None:
             highlights_dict["query"] = contents.highlights.query
         content_settings["highlights"] = highlights_dict
 
-    if contents.summary:
+    if contents.summary is not None:
         summary_dict = {}
-        if contents.summary.query:
+        if contents.summary.query is not None:
             summary_dict["query"] = contents.summary.query
-        if contents.summary.schema:
-            summary_dict["schema"] = contents.summary.schema
+        if contents.summary.output_schema is not None:
+            summary_dict["schema"] = contents.summary.output_schema
         content_settings["summary"] = summary_dict
 
-    if contents.livecrawl:
+    if contents.livecrawl is not None:
         content_settings["livecrawl"] = contents.livecrawl.value
 
     if contents.livecrawl_timeout is not None:
@@ -382,14 +313,17 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
     if contents.subpages is not None:
         content_settings["subpages"] = contents.subpages
 
-    if contents.subpage_target:
+    if contents.subpage_target is not None:
         content_settings["subpageTarget"] = contents.subpage_target
 
-    if contents.extras:
+    if contents.extras is not None:
         extras_dict = {}
-        if contents.extras.links:
+        # ``links``/``image_links`` are non-optional int counts (default 0); a
+        # value of 0 means "don't request any", so it must be omitted rather
+        # than sent as ``0`` to the Exa API.
+        if contents.extras.links > 0:
             extras_dict["links"] = contents.extras.links
-        if contents.extras.image_links:
+        if contents.extras.image_links > 0:
             extras_dict["imageLinks"] = contents.extras.image_links
         content_settings["extras"] = extras_dict
 
@@ -421,34 +355,6 @@ def process_context_field(
             return {"maxCharacters": context.max_characters}
         return True
     return None
-
-
-def format_date_fields(
-    input_data: Any, date_field_mapping: Dict[str, str]
-) -> Dict[str, str]:
-    """Format datetime fields for API payload."""
-    formatted_dates = {}
-    for input_field, api_field in date_field_mapping.items():
-        value = getattr(input_data, input_field, None)
-        if value:
-            formatted_dates[api_field] = value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    return formatted_dates
-
-
-def add_optional_fields(
-    input_data: Any,
-    field_mapping: Dict[str, str],
-    payload: Dict[str, Any],
-    process_enums: bool = False,
-) -> None:
-    """Add optional fields to payload if they have values."""
-    for input_field, api_field in field_mapping.items():
-        value = getattr(input_data, input_field, None)
-        if value:  # Only add non-empty values
-            if process_enums and hasattr(value, "value"):
-                payload[api_field] = value.value
-            else:
-                payload[api_field] = value
 
 
 def extract_exa_cost_usd(response: Any) -> Optional[float]:

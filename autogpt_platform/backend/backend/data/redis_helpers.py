@@ -13,6 +13,8 @@ patterns we actually use into a single place:
 - :func:`hash_compare_and_set` — set a hash field only if its current
   value matches an expected one.  Genuinely needs Lua because the
   condition depends on the current value (pipeline can't branch).
+- :func:`string_compare_and_set` — the same for a plain string key, with
+  delete as the "new value" option (ownership-checked release/handover).
 
 Everything sharable lives here.  If a new Lua script is tempting in
 application code, add a helper here first — callers should not touch
@@ -38,13 +40,19 @@ from backend.data.redis_client import AsyncRedisClient, RedisClient
 #   ARGV[1]  hash field
 #   ARGV[2]  expected current value
 #   ARGV[3]  new value
+#   ARGV[4]  optional guard field which, when set and non-empty, must equal ARGV[5]
 _HASH_CAS_LUA = """
-local current = redis.call('HGET', KEYS[1], ARGV[1])
-if current == ARGV[2] then
-    redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
-    return 1
+if redis.call('HGET', KEYS[1], ARGV[1]) ~= ARGV[2] then
+    return 0
 end
-return 0
+if #ARGV > 3 then
+    local guard = redis.call('HGET', KEYS[1], ARGV[4])
+    if guard and guard ~= '' and guard ~= ARGV[5] then
+        return 0
+    end
+end
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
+return 1
 """
 
 # Push to a capped list only when a hash field currently matches the expected
@@ -57,6 +65,36 @@ return 0
 #   ARGV[3]  list value
 #   ARGV[4]  max list length
 #   ARGV[5]  list TTL seconds
+# Compare-and-set on a string key.  Returns 1 if swapped, 0 otherwise.
+#
+#   KEYS[1]  key
+#   ARGV[1]  expected current value
+#   ARGV[2]  new value, or "" to delete the key
+#   ARGV[3]  TTL in seconds for the new value
+#   ARGV[4]  "1" to also swap when the key is missing
+_STRING_CAS_LUA = """
+local current = redis.call('GET', KEYS[1])
+if current ~= ARGV[1] and not (current == false and ARGV[4] == '1') then
+    return 0
+end
+if ARGV[2] == '' then
+    redis.call('DEL', KEYS[1])
+else
+    redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+end
+return 1
+"""
+
+_POP_MATCHING_PREFIX_LUA = """
+local current = redis.call('LRANGE', KEYS[1], 0, #ARGV - 1)
+if #current ~= #ARGV then return {} end
+for i = 1, #ARGV do
+    if current[i] ~= ARGV[i] then return {} end
+end
+redis.call('LTRIM', KEYS[1], #ARGV, -1)
+return current
+"""
+
 _GATED_CAPPED_RPUSH_LUA = """
 local current = redis.call('HGET', KEYS[1], ARGV[1])
 if current ~= ARGV[2] then
@@ -67,6 +105,48 @@ redis.call('LTRIM', KEYS[2], -tonumber(ARGV[4]), -1)
 redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
 return redis.call('LLEN', KEYS[2])
 """
+
+# Exactly-once batch-dispatch claim. Used by the BatchExecutor's walk
+# to transition a finished provider batch from ``pending → dispatched``
+# in one indivisible step. Without this, the dispatch path is racy:
+#
+#   await _dispatch(entry, rows)       # side effects fire here
+#   await remove_pending(batch_id)     # ← any crash / slow write here
+#                                      #    leaves the batch in pending,
+#                                      #    next walk re-dispatches.
+#
+# The atomic claim SETs a per-batch tombstone STRING key BEFORE the
+# walker calls _dispatch, so a re-entry will be refused even when the
+# pending hash hasn't been HDEL'd yet. One tombstone key per batch_id
+# (``SET ... NX EX ttl``) means each tombstone self-expires its own
+# TTL after its own dispatch. The previous design — one shared SET
+# whose TTL was re-applied on every claim — never aged members out:
+# as long as one batch dispatched within the window, the whole set
+# lived forever and grew unbounded.
+#
+# Cluster safety: this script touches two keys (pending hash +
+# tombstone), so both MUST share a Redis Cluster hash tag (e.g. both
+# prefixed with ``{llm:batch}:``) to land on the same slot — required
+# for multi-key Lua under cluster mode. The pending hash is a
+# single-slot structure anyway, so colocating the small, self-expiring
+# tombstones on its slot costs nothing and buys full claim+HDEL
+# atomicity (no claimed-but-still-pending window for walkers to skip).
+#
+# Returns 1 when this caller won the claim (proceed with dispatch),
+# 0 when another walker already dispatched (skip silently).
+#
+#   KEYS[1]  pending hash key
+#   KEYS[2]  per-batch tombstone key
+#   ARGV[1]  batch_id (field on the pending hash)
+#   ARGV[2]  TTL seconds applied to the tombstone key
+_CLAIM_BATCH_DISPATCH_LUA = """
+if redis.call('SET', KEYS[2], '1', 'NX', 'EX', ARGV[2]) then
+    redis.call('HDEL', KEYS[1], ARGV[1])
+    return 1
+end
+return 0
+"""
+
 
 # Atomically: sweep stale slots, refresh an existing slot's claim or add
 # a new slot iff the pool is under capacity, then set the pool key's TTL.
@@ -109,6 +189,18 @@ redis.call('ZADD', KEYS[1], ARGV[2], ARGV[1])
 redis.call('EXPIRE', KEYS[1], ARGV[5])
 return 1
 """
+
+
+def as_str(value: bytes | str | None) -> str | None:
+    """Coerce a value read back from Redis to ``str``.
+
+    Our clients decode responses, but redis-py types every read as
+    ``bytes | str | None``; this keeps that knowledge in one place instead of
+    an ``isinstance`` at every call site.
+    """
+    if value is None:
+        return None
+    return value if isinstance(value, str) else value.decode()
 
 
 async def incr_with_ttl(
@@ -226,6 +318,59 @@ async def capped_rpush_if_hash_field(
     return None if length < 0 else length
 
 
+async def claim_batch_dispatch_atomic(
+    redis: AsyncRedisClient,
+    *,
+    pending_key: str,
+    dispatched_key_prefix: str,
+    batch_id: str,
+    ttl_seconds: int,
+) -> bool:
+    """Atomically claim the right to dispatch results for ``batch_id``.
+
+    Used by the BatchExecutor walk loop. The race we're closing:
+
+        await _dispatch(entry, rows)        # side effects fire here
+        await remove_pending(batch_id)      # gap → re-dispatch on
+                                            #     crash / contention
+
+    The tombstone is one STRING key per batch —
+    ``f"{dispatched_key_prefix}:{batch_id}"`` — set with ``NX EX`` so
+    each tombstone expires individually ``ttl_seconds`` after its own
+    dispatch (a shared set with one refreshed TTL would never age
+    members out and grow unbounded). The Lua script SETs the tombstone
+    and, only when it won, HDELs the pending entry, all in one
+    indivisible step. Returns ``True`` when this caller won the claim
+    (proceed with dispatch), ``False`` when another walker already
+    dispatched (skip silently).
+
+    ``pending_key`` and ``dispatched_key_prefix`` MUST share a Redis
+    Cluster hash tag (e.g. both prefixed with ``"{llm:batch}:"``) so
+    the pending hash and every tombstone land on the same slot —
+    required for multi-key Lua under cluster mode. Same-slot keys keep
+    the claim + HDEL fully atomic, so a crash can never leave a
+    claimed-but-still-pending entry.
+
+    ``ttl_seconds`` should comfortably exceed the longest possible
+    in-flight batch lifetime so stale tombstones cannot let a very
+    late re-poll cause a re-dispatch. 7 days is fine today (Anthropic
+    batch SLA is 24h, max batch lifetime cap is 24h); raise it if the
+    provider window widens.
+    """
+    result = await cast(
+        "Any",
+        redis.eval(
+            _CLAIM_BATCH_DISPATCH_LUA,
+            2,
+            pending_key,
+            f"{dispatched_key_prefix}:{batch_id}",
+            batch_id,
+            str(ttl_seconds),
+        ),
+    )
+    return bool(int(result))
+
+
 class SlotAdmission(IntEnum):
     """Result of :func:`try_acquire_concurrency_slot`.
 
@@ -302,8 +447,10 @@ async def hash_compare_and_set(
     *,
     expected: str,
     new: str,
+    guard: tuple[str, str] | None = None,
 ) -> bool:
-    """Atomically set ``HSET key field new`` iff current value == *expected*.
+    """Atomically set ``HSET key field new`` iff current value == *expected*
+    (and, with ``guard=(field, value)``, that field is unset, empty or value).
 
     Returns ``True`` if the swap happened, ``False`` otherwise.
 
@@ -315,6 +462,47 @@ async def hash_compare_and_set(
     """
     result = await cast(
         "Any",
-        redis.eval(_HASH_CAS_LUA, 1, key, field, expected, new),
+        redis.eval(_HASH_CAS_LUA, 1, key, field, expected, new, *(guard or ())),
+    )
+    return int(result) == 1
+
+
+async def pop_matching_list_prefix(
+    redis: AsyncRedisClient, key: str, expected: list[str]
+) -> list[str | bytes]:
+    """Pop a previously inspected prefix only if it still matches atomically."""
+    if not expected:
+        return []
+    result = await cast("Any", redis.eval(_POP_MATCHING_PREFIX_LUA, 1, key, *expected))
+    return list(result or [])
+
+
+async def string_compare_and_set(
+    redis: AsyncRedisClient,
+    key: str,
+    *,
+    expected: str,
+    new: str | None,
+    ttl_seconds: int = 0,
+    or_missing: bool = False,
+) -> bool:
+    """Atomically replace *key* with *new* (``None`` deletes it) iff it still
+    holds *expected*, or is missing and *or_missing* is set.
+
+    Returns ``True`` if the swap happened.  Use it when a value names its
+    owner, so a holder whose key expired and was taken over cannot overwrite
+    or delete its successor's value.
+    """
+    result = await cast(
+        "Any",
+        redis.eval(
+            _STRING_CAS_LUA,
+            1,
+            key,
+            expected,
+            new or "",
+            ttl_seconds,
+            "1" if or_missing else "0",
+        ),
     )
     return int(result) == 1

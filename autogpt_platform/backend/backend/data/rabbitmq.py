@@ -3,6 +3,7 @@ import logging
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Awaitable, Optional
+from uuid import uuid4
 
 import aio_pika
 import pika
@@ -73,6 +74,83 @@ class RabbitMQConfig(BaseModel):
     vhost: str = "/"
     exchanges: list[Exchange]
     queues: list[Queue]
+
+
+def declare_broadcast_queue(
+    channel: "pika.adapters.blocking_connection.BlockingChannel",
+    exchange: Exchange,
+    instance_id: str,
+) -> str:
+    """Give this process its own queue on a fanout exchange, and return its name.
+
+    A fanout reaches every process only when every process owns a queue:
+    consumers sharing one queue are round-robined, so a broadcast lands on one
+    arbitrary instance. Exclusive and auto-delete, so the queue dies with the
+    connection that declared it — which is why callers re-declare on reconnect.
+    """
+    queue_name = f"{exchange.name}.instance.{instance_id}.{uuid4().hex[:8]}"
+    channel.queue_declare(
+        queue=queue_name, durable=False, exclusive=True, auto_delete=True
+    )
+    channel.queue_bind(queue=queue_name, exchange=exchange.name, routing_key="")
+    return queue_name
+
+
+# Only waits for the last old-image instance to drain, which is a rollout-scale
+# event; costs one passive declare per instance per interval.
+SHARED_QUEUE_REAP_INTERVAL_SECONDS = 5 * 60
+
+
+def start_shared_queue_reaper(
+    channel: "pika.adapters.blocking_connection.BlockingChannel", queue_name: str
+) -> None:
+    """Delete a retired fleet-wide queue once no instance is draining it.
+
+    Runs now and every few minutes after, on the consumer's own connection:
+    a pika ``BlockingConnection`` is not thread-safe, and ``call_later`` fires
+    from inside ``start_consuming``. An old-image instance that reconnects
+    declares that queue again, so the pass repeats while this consumer lives.
+    """
+    reap_shared_queue(channel, queue_name)
+    try:
+        channel.connection.call_later(
+            SHARED_QUEUE_REAP_INTERVAL_SECONDS,
+            lambda: start_shared_queue_reaper(channel, queue_name),
+        )
+    except Exception as e:
+        logger.debug(f"{queue_name} reaper not re-armed: {e}")
+
+
+def reap_shared_queue(
+    channel: "pika.adapters.blocking_connection.BlockingChannel", queue_name: str
+) -> bool:
+    """Delete the shared queue if it exists and nothing consumes it.
+
+    The consumer count is the rollout gate: while an old-image instance is
+    still draining that queue, deleting it would take its broadcasts away.
+    Runs on a scratch channel because a 404 from the passive declare closes
+    the channel it arrives on, and the caller's is carrying the consumer.
+    """
+    try:
+        scratch = channel.connection.channel()
+    except Exception:
+        logger.warning(f"Could not open a channel to reap {queue_name}")
+        return False
+    try:
+        queue = scratch.queue_declare(queue=queue_name, passive=True).method
+        if queue.consumer_count:
+            return False
+        # Check-then-act, because RabbitMQ refuses `if_unused` on a quorum queue:
+        # an instance that re-consumes in the gap re-declares it on reconnect.
+        scratch.queue_delete(queue=queue_name)
+        logger.info(f"Deleted retired queue {queue_name}")
+        return True
+    except Exception as e:
+        logger.debug(f"{queue_name} not reaped: {e}")
+        return False
+    finally:
+        if scratch.is_open:
+            scratch.close()
 
 
 class RabbitMQBase(ABC):

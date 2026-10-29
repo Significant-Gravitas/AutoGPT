@@ -1,12 +1,79 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
+  buildSafeWorkspaceDownloadHeaders,
+  getSafeDownloadContentDisposition,
   isWorkspaceDownloadRequest,
   isRedirectStatus,
   isTransientWorkspaceDownloadStatus,
   getWorkspaceDownloadErrorMessage,
   fetchWorkspaceDownloadOnce,
   fetchWorkspaceDownloadWithRetry,
+  watchResponseStart,
+  RESPONSE_START_TIMEOUT_MS,
+  CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS,
+  getResponseStartTimeoutMs,
+  getSafePrivateMediaRange,
+  isPrivateStoreMediaRequest,
+  PRIVATE_MEDIA_RANGE_CHUNK_BYTES,
+  isPrivateStoreVideoRequest,
 } from "../route.helpers";
+
+describe("private store media request matching", () => {
+  const imagePath = [
+    "api",
+    "store",
+    "submissions",
+    "media",
+    "user-123",
+    "images",
+    "thumbnail.png",
+  ];
+
+  it("recognizes exact private image and video paths", () => {
+    expect(isPrivateStoreMediaRequest(imagePath)).toBe(true);
+    expect(
+      isPrivateStoreMediaRequest([
+        ...imagePath.slice(0, 5),
+        "videos",
+        "preview.mp4",
+      ]),
+    ).toBe(true);
+    expect(isPrivateStoreVideoRequest(imagePath)).toBe(false);
+    expect(
+      isPrivateStoreVideoRequest([
+        ...imagePath.slice(0, 5),
+        "videos",
+        "preview.mp4",
+      ]),
+    ).toBe(true);
+  });
+
+  it.each([
+    [imagePath.slice(0, -1)],
+    [[...imagePath, "extra"]],
+    [["api", "store", "media", "user-123", "images", "thumbnail.png"]],
+    [[...imagePath.slice(0, 4), "..", "images", "thumbnail.png"]],
+    [[...imagePath.slice(0, 5), "documents", "thumbnail.png"]],
+    [[...imagePath.slice(0, 6), "nested/thumbnail.png"]],
+  ])("rejects a non-private-media path: %j", (path) => {
+    expect(isPrivateStoreMediaRequest(path)).toBe(false);
+  });
+
+  it.each([
+    ["bytes=0-1023", "bytes=0-1023"],
+    ["bytes=1024-", `bytes=1024-${1023 + PRIVATE_MEDIA_RANGE_CHUNK_BYTES}`],
+    ["bytes=0-999999999", `bytes=0-${PRIVATE_MEDIA_RANGE_CHUNK_BYTES - 1}`],
+    ["bytes=-512", "bytes=-512"],
+    ["bytes=-999999999", `bytes=-${PRIVATE_MEDIA_RANGE_CHUNK_BYTES}`],
+    [" bytes=0-1023 ", "bytes=0-1023"],
+    ["bytes=0-1,4-5", null],
+    ["items=0-1", null],
+    ["bytes=-", null],
+    [null, null],
+  ])("sanitizes a Range header: %s", (value, expected) => {
+    expect(getSafePrivateMediaRange(value)).toBe(expected);
+  });
+});
 
 describe("isWorkspaceDownloadRequest", () => {
   const VALID_UUID = "550e8400-e29b-41d4-a716-446655440000";
@@ -736,6 +803,54 @@ describe("isWorkspaceDownloadRequest", () => {
   });
 });
 
+describe("getSafeDownloadContentDisposition", () => {
+  it("forces an inline response to download while preserving its filename", () => {
+    expect(
+      getSafeDownloadContentDisposition('inline; filename="payload.html"'),
+    ).toBe('attachment; filename="payload.html"');
+  });
+
+  it("keeps attachment filename parameters", () => {
+    expect(
+      getSafeDownloadContentDisposition(
+        "attachment; filename*=UTF-8''image.png",
+      ),
+    ).toBe("attachment; filename*=UTF-8''image.png");
+  });
+
+  it("supplies attachment when the upstream omits a disposition", () => {
+    expect(getSafeDownloadContentDisposition(null)).toBe("attachment");
+  });
+});
+
+describe("buildSafeWorkspaceDownloadHeaders", () => {
+  it("hardens an upstream inline active-content response", () => {
+    expect(
+      buildSafeWorkspaceDownloadHeaders(
+        "text/html; charset=utf-8",
+        'inline; filename="payload.html"',
+        42,
+      ),
+    ).toEqual({
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Length": "42",
+      "Content-Disposition": 'attachment; filename="payload.html"',
+      "Content-Security-Policy": "sandbox",
+      "X-Content-Type-Options": "nosniff",
+    });
+  });
+
+  it("hardens a redirected storage response with missing metadata", () => {
+    expect(buildSafeWorkspaceDownloadHeaders(null, null, 7)).toEqual({
+      "Content-Type": "application/octet-stream",
+      "Content-Length": "7",
+      "Content-Disposition": "attachment",
+      "Content-Security-Policy": "sandbox",
+      "X-Content-Type-Options": "nosniff",
+    });
+  });
+});
+
 describe("isRedirectStatus", () => {
   it.each([301, 302, 303, 307, 308])("returns true for %d", (status) => {
     expect(isRedirectStatus(status)).toBe(true);
@@ -952,5 +1067,120 @@ describe("fetchWorkspaceDownloadWithRetry", () => {
       fetchWorkspaceDownloadWithRetry("https://backend/file", {}, 1, 0),
     ).rejects.toThrow("Connection reset");
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("watchResponseStart", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("aborts with TimeoutError when a bodyless request gets no response in time", () => {
+    const watch = watchResponseStart(null);
+
+    expect(watch.body).toBeUndefined();
+    expect(watch.signal.aborted).toBe(false);
+
+    vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS + 1);
+
+    expect(watch.signal.aborted).toBe(true);
+    expect((watch.signal.reason as DOMException).name).toBe("TimeoutError");
+  });
+
+  it("uses the extended cold-start budget for Codex device login", () => {
+    const timeout = getResponseStartTimeoutMs(
+      ["api", "integrations", "codex", "login"],
+      "GET",
+    );
+    const watch = watchResponseStart(null, timeout);
+
+    vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS + 1);
+    expect(watch.signal.aborted).toBe(false);
+
+    vi.advanceTimersByTime(
+      CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS - RESPONSE_START_TIMEOUT_MS,
+    );
+    expect(watch.signal.aborted).toBe(true);
+  });
+
+  it("keeps the standard budget for other methods and routes", () => {
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "integrations", "codex", "login"],
+        "POST",
+      ),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "integrations", "github", "login"],
+        "GET",
+      ),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
+  });
+
+  it("extends cold App Server account, rate-limit, and logout operations", () => {
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "integrations", "codex", "credentials", "cred-1"],
+        "DELETE",
+      ),
+    ).toBe(CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS);
+    for (const operation of ["account", "rate-limits"]) {
+      expect(
+        getResponseStartTimeoutMs(
+          ["api", "integrations", "codex", "credentials", "cred-1", operation],
+          "GET",
+        ),
+      ).toBe(CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS);
+    }
+  });
+  it("does not abort once cleared (backend started responding)", () => {
+    const watch = watchResponseStart(null);
+
+    watch.clear();
+    vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS * 2);
+
+    expect(watch.signal.aborted).toBe(false);
+  });
+
+  it("does not start the clock while the request body is still uploading", async () => {
+    const requestBody = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("chunk"));
+        // Never closed: the upload is still in progress.
+      },
+    });
+
+    const watch = watchResponseStart(requestBody);
+
+    vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS * 10);
+
+    expect(watch.signal.aborted).toBe(false);
+  });
+
+  it("arms only after the request body has been fully consumed", async () => {
+    const requestBody = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("chunk"));
+        controller.close();
+      },
+    });
+
+    const watch = watchResponseStart(requestBody);
+
+    const reader = watch.body!.getReader();
+    while (!(await reader.read()).done) {
+      // Drain, as fetch would while uploading to the backend.
+    }
+
+    expect(watch.signal.aborted).toBe(false);
+    vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS + 1);
+
+    expect(watch.signal.aborted).toBe(true);
+    expect((watch.signal.reason as DOMException).name).toBe("TimeoutError");
   });
 });

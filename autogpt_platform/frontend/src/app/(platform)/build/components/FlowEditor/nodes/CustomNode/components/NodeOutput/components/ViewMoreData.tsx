@@ -3,11 +3,10 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { beautifyString, cn } from "@/lib/utils";
 import { ContentRenderer } from "./ContentRenderer";
-import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
+import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
 import { useState } from "react";
 import { NodeDataViewer } from "./NodeDataViewer/NodeDataViewer";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -15,6 +14,8 @@ import {
   getExecutionEntries,
   normalizeToArray,
 } from "../helpers";
+import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const ViewMoreData = ({
   nodeId,
@@ -51,19 +52,24 @@ export const ViewMoreData = ({
   };
 
   return (
-    <Dialog styling={{ width: "600px", paddingRight: "16px" }}>
+    <Dialog
+      title="View Data"
+      styling={{ width: "600px", paddingRight: "16px" }}
+    >
       <Dialog.Trigger>
         <Button
           variant="secondary"
           size="small"
-          className="h-fit w-fit min-w-0 !text-xs"
+          className="h-fit w-fit min-w-0"
         >
-          View More
+          <Text variant="small-medium-tight" as="span" tone="inherit">
+            View More
+          </Text>
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="h4" className="text-slate-900">
+          <Text variant="h4" tone="primary">
             Complete {dataType === "input" ? "Input" : "Output"} Data
           </Text>
 
@@ -72,15 +78,16 @@ export const ViewMoreData = ({
               {reversedExecutionResults.map((result) => (
                 <div
                   key={result.node_exec_id}
-                  className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+                  className="rounded-3xl border border-node-border bg-surface p-4 shadow-sm"
                 >
                   <div className="flex items-center gap-2">
-                    <Text variant="body" className="text-slate-600">
+                    <Text variant="body" tone="secondary">
                       Execution ID:
                     </Text>
                     <Text
-                      variant="body-medium"
-                      className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1 font-mono text-xs"
+                      variant="small-medium-mono-tight"
+                      as="p"
+                      className="rounded-full border border-border-strong bg-surface-muted px-2 py-1"
                     >
                       {result.node_exec_id}
                     </Text>
@@ -90,7 +97,7 @@ export const ViewMoreData = ({
                       onClick={() => copyExecutionId(result.node_exec_id)}
                       className="h-6 w-6 min-w-0 p-0"
                     >
-                      <CopyIcon size={14} />
+                      <Icon icon={Copy01Icon} size={14} />
                     </Button>
                   </div>
 
@@ -101,24 +108,15 @@ export const ViewMoreData = ({
                         return (
                           <div key={key} className="flex flex-col gap-2">
                             <div className="flex items-center gap-2">
-                              <Text
-                                variant="body-medium"
-                                className="!font-semibold text-slate-600"
-                              >
+                              <Text variant="body-semibold" tone="secondary">
                                 Pin:
                               </Text>
-                              <Text
-                                variant="body-medium"
-                                className="text-slate-700"
-                              >
+                              <Text variant="body-medium" tone="body">
                                 {beautifyString(key)}
                               </Text>
                             </div>
                             <div className="w-full space-y-2">
-                              <Text
-                                variant="body-medium"
-                                className="!font-semibold text-slate-600"
-                              >
+                              <Text variant="body-semibold" tone="secondary">
                                 Data:
                               </Text>
                               <div className="relative space-y-2">
@@ -149,20 +147,21 @@ export const ViewMoreData = ({
                                       )
                                     }
                                     className={cn(
-                                      "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
+                                      "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-foreground-strong",
                                       copiedKey ===
                                         `${result.node_exec_id}-${key}` &&
-                                        "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
+                                        "border-success bg-success/30 hover:border-success hover:bg-success/40",
                                     )}
                                   >
                                     {copiedKey ===
                                     `${result.node_exec_id}-${key}` ? (
-                                      <CheckIcon
+                                      <Icon
+                                        icon={Tick02Icon}
                                         size={16}
-                                        className="text-green-600"
+                                        className="text-success"
                                       />
                                     ) : (
-                                      <CopyIcon size={16} />
+                                      <Icon icon={Copy01Icon} size={16} />
                                     )}
                                   </Button>
                                 </div>

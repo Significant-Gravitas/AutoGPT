@@ -3,36 +3,31 @@
 import { useGetOauthGetOauthAppInfo } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { CREDENTIALS_TYPES } from "@/lib/autogpt-server-api";
 import type {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
-  CredentialsType,
 } from "@/lib/autogpt-server-api";
-import { CheckIcon, CircleIcon } from "@phosphor-icons/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
-
-// All credential types - we accept any type of credential
-const ALL_CREDENTIAL_TYPES: CredentialsType[] = [
-  "api_key",
-  "oauth2",
-  "user_password",
-  "host_scoped",
-];
+import { CircleIcon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 /**
  * Provider configuration for the setup wizard.
  *
  * Query parameters:
  * - `providers`: base64-encoded JSON array of { provider, scopes? } objects
- * - `app_name`: (optional) Name of the requesting application
- * - `redirect_uri`: Where to redirect after completion
+ * - `client_id`: The requesting application's OAuth client ID
+ * - `redirect_uri`: Where to redirect after completion; must be one of the
+ *   application's registered redirect URIs
  * - `state`: Anti-CSRF token
  *
  * Example `providers` JSON:
@@ -42,7 +37,7 @@ const ALL_CREDENTIAL_TYPES: CredentialsType[] = [
  * ]
  *
  * Example URL:
- * /auth/integrations/setup-wizard?app_name=My%20App&providers=W3sicHJvdmlkZXIiOiJnb29nbGUifV0=&redirect_uri=...
+ * /auth/integrations/setup-wizard?client_id=...&providers=W3sicHJvdmlkZXIiOiJnb29nbGUifV0=&redirect_uri=...
  */
 interface ProviderConfig {
   provider: string;
@@ -56,7 +51,8 @@ function createSchemaFromProviderConfig(
     type: "object",
     properties: {},
     credentials_provider: [config.provider],
-    credentials_types: ALL_CREDENTIAL_TYPES,
+    // Accept any credential type; the shared list is build-time total.
+    credentials_types: [...CREDENTIALS_TYPES],
     credentials_scopes: config.scopes,
     discriminator: undefined,
     discriminator_mapping: undefined,
@@ -105,9 +101,15 @@ export default function IntegrationSetupWizardPage() {
   const redirectURI = searchParams.get("redirect_uri");
   const state = searchParams.get("state");
 
-  const { data: appInfo } = useGetOauthGetOauthAppInfo(clientID || "", {
-    query: { enabled: !!clientID, select: okData },
-  });
+  const {
+    data: appInfo,
+    isLoading,
+    error,
+  } = useGetOauthGetOauthAppInfo(
+    encodeURIComponent(clientID || ""),
+    { redirect_uri: redirectURI },
+    { query: { enabled: !!clientID && !!redirectURI, select: okData } },
+  );
 
   // Parse providers from base64-encoded JSON
   const providerConfigs = useMemo<ProviderConfig[]>(() => {
@@ -144,7 +146,7 @@ export default function IntegrationSetupWizardPage() {
 
   // Handle completion - redirect back to client
   const handleComplete = () => {
-    if (!redirectURI || hasRedirectedRef.current) return;
+    if (!appInfo || hasRedirectedRef.current) return;
     hasRedirectedRef.current = true;
 
     const params = new URLSearchParams({
@@ -159,7 +161,7 @@ export default function IntegrationSetupWizardPage() {
 
   // Handle cancel - redirect back to client with error
   const handleCancel = () => {
-    if (!redirectURI || hasRedirectedRef.current) return;
+    if (!appInfo || hasRedirectedRef.current) return;
     hasRedirectedRef.current = true;
 
     const params = new URLSearchParams({
@@ -175,6 +177,7 @@ export default function IntegrationSetupWizardPage() {
 
   // Validate required parameters
   const missingParams: string[] = [];
+  if (!clientID) missingParams.push("client_id");
   if (!providersParam) missingParams.push("providers");
   if (!redirectURI) missingParams.push("redirect_uri");
 
@@ -187,6 +190,34 @@ export default function IntegrationSetupWizardPage() {
             responseError={{
               message: `Missing required parameters: ${missingParams.join(", ")}`,
             }}
+            hint="Please contact the administrator of the app that sent you here."
+            isOurProblem={false}
+          />
+        </AuthCard>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
+        <AuthCard title="Loading...">
+          <div className="flex flex-col items-center gap-4 py-8">
+            <LoadingSpinner size="large" />
+          </div>
+        </AuthCard>
+      </div>
+    );
+  }
+
+  // appInfo loads only once the backend accepts redirectURI for this client
+  if (error || !appInfo) {
+    return (
+      <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
+        <AuthCard title="Invalid Request">
+          <ErrorCard
+            context="application"
+            responseError={error ? error : { message: "Application not found" }}
             hint="Please contact the administrator of the app that sent you here."
             isOurProblem={false}
           />
@@ -221,15 +252,9 @@ export default function IntegrationSetupWizardPage() {
     <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
       <AuthCard title="Connect Your Accounts">
         <div className="flex w-full flex-col gap-6">
-          <Text variant="body" className="text-center text-slate-600">
-            {appInfo ? (
-              <>
-                <strong>{appInfo.name}</strong> is requesting you to connect the
-                following integrations to your AutoGPT account.
-              </>
-            ) : (
-              "Please connect the following integrations to continue."
-            )}
+          <Text variant="body" tone="secondary" className="text-center">
+            <strong>{appInfo.name}</strong> is requesting you to connect the
+            following integrations to your AutoGPT account.
           </Text>
 
           {/* Provider credentials list */}
@@ -241,7 +266,7 @@ export default function IntegrationSetupWizardPage() {
               return (
                 <div
                   key={config.provider}
-                  className="relative rounded-xl border border-slate-200 bg-white p-4"
+                  className="relative rounded-xl border border-border-base bg-surface p-4"
                 >
                   <div className="mb-4 flex items-center gap-2">
                     <div className="relative size-8">
@@ -257,20 +282,20 @@ export default function IntegrationSetupWizardPage() {
                     </Text>
                     <div className="grow"></div>
                     {isSelected ? (
-                      <CheckIcon
+                      <Icon
+                        icon={Tick02Icon}
                         size={20}
-                        className="text-green-500"
-                        weight="bold"
+                        className="text-success"
                       />
                     ) : (
-                      <CircleIcon
+                      <Icon
+                        icon={CircleIcon}
                         size={20}
-                        className="text-slate-300"
-                        weight="bold"
+                        className="text-foreground-disabled"
                       />
                     )}
                     {isSelected && (
-                      <Text variant="small" className="text-green-600">
+                      <Text variant="small" tone="success">
                         Connected
                       </Text>
                     )}
@@ -312,12 +337,12 @@ export default function IntegrationSetupWizardPage() {
           </div>
 
           {/* Link to integrations settings */}
-          <Text variant="small" className="text-center text-slate-500">
+          <Text variant="small" tone="secondary" className="text-center">
             You can view and manage all your integrations in your{" "}
             <Link
               href="/settings/integrations"
               target="_blank"
-              className="text-purple-600 underline hover:text-purple-800"
+              className="text-brand-hover underline hover:text-accent-strong"
             >
               integration settings
             </Link>

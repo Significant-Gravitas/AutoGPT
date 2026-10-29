@@ -47,21 +47,36 @@ export function AgentDetailsCard({ output }: Props) {
       ),
     );
     onSend(
-      `Run the agent "${output.agent.name}" with these inputs: ${JSON.stringify(nonEmpty, null, 2)}`,
+      `Run the workflow "${output.agent.name}" with these inputs: ${JSON.stringify(nonEmpty, null, 2)}`,
+    );
+  }
+
+  if (output.agent.trigger_info) {
+    // Informational only — no action button. run_agent hands off to
+    // setup_agent_webhook_trigger (whose own card collects config/credentials
+    // and shows the result), so a "Set up trigger" button here would be
+    // redundant and, once setup has succeeded, a stale backward-pointing CTA.
+    return (
+      <ContentMessage>
+        This workflow runs on a webhook trigger, so it can&apos;t be run or
+        scheduled directly — it&apos;s activated by setting up its trigger.
+      </ContentMessage>
     );
   }
 
   if (!schema) {
     return (
       <div className="grid gap-2">
-        <ContentMessage>This agent has no configurable inputs.</ContentMessage>
+        <ContentMessage>
+          This workflow has no configurable inputs.
+        </ContentMessage>
         <div className="flex gap-2 pt-2">
           <Button
             size="small"
             className="w-fit"
             onClick={() =>
               onSend(
-                `Run the agent "${output.agent.name}" with placeholder/example values so I can test it.`,
+                `Run the workflow "${output.agent.name}" with placeholder/example values so I can test it.`,
               )
             }
           >

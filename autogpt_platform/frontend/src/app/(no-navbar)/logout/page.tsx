@@ -3,7 +3,8 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { getPostLogoutPath } from "@/lib/auth/account-banned";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 
@@ -16,7 +17,7 @@ function wait(ms: number): Promise<void> {
 }
 
 export default function LogoutPage() {
-  const { logOut } = useSupabase();
+  const { logOut } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
   const hasStartedRef = useRef(false);
@@ -36,7 +37,7 @@ export default function LogoutPage() {
           });
         } finally {
           await wait(LOGOUT_REDIRECT_DELAY_MS);
-          router.replace("/login");
+          router.replace(getPostLogoutPath(window.location.search));
         }
       }
 

@@ -16,14 +16,15 @@ import {
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   ReactNode,
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -34,6 +35,8 @@ import {
   shouldRedirectFromOnboarding,
   updateOnboardingState,
 } from "./helpers";
+import { AuthDeepLinkWatcher } from "./AuthDeepLinkWatcher";
+import isEqual from "lodash/isEqual";
 
 type FrontendOnboardingStep = PostV1CompleteOnboardingStepStep;
 
@@ -78,6 +81,21 @@ export function useOnboarding(
   return context;
 }
 
+// When `/login?next=/profile` is hit, useLoginPage/useSignupPage fires its own
+// redirect to the requested target, so the provider must not race it. Sanitize
+// with the same helper the auth pages use — otherwise an unsafe value (e.g.
+// `?next=https://evil.site`) would defer us here while the auth page drops it
+// as `null`, deadlocking the user on the auth loader. Read from the location
+// (only ever inside an effect, after Next has committed the URL) instead of
+// useSearchParams, which would re-render this app-root provider on every
+// search-param write anywhere in the app. AuthDeepLinkWatcher re-runs the
+// effect when `next` changes on an auth route.
+function readPendingAuthDeepLink(isOnAuthRoute: boolean) {
+  if (!isOnAuthRoute) return false;
+  const next = new URLSearchParams(window.location.search).get("next");
+  return sanitizeAuthNext(next) !== null;
+}
+
 export default function OnboardingProvider({
   children,
 }: {
@@ -85,6 +103,8 @@ export default function OnboardingProvider({
 }) {
   const [state, setState] = useState<UserOnboarding | null>(null);
   const [step, setStep] = useState(1);
+  // Only a re-run trigger for the init effect, which reads the live URL.
+  const [authDeepLinkPending, setAuthDeepLinkPending] = useState(false);
   const hasInitialized = useRef(false);
   const isMounted = useRef(true);
   const pendingUpdatesRef = useRef<Set<Promise<void>>>(new Set());
@@ -92,9 +112,8 @@ export default function OnboardingProvider({
 
   const api = useBackendAPI();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
 
   useOnboardingTimezoneDetection();
 
@@ -115,25 +134,30 @@ export default function OnboardingProvider({
   }, []);
 
   const isOnOnboardingRoute = pathname.startsWith("/onboarding");
+  // The public `/tour` demo is for unauthenticated prospects and must never
+  // trigger onboarding init/redirects (which would bounce a logged-in user with
+  // incomplete onboarding out of the tour).
+  const isOnPublicTour = pathname.startsWith("/tour");
+  // A Supabase recovery link signs the user in and lands them on
+  // /reset-password. They must stay there until the new password is set;
+  // bouncing an un-onboarded account to /onboarding would skip the password
+  // change and turn the reset link into a one-time sign-in link.
+  const isOnPasswordResetRoute = pathname.startsWith("/reset-password");
   // Logged-in users sitting on the auth pages need to be routed onward by us;
   // otherwise the signup/login pages show their `isLoggedIn` loader forever.
   // Handling them here (instead of in useSignupPage/useLoginPage) avoids the
   // /signup → / → /copilot → /onboarding bounce that flashes /copilot.
   const isOnAuthRoute = pathname === "/signup" || pathname === "/login";
-  // When `/login?next=/profile` is hit, useLoginPage/useSignupPage fires its
-  // own redirect to the requested target. Skip our redirect in that window so
-  // the deep link isn't clobbered by the awaited completion check. Sanitize
-  // with the same helper the auth pages use — otherwise an unsafe value (e.g.
-  // `?next=https://evil.site`) would defer us here while the auth page drops
-  // it as `null`, deadlocking the user on the auth loader.
-  const hasPendingAuthDeepLink =
-    isOnAuthRoute && sanitizeAuthNext(searchParams.get("next")) !== null;
 
   const fetchOnboarding = useCallback(async () => {
     const onboarding = await resolveResponse(getV1OnboardingState());
     const processedOnboarding = fromBackendUserOnboarding(onboarding);
     if (isMounted.current) {
-      setState(processedOnboarding);
+      // A websocket `onboarding` notification refetches even when nothing
+      // changed; keeping the old object spares every consumer a re-render.
+      setState((prev) =>
+        isEqual(prev, processedOnboarding) ? prev : processedOnboarding,
+      );
     }
     return processedOnboarding;
   }, []);
@@ -150,14 +174,21 @@ export default function OnboardingProvider({
   }, [isLoggedIn, isOnAuthRoute]);
 
   useEffect(() => {
-    // Prevent multiple initializations
-    if (hasInitialized.current || !isLoggedIn) {
+    // Prevent multiple initializations. Skipped routes don't mark
+    // hasInitialized, so init re-runs on the next pathname change.
+    if (
+      hasInitialized.current ||
+      !isLoggedIn ||
+      isOnPublicTour ||
+      isOnPasswordResetRoute
+    ) {
       return;
     }
 
     // Defer to the auth-page's own deep-link redirect (`?next=…`) instead of
     // racing it. Don't mark hasInitialized so the next pathname change
     // (after the auth page redirects) gets us properly initialized.
+    const hasPendingAuthDeepLink = readPendingAuthDeepLink(isOnAuthRoute);
     if (hasPendingAuthDeepLink) {
       return;
     }
@@ -188,10 +219,15 @@ export default function OnboardingProvider({
           isOnOnboardingRoute &&
           shouldRedirectFromOnboarding(onboarding.completedSteps, pathname)
         ) {
-          router.replace("/copilot");
+          router.replace("/home");
         }
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
+          hasInitialized.current = false;
+          return;
+        }
+
+        if (error instanceof DOMException && error.name === "AbortError") {
           hasInitialized.current = false;
           return;
         }
@@ -212,10 +248,12 @@ export default function OnboardingProvider({
     api,
     isOnOnboardingRoute,
     isOnAuthRoute,
-    hasPendingAuthDeepLink,
+    authDeepLinkPending,
     router,
     isLoggedIn,
     pathname,
+    isOnPublicTour,
+    isOnPasswordResetRoute,
   ]);
 
   const handleOnboardingNotification = useCallback(
@@ -310,16 +348,16 @@ export default function OnboardingProvider({
     [isLoggedIn, state?.completedSteps, fetchOnboarding, toast],
   );
 
+  const value = useMemo(
+    () => ({ state, updateState, step, setStep, completeStep }),
+    [state, updateState, step, completeStep],
+  );
+
   return (
-    <OnboardingContext.Provider
-      value={{
-        state,
-        updateState,
-        step,
-        setStep,
-        completeStep,
-      }}
-    >
+    <OnboardingContext.Provider value={value}>
+      {isOnAuthRoute && (
+        <AuthDeepLinkWatcher onChange={setAuthDeepLinkPending} />
+      )}
       {children}
     </OnboardingContext.Provider>
   );
