@@ -30,16 +30,11 @@ export function ContentCard({
   return (
     <div
       className={cn(
-        "min-w-0 rounded-lg bg-gradient-to-r from-brand/30 to-info/30 p-[1px]",
+        "min-w-0 rounded-lg bg-gradient-to-r from-brand/30 to-info/30 p-px",
         className,
       )}
     >
-      <div
-        // TODO(tokens): no exact role for bg-neutral-100
-        className="rounded-lg bg-neutral-100 p-3"
-      >
-        {children}
-      </div>
+      <div className="rounded-lg bg-surface-hover p-3">{children}</div>
     </div>
   );
 }
@@ -142,11 +137,7 @@ export function ContentHint({
   className?: string;
 }) {
   return (
-    <Text
-      // TODO(tokens): no exact role for text-neutral-500
-      variant="small"
-      className={cn("text-neutral-500", className)}
-    >
+    <Text variant="small" className={cn("text-foreground-tertiary", className)}>
       {children}
     </Text>
   );
@@ -166,8 +157,7 @@ export function ContentCodeBlock({
   return (
     <pre
       className={cn(
-        // TODO(tokens): no exact role for bg-neutral-100, text-neutral-800
-        "whitespace-pre-wrap rounded-lg border bg-neutral-100 p-3 text-xs text-neutral-800",
+        "whitespace-pre-wrap rounded-lg border bg-surface-hover p-3 text-xs text-foreground-emphasis",
         className,
       )}
     >

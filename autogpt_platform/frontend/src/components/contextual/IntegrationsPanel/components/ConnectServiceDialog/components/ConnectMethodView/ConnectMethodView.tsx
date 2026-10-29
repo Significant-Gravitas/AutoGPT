@@ -21,6 +21,10 @@ import { InlineApiKeyForm } from "./InlineApiKeyForm";
 import { InlineHostScopedForm } from "./InlineHostScopedForm";
 import { InlineUserPasswordForm } from "./InlineUserPasswordForm";
 import {
+  WorkflowConnectionView,
+  type WorkflowConnectOptions,
+} from "./WorkflowConnectionView";
+import {
   GlobeIcon,
   Key01Icon,
   SecurityCheckIcon,
@@ -31,6 +35,7 @@ import type { IconSvgElement } from "@hugeicons/react";
 import { AnimatePresence, domAnimation, LazyMotion, m } from "framer-motion";
 
 interface Props {
+  workflowConnect?: WorkflowConnectOptions;
   provider: ConnectableProvider;
   selectedMethod: AuthMethod | null;
   onSelectMethod: (method: AuthMethod | null) => void;
@@ -99,6 +104,7 @@ const METHOD_COPY: Record<
 // to X", method radio cards. Form methods expand their inputs inline as
 // an accordion; OAuth is driven by the panel footer's Continue.
 export function ConnectMethodView({
+  workflowConnect,
   provider,
   selectedMethod,
   onSelectMethod,
@@ -119,13 +125,24 @@ export function ConnectMethodView({
     mcpSignIn?.onShowNativeChange(false);
   }
 
+  if (workflowConnect)
+    return (
+      <WorkflowConnectionView
+        provider={provider}
+        options={workflowConnect}
+        form={apiKeyForm}
+        onApiKeySubmit={onApiKeySubmit}
+        onConnected={onInlineConnectSuccess}
+      />
+    );
+
   return (
     // `m` + a local provider, so this renders both standalone and inside
     // the copilot tool chain's strict LazyMotion, which rejects `motion`.
     <LazyMotion features={domAnimation}>
       <div className="flex flex-col gap-5 pt-2">
         <div className="flex items-center justify-center gap-6">
-          <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.08)] ring-1 ring-separator">
+          <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-lg ring-1 ring-separator">
             <AutoGPTLogo
               hideText
               className="absolute left-1/2 top-1/2 h-8 w-[4.4rem] -translate-x-[77%] -translate-y-1/2"
@@ -135,12 +152,11 @@ export function ConnectMethodView({
             {Array.from({ length: 9 }, (_, dot) => (
               <span
                 key={dot}
-                // TODO(tokens): no exact role for bg-[#5b21b6]/30
-                className="h-1 w-1 rounded-full bg-[#5b21b6]/30"
+                className="h-1 w-1 rounded-full bg-accent-strong/30"
               />
             ))}
           </span>
-          <span className="flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.08)] ring-1 ring-separator">
+          <span className="flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-lg ring-1 ring-separator">
             <ProviderAvatar
               id={provider.iconId ?? provider.id}
               name={provider.name}
@@ -149,16 +165,13 @@ export function ConnectMethodView({
         </div>
 
         <div className="flex flex-col gap-1.5 text-center">
-          <Text
-            variant="h3"
-            className="!text-lead !leading-10 text-foreground-strong"
-          >
+          <Text variant="h3" tone="primary" className="!text-lead !leading-10">
             {showMcp
               ? `Connect ${provider.name}`
               : `Connect AutoGPT to ${provider.name}`}
           </Text>
           {showMcp ? null : (
-            <Text variant="body" className="!text-foreground-tertiary">
+            <Text variant="body" tone="muted">
               Choose how you&apos;d like to connect your {provider.name}{" "}
               account.
             </Text>
@@ -175,10 +188,7 @@ export function ConnectMethodView({
           />
         ) : (
           <div className="flex flex-col gap-4">
-            <div
-              // TODO(tokens): no exact role for bg-neutral-100 #f5f5f5
-              className="flex flex-col gap-1 rounded-2xl bg-neutral-100 p-1.5"
-            >
+            <div className="flex flex-col gap-1 rounded-2xl bg-surface-hover p-1.5">
               {methods.map((method) => {
                 const copy = METHOD_COPY[method];
                 const isSelected = selectedMethod === method;
@@ -208,36 +218,33 @@ export function ConnectMethodView({
                       </span>
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <span className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground-strong">
+                          <Text
+                            variant="body-semibold-tight"
+                            as="span"
+                            tone="primary"
+                          >
                             {copy.label}
-                          </span>
+                          </Text>
                           {copy.recommended && (
-                            <span
-                              // TODO(tokens): no exact role for bg-violet-100 #ede9fe
-                              className="rounded-md bg-violet-100 px-1.5 py-0.5 text-tiny font-semibold leading-inherit tracking-wide text-accent-strong"
-                            >
+                            <span className="rounded-md bg-accent-surface px-1.5 py-0.5 text-tiny font-semibold leading-inherit tracking-wide text-accent-strong">
                               RECOMMENDED
                             </span>
                           )}
                         </span>
-                        <span className="text-xs text-foreground-tertiary">
+                        <Text variant="small-tight" as="span" tone="muted">
                           {copy.description}
-                        </span>
+                        </Text>
                       </span>
                       <span
                         aria-hidden
                         className={
-                          // TODO(tokens): no exact role for border-violet-600 #7c3aed
                           isSelected
-                            ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-violet-600"
+                            ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-brand"
                             : "h-5 w-5 shrink-0 rounded-full border-2 border-border-base"
                         }
                       >
                         {isSelected && (
-                          <span
-                            // TODO(tokens): no exact role for bg-violet-600 #7c3aed
-                            className="h-2.5 w-2.5 rounded-full bg-violet-600"
-                          />
+                          <span className="h-2.5 w-2.5 rounded-full bg-brand" />
                         )}
                       </span>
                     </button>

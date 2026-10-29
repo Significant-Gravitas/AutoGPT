@@ -29,7 +29,7 @@ export function ConfirmDeleteStep({ source, onClose, onBusyChange }: Props) {
   return (
     <form noValidate onSubmit={handleSubmit} className="flex flex-col px-0.5">
       <div className="flex flex-col gap-4">
-        <Text variant="body" className="text-zinc-800">
+        <Text variant="body" tone="emphasis">
           This permanently deletes your AutoGPT account. You can&apos;t undo it.
         </Text>
         <ConsequenceList items={consequences} />

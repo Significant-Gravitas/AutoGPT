@@ -21,8 +21,8 @@ export function ComposerPanelTab({ expert }: Props) {
     // the tab (ChatContainer pads the list to match).
     <div className="relative z-20 -mt-[41px] flex justify-end pr-6 lg:hidden">
       <div
-        // TODO(tokens): no exact role for bg-neutral-100; no fitting role for shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),inset_0_5px_6px_-4px_rgba(255,255,255,0.7)] #FFFFFF; #FFFFFF is card (a fill) and popover (a fill)
-        className="flex items-center gap-0.5 rounded-t-2xl border border-b-0 border-border-base bg-neutral-100 px-1.5 pt-1 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),inset_0_5px_6px_-4px_rgba(255,255,255,0.7)]"
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- inset highlight of the tab that joins the composer; no shadow token has it
+        className="flex items-center gap-0.5 rounded-t-2xl border border-b-0 border-border-base bg-surface-hover px-1.5 pt-1 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),inset_0_5px_6px_-4px_rgba(255,255,255,0.7)]"
       >
         <WorkspaceFilesTrigger className={buttonClassName} />
         {expert && (

@@ -4,6 +4,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { formatInputsTitle, type InputsRequest } from "./helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   requests: InputsRequest[];
@@ -30,15 +31,20 @@ export function InputsSection({ requests }: Props) {
               size={18}
               className="text-foreground-subtle"
             />
-            <span className="text-sm font-medium text-foreground-strong">
+            <Text variant="body-medium-tight" as="span" tone="primary">
               {request.title
                 ? formatInputsTitle(request.title)
                 : "Fill in the details"}
-            </span>
+            </Text>
             {request.title && (
-              <span className="ml-auto text-xs text-foreground-subtle">
+              <Text
+                variant="small-tight"
+                as="span"
+                tone="subtle"
+                className="ml-auto"
+              >
                 Fill in the details
-              </span>
+              </Text>
             )}
           </div>
 

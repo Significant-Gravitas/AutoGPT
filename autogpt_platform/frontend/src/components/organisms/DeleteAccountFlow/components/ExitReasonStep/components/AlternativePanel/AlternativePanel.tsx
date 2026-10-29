@@ -28,7 +28,7 @@ export function AlternativePanel({ panel, isActionPending, onAction }: Props) {
       className="focus:outline-none [&>svg]:top-3.5 [&>svg]:translate-y-0"
     >
       <div className="flex flex-col items-start gap-3">
-        <Text variant="body" className="text-zinc-800">
+        <Text variant="body" tone="emphasis">
           {panel.copy}
         </Text>
         {action ? (

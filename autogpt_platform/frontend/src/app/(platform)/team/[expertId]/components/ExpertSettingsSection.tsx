@@ -48,21 +48,15 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
       aria-label={`Fire ${expert.name}`}
       className="overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm"
     >
-      <div
-        // TODO(tokens): no exact role: border-red-100 #FDECEC
-        className="flex items-start gap-3 border-b border-red-100 bg-error-surface/60 px-5 py-4"
-      >
-        <span
-          // TODO(tokens): no exact role: bg-red-100 #FDECEC; no fitting role for text-red-600 #D93636; #D93636 is error-hover (a hover fill)
-          className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600"
-        >
+      <div className="flex items-start gap-3 border-b border-error/10 bg-error-surface/60 px-5 py-4">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-error-surface text-error-foreground">
           <Icon icon={UserRemove01Icon} size={20} aria-hidden />
         </span>
         <div className="min-w-0">
-          <Text variant="large-medium" className="!text-foreground-strong">
+          <Text variant="large-medium" tone="primary">
             Fire {expert.name}
           </Text>
-          <Text variant="body-md" className="mt-0.5 !text-foreground-secondary">
+          <Text variant="body-md" tone="secondary" className="mt-0.5">
             {expert.name} leaves your team and stops working for you. Here is
             what that means for what you have set up.
           </Text>
@@ -188,8 +182,7 @@ function Consequence({
         className={cn(
           "flex size-8 shrink-0 items-center justify-center rounded-lg border",
           isWarn
-            ? // TODO(tokens): no exact role: text-amber-600 #D97706
-              "border-warning-border bg-warning-surface text-amber-600"
+            ? "border-warning-border bg-warning-surface text-warning-foreground"
             : "border-border-base bg-surface-muted text-foreground-tertiary",
         )}
       >
@@ -197,17 +190,14 @@ function Consequence({
       </span>
       <div className="min-w-0 flex-1 pt-1">
         <div className="flex items-center justify-between gap-3">
-          <Text variant="body-md" className="!text-foreground-emphasis">
+          <Text variant="body-md" tone="emphasis">
             {title}
           </Text>
           {tag ? (
             <span
               className={cn(
                 "flex shrink-0 rounded-full px-2 py-0.5",
-                isWarn
-                  ? "bg-warning-surface"
-                  : // TODO(tokens): no exact role: bg-emerald-50 #ECFDF5
-                    "bg-emerald-50",
+                isWarn ? "bg-warning-surface" : "bg-success-surface",
               )}
             >
               <Text

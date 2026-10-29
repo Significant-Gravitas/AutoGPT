@@ -13,6 +13,7 @@ export default function OptionalDataControlsTemplate(
       <IconButton
         id={id}
         registry={registry}
+        // oxlint-disable-next-line design-system/no-unknown-classes -- RJSF marker class, kept for the upstream template hook
         className="rjsf-add-optional-data"
         onClick={onAddClick}
         title={label}
@@ -25,6 +26,7 @@ export default function OptionalDataControlsTemplate(
       <RemoveButton
         id={id}
         registry={registry}
+        // oxlint-disable-next-line design-system/no-unknown-classes -- RJSF marker class, kept for the upstream template hook
         className="rjsf-remove-optional-data"
         onClick={onRemoveClick}
         title={label}

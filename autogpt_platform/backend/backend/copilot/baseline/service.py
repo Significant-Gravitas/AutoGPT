@@ -132,6 +132,7 @@ from backend.copilot.response_model import (
     StreamUsage,
     ToolDisplayData,
 )
+from backend.copilot.sandbox_status import build_sandbox_replaced_notice
 from backend.copilot.service import (
     _build_system_prompt,
     _get_main_client,
@@ -2329,6 +2330,8 @@ async def stream_chat_completion_baseline(
     # on ``user_message_for_transcript``: that would persist one stale figure
     # per turn, the same trap the warm-context injection below names.
     budget_status = await build_turn_budget_block(envelope, user_id)
+    if e2b_sandbox is not None:
+        budget_status += await build_sandbox_replaced_notice(session_id)
     if budget_status:
         for msg in reversed(openai_messages):
             if msg["role"] == "user":

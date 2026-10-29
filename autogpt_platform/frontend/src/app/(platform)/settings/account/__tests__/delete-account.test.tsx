@@ -6,7 +6,10 @@ import {
   getGetV1GetUserTimezoneMockHandler,
 } from "@/app/api/__generated__/endpoints/auth/auth.msw";
 import { Toaster } from "@/components/molecules/Toast/toaster";
-import { ImpersonationState } from "@/lib/impersonation";
+import {
+  ImpersonationState,
+  setImpersonationViewer,
+} from "@/lib/impersonation";
 import { server } from "@/mocks/mock-server";
 import { Flag } from "@/services/feature-flags/use-get-flag";
 import {
@@ -139,6 +142,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   ImpersonationState.clear();
+  setImpersonationViewer(null);
 });
 
 describe("Settings > Account delete card", () => {
@@ -152,7 +156,8 @@ describe("Settings > Account delete card", () => {
   });
 
   test("is not shown while an admin is impersonating the user", async () => {
-    ImpersonationState.set("user-1");
+    ImpersonationState.set("user-1", "admin-1");
+    setImpersonationViewer({ id: "admin-1", role: "admin" });
 
     render(<SettingsPreferencesPage />);
 
@@ -169,8 +174,8 @@ describe("Settings > Account delete card", () => {
       name: "Delete account",
     });
     const classes = button.className.split(/\s+/);
-    expect(classes).toContain("text-red-600");
-    expect(classes).not.toContain("text-zinc-800");
+    expect(classes).toContain("text-error-hover");
+    expect(classes).not.toContain("text-foreground-emphasis");
     const card = button.closest("section");
     expect(card?.textContent).toContain(
       "Permanently delete your account and everything in it, disconnect your apps and cancel your plan.",

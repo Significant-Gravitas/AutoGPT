@@ -39,7 +39,7 @@ export function StackSection({
           className="text-foreground-tertiary"
           aria-hidden
         />
-        <Text variant="small-medium" className="!text-foreground-body">
+        <Text tone="body" variant="small-medium">
           {title}
           {count === undefined ? "" : ` (${count})`}
         </Text>

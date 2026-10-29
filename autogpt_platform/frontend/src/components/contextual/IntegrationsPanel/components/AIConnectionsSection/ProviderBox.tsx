@@ -64,16 +64,13 @@ export function ProviderBox({
           {name}
         </Text>
         {state === "connected" && (
-          <span
-            // TODO(tokens): no exact role for bg-emerald-50 #ecfdf5, text-emerald-700 #047857
-            className="inline-flex items-center gap-1 rounded-[10px] bg-emerald-50 px-2 py-[2px] text-body-sm font-medium leading-5 text-emerald-700"
-          >
+          <span className="inline-flex items-center gap-1 rounded-lg bg-success-surface px-2 py-0.5 text-body-sm font-medium leading-5 text-success-foreground">
             <Icon icon={CheckmarkCircle02Icon} size={13} />
             Connected
           </span>
         )}
         {state === "coming-soon" && (
-          <span className="inline-flex items-center rounded-[10px] bg-surface-hover px-2 py-[2px] text-body-sm font-medium leading-5 text-foreground-tertiary">
+          <span className="inline-flex items-center rounded-lg bg-surface-hover px-2 py-0.5 text-body-sm font-medium leading-5 text-foreground-tertiary">
             Coming soon
           </span>
         )}
@@ -105,8 +102,7 @@ export function ProviderBox({
       className={cn(
         FRAME,
         "border-border-base transition-colors hover:border-border-strong hover:bg-surface-muted",
-        // TODO(tokens): no exact role for focus-visible:ring-purple-400 #925cf7
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
         isBusy && "cursor-progress",
       )}
     >

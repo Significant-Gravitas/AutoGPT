@@ -1,4 +1,7 @@
-import { ImpersonationState } from "@/lib/impersonation";
+import {
+  ImpersonationState,
+  setImpersonationViewer,
+} from "@/lib/impersonation";
 import { Flag } from "@/services/feature-flags/use-get-flag";
 import {
   mockAccountDeletionAPI,
@@ -105,6 +108,7 @@ beforeEach(() => {
 
 afterEach(() => {
   ImpersonationState.clear();
+  setImpersonationViewer(null);
 });
 
 describe("PaywallModal — delete account", () => {
@@ -118,7 +122,8 @@ describe("PaywallModal — delete account", () => {
   });
 
   test("shows no Delete account button while an admin is impersonating the user", () => {
-    ImpersonationState.set("user-1");
+    ImpersonationState.set("user-1", "admin-1");
+    setImpersonationViewer({ id: "admin-1", role: "admin" });
 
     render(<PaywallModal />);
 

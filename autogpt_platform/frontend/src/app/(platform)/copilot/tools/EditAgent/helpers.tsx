@@ -112,9 +112,12 @@ export function ToolIcon({
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  // TODO(tokens): no exact role for neutral-400 #A3A3A3
   return (
-    <Icon icon={PencilEdit01Icon} size={14} className="text-neutral-400" />
+    <Icon
+      icon={PencilEdit01Icon}
+      size={14}
+      className="text-foreground-subtle"
+    />
   );
 }
 

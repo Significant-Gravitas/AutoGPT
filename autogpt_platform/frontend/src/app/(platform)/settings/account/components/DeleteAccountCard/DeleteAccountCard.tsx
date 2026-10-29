@@ -33,12 +33,12 @@ export function DeleteAccountCard({ index = 0 }: Props) {
       }
       className="flex w-full flex-col"
     >
-      <div className="flex flex-col items-start gap-3 rounded-[18px] border border-zinc-200 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)] sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <div className="flex flex-col items-start gap-3 rounded-large border border-border-base bg-surface px-4 py-4 shadow-message-table sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <Text variant="body-medium" as="span" className="text-textBlack">
+          <Text variant="body-medium" as="span">
             Delete account
           </Text>
-          <Text variant="small" as="span" className="text-zinc-500">
+          <Text variant="small" as="span" tone="muted">
             Permanently delete your account and everything in it, disconnect
             your apps and cancel your plan.
           </Text>
@@ -49,7 +49,8 @@ export function DeleteAccountCard({ index = 0 }: Props) {
           size="small"
           variant="secondary"
           onClick={openFlow}
-          className="shrink-0 text-red-600"
+          // oxlint-disable-next-line design-system/no-restyle -- Button has no danger-label variant; the red marks the destructive action, in Text's danger colour
+          className="shrink-0 text-error-hover"
         >
           Delete account
         </Button>

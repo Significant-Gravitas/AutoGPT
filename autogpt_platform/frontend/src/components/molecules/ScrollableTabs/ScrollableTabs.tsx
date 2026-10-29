@@ -55,6 +55,7 @@ export function ScrollableTabs({ children, className, defaultValue }: Props) {
         >
           <div
             data-slot="scrollable-tabs-panels"
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- 200px scroll runway below the last panel; the scale has no 200px step
             className="min-h-full pb-[200px]"
           >
             {contentElements}

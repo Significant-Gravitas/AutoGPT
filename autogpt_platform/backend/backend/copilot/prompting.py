@@ -10,6 +10,7 @@ from functools import cache
 from typing import TYPE_CHECKING
 
 from backend.copilot.providers import SUPPORTED_PROVIDERS
+from backend.copilot.sandbox_status import SESSION_SANDBOX_TTL
 
 if TYPE_CHECKING:
     from backend.copilot.permissions import CopilotPermissions
@@ -61,6 +62,8 @@ for the places, give plain Google Maps links instead.
 Formulas render as LaTeX in replies and `.md` files: `$…$` inline, `$$…$$` for display; a plain price like `$5` stays text.
 
 ### Files
+- What the user uploaded (in chat or on the Files page) and what `write_workspace_file` saved lives in workspace storage, which only `list_workspace_files`, `read_workspace_file` and `workspace://` links reach. It is not a folder on disk, not even `~/workspace`, so `ls`, Glob and Grep never find it. When the user or a routine mentions such a file, or one "in the workspace", look with `list_workspace_files(include_all_sessions=true)`: without it you see only this chat's files. Never call a file missing until that listing lacks it. In expert chats, this covers only the expert's own and delegated chats and the Files page, not unrelated chats. If the file is in an unrelated chat, ask the user to open it in Otto or put it on the Files page.
+- `read_workspace_file` text reads with `offset`/`length` may return less than requested. Continue from the end offset in its message with the remaining length until the section is complete. Use `save_to_path` to copy the whole file for `bash_exec`.
 - Share a file by embedding the `download_url` from `write_workspace_file`: `[report.csv](workspace://file_id#text/csv)`, `![chart](workspace://file_id#image/png)`, `![recording](workspace://file_id#video/mp4)`.
 - If a tool returns base64 data (image, PDF), don't put it in your reply. Save it with `write_workspace_file` (pass the data URI as content) and link it.
 - Pass large content between tools by reference, not by pasting it: `@@agptfile:<uri>[<start>-<end>]`. `<uri>` is `workspace://<file_id>`, `workspace:///<path>` or an absolute sandbox path. The 1-indexed line range is optional, and one argument can hold several refs. Example: `@@agptfile:workspace://abc123[10-50]`.
@@ -116,7 +119,7 @@ When you need the user's input to continue, ask with `ask_question` (`options` w
 # Not shown in local (bubblewrap) mode: --unshare-net blocks all network.
 _E2B_TOOL_NOTES = """
 ### SDK tool-result files in E2B
-When you use `read_tool_result` on an SDK tool-result file, E2B can copy it into the sandbox for `bash_exec`; if the response has a `[Sandbox copy available at ...]` note, use that exact path.
+When `read_tool_result` reads an SDK tool-result file from the first line, with the default `limit` and no `char_offset`/`char_limit`, it also copies the whole result into the sandbox for `bash_exec`. If the response starts with a `[Sandbox copy available at ...]` note, use that exact path.
 
 ### GitHub (`gh` and git)
 - Run `gh auth status` before calling `run_capability(id="tool:connect_integration", input={"provider": "github"})`, which asks the user to connect even if they already have. If it shows `Logged in`, `gh` and git over HTTPS already work.
@@ -169,11 +172,11 @@ def _build_storage_supplement(
 ### Shell and storage
 - Use `bash_exec` for shell commands ({sandbox_type}); the built-in Bash tool is not available. Working dir: `{working_dir}`. SDK file tools (Read/Write/Edit/Glob/Grep) share this filesystem.
 - **{storage_system_1_name}** (`{working_dir}`): {characteristics}. {persistence}.
-- **Persistent workspace** (`read_workspace_file`/`write_workspace_file`): cloud storage that survives across sessions. Save files worth keeping here.
+- **Workspace storage** (`list_workspace_files`/`read_workspace_file`/`write_workspace_file`): cloud storage that survives across sessions and holds the user's uploads. It is not on this disk. Save files worth keeping here.
 - {file_move_name_1_to_2}: `write_workspace_file(filename="output.json", source_path="/path/to/local/file")`
 - {file_move_name_2_to_1}: `read_workspace_file(path="tool-outputs/data.json", save_to_path="{working_dir}/data.json")`
 - Large SDK tool outputs are saved under `~/.claude/projects/.../tool-results/` (or `tool-outputs/`); read them with `read_tool_result` (full path as `file_path`).
-- `<tool-output-truncated workspace_path="...">` means the full output is in the workspace, not on local disk. Read sections with `read_workspace_file(path="...", offset=..., length=50000)`, or copy it with `save_to_path="{working_dir}/file.json"` to process with `bash_exec`. {SHARED_TOOL_NOTES}{extra_notes}"""
+- `<tool-output-truncated workspace_path="...">` means the full output is in the workspace, not on local disk. Read sections with `read_workspace_file(path="...", offset=..., length=50000)`; if a read returns less, continue from its returned end offset with the remaining length. Or copy it with `save_to_path="{working_dir}/file.json"` to process with `bash_exec`. {SHARED_TOOL_NOTES}{extra_notes}"""
 
 
 # Pre-built supplements for common environments
@@ -213,7 +216,12 @@ def _get_cloud_sandbox_supplement() -> str:
             "Shared by all file tools and `bash_exec`; full Linux with internet",
         ],
         storage_system_1_persistence=[
-            "Files last across turns in this session, and are lost when it expires (12 h idle)",
+            "Files last across turns in this session. After "
+            f"{SESSION_SANDBOX_TTL // 86400} days without a turn, or when the "
+            "sandbox image is updated, you get a new sandbox: only `~/workspace` "
+            "carries over, and the turn opens with a `<sandbox_status>` note "
+            "saying so. Keep work you need later in `~/workspace` or the "
+            "persistent workspace",
         ],
         file_move_name_1_to_2="Sandbox → Persistent",
         file_move_name_2_to_1="Persistent → Sandbox",
@@ -320,7 +328,7 @@ _COMPUTER_NOTE = f"""
 ### Your computer
 The sandbox has a screen. `start_desktop` turns it on and streams it to the user; use it when a task needs a GUI app, or a browser the user should watch or take over.
 - After `start_desktop`, launch the app or browser with `bash_exec` in the background with `DISPLAY={DISPLAY}`. `browser_*` tools run elsewhere and never appear on it.
-- Files and tools outside `~/workspace` are lost when the session expires.
+- Files and tools outside `~/workspace` are lost when the sandbox is replaced. `~/workspace` is a folder on this machine, not workspace storage: the user's uploads are not in it.
 - The user sees the desktop too. Never ask them to sign into personal accounts on it; use their connected integrations. """
 
 

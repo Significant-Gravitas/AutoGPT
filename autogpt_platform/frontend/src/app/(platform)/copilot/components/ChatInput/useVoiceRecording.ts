@@ -5,6 +5,7 @@ import { isMicrophonePermissionDenied } from "@/lib/microphone";
 import { isTouchDevice } from "@/lib/platform";
 import React, { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { downloadRecording } from "../../voice/downloadRecording";
+import { focusComposer } from "./helpers";
 
 const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
 
@@ -263,11 +264,13 @@ export function useVoiceRecording({
     }
   }, [error, toast]);
 
+  // Puts the caret back once the words land; focus on mount is useChatInput's.
   // Not on a phone: there focus opens the keyboard over the thread.
+  const wasTranscribingRef = useRef(false);
   useEffect(() => {
-    if (!isTranscribing && inputId && !isTouchDevice()) {
-      document.getElementById(inputId)?.focus();
-    }
+    const hasFinished = wasTranscribingRef.current && !isTranscribing;
+    wasTranscribingRef.current = isTranscribing;
+    if (hasFinished && inputId && !isTouchDevice()) focusComposer(inputId);
   }, [isTranscribing, inputId]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
