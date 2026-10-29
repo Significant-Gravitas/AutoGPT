@@ -1,3 +1,4 @@
+import { createElement } from "react";
 import { vi } from "vitest";
 
 export const mockNextjsModules = () => {
@@ -12,8 +13,7 @@ export const mockNextjsModules = () => {
       loader: _loader,
       ...props
     }: any) => {
-      // eslint-disable-next-line jsx-a11y/alt-text, @next/next/no-img-element -- the test double renders a plain <img> in place of next/image
-      return <img {...props} />;
+      return createElement("img", props);
     },
   }));
 
