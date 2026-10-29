@@ -218,18 +218,22 @@ export function ConnectMethodView({
                       </span>
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <span className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground-strong">
+                          <Text
+                            variant="body-semibold-tight"
+                            as="span"
+                            tone="primary"
+                          >
                             {copy.label}
-                          </span>
+                          </Text>
                           {copy.recommended && (
                             <span className="rounded-md bg-accent-surface px-1.5 py-0.5 text-tiny font-semibold leading-inherit tracking-wide text-accent-strong">
                               RECOMMENDED
                             </span>
                           )}
                         </span>
-                        <span className="text-xs text-foreground-tertiary">
+                        <Text variant="small-tight" as="span" tone="muted">
                           {copy.description}
-                        </span>
+                        </Text>
                       </span>
                       <span
                         aria-hidden

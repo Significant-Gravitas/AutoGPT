@@ -1,4 +1,5 @@
 "use client";
+import { Text } from "@/components/atoms/Text/Text";
 
 import Avatar, {
   AvatarFallback,
@@ -72,7 +73,9 @@ export function AccountMenuOrgList() {
             </Avatar>
             <span className="flex-1 truncate text-left">{org.name}</span>
             {org.isPersonal && (
-              <span className="text-xs text-foreground-subtle">Personal</span>
+              <Text variant="small-tight" as="span" tone="subtle">
+                Personal
+              </Text>
             )}
             {org.id === activeOrg?.id && (
               <Icon icon={Tick02Icon} size={14} className="text-success" />
@@ -98,9 +101,9 @@ export function AccountMenuOrgList() {
               >
                 <span className="flex-1 truncate text-left">{team.name}</span>
                 {team.joinPolicy === "PRIVATE" && (
-                  <span className="text-xs text-foreground-subtle">
+                  <Text variant="small-tight" as="span" tone="subtle">
                     Private
-                  </span>
+                  </Text>
                 )}
                 {team.id === activeTeam?.id && (
                   <Icon icon={Tick02Icon} size={14} className="text-success" />

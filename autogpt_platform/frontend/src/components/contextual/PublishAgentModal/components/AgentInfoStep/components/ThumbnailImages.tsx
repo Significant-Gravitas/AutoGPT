@@ -62,7 +62,11 @@ export function ThumbnailImages({
           The selected image is submitted first and appears as the marketplace
           thumbnail.
         </Text>
-        {errorMessage && <p className="text-sm text-error">{errorMessage}</p>}
+        {errorMessage && (
+          <Text variant="body-tight" tone="error">
+            {errorMessage}
+          </Text>
+        )}
       </div>
 
       <div

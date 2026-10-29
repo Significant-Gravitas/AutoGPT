@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import type { GoogleDrivePickerConfig } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
@@ -149,8 +150,16 @@ export function GoogleDrivePickerInput({
       )}
 
       {/* Error Messages */}
-      {error && <span className="text-sm text-error">{error}</span>}
-      {pickerError && <span className="text-sm text-error">{pickerError}</span>}
+      {error && (
+        <Text variant="body-tight" as="span" tone="error">
+          {error}
+        </Text>
+      )}
+      {pickerError && (
+        <Text variant="body-tight" as="span" tone="error">
+          {pickerError}
+        </Text>
+      )}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { HelpItem } from "@/components/auth/help-item";
 import { Card, CardContent } from "@/components/atoms/Card/Card";
 import { AlertCircle, CheckCircle } from "lucide-react";
@@ -60,9 +61,14 @@ export default function AuthFeedback({
           >
             <CardContent className="p-0">
               <div className="divide-y divide-separator">
-                <span className="my-3 block text-center text-sm font-medium text-error">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  tone="error"
+                  className="my-3 block text-center"
+                >
                   The provided email may not be allowed to sign up.
-                </span>
+                </Text>
                 <HelpItem
                   title="AutoGPT Platform is currently in closed beta. "
                   description="You can join "

@@ -105,7 +105,9 @@ function ClassicBalance({
   return (
     <div>
       <span className="mr-1 hidden xl:inline-block">Earn credits </span>
-      <span className="text-sm font-semibold">{formattedCredits}</span>
+      <Text variant="body-semibold-tight" as="span" tone="inherit">
+        {formattedCredits}
+      </Text>
       {completedCount !== null && completedCount < totalCount && (
         <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-brand" />
       )}

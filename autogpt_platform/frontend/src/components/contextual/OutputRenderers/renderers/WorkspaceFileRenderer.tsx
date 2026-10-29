@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { type ReactNode, useState } from "react";
 import {
   OutputRenderer,
@@ -159,7 +160,9 @@ function renderWorkspaceFile(
           {metadata?.filename || label}
         </span>
         {mimeType && (
-          <span className="text-xs text-foreground-tertiary">{mimeType}</span>
+          <Text variant="small-tight" as="span" tone="muted">
+            {mimeType}
+          </Text>
         )}
       </div>
       <a

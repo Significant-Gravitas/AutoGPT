@@ -171,9 +171,14 @@ export function BaseDropdown({
               >
                 <span className="min-w-0 flex-1 break-words">{base.name}</span>
                 {locked && (
-                  <span className="shrink-0 text-xs text-foreground-tertiary">
+                  <Text
+                    variant="small-tight"
+                    as="span"
+                    tone="muted"
+                    className="shrink-0"
+                  >
                     {lockedReason(base.access, needed)}
-                  </span>
+                  </Text>
                 )}
                 {isSelected && (
                   <Icon icon={Tick02Icon} size={16} className="shrink-0" />
