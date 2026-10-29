@@ -45,7 +45,7 @@ from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
     expand_file_refs_in_args,
     read_file_bytes,
-    strip_file_refs,
+    text_outside_file_refs,
 )
 from backend.copilot.tool_image import truncate_mcp_result
 from backend.copilot.tools import (
@@ -857,7 +857,9 @@ def _make_truncating_wrapper(
                 return released
 
         command = original_args.get("command") if name == "bash_exec" else None
-        as_written = strip_file_refs(command) if isinstance(command, str) else None
+        as_written = (
+            text_outside_file_refs(command) if isinstance(command, str) else None
+        )
         with bash_command_as_written(as_written):
             result = await run(args)
         truncated = truncate_mcp_result(result, _MCP_MAX_CHARS)

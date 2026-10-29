@@ -287,6 +287,8 @@ class BashExecTool(BaseTool):
         # `cat /root/.claude/projects/...` after `Permission denied`.
         # Checks the command as written, minus its ``@@agptfile:`` refs, so
         # neither a ref nor the file content it expands to trips the check.
+        # A command that is only refs is unset, and its expanded script is
+        # checked instead.
         as_written = get_bash_command_as_written()
         if as_written is None:
             as_written = command

@@ -335,7 +335,9 @@ _SDK_TOOL_RESULT_RE = re.compile(
 # cut out, set by the SDK tool adapter before it expands them. The redirect
 # check reads this, so neither a ref to an SDK tool result (the route the
 # redirect itself suggests) nor a ``.claude/projects`` path that is only text
-# inside an inlined file blocks the command.
+# inside an inlined file blocks the command. Left unset when the command is
+# nothing but refs: then the expanded file is the script that runs, so the
+# check reads that.
 _bash_command_as_written: ContextVar[str | None] = ContextVar(
     "_bash_command_as_written", default=None
 )

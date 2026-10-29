@@ -23,7 +23,7 @@ from pydantic import SecretStr
 
 from backend.copilot import integration_creds
 from backend.copilot.context import bash_command_as_written
-from backend.copilot.sdk.file_ref import strip_file_refs
+from backend.copilot.sdk.file_ref import text_outside_file_refs
 from backend.data.model import APIKeyCredentials
 
 from ._test_data import make_session
@@ -362,7 +362,6 @@ class TestBashExecSdkToolResultRedirect:
                 "0f8fad5b-d9cb-469f-a165-70867728950e/tool-results/"
                 "toolu_01.json[1-200] | wc -l"
             ),
-            "@@agptfile:/root/.claude/projects/-tmp-x/a/tool-results/toolu_01.json",
         ],
     )
     async def test_no_redirect_from_agptfile_ref_or_its_content(self, written):
@@ -385,7 +384,7 @@ class TestBashExecSdkToolResultRedirect:
                 "backend.copilot.tools.bash_exec.get_github_user_git_identity",
                 new=AsyncMock(return_value=None),
             ),
-            bash_command_as_written(strip_file_refs(written)),
+            bash_command_as_written(text_outside_file_refs(written)),
         ):
             result = await tool._execute(
                 user_id=_USER,
@@ -395,6 +394,32 @@ class TestBashExecSdkToolResultRedirect:
             )
         assert isinstance(result, BashExecResponse)
         sandbox.commands.run.assert_called_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_redirect_on_script_expanded_from_bare_ref(self):
+        """A command that is only an ``@@agptfile:`` ref runs the file it
+        names, so the expanded script is what gets checked."""
+        tool = _make_tool()
+        session = make_session(user_id=_USER)
+        sandbox = _make_sandbox()
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_current_sandbox",
+                return_value=sandbox,
+            ),
+            bash_command_as_written(
+                text_outside_file_refs("@@agptfile:/home/user/run.sh")
+            ),
+        ):
+            result = await tool._execute(
+                user_id=_USER,
+                session=session,
+                command="cat /root/.claude/projects/-tmp-x/a/tool-results/x.json",
+                timeout=10,
+            )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" in result.message
+        sandbox.commands.run.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_no_redirect_on_user_path_containing_tool_outputs(self):
