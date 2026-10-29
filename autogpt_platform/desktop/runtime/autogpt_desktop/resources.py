@@ -1,8 +1,9 @@
 """How much of the machine the stack takes.
 
 Every backend service imports the whole backend, about 600 MB of it, so the
-number of interpreters decides the footprint: eight services in eight
-processes held 5.7 GB idle, the same eight in three hold under half of that.
+number of interpreters decides the footprint. Historical measurements of
+eight services held 5.7 GB idle separately and under half of that in three
+hosts. The current nine-service, five-host layout has not been remeasured.
 A profile says how the services are grouped into processes and how many
 agent runs and AutoPilot turns may be in flight at once. It is chosen from
 the machine and can be set in config/settings.env:
@@ -40,9 +41,9 @@ SCHEDULER_DB_POOL_SIZE = 3
 
 # Passed to the server on every start, so installs made before these existed
 # get them too (postgresql.conf is written once, when the cluster is made).
-# The connection budget at its largest (isolated): four Prisma engines of 5,
+# The connection budget at its largest (isolated): three Prisma engines of 5,
 # the skills-catalog publisher's 5, the frontend's 10, the scheduler's two
-# pools of 3, the runtime's own 2, and PostgreSQL's 3 reserved slots: 46.
+# pools of 3, the runtime's own 2, and PostgreSQL's 3 reserved slots: 41.
 POSTGRES_LIMITS = {
     "max_connections": "50",
     "max_worker_processes": "4",

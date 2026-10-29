@@ -11,8 +11,9 @@ from pathlib import Path
 import psutil
 import pytest
 
-from autogpt_desktop import apps, ports, servicehost, settings, supervisor
+from autogpt_desktop import apps, ports
 from autogpt_desktop import process as process_module
+from autogpt_desktop import servicehost, settings, supervisor
 from autogpt_desktop.layout import Bundle, DataDir
 from autogpt_desktop.process import ManagedProcess, StopEvent, wait_until
 from autogpt_desktop.supervisor import Stack, StartupError
@@ -176,6 +177,7 @@ def test_a_host_upstream_no_longer_fits_is_split_into_one_per_service(
     assert running == {
         "database-manager",
         "swap-credentials",
+        "websocket",
         "api",
         "frontend",
         *workers,
@@ -191,12 +193,25 @@ def test_the_same_split_happens_to_a_host_that_stops_fitting_while_running(
 ):
     host_everything(
         stack,
-        api=f"import time, sys; time.sleep(1); sys.exit({servicehost.EXIT_CONTRACT})",
+        workers=f"import time, sys; time.sleep(1); sys.exit({servicehost.EXIT_CONTRACT})",
     )
     asked = isolating(stack, monkeypatch)
     watching = watch_in_background(stack)
 
-    assert wait_until(lambda: asked == [("websocket", "rest")], 15, 0.1)
+    assert wait_until(
+        lambda: asked
+        == [
+            (
+                "scheduler",
+                "batch-executor",
+                "notification",
+                "executor",
+                "copilot-executor",
+            )
+        ],
+        15,
+        0.1,
+    )
     stack.stop_requested.set()
     assert watching() == 0
     assert stack.restarts == {}  # a split is not a restart against the budget
@@ -495,7 +510,13 @@ def test_database_manager_stops_after_the_services_that_write_through_it(
     stack.start_apps(port_table(), secret)
     stack.stop()
 
-    assert set(order) == {"database-manager", "swap-credentials", "workers", "api"}
+    assert set(order) == {
+        "database-manager",
+        "swap-credentials",
+        "workers",
+        "websocket",
+        "api",
+    }
     assert order[-1] == "database-manager"
 
 

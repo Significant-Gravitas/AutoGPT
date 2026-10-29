@@ -617,6 +617,7 @@ def test_hosts_are_started_before_the_databases_and_told_where_to_wait(
         "database-manager",
         "swap-credentials",
         "workers",
+        "websocket",
         "api",
     }
     assert given and all(

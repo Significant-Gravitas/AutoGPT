@@ -1004,6 +1004,7 @@ def test_taking_the_copilot_executor_out_keeps_every_other_service_where_it_was(
         "swap-credentials",
         "workers",
         apps.COPILOT_EXECUTOR,
+        "websocket",
         "api",
     ]
     for before in merged:

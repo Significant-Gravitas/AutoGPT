@@ -46,7 +46,7 @@ local service health. The runtime contract is at the top of `src/runtime.js`.
 | --- | --- |
 | `runtime_config.py` generates secrets | the same file, shared |
 | supervisord, two stop groups | `supervisor.py`: start tiers, stopped in reverse, each all at once |
-| a process per backend service | nine services in four hosts; database manager and credential-swap service each own their database connection |
+| a process per backend service | nine services in five hosts; database manager, credential-swap service and REST each own their database connection |
 | three Valkey nodes | one node owning all 16384 slots (the backend's `RedisCluster` client cannot tell) |
 | nginx | `proxy.py` (same routes, streamed) |
 | frontend role over a Unix socket | the same role policy, with a generated password over loopback TCP |
@@ -61,7 +61,7 @@ local service health. The runtime contract is at the top of `src/runtime.js`.
 (`servicehost.py`): it takes upstream's own service objects from upstream's
 own entry points, runs each in a thread exactly as it would run in a process
 of its own, and stops them properly. By default the nine services share
-four hosts. The database entry point is split through two desktop adapters
+five hosts. The database entry point is split through two desktop adapters
 so its Prisma clients never share separate event loops. What a host depends on
 upstream is a short list at the top of `servicehost.py`, each item checked
 against the real backend by `runtime/tests/backend_contract.py`. When an
@@ -539,27 +539,30 @@ build/runtime/python/bin/python3 -B build/autopilot_turn.py build/runtime   # py
 
 Each interpreter that imports the backend holds 460–860 MB before it does
 any work (the websocket server the least, database-manager the most), most of it the generated database client and the block library.
-Eight services in eight processes held 5.7 GB of the app's 6.0 GB. They now
-share three:
+The current nine services share five hosts:
 
 | Process | Services | Why these together |
 | --- | --- | --- |
 | `database-manager` | database-manager | the others' way to the database; alone |
+| `swap-credentials` | swap-credentials | owns its database client and event loop; alone |
 | `workers` | executor, copilot-executor, scheduler, batch-executor, notification | none of them connects to the database itself |
-| `api` | websocket, rest | both do, so they serve on one event loop: the database client belongs to the loop that connected it |
+| `websocket` | websocket | reads through database-manager; separate from REST's database client |
+| `api` | rest | owns its database client and event loop; alone |
 
 The grouping follows one rule of the backend's: whether a query goes
 straight to the database or through database-manager is decided per process,
 so a service that connects cannot share with one that does not. A watchdog
 in the `workers` host ends it if that ever stops being true.
 
-While AutoPilot runs on the user's Claude Code sign-in there is a fourth,
+While AutoPilot runs on the user's Claude Code sign-in there is a sixth,
 `copilot-executor`, taken out of `workers`: it is the one process given the
 user's real home directory, and nothing else is to run there (see
 [AutoPilot and Claude Code](#autopilot-and-claude-code)).
 
-Measured on Windows x64 (31 GB, 24 cores), idle, 45 seconds after ready,
-memory unique to the app's processes (USS):
+Historical measurements before the credential-swap and WebSocket host splits,
+on Windows x64 (31 GB, 24 cores), idle, 45 seconds after ready,
+memory unique to the app's processes (USS). The current layout has not been
+remeasured:
 
 | Profile | Python processes | Processes in all | Whole app |
 | --- | --- | --- | --- |
@@ -572,8 +575,8 @@ The profile is chosen from the machine and reported in `logs/runtime.log`:
 
 | Profile | Chosen when | Layout | Agent runs at once | AutoPilot turns at once |
 | --- | --- | --- | --- | --- |
-| `compact` | 8 GB of memory or less | three service hosts | 4 | 2 |
-| `balanced` | more than 8 GB | three service hosts | one per core, 4 to 10 | one per two cores, 2 to 5 |
+| `compact` | 8 GB of memory or less | five service hosts | 4 | 2 |
+| `balanced` | more than 8 GB | five service hosts | one per core, 4 to 10 | one per two cores, 2 to 5 |
 | `isolated` | only when asked for | a host per service | 10 (upstream's default) | 5 |
 
 `AUTOGPT_DESKTOP_PROFILE=isolated` (or `compact`, `balanced`) in

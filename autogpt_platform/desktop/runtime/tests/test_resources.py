@@ -161,13 +161,14 @@ def test_every_profile_pins_the_scheduler_pool_the_connection_limit_counts_on(
         assert env["SCHEDULER_DB_POOL_SIZE"] == expected
 
 
-def test_by_default_nine_services_run_in_four_processes():
+def test_by_default_nine_services_run_in_five_processes():
     groups = apps.layout(merged=True)
 
     assert [group.name for group in groups] == [
         "database-manager",
         "swap-credentials",
         "workers",
+        "websocket",
         "api",
     ]
     hosted = [name for group in groups for name in group.services]
@@ -187,6 +188,19 @@ def test_services_that_connect_to_the_database_never_share_with_ones_that_do_not
     assert not any(apps.service(name).database for name in workers.services)
 
 
+@pytest.mark.parametrize("merged", [True, False])
+def test_websocket_queries_through_database_manager_in_its_own_host(merged: bool):
+    groups = apps.layout(merged=merged)
+    websocket = next(group for group in groups if "websocket" in group.services)
+    rest = next(group for group in groups if "rest" in group.services)
+
+    assert not apps.service("websocket").database
+    assert apps.service("rest").database
+    assert websocket.services == ("websocket",)
+    assert rest.services == ("rest",)
+    assert websocket.name != rest.name
+
+
 def test_isolated_is_a_process_per_service_in_the_appliances_order():
     groups = apps.layout(merged=False)
     assert [group.name for group in groups] == [
@@ -202,7 +216,7 @@ def flags(bundle: Bundle, group: apps.Group) -> list[str]:
 
 
 def test_how_each_host_is_started(bundle: Bundle):
-    database, swap, workers, api = apps.layout(merged=True)
+    database, swap, workers, websocket, api = apps.layout(merged=True)
     budget = ["--stop-budget", "2.5"]
 
     assert flags(bundle, database) == [
@@ -218,9 +232,11 @@ def test_how_each_host_is_started(bundle: Bundle):
     budget = ["--stop-budget", "29.5"]
     assert flags(bundle, workers)[:5] == ["--name", "workers", *budget, "--no-database"]
     assert flags(bundle, workers)[5] == "executor=backend.exec:main"
+    assert flags(bundle, websocket) == [
+        "--name", "websocket", *budget, "--shared-loop", "websocket=backend.ws:main",
+    ]  # fmt: skip
     assert flags(bundle, api) == [
-        "--name", "api", *budget, "--shared-loop",
-        "websocket=backend.ws:main", "rest=backend.rest:main",
+        "--name", "api", *budget, "--shared-loop", "rest=backend.rest:main",
     ]  # fmt: skip
     # Alone, a worker may do what it likes with the database; nothing shares
     # its process.

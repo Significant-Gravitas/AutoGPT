@@ -112,6 +112,31 @@ def test_database_adapters_preserve_upstream_service_construction():
     assert sorted(actual) == expected
 
 
+@pytest.mark.parametrize(
+    "name,module", [("websocket", "ws_api.py"), ("rest", "rest_api.py")]
+)
+def test_api_database_ownership_matches_upstream(name: str, module: str):
+    tree = ast.parse(source("api", module))
+    connects = any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "connect"
+        and isinstance(node.func.value, (ast.Name, ast.Attribute))
+        and (
+            node.func.value.id
+            if isinstance(node.func.value, ast.Name)
+            else node.func.value.attr
+        )
+        in {"db", "database", "prisma"}
+        for node in ast.walk(tree)
+    )
+    assert apps.service(name).database == connects, (
+        f"{name}'s database ownership changed in {module}. "
+        "Update SERVICES and keep direct-database services in separate hosts "
+        "from services that query through database-manager."
+    )
+
+
 def test_a_service_can_still_be_run_in_a_thread_and_cleaned_up():
     process = source("util", "process.py")
     update = f"Update run_service, clean_up and check_service in {HOST}."

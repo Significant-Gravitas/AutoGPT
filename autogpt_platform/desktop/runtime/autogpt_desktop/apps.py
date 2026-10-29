@@ -11,8 +11,10 @@ one service or several. By default they are grouped, because each
 interpreter that imports the backend costs about 600 MB:
 
     database-manager   alone: it is the others' way to the database
+    swap-credentials   alone: owns a separate database client and event loop
     workers            the five services that never connect to the database
-    api                the two API servers, on one event loop
+    websocket          reads through database-manager, without a Prisma client
+    api                REST owns its database client
 
 `isolated()` is one host per service: what the `isolated` profile runs, and
 what a group is replaced with when upstream stops fitting it.
@@ -82,7 +84,7 @@ SERVICES = (
         "copilot_executor",
         "/metrics",
     ),
-    Service("websocket", "backend.ws:main", "websocket", "/health", database=True),
+    Service("websocket", "backend.ws:main", "websocket", "/health"),
     Service("rest", "backend.rest:main", "agent_api", "/health", database=True),
 )
 DATABASE_MANAGER = "database-manager"
@@ -151,7 +153,8 @@ MERGED = (
         "workers",
         ("executor", "copilot-executor", "scheduler", "batch-executor", "notification"),
     ),
-    Group("api", API_SERVERS),
+    Group("websocket", ("websocket",)),
+    Group("api", ("rest",)),
 )
 
 
