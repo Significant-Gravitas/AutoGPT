@@ -99,9 +99,6 @@ describe("components.json", () => {
 const UNSLOTTED_PRIMITIVES = [
   "src/components/atoms/RelativeTime/RelativeTime.tsx",
   "src/components/molecules/Dialog/Dialog.tsx",
-  "src/components/molecules/RunStatusBadge/RunStatusBadge.tsx",
-  "src/components/molecules/Sheet/Sheet.tsx",
-  "src/components/molecules/Sidebar/Sidebar.tsx",
 ];
 
 function primitiveFiles() {
