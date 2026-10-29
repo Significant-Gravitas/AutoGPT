@@ -12,7 +12,7 @@ from google_auth_oauthlib.flow import Flow
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
-from backend.integrations.providers import ProviderName
+from backend.integrations.providers import ProviderName, provider_key
 from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
@@ -200,7 +200,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             await asyncio.to_thread(google_creds.refresh, request)
         except RefreshError as e:
             raise OAuthTokenRequestError(
-                str(self.PROVIDER_NAME),
+                provider_key(self.PROVIDER_NAME),
                 status_code=request.last_status,
                 error_code=describe_refresh_failure(e).error_code,
             ) from e

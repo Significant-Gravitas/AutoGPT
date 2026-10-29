@@ -3,7 +3,7 @@ from typing import ClassVar, Optional
 from urllib.parse import urlencode
 
 from backend.data.model import OAuth2Credentials
-from backend.integrations.providers import ProviderName
+from backend.integrations.providers import ProviderName, provider_key
 from backend.util.request import Requests
 
 from .base import BaseOAuthHandler, parse_granted_scopes
@@ -105,7 +105,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
             # GitHub reports token errors (bad_refresh_token, ...) in a 200 body.
             error = token_data.get("error")
             raise OAuthTokenRequestError(
-                str(self.PROVIDER_NAME),
+                provider_key(self.PROVIDER_NAME),
                 status_code=response.status,
                 error_code=error if isinstance(error, str) else None,
             )

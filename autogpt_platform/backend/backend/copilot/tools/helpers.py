@@ -1321,7 +1321,12 @@ async def prepare_block_for_execution(
         )
         missing_creds_list = list(missing_creds_dict.values())
         if gap_messages:
-            message = f"Block '{block.name}' can't run yet. " + " ".join(gap_messages)
+            message = (
+                f"Block '{block.name}' can't run yet. "
+                + " ".join(gap_messages)
+                + grant_hint
+                + bot_hint
+            )
         elif missing_credentials:
             message = (
                 (

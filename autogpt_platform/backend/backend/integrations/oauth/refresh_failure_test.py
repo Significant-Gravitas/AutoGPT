@@ -228,6 +228,8 @@ async def test_github_error_in_a_200_body_is_recognised(sentry):
 
     failure = describe_refresh_failure(raised.value.__cause__)
     assert (failure.status_code, failure.error_code) == (200, "bad_refresh_token")
+    # The enum's value, not "ProviderName.GITHUB": the code exchange shows it.
+    assert str(raised.value.__cause__).startswith("github token request failed")
 
 
 @pytest.mark.asyncio
@@ -376,6 +378,35 @@ async def test_a_dead_token_is_not_replayed_on_the_unlocked_path(sentry):
 
 
 @pytest.mark.asyncio
+async def test_a_reconnect_during_an_unlocked_refusal_is_not_overwritten(sentry):
+    # The refresh runs without the lock, so the user can reconnect while the
+    # provider is refusing the old token; the marker must not land on top.
+    google_response = MagicMock(
+        status=400, headers={}, data=json.dumps({"error": "invalid_grant"}).encode()
+    )
+    snapshot = expiring("google", ["openid"])
+    manager, store = manager_with(GoogleOAuthHandler(*CLIENT), snapshot)
+    reconnected = snapshot.model_copy(
+        update={"refresh_token": SecretStr("rt-SECRET-reconnected-0002")}
+    )
+
+    def provider_refuses_while_the_user_reconnects(*_args, **_kwargs):
+        store.creds = reconnected
+        return google_response
+
+    with patch(
+        "google.auth.transport.requests.Request.__call__",
+        side_effect=provider_refuses_while_the_user_reconnects,
+    ):
+        with pytest.raises(OAuthTokenRequestError):
+            await manager.refresh_if_needed("user-1", snapshot, lock=False)
+
+    assert store.creds is reconnected
+    assert reconnect_required(store.creds) is None
+    manager._locked.assert_called_once_with("user-1", snapshot.id)
+
+
+@pytest.mark.asyncio
 async def test_a_successful_refresh_clears_the_marker(sentry):
     endpoint = FakeTokenEndpoint(
         200,
@@ -385,8 +416,22 @@ async def test_a_successful_refresh_clears_the_marker(sentry):
     creds = expiring("linear")
     creds.metadata = {"keep": "me"}
     manager, store = manager_with(handler, creds)
+    refresh_tokens = handler.refresh_tokens
 
-    with endpoint.patch("backend.blocks.linear._oauth"):
+    async def refresh_carrying_a_marker(credentials):
+        # The stored row was marked after this caller read it, and the
+        # handler carries metadata over into the refreshed credential.
+        fresh = await refresh_tokens(credentials)
+        fresh.metadata = {
+            **(fresh.metadata or {}),
+            RECONNECT_REQUIRED_KEY: {"error_code": "invalid_grant", "status_code": 400},
+        }
+        return fresh
+
+    with (
+        endpoint.patch("backend.blocks.linear._oauth"),
+        patch.object(handler, "refresh_tokens", side_effect=refresh_carrying_a_marker),
+    ):
         fresh = await manager._refresh_and_store("user-1", creds, handler)
 
     assert RECONNECT_REQUIRED_KEY not in fresh.metadata

@@ -24,6 +24,8 @@ from backend.integrations.oauth import (
 )
 from backend.integrations.oauth.refresh_failure import (
     CredentialsNeedReconnectError,
+    ReconnectRequired,
+    RefreshFailure,
     describe_refresh_failure,
     mark_reconnect_required,
     reconnect_required,
@@ -348,7 +350,7 @@ class IntegrationCredentialsManager:
                     ):
                         return credentials
                     credentials = await self._refresh_and_store(
-                        user_id, credentials, oauth_handler
+                        user_id, credentials, oauth_handler, holds_lock=True
                     )
                 finally:
                     if (await _lock.locked()) and (await _lock.owned()):
@@ -407,6 +409,8 @@ class IntegrationCredentialsManager:
         user_id: str,
         credentials: OAuth2Credentials,
         oauth_handler: "BaseOAuthHandler | BaseDeviceAuthHandler",
+        *,
+        holds_lock: bool = False,
     ) -> OAuth2Credentials:
         """Refresh *credentials* with the provider and persist the result.
 
@@ -417,6 +421,7 @@ class IntegrationCredentialsManager:
         definitive refusal (``invalid_grant``, or a provider's own wording for
         a refused token) marks the credential so every
         later caller gets ``CredentialsNeedReconnectError`` straight away.
+        *holds_lock* says whether the caller already holds the credential lock.
         """
         if marker := reconnect_required(credentials):
             raise CredentialsNeedReconnectError(
@@ -425,29 +430,11 @@ class IntegrationCredentialsManager:
         try:
             fresh_credentials = await oauth_handler.refresh_tokens(credentials)
         except Exception as exc:
-            provider = provider_key(credentials.provider)
-            failure = describe_refresh_failure(exc, provider)
-            report_refresh_failure(
-                logger,
-                provider=provider,
-                credential_id=credentials.id,
-                failure=failure,
-                exc=exc,
+            marker = await self._handle_refresh_failure(
+                user_id, credentials, exc, holds_lock=holds_lock
             )
-            if not failure.definitive:
+            if marker is None:
                 raise
-            marked, marker = mark_reconnect_required(credentials, failure)
-            try:
-                await self.store.update_creds(user_id, marked)
-                await _invoke_creds_changed_hook(user_id, marked.provider)
-            except Exception:
-                # Managed and system credentials refuse updates; the refusal
-                # is still reported, the next attempt just asks again.
-                logger.warning(
-                    "Could not mark credential #%s as needing reconnect",
-                    credentials.id,
-                    exc_info=True,
-                )
             raise CredentialsNeedReconnectError(
                 credentials.provider, credentials.id, marker
             ) from exc
@@ -458,6 +445,65 @@ class IntegrationCredentialsManager:
         await self.store.update_creds(user_id, fresh_credentials)
         await _invoke_creds_changed_hook(user_id, fresh_credentials.provider)
         return fresh_credentials
+
+    async def _handle_refresh_failure(
+        self,
+        user_id: str,
+        credentials: OAuth2Credentials,
+        exc: Exception,
+        *,
+        holds_lock: bool,
+    ) -> ReconnectRequired | None:
+        """Report a failed refresh and mark the credential if it was final.
+
+        Returns the marker, or ``None`` when the failure was transient or the
+        refused token is no longer the stored one.
+        """
+        provider = provider_key(credentials.provider)
+        failure = describe_refresh_failure(exc, provider)
+        report_refresh_failure(
+            logger,
+            provider=provider,
+            credential_id=credentials.id,
+            failure=failure,
+            exc=exc,
+        )
+        if not failure.definitive:
+            return None
+        if holds_lock:
+            return await self._store_reconnect_marker(user_id, credentials, failure)
+        # Without the lock a reconnect can land while the refresh is in
+        # flight; marking the caller's copy would overwrite it with the dead
+        # token. Take the lock update() uses and mark only the refused token.
+        async with self._locked(user_id, credentials.id):
+            current = await self.store.get_creds_by_id(user_id, credentials.id)
+            if (
+                current is None
+                or current.type != "oauth2"
+                or current.refresh_token != credentials.refresh_token
+            ):
+                return None
+            return await self._store_reconnect_marker(user_id, current, failure)
+
+    async def _store_reconnect_marker(
+        self,
+        user_id: str,
+        credentials: OAuth2Credentials,
+        failure: RefreshFailure,
+    ) -> ReconnectRequired:
+        marked, marker = mark_reconnect_required(credentials, failure)
+        try:
+            await self.store.update_creds(user_id, marked)
+            await _invoke_creds_changed_hook(user_id, marked.provider)
+        except Exception:
+            # Managed and system credentials refuse updates; the refusal
+            # is still reported, the next attempt just asks again.
+            logger.warning(
+                "Could not mark credential #%s as needing reconnect",
+                credentials.id,
+                exc_info=True,
+            )
+        return marker
 
     async def update(self, user_id: str, updated: Credentials) -> None:
         async with self._locked(user_id, updated.id):
