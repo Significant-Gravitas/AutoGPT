@@ -47,8 +47,8 @@ export function MicrosoftCopilotProviderBox({ isLinked, onSuccess }: Props) {
           <Text variant="small" as="p" tone="muted">
             Requires a paid Microsoft Copilot or Copilot Business add-on from
             your work or school organization. The included Microsoft 365 Copilot
-            Chat does not qualify. This connection answers chats but does not
-            run AutoGPT tools.
+            Chat does not qualify. Chats you run on Copilot are answered by
+            Microsoft 365 Copilot itself, without AutoGPT&apos;s tools.
           </Text>
           <MicrosoftConnectionPanel
             browserAvailable={browserAvailable}

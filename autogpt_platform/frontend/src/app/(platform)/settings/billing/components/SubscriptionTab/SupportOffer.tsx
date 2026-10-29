@@ -29,18 +29,19 @@ export function SupportOffer({
         <span className="flex size-7 items-center justify-center rounded-lg bg-surface text-foreground-secondary ring-1 ring-border-base">
           <Icon icon={ready ? SparklesIcon : Message01Icon} size={17} />
         </span>
-        <Text variant="small-medium" className="text-foreground-secondary">
+        <Text variant="small-medium" tone="secondary">
           {eyebrow}
         </Text>
       </div>
       <Text
         variant="h4"
         as="h2"
-        // TODO(tokens): SECRT-3152 rare size (text-[23px])
-        className="mb-3 mt-4 text-[23px] leading-8 tracking-display"
+        // oxlint-disable-next-line design-system/no-restyle -- the plan title is set tight on a 32px line; no Text variant has it
+        className="mb-3 mt-4 leading-8 tracking-display"
       >
         {title}
       </Text>
+      {/* oxlint-disable-next-line design-system/no-restyle -- caption copy at a 24px line height; no Text variant has it */}
       <Text variant="small" tone="secondary" className="mb-7 leading-6">
         {description}
       </Text>

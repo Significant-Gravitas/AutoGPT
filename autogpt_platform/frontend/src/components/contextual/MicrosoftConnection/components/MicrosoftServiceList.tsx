@@ -1,12 +1,17 @@
 import type { MicrosoftAccessCheck } from "@/app/api/__generated__/models/microsoftAccessCheck";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { MICROSOFT_STATUS_LABELS } from "@/lib/microsoft-setup";
+import {
+  MICROSOFT_SERVICE_PURPOSES,
+  MICROSOFT_STATUS_LABELS,
+} from "@/lib/microsoft-setup";
 import { canAllow } from "../helpers";
 
 interface Props {
   check?: MicrosoftAccessCheck;
   checking: boolean;
+  /** Microsoft refused the check, for a reason shown next to the list. */
+  refused?: boolean;
   browserAvailable: boolean;
   onAllow: (scopes: string[]) => void;
 }
@@ -14,10 +19,12 @@ interface Props {
 export function MicrosoftServiceList({
   check,
   checking,
+  refused,
   browserAvailable,
   onAllow,
 }: Props) {
   if (!check) {
+    if (refused && !checking) return null;
     return (
       <Text variant="small" tone="muted" role="status">
         {checking
@@ -30,7 +37,8 @@ export function MicrosoftServiceList({
   return (
     <ul
       aria-label="Microsoft services"
-      className="flex flex-col divide-y divide-zinc-100 rounded-lg border border-zinc-200"
+      aria-live="polite"
+      className="flex flex-col divide-y divide-separator rounded-lg border border-border-base"
     >
       {check.capabilities.map((item) => (
         <li
@@ -40,6 +48,9 @@ export function MicrosoftServiceList({
           <div className="flex min-w-0 flex-col">
             <Text variant="body-medium">{item.name}</Text>
             <Text variant="small" tone="muted">
+              {MICROSOFT_SERVICE_PURPOSES[item.service]}
+            </Text>
+            <Text variant="small" tone="body">
               {MICROSOFT_STATUS_LABELS[item.status]}
             </Text>
           </div>

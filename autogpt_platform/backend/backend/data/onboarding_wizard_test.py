@@ -130,7 +130,12 @@ async def test_saving_draft_scopes_user_and_never_completes_or_rewards(
     assert len(calls) == 1
     draft_transaction.useronboarding.update_many.assert_awaited_once_with(
         where={"userId": "authenticated-user", "wizardRevision": 3},
-        data={"wizardProgress": SafeJson(payload), "wizardRevision": {"increment": 1}},
+        data={
+            "wizardProgress": SafeJson(payload),
+            "role": "Other",
+            "roleOther": "Founder",
+            "wizardRevision": {"increment": 1},
+        },
     )
     draft_transaction.useronboarding.find_unique_or_raise.assert_awaited_once_with(
         where={"userId": "authenticated-user"}
@@ -139,6 +144,43 @@ async def test_saving_draft_scopes_user_and_never_completes_or_rewards(
     credit.assert_not_awaited()
     notify.assert_not_awaited()
     completed.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.parametrize(
+    "changes, role",
+    [
+        ({"role": "Marketing"}, {"role": "Marketing", "roleOther": None}),
+        ({"currentStep": "role"}, {}),
+        ({"currentStep": "autopilot"}, {}),
+        ({"role": ""}, {}),
+    ],
+    ids=["answered", "on-role-step", "back-before-it", "unanswered"],
+)
+async def test_the_answered_role_is_kept_in_the_drafts_own_write(
+    mocker, draft_transaction, changes, role
+):
+    """In the revision-checked write, so a stale draft that loses the race
+    never leaves its role over the newer draft's."""
+    prisma = mocker.patch("backend.data.onboarding.UserOnboarding.prisma")
+    prisma.return_value.upsert = AsyncMock(return_value=Mock(notified=[]))
+    payload = wizard_progress(**changes)
+
+    await update_user_onboarding(
+        "user-one",
+        UserOnboardingUpdate.model_validate(
+            {"wizardProgress": payload, "wizardRevision": 3, "wizardUserId": "user-one"}
+        ),
+    )
+
+    draft_transaction.useronboarding.update_many.assert_awaited_once_with(
+        where={"userId": "user-one", "wizardRevision": 3},
+        data={
+            "wizardProgress": SafeJson(payload),
+            **role,
+            "wizardRevision": {"increment": 1},
+        },
+    )
 
 
 @pytest.mark.asyncio(loop_scope="function")

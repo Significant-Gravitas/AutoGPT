@@ -49,23 +49,14 @@ export function RecentChats() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-4">
-        <LoadingSpinner
-          size="small"
-          // TODO(tokens): no exact role for text-neutral-500 (#737373)
-          className="text-neutral-500"
-        />
+        <LoadingSpinner size="small" className="text-foreground-tertiary" />
       </div>
     );
   }
 
   if (!sessions.length) {
     return (
-      <Text
-        variant="body-tight"
-        as="p"
-        // TODO(tokens): no exact role for text-neutral-500 (#737373)
-        className="px-2 py-2 text-neutral-500"
-      >
+      <Text variant="body-tight" as="p" tone="muted" className="px-2 py-2">
         No conversations yet
       </Text>
     );
@@ -153,8 +144,7 @@ export function RecentChats() {
           type="button"
           onClick={() => loadMore()}
           disabled={isLoadingMore}
-          // TODO(tokens): no fitting role for hover:bg-zinc-300 #C5C5C9; #C5C5C9 is foreground-disabled (a text colour) and border-strong (a border colour), not a fill
-          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-surface-active px-2 py-1.5 text-foreground-emphasis hover:bg-zinc-300 disabled:opacity-60 max-md:py-3"
+          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-surface-active px-2 py-1.5 text-foreground-emphasis hover:bg-border-strong disabled:opacity-60 max-md:py-3"
         >
           {isLoadingMore && (
             <LoadingSpinner

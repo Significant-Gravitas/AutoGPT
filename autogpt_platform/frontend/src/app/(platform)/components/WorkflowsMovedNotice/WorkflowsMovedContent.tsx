@@ -21,8 +21,7 @@ export function WorkflowsMovedContent({ titleRef, onDismiss }: Props) {
           <Dialog.Title
             ref={titleRef}
             tabIndex={-1}
-            // TODO(tokens): SECRT-3152, rare size sm:text-[1.625rem]
-            className="pr-7 text-2xl font-semibold leading-tight tracking-tight text-foreground-strong outline-none sm:text-[1.625rem]"
+            className="pr-7 text-2xl font-semibold leading-tight tracking-tight text-foreground-strong outline-none sm:text-heading sm:leading-tight"
           >
             Your agents have moved
           </Dialog.Title>

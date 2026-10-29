@@ -55,7 +55,7 @@ export function ExpertSkillListItem({
             "border-0",
           )}
         >
-          <Icon icon={BookOpen01Icon} size={18} className="text-inherit" />
+          <Icon icon={BookOpen01Icon} size={18} />
         </div>
         <div
           className={cn(
@@ -63,16 +63,10 @@ export function ExpertSkillListItem({
             learning ? "pr-24" : "pr-16",
           )}
         >
-          <Text
-            variant="body-md-medium"
-            className="break-words !text-foreground-strong"
-          >
+          <Text variant="body-md-medium" tone="primary" className="break-words">
             {entry.name}
           </Text>
-          <Text
-            variant="small"
-            className="line-clamp-2 !text-foreground-tertiary"
-          >
+          <Text variant="small" tone="muted" className="line-clamp-2">
             {details?.description ?? "Skill details unavailable."}
           </Text>
           {learning ? (
@@ -122,6 +116,7 @@ export function ExpertSkillListItem({
             leadingIcon={WorkHistoryIcon}
             onClick={learning.onDetails}
             aria-label={`Learning details for ${entry.name}`}
+            // oxlint-disable-next-line design-system/no-restyle -- the ghost Button has no muted-icon variant (src/components is P9's)
             className="text-foreground-tertiary"
           />
         ) : null}
@@ -133,6 +128,7 @@ export function ExpertSkillListItem({
             size="icon-sm"
             aria-label="Open in library"
             leadingIcon={LinkSquare02Icon}
+            // oxlint-disable-next-line design-system/no-restyle -- the ghost Button has no muted-icon variant (src/components is P9's)
             className="text-foreground-tertiary"
           />
         ) : null}
@@ -144,8 +140,8 @@ export function ExpertSkillListItem({
             disabled={isSaving}
             onClick={() => onRemove(entry.name)}
             aria-label={`Remove ${entry.name}`}
-            // TODO(tokens): no fitting role for hover:text-red-600 #D93636; #D93636 is error-hover (a hover fill)
-            className="text-foreground-tertiary hover:text-red-600"
+            // oxlint-disable-next-line design-system/no-restyle -- the ghost Button has no muted-icon variant (src/components is P9's)
+            className="text-foreground-tertiary hover:text-error-foreground"
           />
         ) : null}
       </div>

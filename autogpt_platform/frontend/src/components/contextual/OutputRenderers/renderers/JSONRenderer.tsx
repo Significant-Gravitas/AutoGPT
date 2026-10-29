@@ -117,7 +117,7 @@ function JSONViewer({ data }: { data: any }) {
     }
 
     if (typeof value === "string") {
-      // TODO(tokens): no exact role for text-orange-600 #e77b00
+      // oxlint-disable-next-line design-system/no-raw-colors -- JSON string syntax colour; warning-foreground would be a hue change (deferred visual change)
       return <span className="text-orange-600">&quot;{value}&quot;</span>;
     }
 
@@ -183,10 +183,7 @@ function JSONViewer({ data }: { data: any }) {
             <div className="ml-4 mt-1">
               {keys.map((objKey) => (
                 <div key={objKey} className="flex">
-                  <span
-                    // TODO(tokens): no exact role for text-purple-600 #6c2edf; #6c2edf is brand-hover, a hover fill
-                    className="mr-2 text-purple-600"
-                  >
+                  <span className="mr-2 text-brand-hover">
                     &quot;{objKey}&quot;:
                   </span>
                   {renderValue(value[objKey], `${key}.${objKey}`)}

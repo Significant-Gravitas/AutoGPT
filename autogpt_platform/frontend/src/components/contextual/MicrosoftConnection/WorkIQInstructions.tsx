@@ -17,7 +17,7 @@ export function WorkIQInstructions() {
           Enable Work IQ for your organization
         </a>
         . This creates Microsoft&apos;s Work IQ service in your tenant.
-        <pre className="mt-2 overflow-x-auto rounded bg-zinc-100 p-2 text-xs">
+        <pre className="mt-2 overflow-x-auto rounded bg-surface-hover p-2 text-xs">
           {`az ad sp create --id ${WORK_IQ_APP_ID}`}
         </pre>
       </li>
@@ -31,8 +31,9 @@ export function WorkIQInstructions() {
         >
           Work IQ permission
         </a>
-        , then return to Microsoft sign-in to approve it. Company policies may
-        also require approval for mail, calendar, files, or Teams.
+        . Only an admin can approve it: connect Microsoft in AutoGPT, then
+        approve Work IQ for your organization from that connection. Company
+        policies may also require approval for mail, calendar, files, or Teams.
       </li>
       <li>
         Confirm a Copilot Studio usage-based billing plan is configured and the

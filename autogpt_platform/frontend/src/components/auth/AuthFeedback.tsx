@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { HelpItem } from "@/components/auth/help-item";
 import { Card, CardContent } from "@/components/atoms/Card/Card";
 import { AlertCircle, CheckCircle } from "lucide-react";
@@ -56,17 +57,18 @@ export default function AuthFeedback({
         (isSignupFlow ? (
           <Card
             variant="outlined"
-            // TODO(tokens): no exact role for border-slate-200 (#CFD4DB)
-            className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm"
+            className="overflow-hidden rounded-lg border border-border-base bg-surface shadow-sm"
           >
             <CardContent className="p-0">
-              <div
-                // TODO(tokens): no exact role for divide-slate-100 (#EFF1F4)
-                className="divide-y divide-slate-100"
-              >
-                <span className="my-3 block text-center text-sm font-medium text-error">
+              <div className="divide-y divide-separator">
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  tone="error"
+                  className="my-3 block text-center"
+                >
                   The provided email may not be allowed to sign up.
-                </span>
+                </Text>
                 <HelpItem
                   title="AutoGPT Platform is currently in closed beta. "
                   description="You can join "
@@ -86,14 +88,10 @@ export default function AuthFeedback({
         ) : (
           <Card
             variant="outlined"
-            // TODO(tokens): no exact role for border-slate-200 (#CFD4DB)
-            className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm"
+            className="overflow-hidden rounded-lg border border-border-base bg-surface shadow-sm"
           >
             <CardContent className="p-0">
-              <div
-                // TODO(tokens): no exact role for divide-slate-100 (#EFF1F4)
-                className="divide-y divide-slate-100"
-              >
+              <div className="divide-y divide-separator">
                 <HelpItem
                   title="Having trouble logging in?"
                   description="Make sure you've already "
@@ -109,13 +107,9 @@ export default function AuthFeedback({
       {showLocalHelp && (
         <Card
           variant="outlined"
-          // TODO(tokens): no exact role for border-slate-200 (#CFD4DB)
-          className="w-full overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm"
+          className="w-full overflow-hidden rounded-lg border border-border-base bg-surface shadow-sm"
         >
-          <div
-            // TODO(tokens): no exact role for divide-slate-100 (#EFF1F4)
-            className="w-full divide-y divide-slate-100"
-          >
+          <div className="w-full divide-y divide-separator">
             <HelpItem
               title="Having trouble getting AutoGPT running locally?"
               description="Ask for help on our"

@@ -6,7 +6,6 @@ them themselves.
 """
 
 import asyncio
-import re
 from typing import Literal
 from urllib.parse import urlencode
 
@@ -212,12 +211,10 @@ def _admin_consent_url(
 
 def _work_iq_status(error: MicrosoftAuthError) -> MicrosoftCapabilityStatus:
     reason = error.recovery.reason
-    code = int(re.sub(r"\D", "", error.recovery.error_code or "") or 0)
     if reason == "tenant_setup_required":
         return "setup_required"
-    if code == 65001:
-        # Not consented yet: one more sign-in asks for it.
-        return "permission_needed"
+    # Microsoft marks Work IQ's permission AdminConsentRequired, so even one
+    # nobody has asked for yet (AADSTS65001) is an admin's to approve.
     if reason == "admin_consent_required":
         return "admin_required"
     return "unavailable"

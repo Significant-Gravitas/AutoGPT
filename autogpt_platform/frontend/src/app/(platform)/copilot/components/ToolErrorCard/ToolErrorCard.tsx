@@ -33,11 +33,7 @@ export function ToolErrorCard({
           className="mt-0.5 shrink-0 text-error"
         />
         <div className="flex-1 space-y-2">
-          <Text
-            // TODO(tokens): no exact role for text-red-900
-            variant="body-medium"
-            className="text-red-900"
-          >
+          <Text variant="body-medium" className="text-error-foreground">
             {message || fallbackMessage}
           </Text>
           {(error || details) && (
@@ -46,18 +42,12 @@ export function ToolErrorCard({
                 Technical details
               </summary>
               {error && (
-                <pre
-                  // TODO(tokens): no exact role for bg-red-100
-                  className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2"
-                >
+                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-error-surface p-2">
                   {error}
                 </pre>
               )}
               {details && (
-                <pre
-                  // TODO(tokens): no exact role for bg-red-100
-                  className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2"
-                >
+                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-error-surface p-2">
                   {details}
                 </pre>
               )}

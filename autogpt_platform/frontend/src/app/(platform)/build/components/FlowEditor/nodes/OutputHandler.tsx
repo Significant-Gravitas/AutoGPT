@@ -89,6 +89,7 @@ export const OutputHandler = ({
           : isOutputVisible || selfIsRelevant || descendantIsRelevant;
 
         const { displayType, colorClass, hexColor } =
+          // oxlint-disable-next-line design-system/require-static-classes -- getTypeDisplayInfo returns whole, static class strings
           getTypeDisplayInfo(fieldSchema);
         const isExpanded = expandedObjects[fullKey] ?? false;
 
@@ -105,8 +106,7 @@ export const OutputHandler = ({
               {hasNestedProperties && (
                 <button
                   onClick={() => toggleObjectExpanded(fullKey)}
-                  // TODO(tokens): no exact role: text-slate-500 #64748B, hover:text-slate-700 #475263
-                  className="flex items-center text-slate-500 hover:text-slate-700"
+                  className="flex items-center text-foreground-tertiary hover:text-foreground-body"
                   aria-label={isExpanded ? "Collapse" : "Expand"}
                 >
                   {isExpanded ? (
@@ -121,7 +121,7 @@ export const OutputHandler = ({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span
-                        style={{ marginLeft: 6, cursor: "pointer" }}
+                        className="ml-1.5 cursor-pointer"
                         aria-label="info"
                         tabIndex={0}
                       >
@@ -134,11 +134,7 @@ export const OutputHandler = ({
               )}
               <Text
                 variant={isBroken ? "body-line-through" : "body"}
-                className={cn(
-                  // TODO(tokens): no exact role: text-slate-700 #475263
-                  "text-slate-700",
-                  isBroken && "text-error",
-                )}
+                className={cn("text-foreground-body", isBroken && "text-error")}
               >
                 {fieldTitle}
               </Text>
@@ -184,8 +180,8 @@ export const OutputHandler = ({
       >
         <Text
           variant="body-semibold"
-          // TODO(tokens): no exact role: text-slate-700 #475263
-          className="flex items-center gap-2 text-slate-700"
+          tone="body"
+          className="flex items-center gap-2"
         >
           Output{" "}
           <Icon

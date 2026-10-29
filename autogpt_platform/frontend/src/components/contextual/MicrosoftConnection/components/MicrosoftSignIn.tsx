@@ -34,9 +34,9 @@ export function MicrosoftSignIn({
   return (
     <div className="flex flex-col gap-4">
       <Text variant="body">
-        Personal Microsoft accounts connect mail, calendar and files. Work or
-        school accounts can also add Teams chats, Microsoft 365 Copilot and Work
-        IQ.
+        Connecting lets Otto read and send your email, manage your calendar and
+        work with your OneDrive files when you ask. Work or school accounts can
+        also add Teams chats, Microsoft 365 Copilot and Work IQ.
       </Text>
       {browserAvailable ? (
         <Button

@@ -1,8 +1,7 @@
 import { GetV2ListStoreAgentsParams } from "@/app/api/__generated__/models/getV2ListStoreAgentsParams";
-import { SearchFilterChips } from "@/components/__legacy__/SearchFilterChips";
-import { SortDropdown } from "@/components/__legacy__/SortDropdown";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { AgentsSection } from "../../../components/AgentsSection/AgentsSection";
@@ -12,6 +11,8 @@ import { MainSearchResultPageLoading } from "../../../components/MainSearchResul
 import { SearchBar } from "../../../components/SearchBar/SearchBar";
 import { SectionHeader } from "../../../components/SectionHeader";
 import { SkillCard } from "../../../components/SkillsSection/components/SkillCard";
+import { SearchFilterChips } from "./components/SearchFilterChips/SearchFilterChips";
+import { SortDropdown } from "./components/SortDropdown/SortDropdown";
 import { useMainSearchResultPage } from "./useMainSearchResultPage";
 
 type MarketplaceSearchSort = GetV2ListStoreAgentsParams["sorted_by"];
@@ -86,16 +87,10 @@ export const MainSearchResultPage = ({
         </div>
         <div className="flex flex-col gap-4 md:flex-row md:items-center">
           <div className="flex-1">
-            <h2
-              // TODO(tokens): no exact role: text-neutral-800 #262626
-              className="text-base font-medium leading-normal text-neutral-800"
-            >
+            <Text variant="large-medium-tight" as="h2" tone="emphasis">
               Showing results for:
-            </h2>
-            <h1
-              // TODO(tokens): no exact role: text-neutral-800 #262626
-              className="font-poppins text-2xl font-semibold leading-8 text-neutral-800"
-            >
+            </Text>
+            <h1 className="font-poppins text-2xl font-semibold leading-8 text-foreground-emphasis">
               &quot;{searchTerm}&quot;
             </h1>
           </div>
@@ -166,16 +161,15 @@ export const MainSearchResultPage = ({
           </>
         ) : (
           <div className="flex min-h-[60vh] flex-col items-center justify-center">
-            <h3
-              // TODO(tokens): no exact role: text-neutral-600 #525252
-              className="mb-2 text-xl font-medium text-neutral-600"
+            <Text
+              variant="lead-medium"
+              as="h3"
+              tone="secondary"
+              className="mb-2"
             >
               No results found
-            </h3>
-            <p
-              // TODO(tokens): no exact role: text-neutral-500 #737373
-              className="text-neutral-500"
-            >
+            </Text>
+            <p className="text-foreground-tertiary">
               Try adjusting your search terms or filters
             </p>
           </div>

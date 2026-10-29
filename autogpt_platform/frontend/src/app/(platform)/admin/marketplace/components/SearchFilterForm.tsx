@@ -67,6 +67,7 @@ export function SearchAndFilterAdminMarketplace({
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={(e) => isKey(e, "Enter") && handleSearch()}
         />
+        {/* oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2) */}
         <Button variant="legacy-outline" onClick={handleSearch}>
           <Search className="h-4 w-4" />
         </Button>

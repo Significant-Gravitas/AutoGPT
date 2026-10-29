@@ -30,6 +30,11 @@ export function useMicrosoftConnection({ scopes }: Args) {
     credentials.find((item) => item.id === selectedID) ?? credentials[0];
   const access = useMicrosoftAccessCheck(credential?.id);
   const check = access.data ?? undefined;
+  // Microsoft refusing the connection (an expired or revoked grant) comes back
+  // with its reason; anything else is worth checking again.
+  const checkFailure = access.error
+    ? getMicrosoftSetupReason(access.error)
+    : null;
 
   const oauth = useOAuthConnect({
     provider: MICROSOFT_PROVIDER,
@@ -88,6 +93,7 @@ export function useMicrosoftConnection({ scopes }: Args) {
     credential,
     check,
     checking: access.isFetching,
+    checkFailure,
     isLoading: saved.isLoading,
     pending: pendingScopes(check),
     recovery,

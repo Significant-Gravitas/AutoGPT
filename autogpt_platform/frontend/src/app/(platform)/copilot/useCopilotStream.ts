@@ -34,6 +34,7 @@ import {
   deduplicateMessages,
   extractSendMessageText,
   extractSendMessageAttachments,
+  getEffectiveChatStatus,
   getSendSuppressionReason,
   hasActiveBackendStream,
   hasInProgressAssistantParts,
@@ -196,12 +197,16 @@ export function useCopilotStream({
   // resumeStream" is resolved by deferring both through refs.
   const resumeStreamRef = useRef<() => void>(() => {});
   const handleReconnectRef = useRef<() => void>(() => {});
+  // Resumes asked for and not yet over. AI SDK 7 reports a resume only once
+  // its GET has returned a stream; until then the turn being resumed still
+  // counts as in flight, so a held follow-up cannot go out beside it.
+  const [pendingResumes, setPendingResumes] = useState(0);
 
   const {
     messages: rawMessages,
     sendMessage: sdkSendMessage,
     stop: sdkStop,
-    status,
+    status: sdkStatus,
     error,
     setMessages,
     resumeStream,
@@ -214,6 +219,11 @@ export function useCopilotStream({
       : {
           id: "new",
         },
+  );
+  const status = getEffectiveChatStatus(
+    sdkStatus,
+    rawMessages,
+    pendingResumes > 0,
   );
 
   useEffect(() => {
@@ -521,7 +531,8 @@ export function useCopilotStream({
       }
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
     });
-    resumeStream();
+    setPendingResumes((count) => count + 1);
+    void resumeStream().finally(() => setPendingResumes((count) => count - 1));
   }
   const sessionIdRef = useRef(sessionId);
 
@@ -568,7 +579,13 @@ export function useCopilotStream({
       isReconnectScheduled: reconnectScheduledRef.current,
       lastSubmittedText: coord?.lastSubmittedMessageText ?? null,
       messages: chatRuntime?.chat.messages ?? rawMessages,
-      status: chatRuntime?.chat.status ?? status,
+      status: chatRuntime
+        ? getEffectiveChatStatus(
+            chatRuntime.chat.status,
+            chatRuntime.chat.messages,
+            pendingResumes > 0,
+          )
+        : status,
     });
 
     if (suppressReason === "reconnecting") {
@@ -932,7 +949,10 @@ export function useCopilotStream({
     sendMessage,
     stop,
     status,
-    error: isReconnecting || isUserStopping ? undefined : error,
+    error:
+      isReconnecting || isUserStopping || pendingResumes > 0
+        ? undefined
+        : error,
     isReconnecting,
     isFinishProbing,
     isRestoringActiveSession,

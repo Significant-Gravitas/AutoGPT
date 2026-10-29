@@ -1,3 +1,4 @@
+/* oxlint-disable design-system/no-legacy-button-variant -- rectangular toggle buttons kept; the pill Button is a deferred visual change (5.7 item 2) */
 import React, { useEffect, useState } from "react";
 import {
   Select,

@@ -126,7 +126,7 @@ export function useDeviceAuthConnect({
               new Error(
                 status === "denied"
                   ? "access_denied"
-                  : "Microsoft sign-in expired. Please try again.",
+                  : "The sign-in code expired. Please try again.",
               ),
             );
             return;

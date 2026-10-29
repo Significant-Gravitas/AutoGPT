@@ -23,7 +23,6 @@ interface Props {
   /** Adds the scopes to this connection instead of making a new one. */
   credentialID?: string;
   onError?: (error: unknown) => void;
-  onTrouble?: () => void;
 }
 
 export function DeviceAuthConnectButton({
@@ -33,7 +32,6 @@ export function DeviceAuthConnectButton({
   scopes,
   credentialID,
   onError,
-  onTrouble,
 }: Props) {
   const { connect, cancel, phase, userCode, verificationUrl } =
     useDeviceAuthConnect({
@@ -50,7 +48,7 @@ export function DeviceAuthConnectButton({
   if (phase === "awaiting_user" && !userCode) {
     return (
       <div className="flex flex-col gap-3">
-        <Text variant="body" className="text-foreground-secondary">
+        <Text variant="body" tone="secondary">
           Requesting a code from {providerName}…
         </Text>
         <div className="flex items-center gap-2 text-foreground-tertiary">
@@ -64,25 +62,20 @@ export function DeviceAuthConnectButton({
   if (phase === "idle" || phase === "error" || phase === "done") {
     return (
       <div className="flex flex-col gap-3">
-        <Text variant="body" className="text-foreground-secondary">
+        <Text variant="body" tone="secondary">
           {providerName} uses device authorization. Click below, then follow the
           link to approve access.
         </Text>
         <Button type="button" variant="primary" size="large" onClick={connect}>
           Connect {providerName}
         </Button>
-        {onTrouble && (
-          <Button variant="ghost" onClick={onTrouble}>
-            Having trouble signing in?
-          </Button>
-        )}
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <Text variant="body" className="text-foreground-secondary">
+      <Text variant="body" tone="secondary">
         Open the link below and enter the code to connect your {providerName}{" "}
         account.
       </Text>
@@ -92,16 +85,14 @@ export function DeviceAuthConnectButton({
           and Sentry masks the code, as it does all text. */}
       <div className="ph-no-capture flex flex-col gap-3 rounded-lg border border-border-base bg-surface-muted p-4">
         <div className="flex flex-col gap-1">
-          <Text
-            variant="small"
-            className="font-medium text-foreground-tertiary"
-          >
+          <Text variant="small" tone="muted" className="font-medium">
             Your code
           </Text>
           <Text
             variant="h3"
             as="p"
-            className="select-all text-center font-mono text-2xl tracking-widest text-foreground-emphasis"
+            tone="emphasis"
+            className="select-all text-center font-mono text-2xl tracking-widest"
           >
             {userCode}
           </Text>
@@ -133,11 +124,6 @@ export function DeviceAuthConnectButton({
           Cancel
         </Button>
       </div>
-      {onTrouble && (
-        <Button variant="ghost" onClick={onTrouble}>
-          Having trouble signing in?
-        </Button>
-      )}
     </div>
   );
 }

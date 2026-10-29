@@ -22,35 +22,30 @@
   animation: new-builder-tutorial-pulse 2s ease-in-out infinite;
 }
 
-/* TODO(tokens): no fitting role for the pulse ring white #FFFFFF; #FFFFFF is
-   card (a surface fill, not a shadow). No exact role: violet #7c3aed #7C3AED
-   (accent is #7C3BED), #8b5cf6 #8B5CF6 and rgba(124, 58, 237) #7C3AED. */
 @keyframes new-builder-tutorial-pulse {
   0%,
   100% {
     box-shadow:
-      0 0 0 4px white,
-      0 0 0 6px #7c3aed,
-      0 0 30px 8px rgba(124, 58, 237, 0.4);
+      0 0 0 4px rgb(var(--color-surface)),
+      0 0 0 6px rgb(var(--color-brand)),
+      0 0 30px 8px rgb(var(--color-brand) / 0.4);
   }
   50% {
     box-shadow:
-      0 0 0 4px white,
-      0 0 0 8px #8b5cf6,
-      0 0 40px 12px rgba(124, 58, 237, 0.55);
+      0 0 0 4px rgb(var(--color-surface)),
+      0 0 0 8px rgb(var(--color-brand)),
+      0 0 40px 12px rgb(var(--color-brand) / 0.55);
   }
 }
 
 .shepherd-element.new-builder-tour {
   max-width: 420px !important;
   border-radius: 1rem !important;
-  /* TODO(tokens): no exact role: shadow rgba(0, 0, 0) #000000. */
   box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.08),
-    0px 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
-  /* TODO(tokens): no fitting role for white #FFFFFF; #FFFFFF is card, whose .dark value (9 9 11) differs (QUALITY 43, SECRT-3154). */
-  background: white !important;
+    0 0 0 1px rgb(var(--color-foreground-base) / 0.08),
+    0px 4px 6px -1px rgb(var(--color-foreground-base) / 0.1),
+    0 20px 25px -5px rgb(var(--color-foreground-base) / 0.1) !important;
+  background: rgb(var(--color-surface)) !important;
   /* TODO(tokens): no exact text token: the family keeps its system-ui,
      sans-serif fallback, which font-sans does not have. */
   font-family: var(--font-geist-sans), system-ui, sans-serif !important;
@@ -67,20 +62,17 @@
      sans-serif fallback, which font-poppins does not have. */
   font-family: var(--font-poppins), system-ui, sans-serif !important;
   @apply text-body-lg! font-semibold! leading-6!;
-  /* TODO(tokens): no fitting role for #18181b #18181B; #18181B is secondary-foreground, whose .dark value (250 250 250) differs (QUALITY 43, SECRT-3154). */
-  color: #18181b !important; /* zinc-900 */
+  color: rgb(var(--color-foreground-base)) !important;
 }
 
 .shepherd-element.new-builder-tour .shepherd-text {
   padding: 0 1.25rem 1rem !important;
-  /* TODO(tokens): no exact role: #52525b #52525B. */
-  color: #52525b !important;
+  color: rgb(var(--color-foreground-body)) !important;
 }
 
 .shepherd-element.new-builder-tour .shepherd-footer {
   padding: 0.75rem 1.25rem 1rem !important;
-  /* TODO(tokens): no fitting role for #e4e4e7 #E4E4E7; #E4E4E7 is border, whose .dark value (39 39 42) differs (QUALITY 43, SECRT-3154). */
-  border-top: 1px solid #e4e4e7 !important; /* zinc-200 */
+  border-top: 1px solid rgb(var(--color-border-base)) !important;
   gap: 0.5rem !important;
   display: flex !important;
   justify-content: flex-end !important;
@@ -106,18 +98,15 @@
 
 .shepherd-element.new-builder-tour
   .shepherd-button:not(.shepherd-button-secondary) {
-  /* TODO(tokens): no exact role: #27272a #27272A. */
-  background-color: #27272a !important;
-  border: 1px solid #27272a !important;
-  /* TODO(tokens): no fitting role for white #FFFFFF; #FFFFFF is accent-foreground, whose .dark value (250 250 250) differs (QUALITY 43, SECRT-3154). */
-  color: white !important;
+  background-color: rgb(var(--color-action)) !important;
+  border: 1px solid rgb(var(--color-action)) !important;
+  color: rgb(var(--color-action-foreground)) !important;
 }
 
 .shepherd-element.new-builder-tour
   .shepherd-button:not(.shepherd-button-secondary):hover {
-  /* TODO(tokens): no fitting role for #18181b #18181B; #18181B is primary, whose .dark value (250 250 250) differs (QUALITY 43, SECRT-3154). */
-  background-color: #18181b !important; /* zinc-900 */
-  border-color: #18181b !important;
+  background-color: rgb(var(--color-action-hover)) !important;
+  border-color: rgb(var(--color-action-hover)) !important;
 }
 
 .shepherd-element.new-builder-tour
@@ -126,20 +115,15 @@
 }
 
 .shepherd-element.new-builder-tour .shepherd-button-secondary {
-  /* TODO(tokens): no fitting role for #f4f4f5 #F4F4F5; #F4F4F5 is secondary, whose .dark value (39 39 42) differs (QUALITY 43, SECRT-3154). */
-  background-color: #f4f4f5 !important; /* zinc-100 */
-  border: 1px solid #f4f4f5 !important;
-  /* TODO(tokens): no exact role: #52525b #52525B. */
-  color: #52525b !important;
+  background-color: rgb(var(--color-surface-hover)) !important;
+  border: 1px solid rgb(var(--color-surface-hover)) !important;
+  color: rgb(var(--color-foreground-body)) !important;
 }
 
 .shepherd-element.new-builder-tour .shepherd-button-secondary:hover {
-  /* TODO(tokens): no fitting role for the fill #e4e4e7 #E4E4E7; #E4E4E7 is
-     border (a border colour), and the border repeats the fill. No exact role:
-     #27272a #27272A. */
-  background-color: #e4e4e7 !important;
-  border-color: #e4e4e7 !important;
-  color: #27272a !important;
+  background-color: rgb(var(--color-surface-active)) !important;
+  border-color: rgb(var(--color-surface-active)) !important;
+  color: rgb(var(--color-foreground-strong)) !important;
 }
 
 .shepherd-element.new-builder-tour .shepherd-button-secondary:active {
@@ -147,16 +131,14 @@
 }
 
 .shepherd-element.new-builder-tour .shepherd-cancel-icon {
-  /* TODO(tokens): no exact role: #a1a1aa #A1A1AA. */
-  color: #a1a1aa !important;
+  color: rgb(var(--color-foreground-subtle)) !important;
   transition: color 150ms ease !important;
   width: 1.5rem !important;
   height: 1.5rem !important;
 }
 
 .shepherd-element.new-builder-tour .shepherd-cancel-icon:hover {
-  /* TODO(tokens): no exact role: #52525b #52525B. */
-  color: #52525b !important;
+  color: rgb(var(--color-foreground-body)) !important;
 }
 
 .shepherd-element.new-builder-tour .shepherd-arrow {
@@ -164,8 +146,7 @@
 }
 
 .shepherd-element.new-builder-tour .shepherd-arrow:before {
-  /* TODO(tokens): no fitting role for white #FFFFFF; #FFFFFF is card, whose .dark value (9 9 11) differs (QUALITY 43, SECRT-3154). */
-  background: white !important;
+  background: rgb(var(--color-surface)) !important;
 }
 
 .shepherd-element.new-builder-tour[data-popper-placement^="top"] {

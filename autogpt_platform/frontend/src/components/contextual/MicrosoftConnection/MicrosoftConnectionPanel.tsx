@@ -74,6 +74,7 @@ export function MicrosoftConnectionPanel({
       <MicrosoftServiceList
         check={check}
         checking={connection.checking}
+        refused={connection.checkFailure !== null}
         browserAvailable={browserAvailable}
         onAllow={connection.allow}
       />
@@ -133,6 +134,13 @@ export function MicrosoftConnectionPanel({
         <MicrosoftAdminSetup
           reason={connection.recovery}
           onRetry={connection.recheck}
+        />
+      )}
+      {connection.checkFailure && !connection.recovery && (
+        <MicrosoftAdminSetup
+          reason={connection.checkFailure}
+          retryLabel="Sign in again"
+          onRetry={browserAvailable ? connection.signIn : connection.addAccount}
         />
       )}
       <div className="flex flex-wrap gap-2">

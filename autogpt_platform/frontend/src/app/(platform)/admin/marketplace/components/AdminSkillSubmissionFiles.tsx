@@ -33,7 +33,7 @@ export function AdminSkillSubmissionFiles({ versionId, files }: Props) {
           size={14}
           aria-hidden
         />
-        <Text variant="small" className="!text-inherit">
+        <Text variant="small" tone="inherit">
           {files.length === 1 ? "1 file" : `${files.length} files`}
         </Text>
       </button>

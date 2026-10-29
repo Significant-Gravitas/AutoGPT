@@ -33,8 +33,10 @@ export function getRunStatusInfo(status: string): RunStatusInfo {
 export function RunStatusBadge({ status }: Props) {
   const info = getRunStatusInfo(status);
   return (
-    <Badge variant={info.variant} size="small">
-      {info.label}
-    </Badge>
+    <span data-slot="run-status-badge" className="contents">
+      <Badge variant={info.variant} size="small">
+        {info.label}
+      </Badge>
+    </span>
   );
 }

@@ -108,6 +108,7 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Settings
 
+from .airtable import router as airtable_router
 from .codex import (
     CODEX_LOGIN_STATE_KEY,
     build_device_login_cancel_url,
@@ -140,6 +141,7 @@ _THROTTLE_TIMEOUT_SECONDS = 1.0
 settings = Settings()
 router = APIRouter()
 router.include_router(codex_router, prefix="/codex")
+router.include_router(airtable_router, prefix="/airtable")
 
 creds_manager = IntegrationCredentialsManager()
 

@@ -75,10 +75,10 @@ export default function SignupPage() {
   return (
     <AuthSplitLayout marketing={<SignupMarketingPanel />}>
       <div className="mb-8">
-        <Text variant="h3" as="h1" className="!text-foreground-strong">
+        <Text variant="h3" as="h1" tone="primary">
           Create your account
         </Text>
-        <Text variant="body" className="mt-1 !text-foreground-tertiary">
+        <Text variant="body" tone="muted" className="mt-1">
           Already a member?{" "}
           <Link href={loginHref} variant="secondary">
             Log in
