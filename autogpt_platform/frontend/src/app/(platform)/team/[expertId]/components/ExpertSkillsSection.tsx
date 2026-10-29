@@ -108,26 +108,16 @@ export function ExpertSkillsSection({
       {!hasAny ? (
         <SectionEmptyState
           tiles={[
-            <Icon
-              key="book"
-              icon={BookOpen01Icon}
-              size={22}
-              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
-              className="text-sky-500"
-            />,
-            <Icon
-              key="bulb"
-              icon={BulbIcon}
-              size={22}
-              className="text-warning"
-            />,
-            <Icon
-              key="sparkles"
-              icon={SparklesIcon}
-              size={22}
-              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
-              className="text-violet-500"
-            />,
+            // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
+            <span key="book" className="inline-flex text-sky-500">
+              <Icon icon={BookOpen01Icon} size={22} />
+            </span>,
+            <span key="bulb" className="inline-flex text-warning">
+              <Icon icon={BulbIcon} size={22} />
+            </span>,
+            <span key="sparkles" className="inline-flex text-brand">
+              <Icon icon={SparklesIcon} size={22} />
+            </span>,
           ]}
           title="No skills yet"
           description={`Add skills from your library so ${expert.name} knows how you like things done.`}
@@ -143,7 +133,7 @@ export function ExpertSkillsSection({
           </Button>
         </SectionEmptyState>
       ) : visible.length === 0 ? (
-        <Text variant="body-md" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="mt-4">
           No skills match.
         </Text>
       ) : (
