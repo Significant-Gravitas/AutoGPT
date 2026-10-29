@@ -22,3 +22,21 @@ export function deleteCookie(name: string) {
     document.cookie = `${expired}; Domain=.${labels.slice(index).join(".")}`;
   }
 }
+
+/** Removes every key `matches` accepts; does nothing where storage is blocked. */
+export function removeStorageKeys(
+  getStorage: () => Storage,
+  matches: (key: string) => boolean,
+) {
+  try {
+    const storage = getStorage();
+    const keys = Array.from({ length: storage.length }, (_, index) =>
+      storage.key(index),
+    );
+    keys
+      .filter((key): key is string => key !== null && matches(key))
+      .forEach((key) => storage.removeItem(key));
+  } catch {
+    // Storage blocked: nothing was stored there.
+  }
+}

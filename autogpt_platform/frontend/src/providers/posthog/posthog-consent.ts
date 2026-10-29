@@ -7,7 +7,8 @@ import { environment } from "@/services/environment";
 import {
   deleteCookie,
   readCookieNames,
-} from "@/services/consent/browser-cookies";
+  removeStorageKeys,
+} from "@/services/consent/browser-storage";
 import {
   hasConsentFor,
   hasDeclinedConsentFor,
@@ -185,24 +186,9 @@ function clearPostHogOptIn() {
 function clearPostHogStorage(token: string) {
   if (typeof window === "undefined" || !token) return;
   const prefix = `ph_${token}_`;
-  clearStorage(() => window.localStorage, prefix);
-  clearStorage(() => window.sessionStorage, prefix);
+  const isPostHogKey = (key: string) => key.startsWith(prefix);
+  removeStorageKeys(() => window.localStorage, isPostHogKey);
+  removeStorageKeys(() => window.sessionStorage, isPostHogKey);
   clearPostHogOptIn();
-  readCookieNames()
-    .filter((name) => name.startsWith(prefix))
-    .forEach(deleteCookie);
-}
-
-function clearStorage(getStorage: () => Storage, prefix: string) {
-  try {
-    const storage = getStorage();
-    const keys = Array.from({ length: storage.length }, (_, index) =>
-      storage.key(index),
-    );
-    keys
-      .filter((key): key is string => Boolean(key?.startsWith(prefix)))
-      .forEach((key) => storage.removeItem(key));
-  } catch {
-    // Storage blocked: nothing was stored there.
-  }
+  readCookieNames().filter(isPostHogKey).forEach(deleteCookie);
 }

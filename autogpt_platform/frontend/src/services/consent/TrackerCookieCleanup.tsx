@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { followConsentForTrackerCookies } from "./tracker-cookies";
 
 // Rendered ahead of ConsentWithdrawalReload, so a withdrawal deletes the
-// cookies before the page reloads; the reloaded page checks again.
+// trackers' cookies and storage before the page reloads.
 export function TrackerCookieCleanup() {
   useEffect(() => followConsentForTrackerCookies(), []);
   return null;
