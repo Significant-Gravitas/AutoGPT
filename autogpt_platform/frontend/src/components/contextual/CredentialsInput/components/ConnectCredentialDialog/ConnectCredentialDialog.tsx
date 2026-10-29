@@ -201,9 +201,8 @@ export function ConnectCredentialDialog({
           )}
           {showExisting && existing?.error && (
             <span
-              // TODO(tokens): no exact role for text-red-600 #D93636; #D93636 is error-hover, a hover fill
               role="alert"
-              className="text-center text-xs text-red-600"
+              className="text-center text-xs text-error-foreground"
             >
               {existing.error}
             </span>

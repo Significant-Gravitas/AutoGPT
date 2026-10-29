@@ -21,8 +21,8 @@ export function MarketingFooter({ footerText }: Props) {
     <div className="flex flex-col gap-3">
       <Text
         variant="small-medium"
-        // TODO(tokens): no exact text token for tracking-[0.14em]
-        className="uppercase tracking-[0.14em] !text-foreground-tertiary"
+        tone="muted"
+        className="uppercase tracking-caps"
       >
         {footerText}
       </Text>

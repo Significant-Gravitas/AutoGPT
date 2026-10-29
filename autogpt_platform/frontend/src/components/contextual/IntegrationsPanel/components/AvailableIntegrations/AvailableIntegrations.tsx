@@ -25,11 +25,12 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
           variant="small-medium"
           as="h2"
           id="available-integrations-heading"
-          className="uppercase tracking-eyebrow text-foreground-secondary"
+          tone="secondary"
+          className="uppercase tracking-eyebrow"
         >
           Available integrations
         </Text>
-        <Text variant="small" className="text-foreground-tertiary">
+        <Text variant="small" tone="muted">
           Connect your services, including official vendor integrations. Some
           services need additional setup.
         </Text>
@@ -59,11 +60,7 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
               </li>
             ))}
           </ul>
-          <Text
-            variant="small"
-            className="px-4 text-foreground-tertiary"
-            role="status"
-          >
+          <Text variant="small" tone="muted" className="px-4" role="status">
             {catalog.total === 0
               ? query.trim()
                 ? "No available services match your search."

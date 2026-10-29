@@ -200,8 +200,7 @@ const MARKDOWN_COMPONENTS: Components = {
   // Custom components for better rendering
   pre: ({ children, ...props }) => (
     <pre
-      // TODO(tokens): no exact role for bg-gray-900 #111827
-      className="my-4 overflow-x-auto rounded-md bg-gray-900 p-4"
+      className="my-4 overflow-x-auto rounded-md bg-action-hover p-4"
       {...props}
     >
       {children}
@@ -213,8 +212,7 @@ const MARKDOWN_COMPONENTS: Components = {
     if (isInline) {
       return (
         <code
-          // TODO(tokens): no exact role for bg-gray-100 #f3f4f6, text-gray-800 #1f2937
-          className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm text-gray-800"
+          className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-sm text-foreground-emphasis"
           {...props}
         >
           {children}
@@ -223,11 +221,7 @@ const MARKDOWN_COMPONENTS: Components = {
     }
     // Block code is handled by rehype-highlight
     return (
-      <code
-        // TODO(tokens): no exact role for text-gray-100 #f3f4f6
-        className="font-mono text-sm text-gray-100"
-        {...props}
-      >
+      <code className="font-mono text-sm text-action-foreground" {...props}>
         {children}
       </code>
     );
@@ -247,8 +241,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   blockquote: ({ children, ...props }) => (
     <blockquote
-      // TODO(tokens): no exact role for text-gray-700 #374151
-      className="my-4 border-l-4 border-info pl-4 italic text-gray-700"
+      className="my-4 border-l-4 border-info pl-4 italic text-foreground-body"
       {...props}
     >
       {children}
@@ -257,8 +250,7 @@ const MARKDOWN_COMPONENTS: Components = {
   table: ({ children, ...props }) => (
     <div className="my-4 overflow-x-auto">
       <table
-        // TODO(tokens): no exact role for divide-gray-200 #e5e7eb, border-gray-200 #e5e7eb; #e5e7eb is sidebar-border, the sidebar only
-        className="min-w-full divide-y divide-gray-200 border-y border-gray-200"
+        className="min-w-full divide-y divide-border-base border-y border-border-base"
         {...props}
       >
         {children}
@@ -267,8 +259,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   th: ({ children, ...props }) => (
     <th
-      // TODO(tokens): no exact role for bg-gray-50 #f9fafb, text-gray-700 #374151
-      className="bg-gray-50 px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-700"
+      className="bg-surface-muted px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-foreground-body"
       {...props}
     >
       {children}
@@ -276,8 +267,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   td: ({ children, ...props }) => (
     <td
-      // TODO(tokens): no exact role for border-gray-200 #e5e7eb, text-gray-600 #4b5563; #e5e7eb is sidebar-border, the sidebar only
-      className="border-t border-gray-200 px-4 py-3.5 text-sm text-gray-600"
+      className="border-t border-border-base px-4 py-3.5 text-sm text-foreground-secondary"
       {...props}
     >
       {children}
@@ -289,8 +279,7 @@ const MARKDOWN_COMPONENTS: Components = {
       return (
         <input
           type="checkbox"
-          // TODO(tokens): no exact role for border-gray-300 #d1d5db
-          className="mr-2 h-4 w-4 rounded border-gray-300 text-info-foreground focus:ring-info disabled:cursor-not-allowed disabled:opacity-70"
+          className="mr-2 h-4 w-4 rounded border-border-strong text-info-foreground focus:ring-info disabled:cursor-not-allowed disabled:opacity-70"
           disabled
           {...props}
         />
@@ -316,8 +305,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   li: ({ children, ...props }: any) => (
     <li
-      // TODO(tokens): no exact role for text-gray-700 #374151
-      className={`text-gray-700 ${
+      className={`text-foreground-body ${
         props.className?.includes("task-list-item") ? "flex items-start" : ""
       }`}
       {...props}
@@ -327,18 +315,13 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   // Better heading styles
   h1: ({ children, ...props }) => (
-    <h1
-      // TODO(tokens): no exact role for text-gray-900 #111827
-      className="my-6 text-3xl font-bold text-gray-900"
-      {...props}
-    >
+    <h1 className="my-6 text-3xl font-bold text-foreground-base" {...props}>
       {children}
     </h1>
   ),
   h2: ({ children, ...props }) => (
     <h2
-      // TODO(tokens): no exact role for text-gray-800 #1f2937
-      className="my-5 text-2xl font-semibold text-gray-800"
+      className="my-5 text-2xl font-semibold text-foreground-emphasis"
       {...props}
     >
       {children}
@@ -346,55 +329,35 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   h3: ({ children, ...props }) => (
     <h3
-      // TODO(tokens): no exact role for text-gray-800 #1f2937
-      className="my-4 text-xl font-semibold text-gray-800"
+      className="my-4 text-xl font-semibold text-foreground-emphasis"
       {...props}
     >
       {children}
     </h3>
   ),
   h4: ({ children, ...props }) => (
-    <h4
-      // TODO(tokens): no exact role for text-gray-700 #374151
-      className="my-3 text-lg font-medium text-gray-700"
-      {...props}
-    >
+    <h4 className="my-3 text-lg font-medium text-foreground-body" {...props}>
       {children}
     </h4>
   ),
   h5: ({ children, ...props }) => (
-    <h5
-      // TODO(tokens): no exact role for text-gray-700 #374151
-      className="my-2 text-base font-medium text-gray-700"
-      {...props}
-    >
+    <h5 className="my-2 text-base font-medium text-foreground-body" {...props}>
       {children}
     </h5>
   ),
   h6: ({ children, ...props }) => (
     <h6
-      // TODO(tokens): no exact role for text-gray-600 #4b5563
-      className="my-2 text-sm font-medium text-gray-600"
+      className="my-2 text-sm font-medium text-foreground-secondary"
       {...props}
     >
       {children}
     </h6>
   ),
   // Horizontal rule
-  hr: ({ ...props }) => (
-    <hr
-      // TODO(tokens): no exact role for border-gray-300 #d1d5db
-      className="my-6 border-gray-300"
-      {...props}
-    />
-  ),
+  hr: ({ ...props }) => <hr className="my-6 border-border-strong" {...props} />,
   // Strikethrough (GFM)
   del: ({ children, ...props }) => (
-    <del
-      // TODO(tokens): no exact role for text-gray-500 #6b7280
-      className="text-gray-500 line-through"
-      {...props}
-    >
+    <del className="text-foreground-tertiary line-through" {...props}>
       {children}
     </del>
   ),
@@ -409,7 +372,7 @@ const MARKDOWN_COMPONENTS: Components = {
     }
 
     return (
-      // eslint-disable-next-line @next/next/no-img-element
+      // eslint-disable-next-line @next/next/no-img-element -- remote URL from any host, which next/image would need configured
       <img
         src={src}
         alt={alt}
@@ -441,11 +404,7 @@ const MARKDOWN_COMPONENTS: Components = {
     }
 
     return (
-      <p
-        // TODO(tokens): no exact role for text-gray-700 #374151
-        className="my-3 leading-relaxed text-gray-700"
-        {...props}
-      >
+      <p className="my-3 leading-relaxed text-foreground-body" {...props}>
         {children}
       </p>
     );
@@ -461,7 +420,7 @@ function renderMarkdown(
   return (
     <div className="markdown-output">
       <ReactMarkdown
-        className="prose prose-sm max-w-none"
+        className="max-w-none"
         remarkPlugins={[
           remarkGfm, // GitHub Flavored Markdown (tables, task lists, strikethrough)
           [remarkMath, { singleDollarTextMath: true }], // Math support for LaTeX
