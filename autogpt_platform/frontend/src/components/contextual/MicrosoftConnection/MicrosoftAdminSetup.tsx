@@ -27,7 +27,7 @@ export function MicrosoftAdminSetup({ reason, onRetry }: Props) {
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4">
+    <section className="flex flex-col gap-3 rounded-lg border border-border-base p-4">
       <Text variant="body" role="status">
         {MICROSOFT_SETUP_MESSAGES[reason]}
       </Text>

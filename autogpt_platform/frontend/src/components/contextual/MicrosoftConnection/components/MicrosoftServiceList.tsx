@@ -30,7 +30,7 @@ export function MicrosoftServiceList({
   return (
     <ul
       aria-label="Microsoft services"
-      className="flex flex-col divide-y divide-zinc-100 rounded-lg border border-zinc-200"
+      className="flex flex-col divide-y divide-separator rounded-lg border border-border-base"
     >
       {check.capabilities.map((item) => (
         <li
