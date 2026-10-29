@@ -14,7 +14,7 @@ export interface SessionValidationResult {
 }
 
 export async function validateSession(
-  currentPath: string,
+  currentPath: string | null | undefined,
 ): Promise<SessionValidationResult> {
   return await Sentry.withServerActionInstrumentation(
     "validateSession",
