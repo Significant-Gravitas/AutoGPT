@@ -232,7 +232,7 @@ function DiscriminatedUnionField({
         >
           {schema.title || name}
         </Text>
-        <Text variant="small" className="mr-1 text-error">
+        <Text variant="small" tone="error" className="mr-1">
           {props.required ? "*" : null}
         </Text>
         {selector}

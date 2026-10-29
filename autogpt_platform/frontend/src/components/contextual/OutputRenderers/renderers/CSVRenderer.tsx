@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import React, { useMemo, useState } from "react";
 import {
   OutputRenderer,
@@ -137,9 +138,9 @@ function CSVTable({
                 >
                   {header}
                   {sortCol === i && (
-                    <span className="text-xs">
+                    <Text variant="small-tight" as="span" tone="inherit">
                       {sortAsc ? "\u25B2" : "\u25BC"}
-                    </span>
+                    </Text>
                   )}
                 </button>
               </th>

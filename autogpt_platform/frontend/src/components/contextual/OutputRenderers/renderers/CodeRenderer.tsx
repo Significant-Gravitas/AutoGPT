@@ -101,10 +101,7 @@ function PlainCodeLines({ code }: { code: string }) {
   return code.split("\n").map((line, index) => (
     <div key={`${index}-${line}`} className="grid grid-cols-[3rem_1fr] gap-4">
       <EditorLineNumber index={index} />
-      <span
-        // TODO(tokens): no exact role for text-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a fill
-        className="whitespace-pre font-mono text-sm text-zinc-100"
-      >
+      <span className="whitespace-pre font-mono text-sm text-separator">
         {line || " "}
       </span>
     </div>
@@ -173,14 +170,8 @@ function HighlightedCodeBlock({
   }, [code, supportedLanguage]);
 
   return (
-    <div
-      // TODO(tokens): no exact role for bg-[#020617]
-      className="overflow-hidden rounded-lg border border-action-hover bg-[#020617] shadow-sm"
-    >
-      <div
-        // TODO(tokens): no exact role for bg-[#111827]
-        className="flex items-center justify-between border-b border-action bg-[#111827] px-3 py-2"
-      >
+    <div className="overflow-hidden rounded-lg border border-action-hover bg-foreground-base shadow-sm">
+      <div className="flex items-center justify-between border-b border-action bg-action-hover px-3 py-2">
         <span className="truncate font-mono text-xs text-foreground-subtle">
           {filename || "code"}
         </span>

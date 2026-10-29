@@ -1,3 +1,4 @@
+/* oxlint-disable design-system/no-legacy-button-variant -- rectangular dialog buttons kept; the pill Button is a deferred visual change (5.7 item 2) */
 import { useEffect, useState } from "react";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Text } from "@/components/atoms/Text/Text";
@@ -121,10 +122,7 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
           {/* Timezone info */}
           {userTimezone === "not-set" ? (
             <div className="flex items-center gap-2 rounded-md border border-warning-border bg-warning-surface p-3">
-              <InfoIcon
-                // TODO(tokens): no exact role for text-amber-600 #d97706
-                className="h-4 w-4 text-amber-600"
-              />
+              <InfoIcon className="h-4 w-4 text-warning-foreground" />
               <Text variant="body-tight" tone="warning-strong">
                 No timezone set. Schedule will run in UTC.
                 <a href="/settings/account" className="ml-1 underline">
@@ -135,7 +133,7 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
           ) : (
             <div className="flex items-center gap-2 rounded-md bg-muted/50 p-3">
               <InfoIcon className="h-4 w-4 text-muted-foreground" />
-              <Text variant="body-tight" className="text-muted-foreground">
+              <Text variant="body-tight" tone="muted">
                 Schedule will run in your timezone:{" "}
                 <span className="font-medium">{timezoneDisplay}</span>
               </Text>
