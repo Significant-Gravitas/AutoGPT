@@ -38,7 +38,7 @@
     "defaults"
   ],
   "dependencies": {
-    "@ai-sdk/react": "3.0.61",
+    "@ai-sdk/react": "4.0.147",
     "@better-auth/core": "1.6.33",
     "@faker-js/faker": "10.6.0",
     "@ferrucc-io/emoji-picker": "0.1.2",
@@ -69,7 +69,7 @@
     "@rjsf/core": "6.1.2",
     "@rjsf/utils": "6.1.2",
     "@rjsf/validator-ajv8": "6.1.2",
-    "@sentry/nextjs": "10.27.0",
+    "@sentry/nextjs": "11.8.0",
     "@streamdown/cjk": "1.0.4",
     "@streamdown/math": "1.0.3",
     "@streamdown/mermaid": "1.0.3",
@@ -78,7 +78,7 @@
     "@types/jaro-winkler": "0.2.4",
     "@vercel/speed-insights": "1.2.0",
     "@xyflow/react": "12.12.0",
-    "ai": "6.0.134",
+    "ai": "7.0.143",
     "bcryptjs": "3.0.3",
     "better-auth": "1.6.33",
     "boring-avatars": "2.0.4",
@@ -132,7 +132,7 @@
     "tailwindcss-animate": "1.0.7",
     "twemoji": "14.0.2",
     "use-stick-to-bottom": "1.1.6",
-    "uuid": "11.1.1",
+    "uuid": "14.0.3",
     "vaul": "1.1.2",
     "zod": "3.25.76",
     "zustand": "5.0.15"

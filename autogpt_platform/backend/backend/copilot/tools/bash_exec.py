@@ -187,10 +187,11 @@ class BashExecTool(BaseTool):
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
             "Killed after `timeout` seconds. Anything that should persist belongs "
-            "in ~/workspace (a durable volume); other paths are scratch. The "
+            "in ~/workspace (a durable folder; the user's uploads are not in it, "
+            "see list_workspace_files); other paths are scratch. The "
             "desktop (start_desktop) is this same machine, all paths included. "
             "Expert sessions: ~/workspace is the expert's own machine, ~/shared "
-            "is the user's workspace."
+            "is the user's folder."
         )
 
     @property
