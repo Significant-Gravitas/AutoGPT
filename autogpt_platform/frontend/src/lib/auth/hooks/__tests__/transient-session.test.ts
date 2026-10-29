@@ -1,5 +1,6 @@
 import type BackendAPI from "@/lib/autogpt-server-api/client";
 import { getSystemHeaders, ImpersonationState } from "@/lib/impersonation";
+import { SessionKey } from "@/services/storage/session-storage";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { User } from "../../types";
@@ -19,6 +20,8 @@ vi.mock("@/lib/react-query/queryClient", () => ({
 vi.mock("@/services/analytics/reset-identity", () => ({
   resetAnalyticsIdentity: vi.fn(),
 }));
+const toast = vi.hoisted(() => vi.fn());
+vi.mock("@/components/molecules/Toast/use-toast", () => ({ toast }));
 
 import { useAuthStore } from "../useAuthStore";
 
@@ -132,5 +135,61 @@ describe("a session check that can't get an answer changes nothing", () => {
 
     expect(useAuthStore.getState().user).toBe(admin);
     expect(getSystemHeaders()).toEqual({ [ACT_AS]: "user-a" });
+  });
+});
+
+describe("a deploy skew the reload didn't fix", () => {
+  const reload = vi.fn();
+  const nativeReload = Object.getOwnPropertyDescriptor(
+    window.location,
+    "reload",
+  );
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    Object.defineProperty(window.location, "reload", {
+      configurable: true,
+      value: reload,
+    });
+  });
+
+  afterEach(() => {
+    if (nativeReload) {
+      Object.defineProperty(window.location, "reload", nativeReload);
+    }
+    vi.useRealTimers();
+  });
+
+  it("asks for a refresh rather than reloading again when the retries outlast the cooldown", async () => {
+    // This page is the one the skew reload loaded a moment ago.
+    sessionStorage.setItem(
+      SessionKey.DEPLOYMENT_RELOAD_AT,
+      String(Date.now() - 5_000),
+    );
+    // Retries run against the page the store last saw, as in the app.
+    useAuthStore.setState({
+      user: admin,
+      hasLoadedUser: true,
+      routerRef: makeRouter(),
+      currentPath: "/library",
+    });
+    actions.validateSession.mockRejectedValue(
+      Object.assign(new Error("Server Action was not found on the server."), {
+        name: "UnrecognizedActionError",
+      }),
+    );
+
+    await validate();
+    // Every retry of the backoff (1 + 2 + 4 + 8 + 16 + 30 s) meets the skew.
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    expect(actions.validateSession).toHaveBeenCalledTimes(7);
+    expect(reload).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "A new version of AutoGPT is available",
+      }),
+    );
+    expect(useAuthStore.getState().user).toBe(admin);
   });
 });

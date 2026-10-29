@@ -52,7 +52,7 @@ describe("reloading onto a new deployment", () => {
     );
   });
 
-  it("reloads again once the cooldown has passed", async () => {
+  it("reloads again for a later deployment", async () => {
     vi.useFakeTimers();
     const reload = vi.fn();
 
@@ -61,6 +61,21 @@ describe("reloading onto a new deployment", () => {
     await loadPageAndHitDeploySkew(reload);
 
     expect(reload).toHaveBeenCalledTimes(2);
+  });
+
+  it("never reloads again once a skew has come back on the reloaded page", async () => {
+    vi.useFakeTimers();
+    const reload = vi.fn();
+
+    await loadPageAndHitDeploySkew(reload);
+    // The reloaded page is rejected too, so reloading can't fix it...
+    expect(await loadPageAndHitDeploySkew(reload)).toBe(false);
+    // ...and a retry that comes in after the cooldown mustn't try again.
+    vi.advanceTimersByTime(61_000);
+    expect(await loadPageAndHitDeploySkew(reload)).toBe(false);
+
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalled();
   });
 
   it("never reloads when sessionStorage is blocked, since the guard can't survive one", async () => {

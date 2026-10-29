@@ -150,7 +150,7 @@ Every other failure leaves the user signed in:
 
 - **Auth backend unreachable** (database down, timeout): the action returns `isUnavailable: true`.
 - **Action call failed** (offline, aborted fetch, 5xx): the client keeps the current user and retries with backoff (1 s doubling to 30 s, six attempts). The next focus or `online` event also retries.
-- **Deploy skew** (the server no longer recognises this bundle's server action IDs after a deploy): the page reloads once to load the new deployment. Further reloads wait out a one-minute cooldown, so the tab can't loop.
+- **Deploy skew** (the server no longer recognises this bundle's server action IDs after a deploy): the page reloads once to load the new deployment. If the reloaded page is rejected too within a minute, reloading can't help, so the tab stops reloading and asks the user to refresh.
 
 ## Internal Architecture
 
