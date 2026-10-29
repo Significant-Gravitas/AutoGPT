@@ -285,9 +285,11 @@ class BashExecTool(BaseTool):
         # Pre-flight redirect: bash sandbox can't reach host-side SDK
         # tool-result paths. Without this the model burns turns retrying
         # `cat /root/.claude/projects/...` after `Permission denied`.
-        # Checks the command before any ``@@agptfile:`` expansion, so file
-        # content that merely mentions such a path still runs.
-        as_written = get_bash_command_as_written() or command
+        # Checks the command as written, minus its ``@@agptfile:`` refs, so
+        # neither a ref nor the file content it expands to trips the check.
+        as_written = get_bash_command_as_written()
+        if as_written is None:
+            as_written = command
         if looks_like_sdk_tool_result_path(as_written):
             return ErrorResponse(
                 message=sdk_tool_result_redirect_hint(as_written),

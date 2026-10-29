@@ -23,6 +23,7 @@ from pydantic import SecretStr
 
 from backend.copilot import integration_creds
 from backend.copilot.context import bash_command_as_written
+from backend.copilot.sdk.file_ref import strip_file_refs
 from backend.data.model import APIKeyCredentials
 
 from ._test_data import make_session
@@ -351,10 +352,23 @@ class TestBashExecSdkToolResultRedirect:
         sandbox.commands.run.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_no_redirect_on_sdk_path_inside_expanded_file(self):
-        """An ``@@agptfile:`` ref expanded to text that mentions the SDK
-        folder is data, not a file access: the check reads the command as
-        the model wrote it."""
+    @pytest.mark.parametrize(
+        "written",
+        [
+            "echo @@agptfile:/home/user/notes.md | wc -l",
+            # The route the redirect hint itself suggests.
+            (
+                "echo @@agptfile:/root/.claude/projects/-tmp-x/"
+                "0f8fad5b-d9cb-469f-a165-70867728950e/tool-results/"
+                "toolu_01.json[1-200] | wc -l"
+            ),
+            "@@agptfile:/root/.claude/projects/-tmp-x/a/tool-results/toolu_01.json",
+        ],
+    )
+    async def test_no_redirect_from_agptfile_ref_or_its_content(self, written):
+        """An ``@@agptfile:`` ref, and the text it expands to, are not a
+        sandbox file access: the check reads the command as the model wrote
+        it, minus its refs."""
         tool = _make_tool()
         session = make_session(user_id=_USER)
         sandbox = _make_sandbox(stdout="ok")
@@ -371,7 +385,7 @@ class TestBashExecSdkToolResultRedirect:
                 "backend.copilot.tools.bash_exec.get_github_user_git_identity",
                 new=AsyncMock(return_value=None),
             ),
-            bash_command_as_written("echo @@agptfile:/home/user/notes.md | wc -l"),
+            bash_command_as_written(strip_file_refs(written)),
         ):
             result = await tool._execute(
                 user_id=_USER,

@@ -98,6 +98,11 @@ class FileRef:
 # ---------------------------------------------------------------------------
 
 
+def strip_file_refs(text: str) -> str:
+    """Return *text* with every ``@@agptfile:`` reference cut out."""
+    return _FILE_REF_RE.sub(" ", text)
+
+
 def parse_file_ref(text: str) -> FileRef | None:
     """Return a :class:`FileRef` if *text* is a bare file reference token.
 

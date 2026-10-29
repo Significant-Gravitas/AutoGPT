@@ -331,10 +331,11 @@ _SDK_TOOL_RESULT_RE = re.compile(
 )
 
 
-# The bash_exec command as the model wrote it, set by the SDK tool adapter
-# before it expands ``@@agptfile:`` refs. The redirect check reads this so a
-# ``.claude/projects`` path that is only text inside an inlined file does not
-# block the command.
+# The bash_exec command as the model wrote it with its ``@@agptfile:`` refs
+# cut out, set by the SDK tool adapter before it expands them. The redirect
+# check reads this, so neither a ref to an SDK tool result (the route the
+# redirect itself suggests) nor a ``.claude/projects`` path that is only text
+# inside an inlined file blocks the command.
 _bash_command_as_written: ContextVar[str | None] = ContextVar(
     "_bash_command_as_written", default=None
 )
