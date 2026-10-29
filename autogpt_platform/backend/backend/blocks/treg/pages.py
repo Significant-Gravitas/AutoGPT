@@ -15,8 +15,9 @@ from ._base import TregBlockBase, TregRouted, TregRoutedInput, TregRoutedOutput,
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from ._test import mock_routed, routed_details
 
-# Where providers put a page's text, most useful first.
-PAGE_TEXT_KEYS = ("markdown", "content", "text", "raw_content", "html")
+# Where providers put a page's clean text, most useful first. A page with only
+# HTML has no clean text; its HTML stays in `pages`.
+PAGE_TEXT_KEYS = ("markdown", "content", "text", "raw_content")
 
 
 def page_text(routed: TregRouted) -> str | None:

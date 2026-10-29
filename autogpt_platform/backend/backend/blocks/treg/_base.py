@@ -27,7 +27,7 @@ MAX_COST_CEILING_USD = 25.0
 class TregInput(BlockSchemaInput):
     credentials: CredentialsMetaInput = treg.credentials_field(
         description=(
-            "Your Treg API key: a team agent token or dashboard API key from "
+            "Your Treg API key: a team token or dashboard API key from "
             "treg.to. Calls are paid from that team's Treg balance."
         )
     )

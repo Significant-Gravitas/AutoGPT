@@ -124,10 +124,12 @@ TEST_COMPANY_PAGE = {
 def linkedin_reference(reference: str) -> dict[str, str]:
     """A LinkedIn URL is sent as a URL, anything else as a handle."""
     reference = reference.strip()
-    candidate = reference if "://" in reference else f"https://{reference}"
-    host = (urlparse(candidate).hostname or "").lower()
+    parsed = urlparse(reference)
+    if not (parsed.scheme and parsed.netloc):
+        parsed = urlparse(f"https://{reference}")
+    host = (parsed.hostname or "").lower()
     if host == "linkedin.com" or host.endswith(".linkedin.com"):
-        return {"linkedin_url": reference}
+        return {"linkedin_url": parsed._replace(scheme=parsed.scheme.lower()).geturl()}
     return {"linkedin_handle": reference}
 
 

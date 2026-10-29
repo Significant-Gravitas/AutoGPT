@@ -52,14 +52,21 @@ def verify_header(verify: bool) -> dict[str, str]:
     return {"X-Treg-Route-Verify": "true"} if verify else {}
 
 
+def found_email(routed: TregRouted) -> str | None:
+    """The address a finder returned, if it is a non-empty string."""
+    email = routed.get("email")
+    return email if isinstance(email, str) and email.strip() else None
+
+
 def email_outputs(
     routed: TregRouted, extra: dict[str, type]
 ) -> Iterator[tuple[str, Any]]:
     """The found address, whether it is confirmed, and any extra fields."""
-    if not routed.get("email"):
+    email = found_email(routed)
+    if email is None:
         return
     verified, verdict = email_verification(routed)
-    yield "email", routed.get("email")
+    yield "email", email
     yield "verified", verified
     if verdict:
         yield "verification", verdict
@@ -157,7 +164,7 @@ class TregFindWorkEmailBlock(TregBlockBase):
             routed.output, {"first_name": str, "last_name": str}
         ):
             yield output
-        for output in self.route_details(routed, bool(routed.get("email"))):
+        for output in self.route_details(routed, found_email(routed) is not None):
             yield output
 
 
@@ -223,7 +230,7 @@ class TregFindPersonalEmailBlock(TregBlockBase):
         )
         for output in email_outputs(routed, {}):
             yield output
-        for output in self.route_details(routed, bool(routed.get("email"))):
+        for output in self.route_details(routed, found_email(routed) is not None):
             yield output
 
 

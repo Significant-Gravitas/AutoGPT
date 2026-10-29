@@ -16,7 +16,10 @@ from backend.blocks.treg.call_tool import TregCallToolBlock
 from backend.blocks.treg.catalog import TregGetToolBlock
 from backend.blocks.treg.emails import TregFindWorkEmailBlock
 from backend.blocks.treg.linkedin import linkedin_reference
-from backend.blocks.treg.pages import TregExtractStructuredDataBlock
+from backend.blocks.treg.pages import (
+    TregExtractStructuredDataBlock,
+    TregExtractWebPageBlock,
+)
 from backend.blocks.treg.people import TregSearchPeopleBlock
 from backend.blocks.treg.phone import TregFindPhoneNumberBlock
 from backend.blocks.treg.search import TregSearchSource, TregWebSearchBlock
@@ -358,7 +361,15 @@ PLATFORM_KEY = TEST_CREDENTIALS.model_copy(update={"id": PLATFORM_CREDENTIALS_ID
         ),
         (
             "linkedin.com/company/modal-labs",
-            {"linkedin_url": "linkedin.com/company/modal-labs"},
+            {"linkedin_url": "https://linkedin.com/company/modal-labs"},
+        ),
+        (
+            "linkedin.com/in/jane?ref=https://example.com",
+            {"linkedin_url": "https://linkedin.com/in/jane?ref=https://example.com"},
+        ),
+        (
+            "HTTPS://www.linkedin.com/in/jane",
+            {"linkedin_url": "https://www.linkedin.com/in/jane"},
         ),
         (" janedoe ", {"linkedin_handle": "janedoe"}),
         # Not LinkedIn, whatever its path says.
@@ -374,3 +385,22 @@ PLATFORM_KEY = TEST_CREDENTIALS.model_copy(update={"id": PLATFORM_CREDENTIALS_ID
 )
 def test_linkedin_reference_sends_only_linkedin_hosts_as_urls(reference, expected):
     assert linkedin_reference(reference) == expected
+
+
+@pytest.mark.asyncio
+async def test_an_email_that_is_not_a_string_is_not_found():
+    fake = FakeTreg(mock_routed({"email": {"value": "x"}}))
+    outputs = await run_block(
+        TregFindWorkEmailBlock(), fake, linkedin_url="https://linkedin.com/in/jane"
+    )
+    assert "email" not in outputs
+    assert outputs["found"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_page_with_only_html_has_no_content_output():
+    page = {"url": "https://a.co", "html": "<p>Hi</p>"}
+    fake = FakeTreg(mock_routed({"pages": [page]}))
+    outputs = await run_block(TregExtractWebPageBlock(), fake, url="https://a.co")
+    assert "content" not in outputs
+    assert outputs["pages"] == [page]

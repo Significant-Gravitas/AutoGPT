@@ -1,6 +1,6 @@
 # Treg Emails
 <!-- MANUAL: file_description -->
-Find and check email addresses through [Treg](https://treg.to), which routes each lookup across dozens of contact-data providers (Hunter, Apollo, LeadMagic and others) and bills per call with no provider signup. Needs a Treg API key: a team agent token or dashboard API key from treg.to (`TREG_API_KEY` for a platform key). Every paid call is billed by Treg from your team's prepaid balance at the provider's price, and the block reports the charge as `cost_usd`. On a platform-provided key the run is charged in credits from that same amount; on your own Treg key it is free on the platform.
+Find and check email addresses through [Treg](https://treg.to), which routes each lookup across dozens of contact-data providers (Hunter, Apollo, LeadMagic and others) and bills per call with no provider signup. Needs a Treg API key: a team token or dashboard API key from treg.to (`TREG_API_KEY` for a platform key). Every paid call is billed by Treg from your team's prepaid balance at the provider's price, and the block reports the charge as `cost_usd`. On a platform-provided key the run is charged in credits from that same amount; on your own Treg key it is free on the platform.
 <!-- END MANUAL -->
 
 ## Treg Find Personal Email
