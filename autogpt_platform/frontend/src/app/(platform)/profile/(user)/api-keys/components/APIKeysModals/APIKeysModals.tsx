@@ -8,6 +8,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/molecules/Dialog/components/DialogPrimitives";
+// oxlint-disable-next-line design-system/hugeicons-only -- glyph swap is P11's
 import { LuCopy } from "react-icons/lu";
 import { Label } from "@/components/atoms/Label/Label";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
@@ -35,7 +36,9 @@ export const APIKeysModals = () => {
     <div className="mb-4 flex justify-end">
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogTrigger asChild>
-          <Button variant="legacy-default">Create Key</Button>
+          <Button variant="compact-primary" size="compact">
+            Create Key
+          </Button>
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
@@ -102,13 +105,15 @@ export const APIKeysModals = () => {
           </div>
           <DialogFooter>
             <Button
-              variant="legacy-outline"
+              variant="compact-outline"
+              size="compact"
               onClick={() => setIsCreateOpen(false)}
             >
               Cancel
             </Button>
             <Button
-              variant="legacy-default"
+              variant="compact-primary"
+              size="compact"
               onClick={handleCreateKey}
               disabled={isCreating}
             >
@@ -128,17 +133,14 @@ export const APIKeysModals = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center space-x-2">
-            <Text
-              variant="body-mono-tight"
-              as="code"
-              tone="inherit"
-              className="ph-no-capture flex-1 rounded-md bg-secondary p-2"
-            >
-              {keyState.newApiKey}
-            </Text>
+            <div className="ph-no-capture flex flex-1 rounded-md bg-secondary p-2">
+              <Text variant="body-mono-tight" as="code" tone="inherit">
+                {keyState.newApiKey}
+              </Text>
+            </div>
             <Button
-              size="legacy-icon"
-              variant="legacy-outline"
+              size="compact-icon"
+              variant="compact-outline"
               onClick={handleCopyKey}
             >
               <LuCopy className="h-4 w-4" />
@@ -146,7 +148,8 @@ export const APIKeysModals = () => {
           </div>
           <DialogFooter>
             <Button
-              variant="legacy-default"
+              variant="compact-primary"
+              size="compact"
               onClick={() => setIsKeyDialogOpen(false)}
             >
               Close
