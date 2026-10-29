@@ -86,7 +86,6 @@ export function SelectedRunActions({
           aria-label="Stop task"
           onClick={handleStopRun}
           disabled={isStopping}
-          // TODO(tokens): no exact role for hover:border-red-800 (#832525), hover:bg-red-800 (#832525)
           className="border-error-hover bg-error-hover text-action-foreground hover:border-red-800 hover:bg-red-800"
         >
           <Icon icon={StopIcon} size={18} />

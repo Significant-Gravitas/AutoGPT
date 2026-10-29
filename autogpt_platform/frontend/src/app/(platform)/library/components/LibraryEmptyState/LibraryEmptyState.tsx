@@ -132,7 +132,6 @@ function Card({ x, y, width }: CardProps) {
   const padding = 16;
   const dotRadius = 8;
 
-  // TODO(tokens): no fitting role for the skeleton fills #E4E4E7; #E4E4E7 is border, a border colour
   return (
     <g>
       <rect

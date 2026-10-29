@@ -70,7 +70,7 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
                     // the legacy label's error dark: class, moved verbatim; DS6 (SECRT-3116) deletes it
                     className={cn(
                       "peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
-                      fieldState.error && "dark:text-red-900",
+                      fieldState.error && "",
                     )}
                   >
                     <Text
@@ -98,11 +98,7 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
                       ))}
                     </SelectContent>
                   </Select>
-                  <FormMessage
-                    // TODO(tokens): SECRT-3152 rare size: text-[0.8rem].
-                    // dark:text-red-900: the legacy FormMessage's, moved verbatim (DS6, SECRT-3116)
-                    className="text-[0.8rem] leading-inherit dark:text-red-900"
-                  />
+                  <FormMessage className="text-[0.8rem] leading-inherit" />
                 </FormItem>
               )}
             />

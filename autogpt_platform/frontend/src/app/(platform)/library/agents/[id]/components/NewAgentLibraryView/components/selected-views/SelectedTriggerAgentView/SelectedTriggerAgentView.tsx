@@ -106,8 +106,7 @@ export function SelectedTriggerAgentView({
                   {schedule.graph_version !== triggerAgent.graph_version && (
                     <Text
                       variant="small"
-                      // TODO(tokens): no exact role for !text-amber-800 (#92400E)
-                      className="rounded-md bg-warning-surface px-3 py-2 !text-amber-800"
+                      className="rounded-md bg-warning-surface px-3 py-2 !text-warning-foreground"
                     >
                       This schedule is running version {schedule.graph_version}{" "}
                       of the trigger workflow, but the latest version is{" "}

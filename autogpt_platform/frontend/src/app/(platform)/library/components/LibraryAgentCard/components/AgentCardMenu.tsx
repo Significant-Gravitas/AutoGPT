@@ -155,15 +155,13 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            // TODO(tokens): no exact role for hover:bg-neutral-100 (#F5F5F5)
-            className="absolute right-2 top-1 rounded p-1.5 transition-opacity hover:bg-neutral-100"
+            className="absolute right-2 top-1 rounded p-1.5 transition-opacity hover:bg-surface-hover"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
             <Icon
               icon={MoreHorizontalIcon}
-              // TODO(tokens): no exact role for text-neutral-600 (#525252)
-              className="h-5 w-5 text-neutral-600"
+              className="h-5 w-5 text-foreground-secondary"
             />
           </button>
         </DropdownMenuTrigger>
@@ -225,8 +223,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
               e.stopPropagation();
               setShowDeleteDialog(true);
             }}
-            // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover, a hover fill; no fitting role for focus:text-red-600 #D93636
-            className="flex items-center gap-2 text-red-600 focus:bg-error-surface focus:text-red-600"
+            className="flex items-center gap-2 text-error-foreground focus:bg-error-surface focus:text-error-foreground"
           >
             Delete workflow
           </DropdownMenuItem>

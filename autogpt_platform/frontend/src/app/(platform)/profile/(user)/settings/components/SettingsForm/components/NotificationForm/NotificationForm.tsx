@@ -40,11 +40,7 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
       <Text variant="h3" size="large-semibold">
         Notifications
       </Text>
-      <Text
-        // TODO(tokens): no exact role (text-slate-400 #8A97A8)
-        variant="body"
-        className="mt-2 text-slate-400"
-      >
+      <Text variant="body" className="mt-2 text-foreground-subtle">
         Billing and account messages are always sent — they are about your
         account, not a promotion.
       </Text>

@@ -28,8 +28,7 @@ export function CostsBreakdown({ agents }: Props) {
         size="small"
         onClick={() => setIsExpanded((prev) => !prev)}
         aria-expanded={isExpanded}
-        // TODO(tokens): no exact role for text-neutral-800 (#262626)
-        className="w-fit gap-1 px-0 text-neutral-800 hover:bg-transparent"
+        className="w-fit gap-1 px-0 text-foreground-emphasis hover:bg-transparent"
       >
         {isExpanded ? "Hide costs breakdown" : "See costs breakdown"}
         <Icon
@@ -69,11 +68,7 @@ function ExpandedBody({
 }: ExpandedBodyProps) {
   if (isError) {
     return (
-      <Text
-        // TODO(tokens): no exact role for text-neutral-500 (#737373)
-        variant="body"
-        className="text-neutral-500"
-      >
+      <Text variant="body" className="text-foreground-tertiary">
         Couldn&apos;t load cost breakdown.
       </Text>
     );
@@ -93,11 +88,7 @@ function ExpandedBody({
 
   if (!hasAnySpend) {
     return (
-      <Text
-        // TODO(tokens): no exact role for text-neutral-500 (#737373)
-        variant="body"
-        className="text-neutral-500"
-      >
+      <Text variant="body" className="text-foreground-tertiary">
         No spend this month yet.
       </Text>
     );
@@ -113,11 +104,7 @@ function ExpandedBody({
 
   return (
     <>
-      <Text
-        // TODO(tokens): no exact role for text-neutral-500 (#737373)
-        variant="small"
-        className="text-neutral-500"
-      >
+      <Text variant="small" className="text-foreground-tertiary">
         Calendar month so far · {formatMonthRangeLabel()}
       </Text>
       <StatRow
@@ -179,21 +166,15 @@ function StatRow({ items }: { items: StatItem[] }) {
           key={item.label}
           className="flex flex-col gap-0.5 rounded-medium border border-separator bg-surface p-3"
         >
-          <Text
-            // TODO(tokens): no exact role for text-neutral-500 (#737373)
-            variant="small"
-            className="text-neutral-500"
-          >
+          <Text variant="small" className="text-foreground-tertiary">
             {item.label}
           </Text>
           <Text
             variant="body-medium"
             className={
               item.tone === "warn"
-                ? // TODO(tokens): no exact role for text-orange-600 (#E77B00)
-                  "tabular-nums text-orange-600"
-                : // TODO(tokens): no exact role for text-neutral-800 (#262626)
-                  "tabular-nums text-neutral-800"
+                ? "tabular-nums text-orange-600"
+                : "tabular-nums text-foreground-emphasis"
             }
           >
             {item.value}

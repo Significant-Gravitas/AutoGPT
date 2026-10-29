@@ -27,10 +27,7 @@ export function TriggerListItem({
   return (
     <SidebarItemCard
       icon={
-        <IconWrapper
-          // TODO(tokens): no exact role for border-purple-50 (#F1EBFE), bg-purple-50 (#F1EBFE)
-          className="border-purple-50 bg-purple-50"
-        >
+        <IconWrapper className="border-accent-surface bg-accent-surface">
           <Icon icon={FlashIcon} size={16} className="text-foreground-body" />
         </IconWrapper>
       }

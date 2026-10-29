@@ -28,18 +28,10 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
   return (
     <section className="flex flex-col gap-2 lg:mt-[1rem]">
       <div className="flex items-baseline justify-between gap-2 lg:mb-[.5rem]">
-        <Text
-          // TODO(tokens): no exact role for text-neutral-800 (#262626)
-          variant="body-medium"
-          className="text-neutral-800"
-        >
+        <Text variant="body-medium" className="text-foreground-emphasis">
           Spend by workflow
         </Text>
-        <Text
-          // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-          variant="small"
-          className="text-neutral-400"
-        >
+        <Text variant="small" className="text-foreground-subtle">
           % of monthly spend
         </Text>
       </div>
@@ -61,23 +53,20 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
             <div className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between gap-3">
                 <Text
-                  // TODO(tokens): no exact role for text-neutral-800 (#262626)
                   variant="body"
-                  className="truncate text-neutral-800"
+                  className="truncate text-foreground-emphasis"
                 >
                   {label}
                 </Text>
                 <Text
                   variant="body-medium"
-                  // TODO(tokens): no exact role for text-neutral-800 (#262626)
-                  className="tabular-nums text-neutral-800"
+                  className="tabular-nums text-foreground-emphasis"
                 >
                   {formatCents(rollup.cost_cents)}
                   <Text
                     variant="small"
                     as="span"
-                    // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-                    className="ml-2 text-neutral-400"
+                    className="ml-2 text-foreground-subtle"
                   >
                     {rollup.run_count} run{rollup.run_count === 1 ? "" : "s"}
                     {avgPerRun > 0 &&
@@ -95,8 +84,7 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
                 </div>
                 <Text
                   variant="small"
-                  // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-                  className="w-9 shrink-0 text-right tabular-nums text-neutral-400"
+                  className="w-9 shrink-0 text-right tabular-nums text-foreground-subtle"
                 >
                   {shareLabel}
                 </Text>

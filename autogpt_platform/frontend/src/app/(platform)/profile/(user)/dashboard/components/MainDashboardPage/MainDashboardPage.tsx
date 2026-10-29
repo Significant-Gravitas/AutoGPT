@@ -38,8 +38,7 @@ export const MainDashboardPage = () => {
             <Text
               variant="h2"
               size="large-medium"
-              // TODO(tokens): no exact role (text-neutral-900 #171717, dark:text-neutral-100)
-              className="text-neutral-900 dark:text-neutral-100"
+              className="text-foreground-strong"
             >
               Submit a New Workflow
             </Text>
@@ -71,8 +70,7 @@ export const MainDashboardPage = () => {
         <Text
           variant="h2"
           size="large-medium"
-          // TODO(tokens): no exact role (text-neutral-900 #171717, dark:text-neutral-100)
-          className="mb-4 text-neutral-900 dark:text-neutral-100"
+          className="mb-4 text-foreground-strong"
         >
           Your uploaded workflows
         </Text>

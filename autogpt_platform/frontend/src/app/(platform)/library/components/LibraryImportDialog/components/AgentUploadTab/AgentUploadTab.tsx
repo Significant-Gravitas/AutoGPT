@@ -20,10 +20,7 @@ type AgentUploadTabProps = {
 export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
   return (
     <TabsLineContent value="agent">
-      <p
-        // TODO(tokens): no exact role for text-neutral-500 (#737373)
-        className="mb-4 text-sm text-neutral-500"
-      >
+      <p className="mb-4 text-sm text-foreground-tertiary">
         Upload a previously exported AutoGPT workflow file (.json).
       </p>
       <Form

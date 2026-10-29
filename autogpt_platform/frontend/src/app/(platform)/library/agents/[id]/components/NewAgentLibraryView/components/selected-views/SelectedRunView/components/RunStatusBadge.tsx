@@ -33,21 +33,18 @@ const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
     textColor: "!text-error-foreground",
   },
   QUEUED: {
-    // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
     icon: <Icon icon={Clock01Icon} size={16} className="text-yellow-700" />,
-    bgColor: "bg-yellow-50",
+    bgColor: "bg-warning-surface",
     textColor: "!text-yellow-700",
   },
   RUNNING: {
-    // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
     icon: <Icon icon={PauseCircleIcon} size={16} className="text-yellow-700" />,
-    bgColor: "bg-yellow-50",
+    bgColor: "bg-warning-surface",
     textColor: "!text-yellow-700",
   },
   REVIEW: {
-    // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
     icon: <Icon icon={Alert01Icon} size={16} className="text-yellow-700" />,
-    bgColor: "bg-yellow-50",
+    bgColor: "bg-warning-surface",
     textColor: "!text-yellow-700",
   },
   COMPLETED: {
@@ -62,10 +59,11 @@ const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
     textColor: "!text-success-foreground",
   },
   TERMINATED: {
-    // TODO(tokens): no exact role for text-slate-700 (#475263)
-    icon: <Icon icon={StopCircleIcon} size={16} className="text-slate-700" />,
-    bgColor: "bg-slate-50",
-    textColor: "!text-slate-700",
+    icon: (
+      <Icon icon={StopCircleIcon} size={16} className="text-foreground-body" />
+    ),
+    bgColor: "bg-surface-muted",
+    textColor: "!text-foreground-body",
   },
   FAILED: {
     icon: (

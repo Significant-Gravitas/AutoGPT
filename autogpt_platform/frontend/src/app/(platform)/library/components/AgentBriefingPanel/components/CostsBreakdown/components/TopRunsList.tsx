@@ -25,9 +25,8 @@ export function TopRunsList({ runs, agentLookup }: Props) {
   return (
     <section className="flex flex-col gap-2 lg:mt-[1rem]">
       <Text
-        // TODO(tokens): no exact role for text-neutral-800 (#262626)
         variant="body-medium"
-        className="text-neutral-800 lg:mb-[.5rem]"
+        className="text-foreground-emphasis lg:mb-[.5rem]"
       >
         Most expensive tasks
       </Text>
@@ -43,17 +42,12 @@ export function TopRunsList({ runs, agentLookup }: Props) {
             <div className="flex items-center justify-between gap-3 px-3 py-2">
               <div className="min-w-0 flex-1">
                 <Text
-                  // TODO(tokens): no exact role for text-neutral-800 (#262626)
                   variant="body"
-                  className="truncate text-neutral-800"
+                  className="truncate text-foreground-emphasis"
                 >
                   {label}
                 </Text>
-                <Text
-                  // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-                  variant="small"
-                  className="text-neutral-400"
-                >
+                <Text variant="small" className="text-foreground-subtle">
                   {formatRelativeDate(run.started_at)}
                   {run.node_error_count > 0
                     ? ` · ${run.node_error_count} error${run.node_error_count === 1 ? "" : "s"}`
@@ -62,8 +56,7 @@ export function TopRunsList({ runs, agentLookup }: Props) {
               </div>
               <Text
                 variant="body-medium"
-                // TODO(tokens): no exact role for text-neutral-800 (#262626)
-                className="tabular-nums text-neutral-800"
+                className="tabular-nums text-foreground-emphasis"
               >
                 {formatCents(run.cost_cents)}
               </Text>

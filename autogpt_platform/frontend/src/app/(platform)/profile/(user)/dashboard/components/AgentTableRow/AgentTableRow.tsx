@@ -67,8 +67,7 @@ export const AgentTableRow = ({
       data-testid="agent-table-row"
       data-agent-id={graph_id}
       data-submission-id={listing_version_id}
-      // TODO(tokens): no exact role (border-neutral-300 #D4D4D4, dark:border-neutral-700, dark:hover:bg-neutral-800)
-      className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-background dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex"
+      className="hidden items-center border-b border-border-strong px-4 py-4 hover:bg-background md:flex"
     >
       <div className="grid w-full grid-cols-[minmax(400px,1fr)_180px_140px_100px_100px_40px] items-center gap-4">
         {/* Agent info column */}
@@ -96,8 +95,7 @@ export const AgentTableRow = ({
             <div className="flex items-center gap-2">
               <Text
                 variant="h3"
-                // TODO(tokens): no exact role (text-neutral-800 #262626, dark:text-neutral-200)
-                className="line-clamp-1 text-ellipsis text-neutral-800 dark:text-neutral-200"
+                className="line-clamp-1 text-ellipsis text-foreground-emphasis"
                 size="large-medium"
               >
                 {agentName}
@@ -105,16 +103,14 @@ export const AgentTableRow = ({
               <Text
                 variant="body"
                 size="small"
-                // TODO(tokens): no exact role (text-neutral-500 #737373, dark:text-neutral-400)
-                className="text-neutral-500 dark:text-neutral-400"
+                className="text-foreground-tertiary"
               >
                 v{graph_version}
               </Text>
             </div>
             <Text
               variant="body"
-              // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
-              className="line-clamp-1 text-ellipsis text-neutral-600 dark:text-neutral-400"
+              className="line-clamp-1 text-ellipsis text-foreground-secondary"
             >
               {description}
             </Text>
@@ -122,10 +118,7 @@ export const AgentTableRow = ({
         </div>
 
         {/* Date column */}
-        <div
-          // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
-          className="text-sm text-neutral-600 dark:text-neutral-400"
-        >
+        <div className="text-sm text-foreground-secondary">
           {submitted_at && submitted_at.toLocaleDateString()}
         </div>
 
@@ -135,10 +128,7 @@ export const AgentTableRow = ({
         </div>
 
         {/* Runs column */}
-        <div
-          // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
-          className="text-right text-sm text-neutral-600 dark:text-neutral-400"
-        >
+        <div className="text-right text-sm text-foreground-secondary">
           {run_count?.toLocaleString() ?? "0"}
         </div>
 
@@ -152,10 +142,7 @@ export const AgentTableRow = ({
               <Icon icon={StarIcon} className="h-2 w-2" />
             </div>
           ) : (
-            <span
-              // TODO(tokens): no exact role (text-neutral-600 #525252, dark:text-neutral-400)
-              className="text-sm text-neutral-600 dark:text-neutral-400"
-            >
+            <span className="text-sm text-foreground-secondary">
               No reviews
             </span>
           )}
@@ -167,73 +154,39 @@ export const AgentTableRow = ({
             <DropdownMenu.Trigger data-testid="agent-table-row-actions">
               <Icon
                 icon={MoreVerticalIcon}
-                // TODO(tokens): no exact role (text-neutral-800 #262626)
-                className="h-5 w-5 text-neutral-800"
+                className="h-5 w-5 text-foreground-emphasis"
               />
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content
-              // TODO(tokens): no exact role (dark:bg-gray-800)
-              className="z-10 rounded-xl border bg-surface p-1 shadow-md dark:bg-gray-800"
-            >
+            <DropdownMenu.Content className="z-10 rounded-xl border bg-surface p-1 shadow-md">
               {canModify ? (
                 <DropdownMenu.Item
                   onSelect={handleEdit}
-                  // TODO(tokens): no exact role (hover:bg-gray-100 #F3F4F6, dark:hover:bg-gray-700)
-                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-surface-hover"
                 >
-                  <Icon
-                    icon={PencilIcon}
-                    // TODO(tokens): no exact role (dark:text-gray-100)
-                    className="mr-2 h-4 w-4 dark:text-gray-100"
-                  />
-                  <span
-                    // TODO(tokens): no exact role (dark:text-gray-100)
-                    className="dark:text-gray-100"
-                  >
-                    Edit
-                  </span>
+                  <Icon icon={PencilIcon} className="mr-2 h-4 w-4" />
+                  <span className="">Edit</span>
                 </DropdownMenu.Item>
               ) : (
                 <DropdownMenu.Item
                   onSelect={handleView}
-                  // TODO(tokens): no exact role (hover:bg-gray-100 #F3F4F6, dark:hover:bg-gray-700)
-                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-surface-hover"
                 >
-                  <Icon
-                    icon={EyeIcon}
-                    // TODO(tokens): no exact role (dark:text-gray-100)
-                    className="mr-2 h-4 w-4 dark:text-gray-100"
-                  />
-                  <span
-                    // TODO(tokens): no exact role (dark:text-gray-100)
-                    className="dark:text-gray-100"
-                  >
-                    View
-                  </span>
+                  <Icon icon={EyeIcon} className="mr-2 h-4 w-4" />
+                  <span className="">View</span>
                 </DropdownMenu.Item>
               )}
               {canModify && (
                 <>
-                  <DropdownMenu.Separator
-                    // TODO(tokens): no exact role (bg-gray-300 #D1D5DB, dark:bg-gray-600)
-                    className="my-1 h-px bg-gray-300 dark:bg-gray-600"
-                  />
+                  <DropdownMenu.Separator className="my-1 h-px bg-gray-300" />
                   <DropdownMenu.Item
                     onSelect={handleDelete}
-                    // TODO(tokens): no exact role (hover:bg-gray-100 #F3F4F6, dark:hover:bg-gray-700)
-                    className="flex cursor-pointer items-center rounded-md px-3 py-2 text-error hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="flex cursor-pointer items-center rounded-md px-3 py-2 text-error hover:bg-surface-hover"
                   >
                     <Icon
                       icon={Delete02Icon}
-                      // TODO(tokens): no exact role (dark:text-red-400)
-                      className="mr-2 h-4 w-4 text-error dark:text-red-400"
+                      className="mr-2 h-4 w-4 text-error"
                     />
-                    <span
-                      // TODO(tokens): no exact role (dark:text-red-400)
-                      className="dark:text-red-400"
-                    >
-                      Delete
-                    </span>
+                    <span className="">Delete</span>
                   </DropdownMenu.Item>
                 </>
               )}

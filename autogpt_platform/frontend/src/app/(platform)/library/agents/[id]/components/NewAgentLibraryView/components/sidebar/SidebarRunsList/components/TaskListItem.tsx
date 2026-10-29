@@ -36,42 +36,18 @@ const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
     </IconWrapper>
   ),
   QUEUED: (
-    <IconWrapper
-      // TODO(tokens): no exact role for border-yellow-50 (#FEF9E6), bg-yellow-50 (#FEF9E6)
-      className="border-yellow-50 bg-yellow-50"
-    >
-      <Icon
-        // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
-        icon={Clock01Icon}
-        size={16}
-        className="text-yellow-700"
-      />
+    <IconWrapper className="border-warning-surface bg-warning-surface">
+      <Icon icon={Clock01Icon} size={16} className="text-yellow-700" />
     </IconWrapper>
   ),
   RUNNING: (
-    <IconWrapper
-      // TODO(tokens): no exact role for border-yellow-50 (#FEF9E6), bg-yellow-50 (#FEF9E6)
-      className="border-yellow-50 bg-yellow-50"
-    >
-      <Icon
-        // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
-        icon={PauseCircleIcon}
-        size={16}
-        className="text-yellow-700"
-      />
+    <IconWrapper className="border-warning-surface bg-warning-surface">
+      <Icon icon={PauseCircleIcon} size={16} className="text-yellow-700" />
     </IconWrapper>
   ),
   REVIEW: (
-    <IconWrapper
-      // TODO(tokens): no exact role for border-yellow-50 (#FEF9E6), bg-yellow-50 (#FEF9E6)
-      className="border-yellow-50 bg-yellow-50"
-    >
-      <Icon
-        // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
-        icon={PauseCircleIcon}
-        size={16}
-        className="text-yellow-700"
-      />
+    <IconWrapper className="border-warning-surface bg-warning-surface">
+      <Icon icon={PauseCircleIcon} size={16} className="text-yellow-700" />
     </IconWrapper>
   ),
   COMPLETED: (
@@ -84,16 +60,8 @@ const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
     </IconWrapper>
   ),
   TERMINATED: (
-    <IconWrapper
-      // TODO(tokens): no exact role for border-slate-50 (#F7F8F9), bg-slate-50 (#F7F8F9)
-      className="border-slate-50 bg-slate-50"
-    >
-      <Icon
-        // TODO(tokens): no exact role for text-slate-700 (#475263)
-        icon={StopCircleIcon}
-        size={16}
-        className="text-slate-700"
-      />
+    <IconWrapper className="border-slate-50 bg-surface-muted">
+      <Icon icon={StopCircleIcon} size={16} className="text-foreground-body" />
     </IconWrapper>
   ),
   FAILED: (

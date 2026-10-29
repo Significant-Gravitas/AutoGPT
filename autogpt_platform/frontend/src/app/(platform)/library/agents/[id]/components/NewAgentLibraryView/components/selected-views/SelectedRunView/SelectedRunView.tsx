@@ -178,10 +178,7 @@ export function SelectedRunView({
                   <div className="scroll-mt-4">
                     <RunDetailCard title="Output">
                       {isLoading ? (
-                        <div
-                          // TODO(tokens): no exact role for text-neutral-500 (#737373)
-                          className="text-neutral-500"
-                        >
+                        <div className="text-foreground-tertiary">
                           <LoadingSpinner />
                         </div>
                       ) : run && "outputs" in run ? (
@@ -191,9 +188,8 @@ export function SelectedRunView({
                         />
                       ) : (
                         <Text
-                          // TODO(tokens): no exact role for text-neutral-600 (#525252)
                           variant="body"
-                          className="text-neutral-600"
+                          className="text-foreground-secondary"
                         >
                           No output from this run.
                         </Text>

@@ -60,7 +60,6 @@ export function CopilotLibrarySummary() {
       {showFollowups ? (
         <Link
           href="/library/followups"
-          // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
           className="text-sm text-yellow-700 hover:underline"
           data-testid="copilot-library-followups-link"
         >

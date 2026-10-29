@@ -22,38 +22,26 @@ export function RunSummary({ run }: Props) {
 
   return (
     <div className="space-y-4">
-      <p
-        // TODO(tokens): no exact role for text-neutral-700 (#404040)
-        className="text-sm leading-relaxed text-neutral-700"
-      >
+      <p className="text-sm leading-relaxed text-foreground-body">
         {run.stats.activity_status}
       </p>
 
       {typeof correctnessScore === "number" && (
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <span
-              // TODO(tokens): no exact role for text-neutral-600 (#525252)
-              className="text-sm font-medium text-neutral-600"
-            >
+            <span className="text-sm font-medium text-foreground-secondary">
               Success Estimate:
             </span>
             <div className="flex items-center gap-2">
-              <div
-                // TODO(tokens): no exact role for bg-neutral-200 (#E5E5E5)
-                className="relative h-2 w-16 overflow-hidden rounded-full bg-neutral-200"
-              >
+              <div className="relative h-2 w-16 overflow-hidden rounded-full bg-surface-active">
                 <div
                   className={`h-full transition-all ${
                     correctnessScore >= 0.8
-                      ? // TODO(tokens): no exact role for bg-green-500 (#16A34A)
-                        "bg-green-500"
+                      ? "bg-success"
                       : correctnessScore >= 0.6
-                        ? // TODO(tokens): no exact role for bg-yellow-500 (#F5C000)
-                          "bg-yellow-500"
+                        ? "bg-yellow-500"
                         : correctnessScore >= 0.4
-                          ? // TODO(tokens): no exact role for bg-orange-500 (#FE8700)
-                            "bg-orange-500"
+                          ? "bg-orange-500"
                           : "bg-error"
                   }`}
                   style={{
@@ -72,8 +60,7 @@ export function RunSummary({ run }: Props) {
                 <Icon
                   icon={CircleAlertGlyph}
                   aria-label="Icon"
-                  // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3), hover:text-neutral-600 (#525252)
-                  className="size-4 cursor-help text-neutral-400 hover:text-neutral-600"
+                  className="size-4 cursor-help text-foreground-subtle hover:text-foreground-secondary"
                 />
               </TooltipTrigger>
               <TooltipContent>

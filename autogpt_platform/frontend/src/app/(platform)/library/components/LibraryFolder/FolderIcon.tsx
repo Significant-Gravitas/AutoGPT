@@ -53,16 +53,16 @@ const colorMap: Record<
   }
 > = {
   blue: {
-    bg: "bg-blue-300",
-    border: "border-blue-300",
-    borderLight: "border-blue-200",
+    bg: "bg-info/50",
+    border: "border-info/50",
+    borderLight: "border-info/30",
     fill: "fill-blue-300",
-    stroke: "stroke-blue-400",
+    stroke: "stroke-info",
   },
   purple: {
-    bg: "bg-purple-200",
-    border: "border-purple-200",
-    borderLight: "border-purple-200",
+    bg: "bg-brand/30",
+    border: "border-brand/30",
+    borderLight: "border-brand/30",
     fill: "fill-purple-200",
     stroke: "stroke-purple-400",
   },
@@ -95,18 +95,18 @@ export const folderCardStyles: Record<
 > = {
   blue: {
     bg: "bg-info-surface",
-    border: "border-blue-200",
+    border: "border-info/30",
     buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-blue-200",
+    buttonHover: "hover:bg-info/30",
   },
   purple: {
-    bg: "bg-purple-50",
-    border: "border-purple-200",
+    bg: "bg-accent-surface",
+    border: "border-brand/30",
     buttonBase: "border-zinc-600 text-foreground-base ",
-    buttonHover: "hover:bg-purple-200",
+    buttonHover: "hover:bg-brand/30",
   },
   emerald: {
-    bg: "bg-emerald-50",
+    bg: "bg-success-surface",
     border: "border-emerald-200",
     buttonBase: "border-zinc-600 text-foreground-base",
     buttonHover: "hover:bg-emerald-200",
@@ -245,14 +245,8 @@ function Page({ color = "blue" }: PageProps) {
         </Text>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex gap-2">
-            <div
-              // TODO(tokens): no exact role for bg-neutral-100 (#F5F5F5)
-              className="h-1.5 flex-1 rounded-full bg-neutral-100"
-            />
-            <div
-              // TODO(tokens): no exact role for bg-neutral-100 (#F5F5F5)
-              className="h-1.5 flex-1 rounded-full bg-neutral-100"
-            />
+            <div className="h-1.5 flex-1 rounded-full bg-surface-hover" />
+            <div className="h-1.5 flex-1 rounded-full bg-surface-hover" />
           </div>
         ))}
       </div>

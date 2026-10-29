@@ -49,11 +49,11 @@ const PRIORITY_CONFIG: Record<
   stale: {
     icon: ClockFadingIcon,
     color: "text-yellow-600",
-    bg: "bg-yellow-50",
+    bg: "bg-warning-surface",
   },
   warning: {
     icon: Alert02Icon,
-    color: "text-amber-600",
+    color: "text-warning-foreground",
     bg: "bg-warning-surface",
   },
   success: {
@@ -64,12 +64,12 @@ const PRIORITY_CONFIG: Record<
   listening: {
     icon: EarIcon,
     color: "text-brand",
-    bg: "bg-purple-50",
+    bg: "bg-accent-surface",
   },
   scheduled: {
     icon: Calendar03Icon,
     color: "text-yellow-600",
-    bg: "bg-yellow-50",
+    bg: "bg-warning-surface",
   },
   idle: {
     icon: MoonIcon,
@@ -111,10 +111,7 @@ export function SitrepItem({ item }: Props) {
             )}
           >
             {config.cssSpinner ? (
-              <div
-                // TODO(tokens): no token for the ring spinner's gradient and mask (#0000, #000)
-                className="aspect-square h-[21px] w-[21px] animate-spin rounded-[50%] text-foreground-emphasis [-webkit-mask:radial-gradient(farthest-side,#0000_calc(100%_-_3px),#000_0)] [background:radial-gradient(farthest-side,currentColor_94%,#0000)_top/3px_3px_no-repeat,conic-gradient(#0000_30%,currentColor)] [mask:radial-gradient(farthest-side,#0000_calc(100%_-_3px),#000_0)]"
-              />
+              <div className="aspect-square h-[21px] w-[21px] animate-spin rounded-[50%] text-foreground-emphasis [-webkit-mask:radial-gradient(farthest-side,#0000_calc(100%_-_3px),#000_0)] [background:radial-gradient(farthest-side,currentColor_94%,#0000)_top/3px_3px_no-repeat,conic-gradient(#0000_30%,currentColor)] [mask:radial-gradient(farthest-side,#0000_calc(100%_-_3px),#000_0)]" />
             ) : (
               config.icon && (
                 <Icon icon={config.icon} size={14} className={config.color} />

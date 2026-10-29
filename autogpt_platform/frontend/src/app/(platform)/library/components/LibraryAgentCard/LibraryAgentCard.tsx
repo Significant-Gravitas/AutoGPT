@@ -66,8 +66,7 @@ export function LibraryAgentCard({
         data-agent-id={id}
         className={cn(
           "group relative inline-flex h-auto min-h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border bg-surface hover:shadow-md",
-          // TODO(tokens): no exact role for border-red-400 (#F26969)
-          hasError ? "border-red-400" : "border-separator",
+          hasError ? "border-error" : "border-separator",
         )}
         transition={{
           type: "spring",
@@ -108,11 +107,11 @@ export function LibraryAgentCard({
               <div
                 className={`h-[3.64rem] w-[6.70rem] flex-shrink-0 rounded-small ${
                   [
-                    "bg-gradient-to-r from-green-200 to-blue-200",
-                    "bg-gradient-to-r from-pink-200 to-purple-200",
-                    "bg-gradient-to-r from-yellow-200 to-orange-200",
-                    "bg-gradient-to-r from-blue-200 to-cyan-200",
-                    "bg-gradient-to-r from-indigo-200 to-purple-200",
+                    "bg-gradient-to-r from-success/40 to-info/30",
+                    "bg-gradient-to-r from-pink-200 to-brand/30",
+                    "bg-gradient-to-r from-warning-border to-orange-200",
+                    "bg-gradient-to-r from-info/30 to-cyan-200",
+                    "bg-gradient-to-r from-indigo-200 to-brand/30",
                   ][parseInt(id.slice(0, 8), 16) % 5]
                 }`}
                 style={{
@@ -172,10 +171,7 @@ export function LibraryAgentCard({
       <Tooltip inheritDelay>
         <TooltipTrigger asChild>{card}</TooltipTrigger>
         <TooltipPortal>
-          <TooltipContent
-            // TODO(tokens): no exact role for text-red-300 (#F69999)
-            className="max-w-xs text-red-300"
-          >
+          <TooltipContent className="max-w-xs text-red-300">
             {statusInfo.lastError}
           </TooltipContent>
         </TooltipPortal>

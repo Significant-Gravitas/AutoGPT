@@ -28,9 +28,7 @@ export function SidebarItemCard({
   return (
     <div
       className={cn(
-        // TODO(tokens): no exact role for hover:bg-slate-50/50 (#F7F8F9)
-        "w-full cursor-pointer rounded-large border border-border-base bg-surface p-3 text-left ring-1 ring-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-slate-50/50",
-        // TODO(tokens): no exact role for border-slate-800 (#475263), ring-slate-800 (#475263)
+        "w-full cursor-pointer rounded-large border border-border-base bg-surface p-3 text-left ring-1 ring-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-surface-muted/50",
         selected ? "border-slate-800 ring-slate-800" : undefined,
       )}
       onClick={onClick}

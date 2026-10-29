@@ -14,14 +14,10 @@ export function TimezoneNotice() {
     return (
       <div className="mt-1 flex items-center gap-2 rounded-md border border-warning-border bg-warning-surface p-3">
         <Icon
-          // TODO(tokens): no exact role for text-amber-600 (#D97706)
           icon={InformationCircleIcon}
-          className="h-4 w-4 text-amber-600"
+          className="h-4 w-4 text-warning-foreground"
         />
-        <p
-          // TODO(tokens): no exact role for text-amber-800 (#92400E)
-          className="text-sm text-amber-800"
-        >
+        <p className="text-sm text-warning-foreground">
           No timezone set. Schedule will run in UTC.
           <a href="/settings/account" className="ml-1 underline">
             Set your timezone

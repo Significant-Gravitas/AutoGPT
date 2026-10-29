@@ -31,7 +31,6 @@ export function MonthlyPicker({
       <div className="flex gap-2">
         <button
           type="button"
-          // TODO(tokens): no fitting role for border-zinc-700 #505057; #505057 is foreground-body, a text colour
           className={`h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-4 text-foreground-base hover:bg-surface-hover`}
           onClick={allDays}
         >
@@ -39,7 +38,6 @@ export function MonthlyPicker({
         </button>
         <button
           type="button"
-          // TODO(tokens): no fitting role for border-zinc-700 #505057; #505057 is foreground-body, a text colour
           className={`h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-4 text-foreground-base hover:bg-surface-hover`}
           onClick={customize}
         >
@@ -47,7 +45,6 @@ export function MonthlyPicker({
         </button>
         <button
           type="button"
-          // TODO(tokens): no fitting role for border-zinc-700 #505057; #505057 is foreground-body, a text colour
           className="h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-4 text-foreground-base hover:bg-surface-hover"
           onClick={() => onChange([15])}
         >
@@ -55,7 +52,6 @@ export function MonthlyPicker({
         </button>
         <button
           type="button"
-          // TODO(tokens): no fitting role for border-zinc-700 #505057; #505057 is foreground-body, a text colour
           className="h-[2.25rem] rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium leading-4 text-foreground-base hover:bg-surface-hover"
           onClick={() => onChange([31])}
         >

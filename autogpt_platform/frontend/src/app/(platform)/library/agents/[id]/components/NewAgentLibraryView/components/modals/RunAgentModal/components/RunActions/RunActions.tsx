@@ -35,8 +35,7 @@ export function RunActions({
           onClick={onSimulate}
           disabled={isExecuting || isSettingUpTrigger}
           loading={isExecuting}
-          // TODO(tokens): no exact role for text-amber-600 (#D97706)
-          className="gap-1.5 text-amber-600 hover:bg-warning-surface hover:text-warning-foreground"
+          className="gap-1.5 text-warning-foreground hover:bg-warning-surface hover:text-warning-foreground"
         >
           <Icon icon={FlaskConicalIcon} size={16} />
           Simulate
