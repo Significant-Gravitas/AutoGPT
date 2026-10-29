@@ -1,4 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ErrorEvent } from "@sentry/nextjs";
+
+const mirrorEvent = vi.hoisted(() => vi.fn((event: ErrorEvent) => event));
+vi.mock("@/services/analytics/sentry-posthog", () => ({
+  createPostHogSentryProcessor: () => mirrorEvent,
+}));
 
 const { initMock, reportingObserverIntegrationMock } = vi.hoisted(() => ({
   initMock: vi.fn(),
@@ -22,12 +28,32 @@ vi.mock("@sentry/nextjs", () => {
     httpClientIntegration: stubIntegration("HttpClient"),
     featureFlagsIntegration: stubIntegration("FeatureFlags"),
     replayIntegration: stubIntegration("Replay"),
-    replayCanvasIntegration: stubIntegration("ReplayCanvas"),
+    browserSessionIntegration: stubIntegration("BrowserSession"),
+    userTimingIntegration: stubIntegration("UserTiming"),
+    withStaticSpan: <T>(callback: T) => callback,
     captureRouterTransitionStart: vi.fn(),
   };
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("Sentry client instrumentation", () => {
+  it("passes each navigation Next starts on to Sentry", async () => {
+    const Sentry = await import("@sentry/nextjs");
+    const { onRouterTransitionStart } = await import(
+      "../../instrumentation-client"
+    );
+
+    onRouterTransitionStart("/link/t-1", "push");
+
+    expect(Sentry.captureRouterTransitionStart).toHaveBeenCalledWith(
+      "/link/t-1",
+      "push",
+    );
+  });
+
   it("does not forward browser deprecation reports to Sentry", async () => {
     await import("../../instrumentation-client");
 
@@ -39,5 +65,187 @@ describe("Sentry client instrumentation", () => {
     expect(types).toBeDefined();
     expect(types).not.toContain("deprecation");
     expect(types).toEqual(expect.arrayContaining(["crash", "intervention"]));
+  });
+
+  it("sends envelopes to the same-origin tunnel without cookies", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    vi.stubEnv(
+      "NEXT_PUBLIC_SENTRY_DSN",
+      "https://key@o4505260022104064.ingest.us.sentry.io/4507946746380288",
+    );
+    await import("../../instrumentation-client");
+    vi.unstubAllEnvs();
+
+    const { tunnel, transportOptions } = initMock.mock.calls[0][0];
+
+    expect(tunnel).toBe(
+      "/relay/snentry?o=4505260022104064&p=4507946746380288&r=us",
+    );
+    expect(transportOptions?.fetchOptions?.credentials).toBe("omit");
+  });
+
+  it("starts with no tunnel when no DSN is configured", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "");
+    await import("../../instrumentation-client");
+    vi.unstubAllEnvs();
+
+    const { enabled, tunnel } = initMock.mock.calls[0][0];
+
+    expect(enabled).toBe(false);
+    expect(tunnel).toBeUndefined();
+  });
+
+  it("drops Next's handled RSC fetch fallback but keeps other fetch errors", async () => {
+    await import("../../instrumentation-client");
+
+    const { beforeSend } = initMock.mock.calls[0][0];
+    const fetchError = {
+      exception: {
+        values: [{ type: "TypeError", value: "Failed to fetch" }],
+      },
+    };
+    const rscFallback = {
+      ...fetchError,
+      logger: "console",
+      extra: {
+        arguments: [
+          "Failed to fetch RSC payload for https://platform.agpt.co/login. Falling back to browser navigation.",
+          { name: "TypeError", message: "Failed to fetch" },
+        ],
+      },
+    };
+
+    expect(beforeSend).toBeTypeOf("function");
+    mirrorEvent.mockClear();
+    expect(beforeSend(rscFallback, {})).toBeNull();
+    expect(mirrorEvent).not.toHaveBeenCalled();
+    expect(beforeSend(fetchError, {})).toBe(fetchError);
+    expect(mirrorEvent).toHaveBeenCalledExactlyOnceWith(fetchError);
+  });
+
+  it("sends errors whose trace context carries no IP address or email", async () => {
+    await import("../../instrumentation-client");
+
+    const { beforeSend } = initMock.mock.calls[0][0];
+    const event = beforeSend(
+      {
+        exception: { values: [{ type: "Error", value: "boom" }] },
+        contexts: {
+          trace: {
+            trace_id: "a".repeat(32),
+            span_id: "b".repeat(16),
+            data: {
+              "client.address": "203.0.113.7",
+              "user.email": "ada@example.com",
+              user: "ada@example.com",
+              "user.id": "user-1",
+              "url.path": "/library",
+            },
+          },
+        },
+      },
+      {},
+    );
+
+    expect(event.contexts.trace.data).toEqual({
+      "user.id": "user-1",
+      "url.path": "/library",
+    });
+  });
+
+  it("drops a browser-injected script's iframe probe but keeps our own frame errors", async () => {
+    await import("../../instrumentation-client");
+
+    const { beforeSend } = initMock.mock.calls[0][0];
+    const blocked = {
+      exception: {
+        values: [
+          {
+            type: "SecurityError",
+            value:
+              'Blocked a frame with origin "https://platform.agpt.co" from accessing a cross-origin frame.',
+          },
+        ],
+      },
+    };
+    // As HeyTap Browser's injected script logs it on /onboarding (BUILDER-943).
+    const injectedProbe = {
+      ...blocked,
+      logger: "console",
+      extra: {
+        arguments: ["无法访问 iframe 的内容:", { name: "SecurityError" }],
+      },
+    };
+    const ourWarning = {
+      ...blocked,
+      logger: "console",
+      extra: {
+        arguments: [
+          "Could not read the checkout frame",
+          { name: "SecurityError" },
+        ],
+      },
+    };
+
+    mirrorEvent.mockClear();
+    expect(beforeSend(injectedProbe, {})).toBeNull();
+    expect(mirrorEvent).not.toHaveBeenCalled();
+    expect(beforeSend(blocked, {})).toBe(blocked);
+    expect(beforeSend(ourWarning, {})).toBe(ourWarning);
+    expect(mirrorEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("traces every transaction but profiles one session in ten", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    await import("../../instrumentation-client");
+
+    const { tracesSampleRate, profileSessionSampleRate, profileLifecycle } =
+      initMock.mock.calls[0][0];
+
+    expect(tracesSampleRate).toBe(1);
+    expect(profileSessionSampleRate).toBe(0.1);
+    expect(profileLifecycle).toBe("trace");
+  });
+
+  it("records no session replay", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    await import("../../instrumentation-client");
+
+    const options = initMock.mock.calls[0][0];
+    expect(options).not.toHaveProperty("replaysSessionSampleRate");
+    expect(options).not.toHaveProperty("replaysOnErrorSampleRate");
+    const names = options.integrations.map(
+      (integration: { name: string }) => integration.name,
+    );
+    expect(names).not.toContain("Replay");
+  });
+
+  it("tags events with the environment the deployment names for itself", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_ENVIRONMENT", "pr-123");
+    await import("../../instrumentation-client");
+
+    expect(initMock.mock.calls[0][0].environment).toBe("pr-123");
+  });
+
+  it("tags events with the computed environment when none is named", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_ENVIRONMENT", undefined);
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "local");
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+    vi.stubEnv("VERCEL_ENV", "");
+    await import("../../instrumentation-client");
+
+    expect(initMock.mock.calls[0][0].environment).toBe(
+      "app:local-behave:local",
+    );
   });
 });

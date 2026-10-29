@@ -4,6 +4,7 @@ type IconOptions = {
 };
 
 const DEFAULT_SIZE = 16;
+// TODO(tokens): no exact role: literal #52525B
 const DEFAULT_COLOR = "#52525b"; // zinc-600
 
 const iconPaths = {
@@ -23,10 +24,3 @@ export const ICONS = {
   Keyboard: createIcon(iconPaths.Keyboard),
   Drag: createIcon(iconPaths.Drag),
 };
-
-export function getIcon(
-  name: keyof typeof iconPaths,
-  options?: IconOptions,
-): string {
-  return createIcon(iconPaths[name], options);
-}

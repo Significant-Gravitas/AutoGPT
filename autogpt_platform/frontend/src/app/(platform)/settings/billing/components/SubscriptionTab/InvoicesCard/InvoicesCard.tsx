@@ -36,7 +36,7 @@ export function InvoicesCard({ index = 0 }: Props) {
   if (isLoading) {
     return (
       <motion.div {...sectionMotion}>
-        <Skeleton className="h-[200px] rounded-[18px]" />
+        <Skeleton className="h-[200px] rounded-2xl" />
       </motion.div>
     );
   }
@@ -53,24 +53,24 @@ export function InvoicesCard({ index = 0 }: Props) {
 
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
-      <div className="px-4">
-        <Text variant="body-medium" as="span" className="text-textBlack">
+      <div className="px-1">
+        <Text variant="body-medium" as="span">
           Invoices
         </Text>
       </div>
 
-      <div className="overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="overflow-hidden rounded-2xl border border-border-base bg-surface">
         {invoices.length === 0 ? (
           <div className="px-4 py-6">
-            <Text variant="small" as="span" className="text-zinc-500">
+            <Text variant="small" as="span" tone="muted">
               No invoices yet.
             </Text>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left">
-              <thead className="bg-zinc-50">
-                <tr className="border-b border-zinc-200">
+              <thead className="bg-surface-muted">
+                <tr className="border-b border-border-base">
                   <Th>Invoice</Th>
                   <Th className="hidden sm:table-cell">Date</Th>
                   <Th className="hidden md:table-cell">Description</Th>
@@ -92,35 +92,27 @@ export function InvoicesCard({ index = 0 }: Props) {
                     variants={reduceMotion ? undefined : rowVariants}
                     className={
                       rowIndex !== invoices.length - 1
-                        ? "border-b border-zinc-100 transition-colors hover:bg-zinc-50/60"
-                        : "transition-colors hover:bg-zinc-50/60"
+                        ? "border-b border-separator transition-colors hover:bg-surface-muted/60"
+                        : "transition-colors hover:bg-surface-muted/60"
                     }
                   >
-                    <td className="px-2 py-4 sm:px-4">
-                      <Text
-                        variant="body-medium"
-                        as="span"
-                        className="tabular-nums text-textBlack"
-                      >
+                    <td className="px-2 py-4 tabular-nums sm:px-4">
+                      <Text variant="body-medium" as="span">
                         {invoice.number}
                       </Text>
                     </td>
                     <td className="hidden px-2 py-4 sm:table-cell sm:px-4">
-                      <Text variant="body" as="span" className="text-zinc-600">
+                      <Text variant="body" as="span" tone="secondary">
                         {invoice.date}
                       </Text>
                     </td>
                     <td className="hidden px-2 py-4 md:table-cell md:px-4">
-                      <Text variant="body" as="span" className="text-zinc-600">
+                      <Text variant="body" as="span" tone="secondary">
                         {invoice.description}
                       </Text>
                     </td>
-                    <td className="px-2 py-4 text-right sm:px-4">
-                      <Text
-                        variant="body-medium"
-                        as="span"
-                        className="tabular-nums text-textBlack"
-                      >
+                    <td className="px-2 py-4 text-right tabular-nums sm:px-4">
+                      <Text variant="body-medium" as="span">
                         {invoice.amount}
                       </Text>
                     </td>
@@ -137,6 +129,7 @@ export function InvoicesCard({ index = 0 }: Props) {
                         variant="secondary"
                         size="small"
                         aria-label={`Download invoice ${invoice.number}`}
+                        // oxlint-disable-next-line design-system/no-restyle -- a 28px pill download button; Button has no pill size at 28px
                         className="h-7 min-w-0 px-1.5 py-0.5"
                         disabled={!invoice.pdfUrl}
                         onClick={() => {
@@ -175,11 +168,7 @@ function Th({ children, align = "left", className = "" }: ThProps) {
       scope="col"
       className={`px-2 py-3 sm:px-4 ${align === "right" ? "text-right" : "text-left"} ${className}`}
     >
-      <Text
-        variant="small-medium"
-        as="span"
-        className="uppercase tracking-[0.04em] text-zinc-500"
-      >
+      <Text variant="eyebrow" as="span">
         {children}
       </Text>
     </th>

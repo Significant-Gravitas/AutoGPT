@@ -172,6 +172,7 @@ async def execute_graph_block(
 
 
 @router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/files/upload",
     summary="Upload file to cloud storage",
     tags=["files"],

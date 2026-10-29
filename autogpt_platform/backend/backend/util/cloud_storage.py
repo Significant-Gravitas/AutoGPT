@@ -7,7 +7,7 @@ import logging
 import os.path
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Tuple
+from typing import Any, Tuple
 
 import aiohttp
 from gcloud.aio import storage as async_gcs_storage
@@ -15,12 +15,16 @@ from google.cloud import storage as gcs_storage
 
 from backend.util.gcs_utils import (
     download_with_fresh_session,
-    generate_signed_url,
+    generate_iam_signed_url,
     is_not_found_error,
 )
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
+
+# What ``store_file`` writes for the expiry; the cleanup deletes on
+# ``expires_at`` in custom metadata.
+_EXPIRY_METADATA_KEYS = ("uploaded_at", "expires_at", "expiration_hours")
 
 
 class CloudStorageConfig:
@@ -30,7 +34,7 @@ class CloudStorageConfig:
         config = Config()
 
         # GCS configuration from settings - uses Application Default Credentials
-        self.gcs_bucket_name = config.media_gcs_bucket_name
+        self.gcs_bucket_name = config.resolved_private_user_data_bucket
 
         # Future providers can be added here
         # self.aws_bucket_name = config.aws_bucket_name
@@ -143,6 +147,8 @@ class CloudStorageHandler:
         expiration_hours: int = 48,
         user_id: str | None = None,
         graph_exec_id: str | None = None,
+        delete_when_expired: bool = False,
+        custom_metadata: dict[str, str] | None = None,
     ) -> str:
         """
         Store file content in cloud storage.
@@ -151,9 +157,16 @@ class CloudStorageHandler:
             content: File content as bytes
             filename: Desired filename
             provider: Cloud storage provider ("gcs", "s3", "azure")
-            expiration_hours: Hours until expiration (1-48, default: 48)
+            expiration_hours: Hours until expiration (default: 48)
             user_id: User ID for user-scoped files (optional)
             graph_exec_id: Graph execution ID for execution-scoped files (optional)
+            delete_when_expired: Let the scheduled cleanup delete the file once
+                ``expiration_hours`` have passed. Off by default: files from
+                ``/files/upload`` carry an expiry but saved schedules and
+                presets keep pointing at them, so they must not be deleted.
+            custom_metadata: Extra custom metadata to keep on the object. Only
+                the server sets it, so it can mark files a user's own upload
+                must not be mistaken for.
 
         Note:
             Provide either user_id OR graph_exec_id, not both. If neither is provided,
@@ -164,7 +177,13 @@ class CloudStorageHandler:
         """
         if provider == "gcs":
             return await self._store_file_gcs(
-                content, filename, expiration_hours, user_id, graph_exec_id
+                content,
+                filename,
+                expiration_hours,
+                user_id,
+                graph_exec_id,
+                delete_when_expired,
+                custom_metadata,
             )
         else:
             raise ValueError(f"Unsupported cloud storage provider: {provider}")
@@ -176,6 +195,8 @@ class CloudStorageHandler:
         expiration_hours: int,
         user_id: str | None = None,
         graph_exec_id: str | None = None,
+        delete_when_expired: bool = False,
+        custom_metadata: dict[str, str] | None = None,
     ) -> str:
         """Store file in Google Cloud Storage."""
         if not self.config.gcs_bucket_name:
@@ -184,6 +205,14 @@ class CloudStorageHandler:
         # Validate that only one scope is provided
         if user_id and graph_exec_id:
             raise ValueError("Provide either user_id OR graph_exec_id, not both")
+
+        # Only ``delete_when_expired`` may make a file deletable, at its own
+        # ``expiration_hours``.
+        reserved = sorted(set(custom_metadata or {}) & set(_EXPIRY_METADATA_KEYS))
+        if reserved:
+            raise ValueError(
+                f"custom_metadata must not set the expiry: {', '.join(reserved)}"
+            )
 
         async_client = await self._get_async_gcs_client()
 
@@ -203,15 +232,23 @@ class CloudStorageHandler:
         upload_time = datetime.now(timezone.utc)
         expiration_time = upload_time + timedelta(hours=expiration_hours)
 
+        expiry = {
+            "uploaded_at": upload_time.isoformat(),
+            "expires_at": expiration_time.isoformat(),
+            "expiration_hours": str(expiration_hours),
+        }
+        # GCS keeps only what sits under "metadata" as custom metadata, which is
+        # the one place the expiry cleanup reads. Top-level keys are dropped, so
+        # a file stored without ``delete_when_expired`` is never deleted.
+        custom = {**(expiry if delete_when_expired else {}), **(custom_metadata or {})}
+        metadata: dict[str, Any] = {} if delete_when_expired else dict(expiry)
+        if custom:
+            metadata["metadata"] = custom
         await async_client.upload(
             self.config.gcs_bucket_name,
             blob_name,
             content,
-            metadata={
-                "uploaded_at": upload_time.isoformat(),
-                "expires_at": expiration_time.isoformat(),
-                "expiration_hours": str(expiration_hours),
-            },
+            metadata=metadata,
         )
 
         return f"gcs://{self.config.gcs_bucket_name}/{blob_name}"
@@ -256,12 +293,7 @@ class CloudStorageHandler:
             f"in_task: {current_task is not None}"
         )
 
-        # Parse bucket and blob name from path (path already has gcs:// prefix removed)
-        parts = path.split("/", 1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid GCS path: {path}")
-
-        bucket_name, blob_name = parts
+        bucket_name, blob_name = self._parse_configured_gcs_path(path)
 
         # Authorization check
         self._validate_file_access(blob_name, user_id, graph_exec_id)
@@ -415,20 +447,27 @@ class CloudStorageHandler:
         graph_exec_id: str | None = None,
     ) -> str:
         """Generate signed URL for GCS with authorization."""
-        # Parse bucket and blob name from path (path already has gcs:// prefix removed)
-        parts = path.split("/", 1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid GCS path: {path}")
-
-        bucket_name, blob_name = parts
+        bucket_name, blob_name = self._parse_configured_gcs_path(path)
 
         # Authorization check
         self._validate_file_access(blob_name, user_id, graph_exec_id)
 
         sync_client = self._get_sync_gcs_client()
-        return await generate_signed_url(
+        return await generate_iam_signed_url(
             sync_client, bucket_name, blob_name, expiration_hours * 3600
         )
+
+    def _parse_configured_gcs_path(self, path: str) -> tuple[str, str]:
+        parts = path.split("/", 1)
+        if len(parts) != 2:
+            raise ValueError(f"Invalid GCS path: {path}")
+        bucket_name, blob_name = parts
+        configured_bucket = self.config.gcs_bucket_name
+        if not configured_bucket:
+            raise ValueError("GCS_BUCKET_NAME not configured")
+        if bucket_name != configured_bucket:
+            raise PermissionError("Access denied: not the configured private bucket")
+        return bucket_name, blob_name
 
     async def delete_expired_files(self, provider: str = "gcs") -> int:
         """
@@ -529,11 +568,7 @@ class CloudStorageHandler:
 
     async def _check_file_expired_gcs(self, path: str) -> bool:
         """Check if a GCS file has expired."""
-        parts = path.split("/", 1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid GCS path: {path}")
-
-        bucket_name, blob_name = parts
+        bucket_name, blob_name = self._parse_configured_gcs_path(path)
 
         async_client = await self._get_async_gcs_client()
 

@@ -32,11 +32,11 @@ export interface LDMultiContext {
 export type LDContext = LDUserContext | LDMultiContext;
 
 // The attributes the ported flag targeting rules match on, in the flat shape
-// PostHog person properties take. No raw email: no rule reads it, and
-// individual targets key on the distinct id.
+// PostHog person properties take; the synced employee cohort matches on email.
 export function buildFlagPersonProperties(user: User): Record<string, string> {
   return {
     ...(user.email && {
+      email: user.email,
       email_domain: user.email.split("@").at(-1) ?? "",
     }),
     ...(user.role && { role: user.role }),

@@ -6,11 +6,7 @@ interface Props {
 
 export function TrialTitle({ children }: Props) {
   return (
-    <Text
-      variant="h5"
-      as="h2"
-      className="font-poppins !text-[17px] !font-semibold !text-zinc-800"
-    >
+    <Text variant="h5-semibold" as="h2" tone="emphasis">
       {children}
     </Text>
   );

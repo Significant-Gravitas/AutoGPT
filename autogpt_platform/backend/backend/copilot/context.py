@@ -7,6 +7,8 @@ without creating circular dependencies.
 
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
@@ -135,6 +137,32 @@ _current_envelope: "ContextVar[TurnEnvelope | None]" = ContextVar(
 _current_hidden_tools: ContextVar[frozenset[str]] = ContextVar(
     "_current_hidden_tools", default=frozenset()
 )
+# Set while an approved held call replays with the arguments it was stored with;
+# see ``replaying_bound_args``. Never from the model's arguments.
+_replaying_bound_args: ContextVar[bool] = ContextVar(
+    "_replaying_bound_args", default=False
+)
+
+
+@contextmanager
+def replaying_bound_args(bound: bool) -> Iterator[None]:
+    """Replay a held call whose arguments were already resolved when it was
+    held, so the tool runs them as approved instead of resolving them again."""
+    token = _replaying_bound_args.set(bound)
+    try:
+        yield
+    finally:
+        _replaying_bound_args.reset(token)
+
+
+def args_already_bound() -> bool:
+    return _replaying_bound_args.get()
+
+
+# Whether anyone is watching the running turn; see ``set_turn_unattended``.
+_current_turn_unattended: ContextVar[bool] = ContextVar(
+    "_current_turn_unattended", default=False
+)
 
 
 def encode_cwd_for_cli(cwd: str) -> str:
@@ -190,6 +218,23 @@ def get_current_envelope() -> "TurnEnvelope | None":
 def get_current_hidden_tools() -> frozenset[str]:
     """Short tool names hidden from the model this turn."""
     return _current_hidden_tools.get()
+
+
+def set_turn_unattended(session: ChatSession, *, scheduled: bool) -> None:
+    """Record whether anyone is watching the running turn. The executor sets
+    it for every turn, so a value never carries over to the next one.
+
+    Nobody is when the scheduler fired the turn, even into the user's own
+    chat, or when an automation opened the chat: a scheduled run's own chat, a
+    sub-session, a graph's AutoPilot block. A legacy chat without an origin
+    counts as watched, the way ``pauses_irreversible_actions`` reads it.
+    """
+    _current_turn_unattended.set(scheduled or session.metadata.origin == "automation")
+
+
+def is_unattended_turn() -> bool:
+    """Whether nobody can answer a question this turn puts to the user."""
+    return _current_turn_unattended.get()
 
 
 def get_current_sandbox() -> "AsyncSandbox | None":
@@ -262,7 +307,14 @@ def is_sdk_tool_path(path: str) -> bool:
 # bounce off ``Permission denied`` repeatedly.
 #
 # Two shapes are matched:
-#   (1) absolute SDK path:  /<...>/.claude/projects/<cwd>/<uuid>/tool-results/<file>.json
+#   (1) anything under the SDK projects dir — files, folders and globs
+#       alike (``cd …/tool-results/``,
+#       ``ls /root/.claude/projects/*/*/tool-results/``). The sandbox has
+#       no such folder, so any reference to it ends in ``Permission denied``.
+#       The path must start a shell token and be the configured
+#       ``SDK_PROJECTS_DIR`` or a home-level ``.claude/projects`` (``~``,
+#       ``$HOME``, ``/root``, ``/home/<name>``, or relative), so a repo
+#       folder like ``/home/user/my-repo/.claude/projects`` still runs.
 #   (2) model shorthand:    tool-(results|outputs)/<toolu|mcp>_<id>.json
 #
 # The shorthand branch requires the SDK's actual ID prefix so a user
@@ -270,20 +322,47 @@ def is_sdk_tool_path(path: str) -> bool:
 # trigger a false redirect on legitimate paths like
 # ``my-pipeline/tool-outputs/data.json``.
 _SDK_TOOL_RESULT_RE = re.compile(
-    r"(?:^|[/\s'\"])/?\.claude/projects/[^/\s]+/[^/\s]+/tool-(?:results|outputs)/"
-    r"[\w-]+\.json"
+    r"(?:^|(?<=[\s'\"=(`;&|<>]))"
+    rf"(?:{re.escape(SDK_PROJECTS_DIR)}"
+    r"|(?:(?:~|\$HOME|\$\{HOME\}|/root|/home/[^/\s'\"]+)/|/)?\.claude/projects)"
+    r"(?![\w.-])"
     r"|(?:^|[/\s'\"])tool-(?:results|outputs)/(?:toolu|mcp)_[\w-]+\.json",
     re.IGNORECASE,
 )
 
 
+# The bash_exec command as the model wrote it with its ``@@agptfile:`` refs
+# cut out, set by the SDK tool adapter before it expands them. The redirect
+# check reads this, so neither a ref to an SDK tool result (the route the
+# redirect itself suggests) nor a ``.claude/projects`` path that is only text
+# inside an inlined file blocks the command. Left unset when the command is
+# nothing but refs: then the expanded file is the script that runs, so the
+# check reads that.
+_bash_command_as_written: ContextVar[str | None] = ContextVar(
+    "_bash_command_as_written", default=None
+)
+
+
+@contextmanager
+def bash_command_as_written(command: str | None) -> Iterator[None]:
+    token = _bash_command_as_written.set(command)
+    try:
+        yield
+    finally:
+        _bash_command_as_written.reset(token)
+
+
+def get_bash_command_as_written() -> str | None:
+    return _bash_command_as_written.get()
+
+
 def looks_like_sdk_tool_result_path(text: str) -> bool:
-    """Return True if *text* references a host-side SDK tool-result file.
+    """Return True if *text* references a host-side SDK tool-result path.
 
     Anchored regex match — avoids false positives on user paths that
     happen to contain a ``tool-outputs/`` directory by requiring either
-    the full ``.claude/projects/<…>/tool-(results|outputs)/<file>.json``
-    shape or the SDK's ``(toolu|mcp)_<id>.json`` filename pattern.
+    a ``.claude/projects`` path (file, folder or glob) or the SDK's
+    ``(toolu|mcp)_<id>.json`` filename pattern.
     """
     if not text:
         return False

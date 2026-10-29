@@ -3,6 +3,7 @@
 import { useDualFlag } from "./backends/dual";
 import { useLaunchDarklyFlag } from "./backends/launchdarkly";
 import { usePostHogFlag } from "./backends/posthog";
+import { useServerFlag } from "./backends/server";
 import { FLAG_BACKEND } from "./flag-backend";
 
 export interface FlagSourceResult {
@@ -21,8 +22,10 @@ export function useFlagSource(key: string): FlagSourceResult {
 // Picked at module load, not per render: the backend is a build-time constant,
 // so the hooks a component calls stay stable for the life of the app.
 const useSelectedFlagSource =
-  FLAG_BACKEND === "posthog"
-    ? usePostHogFlag
-    : FLAG_BACKEND === "dual"
-      ? useDualFlag
-      : useLaunchDarklyFlag;
+  FLAG_BACKEND === "server"
+    ? useServerFlag
+    : FLAG_BACKEND === "posthog"
+      ? usePostHogFlag
+      : FLAG_BACKEND === "dual"
+        ? useDualFlag
+        : useLaunchDarklyFlag;

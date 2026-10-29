@@ -22,7 +22,7 @@ def test_a_low_balance_alert_never_forecasts_from_a_single_charge():
     )
     # 1000 cents at 250 cents/day is 4 days, not 1000.
     assert cause.days_left == 4
-    assert "2.50 credits" in (cause.daily_rate_display or "")
+    assert "$2.50" in (cause.daily_rate_display or "")
 
 
 def test_no_spend_history_means_no_invented_date():
@@ -37,5 +37,5 @@ def test_no_spend_history_means_no_invented_date():
     assert cause.days_left is None
     assert cause.runs_out_label is None
     assert cause.headline == "Your credits are running low"
-    assert "2 scheduled agents would stop" in cause.body
+    assert "2 scheduled workflows would stop" in cause.body
     assert cause.tag == "low balance"

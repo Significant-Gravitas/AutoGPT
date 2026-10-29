@@ -97,6 +97,7 @@ export function NotificationBanner() {
           onClick={handleDismiss}
           aria-label="Dismiss"
           title="Dismiss"
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- peach hover on the banner; the nearest role (warning-border) is a yellow hue, deferred
           className="hover:border-[#FFE4BF] hover:bg-[#FFE4BF]"
         >
           <Icon icon={Cancel01Icon} className="h-4 w-4" />

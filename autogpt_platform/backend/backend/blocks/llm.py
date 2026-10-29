@@ -1,10 +1,10 @@
 # This file contains a lot of prompt block strings that would trigger "line too long"
 # flake8: noqa: E501
 import asyncio
+import hashlib
 import logging
 import math
 import re
-import secrets
 import time
 from abc import ABC
 from collections.abc import Iterable
@@ -43,6 +43,7 @@ from backend.data.model import (
     NodeExecutionStats,
     SchemaField,
 )
+from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.providers import ProviderName, provider_key
 from backend.util import json
 
@@ -52,6 +53,12 @@ from backend.util import json
 # them here so existing ``from backend.blocks.llm import
 # ToolContentBlock`` imports keep working.
 from backend.util.llm.conversions import ToolCall, ToolContentBlock
+from backend.util.llm.prompt_refusal import PromptRefusedError, is_prompt_refused
+from backend.util.llm.provider_billing import (
+    ProviderUnavailableError,
+    is_provider_out_of_credits,
+    report_provider_out_of_credits,
+)
 from backend.util.llm.providers import timeout_error
 from backend.util.llm.saturation import track_llm_call
 from backend.util.logging import TruncatedLogger
@@ -313,6 +320,31 @@ async def llm_call(
             if isinstance(e, asyncio.TimeoutError):
                 raise _block_timeout_error(llm_model, max_tokens) from e
             raise
+        except Exception as e:
+            if is_provider_out_of_credits(e) and _is_platform_credential(credentials):
+                ctx = execution_context
+                report_provider_out_of_credits(
+                    provider=provider_key(llm_model.metadata.provider),
+                    model=llm_model.value,
+                    surface="block",
+                    error=e,
+                    user_id=ctx.user_id if ctx else None,
+                    graph_exec_id=ctx.graph_exec_id if ctx else None,
+                    node_exec_id=ctx.node_exec_id if ctx else None,
+                )
+                raise ProviderUnavailableError() from e
+            if is_prompt_refused(e):
+                raise PromptRefusedError() from e
+            raise
+
+
+def _is_platform_credential(credentials: APIKeyCredentials | None) -> bool:
+    """A key the platform pays for, as opposed to one the user brought.
+
+    A user's own key running dry is theirs to top up, so the provider's
+    wording is exactly what they need and is left alone.
+    """
+    return credentials is not None and is_system_credential(credentials.id)
 
 
 async def _llm_call(
@@ -615,8 +647,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         if input_data.sys_prompt:
             prompt.append({"role": "system", "content": input_data.sys_prompt})
 
-        # Use a one-time unique tag to prevent collisions with user/LLM content
-        output_tag_id = self.get_collision_proof_output_tag_id()
+        # Deterministic collision-proof tag from the output spec keeps the Anthropic
+        # ephemeral system-prefix cache stable across calls with the same format.
+        output_tag_id = self.get_collision_proof_output_tag_id(
+            input_data.expected_format
+        )
         output_tag_start = f'<json_output id="{output_tag_id}">'
         if input_data.expected_format:
             sys_prompt = self.response_format_instructions(
@@ -642,6 +677,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 return f"JSON decode error: {e}"
 
         error_feedback_message = ""
+        refusal: PromptRefusedError | None = None
         llm_model = input_data.model
         total_provider_cost: float | None = None
 
@@ -779,6 +815,15 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     yield "prompt", self.prompt
                     return
             except Exception as e:
+                if isinstance(e, ProviderUnavailableError):
+                    # Already alerted at the llm_call seam, and an empty
+                    # account stays empty however many times we ask.
+                    error_feedback_message = str(e)
+                    break
+                if isinstance(e, PromptRefusedError):
+                    # A judgement on the prompt itself, like the user errors below.
+                    refusal = e
+                    break
                 is_user_error = (
                     isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
                     and e.status_code in USER_ERROR_STATUS_CODES
@@ -826,6 +871,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     provider_cost_type="cost_usd",
                 )
             )
+        if refusal is not None:
+            raise refusal
         raise RuntimeError(error_feedback_message)
 
     def response_format_instructions(
@@ -940,8 +987,14 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
         return json.loads(json_output)
 
-    def get_collision_proof_output_tag_id(self) -> str:
-        return secrets.token_hex(8)
+    def get_collision_proof_output_tag_id(
+        self, expected_format: dict[str, str] | None = None
+    ) -> str:
+        # Hash the output spec so the tag is identical across calls with the same
+        # format (stable Anthropic cache_control prefix) while remaining
+        # collision-resistant against user/LLM content.
+        spec = repr(sorted((expected_format or {}).items()))
+        return hashlib.sha256(spec.encode("utf-8")).hexdigest()[:16]
 
 
 def trim_prompt(s: str) -> str:

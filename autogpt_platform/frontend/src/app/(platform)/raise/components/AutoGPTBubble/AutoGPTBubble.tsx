@@ -30,7 +30,7 @@ export function AutoGPTBubble({
           {AUTOPILOT_NAME}
         </span>
       </div>
-      <p className="text-[15px] leading-relaxed text-foreground">
+      <p className="text-body-md leading-relaxed text-foreground">
         <span aria-hidden>{typed}</span>
         {isTyping ? (
           <span

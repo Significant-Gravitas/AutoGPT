@@ -1,6 +1,7 @@
 "use client";
 
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
@@ -20,6 +21,7 @@ import { WorkflowCredentialStack } from "./WorkflowCredentialStack";
 
 interface Props {
   workflow: ExpertWorkflowRef;
+  libraryAgent: LibraryAgent | undefined;
   expertId?: string;
   coverColor: string | undefined;
   onAsk?: (prompt: string) => void;
@@ -27,13 +29,13 @@ interface Props {
 
 export function ExpertWorkflowCard({
   workflow,
+  libraryAgent,
   expertId,
   coverColor,
   onAsk,
 }: Props) {
   const {
     name,
-    libraryAgent,
     runCount,
     isTriggerWorkflow,
     status,
@@ -44,13 +46,17 @@ export function ExpertWorkflowCard({
     chatPrompt,
     openRun,
     openTriggers,
-  } = useExpertWorkflowCard({ workflow, expertId });
+  } = useExpertWorkflowCard({
+    workflow,
+    libraryAgent,
+    expertId,
+  });
   const [hasImageError, setHasImageError] = useState(false);
 
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex w-full flex-col overflow-hidden rounded-2xl bg-white transition-colors smooth-shadow-ring-sm hover:bg-zinc-50"
+      className="group relative flex w-full flex-col overflow-hidden rounded-2xl bg-surface transition-colors smooth-shadow-ring-sm hover:bg-surface-muted"
     >
       {libraryHref ? (
         <NextLink
@@ -60,7 +66,7 @@ export function ExpertWorkflowCard({
         />
       ) : null}
 
-      <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-zinc-100">
+      <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-surface-hover">
         {isRenderableImageUrl(libraryAgent?.image_url) && !hasImageError ? (
           <Image
             src={libraryAgent.image_url}
@@ -96,48 +102,42 @@ export function ExpertWorkflowCard({
       </div>
 
       <div className="pointer-events-none relative flex flex-1 flex-col px-3 pb-3 pt-2.5">
-        <Text
-          variant="large-medium"
-          tone="primary"
-          className="line-clamp-2 hyphens-auto break-words"
-        >
-          {name}
-        </Text>
+        <div className="hyphens-auto">
+          <Text
+            variant="large-medium"
+            tone="primary"
+            className="line-clamp-2 break-words"
+          >
+            {name}
+          </Text>
+        </div>
         {workflow.schedule_cron ? (
           <Text variant="small" tone="muted" className="mt-0.5">
             {safeHumanizeCronExpression(workflow.schedule_cron)}
           </Text>
         ) : null}
         {workflow.description ? (
-          <Text
-            variant="body"
-            tone="muted"
-            className="mt-1.5 line-clamp-2 leading-5"
-          >
+          <Text variant="body-md" tone="muted" className="mt-1.5 line-clamp-2">
             {workflow.description}
           </Text>
         ) : null}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {runCount !== undefined ? (
-            <Text
-              variant="body"
-              tone="muted"
-              className="flex items-center gap-1.5 leading-5"
-            >
+            <div className="flex items-center gap-1.5 text-foreground-tertiary">
               <Icon icon={Activity01Icon} size={14} className="shrink-0" />
-              {runCount} {runCount === 1 ? "run" : "runs"}
-            </Text>
+              <Text variant="body-md" tone="muted">
+                {runCount} {runCount === 1 ? "run" : "runs"}
+              </Text>
+            </div>
           ) : null}
-          <Text
-            variant="small-medium"
-            as="span"
+          <span
             className={cn(
-              "rounded-md px-2 py-0.5 ring-1 ring-inset ring-zinc-200/80",
+              "rounded-md px-2 py-0.5 font-sans text-caption font-medium ring-1 ring-inset ring-border-base/80",
               status.className,
             )}
           >
             {status.label}
-          </Text>
+          </span>
         </div>
         {libraryAgent ? (
           <div className="relative z-10 mt-auto flex items-center justify-between gap-3 pt-3">

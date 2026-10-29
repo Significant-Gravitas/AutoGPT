@@ -82,6 +82,14 @@
       ],
       "source": "expert-design-system expert-family-v2.1: the v2 baseline registry masters plus the promoted sculptural masters for Jules, Remy, Maya, Zara, Marco, Noor and Frankie",
       "note": "PNG fallbacks stop at 512 px; the 1024 px tile ships as WebP only (the 2x source for the unused 512 logical size), which keeps every added file under the repository 500 KB limit."
+    },
+    "v2.2": {
+      "baseUrl": "/autogpt-characters/v2.2",
+      "assetVersion": "2.2.0",
+      "identities": [
+        "expert-clip"
+      ],
+      "source": "Clip's appearance from the Expert it was raised as on the platform, promoted into the managed library when Clip joined the roster; re-framed to the library's tile and exported with the v2.1 size ladder. Not from expert-family-v2.1."
     }
   },
   "identities": {
@@ -5011,6 +5019,157 @@
         512
       ]
     },
+    "expert-clip": {
+      "displayName": "Clip",
+      "role": "Video Producer",
+      "visualCategory": "marketing",
+      "palette": "Terracotta",
+      "paletteHex": "#C47F5C",
+      "baseUrl": "/autogpt-characters/v2.2",
+      "revision": "2.2.0",
+      "expressions": [
+        "neutral"
+      ],
+      "master": null,
+      "masterSha256": "6b2db41572d86ba9d3d8ce9e12528b4d8b7f42a48421400733760b92a4084f73",
+      "nativePixels": [
+        1254,
+        1254
+      ],
+      "background": "opaque-warm-studio",
+      "crop": "full-square-studio",
+      "sourceNote": "Master is the raised Expert's 1254 px avatar (not in expert-design-system), shifted up 34 px to the library's vertical framing.",
+      "pngPixelSizes": [
+        24,
+        32,
+        40,
+        48,
+        64,
+        80,
+        96,
+        128,
+        192,
+        256,
+        512
+      ],
+      "files": {
+        "24.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/24.png",
+          "bytes": 1412,
+          "sha256": "e2aa3949661dcd6a66a1a209634ceead45229e77a45d87d3733c07d9adfce1b5"
+        },
+        "24.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/24.webp",
+          "bytes": 360,
+          "sha256": "d28c089bc592af204470cdb1572c375af933f8a07645841e5b731a942c8cdf64"
+        },
+        "32.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/32.png",
+          "bytes": 1777,
+          "sha256": "518f3a1bf62e61d2a895c3941230c436b848c5e01c41ef03c8976e5352e52afb"
+        },
+        "32.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/32.webp",
+          "bytes": 454,
+          "sha256": "1fb00dadbc09f4fce246df9f80a4df5efc0ae94559a5f386f209fc2a0a85a8b8"
+        },
+        "40.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/40.png",
+          "bytes": 2202,
+          "sha256": "64e2461c5de2ce0fc1191a0441fefdedde26b23c52cfbe7407dc2b3c33326836"
+        },
+        "40.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/40.webp",
+          "bytes": 596,
+          "sha256": "0afd0f688fb489f0cee4f0af0b295e3b204a2554480e3493d5e9a67b440fab00"
+        },
+        "48.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/48.png",
+          "bytes": 2669,
+          "sha256": "af90f69d5bbd77d93e38369c361be9fe691de0c0d0cc0a3c49126a9831503515"
+        },
+        "48.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/48.webp",
+          "bytes": 700,
+          "sha256": "1617b00a82700e8664faa487257c91992c46168e5d9f984ed4fb41506008d689"
+        },
+        "64.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/64.png",
+          "bytes": 3858,
+          "sha256": "63c8fb8e54c89a1b68f74aab24ea397349c9af3502a48d86c24f17dc723ca86f"
+        },
+        "64.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/64.webp",
+          "bytes": 910,
+          "sha256": "8916d4cd7fbfe4ff6dfa842fbc66ce53a86df2b8ae4a3ef27361f857c6df9cac"
+        },
+        "80.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/80.png",
+          "bytes": 5200,
+          "sha256": "777fe55930965a741afe366feab92633a3bf342669dcc07b21a6098f9ed3feaf"
+        },
+        "80.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/80.webp",
+          "bytes": 1194,
+          "sha256": "34fc1dcac2edba17e7597938877b63d70cff037abd15288f1c05714f599c6509"
+        },
+        "96.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/96.png",
+          "bytes": 6814,
+          "sha256": "06ad4997750a5f94476dc84339d7a51c202fb926b8bbbc37eae4fbd1a2f87865"
+        },
+        "96.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/96.webp",
+          "bytes": 1394,
+          "sha256": "7a0249bdb98c5d57d1112f787994d6b10a2237bdf5ead966b66b3bda1a7e56eb"
+        },
+        "128.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/128.png",
+          "bytes": 10676,
+          "sha256": "021754dffc9c47cad95012abb360e6ab28efb59209ab07afff7c1db9f091d08d"
+        },
+        "128.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/128.webp",
+          "bytes": 1950,
+          "sha256": "9fefa4f35d8b529cd21bb58a61dd360c50c2098df62ca367ed5f784ac432d8df"
+        },
+        "192.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/192.png",
+          "bytes": 21404,
+          "sha256": "9e9f59a0a683f620a6f18aac3bad89af31f2fd07ccb2a6a2f88c982b8b3e1ba6"
+        },
+        "192.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/192.webp",
+          "bytes": 3060,
+          "sha256": "58c6bc34fe30a0150a43eae3b369f1543b22fb71ba0521b40bd94a157079032c"
+        },
+        "256.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/256.png",
+          "bytes": 36775,
+          "sha256": "851ec9851145428c7ed1acc182830582f81a9e8c59d63933b9059545da35cc37"
+        },
+        "256.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/256.webp",
+          "bytes": 4412,
+          "sha256": "60f4bfebda4bdd209109234cf6b5f2ee39166710c55145cdf23c00eedfadeaed"
+        },
+        "512.png": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/512.png",
+          "bytes": 155133,
+          "sha256": "fc887821a83641780c9534efc42c5779b0d618b909edf10414654cd535158b83"
+        },
+        "512.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/512.webp",
+          "bytes": 10960,
+          "sha256": "c78c131d04440ee66c03774b96cdeb5f9573fcafad9f424f70f95205cbe73734"
+        },
+        "1024.webp": {
+          "path": "public/autogpt-characters/v2.2/expert-clip/neutral/1024.webp",
+          "bytes": 48524,
+          "sha256": "44ef4444b2a7b1f7cab6b6f384c31a84744aa8fbd98bb84f2bbefb315a0671f3"
+        }
+      }
+    },
     "expert-general-01": {
       "displayName": "General",
       "role": "Custom AI Expert",
@@ -5163,7 +5322,7 @@
     }
   },
   "scope": {
-    "applicationIdentities": 34,
+    "applicationIdentities": 35,
     "referenceExpressions": 9,
     "productionAnimation": false,
     "transparentCutouts": false,

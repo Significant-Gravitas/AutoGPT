@@ -1,4 +1,8 @@
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
+import {
+  credentialHosts,
+  credentialService,
+} from "@/components/contextual/CredentialsInput/service-identity";
 import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
@@ -55,8 +59,11 @@ export interface McpConnectorRequest {
   error: string | null;
   showManualToken: boolean;
   authScheme: "basic" | "bearer";
+  grantable: boolean;
+  granting: boolean;
   onConnect: () => void;
   onUseToken: (token: string) => void;
+  onGrant: () => void;
 }
 
 /** One setup card's ask, handed to the chain so every card in the chain can
@@ -68,18 +75,24 @@ export interface ConnectorRequest {
   onChange: (key: string, value?: CredentialsMetaInput) => void;
   /** The user finished a sign-in on this row. Distinct from a credential
    *  merely being present, which is also true of a card re-rendered from
-   *  chat history. */
-  onConnected: () => void;
+   *  chat history. Carries the credential the sign-in reported, if it did. */
+  onConnected: (credentialId?: string) => void;
+  /** A saved credential the provider refused when the tool ran. It stays on
+   *  file, so without this the row would auto-select it and read Connected
+   *  with nothing to click. */
+  rejectedCredentialId?: string;
 }
 
 export interface ConnectorRow {
+  key?: string;
+  iconId?: string;
   provider: string;
   displayName: string;
   description: string | null;
   schema: CredentialField[1];
   selected?: CredentialsMetaInput;
   select: (value?: CredentialsMetaInput) => void;
-  onConnected: () => void;
+  onConnected: (credentialId?: string) => void;
   /** Set when an expert asked: an account credential only counts once the
    *  expert has been granted it, so the connect dialog offers the account's
    *  existing credentials first and a freshly connected one is granted. */
@@ -88,6 +101,9 @@ export interface ConnectorRow {
    *  reports the FIRST target's value, so without this a second card asking
    *  for the same provider reads as answered while its field is still empty. */
   hasUnansweredTarget: boolean;
+  /** Saved credentials a merged card reported refused. None is usable until
+   *  the user signs in to it again from this row. */
+  rejectedCredentialIds: string[];
 }
 
 /** Flattens every request into one row per provider: two tools asking for
@@ -112,9 +128,11 @@ export function toConnectorRows(
     for (const [key, schema] of request.fields) {
       const provider = schema.credentials_provider?.[0];
       if (!provider) continue;
-      const row = rows.get(provider);
+      const hosts = credentialHosts(schema);
+      const rowKey = JSON.stringify([provider, hosts]);
+      const row = rows.get(rowKey);
       if (!row) {
-        rows.set(provider, {
+        rows.set(rowKey, {
           schema,
           targets: [{ request, key }],
           selected: request.selected[key],
@@ -139,22 +157,37 @@ export function toConnectorRows(
     }
   }
 
-  return [...rows.entries()].map(([provider, row]) => ({
-    provider,
-    displayName: formatProviderName(provider),
-    description:
-      byName.get(provider)?.description ?? row.schema.description ?? null,
-    schema: row.schema,
-    selected: row.selected,
-    expertGrant: row.expertGrant,
-    hasUnansweredTarget: row.targets.some(
-      ({ request, key }) => request.selected[key]?.id !== row.selected?.id,
-    ),
-    select: (value?: CredentialsMetaInput) =>
-      row.targets.forEach(({ request, key }) => request.onChange(key, value)),
-    onConnected: () =>
-      row.targets.forEach(({ request }) => request.onConnected()),
-  }));
+  return [...rows.entries()].map(([key, row]) => {
+    const provider = row.schema.credentials_provider![0];
+    const service = credentialService(row.schema);
+    return {
+      key,
+      iconId: service?.icon,
+      provider,
+      displayName:
+        service?.name ?? service?.host ?? formatProviderName(provider),
+      description: service
+        ? `Access for ${service.host}`
+        : (byName.get(provider)?.description ?? row.schema.description ?? null),
+      schema: row.schema,
+      selected: row.selected,
+      expertGrant: row.expertGrant,
+      hasUnansweredTarget: row.targets.some(
+        ({ request, key }) => request.selected[key]?.id !== row.selected?.id,
+      ),
+      rejectedCredentialIds: [
+        ...new Set(
+          row.targets.flatMap(({ request }) =>
+            request.rejectedCredentialId ? [request.rejectedCredentialId] : [],
+          ),
+        ),
+      ],
+      select: (value?: CredentialsMetaInput) =>
+        row.targets.forEach(({ request, key }) => request.onChange(key, value)),
+      onConnected: (credentialId?: string) =>
+        row.targets.forEach(({ request }) => request.onConnected(credentialId)),
+    };
+  });
 }
 
 /** Grant candidates eligible for both requirements. A requirement the server

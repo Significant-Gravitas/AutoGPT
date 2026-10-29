@@ -17,7 +17,8 @@ export const AUTOPILOT_MODE_OPTIONS: ModeOption[] = [
   {
     value: "ask_first",
     label: "Ask first",
-    description: "Asks before every edit, command or outside action.",
+    description:
+      "Asks before every edit or outside action. Work that stays in its sandbox runs.",
     icon: UserCheck01Icon,
   },
   {
@@ -44,4 +45,8 @@ export function getModeOption(mode: AutopilotMode) {
 
 export function isAutopilotMode(value: string): value is AutopilotMode {
   return AUTOPILOT_MODE_OPTIONS.some((option) => option.value === value);
+}
+
+export function unsupervisedChatDescription(assistantName: string) {
+  return `${assistantName} will not ask before anything in this chat. Edits, commands and actions outside the platform, like sending a message or an email, run without your approval.`;
 }
