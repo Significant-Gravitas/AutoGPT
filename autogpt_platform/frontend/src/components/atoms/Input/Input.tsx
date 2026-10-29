@@ -139,8 +139,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
     "font-normal text-foreground-base",
     "placeholder:font-normal placeholder:text-placeholder",
     // Focus and hover states
-    // TODO(tokens): no role is purple-400 #925CF7, the focus border and ring.
-    "focus:border-purple-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-purple-400 focus:ring-offset-0",
+    "focus:border-brand focus:shadow-none focus:outline-none focus:ring-1 focus:ring-brand focus:ring-offset-0",
     className,
   );
 
@@ -345,6 +344,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
               data-slot="input-label-text"
               variant={labelVariant}
               as="span"
+              // oxlint-disable-next-line design-system/require-static-classes -- labelClassName is a caller override that existing call sites outside the design system still use
               className={cn("text-foreground-base", labelClassName)}
             >
               {label}

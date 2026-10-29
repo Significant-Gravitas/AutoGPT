@@ -69,9 +69,7 @@ export function EditSkillForm({
             ) : null}
             <pre
               data-slot="edit-skill-form-conflict-diff"
-              // TODO(tokens): no foreground role for zinc-100 (#EFEFF0) on the
-              // dark code surface.
-              className="my-3 overflow-x-auto rounded-lg bg-action-hover p-3 text-xs text-zinc-100"
+              className="my-3 overflow-x-auto rounded-lg bg-action-hover p-3 text-xs text-action-foreground"
             >
               {lineDiff(currentVersion.body ?? "", draft.body) ||
                 "Your procedure matches the current version."}

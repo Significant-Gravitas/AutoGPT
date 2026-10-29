@@ -1,5 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { approveAllLabel, modeLabel } from "../helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   count: number;
@@ -25,9 +26,9 @@ export function QueueHeader({
       </span>
       <div className="flex items-center gap-3">
         {modeLabel(mode) && (
-          <span className="text-xs text-foreground-tertiary">
+          <Text variant="small-tight" as="span" tone="muted">
             {modeLabel(mode)}
-          </span>
+          </Text>
         )}
         {onShow ? (
           <Button

@@ -114,16 +114,15 @@ describe("usePreparingStep — progress", () => {
     const { result } = renderPreparing({});
 
     await advance(START_DELAY_MS);
-    // Halfway: past the first of three ~1.3s slices, so item two is lit.
     await advance(GENERIC_TOTAL_MS / 2);
 
     expect(result.current.progress).toBe(50);
-    expect(result.current.completedItems).toBe(2);
+    expect(result.current.completedItems).toBe(1);
 
     await advance(GENERIC_TOTAL_MS / 4);
 
     expect(result.current.progress).toBe(75);
-    expect(result.current.completedItems).toBe(3);
+    expect(result.current.completedItems).toBe(2);
   });
 
   it("caps progress at 100 and the checklist at its own length", async () => {

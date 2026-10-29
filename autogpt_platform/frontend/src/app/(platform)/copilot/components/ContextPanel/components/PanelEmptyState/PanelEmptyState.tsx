@@ -47,13 +47,10 @@ export function PanelEmptyState({
           </div>
         ))}
       </div>
-      <Text variant="large-medium" className="!text-foreground-strong">
+      <Text tone="primary" variant="large-medium">
         {title}
       </Text>
-      <Text
-        variant={textSize}
-        className="mt-1.5 max-w-[17rem] !text-foreground-tertiary"
-      >
+      <Text tone="muted" variant={textSize} className="mt-1.5 max-w-[17rem]">
         {description}
       </Text>
       {children && (

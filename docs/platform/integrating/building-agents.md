@@ -53,13 +53,14 @@ To start from an agent that already works, build it in the visual builder, read 
 | `nodes[].block_id` | Which block this node runs. Find IDs with `GET /blocks`. |
 | `nodes[].input_default` | Fixed values for the block's inputs. Keys are properties of the block's `input_schema`. Inputs fed by a link can be left out. |
 | `nodes[].metadata` | Optional. The builder stores the node's position here (`{"position": {"x": 0, "y": 0}}`). |
+| `links[].id` | Any string unique within the request. Required, like a node's `id`. |
 | `links[].source_id`, `source_name` | The node and output pin the data comes from. Pins are the properties of the block's `output_schema`. |
 | `links[].sink_id`, `sink_name` | The node and input pin it goes to. Pins are the properties of the block's `input_schema`. |
 | `links[].is_static` | Optional. A static link re-delivers its last value to every later execution of the sink, instead of delivering each value once. Links from input blocks are always static. |
 
 ## Find blocks
 
-`GET /blocks` lists every block on the instance, about 430 on a current release, so read all the pages. Each block has an `id`, a `name`, a `description`, `categories`, an `input_schema` and an `output_schema` (both JSON Schema), a `block_type` and its `costs`.
+`GET /blocks` lists every block on the instance, several hundred of them, so read all the pages. Each block has an `id`, a `name`, a `description`, `categories`, an `input_schema` and an `output_schema` (both JSON Schema), a `block_type` and its `costs`.
 
 ```python
 def list_blocks() -> list[dict]:

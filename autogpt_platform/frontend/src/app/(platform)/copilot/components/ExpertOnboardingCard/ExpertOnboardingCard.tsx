@@ -131,7 +131,7 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
     <div
       tabIndex={-1}
       onKeyDown={handleKeyDown}
-      // TODO(tokens): no exact role for shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- the floating card lift shadow; no shadow token has it
       className="w-full max-w-xl overflow-hidden rounded-lg border border-border-base bg-surface shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)] outline-none"
     >
       <div

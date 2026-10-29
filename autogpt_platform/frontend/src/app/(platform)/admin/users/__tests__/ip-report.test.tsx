@@ -76,6 +76,13 @@ const RILEY = related("riley", "riley@example.com", {
 });
 const ME = related("admin-self", "me@agpt.test", { via_ips: ["203.0.113.7"] });
 
+const PUBLIC_DOMAIN = {
+  value: "googlemail.com",
+  is_public_provider: true,
+  other_account_count: 0,
+  block: null,
+};
+
 const BLOCK = {
   id: "block-1",
   kind: "IP",
@@ -477,6 +484,51 @@ describe("Related accounts", () => {
       expect(within(row!).getByText(label)).toBeDefined();
     }
   });
+
+  it("says a public mail provider's accounts below are linked by a shared IP", async () => {
+    mockReport(
+      report({
+        domain: PUBLIC_DOMAIN,
+        related: [JO],
+        related_total: 1,
+      }),
+    );
+    renderPage(`?user=${ALEX.id}`);
+
+    const line = await screen.findByText(/is a public mail provider/);
+    expect(line.textContent).toBe(
+      "Email domain googlemail.com is a public mail provider, so it isn't used to link accounts and can't be blocked. The accounts below share a sign-in IP with this one.",
+    );
+    const row = screen.getByText(JO.email).closest("li");
+    expect(within(row!).getByText("IP 203.0.113.7")).toBeDefined();
+  });
+
+  it.each([
+    [
+      "with addresses",
+      [ip("203.0.113.7")],
+      "No other accounts share this account's addresses.",
+    ],
+    [
+      "without addresses",
+      [],
+      "No addresses on record, so no accounts are linked.",
+    ],
+  ])(
+    "promises no accounts below a public mail provider when none share an IP, %s",
+    async (_case, ips, emptyMessage) => {
+      mockReport(
+        report({ ips, domain: PUBLIC_DOMAIN, related: [], related_total: 0 }),
+      );
+      renderPage(`?user=${ALEX.id}`);
+
+      const line = await screen.findByText(/is a public mail provider/);
+      expect(line.textContent).toBe(
+        "Email domain googlemail.com is a public mail provider, so it isn't used to link accounts and can't be blocked.",
+      );
+      expect(screen.getByText(emptyMessage)).toBeDefined();
+    },
+  );
 });
 
 describe("Sign-ins", () => {
