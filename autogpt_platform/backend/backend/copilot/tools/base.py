@@ -703,6 +703,11 @@ class BaseTool:
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=raw_output,
+                # An MCP client reads a refusal from the call's status; chat's
+                # engines hand it to the model as the tool's result.
+                success=not (
+                    session.external_caller and result.type == ResponseType.ERROR
+                ),
             ).with_image(result.image)
             # Remembered as the model gets it, previews and caps included, so
             # the traces can redact it even where it no longer parses.

@@ -123,7 +123,12 @@ function serveSpendRuns({
                 graph_exec_id: id,
                 graph_id: "g-1",
                 graph_version: 1,
-                payload: { expert: "Maria", spent_credits: 300 },
+                payload: {
+                  expert: "Maria",
+                  spent_credits: 300,
+                  threshold_credits: 250,
+                  window: "week",
+                },
                 instructions: "Maria needs your approval to keep spending",
                 editable: false,
               }),
@@ -176,12 +181,14 @@ test("every run waiting on one expert's spend approval is approved with one clic
   const calls = serveSpendRuns();
   renderRuns();
 
-  expect(await screen.findByText("4 reviews")).toBeDefined();
+  expect(
+    await screen.findByText(
+      "That's past your 250 check-in. 4 tasks are ready to go.",
+    ),
+  ).toBeDefined();
   expect(screen.queryByText(/Auto-approve future executions/)).toBeNull();
 
-  await userEvent.click(
-    screen.getByRole("button", { name: "Approve 4 reviews" }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: "Keep going" }));
 
   await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1), {
     timeout: 5000,
@@ -199,15 +206,13 @@ test("a group can't be decided again while its later runs are still unsent", asy
   });
   const calls = serveSpendRuns({ holdRefetch });
   renderRuns();
-  await screen.findByText("4 reviews");
+  await screen.findByText(/4 tasks are ready to go/);
 
-  await userEvent.click(
-    screen.getByRole("button", { name: "Approve 4 reviews" }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: "Keep going" }));
   // The first run is decided and its list is being read again; the rest wait.
   await waitFor(() => expect(calls.heldRefetches).toBeGreaterThan(0));
   expect(calls.posted).toHaveLength(1);
-  const reject = screen.getByRole("button", { name: "Reject 4 reviews" });
+  const reject = screen.getByRole("button", { name: "Cancel" });
   expect((reject as HTMLButtonElement).disabled).toBe(true);
 
   release();
@@ -220,11 +225,9 @@ test("a group can't be decided again while its later runs are still unsent", asy
 test("a run decided elsewhere doesn't keep the group's other runs from being sent", async () => {
   const calls = serveSpendRuns({ decidedElsewhere: "exec-1" });
   renderRuns();
-  await screen.findByText("4 reviews");
+  await screen.findByText(/4 tasks are ready to go/);
 
-  await userEvent.click(
-    screen.getByRole("button", { name: "Approve 4 reviews" }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: "Keep going" }));
 
   await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1), {
     timeout: 5000,

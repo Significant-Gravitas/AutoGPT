@@ -50,6 +50,9 @@ export const mockHandlers = [
   http.get("/api/proxy/api/credits/pro-activation/current", () =>
     HttpResponse.json({ detail: "No activation in progress" }, { status: 404 }),
   ),
+  // No published releases unless a test provides some.
+  http.get("/api/changelog", () => HttpResponse.text("")),
+  http.get("/api/changelog/latest", () => HttpResponse.json({ releases: [] })),
   // No flag vendor unless a test provides one, so every flag serves its default.
   getGetFeatureFlagsMockHandler({ flags: {}, configured: false }),
   ...getAdminMock(),
