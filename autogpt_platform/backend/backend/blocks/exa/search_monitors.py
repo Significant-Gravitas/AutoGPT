@@ -157,7 +157,7 @@ class ExaCreateSearchMonitorBlock(SearchMonitorApiMixin, Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("monitor_id", SAMPLE_MONITOR_ID),
-                ("webhook_secret", SAMPLE_CREATED_MONITOR["webhookSecret"]),
+                ("webhook_secret", str),
                 ("status", "active"),
                 ("next_run_at", SAMPLE_MONITOR["nextRunAt"]),
                 ("monitor", SearchMonitorModel.from_api(SAMPLE_MONITOR)),

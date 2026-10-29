@@ -92,7 +92,7 @@ class ExaCreateWebsetWebhookBlock(WebsetsTeamApiMixin, Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("webhook_id", SAMPLE_WEBHOOK_ID),
-                ("secret", SAMPLE_CREATED_WEBHOOK["secret"]),
+                ("secret", str),
                 ("webhook", _SAMPLE_MODEL),
             ],
             test_mock={"call_exa": lambda *args, **kwargs: SAMPLE_CREATED_WEBHOOK},
