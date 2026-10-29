@@ -1,5 +1,7 @@
 """Treg blocks that read public LinkedIn profiles and company pages."""
 
+from urllib.parse import urlparse
+
 from backend.sdk import (
     APIKeyCredentials,
     BlockCategory,
@@ -120,10 +122,13 @@ TEST_COMPANY_PAGE = {
 
 
 def linkedin_reference(reference: str) -> dict[str, str]:
-    """A profile or company page URL is sent as a URL, anything else as a handle."""
+    """A LinkedIn URL is sent as a URL, anything else as a handle."""
     reference = reference.strip()
-    key = "linkedin_url" if "linkedin.com/" in reference else "linkedin_handle"
-    return {key: reference}
+    candidate = reference if "://" in reference else f"https://{reference}"
+    host = (urlparse(candidate).hostname or "").lower()
+    if host == "linkedin.com" or host.endswith(".linkedin.com"):
+        return {"linkedin_url": reference}
+    return {"linkedin_handle": reference}
 
 
 class TregGetLinkedInCompanyBlock(TregBlockBase):

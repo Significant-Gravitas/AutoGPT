@@ -15,6 +15,7 @@ from backend.blocks.treg._test import mock_miss, mock_response, mock_routed
 from backend.blocks.treg.call_tool import TregCallToolBlock
 from backend.blocks.treg.catalog import TregGetToolBlock
 from backend.blocks.treg.emails import TregFindWorkEmailBlock
+from backend.blocks.treg.linkedin import linkedin_reference
 from backend.blocks.treg.pages import TregExtractStructuredDataBlock
 from backend.blocks.treg.people import TregSearchPeopleBlock
 from backend.blocks.treg.phone import TregFindPhoneNumberBlock
@@ -346,3 +347,30 @@ async def test_the_platform_key_can_call_catalog_tools():
 
 
 PLATFORM_KEY = TEST_CREDENTIALS.model_copy(update={"id": PLATFORM_CREDENTIALS_ID})
+
+
+@pytest.mark.parametrize(
+    "reference, expected",
+    [
+        (
+            "https://www.linkedin.com/in/janedoe",
+            {"linkedin_url": "https://www.linkedin.com/in/janedoe"},
+        ),
+        (
+            "linkedin.com/company/modal-labs",
+            {"linkedin_url": "linkedin.com/company/modal-labs"},
+        ),
+        (" janedoe ", {"linkedin_handle": "janedoe"}),
+        # Not LinkedIn, whatever its path says.
+        (
+            "https://evil.example/linkedin.com/in/x",
+            {"linkedin_handle": "https://evil.example/linkedin.com/in/x"},
+        ),
+        (
+            "https://linkedin.com.evil.example/in/x",
+            {"linkedin_handle": "https://linkedin.com.evil.example/in/x"},
+        ),
+    ],
+)
+def test_linkedin_reference_sends_only_linkedin_hosts_as_urls(reference, expected):
+    assert linkedin_reference(reference) == expected
