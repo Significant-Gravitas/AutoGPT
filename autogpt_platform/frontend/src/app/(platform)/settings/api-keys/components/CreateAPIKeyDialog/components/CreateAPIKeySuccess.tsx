@@ -26,7 +26,7 @@ export function CreateAPIKeySuccess({ plainTextKey, onClose }: Props) {
 
   return (
     <div className="flex flex-col gap-4 px-1">
-      <Text variant="body" className="text-foreground-body">
+      <Text variant="body" tone="body">
         Copy your key now. For security, we won&apos;t show it again.
       </Text>
 

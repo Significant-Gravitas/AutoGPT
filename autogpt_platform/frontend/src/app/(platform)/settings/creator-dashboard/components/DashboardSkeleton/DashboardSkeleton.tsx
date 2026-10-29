@@ -15,7 +15,7 @@ export function DashboardSkeleton() {
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
-            className="relative flex min-h-[132px] flex-col justify-between gap-3 rounded-[18px] border border-border-base bg-surface px-4 py-5"
+            className="relative flex min-h-[132px] flex-col justify-between gap-3 rounded-large border border-border-base bg-surface px-4 py-5"
           >
             <Skeleton className="h-4 w-24" />
             <Skeleton className="h-7 w-16" />
@@ -30,7 +30,7 @@ export function DashboardSkeleton() {
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-[18px] border border-border-base bg-surface">
+      <div className="overflow-hidden rounded-large border border-border-base bg-surface">
         <div className="border-b border-separator bg-surface-muted/60 px-4 py-3">
           <Skeleton className="h-4 w-24" />
         </div>
@@ -39,7 +39,7 @@ export function DashboardSkeleton() {
             key={i}
             className="flex items-center gap-3 border-b border-separator px-4 py-3 last:border-b-0"
           >
-            <Skeleton className="aspect-video h-12 w-20 shrink-0 rounded-[8px]" />
+            <Skeleton className="aspect-video h-12 w-20 shrink-0 rounded-lg" />
             <div className="flex flex-1 flex-col gap-2">
               <Skeleton className="h-4 w-1/3" />
               <Skeleton className="h-3 w-2/3" />

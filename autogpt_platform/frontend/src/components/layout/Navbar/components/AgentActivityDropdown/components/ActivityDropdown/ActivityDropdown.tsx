@@ -91,7 +91,7 @@ export function ActivityDropdown({
                   size="small"
                   value={searchQuery}
                   onChange={(e) => handleSearchChange(e.target.value)}
-                  className="!focus:border-1 w-full pr-10"
+                  className="w-full pr-10"
                   wrapperClassName="!mb-0"
                   autoComplete="off"
                   autoFocus
@@ -104,18 +104,14 @@ export function ActivityDropdown({
                   <Icon
                     icon={Cancel01Icon}
                     size={16}
-                    // TODO(tokens): no exact role for text-gray-500 (#6B7280)
-                    className="text-gray-500"
+                    className="text-foreground-tertiary"
                   />
                 </button>
               </div>
             </div>
           ) : (
             <div className={`${styles.headerContainer} py-0.5`}>
-              <span
-                // TODO(tokens): no exact role for text-neutral-500 (#737373)
-                className="text-xs font-medium uppercase text-neutral-500"
-              >
+              <span className="text-xs font-medium uppercase text-foreground-tertiary">
                 Workflow Activity
               </span>
               {withSearch ? (
@@ -129,8 +125,7 @@ export function ActivityDropdown({
                   <Icon
                     icon={Search01Icon}
                     size={16}
-                    // TODO(tokens): no exact role for text-gray-600 (#4B5563)
-                    className="h-4 w-4 text-gray-600"
+                    className="h-4 w-4 text-foreground-secondary"
                   />
                 </Button>
               ) : null}
@@ -162,12 +157,12 @@ export function ActivityDropdown({
               />
             </div>
             <div className="flex flex-col items-center justify-center">
-              <Text variant="body-medium" className="!text-foreground-base">
+              <Text variant="body-medium">
                 {searchQuery
                   ? "No matching workflows found"
                   : "No recent runs to show yet"}
               </Text>
-              <Text variant="body" className="!text-foreground-tertiary">
+              <Text variant="body" tone="muted">
                 {searchQuery
                   ? "Try another search term"
                   : "Start a workflow to get updates"}

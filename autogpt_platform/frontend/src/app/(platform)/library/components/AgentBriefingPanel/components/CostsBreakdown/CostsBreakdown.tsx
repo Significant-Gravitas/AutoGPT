@@ -28,13 +28,14 @@ export function CostsBreakdown({ agents }: Props) {
         size="small"
         onClick={() => setIsExpanded((prev) => !prev)}
         aria-expanded={isExpanded}
-        // TODO(tokens): no exact role for text-neutral-800 (#262626)
-        className="w-fit gap-1 px-0 text-neutral-800 hover:bg-transparent"
+        // oxlint-disable-next-line design-system/no-restyle -- no Button variant is a bare text toggle
+        className="w-fit gap-1 px-0 text-foreground-emphasis hover:bg-transparent"
       >
         {isExpanded ? "Hide costs breakdown" : "See costs breakdown"}
         <Icon
           icon={ArrowDown01Icon}
           size={14}
+          // oxlint-disable-next-line design-system/no-restyle -- the chevron animates its rotation
           className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
         />
       </Button>
@@ -69,11 +70,7 @@ function ExpandedBody({
 }: ExpandedBodyProps) {
   if (isError) {
     return (
-      <Text
-        // TODO(tokens): no exact role for text-neutral-500 (#737373)
-        variant="body"
-        className="text-neutral-500"
-      >
+      <Text variant="body" tone="muted">
         Couldn&apos;t load cost breakdown.
       </Text>
     );
@@ -93,11 +90,7 @@ function ExpandedBody({
 
   if (!hasAnySpend) {
     return (
-      <Text
-        // TODO(tokens): no exact role for text-neutral-500 (#737373)
-        variant="body"
-        className="text-neutral-500"
-      >
+      <Text variant="body" tone="muted">
         No spend this month yet.
       </Text>
     );
@@ -113,11 +106,7 @@ function ExpandedBody({
 
   return (
     <>
-      <Text
-        // TODO(tokens): no exact role for text-neutral-500 (#737373)
-        variant="small"
-        className="text-neutral-500"
-      >
+      <Text variant="small" tone="muted">
         Calendar month so far · {formatMonthRangeLabel()}
       </Text>
       <StatRow
@@ -179,25 +168,19 @@ function StatRow({ items }: { items: StatItem[] }) {
           key={item.label}
           className="flex flex-col gap-0.5 rounded-medium border border-separator bg-surface p-3"
         >
-          <Text
-            // TODO(tokens): no exact role for text-neutral-500 (#737373)
-            variant="small"
-            className="text-neutral-500"
-          >
+          <Text variant="small" tone="muted">
             {item.label}
           </Text>
-          <Text
-            variant="body-medium"
-            className={
-              item.tone === "warn"
-                ? // TODO(tokens): no exact role for text-orange-600 (#E77B00)
-                  "tabular-nums text-orange-600"
-                : // TODO(tokens): no exact role for text-neutral-800 (#262626)
-                  "tabular-nums text-neutral-800"
-            }
-          >
-            {item.value}
-          </Text>
+          <div className="tabular-nums">
+            <Text
+              variant="body-medium"
+              tone={item.tone === "warn" ? undefined : "emphasis"}
+              // oxlint-disable-next-line design-system/no-restyle, design-system/no-raw-colors -- orange-600 #E77B00 has no role or tone; orange to amber change deferred (see PR)
+              className={item.tone === "warn" ? "text-orange-600" : undefined}
+            >
+              {item.value}
+            </Text>
+          </div>
         </div>
       ))}
     </div>

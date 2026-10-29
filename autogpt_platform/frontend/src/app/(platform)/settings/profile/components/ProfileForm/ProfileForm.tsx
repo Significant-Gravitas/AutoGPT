@@ -89,13 +89,8 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isPreview, setIsPreview] = useState(false);
   const remaining = MAX_BIO_LENGTH - formState.description.length;
-  const counterColor =
-    remaining < 0
-      ? "text-error"
-      : remaining < 30
-        ? // TODO(tokens): no exact role (text-amber-600 #D97706)
-          "text-amber-600"
-        : "text-foreground-subtle";
+  const counterTone =
+    remaining < 0 ? "error" : remaining < 30 ? "warning" : "subtle";
 
   function applyAction(action: MarkdownAction) {
     const textarea = textareaRef.current;
@@ -164,13 +159,15 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
       className="flex w-full flex-col gap-2"
     >
       <div className="flex items-center justify-between px-4">
-        <Text variant="body-medium" as="span" className="text-foreground-base">
+        <Text variant="body-medium" as="span">
           Bio
         </Text>
         <Text
           variant="small"
           as="span"
-          className={`tabular-nums transition-colors duration-150 ${counterColor}`}
+          tone={counterTone}
+          // oxlint-disable-next-line design-system/no-restyle -- the bio counter uses tabular figures and fades between tones
+          className="tabular-nums transition-colors duration-150"
         >
           {Math.max(remaining, 0)} left
         </Text>
@@ -228,13 +225,11 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
                 "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
                 "[&_li]:my-1 [&_li]:pl-1",
                 "[&_li>p]:my-0",
-                // TODO(tokens): no fitting role for [&_a]:text-purple-600 #6C2EDF; #6C2EDF is brand-hover, a hover fill; no exact role (hover:[&_a]:text-purple-700 #5424AE)
-                "[&_a]:text-purple-600 [&_a]:underline [&_a]:hover:text-purple-700",
+                "[&_a]:text-brand-hover [&_a]:underline [&_a]:hover:text-accent-strong",
                 "[&_strong]:font-semibold",
                 "[&_em]:italic",
                 "[&_del]:text-foreground-tertiary [&_del]:line-through",
-                // TODO(tokens): no exact text token ([&_code]:text-[0.85em])
-                "[&_code]:rounded [&_code]:bg-surface-hover [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em]",
+                "[&_code]:rounded [&_code]:bg-surface-hover [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-body-sm [&_code]:leading-inherit",
                 "[&_blockquote]:border-l-2 [&_blockquote]:border-border-strong [&_blockquote]:pl-3 [&_blockquote]:text-foreground-secondary",
                 "[&_h1]:my-2 [&_h1]:text-base [&_h1]:font-semibold",
                 "[&_h2]:my-2 [&_h2]:text-base [&_h2]:font-semibold",
@@ -246,7 +241,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
               </ReactMarkdown>
             </div>
           ) : (
-            <Text variant="body" as="span" className="text-foreground-subtle">
+            <Text variant="body" as="span" tone="subtle">
               Nothing to preview yet.
             </Text>
           )}
@@ -263,8 +258,8 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           value={formState.description}
           error={errors.description}
           onChange={(e) => onChange("description", e.target.value)}
-          // TODO(tokens): no fitting role for hover:scrollbar-thumb-zinc-300 #C5C5C9; #C5C5C9 is border-strong (a border) and foreground-disabled (a text colour)
-          className="!rounded-3xl !rounded-tr-md scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active hover:scrollbar-thumb-zinc-300"
+          // oxlint-disable-next-line design-system/no-restyle -- the bio textarea is a speech-bubble shape with a thin scrollbar
+          className="!rounded-3xl !rounded-tr-md scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active hover:scrollbar-thumb-border-strong"
         />
       )}
     </motion.div>

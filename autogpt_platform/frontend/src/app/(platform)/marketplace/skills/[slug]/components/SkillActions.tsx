@@ -14,11 +14,8 @@ import {
 } from "./InstallSkillButton";
 
 // Sized and shaped like the small button beside it so the pair reads as one row.
+// oxlint-disable-next-line design-system/no-restyle -- the status badge is sized like the button beside it; Badge has no button-sized variant
 const STATUS_CLASS = "h-9 rounded-full px-3.5 text-sm";
-
-const SECONDARY_CLASS =
-  // TODO(tokens): no exact role: shadow-[…] #101828
-  "border-border-base bg-surface shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-border-strong hover:bg-surface-muted";
 
 interface Props {
   slug: string;
@@ -68,7 +65,6 @@ export function SkillActions({
             href="/library/skills"
             variant="secondary"
             size="small"
-            className={SECONDARY_CLASS}
           >
             Your skills
           </Button>
@@ -85,7 +81,8 @@ export function SkillActions({
                 size="small"
                 aria-label={MENU_LABEL}
                 disabled={isAdding}
-                className={`!min-w-0 px-2.5 ${SECONDARY_CLASS}`}
+                // oxlint-disable-next-line design-system/no-restyle -- an icon-only button at the small button's height; icon sizes change its shape
+                className="!min-w-0 px-2.5"
               >
                 <Icon icon={ArrowDown01Icon} size={16} aria-hidden />
               </Button>
