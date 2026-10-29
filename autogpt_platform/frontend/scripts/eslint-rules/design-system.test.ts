@@ -442,6 +442,71 @@ describe("the ratchet, end to end", () => {
     expect(status).toBe(0);
   });
 
+  it("tracks nested disable/enable blocks for different rules separately", () => {
+    write(
+      "src/Nested.tsx",
+      [
+        `/* oxlint-disable design-system/no-raw-colors -- outer: vendored markup */`,
+        `export const A = () => <div className="text-zinc-500" />;`,
+        `/* oxlint-disable design-system/no-dark-variant -- inner: vendored theme */`,
+        `export const B = () => <div className="text-rose-700 dark:block" />;`,
+        `/* oxlint-enable design-system/no-dark-variant */`,
+        // The inner block closed first: dark: is back on, raw colours still off.
+        `export const C = () => <div className="text-sky-500 dark:hidden" />;`,
+        `/* oxlint-enable design-system/no-raw-colors */`,
+        `export const D = () => <div className="text-red-500 dark:flex" />;`,
+        "",
+      ].join("\n"),
+    );
+    const grandfathered = {
+      [key("src/Old.tsx")]: { "no-raw-colors": 1, "no-dark-variant": 1 },
+    };
+    const atBaseline = lint({
+      ...grandfathered,
+      [key("src/Nested.tsx")]: { "no-raw-colors": 1, "no-dark-variant": 2 },
+    });
+    const overBaseline = lint(grandfathered);
+    rmSync(path.join(root, "src/Nested.tsx"));
+    expect(atBaseline.output).not.toMatch(/design-system/);
+    expect(atBaseline.status).toBe(0);
+    expect(overBaseline.output).toMatch(/Nested\.tsx.*"text-red-500"/);
+    expect(overBaseline.output).toMatch(/Nested\.tsx.*"dark:hidden"/);
+    expect(overBaseline.output).toMatch(/Nested\.tsx.*"dark:flex"/);
+    expect(overBaseline.output).not.toMatch(
+      /text-zinc-500|text-rose-700|text-sky-500|dark:block/,
+    );
+    expect(overBaseline.status).toBe(1);
+  });
+
+  it("tracks overlapping disable/enable blocks for different rules separately", () => {
+    write(
+      "src/Overlap.tsx",
+      [
+        `/* oxlint-disable design-system/no-raw-colors -- vendored markup */`,
+        `export const A = () => <div className="text-zinc-500" />;`,
+        `/* oxlint-disable design-system/no-dark-variant -- vendored theme */`,
+        `export const B = () => <div className="text-rose-700 dark:block" />;`,
+        // The outer block closes first: raw colours are back on, dark: still off.
+        `/* oxlint-enable design-system/no-raw-colors */`,
+        `export const C = () => <div className="text-sky-500 dark:hidden" />;`,
+        `/* oxlint-enable design-system/no-dark-variant */`,
+        `export const D = () => <div className="text-red-500 dark:flex" />;`,
+        "",
+      ].join("\n"),
+    );
+    const { status, output } = lint({
+      [key("src/Old.tsx")]: { "no-raw-colors": 1, "no-dark-variant": 1 },
+    });
+    rmSync(path.join(root, "src/Overlap.tsx"));
+    expect(output).toMatch(/Overlap\.tsx.*"text-sky-500"/);
+    expect(output).toMatch(/Overlap\.tsx.*"text-red-500"/);
+    expect(output).toMatch(/Overlap\.tsx.*"dark:flex"/);
+    expect(output).not.toMatch(
+      /text-zinc-500|text-rose-700|dark:block|dark:hidden/,
+    );
+    expect(status).toBe(1);
+  });
+
   it("passes with a warning when a file has fewer than its baseline", () => {
     const { status, output } = lint({
       [key("src/Old.tsx")]: { "no-raw-colors": 3, "no-dark-variant": 1 },
