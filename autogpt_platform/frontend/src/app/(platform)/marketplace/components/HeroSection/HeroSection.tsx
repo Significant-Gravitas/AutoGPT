@@ -10,7 +10,7 @@ export const HeroSection = () => {
   return (
     <div className="mb-16 mt-10 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-3xl">
-        <h1 className="mb-3 text-center text-3xl font-semibold leading-none tracking-heading text-foreground-strong md:text-display md:leading-none">
+        <h1 className="mb-3 text-center text-3xl font-semibold leading-none tracking-heading text-foreground-strong md:text-display md:leading-12">
           Hire an AI expert
           <span className="block">
             for <span className="text-brand">your team</span>
