@@ -1,397 +1,211 @@
 # Deployment Environment Variables
 
-This guide documents **all environment variables that must be configured** when deploying AutoGPT to a new server or environment. Use this as a checklist to ensure your deployment works correctly.
+This page is for running the Docker Compose stack from
+[Manual Setup](getting-started.md#manual-setup) on a server that people reach
+from other machines. It lists only the settings you must change for that, and
+why. Every setting, with its default and what it does, is described where it
+is set:
 
-## Quick Reference: What MUST Change
+- [`autogpt_platform/.env.default`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/.env.default)
+- [`autogpt_platform/backend/.env.default`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/backend/.env.default)
+- [`autogpt_platform/frontend/.env.default`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/.env.default)
 
-When deploying to a new server, these variables **must** be updated from their localhost defaults:
+To put the single-container image on a server, see
+[Run AutoGPT in One Docker Container](single-container.md) or the
+[installer](installer.md) instead: they take one public URL and work out the
+rest.
 
-| Variable | Location | Default | Purpose |
-|----------|----------|---------|---------|
-| `SITE_URL` | `.env` | `http://localhost:3000` | Frontend URL for auth redirects |
-| `API_EXTERNAL_URL` | `.env` | `http://localhost:8000` | Public Supabase API URL |
-| `SUPABASE_PUBLIC_URL` | `.env` | `http://localhost:8000` | Studio dashboard URL |
-| `PLATFORM_BASE_URL` | `backend/.env` | `http://localhost:8000` | Backend platform URL |
-| `FRONTEND_BASE_URL` | `backend/.env` | `http://localhost:3000` | Frontend URL for webhooks/OAuth |
-| `NEXT_PUBLIC_SUPABASE_URL` | `frontend/.env` | `http://localhost:8000` | Client-side Supabase URL |
-| `NEXT_PUBLIC_AGPT_SERVER_URL` | `frontend/.env` | `http://localhost:8006/api` | Client-side backend API URL |
-| `NEXT_PUBLIC_AGPT_WS_SERVER_URL` | `frontend/.env` | `ws://localhost:8001/ws` | Client-side WebSocket URL |
-| `NEXT_PUBLIC_FRONTEND_BASE_URL` | `frontend/.env` | `http://localhost:3000` | Client-side frontend URL |
+## Where settings live
 
----
+`make init-env` (run in `autogpt_platform/`) copies each `.env.default` to
+`.env` and fills in the secrets they leave blank. Make your changes in the
+`.env` files. Never edit `.env.default`: it is public, and the next update
+overwrites it.
 
-## Configuration Files
+| File | Read by |
+|------|---------|
+| `autogpt_platform/.env` | Docker Compose itself. It fills the `${...}` values in the compose files: the database password, and the two frontend URLs below. |
+| `autogpt_platform/backend/.env` | Every backend service, and the Redis, RabbitMQ and FalkorDB containers. |
+| `autogpt_platform/frontend/.env` | The frontend, which also runs the login service (Better Auth). |
 
-AutoGPT uses multiple `.env` files across different components:
+Inside Docker, the compose files set some values themselves, and those win
+over `backend/.env` and `frontend/.env`: the hostnames of the other services,
+`DATABASE_URL`, `DIRECT_URL`, `JWT_JWKS_URL` and `FRONTEND_BASE_URL` for the
+backend, and `DATABASE_URL`, `AGPT_SERVER_URL`, `AGPT_WS_SERVER_URL` and
+`NEXT_PUBLIC_FRONTEND_BASE_URL` for the frontend. Changing one of those in
+`backend/.env` or `frontend/.env` does nothing under Docker. The two URLs among
+them are taken from `autogpt_platform/.env`, which is why they go there below.
+
+## 1. Generate your secrets
+
+```bash
+cd AutoGPT/autogpt_platform
+make init-env
+```
+
+This generates `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`,
+`BETTER_AUTH_SECRET`, and the passwords of the database, RabbitMQ, Redis and
+FalkorDB, for your install only. There is nothing to generate by hand, and the
+stack does not start without them.
+
+The database password is in three places: `POSTGRES_PASSWORD` in
+`autogpt_platform/.env`, which Docker uses for the database and for every
+connection string, and its copies `DB_PASS` in `backend/.env` and the password
+in `DATABASE_URL` in `frontend/.env`, which only matter outside Docker. To
+change it, follow
+[Upgrading: service passwords are generated per install](getting-started.md#upgrading-service-passwords-are-generated-per-install).
+
+## 2. Replace the shared push keys
+
+`make init-env` does not generate the Web Push keys. The ones in
+`backend/.env.default` are a published development pair, so make your own
+before anyone else uses the server. Generate a pair with the snippet above
+`VAPID_PRIVATE_KEY` in `backend/.env.default`, then set:
+
+| File | Setting | Value |
+|------|---------|-------|
+| `backend/.env` | `VAPID_PRIVATE_KEY` | Your private key |
+| `backend/.env` | `VAPID_PUBLIC_KEY` | Your public key |
+| `backend/.env` | `VAPID_CLAIM_EMAIL` | `mailto:` an address you read |
+| `frontend/.env` | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | The same public key |
+
+## 3. Set your public URLs
+
+Every default points at `localhost`, which only works in a browser on the
+server itself. From any other machine, sign-up fails until these say where
+people reach the frontend and the backend.
+
+The examples use `https://autogpt.example.com` for the frontend and
+`https://api.autogpt.example.com` for the backend, behind a reverse proxy (see
+[step 4](#4-put-it-behind-https)). Without one, use the server's address and the
+published ports instead: `http://<server>:3000` for the frontend,
+`http://<server>:8006` for the backend and `ws://<server>:8001/ws` for the
+WebSocket.
+
+| File | Setting | Example | What it is for |
+|------|---------|---------|----------------|
+| `autogpt_platform/.env` | `FRONTEND_BASE_URL` | `https://autogpt.example.com` | Links the backend sends people: OAuth redirects, emails, Stripe |
+| `autogpt_platform/.env` | `NEXT_PUBLIC_FRONTEND_BASE_URL` | `https://autogpt.example.com` | The frontend's own address |
+| `frontend/.env` | `BETTER_AUTH_URL` | `https://autogpt.example.com` | The login service's address; it refuses sign-ups and logins from any other origin |
+| `frontend/.env` | `NEXT_PUBLIC_AGPT_SERVER_URL` | `https://api.autogpt.example.com/api` | The backend API, as the browser reaches it |
+| `frontend/.env` | `NEXT_PUBLIC_AGPT_WS_SERVER_URL` | `wss://api.autogpt.example.com/ws` | The WebSocket server, as the browser reaches it |
+| `backend/.env` | `PLATFORM_BASE_URL` | `https://api.autogpt.example.com` | Webhook and MCP URLs the backend hands to other services |
+| `backend/.env` | `BACKEND_CORS_ALLOW_ORIGINS` | `["https://autogpt.example.com"]` | Origins the API and WebSocket server accept calls from (a JSON list; the default only allows `http://localhost:3000`) |
+
+`FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` are not in
+`autogpt_platform/.env` yet: add both lines. Leave out the trailing `/`.
+
+The `NEXT_PUBLIC_*` values are built into the frontend, so rebuild it after
+changing one:
+
+```bash
+docker compose up -d --build
+```
+
+Leave `JWT_JWKS_URL` alone under Docker: the backend fetches the login keys
+from the frontend over the Docker network (`http://frontend:3000`), and the
+compose file sets that for you. If you run the backend and frontend on
+different machines, read
+[Auth transport security](getting-started.md#auth-transport-security-jwks-over-untrusted-networks)
+first.
+
+## 4. Put it behind HTTPS
+
+Docker publishes three ports to the network: the frontend on `3000`, the API
+on `8006` and the WebSocket server on `8001`. They speak plain HTTP, and
+logins and session cookies go over them. Anything other people use should be
+behind a reverse proxy (nginx, Caddy, Traefik) that terminates TLS. With the
+example names:
+
+| Public address | Proxy to |
+|----------------|----------|
+| `https://autogpt.example.com` | `http://127.0.0.1:3000` |
+| `https://api.autogpt.example.com/ws` | `http://127.0.0.1:8001` (WebSocket upgrade on) |
+| everything else on `https://api.autogpt.example.com` | `http://127.0.0.1:8006` |
+
+For example, in a `Caddyfile`:
 
 ```text
-autogpt_platform/
-├── .env                    # Supabase/infrastructure config
-├── backend/
-│   ├── .env.default        # Backend defaults (DO NOT EDIT)
-│   └── .env                # Your backend overrides
-└── frontend/
-    ├── .env.default        # Frontend defaults (DO NOT EDIT)
-    └── .env                # Your frontend overrides
+autogpt.example.com {
+	reverse_proxy 127.0.0.1:3000
+}
+
+api.autogpt.example.com {
+	reverse_proxy /ws* 127.0.0.1:8001
+	reverse_proxy 127.0.0.1:8006
+}
 ```
 
-**Loading Order** (later overrides earlier):
+Use two hostnames, not two paths on one: the frontend serves its own routes
+under `/api` (logins go to `/api/auth`), so it cannot share a host with the
+backend's `/api`.
 
-1. `*.env.default` - Base defaults
-2. `*.env` - Your overrides
-3. Docker `environment:` section
-4. Shell environment variables
+Then close `3000`, `8001` and `8006` to everything but the proxy, with your
+firewall or a cloud security group. The other ports the stack publishes
+(Postgres, Redis, RabbitMQ, FalkorDB and ClamAV) are bound to `127.0.0.1`
+only.
 
----
+`TRUSTED_PROXY_COUNT` in `backend/.env` is the number of proxies that add an
+`X-Forwarded-For` entry in front of the backend. The default, `3`, is for the
+hosted platform: set `1` for a single reverse proxy, or `0` with none. It
+keys the per-visitor rate limits.
 
-## 1. URL Configuration (REQUIRED)
+## 5. Decide who can sign up
 
-These URLs must be updated to match your deployment domain/IP.
+Anyone who can reach the frontend can create an account. To limit that, set
+one of these in `frontend/.env`:
 
-### Root `.env` (Supabase)
+- `AUTH_SIGNUP_ALLOWLIST`: a comma-separated list of the addresses and
+  `@domains` allowed to sign up, for example `@example.com,me@example.org`.
+- `AUTH_ALLOW_NEW_ACCOUNTS=false`: no new accounts at all, once yours exists.
 
-```bash
-# Auth redirects - where users return after login
-SITE_URL=https://your-domain.com:3000
+Sign-up does not check email addresses unless you set
+`AUTH_REQUIRE_EMAIL_VERIFICATION=true`. That, and password reset, need the
+backend's mailer: set `POSTMARK_SERVER_API_TOKEN` and `POSTMARK_SENDER_EMAIL`
+in `backend/.env`. There is no SMTP setting for login emails.
 
-# Public API URL - exposed to clients
-API_EXTERNAL_URL=https://your-domain.com:8000
+## 6. Register OAuth callback URLs
 
-# Studio dashboard URL
-SUPABASE_PUBLIC_URL=https://your-domain.com:8000
-```
-
-### Backend `.env`
-
-```bash
-# Platform URLs for webhooks and OAuth callbacks
-PLATFORM_BASE_URL=https://your-domain.com:8000
-FRONTEND_BASE_URL=https://your-domain.com:3000
-
-# Internal Supabase URL (use Docker service name if containerized)
-SUPABASE_URL=http://kong:8000  # Docker
-# SUPABASE_URL=https://your-domain.com:8000  # External
-```
-
-### Frontend `.env`
-
-```bash
-# Client-side URLs (used in browser)
-NEXT_PUBLIC_SUPABASE_URL=https://your-domain.com:8000
-NEXT_PUBLIC_AGPT_SERVER_URL=https://your-domain.com:8006/api
-NEXT_PUBLIC_AGPT_WS_SERVER_URL=wss://your-domain.com:8001/ws
-NEXT_PUBLIC_FRONTEND_BASE_URL=https://your-domain.com:3000
-```
-
-!!! warning "HTTPS Note"
-    For production, use HTTPS URLs and `wss://` for WebSocket. You'll need a reverse proxy (nginx, Caddy) with SSL certificates.
-
-!!! info "Port Numbers"
-    The port numbers shown (`:3000`, `:8000`, `:8001`, `:8006`) are internal Docker service ports. In production with a reverse proxy, your public URLs typically won't include port numbers (e.g., `https://your-domain.com` instead of `https://your-domain.com:3000`). Configure your reverse proxy to route external traffic to the internal service ports.
-
----
-
-## 2. Security Keys (MUST REGENERATE)
-
-These default values are **public** and **must be changed** for production.
-
-### Root `.env`
-
-```bash
-# Database password
-POSTGRES_PASSWORD=<generate-strong-password>
-
-# JWT secret for Supabase auth (min 32 chars)
-JWT_SECRET=<generate-random-string>
-
-# Supabase keys (regenerate with matching JWT_SECRET)
-ANON_KEY=<regenerate>
-SERVICE_ROLE_KEY=<regenerate>
-
-# Studio dashboard credentials
-DASHBOARD_USERNAME=<your-username>
-DASHBOARD_PASSWORD=<strong-password>
-
-# Encryption keys
-SECRET_KEY_BASE=<generate-random-string>
-VAULT_ENC_KEY=<generate-32-char-key>  # Run: openssl rand -hex 16
-```
-
-### Backend `.env`
-
-```bash
-# Must match root POSTGRES_PASSWORD
-DB_PASS=<same-as-POSTGRES_PASSWORD>
-
-# Must match root SERVICE_ROLE_KEY
-SUPABASE_SERVICE_ROLE_KEY=<same-as-SERVICE_ROLE_KEY>
-
-# Must match root JWT_SECRET
-JWT_VERIFY_KEY=<same-as-JWT_SECRET>
-
-# Generate new encryption keys
-# Run: python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
-ENCRYPTION_KEY=<generated-fernet-key>
-UNSUBSCRIBE_SECRET_KEY=<generated-fernet-key>
-```
-
-### Generating Keys
-
-```bash
-# Generate Fernet encryption key (for ENCRYPTION_KEY, UNSUBSCRIBE_SECRET_KEY)
-python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
-
-# Generate random string (for JWT_SECRET, SECRET_KEY_BASE)
-openssl rand -base64 32
-
-# Generate 32-character key (for VAULT_ENC_KEY)
-openssl rand -hex 16
-
-# Generate Supabase keys (requires matching JWT_SECRET)
-# Use: https://supabase.com/docs/guides/self-hosting/docker#generate-api-keys
-```
-
----
-
-## 3. Database Configuration
-
-### Root `.env`
-
-```bash
-POSTGRES_HOST=db              # Docker service name or external host
-POSTGRES_DB=postgres
-POSTGRES_PORT=5432
-POSTGRES_PASSWORD=<your-password>
-```
-
-### Backend `.env`
-
-```bash
-DB_USER=postgres
-DB_PASS=<your-password>
-DB_NAME=postgres
-DB_PORT=5432
-DB_HOST=localhost             # Default is localhost; use 'db' in Docker
-DB_SCHEMA=platform
-
-# Connection pooling
-DB_CONNECTION_LIMIT=12
-DB_CONNECT_TIMEOUT=60
-DB_POOL_TIMEOUT=300
-
-# Full connection URL (auto-constructed from above in .env.default)
-# Variable substitution is handled automatically; only override if you need custom parameters
-DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}?schema=${DB_SCHEMA}"
-```
-
----
-
-## 4. Service Dependencies
-
-### Redis
-
-```bash
-REDIS_HOST=redis              # Docker: 'redis', External: hostname/IP
-REDIS_PORT=6379
-# REDIS_PASSWORD=             # Uncomment if using authentication
-```
-
-### RabbitMQ
-
-```bash
-RABBITMQ_DEFAULT_USER=<username>
-RABBITMQ_DEFAULT_PASS=<strong-password>
-# In Docker, host is 'rabbitmq'
-```
-
----
-
-## 5. Default Ports
-
-| Service | Port | Purpose |
-|---------|------|---------|
-| Frontend | 3000 | Next.js web UI |
-| Kong (Supabase API) | 8000 | API gateway |
-| WebSocket Server | 8001 | Real-time updates |
-| Executor | 8002 | Agent execution |
-| Scheduler | 8003 | Scheduled tasks |
-| Database Manager | 8005 | DB operations |
-| REST Server | 8006 | Main API |
-| Notification Server | 8007 | Notifications |
-| PostgreSQL | 5432 | Database |
-| Redis | 6379 | Cache/queue |
-| RabbitMQ | 5672/15672 | Message queue |
-| ClamAV | 3310 | Antivirus scanning |
-
----
-
-## 6. OAuth Callbacks
-
-When configuring OAuth providers, use this callback URL format:
+Integrations (GitHub, Google and the others in `backend/.env`) send people
+back to the frontend. Register this callback with each provider:
 
 ```text
-https://your-domain.com/auth/integrations/oauth_callback
-# Or with explicit port if not using a reverse proxy:
-# https://your-domain.com:3000/auth/integrations/oauth_callback
+https://autogpt.example.com/auth/integrations/oauth_callback
 ```
 
-### Supported OAuth Providers
+That is `FRONTEND_BASE_URL` followed by `/auth/integrations/oauth_callback`,
+with no internal port. The client IDs and secrets go in `backend/.env`.
 
-| Provider | Env Variables | Setup URL |
-|----------|---------------|-----------|
-| GitHub | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | [github.com/settings/developers](https://github.com/settings/developers) |
-| Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | [console.cloud.google.com](https://console.cloud.google.com/apis/credentials) |
-| Discord | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` | [discord.com/developers](https://discord.com/developers/applications) |
-| Twitter/X | `TWITTER_CLIENT_ID`, `TWITTER_CLIENT_SECRET` | [developer.x.com](https://developer.x.com) |
-| Notion | `NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET` | [developers.notion.com](https://developers.notion.com) |
-| Linear | `LINEAR_CLIENT_ID`, `LINEAR_CLIENT_SECRET` | [linear.app/settings/api](https://linear.app/settings/api/applications/new) |
-| Reddit | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` | [reddit.com/prefs/apps](https://reddit.com/prefs/apps) |
-| Todoist | `TODOIST_CLIENT_ID`, `TODOIST_CLIENT_SECRET` | [developer.todoist.com](https://developer.todoist.com/appconsole.html) |
+Signing in with Google, GitHub or Discord is set up separately, with the
+`AUTH_*_CLIENT_ID` and `AUTH_*_CLIENT_SECRET` pairs in `frontend/.env`. Their
+callback is `BETTER_AUTH_URL` followed by `/api/auth/callback/<provider>`, for
+example `https://autogpt.example.com/api/auth/callback/google`.
 
----
+## Using your own database or Redis
 
-## 7. Optional Services
+The compose files point every backend service at the bundled `db`, `redis-0`
+and `rabbitmq` containers, and set `DB_HOST`, `REDIS_HOST`, `RABBITMQ_HOST`,
+`DATABASE_URL` and `DIRECT_URL` in their `environment:` sections. Those override
+`backend/.env`, so pointing the stack at a managed service takes a
+`docker-compose.override.yml` that sets them per service, not an `.env` change.
+`DIRECT_URL` is the connection that database migrations use; give it a direct
+connection, not one through a pooler such as PgBouncer. The backend expects a
+Redis Cluster, not a single Redis server.
 
-### AI/LLM Providers
+## Checklist
 
-```bash
-OPENAI_API_KEY=
-ANTHROPIC_API_KEY=
-GROQ_API_KEY=
-OPEN_ROUTER_API_KEY=
-NVIDIA_API_KEY=
-```
+- [ ] `make init-env` in `autogpt_platform/`
+- [ ] Your own VAPID keys in `backend/.env` and `NEXT_PUBLIC_VAPID_PUBLIC_KEY` in `frontend/.env`
+- [ ] `FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` added to `autogpt_platform/.env`
+- [ ] `BETTER_AUTH_URL`, `NEXT_PUBLIC_AGPT_SERVER_URL` and `NEXT_PUBLIC_AGPT_WS_SERVER_URL` in `frontend/.env`
+- [ ] `PLATFORM_BASE_URL` and `BACKEND_CORS_ALLOW_ORIGINS` in `backend/.env`
+- [ ] A TLS reverse proxy in front of `3000`, `8001` and `8006`, those ports firewalled, and `TRUSTED_PROXY_COUNT` set
+- [ ] Sign-ups limited, if the server is public
+- [ ] `docker compose up -d --build`
+- [ ] From another machine: sign up, log in, and open a workflow in the builder
 
-### Email (SMTP)
+## Related documentation
 
-```bash
-# Supabase auth emails
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=<username>
-SMTP_PASS=<password>
-SMTP_ADMIN_EMAIL=admin@example.com
-
-# Application emails (Postmark)
-POSTMARK_SERVER_API_TOKEN=
-POSTMARK_SENDER_EMAIL=noreply@your-domain.com
-```
-
-### Payments (Stripe)
-
-```bash
-STRIPE_API_KEY=
-STRIPE_WEBHOOK_SECRET=
-```
-
-### Error Tracking (Sentry)
-
-```bash
-SENTRY_DSN=
-```
-
-### Analytics (PostHog)
-
-```bash
-POSTHOG_API_KEY=
-POSTHOG_HOST=https://eu.i.posthog.com
-
-# Frontend
-NEXT_PUBLIC_POSTHOG_KEY=
-NEXT_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com
-```
-
----
-
-## 8. Deployment Checklist
-
-Use this checklist when deploying to a new environment:
-
-### Pre-deployment
-
-- [ ] Clone repository and navigate to `autogpt_platform/`
-- [ ] Copy all `.env.default` files to `.env`
-- [ ] Determine your deployment domain/IP
-
-### URL Configuration
-
-- [ ] Update `SITE_URL` in root `.env`
-- [ ] Update `API_EXTERNAL_URL` in root `.env`
-- [ ] Update `SUPABASE_PUBLIC_URL` in root `.env`
-- [ ] Update `PLATFORM_BASE_URL` in `backend/.env`
-- [ ] Update `FRONTEND_BASE_URL` in `backend/.env`
-- [ ] Update all `NEXT_PUBLIC_*` URLs in `frontend/.env`
-
-### Security
-
-- [ ] Generate new `POSTGRES_PASSWORD`
-- [ ] Generate new `JWT_SECRET` (min 32 chars)
-- [ ] Regenerate `ANON_KEY` and `SERVICE_ROLE_KEY`
-- [ ] Change `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD`
-- [ ] Generate new `ENCRYPTION_KEY` (backend)
-- [ ] Generate new `UNSUBSCRIBE_SECRET_KEY` (backend)
-- [ ] Update `DB_PASS` to match `POSTGRES_PASSWORD`
-- [ ] Update `JWT_VERIFY_KEY` to match `JWT_SECRET`
-- [ ] Update `SUPABASE_SERVICE_ROLE_KEY` to match
-
-### Services
-
-- [ ] Configure Redis connection (if external)
-- [ ] Configure RabbitMQ credentials
-- [ ] Configure SMTP for emails (if needed)
-
-### OAuth (if using integrations)
-
-- [ ] Register OAuth apps with your callback URL
-- [ ] Add client IDs and secrets to `backend/.env`
-
-### Post-deployment
-
-- [ ] Run `docker compose up -d --build`
-- [ ] Verify frontend loads at your URL
-- [ ] Test authentication flow
-- [ ] Test WebSocket connection (real-time updates)
-
----
-
-## 9. Docker vs External Services
-
-### Running Everything in Docker (Default)
-
-The docker-compose files automatically set internal hostnames:
-
-```yaml
-# Internal Docker service names (container-to-container communication)
-# These are set automatically in docker-compose.platform.yml
-DB_HOST: db
-REDIS_HOST: redis
-RABBITMQ_HOST: rabbitmq
-SUPABASE_URL: http://kong:8000
-```
-
-### Using External Services
-
-If using managed services (AWS RDS, Redis Cloud, etc.), override in your `.env`:
-
-```bash
-# External PostgreSQL
-DB_HOST=your-rds-instance.region.rds.amazonaws.com
-DB_PORT=5432
-
-# External Redis
-REDIS_HOST=your-redis.cache.amazonaws.com
-REDIS_PORT=6379
-REDIS_PASSWORD=<if-required>
-
-# External Supabase (hosted)
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
-```
-
----
-
-## Related Documentation
-
-- [Getting Started](getting-started.md) - Basic setup guide
-- [Advanced Setup](advanced_setup.md) - Development configuration
-- [OAuth & SSO](integrating/oauth-guide.md) - Integration setup
+- [Getting Started](getting-started.md): the full setup, upgrades and the Makefile
+- [Advanced Setup](advanced_setup.md)
+- [OAuth & SSO](integrating/oauth-guide.md)
