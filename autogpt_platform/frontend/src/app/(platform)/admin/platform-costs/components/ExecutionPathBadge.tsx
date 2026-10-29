@@ -1,6 +1,3 @@
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// bg-green-500 #16A34A, text-blue-700 #1D4ED8.
-
 function ExecutionPathBadge({
   executionPath,
 }: {
@@ -8,9 +5,9 @@ function ExecutionPathBadge({
 }) {
   if (!executionPath) return <span className="text-muted-foreground">—</span>;
   const colors: Record<string, string> = {
-    anthropic_batch: "bg-green-500/15 text-success-foreground",
-    openai_batch: "bg-green-500/15 text-success-foreground",
-    flex: "bg-info/15 text-blue-700",
+    anthropic_batch: "bg-success/15 text-success-foreground",
+    openai_batch: "bg-success/15 text-success-foreground",
+    flex: "bg-info/15 text-info-foreground",
     sync_baseline: "bg-muted text-muted-foreground",
     sync: "bg-muted text-muted-foreground",
   };

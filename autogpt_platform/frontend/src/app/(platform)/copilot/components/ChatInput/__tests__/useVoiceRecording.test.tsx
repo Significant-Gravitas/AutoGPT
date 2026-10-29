@@ -352,3 +352,61 @@ describe("useVoiceRecording transcription failures", () => {
     return (body.get("audio") as Blob).text();
   }
 });
+
+describe("useVoiceRecording focus", () => {
+  const fetchMock = vi.fn();
+  let page: Record<"composer" | "micButton" | "menuItem", HTMLElement>;
+  let menu: HTMLElement;
+
+  beforeEach(() => {
+    firesOnStop = true;
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: "the words I said" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    getUserMedia.mockResolvedValue({ getTracks: () => [] });
+    const composer = document.createElement("textarea");
+    composer.id = "composer";
+    menu = document.createElement("div");
+    menu.setAttribute("role", "menu");
+    page = {
+      composer,
+      micButton: document.createElement("button"),
+      menuItem: menu.appendChild(document.createElement("button")),
+    };
+    document.body.append(page.composer, page.micButton, menu);
+  });
+
+  afterEach(() => {
+    page.composer.remove();
+    page.micButton.remove();
+    menu.remove();
+  });
+
+  it.each([
+    {
+      when: "puts the caret back in the composer once the words land",
+      focused: "micButton",
+      expected: "composer",
+    },
+    {
+      when: "leaves a menu opened while the words were on their way",
+      focused: "menuItem",
+      expected: "menuItem",
+    },
+  ] as const)("$when", async ({ focused, expected }) => {
+    const { result } = renderHook(() =>
+      useVoiceRecording({ setValue, value: "", inputId: "composer" }),
+    );
+    await act(async () => result.current.handleKeyDown(spaceKeydown()));
+    await waitFor(() => expect(result.current.isRecording).toBe(true));
+    page[focused].focus();
+
+    await act(async () => result.current.stopRecording());
+
+    await waitFor(() => expect(result.current.isTranscribing).toBe(false));
+    expect(setValue).toHaveBeenCalled();
+    expect(document.activeElement).toBe(page[expected]);
+  });
+});

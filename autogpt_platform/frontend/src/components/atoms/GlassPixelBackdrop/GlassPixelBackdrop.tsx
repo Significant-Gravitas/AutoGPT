@@ -24,8 +24,8 @@ export function GlassPixelBackdrop() {
         <span
           key={index}
           data-slot="glass-pixel-backdrop-cell"
-          // TODO(tokens): no border width is 0.5px. The opacity differs per
-          // cell, so it is a custom property read by an arbitrary value.
+          // The opacity differs per cell, so it is a custom property.
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- hairline glass tile edge, no 0.5px border width on the scale
           className="opacity-(--cell-opacity) border-[0.5px] border-surface/10 bg-surface"
           style={
             { "--cell-opacity": cellOpacity(index) } as React.CSSProperties

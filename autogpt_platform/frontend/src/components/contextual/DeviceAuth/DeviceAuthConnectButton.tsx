@@ -50,7 +50,7 @@ export function DeviceAuthConnectButton({
   if (phase === "awaiting_user" && !userCode) {
     return (
       <div className="flex flex-col gap-3">
-        <Text variant="body" className="text-foreground-secondary">
+        <Text variant="body" tone="secondary">
           Requesting a code from {providerName}…
         </Text>
         <div className="flex items-center gap-2 text-foreground-tertiary">
@@ -64,7 +64,7 @@ export function DeviceAuthConnectButton({
   if (phase === "idle" || phase === "error" || phase === "done") {
     return (
       <div className="flex flex-col gap-3">
-        <Text variant="body" className="text-foreground-secondary">
+        <Text variant="body" tone="secondary">
           {providerName} uses device authorization. Click below, then follow the
           link to approve access.
         </Text>
@@ -82,7 +82,7 @@ export function DeviceAuthConnectButton({
 
   return (
     <div className="flex flex-col gap-4">
-      <Text variant="body" className="text-foreground-secondary">
+      <Text variant="body" tone="secondary">
         Open the link below and enter the code to connect your {providerName}{" "}
         account.
       </Text>
@@ -92,16 +92,14 @@ export function DeviceAuthConnectButton({
           and Sentry masks the code, as it does all text. */}
       <div className="ph-no-capture flex flex-col gap-3 rounded-lg border border-border-base bg-surface-muted p-4">
         <div className="flex flex-col gap-1">
-          <Text
-            variant="small"
-            className="font-medium text-foreground-tertiary"
-          >
+          <Text variant="small" tone="muted" className="font-medium">
             Your code
           </Text>
           <Text
             variant="h3"
             as="p"
-            className="select-all text-center font-mono text-2xl tracking-widest text-foreground-emphasis"
+            tone="emphasis"
+            className="select-all text-center font-mono text-2xl tracking-widest"
           >
             {userCode}
           </Text>

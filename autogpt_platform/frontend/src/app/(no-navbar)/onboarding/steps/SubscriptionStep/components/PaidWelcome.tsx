@@ -54,7 +54,8 @@ export function PaidWelcome({
           onClick={onContinue}
           loading={isProcessing}
           disabled={isProcessing || isBlocked}
-          className="h-12 w-full text-base"
+          textSize="body-md"
+          className="h-12 w-full"
         >
           Continue to checkout
         </Button>

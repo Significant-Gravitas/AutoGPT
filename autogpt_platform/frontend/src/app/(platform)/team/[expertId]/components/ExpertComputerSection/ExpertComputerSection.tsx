@@ -1,6 +1,5 @@
 "use client";
 
-import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -71,10 +70,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Text variant="large-medium">{`${expertName}'s computer`}</Text>
-          <Text
-            variant="small"
-            className="mt-1 max-w-prose !text-foreground-tertiary"
-          >
+          <Text variant="small" tone="muted" className="mt-1 max-w-prose">
             One persistent cloud machine only {expertName} uses: the shell it
             runs commands in and, when needed, its screen. It is suspended
             between turns and costs nothing while suspended; installed tools and
@@ -85,7 +81,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
 
       {!computer.e2b_active ? (
         <div className="rounded-xl bg-warning-surface px-4 py-2.5 ring-1 ring-inset ring-warning-border">
-          <Text variant="small" className="text-warning-foreground">
+          <Text variant="small" tone="warning">
             Cloud sandboxes are not configured on this deployment.
           </Text>
         </div>
@@ -120,29 +116,23 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
             </div>
           </div>
         ) : (
-          <div
-            // TODO(tokens): no fitting role for to-black #141414; #141414 is foreground-base (a text colour)
-            className="relative flex min-h-[240px] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-action via-action-hover to-black px-6 py-8 text-center sm:aspect-[16/7] sm:min-h-0 sm:py-0"
-          >
+          <div className="relative flex min-h-[240px] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-action via-action-hover to-foreground-base px-6 py-8 text-center sm:aspect-[16/7] sm:min-h-0 sm:py-0">
             <div
               aria-hidden
-              className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgb(var(--color-card)/0.08),transparent_60%)]"
+              // oxlint-disable-next-line design-system/no-arbitrary-values -- a radial highlight; there is no radial-gradient utility
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgb(var(--color-surface)/0.08),transparent_60%)]"
             />
             <span
               className={cn(
                 "relative flex items-center gap-1.5 rounded-full px-2.5 py-1",
-                running
-                  ? // TODO(tokens): no exact role: bg-emerald-500/15 #10B981
-                    "bg-emerald-500/15"
-                  : "bg-surface/10",
+                running ? "bg-success/15" : "bg-surface/10",
               )}
             >
               <span
                 aria-hidden
                 className={cn(
                   "size-1.5 rounded-full",
-                  // TODO(tokens): no exact role: bg-emerald-400 #34D399; no fitting role for bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-                  running ? "bg-emerald-400" : "bg-zinc-400",
+                  running ? "bg-success" : "bg-foreground-subtle",
                 )}
               />
               <Text
@@ -155,14 +145,15 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
             </span>
             <Text
               variant="body-md"
-              className="relative max-w-md !text-foreground-disabled"
+              tone="disabled"
+              className="relative max-w-md"
             >
               {formatScreen(computer)}
             </Text>
             <Button
               variant="secondary"
-              size="small"
-              className={cn("relative", ACTION_BUTTON_CLASS)}
+              size="xs"
+              className="relative"
               loading={isOpening}
               disabled={!computer.e2b_active}
               onClick={openDesktop}
@@ -188,7 +179,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
 
       {mounts.length > 0 ? (
         <div className="rounded-2xl bg-surface p-4 smooth-shadow-ring-sm">
-          <Text variant="small-medium" className="!text-foreground-body">
+          <Text variant="small-medium" tone="body">
             Volumes
           </Text>
           <ul className="mt-2 divide-y divide-separator">
@@ -201,7 +192,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
                   <Text variant="small-mono-tight" as="code" tone="emphasis">
                     {path}
                   </Text>
-                  <Text variant="small" className="!text-foreground-tertiary">
+                  <Text variant="small" tone="muted">
                     {describeMount(path, computer)}{" "}
                     <Text variant="small-mono-tight" as="span" tone="subtle">
                       {name}
@@ -215,12 +206,10 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
       ) : null}
 
       <div className="flex items-start gap-2.5 rounded-xl bg-surface-hover/80 px-4 py-3">
-        <Icon
-          icon={SecurityIcon}
-          size={16}
-          className="mt-0.5 shrink-0 text-foreground-tertiary"
-        />
-        <Text variant="small" className="!text-foreground-secondary">
+        <span className="mt-0.5 inline-flex shrink-0 text-foreground-tertiary">
+          <Icon icon={SecurityIcon} size={16} />
+        </span>
+        <Text variant="small" tone="secondary">
           {expertName} has full access to this machine, so anything signed in on
           its desktop is visible to the AI. Do not sign into personal accounts
           there.
@@ -243,10 +232,10 @@ function DetailTile({ icon, label, children }: DetailTileProps) {
         <Icon icon={icon} size={15} aria-hidden />
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
-        <Text variant="small-medium" className="!text-foreground-body">
+        <Text variant="small-medium" tone="body">
           {label}
         </Text>
-        <Text variant="small" className="!text-foreground-tertiary">
+        <Text variant="small" tone="muted">
           {children}
         </Text>
       </span>

@@ -141,10 +141,7 @@ function WorkOutputBody({
 
   if (outputType === "doc" && typeof primary === "string") {
     return (
-      <div
-        data-slot="work-output-sheet-doc"
-        className="prose prose-sm max-w-none"
-      >
+      <div data-slot="work-output-sheet-doc" className="max-w-none">
         <MessageResponse>{primary}</MessageResponse>
       </div>
     );
@@ -167,8 +164,7 @@ function OutputImage({
     return <RunLinkFallback runLink={runLink} />;
   }
   return (
-    // Run outputs are arbitrary external URLs — next/image can't optimize them.
-    // eslint-disable-next-line @next/next/no-img-element
+    // eslint-disable-next-line @next/next/no-img-element -- run outputs are arbitrary external URLs that next/image can't optimise
     <img
       src={source}
       alt={title}

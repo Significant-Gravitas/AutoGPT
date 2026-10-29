@@ -52,7 +52,7 @@ export function IntegrationsListSkeleton() {
             <div className="flex items-center gap-3">
               <Skeleton className="size-6 rounded-full" />
               <Skeleton className="h-[22px] w-32" />
-              <Skeleton className="h-[22px] w-8 rounded-[10px]" />
+              <Skeleton className="h-[22px] w-8 rounded-lg" />
             </div>
             <Skeleton className="size-4 rounded" />
           </div>
@@ -63,7 +63,7 @@ export function IntegrationsListSkeleton() {
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-3">
                   <Skeleton className="h-[22px] w-40" />
-                  <Skeleton className="h-[20px] w-14 rounded-[10px]" />
+                  <Skeleton className="h-[20px] w-14 rounded-lg" />
                 </div>
                 <Skeleton className="h-3 w-28" />
               </div>

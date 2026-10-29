@@ -168,8 +168,7 @@ export const JSBeads = ({
             circlesRef.current[index] = circle;
           }}
           r={BEAD_DIAMETER / 2}
-          // TODO(tokens): no exact role: literal #8D8D95
-          fill="#8d8d95"
+          className="fill-foreground-tertiary"
         />
       ))}
     </>

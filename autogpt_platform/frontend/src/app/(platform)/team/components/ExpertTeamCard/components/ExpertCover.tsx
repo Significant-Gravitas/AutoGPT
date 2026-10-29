@@ -1,7 +1,6 @@
 import { expertPastel } from "@/components/molecules/ExpertAvatar/colors";
 import { coverClassFor } from "@/app/(platform)/raise/components/ColorStep/helpers";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { Activity01Icon, Alert01Icon } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -20,8 +19,7 @@ const STATUS_STYLES: Partial<
 > = {
   working: {
     label: "Working",
-    // TODO(tokens): no exact role: bg-emerald-50 #ECFDF5, text-emerald-700 #047857
-    className: "bg-emerald-50 text-emerald-700",
+    className: "bg-success-surface text-success-foreground",
     icon: Activity01Icon,
   },
   "needs-you": {
@@ -46,7 +44,8 @@ export function ExpertCover({ className, color, status, art }: Props) {
     <div
       style={
         color?.startsWith("#")
-          ? { backgroundColor: expertPastel(color) }
+          ? // oxlint-disable-next-line design-system/no-inline-styles -- the cover colour is per-expert data (a pastel of the expert's hex)
+            { backgroundColor: expertPastel(color) }
           : undefined
       }
       className={cn(
@@ -65,17 +64,15 @@ export function ExpertCover({ className, color, status, art }: Props) {
         />
       ) : null}
       {statusStyle ? (
-        <Text
-          variant="small-medium"
-          as="span"
+        <span
           className={cn(
-            "absolute bottom-3 right-3 flex items-center gap-1 rounded-md px-2 py-0.5",
+            "absolute bottom-3 right-3 flex items-center gap-1 rounded-md px-2 py-0.5 font-sans text-caption font-medium",
             statusStyle.className,
           )}
         >
           <Icon icon={statusStyle.icon} size={13} />
           {statusStyle.label}
-        </Text>
+        </span>
       ) : null}
     </div>
   );
