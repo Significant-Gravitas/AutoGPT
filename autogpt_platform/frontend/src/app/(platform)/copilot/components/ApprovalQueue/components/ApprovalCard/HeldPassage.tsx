@@ -46,7 +46,8 @@ export function HeldPassage({ passage }: Props) {
           type="button"
           variant="link"
           size="small"
-          className="h-auto min-w-0 self-start"
+          // oxlint-disable-next-line design-system/no-restyle -- the link variant takes the default size's padding; the toggle sits flush under the quote
+          className="h-auto min-w-0 self-start px-0 py-0"
           aria-expanded={expanded}
           aria-controls={id}
           onClick={() => setExpanded(!expanded)}
