@@ -83,20 +83,16 @@ export function HeldCallRow({
               </Tag>
             )}
             {item.priority === "high" && (
-              <Tag
-                // TODO(tokens): no exact role (ring-amber-600/10 #D97706)
-                className="bg-warning-surface text-warning-foreground ring-1 ring-inset ring-amber-600/10"
-              >
+              <Tag className="bg-warning-surface text-warning-foreground ring-1 ring-inset ring-warning-foreground/10">
                 Waiting
               </Tag>
             )}
           </div>
           {failed ? (
             <Text
-              // TODO(tokens): no fitting role for !text-red-600 #D93636; #D93636 is error-hover, a hover fill
               variant="body"
               role="alert"
-              className="!text-red-600"
+              className="!text-error-foreground"
             >
               Couldn&apos;t send your answer. Nothing ran. Try again.
             </Text>

@@ -35,11 +35,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
       <Accordion type="single" collapsible defaultValue="node-output">
         <AccordionItem value="node-output" className="border-none">
           <AccordionTrigger className="py-2 hover:no-underline">
-            <Text
-              variant="body-semibold"
-              // TODO(tokens): no exact role: text-slate-700 #475263
-              className="text-slate-700"
-            >
+            <Text variant="body-semibold" tone="body">
               Node Output
             </Text>
           </AccordionTrigger>
@@ -62,11 +58,9 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                     size="small"
                     onClick={() => handleCopy("input", latestInputData)}
                     className={cn(
-                      // TODO(tokens): no exact role: hover:text-slate-900 #2A313A
-                      "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-slate-900",
+                      "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-foreground-strong",
                       copiedKey === "input" &&
-                        // TODO(tokens): no exact role: border-green-400 #45B56E, bg-green-100 #B7E2C7, hover:border-green-400 #45B56E, hover:bg-green-200 #94D5AC
-                        "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
+                        "border-success bg-success/30 hover:border-success hover:bg-success/40",
                     )}
                   >
                     {copiedKey === "input" ? (
@@ -88,27 +82,15 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                   return (
                     <div key={key} className="flex flex-col gap-2">
                       <div className="flex items-center gap-2">
-                        <Text
-                          variant="small-semibold"
-                          // TODO(tokens): no exact role: text-slate-600 #5B6A7E
-                          className="text-slate-600"
-                        >
+                        <Text variant="small-semibold" tone="secondary">
                           Pin:
                         </Text>
-                        <Text
-                          // TODO(tokens): no exact role: text-slate-700 #475263
-                          variant="small"
-                          className="text-slate-700"
-                        >
+                        <Text variant="small" tone="body">
                           {beautifyString(key)}
                         </Text>
                       </div>
                       <div className="w-full space-y-2">
-                        <Text
-                          variant="small-semibold"
-                          // TODO(tokens): no exact role: text-slate-600 #5B6A7E
-                          className="text-slate-600"
-                        >
+                        <Text variant="small-semibold" tone="secondary">
                           Data:
                         </Text>
                         <div className="relative space-y-2">
@@ -132,11 +114,9 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                               size="small"
                               onClick={() => handleCopy(key, value)}
                               className={cn(
-                                // TODO(tokens): no exact role: hover:text-slate-900 #2A313A
-                                "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-slate-900",
+                                "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-foreground-strong",
                                 copiedKey === key &&
-                                  // TODO(tokens): no exact role: border-green-400 #45B56E, bg-green-100 #B7E2C7, hover:border-green-400 #45B56E, hover:bg-green-200 #94D5AC
-                                  "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
+                                  "border-success bg-success/30 hover:border-success hover:bg-success/40",
                               )}
                             >
                               {copiedKey === key ? (

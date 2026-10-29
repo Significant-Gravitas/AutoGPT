@@ -1,5 +1,6 @@
 import { formatElapsedTime } from "../helpers";
 import { AudioWaveform } from "./AudioWaveform";
+import { Text } from "@/components/atoms/Text/Text";
 
 type Props = {
   elapsedTime: number;
@@ -18,9 +19,14 @@ export function RecordingIndicator({ elapsedTime, audioStream }: Props) {
         minBarHeight={4}
         maxBarHeight={24}
       />
-      <span className="min-w-[3ch] text-sm font-medium text-error">
+      <Text
+        variant="body-medium-tight"
+        as="span"
+        tone="error"
+        className="min-w-[3ch]"
+      >
         {formatElapsedTime(elapsedTime)}
-      </span>
+      </Text>
     </div>
   );
 }

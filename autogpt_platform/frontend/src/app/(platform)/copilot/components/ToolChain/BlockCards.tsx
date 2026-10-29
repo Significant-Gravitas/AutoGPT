@@ -16,6 +16,7 @@ import {
   resultItemKey,
   str,
 } from "./resultHelpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface CardProviderIconProps {
   provider: string | null;
@@ -77,13 +78,17 @@ export function BlockListCard({ blocks }: BlockListCardProps) {
               />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+              <Text
+                variant="body-sm-medium-inherit"
+                tone="emphasis"
+                className="truncate"
+              >
                 {getBlockDisplayName(block.name, block) ?? "Block"}
-              </p>
+              </Text>
               {str(block, "description") && (
-                <p className="truncate text-xs text-foreground-tertiary">
+                <Text variant="small-tight" tone="muted" className="truncate">
                   {str(block, "description")}
-                </p>
+                </Text>
               )}
             </div>
             {categories[0] && (
@@ -115,22 +120,24 @@ export function BlockOutputCard({ output }: BlockOutputCardProps) {
             fallback={BLOCK_ICON}
           />
         </div>
-        <p className="min-w-0 flex-1 truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="min-w-0 flex-1 truncate"
+        >
           {name}
-        </p>
+        </Text>
         {ok ? (
           <Icon
             icon={CheckmarkCircle02Icon}
             size={16}
-            // TODO(tokens): no exact role for text-green-500
-            className="shrink-0 text-green-500"
+            className="shrink-0 text-success"
           />
         ) : (
           <Icon
             icon={CancelCircleIcon}
             size={16}
-            // TODO(tokens): no exact role for text-red-400
-            className="shrink-0 text-red-400"
+            className="shrink-0 text-error"
           />
         )}
       </div>
