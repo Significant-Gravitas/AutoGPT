@@ -40,7 +40,7 @@ export function StatsOverview({ stats, index = 0 }: Props) {
       label: "Approved",
       value: stats.approved.toLocaleString(),
       Icon: CheckmarkCircle02Icon,
-      iconClass: "bg-success-surface text-emerald-700 ring-success/30",
+      iconClass: "bg-success-surface text-success-foreground ring-success/30",
     },
     {
       label: "In review",
@@ -53,6 +53,7 @@ export function StatsOverview({ stats, index = 0 }: Props) {
       label: "Total runs",
       value: formatRuns(stats.totalRuns),
       Icon: PlayIcon,
+      // oxlint-disable-next-line design-system/no-raw-colors -- sky tile kept until the cyan -> info hue change is approved
       iconClass: "bg-sky-50 text-sky-700 ring-sky-200",
     },
   ];
@@ -78,12 +79,9 @@ export function StatsOverview({ stats, index = 0 }: Props) {
       ))}
 
       {stats.averageRating !== null ? (
-        <div className="col-span-2 flex items-center justify-between gap-3 rounded-[18px] border border-border-base bg-gradient-to-br from-warning-surface/60 to-surface px-4 py-4 shadow-message-table lg:col-span-4">
+        <div className="col-span-2 flex items-center justify-between gap-3 rounded-large border border-border-base bg-gradient-to-br from-warning-surface/60 to-surface px-4 py-4 shadow-message-table lg:col-span-4">
           <div className="flex items-center gap-3">
-            <div
-              // TODO(tokens): no exact role (bg-amber-100 #FEF3C7)
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-warning/20 text-warning-foreground ring-1 ring-inset ring-warning-border"
-            >
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-warning/20 text-warning-foreground ring-1 ring-inset ring-warning-border">
               <UIIcon icon={StarIcon} size={18} />
             </div>
             <div className="flex flex-col">
@@ -108,13 +106,13 @@ export function StatsOverview({ stats, index = 0 }: Props) {
 function StatTileCard({ tile }: { tile: StatTile }) {
   const { label, value, iconClass } = tile;
   return (
-    <div className="relative flex min-h-[120px] flex-col justify-between gap-2 rounded-[18px] border border-border-base bg-surface px-4 py-5 shadow-message-table">
+    <div className="relative flex min-h-[120px] flex-col justify-between gap-2 rounded-large border border-border-base bg-surface px-4 py-5 shadow-message-table">
       <div
         className={`absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full ring-1 ring-inset ${iconClass}`}
       >
         <UIIcon icon={tile.Icon} size={14} />
       </div>
-      <Text variant="body" as="span" tone="emphasis" className="pr-10">
+      <Text variant="body" as="span" tone="emphasis" className="mr-10">
         {label}
       </Text>
       <Text variant="h4" as="span">

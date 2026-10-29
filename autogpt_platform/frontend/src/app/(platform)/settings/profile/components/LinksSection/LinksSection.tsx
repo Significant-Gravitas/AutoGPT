@@ -59,15 +59,8 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
                 transition={{ duration: 0.18, ease: EASE_OUT }}
               >
                 <div className="flex items-center gap-2">
-                  <div
-                    // TODO(tokens): no exact role (focus-within:border-brand/80 #925CF7, focus-within:ring-brand/80 #925CF7)
-                    className="flex flex-1 items-center gap-2 rounded-3xl border border-border-base bg-surface px-4 transition-colors duration-150 focus-within:border-brand/80 focus-within:ring-1 focus-within:ring-brand/80"
-                  >
-                    <Icon
-                      icon={Link02Icon}
-                      size={16}
-                      className="text-foreground-subtle"
-                    />
+                  <div className="flex flex-1 items-center gap-2 rounded-3xl border border-border-base bg-surface px-4 text-foreground-subtle transition-colors duration-150 focus-within:border-brand/80 focus-within:ring-1 focus-within:ring-brand/80">
+                    <Icon icon={Link02Icon} size={16} />
                     <input
                       type="url"
                       value={link.value}
@@ -92,7 +85,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
         </div>
 
         {links.length === 0 ? (
-          <Text variant="small" tone="subtle" className="px-4">
+          <Text variant="small" tone="subtle" className="mx-4">
             No links yet.
           </Text>
         ) : null}

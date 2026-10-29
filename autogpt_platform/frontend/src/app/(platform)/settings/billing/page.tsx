@@ -158,12 +158,7 @@ function SettingsBillingPage() {
     <div className="mx-auto flex w-full max-w-[900px] flex-col gap-5 px-4 pb-8 sm:px-6">
       <header className="space-y-1">
         <div className="flex items-center gap-1">
-          <Text
-            // TODO(tokens): no exact text token (tracking-[-0.035em])
-            variant="h3"
-            as="h1"
-            className="tracking-heading"
-          >
+          <Text variant="h3-tracking-tight" as="h1">
             Billing &amp; usage
           </Text>
           <Button
@@ -173,6 +168,7 @@ function SettingsBillingPage() {
             leadingIcon={InformationCircleIcon}
             aria-label="How usage and credits work"
             onClick={() => setIsExplainerOpen(true)}
+            // oxlint-disable-next-line design-system/no-restyle -- the info button is a quiet grey glyph beside the title
             className="text-foreground-tertiary"
           />
         </div>

@@ -21,7 +21,7 @@ export function PlanChoice({
   onSelect,
 }: Props) {
   return (
-    <li className="flex flex-col gap-3 rounded-[18px] border border-border-base bg-surface p-5 shadow-message-table">
+    <li className="flex flex-col gap-3 rounded-large border border-border-base bg-surface p-5 shadow-message-table">
       <Text variant="body-medium" as="h3">
         {plan.label}
       </Text>

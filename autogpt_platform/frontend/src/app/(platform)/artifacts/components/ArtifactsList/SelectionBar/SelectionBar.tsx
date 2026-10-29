@@ -70,7 +70,7 @@ export function SelectionBar({
           size="xs"
           disabled={isDeleting}
           onClick={handleDelete}
-          // TODO(tokens): no fitting role for text-error-hover #D93636; #D93636 is error-hover, a hover fill
+          // oxlint-disable-next-line design-system/no-restyle -- a red outline action; the destructive variant is a red fill
           className="text-error-hover hover:bg-error-surface hover:text-error-foreground"
           data-testid="artifacts-selection-delete"
         >

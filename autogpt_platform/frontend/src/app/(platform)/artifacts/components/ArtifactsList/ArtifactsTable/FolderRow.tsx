@@ -14,12 +14,10 @@ import { FOLDER_STYLE } from "../../WorkspaceFolders/folder-constants";
 import { formatDayLabel, formatFullDate } from "../helpers";
 import {
   ACTIONS_CELL_CLASS,
-  DATE_CELL_CLASS,
   NAME_BUTTON_CLASS,
   REDUCED_ROW_VARIANTS,
   ROW_GRID_CLASS,
   ROW_VARIANTS,
-  SIZE_CELL_CLASS,
 } from "./row-layout";
 
 interface Props {
@@ -103,9 +101,10 @@ export function FolderRow({
           className={cn(
             "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border-base",
             FOLDER_STYLE.surface,
+            FOLDER_STYLE.icon,
           )}
         >
-          <Icon icon={Folder01Icon} size={20} className={FOLDER_STYLE.icon} />
+          <Icon icon={Folder01Icon} size={20} />
         </div>
         <Text
           variant="body-medium"
@@ -121,7 +120,7 @@ export function FolderRow({
         variant="body"
         as="span"
         tone="muted"
-        className={cn(DATE_CELL_CLASS, "")}
+        className="hidden truncate sm:block"
         title={formatFullDate(updatedAt)}
       >
         {formatDayLabel(updatedAt)}
@@ -130,7 +129,8 @@ export function FolderRow({
         variant="body"
         as="span"
         tone="muted"
-        className={cn(SIZE_CELL_CLASS, "")}
+        // oxlint-disable-next-line design-system/no-restyle -- tabular figures keep the size column aligned; Text has no numeric variant
+        className="hidden tabular-nums md:block"
       >
         {folderSummary(fileCount, subfolderCount)}
       </Text>

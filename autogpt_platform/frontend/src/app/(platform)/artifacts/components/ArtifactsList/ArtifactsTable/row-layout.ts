@@ -6,8 +6,6 @@ import type { Variants } from "framer-motion";
 // actions don't shift the other columns.
 export const ROW_GRID_CLASS =
   "grid grid-cols-[minmax(0,1fr)_4.5rem] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_7rem_4.5rem] md:grid-cols-[minmax(0,1fr)_8rem_6rem_4.5rem]";
-export const DATE_CELL_CLASS = "hidden truncate sm:block";
-export const SIZE_CELL_CLASS = "hidden tabular-nums md:block";
 export const ACTIONS_CELL_CLASS = "flex justify-end";
 
 // Sized to its content (its wrapper is not stretched across the column) so

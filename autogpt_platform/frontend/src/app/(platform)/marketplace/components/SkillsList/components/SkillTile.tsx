@@ -18,18 +18,13 @@ export function SkillTile({ skill, isInstalled, onSee }: Props) {
     <ShelfTile
       testId="skill-tile"
       onClick={onSee}
-      mediaClassName={cn("h-10 w-10", accent.pill)}
-      media={
-        <Icon icon={Book04Icon} size={18} className={accent.icon} aria-hidden />
-      }
+      mediaClassName={cn("h-10 w-10", accent.pill, accent.icon)}
+      media={<Icon icon={Book04Icon} size={18} aria-hidden />}
       title={skill.title}
       subtitle={skill.description}
       trailing={
         isInstalled ? (
-          <span
-            // TODO(tokens): no exact role: text-success #059669
-            className="flex shrink-0 items-center gap-1 pr-1 text-body-sm font-medium leading-inherit text-success"
-          >
+          <span className="flex shrink-0 items-center gap-1 pr-1 text-body-sm font-medium leading-inherit text-success">
             <Icon icon={CheckmarkCircle02Icon} size={14} aria-hidden />
             Added
           </span>

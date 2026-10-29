@@ -53,13 +53,8 @@ export function MemoryChatPanel({
           className="pointer-events-auto flex h-[70vh] max-h-[calc(100vh-6rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-base bg-surface shadow-2xl sm:h-[75vh]"
         >
           <div className="flex items-center justify-between border-b border-separator px-4 py-3">
-            <div className="flex items-center gap-2">
-              <Icon
-                // TODO(tokens): no exact role (text-violet-600 #7C3AED)
-                icon={BrainIcon}
-                size={18}
-                className="text-brand"
-              />
+            <div className="flex items-center gap-2 text-brand">
+              <Icon icon={BrainIcon} size={18} />
               <span className="text-sm font-semibold text-foreground-emphasis">
                 {scopeName}&apos;s memory
               </span>

@@ -27,7 +27,7 @@ function ScopeCheck({ selected }: { selected: boolean }) {
     <Icon
       icon={Tick02Icon}
       size={16}
-      // TODO(tokens): no exact role (text-violet-600 #7C3AED)
+      // oxlint-disable-next-line design-system/no-restyle -- the selected scope's tick is brand-coloured
       className="ml-auto shrink-0 text-brand"
     />
   );
@@ -45,10 +45,8 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           type="button"
           aria-label="Memory scope"
           className={cn(
-            "flex w-full items-center gap-2.5 rounded-[10px] border border-border-base bg-surface px-3 py-2 text-sm font-medium text-foreground-base",
-            // TODO(tokens): no exact role (focus-visible:ring-brand/70 #A78BFA)
+            "flex w-full items-center gap-2.5 rounded-medium border border-border-base bg-surface px-3 py-2 text-sm font-medium text-foreground-base",
             "transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70",
-            // TODO(tokens): no exact role (data-[state=open]:border-brand #8B5CF6)
             "data-[state=open]:border-brand",
           )}
         >
@@ -67,15 +65,18 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           <Icon
             icon={ArrowDown01Icon}
             size={16}
+            // oxlint-disable-next-line design-system/no-restyle -- the chevron is quieter than the scope name beside it
             className="ml-auto shrink-0 text-foreground-tertiary"
           />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
+        // oxlint-disable-next-line design-system/no-restyle -- the scope menu is wider, rounder and padded for two-line rows
         className="max-h-96 w-[300px] overflow-y-auto rounded-medium p-1.5"
       >
         <DropdownMenuItem
+          // oxlint-disable-next-line design-system/no-restyle -- two-line scope row with an avatar
           className="flex items-start gap-2.5 rounded-small px-2.5 py-2"
           onSelect={() => onSelect(null)}
         >
@@ -94,12 +95,14 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
         {experts.length > 0 && (
           <>
             <DropdownMenuSeparator />
+            {/* oxlint-disable-next-line design-system/no-restyle -- the experts group label is an eyebrow, not a menu label */}
             <DropdownMenuLabel className="px-2.5 pb-0.5 pt-1.5 text-tiny font-semibold uppercase leading-inherit tracking-caps text-foreground-subtle">
               Your experts
             </DropdownMenuLabel>
             {experts.map((expert) => (
               <DropdownMenuItem
                 key={expert.id}
+                // oxlint-disable-next-line design-system/no-restyle -- two-line scope row with an avatar
                 className="flex items-start gap-2.5 rounded-small px-2.5 py-2"
                 onSelect={() => onSelect(expert.id)}
               >

@@ -15,7 +15,6 @@ interface PreviewProps {
 }
 
 const preClass =
-  // TODO(tokens): no exact text token for leading-snug
   "h-full w-full overflow-hidden whitespace-pre-wrap break-words bg-surface p-3 font-mono text-tiny leading-snug text-foreground-body";
 
 // Fetch a larger slice and show more rows than the default so the card table
@@ -58,10 +57,7 @@ const MARKDOWN_COMPONENTS: Components = {
     </p>
   ),
   p: ({ children }) => (
-    <p
-      // TODO(tokens): no exact text token for leading-snug
-      className="mb-1 text-tiny leading-snug text-foreground-secondary"
-    >
+    <p className="mb-1 text-tiny leading-snug text-foreground-secondary">
       {children}
     </p>
   ),
@@ -76,21 +72,14 @@ const MARKDOWN_COMPONENTS: Components = {
     </ol>
   ),
   li: ({ children }) => <li className="mb-0.5">{children}</li>,
-  // TODO(tokens): no exact role for text-brand (#7C3AED)
   a: ({ children }) => <span className="text-brand">{children}</span>,
   code: ({ children }) => (
-    <code
-      // TODO(tokens): SECRT-3152, rare size text-tiny leading-inherit
-      className="rounded bg-surface-hover px-1 font-mono text-tiny leading-inherit"
-    >
+    <code className="rounded bg-surface-hover px-1 font-mono text-tiny leading-inherit">
       {children}
     </code>
   ),
   pre: ({ children }) => (
-    <pre
-      // TODO(tokens): SECRT-3152, rare size text-tiny leading-inherit
-      className="mb-1 overflow-hidden rounded bg-surface-hover p-1.5 font-mono text-tiny leading-inherit text-foreground-body"
-    >
+    <pre className="mb-1 overflow-hidden rounded bg-surface-hover p-1.5 font-mono text-tiny leading-inherit text-foreground-body">
       {children}
     </pre>
   ),
@@ -131,10 +120,7 @@ function CsvTable({ preview }: { preview: CsvPreview }) {
     "max-w-[6rem] truncate border-b border-separator px-2 py-1 text-left";
   return (
     <div className="relative h-full w-full overflow-hidden bg-surface">
-      <table
-        // TODO(tokens): SECRT-3152, rare size text-tiny leading-inherit
-        className="w-full table-fixed border-collapse text-tiny leading-inherit text-foreground-body"
-      >
+      <table className="w-full table-fixed border-collapse text-tiny leading-inherit text-foreground-body">
         <thead>
           <tr>
             {preview.headers.map((header, i) => (

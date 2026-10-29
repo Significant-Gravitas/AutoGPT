@@ -79,9 +79,9 @@ export function WorkspaceFolder({
       }`}
     >
       <div
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${style.surface}`}
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${style.surface} ${style.icon}`}
       >
-        <Icon icon={Folder01Icon} size={22} className={style.icon} />
+        <Icon icon={Folder01Icon} size={22} />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
         <Text

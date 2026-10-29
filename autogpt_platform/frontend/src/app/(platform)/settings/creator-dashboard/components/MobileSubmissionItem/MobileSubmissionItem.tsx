@@ -102,16 +102,15 @@ export function MobileSubmissionItem({
               alt={submission.name}
               fill
               sizes="64px"
-              style={{ objectFit: "cover" }}
               draggable={false}
-              className="pointer-events-none"
+              className="pointer-events-none object-cover"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center">
+            <div className="flex h-full w-full items-center justify-center text-foreground-subtle">
               <UIIcon
                 icon={ImageNotFound01Icon}
                 size={18}
-                className="pointer-events-none text-foreground-subtle"
+                className="pointer-events-none"
               />
             </div>
           )}
@@ -133,6 +132,7 @@ export function MobileSubmissionItem({
                 <UIIcon
                   icon={LinkSquare01Icon}
                   size={14}
+                  // oxlint-disable-next-line design-system/no-restyle -- the link glyph is quieter than the name it sits beside
                   className="shrink-0 text-foreground-tertiary"
                   aria-hidden
                 />
@@ -180,20 +180,18 @@ export function MobileSubmissionItem({
             className="min-w-[160px]"
           >
             {canModify ? (
-              <DropdownMenuItem
-                onSelect={handleEdit}
-                className="flex cursor-pointer items-center gap-2"
-              >
-                <UIIcon icon={PencilIcon} size={14} />
-                Edit details
+              <DropdownMenuItem onSelect={handleEdit}>
+                <span className="flex items-center gap-2">
+                  <UIIcon icon={PencilIcon} size={14} />
+                  Edit details
+                </span>
               </DropdownMenuItem>
             ) : (
-              <DropdownMenuItem
-                onSelect={handleView}
-                className="flex cursor-pointer items-center gap-2"
-              >
-                <UIIcon icon={EyeIcon} size={14} />
-                View submission
+              <DropdownMenuItem onSelect={handleView}>
+                <span className="flex items-center gap-2">
+                  <UIIcon icon={EyeIcon} size={14} />
+                  View submission
+                </span>
               </DropdownMenuItem>
             )}
             {marketplaceUrl ? (
@@ -215,11 +213,13 @@ export function MobileSubmissionItem({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => setConfirmDeleteOpen(true)}
-                  // TODO(tokens): no exact role (text-rose-600 #E11D48, focus:text-rose-700 #BE123C)
-                  className="flex cursor-pointer items-center gap-2 text-rose-600 focus:text-rose-700"
+                  // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- rose delete text kept until the rose -> error hue change is approved
+                  className="text-rose-600 focus:text-rose-700"
                 >
-                  <UIIcon icon={Delete02Icon} size={14} />
-                  Delete
+                  <span className="flex items-center gap-2">
+                    <UIIcon icon={Delete02Icon} size={14} />
+                    Delete
+                  </span>
                 </DropdownMenuItem>
               </>
             ) : null}
@@ -250,6 +250,7 @@ export function MobileSubmissionItem({
             </span>
             <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-foreground-tertiary">
               {submission.review_avg_rating!.toFixed(1)}
+              {/* oxlint-disable-next-line design-system/no-restyle -- the star is amber beside grey run counts */}
               <UIIcon icon={StarIcon} size={10} className="text-warning" />
             </span>
           </>

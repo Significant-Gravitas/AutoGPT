@@ -66,6 +66,7 @@ export function TransactionRow({
             id={`transaction-details-${transaction.id}`}
             variant="ghost"
             size="small"
+            // oxlint-disable-next-line design-system/no-restyle -- a bare text toggle inside the receipt; no Button variant drops the padding
             className="min-h-11 w-full min-w-0 px-1 text-foreground-secondary"
             onClick={() => onToggle(transaction.id)}
             aria-label={`${open ? "Close" : "Open"} details for ${activityName(transaction)}, ${posted.date} at ${posted.time}`}
@@ -105,7 +106,6 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
       <span
         className={cn(
           "hidden size-8 shrink-0 items-center justify-center rounded-small sm:flex",
-          // TODO(tokens): no exact role (bg-purple-50 #F1EBFE, text-accent-strong #5424AE)
           agent
             ? "bg-accent-surface text-accent-strong"
             : "bg-surface-hover text-foreground-secondary",
@@ -117,7 +117,7 @@ function TransactionActivity({ transaction }: { transaction: Transaction }) {
         {href ? (
           <Link
             href={href}
-            // TODO(tokens): no exact role (text-purple-700 #5424AE)
+            // oxlint-disable-next-line design-system/no-restyle -- related-run links are brand-coloured; Link has no brand variant
             className="inline-flex min-h-6 items-center break-words text-accent-strong"
           >
             {name}

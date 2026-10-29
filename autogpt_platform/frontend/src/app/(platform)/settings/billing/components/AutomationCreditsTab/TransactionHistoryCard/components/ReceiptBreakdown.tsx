@@ -56,7 +56,7 @@ function BreakdownLine({ label, amount }: { label: string; amount: number }) {
         </Text>
       </dt>
       <dd className="text-right">
-        <TransactionAmount amount={amount} className="text-xs font-normal" />
+        <TransactionAmount amount={amount} variant="small" />
       </dd>
     </>
   );

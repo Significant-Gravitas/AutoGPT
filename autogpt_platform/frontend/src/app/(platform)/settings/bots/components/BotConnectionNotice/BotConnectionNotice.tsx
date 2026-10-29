@@ -31,8 +31,7 @@ export function BotConnectionNotice() {
         , the connection you chose in{" "}
         <Link
           href="/settings/integrations"
-          // TODO(tokens): no exact role (text-[#7444E5])
-          className="font-medium text-[#7444E5] underline underline-offset-2"
+          className="font-medium text-brand underline underline-offset-2"
         >
           AI subscriptions
         </Link>

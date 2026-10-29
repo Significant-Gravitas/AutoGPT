@@ -54,10 +54,10 @@ export function SwitchTierDialog({
             {title ? "Your subscription" : `Upgrade to ${targetTierLabel}`}
           </Text>
           <Text
-            variant="h3"
+            variant="h3-tracking-tight"
             as="span"
-            // TODO(tokens): SECRT-3152 rare size (text-[26px])
-            className="block text-heading leading-8 tracking-tight"
+            // oxlint-disable-next-line design-system/no-restyle -- the dialog title sits on a 32px line under its eyebrow
+            className="block leading-8"
           >
             {title ?? `Upgrade to ${targetTierLabel}`}
           </Text>
@@ -68,7 +68,7 @@ export function SwitchTierDialog({
     >
       <Dialog.Content>
         {usageCarriesOver && (
-          <Text variant="body" tone="secondary" className="mb-5 leading-6">
+          <Text variant="body" tone="secondary" className="mb-5">
             {usageMultiplier
               ? `${usageMultiplier} times the usage of Pro and priority support.`
               : "More room for demanding work and priority support."}
@@ -101,6 +101,7 @@ export function SwitchTierDialog({
           <Text
             variant="small"
             tone="secondary"
+            // oxlint-disable-next-line design-system/no-restyle -- the carry-over note is a tinted block at a 24px line height
             className="mt-4 rounded-xl bg-surface-muted p-4 leading-6"
           >
             You can keep going once payment goes through. What you’ve already
@@ -112,6 +113,7 @@ export function SwitchTierDialog({
         )}
         <Dialog.Footer
           className={
+            // oxlint-disable-next-line design-system/no-restyle -- the carry-over footer stacks its two buttons
             usageCarriesOver ? "flex-col items-stretch gap-2" : undefined
           }
         >

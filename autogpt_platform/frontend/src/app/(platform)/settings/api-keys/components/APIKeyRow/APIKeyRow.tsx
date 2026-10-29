@@ -86,7 +86,7 @@ export function APIKeyRow({
             <Text variant="label" as="span" tone="body">
               {maskedKey}
             </Text>
-            <Text variant="small" as="span" tone="muted" className="leading-5">
+            <Text variant="small-loose" as="span" tone="muted">
               {lastUsedLabel}
             </Text>
           </div>

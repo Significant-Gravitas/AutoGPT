@@ -30,7 +30,7 @@ export function PaymentMethodCard({ index = 0 }: Props) {
 
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border-base bg-surface p-5">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-surface-hover text-foreground-body">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-medium bg-surface-hover text-foreground-body">
             <Icon icon={CreditCardIcon} size={20} />
           </div>
           <div className="flex min-w-0 flex-col">

@@ -59,7 +59,7 @@ export function AccountCard({ user, index = 0 }: Props) {
       }
       className="flex w-full flex-col gap-2"
     >
-      <div className="flex flex-col divide-y divide-border-base rounded-[18px] border border-border-base bg-surface shadow-message-table">
+      <div className="flex flex-col divide-y divide-border-base rounded-large border border-border-base bg-surface shadow-message-table">
         <div className="flex items-center justify-between gap-4 px-4 py-4">
           <Text variant="body-medium" as="span">
             Email
@@ -86,6 +86,7 @@ export function AccountCard({ user, index = 0 }: Props) {
                   variant="secondary"
                   size="small"
                   aria-label="Edit email"
+                  // oxlint-disable-next-line design-system/no-restyle -- a 28px pill edit button; Button has no pill size at 28px
                   className="h-7 min-w-0 px-1.5 py-0.5"
                 >
                   <Icon icon={PencilIcon} size={14} />
@@ -102,6 +103,7 @@ export function AccountCard({ user, index = 0 }: Props) {
                       control={emailForm.control}
                       name="email"
                       render={({ field, fieldState }) => (
+                        // oxlint-disable-next-line design-system/no-restyle -- the email field sits flush under its hint
                         <FormItem className="space-y-0">
                           <FormControl>
                             <Input

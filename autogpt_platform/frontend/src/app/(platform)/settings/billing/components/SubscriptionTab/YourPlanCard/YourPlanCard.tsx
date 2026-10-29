@@ -72,10 +72,20 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
   if (isLoading || !plan) {
     return (
       <motion.div {...sectionMotion}>
-        <Skeleton className="h-[100px] rounded-[18px]" />
+        <Skeleton className="h-[100px] rounded-2xl" />
       </motion.div>
     );
   }
+
+  const planBadgeLabel = !plan.isPaidPlan
+    ? "Inactive"
+    : plan.isPendingCancel
+      ? "Cancellation scheduled"
+      : plan.isPendingDowngrade
+        ? "Downgrade scheduled"
+        : plan.isPendingCycleSwitch
+          ? "Cycle switch scheduled"
+          : "Active";
 
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-4">
@@ -91,29 +101,22 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
             <Text variant="large-semibold" as="h2">
               {plan.label}
             </Text>
-            <Badge
-              variant="success"
-              size="small"
-              className={
-                plan.isPendingCancel ||
-                plan.isPendingDowngrade ||
-                plan.isPendingCycleSwitch
-                  ? // TODO(tokens): no exact role (bg-amber-100 #FEF3C7, text-amber-800 #92400E)
-                    "bg-warning/20 text-amber-800"
-                  : // TODO(tokens): no exact role (bg-violet-100 #EDE9FE, text-accent-strong #5B21B6)
-                    "bg-brand/10 text-accent-strong"
-              }
-            >
-              {!plan.isPaidPlan
-                ? "Inactive"
-                : plan.isPendingCancel
-                  ? "Cancellation scheduled"
-                  : plan.isPendingDowngrade
-                    ? "Downgrade scheduled"
-                    : plan.isPendingCycleSwitch
-                      ? "Cycle switch scheduled"
-                      : "Active"}
-            </Badge>
+            {plan.isPendingCancel ||
+            plan.isPendingDowngrade ||
+            plan.isPendingCycleSwitch ? (
+              <Badge variant="warning" size="small">
+                {planBadgeLabel}
+              </Badge>
+            ) : (
+              <Badge
+                variant="success"
+                size="small"
+                // oxlint-disable-next-line design-system/no-restyle -- the plan badge is brand-tinted; Badge has no brand tint
+                className="bg-brand/10 text-accent-strong"
+              >
+                {planBadgeLabel}
+              </Badge>
+            )}
             {isCycleToggleVisible ? (
               <CycleToggle
                 value={selectedCycle}
@@ -127,7 +130,6 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
               Managed by your AutoGPT account team.{" "}
               <a
                 href={ENTERPRISE_CONTACT_URL}
-                // TODO(tokens): no fitting role for hover:text-brand-hover #6C2EDF; #6C2EDF is brand-hover, a hover fill
                 className="font-medium text-brand no-underline hover:text-brand-hover"
               >
                 Contact us

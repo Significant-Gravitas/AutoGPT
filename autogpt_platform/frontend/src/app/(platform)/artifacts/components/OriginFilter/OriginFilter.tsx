@@ -32,7 +32,7 @@ export function OriginFilter({ value, onChange }: Props) {
   return (
     <LayoutGroup id="artifacts-origin-filter">
       <div className="flex flex-col gap-1">
-        <Text variant="small" as="span" tone="muted" className="pl-4">
+        <Text variant="small" as="span" tone="muted" className="ml-4">
           Type
         </Text>
         <div
@@ -69,7 +69,6 @@ function OriginTab({ option, active, onClick }: OriginTabProps) {
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        // TODO(tokens): no fitting role for focus-visible:ring-foreground-subtle #ADADB3; #ADADB3 is foreground-subtle, a text colour
         "relative rounded-full px-4 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-foreground-subtle",
         active
           ? "text-foreground-strong"

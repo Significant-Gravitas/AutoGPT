@@ -41,7 +41,7 @@ export function NotificationsCard({
       }
       className="flex w-full flex-col"
     >
-      <div className="flex h-fit flex-col gap-4 rounded-[18px] border border-border-base bg-surface px-4 py-3 shadow-message-table">
+      <div className="flex h-fit flex-col gap-4 rounded-large border border-border-base bg-surface px-4 py-3 shadow-message-table">
         <div className="flex flex-col gap-1">
           <Text variant="body-medium" as="span">
             Email

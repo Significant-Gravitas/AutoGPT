@@ -76,13 +76,10 @@ export function MainCreatorPage({ params }: Props) {
           <div className="w-full lg:w-2/5">
             <div className="w-full px-4 sm:px-6 lg:px-0">
               <div
-                // TODO(tokens): no exact role: from-blue-200 #BFDBFE, to-indigo-200 #C7D2FE
-                className="max-w-[45rem] rounded-2xl bg-gradient-to-r from-blue-200 to-indigo-200 p-[1px]"
+                // oxlint-disable-next-line design-system/no-raw-colors -- indigo has no role; info or brand would change the frame\'s hue (deferred)
+                className="max-w-[45rem] rounded-2xl bg-gradient-to-r from-info/30 to-indigo-200 p-px"
               >
-                <div
-                  // TODO(tokens): no exact role: bg-surface-muted #F9FAFB
-                  className="flex flex-col rounded-[calc(1rem-2px)] bg-surface-muted p-4"
-                >
+                <div className="flex flex-col rounded-large bg-surface-muted p-4">
                   {/* Avatar */}
                   <Avatar className="mb-4 h-20 w-20 sm:h-24 sm:w-24">
                     {creator.avatar_url && (
@@ -106,21 +103,15 @@ export function MainCreatorPage({ params }: Props) {
                   </Text>
 
                   {/* Handle */}
-                  <Text
-                    // TODO(tokens): no exact role: text-foreground-tertiary #737373
-                    variant="body"
-                    tone="muted"
-                    className="mb-4"
-                  >
+                  <Text variant="body" tone="muted" className="mb-4">
                     @{creator.username}
                   </Text>
 
                   {/* Description */}
                   <Text
                     variant="body"
-                    // TODO(tokens): no exact role: text-foreground-secondary #525252
                     tone="secondary"
-                    className="mb-6 leading-relaxed"
+                    className="mb-6"
                     data-testid="creator-description"
                   >
                     {creator.description}
@@ -137,7 +128,7 @@ export function MainCreatorPage({ params }: Props) {
                           <Badge
                             variant="info"
                             key={index}
-                            // TODO(tokens): no exact role: border-brand/10 #EFE8FE, bg-accent-surface #F1EBFE, text-accent-strong #411C87
+                            // oxlint-disable-next-line design-system/no-restyle -- the category chips keep their purple fill; Badge has no brand variant
                             className="border border-brand/10 bg-accent-surface text-accent-strong"
                           >
                             {category}

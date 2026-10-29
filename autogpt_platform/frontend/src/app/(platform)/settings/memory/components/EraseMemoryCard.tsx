@@ -30,11 +30,9 @@ export function EraseMemoryCard({
   }
 
   return (
-    <div
-      // TODO(tokens): no exact role (border-red-200 #FAC5C5)
-      className="flex flex-col gap-3 rounded-[18px] border border-error/30 bg-surface px-4 py-4 shadow-message-table sm:flex-row sm:items-center sm:justify-between"
-    >
+    <div className="flex flex-col gap-3 rounded-large border border-error/30 bg-surface px-4 py-4 shadow-message-table sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 flex-col">
+        {/* oxlint-disable-next-line design-system/no-restyle -- no Text tone for error-foreground yet (Text helpers belong to P2) */}
         <Text variant="body-medium" as="span" className="text-error-foreground">
           Erase {scopeName}&apos;s memory
         </Text>

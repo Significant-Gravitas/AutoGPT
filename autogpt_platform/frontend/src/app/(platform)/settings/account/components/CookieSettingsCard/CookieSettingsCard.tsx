@@ -32,7 +32,7 @@ export function CookieSettingsCard({ index = 0 }: Props) {
       }
       className="flex w-full flex-col"
     >
-      <div className="flex items-center justify-between gap-4 rounded-[18px] border border-border-base bg-surface px-4 py-4 shadow-message-table">
+      <div className="flex items-center justify-between gap-4 rounded-large border border-border-base bg-surface px-4 py-4 shadow-message-table">
         <div className="flex min-w-0 flex-col gap-0.5">
           <Text variant="body-medium" as="span">
             Cookies

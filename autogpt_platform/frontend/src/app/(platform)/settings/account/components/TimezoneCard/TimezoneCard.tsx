@@ -41,7 +41,7 @@ export function TimezoneCard({ value, onChange, index = 0 }: Props) {
       }
       className="flex w-full flex-col"
     >
-      <div className="flex h-fit flex-col justify-center gap-3 rounded-[18px] border border-border-base bg-surface px-4 py-3 shadow-message-table">
+      <div className="flex h-fit flex-col justify-center gap-3 rounded-large border border-border-base bg-surface px-4 py-3 shadow-message-table">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Text variant="body-medium" as="span">

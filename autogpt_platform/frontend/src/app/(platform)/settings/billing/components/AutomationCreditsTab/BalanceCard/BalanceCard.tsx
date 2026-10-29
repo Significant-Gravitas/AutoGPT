@@ -42,7 +42,7 @@ export function BalanceCard({ index = 0 }: Props) {
   if (isLoading) {
     return (
       <motion.div {...sectionMotion}>
-        <Skeleton className="h-[120px] rounded-[18px]" />
+        <Skeleton className="h-[120px] rounded-2xl" />
       </motion.div>
     );
   }
@@ -66,7 +66,7 @@ export function BalanceCard({ index = 0 }: Props) {
         <InformationTooltip description={BALANCE_EXPLAINER} iconSize={22} />
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-border-base bg-surface p-5 shadow-message-table">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-large border border-border-base bg-surface p-5 shadow-message-table">
         <Text variant="h2" as="span">
           {formatCents(balanceCents)}
         </Text>

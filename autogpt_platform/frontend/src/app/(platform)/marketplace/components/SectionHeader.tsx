@@ -38,10 +38,7 @@ export function SectionHeader({
     <div className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
       <div>
         {eyebrow ? (
-          <div
-            // TODO(tokens): no exact role: text-brand #7C3AED; no exact text token: tracking-caps
-            className="mb-2.5 flex items-center gap-2 text-xs font-medium uppercase tracking-caps text-brand"
-          >
+          <div className="mb-2.5 flex items-center gap-2 text-xs font-medium uppercase tracking-caps text-brand">
             {eyebrowIcon}
             {eyebrow}
           </div>
@@ -87,6 +84,7 @@ export function SectionHeader({
               <Icon
                 icon={ArrowRight02Icon}
                 size={14}
+                // oxlint-disable-next-line design-system/no-restyle -- the arrow nudges on hover; Icon has no motion prop
                 className="transition-transform duration-200 group-hover:translate-x-0.5"
               />
             </Link>

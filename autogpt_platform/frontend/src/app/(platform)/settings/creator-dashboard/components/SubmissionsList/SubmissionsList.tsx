@@ -111,7 +111,7 @@ export function SubmissionsList({
         />
       </div>
 
-      <div className="overflow-hidden rounded-[18px] border border-border-base bg-surface shadow-message-table">
+      <div className="overflow-hidden rounded-large border border-border-base bg-surface shadow-message-table">
         <div>
           <table className="w-full border-collapse text-left">
             <thead>

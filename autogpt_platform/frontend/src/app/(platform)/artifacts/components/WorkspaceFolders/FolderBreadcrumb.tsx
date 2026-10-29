@@ -32,12 +32,9 @@ const MAX_CRUMBS_BESIDE_ROOT = 3;
 export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
   const { hidden, visible } = splitForOverflow(items);
   const separator = (
-    <Icon
-      icon={ArrowRight01Icon}
-      size={compact ? 12 : 14}
-      className="shrink-0 text-foreground-subtle"
-      aria-hidden
-    />
+    <span aria-hidden className="flex shrink-0 text-foreground-subtle">
+      <Icon icon={ArrowRight01Icon} size={compact ? 12 : 14} />
+    </span>
   );
 
   return (

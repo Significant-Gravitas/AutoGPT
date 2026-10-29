@@ -75,7 +75,7 @@ export function useAutopilotUsageCard() {
 }
 
 const USAGE_STATUS = {
-  reached: { label: "Allowance reached", className: "text-warning-foreground" },
-  low: { label: "Running low", className: "text-warning-foreground" },
-  plenty: { label: "Plenty left", className: "text-foreground-tertiary" },
-};
+  reached: { label: "Allowance reached", tone: "warning" },
+  low: { label: "Running low", tone: "warning" },
+  plenty: { label: "Plenty left", tone: "muted" },
+} as const;

@@ -104,7 +104,7 @@ function RelatedExecution({
         <Button
           variant="ghost"
           size="small"
-          // TODO(tokens): no exact role (text-purple-700 #5424AE)
+          // oxlint-disable-next-line design-system/no-restyle -- a bare text toggle inside the receipt; no Button variant drops the padding
           className="min-h-11 min-w-0 whitespace-normal px-0 text-left text-accent-strong"
           onClick={() => onSelectRelated(execution.execution_id)}
         >
@@ -113,7 +113,7 @@ function RelatedExecution({
       ) : href ? (
         <Link
           href={href}
-          // TODO(tokens): no exact role (text-purple-700 #5424AE)
+          // oxlint-disable-next-line design-system/no-restyle -- related-run links are brand-coloured; Link has no brand variant
           className="inline-flex min-h-11 items-center text-accent-strong"
         >
           {name}
@@ -122,7 +122,7 @@ function RelatedExecution({
         <Text variant="small">{name}</Text>
       )}
       {amount != null && (
-        <TransactionAmount amount={amount} className="text-xs" />
+        <TransactionAmount amount={amount} variant="small-medium" />
       )}
     </div>
   );

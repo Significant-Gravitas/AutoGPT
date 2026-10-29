@@ -34,6 +34,7 @@ export function TransactionHistoryCard({ index = 0 }: Props) {
             as="h2"
             id={headingID}
             tabIndex={-1}
+            // oxlint-disable-next-line design-system/no-restyle -- a programmatic focus target that shows no outline
             className="focus:outline-none"
           >
             Transaction history
@@ -82,7 +83,7 @@ export function TransactionHistoryCard({ index = 0 }: Props) {
           </Button>
         </div>
       )}
-      <Text variant="small" tone="secondary" className="px-4">
+      <Text variant="small" tone="secondary" className="mx-4">
         Each workflow run combines its recorded charges and adjustments. Only
         runs with credit activity appear here.
       </Text>

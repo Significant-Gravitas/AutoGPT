@@ -137,7 +137,7 @@ export function MobileSubmissionsList({
         </FilterChip>
       </div>
 
-      <div className="w-full min-w-0 max-w-full overflow-hidden rounded-[18px] border border-border-base bg-surface shadow-message-table">
+      <div className="w-full min-w-0 max-w-full overflow-hidden rounded-large border border-border-base bg-surface shadow-message-table">
         {submissions.length > 0 ? (
           submissions.map((submission, rowIndex) => (
             <MobileSubmissionItem

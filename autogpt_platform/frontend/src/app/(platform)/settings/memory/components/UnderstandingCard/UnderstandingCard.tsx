@@ -34,7 +34,7 @@ export function UnderstandingCard() {
   return (
     <section
       aria-labelledby="understanding-title"
-      className="flex flex-col rounded-[18px] border border-border-base bg-surface px-4 py-4 shadow-message-table"
+      className="flex flex-col rounded-large border border-border-base bg-surface px-4 py-4 shadow-message-table"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col">

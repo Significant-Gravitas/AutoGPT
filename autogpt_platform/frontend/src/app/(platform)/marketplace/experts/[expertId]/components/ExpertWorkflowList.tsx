@@ -23,12 +23,15 @@ export function ExpertWorkflowList({ name, workflows }: Props) {
     >
       <ul className="divide-y divide-border-base/70 rounded-2xl bg-surface px-4 smooth-shadow-ring-sm">
         {workflows.map((workflow) => (
-          <li key={workflow.id} className="flex items-start gap-3 py-3">
+          <li
+            key={workflow.id}
+            className="flex items-start gap-3 py-3 text-foreground-subtle"
+          >
             <Icon
               icon={FlashIcon}
               size={16}
               aria-hidden
-              className="mt-0.5 shrink-0 text-foreground-subtle"
+              className="mt-0.5 shrink-0"
             />
             <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-start sm:gap-3">
               <div className="min-w-0 flex-1">

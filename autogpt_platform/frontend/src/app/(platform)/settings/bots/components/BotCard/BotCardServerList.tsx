@@ -78,12 +78,8 @@ function BotCardServerRow({
 
   return (
     <li className="flex items-center justify-between gap-3 rounded-large border border-border-base px-4 py-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <Icon
-          icon={UserMultipleIcon}
-          size={20}
-          className="shrink-0 text-foreground-tertiary"
-        />
+      <div className="flex min-w-0 items-center gap-3 text-foreground-tertiary">
+        <Icon icon={UserMultipleIcon} size={20} className="shrink-0" />
         <div className="flex min-w-0 flex-col">
           <Text variant="body-medium" as="span" className="truncate">
             {displayLabel}
@@ -91,10 +87,7 @@ function BotCardServerRow({
           {botMissing ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span
-                  // TODO(tokens): no exact role (text-amber-600 #D97706)
-                  className="inline-flex items-center gap-1 text-xs text-warning-foreground"
-                >
+                <span className="inline-flex items-center gap-1 text-xs text-warning-foreground">
                   <Icon icon={AlertCircleIcon} size={14} /> Name unavailable
                 </span>
               </TooltipTrigger>

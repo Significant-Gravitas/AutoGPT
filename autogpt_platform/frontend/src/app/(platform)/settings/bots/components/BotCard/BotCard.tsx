@@ -28,6 +28,7 @@ export function BotCard({ platform }: Props) {
   const addBotLabel = getAddBotLabel(platform, serverNoun);
 
   return (
+    // oxlint-disable-next-line design-system/no-restyle -- bot cards are tighter than the Card default
     <Card className="flex flex-col gap-5 p-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -98,6 +99,7 @@ export function BotCard({ platform }: Props) {
           variant="small-medium"
           as="span"
           tone="muted"
+          // oxlint-disable-next-line design-system/no-restyle -- section labels track at 0.025em; the eyebrow variant's 0.06em is wider than the visual limit
           className="uppercase tracking-wide"
         >
           Direct messages
@@ -117,6 +119,7 @@ export function BotCard({ platform }: Props) {
           variant="small-medium"
           as="span"
           tone="muted"
+          // oxlint-disable-next-line design-system/no-restyle -- section labels track at 0.025em; the eyebrow variant's 0.06em is wider than the visual limit
           className="uppercase tracking-wide"
         >
           Linked {serverNoun}s

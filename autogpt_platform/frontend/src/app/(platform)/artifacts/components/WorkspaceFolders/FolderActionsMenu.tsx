@@ -76,7 +76,7 @@ export function FolderActionsMenu({
             e.preventDefault();
             onDelete();
           }}
-          // TODO(tokens): no fitting role for text-error-hover #D93636; #D93636 is error-hover, a hover fill
+          // oxlint-disable-next-line design-system/no-restyle -- a destructive item; the menu molecule has no destructive variant
           className="text-error-hover focus:bg-error-surface focus:text-error-foreground"
           data-testid="folder-delete-menu"
         >

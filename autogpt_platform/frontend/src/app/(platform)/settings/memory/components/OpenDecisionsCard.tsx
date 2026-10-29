@@ -27,7 +27,7 @@ export function OpenDecisionsCard({
   if (decisions.length === 0) return null;
   return (
     <div
-      className="flex flex-col rounded-[18px] border border-warning-border bg-warning-surface/40 px-4 py-4 shadow-message-table"
+      className="flex flex-col rounded-large border border-warning-border bg-warning-surface/40 px-4 py-4 shadow-message-table"
       data-testid="open-decisions-card"
     >
       <Text variant="body-medium" as="span">
@@ -36,10 +36,7 @@ export function OpenDecisionsCard({
       <Text variant="small" as="span" tone="muted">
         Proposed changes to skills you control. Unrelated learning continues.
       </Text>
-      <ul
-        // TODO(tokens): no exact role (divide-amber-100 #FEF3C7)
-        className="mt-2 flex flex-col divide-y divide-warning/20"
-      >
+      <ul className="mt-2 flex flex-col divide-y divide-warning/20">
         {decisions.map((proposal) => (
           <li
             key={proposal.id}

@@ -57,8 +57,7 @@ export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
       custom={index}
       initial={reduceMotion ? false : "hidden"}
       animate="show"
-      style={{ willChange: "transform, opacity, filter" }}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border-base bg-surface transition-colors hover:border-border-strong"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border-base bg-surface transition-colors will-change-[transform,opacity,filter] hover:border-border-strong"
       data-testid="artifacts-list-item"
       draggable
       onDragStartCapture={handleDragStart}
@@ -77,11 +76,9 @@ export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
       <div className="pointer-events-none relative z-10">
         <CardPreview file={file} />
         <div className="flex items-center gap-3 p-3">
-          <Icon
-            icon={typeIcon}
-            size={20}
-            className="shrink-0 text-foreground-tertiary"
-          />
+          <span className="flex shrink-0 text-foreground-tertiary">
+            <Icon icon={typeIcon} size={20} />
+          </span>
           <div className="flex min-w-0 flex-1 flex-col">
             <Text
               variant="body-medium"

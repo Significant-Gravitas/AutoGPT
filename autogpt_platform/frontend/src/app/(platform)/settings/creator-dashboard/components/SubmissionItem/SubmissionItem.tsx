@@ -93,7 +93,7 @@ export function SubmissionItem({
               delay: Math.min(rowIndex, ROW_STAGGER_CAP) * ROW_STAGGER,
             }
       }
-      className="ease-[cubic-bezier(0.16,1,0.3,1)] border-b border-separator transition-colors duration-150 last:border-b-0 hover:bg-surface-muted/60"
+      className="border-b border-separator transition-colors duration-150 last:border-b-0 hover:bg-surface-muted/60"
     >
       <td className="px-4 py-3 align-middle">
         <div className="flex items-center gap-3">
@@ -105,16 +105,15 @@ export function SubmissionItem({
                 alt={submission.name}
                 fill
                 sizes="80px"
-                style={{ objectFit: "cover" }}
                 draggable={false}
-                className="pointer-events-none"
+                className="pointer-events-none object-cover"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center">
+              <div className="flex h-full w-full items-center justify-center text-foreground-subtle">
                 <UIIcon
                   icon={ImageNotFound01Icon}
                   size={20}
-                  className="pointer-events-none text-foreground-subtle"
+                  className="pointer-events-none"
                 />
               </div>
             )}
@@ -135,6 +134,7 @@ export function SubmissionItem({
                   <UIIcon
                     icon={LinkSquare01Icon}
                     size={14}
+                    // oxlint-disable-next-line design-system/no-restyle -- the link glyph is quieter than the name it sits beside
                     className="shrink-0 text-foreground-tertiary"
                     aria-hidden
                   />
@@ -189,7 +189,7 @@ export function SubmissionItem({
               type="button"
               aria-label="Submission actions"
               data-testid="submission-actions"
-              className="ease-[cubic-bezier(0.16,1,0.3,1)] inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground-tertiary transition-[background-color,color,transform] duration-150 hover:bg-surface-hover hover:text-foreground-strong active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground-tertiary transition-[background-color,color,transform] duration-150 hover:bg-surface-hover hover:text-foreground-strong active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
             >
               <UIIcon icon={MoreVerticalIcon} size={18} />
             </button>
@@ -197,23 +197,22 @@ export function SubmissionItem({
           <DropdownMenuContent
             align="end"
             sideOffset={6}
-            className="data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)] data-[state=closed]:ease-[cubic-bezier(0.4,0,1,1)] min-w-[160px] origin-[var(--radix-dropdown-menu-content-transform-origin)] data-[state=closed]:duration-150 data-[state=open]:duration-200 motion-reduce:!duration-100"
+            // oxlint-disable-next-line design-system/no-restyle -- the row menu keeps its own open and close timing
+            className="min-w-[160px] origin-[var(--radix-dropdown-menu-content-transform-origin)] data-[state=closed]:duration-150 data-[state=open]:duration-200 motion-reduce:!duration-100"
           >
             {canModify ? (
-              <DropdownMenuItem
-                onSelect={handleEdit}
-                className="flex cursor-pointer items-center gap-2"
-              >
-                <UIIcon icon={PencilIcon} size={14} />
-                Edit details
+              <DropdownMenuItem onSelect={handleEdit}>
+                <span className="flex items-center gap-2">
+                  <UIIcon icon={PencilIcon} size={14} />
+                  Edit details
+                </span>
               </DropdownMenuItem>
             ) : (
-              <DropdownMenuItem
-                onSelect={handleView}
-                className="flex cursor-pointer items-center gap-2"
-              >
-                <UIIcon icon={EyeIcon} size={14} />
-                View submission
+              <DropdownMenuItem onSelect={handleView}>
+                <span className="flex items-center gap-2">
+                  <UIIcon icon={EyeIcon} size={14} />
+                  View submission
+                </span>
               </DropdownMenuItem>
             )}
             {marketplaceUrl ? (
@@ -235,11 +234,13 @@ export function SubmissionItem({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => setConfirmDeleteOpen(true)}
-                  // TODO(tokens): no exact role (text-rose-600 #E11D48, focus:text-rose-700 #BE123C)
-                  className="flex cursor-pointer items-center gap-2 text-rose-600 focus:text-rose-700"
+                  // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- rose delete text kept until the rose -> error hue change is approved
+                  className="text-rose-600 focus:text-rose-700"
                 >
-                  <UIIcon icon={Delete02Icon} size={14} />
-                  Delete
+                  <span className="flex items-center gap-2">
+                    <UIIcon icon={Delete02Icon} size={14} />
+                    Delete
+                  </span>
                 </DropdownMenuItem>
               </>
             ) : null}

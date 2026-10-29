@@ -10,13 +10,9 @@ export const HeroSection = () => {
   return (
     <div className="mb-16 mt-10 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-3xl">
-        <h1
-          // TODO(tokens): SECRT-3152 rare size: md:text-[3rem]; no exact text token: leading-none
-          className="mb-3 text-center text-3xl font-semibold leading-none tracking-heading text-foreground-strong md:text-[3rem]"
-        >
+        <h1 className="mb-3 text-center text-3xl font-semibold leading-none tracking-heading text-foreground-strong md:text-display md:leading-none">
           Hire an AI expert
           <span className="block">
-            {/* TODO(tokens): no exact role: text-brand #7C3AED */}
             for <span className="text-brand">your team</span>
           </span>
         </h1>

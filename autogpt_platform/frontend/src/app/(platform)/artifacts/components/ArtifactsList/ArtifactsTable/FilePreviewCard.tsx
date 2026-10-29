@@ -28,11 +28,9 @@ export function FilePreviewCard({ file }: Props) {
         <PreviewBody file={file} kind={kind} imageWidth={PREVIEW_IMAGE_WIDTH} />
       </div>
       <div className="flex items-center gap-3 p-3">
-        <Icon
-          icon={getFileTypeIcon(file.mime_type, file.name)}
-          size={20}
-          className="shrink-0 text-foreground-tertiary"
-        />
+        <span className="flex shrink-0 text-foreground-tertiary">
+          <Icon icon={getFileTypeIcon(file.mime_type, file.name)} size={20} />
+        </span>
         <div className="flex min-w-0 flex-1 flex-col">
           <Text
             variant="body-medium"

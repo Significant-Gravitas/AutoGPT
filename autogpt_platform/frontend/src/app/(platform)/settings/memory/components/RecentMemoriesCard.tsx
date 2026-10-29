@@ -22,7 +22,7 @@ export function RecentMemoriesCard({
   onForgetTopic,
 }: Props) {
   return (
-    <div className="flex flex-col rounded-[18px] border border-border-base bg-surface px-4 py-4 shadow-message-table">
+    <div className="flex flex-col rounded-large border border-border-base bg-surface px-4 py-4 shadow-message-table">
       <Text variant="body-medium" as="span">
         Recent memories
       </Text>
@@ -38,7 +38,7 @@ export function RecentMemoriesCard({
             <Skeleton className="h-5 w-4/5" />
           </div>
         ) : facts.length === 0 ? (
-          <Text variant="small" as="p" tone="muted" className="py-3">
+          <Text variant="small" as="p" tone="muted" className="my-3">
             Nothing remembered yet. Memories show up here as you chat.
           </Text>
         ) : (
@@ -61,6 +61,7 @@ export function RecentMemoriesCard({
               <Button
                 variant="ghost"
                 size="small"
+                // oxlint-disable-next-line design-system/no-restyle -- a compact 28px "Forget" text action in a dense list
                 className="h-7 !min-w-0 shrink-0 px-2 text-foreground-secondary"
                 loading={forgettingUuid === fact.uuid}
                 onClick={() => onForget(fact.uuid)}

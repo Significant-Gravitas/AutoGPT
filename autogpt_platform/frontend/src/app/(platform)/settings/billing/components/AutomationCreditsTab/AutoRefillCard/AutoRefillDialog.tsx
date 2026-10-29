@@ -59,13 +59,8 @@ export function AutoRefillDialog({
             onChange={setRefillAmount}
           />
 
-          <div className="flex items-start gap-2 rounded-medium bg-warning-surface px-3 py-2">
-            <Icon
-              icon={Alert01Icon}
-              size={18}
-              // TODO(tokens): no exact role (text-amber-600 #D97706)
-              className="mt-0.5 shrink-0 text-warning-foreground"
-            />
+          <div className="flex items-start gap-2 rounded-medium bg-warning-surface px-3 py-2 text-warning-foreground">
+            <Icon icon={Alert01Icon} size={18} className="mt-0.5 shrink-0" />
             <Text variant="small" as="span" tone="warning">
               As a safety mechanism, auto-refill will only trigger once per
               task. Keep this in mind when budgeting to ensure your balance does

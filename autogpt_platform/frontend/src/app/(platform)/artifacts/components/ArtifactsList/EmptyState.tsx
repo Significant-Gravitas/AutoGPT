@@ -24,14 +24,11 @@ export function EmptyState({ content, compact = false }: Props) {
 
   if (compact) {
     return (
-      <Text
-        variant="body"
-        tone="muted"
-        className="px-2 py-6"
-        data-testid="artifacts-empty"
-      >
-        {content.title}
-      </Text>
+      <div className="px-2 py-6">
+        <Text variant="body" tone="muted" data-testid="artifacts-empty">
+          {content.title}
+        </Text>
+      </div>
     );
   }
 
@@ -157,6 +154,7 @@ function StackedFilesIllustration() {
             ease: EASE_OUT_QUINT,
             delay: shouldReduceMotion ? 0 : i * 0.08,
           }}
+          // oxlint-disable-next-line design-system/no-inline-styles -- framer-motion writes the SVG transform origin inline, so a class would be overridden
           style={{ transformOrigin: "160px 96px", transformBox: "fill-box" }}
         >
           <Sheet x={sheet.x} rotate={sheet.rotate} />
@@ -175,7 +173,6 @@ function Sheet({ x, rotate }: { x: number; rotate: number }) {
   const cx = x + width / 2;
   const cy = y + height / 2;
 
-  // TODO(tokens): no fitting role for the skeleton-line fill #E4E4E7; #E4E4E7 is border, a border colour
   return (
     <g transform={`rotate(${rotate} ${cx} ${cy})`}>
       <path
@@ -196,7 +193,7 @@ function Sheet({ x, rotate }: { x: number; rotate: number }) {
           width={line === 3 ? width * 0.4 : width - padding * 2}
           height={6}
           rx={3}
-          fill="#E4E4E7"
+          className="fill-border-base"
         />
       ))}
     </g>

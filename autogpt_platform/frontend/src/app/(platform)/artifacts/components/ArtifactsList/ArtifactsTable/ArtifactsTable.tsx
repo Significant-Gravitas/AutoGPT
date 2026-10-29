@@ -12,7 +12,7 @@ import { SelectionBar } from "../SelectionBar/SelectionBar";
 import { FileRow } from "./FileRow";
 import { FolderRows } from "./FolderRows";
 import { SkeletonRow } from "./SkeletonRow";
-import { DATE_CELL_CLASS, ROW_GRID_CLASS, SIZE_CELL_CLASS } from "./row-layout";
+import { ROW_GRID_CLASS } from "./row-layout";
 import { useFileSelection } from "./useFileSelection";
 
 interface Props {
@@ -66,7 +66,7 @@ export function ArtifactsTable({
             variant="body"
             as="span"
             tone="muted"
-            className={cn(DATE_CELL_CLASS, "")}
+            className="hidden truncate sm:block"
           >
             Modified
           </Text>
@@ -74,7 +74,7 @@ export function ArtifactsTable({
             variant="body"
             as="span"
             tone="muted"
-            className={cn(SIZE_CELL_CLASS, "")}
+            className="hidden md:block"
           >
             Size
           </Text>

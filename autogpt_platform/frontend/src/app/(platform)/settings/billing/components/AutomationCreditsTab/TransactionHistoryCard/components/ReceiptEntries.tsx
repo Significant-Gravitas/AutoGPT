@@ -24,6 +24,7 @@ export function ReceiptEntries({ transaction }: Props) {
           <Button
             variant="ghost"
             size="small"
+            // oxlint-disable-next-line design-system/no-restyle -- a bare text toggle inside the receipt; no Button variant drops the padding
             className="min-h-11 min-w-0 px-0 text-foreground-secondary"
             onClick={() => setEntriesOpen(!entriesOpen)}
             aria-expanded={entriesOpen}
@@ -42,6 +43,7 @@ export function ReceiptEntries({ transaction }: Props) {
           <Button
             variant="ghost"
             size="small"
+            // oxlint-disable-next-line design-system/no-restyle -- a bare text toggle inside the receipt; no Button variant drops the padding
             className="min-h-11 min-w-0 px-0 text-foreground-secondary"
             onClick={() => setReferenceOpen(!referenceOpen)}
             aria-expanded={referenceOpen}
@@ -61,7 +63,7 @@ export function ReceiptEntries({ transaction }: Props) {
           <Text variant="small" tone="secondary">
             {referenceLabel(transaction)}
           </Text>
-          <Text variant="small" as="code" className="break-all font-mono">
+          <Text variant="small-mono" as="code" className="break-all">
             {reference}
           </Text>
         </div>
@@ -104,10 +106,7 @@ function ChargeEntries({ transaction }: Props) {
                   <Text variant="small">{chargeLabel(charge.charge_type)}</Text>
                 </td>
                 <td className="py-2 text-right align-top">
-                  <TransactionAmount
-                    amount={charge.amount}
-                    className="text-xs font-normal"
-                  />
+                  <TransactionAmount amount={charge.amount} variant="small" />
                 </td>
               </tr>
             );

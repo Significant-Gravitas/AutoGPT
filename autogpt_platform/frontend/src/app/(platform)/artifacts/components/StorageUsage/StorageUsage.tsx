@@ -49,9 +49,10 @@ export function StorageUsage() {
         aria-valuemax={100}
         aria-label={usedLabel}
         className={cn(
+          // oxlint-disable-next-line design-system/no-restyle -- a slim grey meter; Progress has no size or tone variants
           "h-1.5 w-32 bg-surface-hover",
-          // TODO(tokens): no exact role for [&>div]:bg-red-400 (#F26969); no fitting role for [&>div]:bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle, a text colour
-          percent > 95 ? "[&>div]:bg-red-400" : "[&>div]:bg-zinc-400",
+          // oxlint-disable-next-line design-system/no-restyle -- the meter turns red near the quota
+          percent > 95 ? "[&>div]:bg-error" : "[&>div]:bg-foreground-subtle",
         )}
       />
       <Text variant="small" as="span" tone="secondary">

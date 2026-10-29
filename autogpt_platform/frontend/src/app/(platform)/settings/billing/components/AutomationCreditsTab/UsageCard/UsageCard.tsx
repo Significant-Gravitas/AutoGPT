@@ -29,7 +29,7 @@ export function UsageCard({ index = 0 }: Props) {
   if (isLoading) {
     return (
       <motion.div {...sectionMotion}>
-        <Skeleton className="h-[260px] rounded-[18px]" />
+        <Skeleton className="h-[260px] rounded-2xl" />
       </motion.div>
     );
   }
@@ -55,9 +55,10 @@ export function UsageCard({ index = 0 }: Props) {
         </Text>
       </div>
 
-      <div className="flex flex-col gap-5 rounded-[18px] border border-border-base bg-surface p-5 shadow-message-table">
+      <div className="flex flex-col gap-5 rounded-large border border-border-base bg-surface p-5 shadow-message-table">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div className="flex items-baseline gap-2">
+            {/* oxlint-disable-next-line design-system/no-restyle -- the spend total uses tabular figures */}
             <Text variant="large-medium" as="span" className="tabular-nums">
               ${totalSpent.toFixed(2)}
             </Text>
@@ -73,17 +74,11 @@ export function UsageCard({ index = 0 }: Props) {
         <TooltipProvider delayDuration={150}>
           <div className="flex gap-3">
             <div
-              className="flex h-44 w-10 flex-col justify-between text-right"
+              className="flex h-44 w-10 flex-col justify-between text-right tabular-nums"
               aria-hidden="true"
             >
               {yTicks.map((tick, i) => (
-                <Text
-                  key={i}
-                  variant="small"
-                  as="span"
-                  tone="subtle"
-                  className="tabular-nums"
-                >
+                <Text key={i} variant="small" as="span" tone="subtle">
                   {tick.label}
                 </Text>
               ))}
@@ -147,7 +142,6 @@ function UsageBar({
               ? `${day.date}: $0.00, 0 runs`
               : `${day.date}: $${day.amount.toFixed(2)}, ${day.runs} runs`
           }
-          // TODO(tokens): no fitting role for focus-visible:ring-foreground-subtle #ADADB3; #ADADB3 is foreground-subtle, a text colour
           className="group flex h-full flex-1 flex-col justify-end focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle"
         >
           {isEmpty ? (
@@ -174,16 +168,10 @@ function UsageBar({
       </TooltipTrigger>
       <TooltipContent side="top">
         <div className="flex flex-col gap-0.5">
-          <span
-            // TODO(tokens): SECRT-3152 rare size (text-[0.6785rem])
-            className="text-caption-sm font-medium uppercase leading-inherit tracking-eyebrow text-foreground-subtle"
-          >
+          <span className="text-caption-sm font-medium uppercase leading-inherit tracking-eyebrow text-foreground-subtle">
             {day.date}
           </span>
-          <span
-            // TODO(tokens): no fitting role for text-action-foreground #F9F9FA; #F9F9FA is surface-muted, a fill
-            className="text-sm font-medium tabular-nums text-action-foreground"
-          >
+          <span className="text-sm font-medium tabular-nums text-action-foreground">
             ${day.amount.toFixed(2)}
           </span>
           <span className="text-xs tabular-nums text-foreground-subtle">

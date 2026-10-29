@@ -6,7 +6,7 @@ export function BotsHeader() {
   return (
     <div className="flex flex-col items-start gap-4 pb-6 pl-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="flex min-w-0 flex-col">
-        <Text variant="h4" as="h1" tone="primary" className="leading-7">
+        <Text variant="h4" as="h1" tone="primary">
           Bots
         </Text>
         <Text variant="body" tone="secondary" className="mt-4 max-w-[600px]">

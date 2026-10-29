@@ -35,13 +35,10 @@ export function AutoRefillCard({ index = 0 }: Props) {
   return (
     <motion.section
       {...getSectionMotionProps(index, Boolean(reduceMotion))}
-      className="flex w-full flex-wrap items-center justify-between gap-4 rounded-[18px] border border-border-base bg-surface p-5 shadow-message-table"
+      className="flex w-full flex-wrap items-center justify-between gap-4 rounded-large border border-border-base bg-surface p-5 shadow-message-table"
     >
       <div className="flex min-w-0 items-center gap-3">
-        <div
-          // TODO(tokens): no exact role (bg-violet-100 #EDE9FE)
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-brand/10 text-accent-strong"
-        >
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-medium bg-brand/10 text-accent-strong">
           <Icon icon={ReloadIcon} size={20} />
         </div>
         <div className="flex min-w-0 flex-col gap-1">

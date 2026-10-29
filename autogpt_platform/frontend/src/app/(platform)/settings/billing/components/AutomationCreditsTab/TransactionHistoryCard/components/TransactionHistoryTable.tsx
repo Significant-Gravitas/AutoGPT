@@ -108,6 +108,7 @@ export function TransactionHistoryTable({
             id={endID}
             tabIndex={-1}
             tone="secondary"
+            // oxlint-disable-next-line design-system/no-restyle -- a programmatic focus target that shows no outline
             className="focus:outline-none"
           >
             End of history

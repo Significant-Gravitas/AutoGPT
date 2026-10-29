@@ -6,13 +6,8 @@ import { trackFunnel } from "@/services/experts/experts-analytics";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 
 // Sized and shaped like the small button beside it so the pair reads as one row.
+// oxlint-disable-next-line design-system/no-restyle -- the status badge is sized like the button beside it; Badge has no button-sized variant
 const STATUS_CLASS = "h-9 rounded-full px-3.5 text-sm";
-
-// A white, hairline-bordered secondary so the button sits quietly next to
-// the status badge instead of reading as a solid grey slab.
-const SECONDARY_CLASS =
-  // TODO(tokens): no exact role: shadow-[…] #101828
-  "border-border-base bg-surface shadow-subtle hover:border-border-strong hover:bg-surface-muted";
 
 interface Props {
   expert: Expert;
@@ -61,7 +56,6 @@ export function ExpertHireActions({
           href={`/copilot?expertId=${hiredExpert.id}`}
           variant="secondary"
           size="small"
-          className={SECONDARY_CLASS}
         >
           {`Chat with ${expert.name}`}
         </Button>

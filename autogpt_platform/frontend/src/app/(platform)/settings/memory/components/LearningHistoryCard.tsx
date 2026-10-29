@@ -35,7 +35,7 @@ export function LearningHistoryCard({
   }
   return (
     <div
-      className="flex flex-col rounded-[18px] border border-border-base bg-surface px-4 py-4 shadow-message-table"
+      className="flex flex-col rounded-large border border-border-base bg-surface px-4 py-4 shadow-message-table"
       data-testid="learning-history-card"
     >
       <Text variant="body-medium" as="span">
@@ -72,7 +72,7 @@ export function LearningHistoryCard({
             <Skeleton className="h-5 w-2/3" />
           </div>
         ) : items.length === 0 ? (
-          <Text variant="small" as="p" tone="muted" className="py-3">
+          <Text variant="small" as="p" tone="muted" className="my-3">
             Nothing learned yet. A quiet night means nothing needed to change.
           </Text>
         ) : (

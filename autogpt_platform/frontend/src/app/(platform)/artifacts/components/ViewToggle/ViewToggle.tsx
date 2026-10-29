@@ -40,7 +40,6 @@ export function ViewToggle({ value, onChange }: Props) {
             aria-pressed={active}
             onClick={() => onChange(option.value)}
             className={cn(
-              // TODO(tokens): no fitting role for focus-visible:ring-foreground-subtle #ADADB3; #ADADB3 is foreground-subtle, a text colour
               "flex h-9 w-9 items-center justify-center rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-foreground-subtle",
               active
                 ? "bg-surface-hover text-foreground-strong"
