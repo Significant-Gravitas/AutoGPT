@@ -23,7 +23,7 @@ from backend.data.db_accessors import (
     workspace_skill_db,
 )
 from backend.data.skill_capacity import skill_owner_folder
-from backend.data.workspace import WorkspaceFile
+from backend.data.workspace import WorkspaceFile, storage_limit_exceeded
 from backend.data.workspace_internal import is_internal_workspace_file
 from backend.data.workspace_scope import (
     EXPERT_FILE_ACCESS_DENIED,
@@ -47,20 +47,6 @@ from backend.util.workspace_storage import (
 
 if TYPE_CHECKING:
     from backend.data.workspace_folder import WorkspaceFolder
-
-
-def format_bytes(n: int) -> str:
-    """Format bytes as a human-readable string (e.g. 250 MB, 1.0 GB)."""
-    KB, MB, GB = 1024, 1024**2, 1024**3
-    if n < KB:
-        return f"{n} B"
-    if n < MB:
-        kb = round(n / KB)
-        return f"{n / MB:.1f} MB" if kb >= 1024 else f"{kb} KB"
-    if n < GB:
-        mb = round(n / MB)
-        return f"{n / GB:.1f} GB" if mb >= 1024 else f"{mb} MB"
-    return f"{n / GB:.1f} GB"
 
 
 logger = logging.getLogger(__name__)
@@ -331,7 +317,8 @@ class WorkspaceManager:
             name=filename, path=path, metadata=metadata
         )
 
-        # Enforce per-user workspace storage quota (tier-based).
+        # An early refusal, before the scan and the upload; the row's own
+        # transaction is what holds the quota against concurrent writes.
         # For overwrites, subtract the existing file's size so replacing a file
         # with a same-size or smaller file is not rejected near the cap.
         storage_limit, current_usage = await asyncio.gather(
@@ -346,12 +333,7 @@ class WorkspaceManager:
 
         projected_usage = current_usage + len(content)
         if storage_limit > 0 and projected_usage > storage_limit:
-            raise ValueError(
-                f"Storage limit exceeded. "
-                f"You've used {format_bytes(current_usage)} of your "
-                f"{format_bytes(storage_limit)} quota. "
-                f"Delete some files or upgrade your plan for more storage."
-            )
+            raise storage_limit_exceeded(current_usage, storage_limit)
 
         # Check if file exists at path (only error for non-overwrite case).
         # Done before virus scanning so a cheap duplicate-path check isn't
@@ -407,6 +389,7 @@ class WorkspaceManager:
                     checksum=checksum,
                     metadata=metadata,
                     is_internal=is_internal,
+                    storage_limit_bytes=storage_limit,
                 )
             except UniqueViolationError:
                 if retries > 0:
@@ -439,6 +422,7 @@ class WorkspaceManager:
                     overwrite=overwrite,
                     checksum=checksum,
                     metadata=metadata,
+                    storage_limit_bytes=storage_limit,
                 )
                 publication = await workspace_skill_db().publish_workspace_skill_file(
                     write
@@ -529,7 +513,9 @@ class WorkspaceManager:
         for path in [*(item.path for item in package), *removed]:
             self._authorize_path(path, write=True)
         config = config if config is not None else Config()
-        await self._require_package_room(package, removed, config.max_file_size_mb)
+        storage_limit = await self._require_package_room(
+            package, removed, config.max_file_size_mb
+        )
         for item in package:
             if compute_file_checksum(item.content) not in scanned_checksums:
                 await scan_content_safe(
@@ -545,6 +531,7 @@ class WorkspaceManager:
                 overwrite=True,
                 files=stored[1:],
                 removed_paths=removed,
+                storage_limit_bytes=storage_limit,
                 **stored[0].model_dump(),
             )
             publication = await workspace_skill_db().publish_workspace_skill_file(write)
@@ -600,7 +587,9 @@ class WorkspaceManager:
 
     async def _require_package_room(
         self, package: list[SkillPackageFile], removed: list[str], max_file_size_mb: int
-    ) -> None:
+    ) -> int:
+        """Refuse a package that cannot fit before its blobs are scanned and
+        stored, and return the quota its publication enforces."""
         max_file_size = max_file_size_mb * 1024 * 1024
         for item in package:
             if len(item.content) > max_file_size:
@@ -620,12 +609,8 @@ class WorkspaceManager:
         current_usage = max(0, current_usage)
         projected = current_usage + sum(len(item.content) for item in package)
         if storage_limit > 0 and projected > storage_limit:
-            raise ValueError(
-                f"Storage limit exceeded. "
-                f"You've used {format_bytes(current_usage)} of your "
-                f"{format_bytes(storage_limit)} quota. "
-                f"Delete some files or upgrade your plan for more storage."
-            )
+            raise storage_limit_exceeded(current_usage, storage_limit)
+        return storage_limit
 
     async def _store_package_blob(
         self, storage: WorkspaceStorageBackend, item: SkillPackageFile
