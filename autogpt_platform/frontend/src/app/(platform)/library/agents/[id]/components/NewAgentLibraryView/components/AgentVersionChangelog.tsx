@@ -66,18 +66,16 @@ export function AgentVersionChangelog({
           <div className="flex items-center gap-3">
             <Text variant="body-semibold">v{versionInfo.version}</Text>
             {versionInfo.isCurrentVersion && (
-              <Text
-                variant="small-medium-tight"
-                as="span"
-                className="rounded-full bg-info-surface px-2 py-1 text-info-foreground"
-              >
-                Current
-              </Text>
+              <span className="rounded-full bg-info-surface px-2 py-1 text-info-foreground">
+                <Text variant="small-medium-tight" as="span" tone="inherit">
+                  Current
+                </Text>
+              </span>
             )}
           </div>
         </div>
 
-        <Text variant="small" className="mt-1 text-foreground-secondary">
+        <Text variant="small" tone="secondary" className="mt-1">
           Available marketplace version
         </Text>
       </div>
@@ -110,7 +108,7 @@ export function AgentVersionChangelog({
             </div>
           ) : agentVersions.length > 0 ? (
             <div className="space-y-4">
-              <Text variant="small" className="text-foreground-secondary">
+              <Text variant="small" tone="secondary">
                 View changes and updates across different versions of this
                 workflow.
               </Text>
@@ -118,7 +116,7 @@ export function AgentVersionChangelog({
             </div>
           ) : (
             <div className="py-8 text-center">
-              <Text variant="body" className="text-foreground-secondary">
+              <Text variant="body" tone="secondary">
                 No version history available for this workflow.
               </Text>
             </div>

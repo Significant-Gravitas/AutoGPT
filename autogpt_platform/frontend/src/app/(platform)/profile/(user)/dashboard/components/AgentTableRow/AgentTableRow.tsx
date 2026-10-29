@@ -5,7 +5,6 @@ import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { Text } from "@/components/atoms/Text/Text";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Status } from "@/components/__legacy__/Status";
 import { useAgentTableRow } from "./useAgentTableRow";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
@@ -20,6 +19,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useImageFallback } from "@/hooks/useImageFallback";
+import { SubmissionStatus as SubmissionStatusBadge } from "../SubmissionStatus/SubmissionStatus";
 
 export type AgentTableRowProps = {
   storeAgentSubmission: StoreSubmission;
@@ -73,45 +73,36 @@ export const AgentTableRow = ({
         {/* Agent info column */}
         <div className="flex items-center gap-4">
           {showImage && image_urls?.[0] ? (
-            <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-[10px] bg-surface-hover">
+            <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-surface-hover">
               <Image
                 src={image_urls[0]}
                 unoptimized={isLocalStoreMediaUrl(image_urls[0])}
                 alt={agentName}
                 fill
-                style={{ objectFit: "cover" }}
+                className="object-cover"
                 onError={handleImageError}
               />
             </div>
           ) : (
-            <div className="flex aspect-video w-32 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-surface-hover">
-              <Icon
-                icon={ImageNotFound01Icon}
-                className="h-8 w-8 text-foreground-emphasis"
-              />
+            <div className="flex aspect-video w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface-hover text-foreground-emphasis">
+              <Icon icon={ImageNotFound01Icon} className="h-8 w-8" />
             </div>
           )}
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
               <Text
                 variant="h3"
-                className="line-clamp-1 text-ellipsis text-foreground-emphasis"
                 size="large-medium"
+                tone="emphasis"
+                className="line-clamp-1"
               >
                 {agentName}
               </Text>
-              <Text
-                variant="body"
-                size="small"
-                className="text-foreground-tertiary"
-              >
+              <Text variant="body" size="small" tone="muted">
                 v{graph_version}
               </Text>
             </div>
-            <Text
-              variant="body"
-              className="line-clamp-1 text-ellipsis text-foreground-secondary"
-            >
+            <Text variant="body" tone="secondary" className="line-clamp-1">
               {description}
             </Text>
           </div>
@@ -124,7 +115,7 @@ export const AgentTableRow = ({
 
         {/* Status column */}
         <div data-testid="agent-status">
-          <Status status={status} />
+          <SubmissionStatusBadge status={status} />
         </div>
 
         {/* Runs column */}
@@ -151,11 +142,11 @@ export const AgentTableRow = ({
         {/* Actions - Three dots menu */}
         <div className="flex justify-end">
           <DropdownMenu.Root>
-            <DropdownMenu.Trigger data-testid="agent-table-row-actions">
-              <Icon
-                icon={MoreVerticalIcon}
-                className="h-5 w-5 text-foreground-emphasis"
-              />
+            <DropdownMenu.Trigger
+              data-testid="agent-table-row-actions"
+              className="text-foreground-emphasis"
+            >
+              <Icon icon={MoreVerticalIcon} className="h-5 w-5" />
             </DropdownMenu.Trigger>
             <DropdownMenu.Content className="z-10 rounded-xl border bg-surface p-1 shadow-md">
               {canModify ? (
@@ -164,7 +155,7 @@ export const AgentTableRow = ({
                   className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-surface-hover"
                 >
                   <Icon icon={PencilIcon} className="mr-2 h-4 w-4" />
-                  <span className="">Edit</span>
+                  <span>Edit</span>
                 </DropdownMenu.Item>
               ) : (
                 <DropdownMenu.Item
@@ -172,21 +163,18 @@ export const AgentTableRow = ({
                   className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-surface-hover"
                 >
                   <Icon icon={EyeIcon} className="mr-2 h-4 w-4" />
-                  <span className="">View</span>
+                  <span>View</span>
                 </DropdownMenu.Item>
               )}
               {canModify && (
                 <>
-                  <DropdownMenu.Separator className="my-1 h-px bg-gray-300" />
+                  <DropdownMenu.Separator className="my-1 h-px bg-border-strong" />
                   <DropdownMenu.Item
                     onSelect={handleDelete}
                     className="flex cursor-pointer items-center rounded-md px-3 py-2 text-error hover:bg-surface-hover"
                   >
-                    <Icon
-                      icon={Delete02Icon}
-                      className="mr-2 h-4 w-4 text-error"
-                    />
-                    <span className="">Delete</span>
+                    <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
+                    <span>Delete</span>
                   </DropdownMenu.Item>
                 </>
               )}

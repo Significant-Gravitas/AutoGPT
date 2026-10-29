@@ -40,7 +40,7 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
       <Text variant="h3" size="large-semibold">
         Notifications
       </Text>
-      <Text variant="body" className="mt-2 text-foreground-subtle">
+      <Text variant="body" tone="subtle" className="mt-2">
         Billing and account messages are always sent — they are about your
         account, not a promotion.
       </Text>
@@ -54,8 +54,8 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
               control={form.control}
               name="briefingFrequency"
               render={({ field }) => (
-                <FormItem className="flex flex-col gap-2">
-                  <div className="space-y-0.5">
+                <FormItem className="flex flex-col">
+                  <div className="mb-2 space-y-0.5">
                     <Text variant="h4" size="body-medium">
                       Briefing
                     </Text>

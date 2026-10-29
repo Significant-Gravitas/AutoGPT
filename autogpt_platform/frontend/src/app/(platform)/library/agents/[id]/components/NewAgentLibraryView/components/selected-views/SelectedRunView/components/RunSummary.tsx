@@ -35,18 +35,22 @@ export function RunSummary({ run }: Props) {
             <div className="flex items-center gap-2">
               <div className="relative h-2 w-16 overflow-hidden rounded-full bg-surface-active">
                 <div
-                  className={`h-full transition-all ${
+                  className={`h-full w-[var(--score)] transition-all ${
                     correctnessScore >= 0.8
                       ? "bg-success"
                       : correctnessScore >= 0.6
-                        ? "bg-yellow-500"
+                        ? // oxlint-disable-next-line design-system/no-raw-colors -- yellow-500 #F5C000 has no role; the score bar's gold step is deferred (see PR)
+                          "bg-yellow-500"
                         : correctnessScore >= 0.4
-                          ? "bg-orange-500"
+                          ? // oxlint-disable-next-line design-system/no-raw-colors -- orange-500 #FE8700 has no role; the score bar's orange step is deferred (see PR)
+                            "bg-orange-500"
                           : "bg-error"
                   }`}
-                  style={{
-                    width: `${Math.round(correctnessScore * 100)}%`,
-                  }}
+                  style={
+                    {
+                      "--score": `${Math.round(correctnessScore * 100)}%`,
+                    } as React.CSSProperties
+                  }
                 />
               </div>
               <span className="text-sm font-medium">
@@ -57,11 +61,13 @@ export function RunSummary({ run }: Props) {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Icon
-                  icon={CircleAlertGlyph}
-                  aria-label="Icon"
-                  className="size-4 cursor-help text-foreground-subtle hover:text-foreground-secondary"
-                />
+                <span className="inline-flex cursor-help text-foreground-subtle hover:text-foreground-secondary">
+                  <Icon
+                    icon={CircleAlertGlyph}
+                    aria-label="Icon"
+                    className="size-4"
+                  />
+                </span>
               </TooltipTrigger>
               <TooltipContent>
                 <p className="max-w-xs">

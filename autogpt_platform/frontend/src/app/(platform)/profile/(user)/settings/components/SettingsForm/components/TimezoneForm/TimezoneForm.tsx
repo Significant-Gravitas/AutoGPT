@@ -1,6 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { FormProvider } from "react-hook-form";
 import {
   Card,
@@ -64,15 +63,9 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
             <FormField
               control={form.control}
               name="timezone"
-              render={({ field, fieldState }) => (
+              render={({ field }) => (
                 <FormItem>
-                  <FormLabel
-                    // the legacy label's error dark: class, moved verbatim; DS6 (SECRT-3116) deletes it
-                    className={cn(
-                      "peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
-                      fieldState.error && "",
-                    )}
-                  >
+                  <FormLabel>
                     <Text
                       variant="body-medium-lh-none"
                       as="span"
@@ -98,7 +91,7 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
                       ))}
                     </SelectContent>
                   </Select>
-                  <FormMessage className="text-[0.8rem] leading-inherit" />
+                  <FormMessage />
                 </FormItem>
               )}
             />

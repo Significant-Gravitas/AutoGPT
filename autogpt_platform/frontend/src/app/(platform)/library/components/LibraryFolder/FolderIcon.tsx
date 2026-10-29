@@ -1,3 +1,4 @@
+/* oxlint-disable design-system/no-raw-colors -- folder colours are user-picked data, not UI colour */
 import { motion } from "framer-motion";
 import { Text } from "@/components/atoms/Text/Text";
 
@@ -53,16 +54,16 @@ const colorMap: Record<
   }
 > = {
   blue: {
-    bg: "bg-info/50",
-    border: "border-info/50",
-    borderLight: "border-info/30",
+    bg: "bg-blue-300",
+    border: "border-blue-300",
+    borderLight: "border-blue-200",
     fill: "fill-blue-300",
-    stroke: "stroke-info",
+    stroke: "stroke-blue-400",
   },
   purple: {
-    bg: "bg-brand/30",
-    border: "border-brand/30",
-    borderLight: "border-brand/30",
+    bg: "bg-purple-200",
+    border: "border-purple-200",
+    borderLight: "border-purple-200",
     fill: "fill-purple-200",
     stroke: "stroke-purple-400",
   },
@@ -95,18 +96,18 @@ export const folderCardStyles: Record<
 > = {
   blue: {
     bg: "bg-info-surface",
-    border: "border-info/30",
+    border: "border-blue-200",
     buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-info/30",
+    buttonHover: "hover:bg-blue-200",
   },
   purple: {
-    bg: "bg-accent-surface",
-    border: "border-brand/30",
+    bg: "bg-purple-50",
+    border: "border-purple-200",
     buttonBase: "border-zinc-600 text-foreground-base ",
-    buttonHover: "hover:bg-brand/30",
+    buttonHover: "hover:bg-purple-200",
   },
   emerald: {
-    bg: "bg-success-surface",
+    bg: "bg-emerald-50",
     border: "border-emerald-200",
     buttonBase: "border-zinc-600 text-foreground-base",
     buttonHover: "hover:bg-emerald-200",
@@ -138,18 +139,12 @@ export function FolderIcon({
 
   return (
     <div
-      className={`group relative cursor-pointer ${className}`}
-      style={{
-        width: 320 * scale,
-        height: 208 * scale,
-      }}
+      className={`group relative h-[calc(208px*var(--folder-scale))] w-[calc(320px*var(--folder-scale))] cursor-pointer ${className}`}
+      style={{ "--folder-scale": scale } as React.CSSProperties}
     >
-      <div
-        className="h-52 w-80 origin-top-left"
-        style={{ transform: `scale(${scale})`, perspective: "500px" }}
-      >
+      <div className="h-52 w-80 origin-top-left scale-[var(--folder-scale)] [perspective:500px]">
         <div
-          className={`folder-back relative mx-auto flex h-full w-[87.5%] justify-center overflow-visible rounded-3xl ${colors.bg} ${colors.border}`}
+          className={`relative mx-auto flex h-full w-[87.5%] justify-center overflow-visible rounded-3xl ${colors.bg} ${colors.border}`}
         >
           {[
             {
@@ -205,8 +200,7 @@ export function FolderIcon({
             rotateX: isOpen ? -15 : 0,
           }}
           transition={{ type: "spring", duration: 0.5, bounce: 0.25 }}
-          className="absolute inset-x-0 -bottom-px z-30 mx-auto flex h-44 w-[87.5%] origin-bottom items-end justify-center overflow-visible"
-          style={{ transformStyle: "preserve-3d" }}
+          className="absolute inset-x-0 -bottom-px z-30 mx-auto flex h-44 w-[87.5%] origin-bottom items-end justify-center overflow-visible [transform-style:preserve-3d]"
         >
           <svg
             className="h-auto w-full"
@@ -240,9 +234,7 @@ function Page({ color = "blue" }: PageProps) {
       className={`h-full w-full rounded-xl border bg-surface p-4 ${colors.borderLight}`}
     >
       <div className="flex flex-col gap-2">
-        <Text variant="h5" className="text-foreground-base">
-          agent.json
-        </Text>
+        <Text variant="h5">agent.json</Text>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex gap-2">
             <div className="h-1.5 flex-1 rounded-full bg-surface-hover" />

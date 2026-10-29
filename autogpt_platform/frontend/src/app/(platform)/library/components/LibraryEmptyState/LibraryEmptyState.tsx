@@ -34,12 +34,12 @@ export function LibraryEmptyState() {
 
       <div className="flex max-w-md flex-col items-center gap-2">
         <motion.div {...fadeUp(0.28)}>
-          <Text variant="h3" className="text-foreground-strong">
+          <Text variant="h3" tone="primary">
             Your library is empty
           </Text>
         </motion.div>
         <motion.div {...fadeUp(0.36)}>
-          <Text variant="body" className="text-foreground-tertiary">
+          <Text variant="body" tone="muted">
             Build your own workflow from scratch, or grab one from the
             marketplace to get started.
           </Text>
@@ -111,6 +111,7 @@ function StackedCardsIllustration() {
             ease: EASE_OUT_QUINT,
             delay: shouldReduceMotion ? 0 : i * 0.08,
           }}
+          // oxlint-disable-next-line design-system/no-inline-styles -- framer-motion reads an SVG transform origin from style
           style={{ transformOrigin: "240px 96px", transformBox: "fill-box" }}
         >
           <Card x={card.x} y={card.y} width={card.width} />
@@ -148,7 +149,7 @@ function Card({ x, y, width }: CardProps) {
         cx={x + padding + dotRadius}
         cy={y + height / 2}
         r={dotRadius}
-        fill="#E4E4E7"
+        className="fill-border"
       />
       <rect
         x={x + padding + dotRadius * 2 + 12}
@@ -157,7 +158,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={6}
         ry={6}
-        fill="#E4E4E7"
+        className="fill-border"
       />
       <rect
         x={x + width - padding - 80}
@@ -166,7 +167,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={3}
         ry={3}
-        fill="#E4E4E7"
+        className="fill-border"
       />
       <rect
         x={x + width - padding - 60}
@@ -175,7 +176,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={3}
         ry={3}
-        fill="#E4E4E7"
+        className="fill-border"
       />
       <rect
         x={x + width - padding - 40}
@@ -184,7 +185,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={6}
         ry={6}
-        fill="#E4E4E7"
+        className="fill-border"
       />
     </g>
   );

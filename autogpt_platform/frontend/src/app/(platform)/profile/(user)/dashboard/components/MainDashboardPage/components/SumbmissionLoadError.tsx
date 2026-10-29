@@ -7,14 +7,14 @@ export function SubmissionLoadError() {
   return (
     <div className="flex min-h-[400px] flex-col items-center justify-center rounded-lg border border-border-base bg-background">
       <div className="flex flex-col items-center gap-4 text-center">
-        <div className="rounded-full bg-error-surface p-3">
-          <Icon icon={InboxIcon} className="h-8 w-8 text-error-foreground" />
+        <div className="rounded-full bg-error-surface p-3 text-error-foreground">
+          <Icon icon={InboxIcon} className="h-8 w-8" />
         </div>
         <div className="space-y-2">
-          <Text variant="large-medium" className="text-foreground-strong">
+          <Text variant="large-medium" tone="primary">
             Failed to load workflows
           </Text>
-          <Text variant="body" className="text-foreground-secondary">
+          <Text variant="body" tone="secondary">
             Something went wrong while loading your submitted workflows.
           </Text>
         </div>

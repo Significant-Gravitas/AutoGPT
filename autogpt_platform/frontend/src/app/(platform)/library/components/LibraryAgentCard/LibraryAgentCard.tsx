@@ -26,6 +26,16 @@ import {
 import { Chatting01Icon, EyeIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
+/* oxlint-disable design-system/no-raw-colors -- placeholder artwork for workflows without an image, not UI colour */
+const PLACEHOLDER_GRADIENTS = [
+  "bg-gradient-to-r from-green-200 to-blue-200",
+  "bg-gradient-to-r from-pink-200 to-purple-200",
+  "bg-gradient-to-r from-yellow-200 to-orange-200",
+  "bg-gradient-to-r from-blue-200 to-cyan-200",
+  "bg-gradient-to-r from-indigo-200 to-purple-200",
+];
+/* oxlint-enable design-system/no-raw-colors */
+
 interface Props {
   agent: LibraryAgent;
   statusInfo: AgentStatusInfo;
@@ -65,7 +75,7 @@ export function LibraryAgentCard({
         data-testid="library-agent-card"
         data-agent-id={id}
         className={cn(
-          "group relative inline-flex h-auto min-h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border bg-surface hover:shadow-md",
+          "group relative inline-flex h-auto min-h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border bg-surface will-change-transform hover:shadow-md",
           hasError ? "border-error" : "border-separator",
         )}
         transition={{
@@ -73,12 +83,11 @@ export function LibraryAgentCard({
           damping: 25,
           stiffness: 300,
         }}
-        style={{ willChange: "transform" }}
       >
         <NextLink href={`/library/agents/${id}`} className="flex-shrink-0">
           <div className="relative flex items-center gap-3 pl-2 pr-4 pt-3">
             <StatusBadge status={statusInfo.status} />
-            <Text variant="small" className="text-foreground-subtle">
+            <Text variant="small" tone="subtle">
               {statusInfo.totalRuns} tasks
             </Text>
           </div>
@@ -93,31 +102,21 @@ export function LibraryAgentCard({
         <div className="flex w-full flex-1 flex-col px-4 pb-2">
           <NextLink
             href={`/library/agents/${id}`}
-            className="flex w-full items-start justify-between gap-2 no-underline hover:no-underline focus:ring-0"
+            className="flex w-full items-start justify-between gap-2 hyphens-auto no-underline hover:no-underline focus:ring-0"
           >
             <Text
               variant="h5"
               data-testid="library-agent-card-name"
-              className="line-clamp-3 hyphens-auto break-words no-underline hover:no-underline"
+              className="line-clamp-3 break-words"
             >
               {name}
             </Text>
 
             {!showImage || !image_url ? (
               <div
-                className={`h-[3.64rem] w-[6.70rem] flex-shrink-0 rounded-small ${
-                  [
-                    "bg-gradient-to-r from-success/40 to-info/30",
-                    "bg-gradient-to-r from-pink-200 to-brand/30",
-                    "bg-gradient-to-r from-warning-border to-orange-200",
-                    "bg-gradient-to-r from-info/30 to-cyan-200",
-                    "bg-gradient-to-r from-indigo-200 to-brand/30",
-                  ][parseInt(id.slice(0, 8), 16) % 5]
+                className={`h-[3.64rem] w-[6.70rem] flex-shrink-0 rounded-small [background-size:200%_200%] ${
+                  PLACEHOLDER_GRADIENTS[parseInt(id.slice(0, 8), 16) % 5]
                 }`}
-                style={{
-                  backgroundSize: "200% 200%",
-                  animation: "gradient 15s ease infinite",
-                }}
               />
             ) : (
               <Image
@@ -171,7 +170,10 @@ export function LibraryAgentCard({
       <Tooltip inheritDelay>
         <TooltipTrigger asChild>{card}</TooltipTrigger>
         <TooltipPortal>
-          <TooltipContent className="max-w-xs text-red-300">
+          <TooltipContent
+            // oxlint-disable-next-line design-system/no-restyle, design-system/no-raw-colors -- red-300 #F69999 on the dark tooltip has no role; deferred (see PR)
+            className="max-w-xs text-red-300"
+          >
             {statusInfo.lastError}
           </TooltipContent>
         </TooltipPortal>

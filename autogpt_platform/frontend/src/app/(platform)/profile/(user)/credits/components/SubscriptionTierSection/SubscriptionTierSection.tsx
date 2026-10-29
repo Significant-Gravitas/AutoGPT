@@ -57,14 +57,14 @@ export function SubscriptionTierSection() {
         <Text variant="lg-medium" as="h3" tone="inherit">
           Subscription Plan
         </Text>
-        <Text
-          variant="body-tight"
-          as="p"
+        <div
           role="alert"
           className="rounded-md border border-error/20 bg-error-surface px-3 py-2 text-error-foreground"
         >
-          {error}
-        </Text>
+          <Text variant="body-tight" as="p" tone="inherit">
+            {error}
+          </Text>
+        </div>
       </div>
     );
   }
@@ -79,19 +79,11 @@ export function SubscriptionTierSection() {
         <Text variant="lg-medium" as="h3" tone="inherit">
           Subscription Plan
         </Text>
-        <div className="rounded-lg border border-brand bg-accent-surface p-4">
-          <Text
-            variant="large-semibold-tight"
-            as="p"
-            className="text-accent-strong"
-          >
+        <div className="rounded-lg border border-brand bg-accent-surface p-4 text-accent-strong">
+          <Text variant="large-semibold-tight" as="p" tone="inherit">
             Enterprise Plan
           </Text>
-          <Text
-            variant="body-tight"
-            as="p"
-            className="mt-1 text-foreground-secondary"
-          >
+          <Text variant="body-tight" as="p" tone="secondary" className="mt-1">
             Your Enterprise plan is managed by your administrator. Contact your
             account team for changes.
           </Text>
@@ -149,6 +141,7 @@ export function SubscriptionTierSection() {
       {needsSubscription && (
         <div
           role="status"
+          // oxlint-disable-next-line design-system/no-raw-colors -- violet-900 #4C1D95 has no role (accent-strong is lighter); violet-300 #C4B5FD likewise; deferred
           className="rounded-md border border-violet-300 bg-accent-surface px-4 py-3 text-violet-900"
         >
           <Text variant="body-medium-tight" as="p" tone="inherit">
@@ -162,14 +155,14 @@ export function SubscriptionTierSection() {
       )}
 
       {tierError && (
-        <Text
-          variant="body-tight"
-          as="p"
+        <div
           role="alert"
           className="rounded-md border border-error/20 bg-error-surface px-3 py-2 text-error-foreground"
         >
-          {tierError}
-        </Text>
+          <Text variant="body-tight" as="p" tone="inherit">
+            {tierError}
+          </Text>
+        </div>
       )}
 
       {hasPendingChange && pendingTierFromSubscription ? (
@@ -215,13 +208,11 @@ export function SubscriptionTierSection() {
                   {tier.label}
                 </Text>
                 {isCurrent && (
-                  <Text
-                    variant="small-medium-tight"
-                    as="span"
-                    className="rounded-full bg-accent-surface px-2 py-0.5 text-accent-strong"
-                  >
-                    Current
-                  </Text>
+                  <span className="flex rounded-full bg-accent-surface px-2 py-0.5 text-accent-strong">
+                    <Text variant="small-medium-tight" as="span" tone="inherit">
+                      Current
+                    </Text>
+                  </span>
                 )}
               </div>
 
@@ -232,16 +223,13 @@ export function SubscriptionTierSection() {
                 <Text
                   variant="body-medium-tight"
                   as="p"
-                  className="mb-1 text-foreground-secondary"
+                  tone="secondary"
+                  className="mb-1"
                 >
                   {rateLimitLabel}
                 </Text>
               )}
-              <Text
-                variant="body-tight"
-                as="p"
-                className="mb-4 text-foreground-tertiary"
-              >
+              <Text variant="body-tight" as="p" tone="muted" className="mb-4">
                 {tier.description}
               </Text>
 
@@ -271,11 +259,7 @@ export function SubscriptionTierSection() {
 
       {currentTier !== "NO_TIER" && isPaymentEnabled && (
         <div className="flex items-center justify-between gap-3">
-          <Text
-            variant="body-tight"
-            as="p"
-            className="text-foreground-tertiary"
-          >
+          <Text variant="body-tight" as="p" tone="muted">
             Your subscription is managed through Stripe. Upgrades take effect
             immediately. Downgrades take effect at the end of your current
             billing period.
@@ -284,6 +268,7 @@ export function SubscriptionTierSection() {
             <Button
               variant="compact-ghost"
               size="compact"
+              // oxlint-disable-next-line design-system/no-restyle -- no quiet destructive Button variant (grey text, red on hover) yet
               className="shrink-0 text-foreground-secondary hover:text-error-foreground"
               disabled={isPending}
               onClick={() => setConfirmDowngradeTo("NO_TIER")}
@@ -304,11 +289,7 @@ export function SubscriptionTierSection() {
         }}
       >
         <Dialog.Content>
-          <Text
-            variant="body-tight"
-            as="p"
-            className="text-foreground-secondary"
-          >
+          <Text variant="body-tight" as="p" tone="secondary">
             {confirmDowngradeTo === "NO_TIER"
               ? `Cancelling your subscription schedules it to end at the close of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today and no further charges to your card. You keep your current plan and existing credits until then.`
               : `Switching to ${getTierLabel(confirmDowngradeTo ?? "")} takes effect at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today. You keep your current plan until then. From that date your saved card is billed at the ${getTierLabel(confirmDowngradeTo ?? "")} rate.`}{" "}
@@ -343,11 +324,7 @@ export function SubscriptionTierSection() {
         }}
       >
         <Dialog.Content>
-          <Text
-            variant="body-tight"
-            as="p"
-            className="text-foreground-secondary"
-          >
+          <Text variant="body-tight" as="p" tone="secondary">
             You have a pending change to{" "}
             {getTierLabel(pendingTierFromSubscription ?? "")}
             {subscription.pending_tier_effective_at
@@ -385,11 +362,7 @@ export function SubscriptionTierSection() {
         }}
       >
         <Dialog.Content>
-          <Text
-            variant="body-tight"
-            as="p"
-            className="text-foreground-secondary"
-          >
+          <Text variant="body-tight" as="p" tone="secondary">
             {subscription.has_active_stripe_subscription
               ? `Your subscription is upgraded to ${getTierLabel(pendingUpgradeTier ?? "")} immediately. On your next invoice${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""}, your saved card is charged for the upgrade proration since today plus the next month at the new rate, with the unused portion of your current plan automatically deducted.`
               : `You'll be redirected to Stripe to enter payment details and start your ${getTierLabel(pendingUpgradeTier ?? "")} subscription.`}

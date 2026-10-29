@@ -65,8 +65,8 @@ export function LibraryFolder({
       data-folder-id={id}
       className={`group relative inline-flex h-[10.625rem] w-full max-w-[25rem] cursor-pointer flex-col items-start justify-between gap-2.5 rounded-medium border p-4 shadow-sm backdrop-blur-md transition-all duration-200 hover:shadow-md ${
         isDragOver
-          ? "border-blue-400 bg-info-surface ring-2 ring-info/30"
-          : "border-indigo-200/40 bg-gradient-to-br from-indigo-50/40 via-white/70 to-accent-surface/30"
+          ? "border-info bg-info-surface ring-2 ring-info/30"
+          : "border-info/15 bg-gradient-to-br from-info-surface/40 via-surface/70 to-accent-surface/30"
       }`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -77,18 +77,18 @@ export function LibraryFolder({
     >
       <div className="flex w-full items-center justify-between gap-4">
         {/* Left side - Folder name and agent count */}
-        <div className="flex flex-1 flex-col gap-2">
+        <div className="flex flex-1 flex-col gap-2 hyphens-auto">
           <Text
             variant="h5"
             data-testid="library-folder-name"
-            className="line-clamp-2 hyphens-auto break-words"
+            className="line-clamp-2 break-words"
           >
             {name}
           </Text>
           <div className="flex items-center gap-2">
             <Text
               variant="small"
-              className="text-foreground-tertiary"
+              tone="muted"
               data-testid="library-folder-agent-count"
             >
               {agentCount} {agentCount === 1 ? "workflow" : "workflows"}
@@ -118,6 +118,7 @@ export function LibraryFolder({
             e.stopPropagation();
             onEdit?.();
           }}
+          // oxlint-disable-next-line design-system/no-restyle -- no Button size is the folder card's translucent 32px round icon button
           className="h-8 w-8 border border-border-base bg-surface/80 p-2 text-foreground-tertiary hover:bg-surface hover:text-foreground-body"
         >
           <Icon icon={PencilIcon} className="h-4 w-4" />
@@ -130,6 +131,7 @@ export function LibraryFolder({
             e.stopPropagation();
             onDelete?.();
           }}
+          // oxlint-disable-next-line design-system/no-restyle -- no Button size is the folder card's translucent 32px round icon button
           className="h-8 w-8 border border-border-base bg-surface/80 p-2 text-foreground-tertiary hover:bg-surface hover:text-foreground-body"
         >
           <Icon icon={Delete02Icon} className="h-4 w-4" />

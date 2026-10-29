@@ -16,74 +16,46 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 type StatusIconMap = {
   icon: React.ReactNode;
-  bgColor: string;
-  textColor: string;
+  colors: string;
 };
+
+// oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
+const PENDING_COLORS = "bg-warning-surface text-yellow-700";
 
 const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
   INCOMPLETE: {
-    icon: (
-      <Icon
-        icon={AlertCircleIcon}
-        size={16}
-        className="text-error-foreground"
-      />
-    ),
-    bgColor: "bg-error-surface",
-    textColor: "!text-error-foreground",
+    icon: <Icon icon={AlertCircleIcon} size={16} />,
+    colors: "bg-error-surface text-error-foreground",
   },
   QUEUED: {
-    icon: <Icon icon={Clock01Icon} size={16} className="text-yellow-700" />,
-    bgColor: "bg-warning-surface",
-    textColor: "!text-yellow-700",
+    icon: <Icon icon={Clock01Icon} size={16} />,
+    colors: PENDING_COLORS,
   },
   RUNNING: {
-    icon: <Icon icon={PauseCircleIcon} size={16} className="text-yellow-700" />,
-    bgColor: "bg-warning-surface",
-    textColor: "!text-yellow-700",
+    icon: <Icon icon={PauseCircleIcon} size={16} />,
+    colors: PENDING_COLORS,
   },
   REVIEW: {
-    icon: <Icon icon={Alert01Icon} size={16} className="text-yellow-700" />,
-    bgColor: "bg-warning-surface",
-    textColor: "!text-yellow-700",
+    icon: <Icon icon={Alert01Icon} size={16} />,
+    colors: PENDING_COLORS,
   },
   COMPLETED: {
-    icon: (
-      <Icon
-        icon={CheckmarkCircle02Icon}
-        size={16}
-        className="text-success-foreground"
-      />
-    ),
-    bgColor: "bg-success-surface",
-    textColor: "!text-success-foreground",
+    icon: <Icon icon={CheckmarkCircle02Icon} size={16} />,
+    colors: "bg-success-surface text-success-foreground",
   },
   TERMINATED: {
-    icon: (
-      <Icon icon={StopCircleIcon} size={16} className="text-foreground-body" />
-    ),
-    bgColor: "bg-surface-muted",
-    textColor: "!text-foreground-body",
+    icon: <Icon icon={StopCircleIcon} size={16} />,
+    colors: "bg-surface-muted text-foreground-body",
   },
   FAILED: {
-    icon: (
-      <Icon
-        icon={CancelCircleIcon}
-        size={16}
-        className="text-error-foreground"
-      />
-    ),
-    bgColor: "bg-error-surface",
-    textColor: "!text-error-foreground",
+    icon: <Icon icon={CancelCircleIcon} size={16} />,
+    colors: "bg-error-surface text-error-foreground",
   },
 };
 
 const completedWithErrorsStyle: StatusIconMap = {
-  icon: (
-    <Icon icon={Alert02Icon} size={16} className="text-warning-foreground" />
-  ),
-  bgColor: "bg-warning-surface",
-  textColor: "!text-warning-foreground",
+  icon: <Icon icon={Alert02Icon} size={16} />,
+  colors: "bg-warning-surface text-warning-foreground",
 };
 
 type Props = {
@@ -102,15 +74,12 @@ export function RunStatusBadge({ status, completedWithErrors = false }: Props) {
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1 rounded-md p-1",
-        style.bgColor,
+        "inline-flex items-center gap-1 rounded-md p-1 capitalize",
+        style.colors,
       )}
     >
       {style.icon}
-      <Text
-        variant="small-medium"
-        className={cn(style.textColor, "capitalize")}
-      >
+      <Text variant="small-medium" tone="inherit">
         {label}
       </Text>
     </div>

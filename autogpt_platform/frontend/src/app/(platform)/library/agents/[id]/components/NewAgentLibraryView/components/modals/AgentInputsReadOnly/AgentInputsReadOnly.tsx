@@ -37,7 +37,7 @@ export function AgentInputsReadOnly({
 
   if (!hasInputs && !hasCredentials) {
     return (
-      <Text variant="body" className="text-foreground-body">
+      <Text variant="body" tone="body">
         No input for this run.
       </Text>
     );

@@ -42,7 +42,7 @@ export function CopilotLibrarySummary() {
       className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-separator pt-3"
       data-testid="copilot-library-summary"
     >
-      <Text variant="small" className="!text-foreground-tertiary">
+      <Text variant="small" tone="muted">
         Skills and follow-ups
       </Text>
       {showSkills ? (
@@ -60,6 +60,7 @@ export function CopilotLibrarySummary() {
       {showFollowups ? (
         <Link
           href="/library/followups"
+          // oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
           className="text-sm text-yellow-700 hover:underline"
           data-testid="copilot-library-followups-link"
         >

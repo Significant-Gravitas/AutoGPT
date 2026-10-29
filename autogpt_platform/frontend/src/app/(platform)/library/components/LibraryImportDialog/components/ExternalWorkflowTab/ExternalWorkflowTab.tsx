@@ -43,7 +43,7 @@ export default function ExternalWorkflowTab({
       >
         {importWorkflow.submittingMode === "file" ? (
           <div className="flex items-center gap-2">
-            <LoadingSpinner size="small" className="text-action-foreground" />
+            <LoadingSpinner size="small" />
             <span>Importing...</span>
           </div>
         ) : (
@@ -66,7 +66,7 @@ export default function ExternalWorkflowTab({
             type="button"
             disabled={importWorkflow.isSubmitting}
             onClick={() => importWorkflow.setUrlValue(p.url)}
-            className="rounded-full border border-border-base px-3 py-1 text-xs text-foreground-secondary hover:border-purple-400 hover:text-brand-hover disabled:opacity-50"
+            className="rounded-full border border-border-base px-3 py-1 text-xs text-foreground-secondary hover:border-brand hover:text-brand-hover disabled:opacity-50"
           >
             {p.label}
           </button>
@@ -78,7 +78,7 @@ export default function ExternalWorkflowTab({
         onChange={(e) => importWorkflow.setUrlValue(e.target.value)}
         label="Workflow URL"
         placeholder="https://n8n.io/workflows/1234"
-        className="mb-4 w-full rounded-[10px]"
+        className="mb-4 w-full"
       />
       <Button
         type="button"
@@ -89,7 +89,7 @@ export default function ExternalWorkflowTab({
       >
         {importWorkflow.submittingMode === "url" ? (
           <div className="flex items-center gap-2">
-            <LoadingSpinner size="small" className="text-action-foreground" />
+            <LoadingSpinner size="small" />
             <span>Importing...</span>
           </div>
         ) : (

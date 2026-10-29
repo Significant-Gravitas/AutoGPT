@@ -40,7 +40,8 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
               status === "active"
                 ? "bg-success/30 text-success-foreground"
                 : status === "inactive"
-                  ? "bg-warning-border text-yellow-800"
+                  ? // oxlint-disable-next-line design-system/no-raw-colors -- yellow-800 #876A00 has no role; olive to orange-brown change deferred (see PR)
+                    "bg-warning-border text-yellow-800"
                   : "bg-error-surface text-error-foreground"
             }`}
           >
@@ -53,7 +54,7 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
         </div>
 
         {!template.webhook_id ? (
-          <Text variant="body" className="text-error-foreground">
+          <Text variant="body" tone="danger">
             This trigger is not attached to a webhook. Use &quot;Set up
             trigger&quot; to fix this.
           </Text>
@@ -72,6 +73,7 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
                 <Button
                   variant="outline"
                   size="icon"
+                  // oxlint-disable-next-line design-system/no-restyle -- a 28px round copy button; icon-xs would make it a rounded square
                   className="size-7 flex-none p-1"
                   onClick={handleCopyWebhookUrl}
                   title="Copy webhook URL"
@@ -82,7 +84,7 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
             </div>
           </div>
         ) : (
-          <Text variant="body" className="text-muted-foreground">
+          <Text variant="body" tone="muted">
             This workflow trigger is{" "}
             {template.is_active
               ? "ready. When a trigger is received, it will run with the provided settings."

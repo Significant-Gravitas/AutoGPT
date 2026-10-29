@@ -27,8 +27,8 @@ export function TriggerListItem({
   return (
     <SidebarItemCard
       icon={
-        <IconWrapper className="border-accent-surface bg-accent-surface">
-          <Icon icon={FlashIcon} size={16} className="text-foreground-body" />
+        <IconWrapper className="border-accent-surface bg-accent-surface text-foreground-body">
+          <Icon icon={FlashIcon} size={16} />
         </IconWrapper>
       }
       title={trigger.name}

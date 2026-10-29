@@ -64,7 +64,8 @@ function CoPilotUsageSection() {
         <StorageBar />
       </div>
       <Button
-        variant="legacy-default"
+        variant="compact-primary"
+        size="compact"
         className="w-full"
         onClick={() => router.push("/copilot")}
       >
@@ -168,7 +169,7 @@ export default function CreditsPage() {
 
   return (
     <div className="w-full px-4 sm:px-8 md:min-w-[800px]">
-      <h1 className="mb-6 text-heading font-normal leading-inherit text-foreground-strong sm:mb-8 sm:text-[35px]">
+      <h1 className="mb-6 text-heading font-normal leading-inherit text-foreground-strong sm:mb-8 sm:text-title sm:leading-inherit">
         Billing
       </h1>
 
@@ -220,7 +221,8 @@ export default function CreditsPage() {
             </div>
 
             <Button
-              variant="legacy-default"
+              variant="compact-primary"
+              size="compact"
               type="submit"
               className="w-full"
               disabled={isRequestingTopUp || checkoutRedirect.isRedirecting}
@@ -291,7 +293,8 @@ export default function CreditsPage() {
             {autoTopUpConfig?.amount ? (
               <>
                 <Button
-                  variant="legacy-default"
+                  variant="compact-primary"
+                  size="compact"
                   type="submit"
                   className="w-full"
                 >
@@ -299,7 +302,8 @@ export default function CreditsPage() {
                 </Button>
                 <Button
                   className="w-full"
-                  variant="legacy-destructive"
+                  variant="compact-destructive"
+                  size="compact"
                   onClick={() =>
                     updateAutoTopUpConfig(0, 0).then(() => {
                       toast({ title: "Auto top-up config disabled! 🎉" });
@@ -310,7 +314,12 @@ export default function CreditsPage() {
                 </Button>
               </>
             ) : (
-              <Button variant="legacy-default" type="submit" className="w-full">
+              <Button
+                variant="compact-primary"
+                size="compact"
+                type="submit"
+                className="w-full"
+              >
                 Enable Auto-Refill
               </Button>
             )}
@@ -331,7 +340,8 @@ export default function CreditsPage() {
             billing portal.
           </p>
           <Button
-            variant="legacy-default"
+            variant="compact-primary"
+            size="compact"
             type="submit"
             className="w-full"
             onClick={() => openBillingPortal()}
@@ -376,12 +386,14 @@ export default function CreditsPage() {
                   </TableCell>
                   <TableCell>{transaction.description}</TableCell>
                   {/* Make it green if it's positive, red if it's negative */}
-                  <TableCell
-                    className={
-                      transaction.amount > 0 ? "text-success" : "text-error"
-                    }
-                  >
-                    <b>{formatCredits(transaction.amount)}</b>
+                  <TableCell>
+                    <b
+                      className={
+                        transaction.amount > 0 ? "text-success" : "text-error"
+                      }
+                    >
+                      {formatCredits(transaction.amount)}
+                    </b>
                   </TableCell>
                 </TableRow>
               ))}
@@ -389,7 +401,8 @@ export default function CreditsPage() {
           </Table>
           {transactionHistory.next_transaction_time && (
             <Button
-              variant="legacy-default"
+              variant="compact-primary"
+              size="compact"
               type="submit"
               className="w-full"
               onClick={() => fetchTransactionHistory()}
@@ -438,7 +451,8 @@ export default function CreditsPage() {
           )}
 
           <Button
-            variant="legacy-destructive"
+            variant="compact-destructive"
+            size="compact"
             onClick={() => openRefundModal()}
             className="w-full"
           >

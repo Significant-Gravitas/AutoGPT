@@ -35,6 +35,7 @@ export function RunActions({
           onClick={onSimulate}
           disabled={isExecuting || isSettingUpTrigger}
           loading={isExecuting}
+          // oxlint-disable-next-line design-system/no-restyle -- no warning Button variant yet
           className="gap-1.5 text-warning-foreground hover:bg-warning-surface hover:text-warning-foreground"
         >
           <Icon icon={FlaskConicalIcon} size={16} />

@@ -32,62 +32,52 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                     completedWithErrors={isCompletedWithErrors(run)}
                   />
                   {run.is_dry_run && (
-                    <div className="inline-flex items-center gap-1 rounded-md bg-warning-surface p-1">
-                      <Icon
-                        icon={FlaskConicalIcon}
-                        size={16}
-                        className="text-warning-foreground"
-                      />
-                      <Text
-                        variant="small-medium"
-                        className="!text-warning-foreground"
-                      >
+                    <div className="inline-flex items-center gap-1 rounded-md bg-warning-surface p-1 text-warning-foreground">
+                      <Icon icon={FlaskConicalIcon} size={16} />
+                      <Text variant="small-medium" tone="warning">
                         Simulated
                       </Text>
                     </div>
                   )}
                 </div>
               ) : scheduleRecurrence ? (
-                <div className="inline-flex items-center gap-1 rounded-md bg-warning-surface p-1">
-                  <Icon
-                    icon={TimeScheduleIcon}
-                    size={16}
-                    className="text-yellow-700"
-                  />
-                  <Text variant="small-medium" className="text-yellow-700">
+                <div
+                  // oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
+                  className="inline-flex items-center gap-1 rounded-md bg-warning-surface p-1 text-yellow-700"
+                >
+                  <Icon icon={TimeScheduleIcon} size={16} />
+                  <Text variant="small-medium" tone="inherit">
                     Scheduled
                   </Text>
                 </div>
               ) : null}
-              <Text variant="h2" className="truncate text-ellipsis">
-                {agent.name}
-              </Text>
+              <Text variant="h2">{agent.name}</Text>
             </div>
           </div>
           {run ? (
             <div className="mt-1 flex flex-wrap items-center gap-2 gap-y-1 text-foreground-subtle">
-              <Text variant="small" className="text-foreground-tertiary">
+              <Text variant="small" tone="muted">
                 Started{" "}
                 {run.started_at
                   ? formatDistanceToNow(run.started_at, { addSuffix: true })
                   : "—"}
               </Text>
-              <span className="mx-1 inline-block text-zinc-200">|</span>
-              <Text variant="small" className="text-foreground-tertiary">
+              <span className="mx-1 inline-block text-border-base">|</span>
+              <Text variant="small" tone="muted">
                 Version: {run.graph_version}
               </Text>
               {run.stats?.node_exec_count !== undefined && (
                 <>
-                  <span className="mx-1 inline-block text-zinc-200">|</span>
-                  <Text variant="small" className="text-foreground-tertiary">
+                  <span className="mx-1 inline-block text-border-base">|</span>
+                  <Text variant="small" tone="muted">
                     Steps: {run.stats.node_exec_count}
                   </Text>
                 </>
               )}
               {run.stats?.duration !== undefined && (
                 <>
-                  <span className="mx-1 inline-block text-zinc-200">|</span>
-                  <Text variant="small" className="text-foreground-tertiary">
+                  <span className="mx-1 inline-block text-border-base">|</span>
+                  <Text variant="small" tone="muted">
                     Duration:{" "}
                     {formatDistanceStrict(0, run.stats.duration * 1000)}
                   </Text>
@@ -95,15 +85,15 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
               )}
               {isBillingEnabled && run.stats?.cost !== undefined && (
                 <>
-                  <span className="mx-1 inline-block text-zinc-200">|</span>
-                  <Text variant="small" className="text-foreground-tertiary">
+                  <span className="mx-1 inline-block text-border-base">|</span>
+                  <Text variant="small" tone="muted">
                     Cost: ${(run.stats.cost / 100).toFixed(2)}
                   </Text>
                 </>
               )}
             </div>
           ) : scheduleRecurrence ? (
-            <Text variant="small" className="mt-1 !text-foreground-secondary">
+            <Text variant="small" tone="secondary" className="mt-1">
               {scheduleRecurrence}
             </Text>
           ) : null}
