@@ -109,14 +109,23 @@ describe("client request failures in Sentry", () => {
     fail(504, "/api/credits/trial/cancel", "POST");
     await Sentry.flush(2000);
 
-    const [first, second, other] = sent.map((event) => event.fingerprint);
-    expect(first).toEqual([
+    // Sentry can call beforeSend out of capture order, so find each event by its request.
+    const fingerprintOf = new Map(
+      sent.map(
+        (event) =>
+          [event.contexts?.request_failure?.path, event.fingerprint] as const,
+      ),
+    );
+    const sessionA = fingerprintOf.get(`/api/chat/sessions/${SESSION_A}`);
+    expect(sessionA).toEqual([
       "client-request-failure",
       "GET /api/chat/sessions/{id}",
       "5xx",
     ]);
-    expect(second).toEqual(first);
-    expect(other).toEqual([
+    expect(fingerprintOf.get(`/api/chat/sessions/${SESSION_B}`)).toEqual(
+      sessionA,
+    );
+    expect(fingerprintOf.get("/api/credits/trial/cancel")).toEqual([
       "client-request-failure",
       "POST /api/credits/trial/cancel",
       "5xx",
