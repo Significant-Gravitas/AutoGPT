@@ -236,6 +236,8 @@ _MAX_EXTERNAL_RANGE_END = 1_000_000
 # The most text one External API ranged read returns: its base64 has to fit in
 # the 100,000 characters a tool result keeps, or the slice would come back cut.
 _MAX_EXTERNAL_RANGE_BYTES = 60_000
+# Base64 and metadata must stay below the 45K tool-output persistence threshold.
+_MAX_INTERNAL_RANGE_BYTES = 30_000
 
 
 def _fit_utf8(text: str, max_bytes: int) -> str:
@@ -306,7 +308,7 @@ def _read_local_tool_result(
         end = (
             char_offset + char_length if char_length is not None else len(text_content)
         )
-        slice_text = text_content[char_offset:end]
+        slice_text = _fit_utf8(text_content[char_offset:end], _MAX_INTERNAL_RANGE_BYTES)
     except FileNotFoundError:
         return ErrorResponse(
             message=f"File not found: {os.path.basename(path)}", session_id=session_id
@@ -815,15 +817,20 @@ class ReadWorkspaceFileTool(BaseTool):
                         _MAX_EXTERNAL_RANGE_END,
                         char_offset + _MAX_EXTERNAL_RANGE_BYTES,
                     )
+                else:
+                    end = min(end, char_offset + _MAX_INTERNAL_RANGE_BYTES)
                 raw = cached_content or await manager.read_file_head_by_id(
                     target_file_id, 4 * end
                 )
                 text = raw[: 4 * end].decode("utf-8", errors="replace")
                 slice_text = text[char_offset:end]
-                per_read = f"{_MAX_RANGE_CHARS:,} chars"
-                if session.external_caller:
-                    slice_text = _fit_utf8(slice_text, _MAX_EXTERNAL_RANGE_BYTES)
-                    per_read = f"{_MAX_EXTERNAL_RANGE_BYTES:,} bytes"
+                max_bytes = (
+                    _MAX_EXTERNAL_RANGE_BYTES
+                    if session.external_caller
+                    else _MAX_INTERNAL_RANGE_BYTES
+                )
+                slice_text = _fit_utf8(slice_text, max_bytes)
+                per_read = f"{max_bytes:,} bytes"
                 return WorkspaceFileContentResponse(
                     file_id=file_info.id,
                     name=file_info.name,
@@ -1210,7 +1217,7 @@ class WriteWorkspaceFileTool(BaseTool):
             msg = str(e)
             if msg.startswith("Storage limit exceeded"):
                 msg += (
-                    " Use tool:list_workspace_files to find candidates, then "
+                    " Use list_workspace_files to find candidates, then "
                     "tool:delete_workspace_file to free space and retry — or ask "
                     "the user to upgrade their plan."
                 )
