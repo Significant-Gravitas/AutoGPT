@@ -16,6 +16,9 @@ import {
 import { cn } from "@/lib/utils";
 
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
+import { ContextualTips } from "../components/ContextualTips/ContextualTips";
+import { FirstRunTour } from "../components/FirstRunTour/FirstRunTour";
+import { useFirstRunTourStore } from "../components/FirstRunTour/store";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
@@ -40,6 +43,12 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
     hasInsetHeaderTitle,
     isBuilderRoute,
   } = usePlatformChrome();
+  // Not mounted under the walkthrough: on a phone it lands inside the
+  // walkthrough's window, over what it points at. It mounts, with its own
+  // reveal timer, once the walkthrough ends.
+  const isFirstRunTourOpen = useFirstRunTourStore(
+    (state) => state.source !== null,
+  );
 
   const content = (
     <TopUpPromptProvider>
@@ -76,7 +85,9 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
         <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
         <ArtifactsPanelNavCollapse />
         <AppSidebar />
-        {showChangelog ? <ChangelogPopup /> : null}
+        {showChangelog && !isFirstRunTourOpen ? <ChangelogPopup /> : null}
+        <FirstRunTour />
+        <ContextualTips />
         <SidebarInset className="bg-[#f9f9f9]">
           <header
             className={cn(

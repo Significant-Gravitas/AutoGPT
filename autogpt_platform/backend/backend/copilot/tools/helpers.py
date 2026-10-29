@@ -20,7 +20,10 @@ from backend.copilot.constants import (
     MAX_TOOL_WAIT_SECONDS,
 )
 from backend.copilot.context import get_current_permissions, is_unattended_turn
-from backend.copilot.credential_selection import turn_credential_pins
+from backend.copilot.credential_selection import (
+    host_selection_key,
+    turn_credential_pins,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import denied_block_providers
 from backend.copilot.providers import SUPPORTED_PROVIDERS
@@ -949,7 +952,7 @@ async def unattended_missing_credentials_error(
     providers -= {""}
     names = ", ".join(sorted(providers)) or "an integration"
     pinned = await _pinned_account_error(
-        subject, providers, session_id, user_id, expert_id
+        subject, _missing_selection_keys(missing), session_id, user_id, expert_id
     )
     if pinned is not None:
         return pinned
@@ -992,6 +995,22 @@ def _single_provider(providers: set[str]) -> dict[str, Any] | None:
     return {"provider": next(iter(providers))} if len(providers) == 1 else None
 
 
+def _missing_selection_keys(missing: dict[str, dict[str, Any]]) -> set[str]:
+    keys = set()
+    for entry in missing.values():
+        provider = provider_slug(entry.get("provider", ""))
+        if not provider:
+            continue
+        keys.add(provider)
+        if "host_scoped" in entry.get("types", []):
+            keys.update(
+                host_selection_key(provider, url)
+                for url in entry.get("discriminator_values", [])
+                if isinstance(url, str)
+            )
+    return keys
+
+
 async def _pinned_account_error(
     subject: str,
     providers: set[str],
@@ -1010,7 +1029,8 @@ async def _pinned_account_error(
     unfit = sorted(
         p
         for p in pinned
-        if pins[p].id in by_id and not is_per_target_credential(by_id[pins[p].id])
+        if pins[p].id in by_id
+        and (":" in p or not is_per_target_credential(by_id[pins[p].id]))
     )
     if not lost and not unfit:
         return None
@@ -1048,7 +1068,7 @@ async def _pinned_account_error(
             "another account for this schedule, before the next run."
         ),
         error="pinned_credential_missing" if lost else "pinned_credential_unusable",
-        details=_single_provider(set(lost + unfit)),
+        details=_single_provider({p.partition(":")[0] for p in lost + unfit}),
         session_id=session_id,
     ).from_outside()
 
@@ -1248,7 +1268,7 @@ async def prepare_block_for_execution(
         # set up, so its error or grant card stands; the bot is the hint
         # only when nothing of theirs would be.
         owners_fix = bool(grant_hint) or bool(
-            set(turn_credential_pins()) & missing_providers
+            set(turn_credential_pins()) & _missing_selection_keys(missing_entries)
         )
         bot_hint = "" if owners_fix else bot_link_hint(block.name, input_data)
         if not missing_credentials and is_unattended_turn():
