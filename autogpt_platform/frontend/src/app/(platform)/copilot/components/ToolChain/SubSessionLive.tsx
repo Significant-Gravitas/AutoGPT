@@ -140,11 +140,7 @@ function LiveNotice({
   subSessionId: string;
 }) {
   return (
-    <Text
-      variant="small-tight"
-      tone="subtle"
-      className="mt-1.5 flex flex-wrap items-center gap-1.5"
-    >
+    <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-foreground-subtle">
       {text}
       <Link
         href={`/copilot?sessionId=${subSessionId}`}
@@ -152,7 +148,7 @@ function LiveNotice({
       >
         Open sub-session
       </Link>
-    </Text>
+    </p>
   );
 }
 

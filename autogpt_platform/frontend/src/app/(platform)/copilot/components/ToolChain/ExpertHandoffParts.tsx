@@ -7,7 +7,6 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import type { HandoffTask } from "./expertHandoff";
-import { Text } from "@/components/atoms/Text/Text";
 
 interface ProposalProps {
   name: string;
@@ -163,11 +162,11 @@ interface ReceiptProps {
 /** What an answered hand-off card shrinks to: the record of the choice. */
 export function HandoffReceipt({ children }: ReceiptProps) {
   return (
-    <Text variant="body-tight" tone="muted" className="flex items-center gap-2">
+    <p className="flex items-center gap-2 text-sm text-foreground-tertiary">
       <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-muted">
         <Icon icon={Tick02Icon} size={12} aria-hidden />
       </span>
       <span className="min-w-0 [overflow-wrap:anywhere]">{children}</span>
-    </Text>
+    </p>
   );
 }

@@ -87,15 +87,10 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
         </div>
 
         {request.connected ? (
-          <Text
-            variant="body-medium-tight"
-            as="span"
-            tone="muted"
-            className="flex shrink-0 items-center gap-1.5"
-          >
+          <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-foreground-tertiary">
             <Icon icon={CheckmarkCircle02Icon} size={16} />
             Connected
-          </Text>
+          </span>
         ) : request.grantable ? (
           <Button
             variant="primary"

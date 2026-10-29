@@ -369,15 +369,10 @@ export function ConnectorRow({ row }: Props) {
 
       {isSatisfied && !linksOnAyrshare ? (
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <Text
-            variant="body-medium-tight"
-            as="span"
-            tone="muted"
-            className="flex items-center gap-1.5"
-          >
+          <span className="flex items-center gap-1.5 text-sm font-medium text-foreground-tertiary">
             <Icon icon={CheckmarkCircle02Icon} size={16} />
             {expertGrant ? "Granted" : "Connected"}
-          </Text>
+          </span>
           {!expertGrant && (
             <button
               type="button"

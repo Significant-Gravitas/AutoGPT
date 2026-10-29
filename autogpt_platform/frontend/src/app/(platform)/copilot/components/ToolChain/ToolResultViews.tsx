@@ -108,14 +108,9 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
             className="flex items-center gap-2.5 px-3 py-2"
           >
             {citation !== null && (
-              <Text
-                variant="small-tight"
-                as="span"
-                tone="secondary"
-                className="shrink-0 tabular-nums"
-              >
+              <span className="shrink-0 text-xs tabular-nums text-foreground-secondary">
                 [{citation}]
-              </Text>
+              </span>
             )}
             <ResultFavicon domain={domain} />
             {url ? (

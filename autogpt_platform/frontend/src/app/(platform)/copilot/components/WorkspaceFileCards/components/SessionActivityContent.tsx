@@ -150,11 +150,7 @@ function ScheduleRow({ schedule }: { schedule: SessionSchedule }) {
           </Text>
         )}
         {(when || schedule.cron) && (
-          <Text
-            variant="small-tight"
-            tone="subtle"
-            className="flex min-w-0 items-center gap-1.5"
-          >
+          <p className="flex min-w-0 items-center gap-1.5 text-xs text-foreground-subtle">
             {when && <span className="truncate">{when}</span>}
             {when && schedule.cron && <span aria-hidden>·</span>}
             {schedule.cron && (
@@ -163,7 +159,7 @@ function ScheduleRow({ schedule }: { schedule: SessionSchedule }) {
             {schedule.timezone && (
               <span className="shrink-0">{schedule.timezone}</span>
             )}
-          </Text>
+          </p>
         )}
       </div>
     </div>

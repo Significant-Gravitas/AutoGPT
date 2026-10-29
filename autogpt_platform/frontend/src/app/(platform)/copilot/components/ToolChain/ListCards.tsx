@@ -101,14 +101,10 @@ export function ScheduleList({ schedules }: SchedulesProps) {
                 {str(schedule, "name", "message") ?? inline(schedule)}
               </Text>
               {next && (
-                <Text
-                  variant="small-tight"
-                  tone="muted"
-                  className="flex items-center gap-1"
-                >
+                <p className="flex items-center gap-1 text-xs text-foreground-tertiary">
                   {recurring && <Icon icon={RepeatIcon} size={11} />}
                   {formatWhen(next)}
-                </Text>
+                </p>
               )}
             </div>
             {str(schedule, "kind") && (
@@ -143,16 +139,12 @@ export function ScheduleCreatedCard({ output }: OutputProps) {
           Follow-up scheduled
         </Text>
         {next && (
-          <Text
-            variant="small-tight"
-            tone="muted"
-            className="flex items-center gap-1"
-          >
+          <p className="flex items-center gap-1 text-xs text-foreground-tertiary">
             {output.is_recurring === true && (
               <Icon icon={RepeatIcon} size={11} />
             )}
             {formatWhen(next)}
-          </Text>
+          </p>
         )}
       </div>
     </div>

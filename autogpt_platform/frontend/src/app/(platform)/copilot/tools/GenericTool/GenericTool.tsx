@@ -339,14 +339,9 @@ function getWebAccordionData(
             return (
               <div key={i} className="text-sm">
                 {citation !== null && (
-                  <Text
-                    variant="small-tight"
-                    as="span"
-                    tone="muted"
-                    className="mr-1.5 tabular-nums"
-                  >
+                  <span className="mr-1.5 text-xs tabular-nums text-foreground-tertiary">
                     [{citation}]
-                  </Text>
+                  </span>
                 )}
                 {href ? (
                   <a

@@ -865,15 +865,10 @@ export function ExpertChangeGroup({
 
   const canSend = sendable && allDecided;
   const action = sent ? (
-    <Text
-      variant="small-tight"
-      as="span"
-      tone="subtle"
-      className="flex items-center gap-1"
-    >
+    <span className="flex items-center gap-1 text-xs text-foreground-subtle">
       <Icon icon={Tick02Icon} size={14} />
       Sent
-    </Text>
+    </span>
   ) : canSend ? (
     <Button
       variant="primary"
