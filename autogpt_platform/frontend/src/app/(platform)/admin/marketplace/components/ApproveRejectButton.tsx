@@ -115,17 +115,13 @@ export function ApproveRejectButtons({
             <DialogFooter>
               <Button
                 type="button"
-                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
-                variant="legacy-outline"
+                variant="compact-outline"
+                size="compact"
                 onClick={() => setIsApproveDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button
-                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
-                variant="legacy-default"
-                type="submit"
-              >
+              <Button variant="compact-primary" size="compact" type="submit">
                 Approve
               </Button>
             </DialogFooter>
@@ -178,16 +174,16 @@ export function ApproveRejectButtons({
             <DialogFooter>
               <Button
                 type="button"
-                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
-                variant="legacy-outline"
+                variant="compact-outline"
+                size="compact"
                 onClick={() => setIsRejectDialogOpen(false)}
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                // oxlint-disable-next-line design-system/no-legacy-button-variant -- primary/secondary are pills; shape change deferred (plan 5.7 item 2)
-                variant="legacy-destructive"
+                variant="compact-destructive"
+                size="compact"
               >
                 {isApproved ? "Revoke" : "Reject"}
               </Button>

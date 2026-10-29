@@ -12,7 +12,7 @@ export const mockNextjsModules = () => {
       loader: _loader,
       ...props
     }: any) => {
-      // eslint-disable-next-line jsx-a11y/alt-text, @next/next/no-img-element
+      // eslint-disable-next-line jsx-a11y/alt-text, @next/next/no-img-element -- the test double renders a plain <img> in place of next/image
       return <img {...props} />;
     },
   }));

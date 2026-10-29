@@ -17,7 +17,7 @@ import {
 // rule, how many violations the file had when the rule was turned on. A file
 // at or under its count passes; one over it fails with every violation listed;
 // a file missing from the baseline must have none. `pnpm lint:ds-baseline`
-// rewrites the baseline, and `design-system/baseline-outdated` warns when a
+// rewrites the baseline, and `design-system/baseline-outdated` fails when a
 // file has fewer violations than the baseline allows.
 //
 // The @shadcn/lint rules are wrapped rather than enabled directly, so that
@@ -593,7 +593,7 @@ const requireSuppressionReason: Rule.RuleModule = {
 };
 
 /**
- * Warns when a file has fewer violations than design-system-baseline.json
+ * Reports a file that has fewer violations than design-system-baseline.json
  * allows, so the entry can be lowered and the count cannot grow back.
  */
 const baselineOutdated = {
