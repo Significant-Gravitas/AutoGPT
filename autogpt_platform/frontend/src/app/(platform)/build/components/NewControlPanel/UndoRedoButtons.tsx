@@ -47,12 +47,12 @@ export const UndoRedoButtons = () => {
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <ControlPanelButton
-            as="button"
+            aria-label="Undo"
             data-id="undo-button"
             disabled={!canUndo()}
             onClick={undo}
           >
-            <Icon icon={ArrowTurnBackwardIcon} className="size-5" />
+            <Icon icon={ArrowTurnBackwardIcon} className="size-5" aria-hidden />
           </ControlPanelButton>
         </TooltipTrigger>
         <TooltipContent side="right">Undo</TooltipContent>
@@ -64,12 +64,12 @@ export const UndoRedoButtons = () => {
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <ControlPanelButton
-            as="button"
+            aria-label="Redo"
             data-id="redo-button"
             disabled={!canRedo()}
             onClick={redo}
           >
-            <Icon icon={ArrowTurnForwardIcon} className="size-5" />
+            <Icon icon={ArrowTurnForwardIcon} className="size-5" aria-hidden />
           </ControlPanelButton>
         </TooltipTrigger>
         <TooltipContent side="right">Redo</TooltipContent>
