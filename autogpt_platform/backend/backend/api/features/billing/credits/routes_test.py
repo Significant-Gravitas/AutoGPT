@@ -594,6 +594,54 @@ def test_configure_auto_top_up_with_a_declined_card_says_why(
     enable.assert_not_called()
 
 
+def test_configure_auto_top_up_with_a_card_wanting_bank_approval_says_why(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A card check on a 3D Secure card comes back as requires_action instead of
+    raising. That is still the card's answer: 402, nothing saved."""
+    set_auto_top_up = mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up"
+    )
+    credit_model = UserCredit()
+    mocker.patch.object(credit_model, "get_credits", AsyncMock(return_value=5000))
+    mocker.patch.object(
+        credit_model, "_add_transaction", AsyncMock(return_value=(0, "tx_pending"))
+    )
+    enable = mocker.patch.object(credit_model, "_enable_transaction", AsyncMock())
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch(
+        "backend.data.credit.get_stripe_customer_id",
+        AsyncMock(return_value="cus_123"),
+    )
+    card = Mock()
+    card.id = "pm_1"
+    mocker.patch(
+        "backend.data.credit.stripe.PaymentMethod.list_async",
+        AsyncMock(return_value=[card]),
+    )
+    setup_intent = Mock()
+    setup_intent.status = "requires_action"
+    mocker.patch(
+        "backend.data.credit.stripe.SetupIntent.create_async",
+        AsyncMock(return_value=setup_intent),
+    )
+    lenient_client = fastapi.testclient.TestClient(app, raise_server_exceptions=False)
+
+    response = lenient_client.post(
+        "/credits/auto-top-up", json={"threshold": 1000, "amount": 1000}
+    )
+
+    assert response.status_code == 402
+    detail = response.json()["detail"]
+    assert detail.startswith("Your card was declined.")
+    assert "Your bank wants to approve each charge" in detail
+    set_auto_top_up.assert_not_called()
+    enable.assert_not_called()
+
+
 @pytest.mark.parametrize("balance", [5000, -100])
 def test_turning_auto_top_up_off_checks_no_card(
     mocker: pytest_mock.MockFixture, test_user_id: str, balance: int
