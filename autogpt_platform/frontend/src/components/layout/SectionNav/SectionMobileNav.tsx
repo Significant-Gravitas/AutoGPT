@@ -86,9 +86,7 @@ export function SectionMobileNav({ items, sectionName, showBackLink }: Props) {
                 <UIIcon
                   icon={Icon}
                   size={16}
-                  className={
-                    isActive ? "text-foreground-base" : "text-foreground-base"
-                  }
+                  className="text-foreground-base"
                 />
                 <Text
                   variant="body"

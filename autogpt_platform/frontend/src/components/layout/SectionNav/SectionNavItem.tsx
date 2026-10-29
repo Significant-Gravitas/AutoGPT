@@ -32,11 +32,7 @@ function NavItemContent({
 
   return (
     <>
-      <UIIcon
-        icon={Icon}
-        size={16}
-        className={isActive ? "text-foreground-base" : "text-foreground-base"}
-      />
+      <UIIcon icon={Icon} size={16} className="text-foreground-base" />
       <Text
         variant="body"
         as="span"

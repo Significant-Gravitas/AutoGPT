@@ -29,12 +29,13 @@ export default function IconButton(props: AutogptIconButtonProps) {
     id,
     title,
     iconType: _iconType,
+    size = "icon",
     ...otherProps
   } = props;
 
   return (
     <Button
-      size="icon"
+      size={size}
       variant="secondary"
       className={cn(className, "w-fit border border-border-base p-1.5 px-4")}
       {...otherProps}
