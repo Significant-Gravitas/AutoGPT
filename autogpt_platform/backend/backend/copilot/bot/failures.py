@@ -153,10 +153,7 @@ def new_reference() -> str:
 
 def failure_reply(category: FailureCategory, reference: str) -> str:
     advice = f"{category.advice} " if category.advice else ""
-    return (
-        f"AutoGPT couldn't finish that: {category.reason}. {advice}"
-        f"(ref {reference})"
-    )
+    return f"Otto couldn't finish that: {category.reason}. {advice}(ref {reference})"
 
 
 def report_failure(

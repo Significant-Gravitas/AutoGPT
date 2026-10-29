@@ -97,7 +97,7 @@ def test_reply_names_the_cause_and_reference() -> None:
     reply = failures.failure_reply(failures.PROVIDER_BUSY, "3f9a2c1d")
 
     assert reply == (
-        "AutoGPT couldn't finish that: the model provider is busy. "
+        "Otto couldn't finish that: the model provider is busy. "
         "Try again in a moment. (ref 3f9a2c1d)"
     )
 
@@ -106,7 +106,7 @@ def test_a_reply_with_nothing_to_try_ends_at_the_cause() -> None:
     reply = failures.failure_reply(failures.ACCOUNT_BANNED, "3f9a2c1d")
 
     assert reply == (
-        "AutoGPT couldn't finish that: this account has been banned. (ref 3f9a2c1d)"
+        "Otto couldn't finish that: this account has been banned. (ref 3f9a2c1d)"
     )
 
 
