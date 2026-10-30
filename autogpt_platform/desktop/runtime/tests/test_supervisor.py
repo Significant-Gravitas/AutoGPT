@@ -95,20 +95,23 @@ def is_gone(pid: int) -> bool:
 
 def test_tiers_stop_in_reverse_and_a_tier_stops_all_at_once(stack: Stack):
     stopped: list[str] = []
+    together: list[str] = []
+    services = ["rest", "executor", "scheduler", "frontend"]
+    stop_barrier = threading.Barrier(len(services), timeout=20)
 
     def slow_stop(name: str) -> None:
         stopped.append(name)
-        time.sleep(1)
+        if name in services:
+            stop_barrier.wait()
+            together.append(name)
 
-    services = ["rest", "executor", "scheduler", "frontend"]
     stack.launch([sleeper(stack, "database", slow_stop)])
     stack.launch([sleeper(stack, name, slow_stop) for name in services])
-    started = time.monotonic()
     stack.stop()
 
     assert sorted(stopped[:-1]) == sorted(services)
     assert stopped[-1] == "database"
-    assert time.monotonic() - started < 4  # one at a time would take 5
+    assert sorted(together) == sorted(services)
     assert all(process.exit_code() is not None for process in stack.processes)
     assert not stack.registry.path.exists()
 

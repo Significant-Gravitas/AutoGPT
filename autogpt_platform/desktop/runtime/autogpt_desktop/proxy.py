@@ -23,6 +23,7 @@ import logging
 import re
 import threading
 from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
 
 import aiohttp
 from aiohttp import web
@@ -47,7 +48,7 @@ PRIVATE_API = re.compile(
     r"^/_agpt/(?:(?:docs|redoc)(?:/|$)|(?:openapi\.json|metrics)/?$"
     r"|external-api/(?:(?:docs|redoc)(?:/|$)|(?:openapi\.json|metrics)/?$))"
 )
-API_REDIRECT = re.compile(r"^(?:https?://[^/]+)?(/(?:api|external-api)(?:/.*)?)$")
+API_REDIRECT = re.compile(r"^/(?:api|external-api)(?:/|$)")
 MAX_BODY = 256 * 1024 * 1024
 
 UPSTREAMS: web.AppKey[Upstreams] = web.AppKey("upstreams")
@@ -208,8 +209,24 @@ def _own_cookies(request: web.Request) -> str | None:
 
 def _rewrite_location(value: str, upstreams: Upstreams, api: bool) -> str:
     if api:
-        match = API_REDIRECT.match(value)
-        return f"{upstreams.public_url}/_agpt{match.group(1)}" if match else value
+        try:
+            location = urlsplit(value)
+            rest = urlsplit(upstreams.rest)
+            if (location.scheme or location.netloc) and (
+                location.scheme != rest.scheme
+                or location.hostname != rest.hostname
+                or (location.port or (443 if location.scheme == "https" else 80))
+                != (rest.port or (443 if rest.scheme == "https" else 80))
+                or location.username is not None
+                or location.password is not None
+            ):
+                return value
+        except ValueError:
+            return value
+        if not API_REDIRECT.match(location.path):
+            return value
+        target = urlunsplit(("", "", location.path, location.query, location.fragment))
+        return f"{upstreams.public_url}/_agpt{target}"
     # Next builds absolute redirects from its own listen address, and spells
     # the host either way, so both must be mapped back to the public origin.
     port = upstreams.frontend.rsplit(":", 1)[1]

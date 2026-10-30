@@ -101,10 +101,24 @@ export async function appVersion(page: Page): Promise<string> {
 }
 
 export function isNewer(version: string, than: string): boolean {
-  const parts = (value: string) => value.split("-")[0].split(".").map(Number);
+  const parts = (value: string) => {
+    const [core, ...pre] = value.split("+", 1)[0].split("-");
+    return { core: core.split(".").map(Number), pre: pre.length ? pre.join("-").split(".") : [] };
+  };
   const [a, b] = [parts(version), parts(than)];
   for (let index = 0; index < 3; index += 1) {
-    if (a[index] !== b[index]) return a[index] > b[index];
+    if (a.core[index] !== b.core[index]) return a.core[index] > b.core[index];
+  }
+  if (!a.pre.length || !b.pre.length) return !a.pre.length && b.pre.length > 0;
+  for (let index = 0; index < Math.max(a.pre.length, b.pre.length); index += 1) {
+    const [x, y] = [a.pre[index], b.pre[index]];
+    if (x === undefined) return false;
+    if (y === undefined) return true;
+    if (x === y) continue;
+    const [numericX, numericY] = [/^\d+$/.test(x), /^\d+$/.test(y)];
+    if (numericX && numericY) return BigInt(x) > BigInt(y);
+    if (numericX !== numericY) return !numericX;
+    return x > y;
   }
   return false;
 }

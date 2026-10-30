@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import time
+from asyncio import timeout
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from copy import deepcopy
@@ -428,50 +429,53 @@ class IntegrationCredentialsManager:
                     blocking_timeout=lock_timeout,
                 )
             )
-            current = await self.store.get_creds_by_id(user_id, credentials.id)
-            if current is not None and current.type != "oauth2":
-                raise TypeError(
-                    f"Credential changed type to {current.type!r} during OAuth refresh"
+            # Contention is retryable; finish preparation before its first lease
+            # expires, without spending the later token-exchange deadline.
+            async with timeout(REFRESH_LEASE_SECONDS / 2):
+                current = await self.store.get_creds_by_id(user_id, credentials.id)
+                if current is not None and current.type != "oauth2":
+                    raise TypeError(
+                        f"Credential changed type to {current.type!r} during OAuth refresh"
+                    )
+                if current is None or current.provider != credentials.provider:
+                    raise CredentialRefreshRequired()
+                if current.metadata.get(REFRESH_PENDING):
+                    raise CredentialRefreshRequired()
+                if (
+                    current.refresh_strategy == "provider_runtime"
+                    or not handler.needs_refresh(current)
+                ):
+                    return current
+                locks.append(
+                    await self._fresh_refresh_lock(
+                        self._credentials_lock_key(user_id, credentials.id),
+                        blocking_timeout=lock_timeout,
+                    )
                 )
-            if current is None or current.provider != credentials.provider:
-                raise CredentialRefreshRequired()
-            if current.metadata.get(REFRESH_PENDING):
-                raise CredentialRefreshRequired()
-            if (
-                current.refresh_strategy == "provider_runtime"
-                or not handler.needs_refresh(current)
-            ):
-                return current
-            locks.append(
-                await self._fresh_refresh_lock(
-                    self._credentials_lock_key(user_id, credentials.id),
-                    blocking_timeout=lock_timeout,
+                locks.append(
+                    await self._fresh_refresh_lock(
+                        (f"user:{user_id}", "integrations"),
+                        blocking_timeout=lock_timeout,
+                    )
                 )
-            )
-            locks.append(
-                await self._fresh_refresh_lock(
-                    (f"user:{user_id}", "integrations"),
-                    blocking_timeout=lock_timeout,
+                persisted = await self.store._get_persisted_user_creds_unlocked(user_id)
+                current = next(
+                    (item for item in persisted if item.id == credentials.id), None
                 )
-            )
-            persisted = await self.store._get_persisted_user_creds_unlocked(user_id)
-            current = next(
-                (item for item in persisted if item.id == credentials.id), None
-            )
-            if (
-                current is None
-                or current.type != "oauth2"
-                or current.provider != credentials.provider
-            ):
-                raise CredentialRefreshRequired()
-            if current.metadata.get(REFRESH_PENDING):
-                raise CredentialRefreshRequired()
-            if (
-                current.refresh_strategy == "provider_runtime"
-                or not handler.needs_refresh(current)
-            ):
-                return current
-            await self._renew_refresh_locks(locks)
+                if (
+                    current is None
+                    or current.type != "oauth2"
+                    or current.provider != credentials.provider
+                ):
+                    raise CredentialRefreshRequired()
+                if current.metadata.get(REFRESH_PENDING):
+                    raise CredentialRefreshRequired()
+                if (
+                    current.refresh_strategy == "provider_runtime"
+                    or not handler.needs_refresh(current)
+                ):
+                    return current
+                await self._renew_refresh_locks(locks)
 
             def operation(deadline: float):
                 nonlocal transferred

@@ -245,7 +245,7 @@ is set explicitly, as the appliance does.
 | Python 3.13 | python-build-standalone | same | same |
 | PostgreSQL + pgvector | 18.6, prebuilt | 18.6, prebuilt | 16.12, built from source |
 | Valkey 8.1 | built under MSYS2 | built from source | upstream binary |
-| Erlang 27 + RabbitMQ 4.1 | upstream zips | erlef build + generic-unix | hex.pm build + generic-unix |
+| Erlang 27 + RabbitMQ 4.3 | upstream zips | erlef build + generic-unix | hex.pm build + generic-unix |
 | Node 24, Prisma 5.17 engines | upstream | upstream | upstream |
 
 The Linux bundle needs glibc 2.35 and OpenSSL 3 (Ubuntu 22.04, Debian 12,

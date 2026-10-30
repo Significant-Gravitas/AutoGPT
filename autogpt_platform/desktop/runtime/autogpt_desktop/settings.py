@@ -544,5 +544,8 @@ def _read_env(path: Path) -> dict[str, str]:
         if not line or line.startswith("#") or "=" not in line:
             continue
         name, _, value = line.partition("=")
-        values[name.strip()] = value.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
+            value = value[1:-1]
+        values[name.strip()] = value
     return values

@@ -92,6 +92,7 @@ function requireNoRestore(journal) {
 function claimLaunch(directory) {
   const locations = maintenancePaths(directory);
   fs.mkdirSync(path.dirname(locations.root), { recursive: true });
+  removeDeadLeases(locations);
   const lease = path.join(
     path.dirname(locations.root),
     `.autogpt-shell-${locations.key}-${process.pid}-${crypto.randomUUID()}.json`,
@@ -120,6 +121,25 @@ function claimLaunch(directory) {
   }
   // Keep the lease through Electron's final profile writes. Maintenance ignores it only after this PID exits.
   return lease;
+}
+
+function removeDeadLeases(locations) {
+  const parent = path.dirname(locations.root);
+  const prefix = `.autogpt-shell-${locations.key}-`;
+  let names;
+  try { names = fs.readdirSync(parent); }
+  catch { return; }
+  for (const name of names) {
+    if (!name.startsWith(prefix) || !name.endsWith(".json")) continue;
+    const file = path.join(parent, name);
+    try {
+      const info = fs.lstatSync(file);
+      if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) continue;
+      if (!operationActive(file)) fs.unlinkSync(file);
+    } catch {
+      // Unreadable or uncertain leases remain for maintenance to reject.
+    }
+  }
 }
 
 module.exports = { canonicalDirectory, claimLaunch, maintenancePaths, operationActive, processExists };

@@ -452,7 +452,7 @@ class ChildRegistry:
             pid, started = entry.get("pid"), entry.get("started")
             if (
                 type(pid) is not int
-                or not 0 < pid <= 2**31 - 1
+                or not 1 < pid <= 2**31 - 1
                 or type(started) not in (int, float)
                 or (type(started) is float and not math.isfinite(started))
                 or started <= 0

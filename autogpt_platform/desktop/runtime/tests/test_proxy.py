@@ -12,11 +12,41 @@ from autogpt_desktop.proxy import (
     ProxyThread,
     Upstreams,
     _report_loop_error,
+    _rewrite_location,
     client_went_away,
 )
 
-
 RELEASE: web.AppKey[asyncio.Event] = web.AppKey("release")
+
+
+@pytest.mark.parametrize(
+    "location, expected",
+    [
+        ("/api/callback?x=1#done", "http://127.0.0.1:4000/_agpt/api/callback?x=1#done"),
+        ("/external-api?x=1", "http://127.0.0.1:4000/_agpt/external-api?x=1"),
+        (
+            "http://127.0.0.1:4001/api/callback",
+            "http://127.0.0.1:4000/_agpt/api/callback",
+        ),
+        (
+            "https://provider.example/api/authorize?x=1",
+            "https://provider.example/api/authorize?x=1",
+        ),
+        ("http://127.0.0.1:9999/api/callback", "http://127.0.0.1:9999/api/callback"),
+        ("https://127.0.0.1:4001/api/callback", "https://127.0.0.1:4001/api/callback"),
+        (
+            "http://user@127.0.0.1:4001/api/callback",
+            "http://user@127.0.0.1:4001/api/callback",
+        ),
+        ("//provider.example/api/callback", "//provider.example/api/callback"),
+        ("http://[invalid/api/callback", "http://[invalid/api/callback"),
+        ("/apiculture", "/apiculture"),
+        ("relative/api/callback", "relative/api/callback"),
+    ],
+)
+def test_api_redirects_preserve_external_origins(location, expected):
+    upstreams = Upstreams("http://127.0.0.1:4000", "http://127.0.0.1:4001", "", "")
+    assert _rewrite_location(location, upstreams, api=True) == expected
 
 
 def free_port() -> int:

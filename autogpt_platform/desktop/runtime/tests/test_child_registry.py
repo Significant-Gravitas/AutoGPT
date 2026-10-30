@@ -23,6 +23,8 @@ from autogpt_desktop.maintenance import DataBusyError, DataLock
         {"pid": 123, "started": 0},
         {"pid": True, "started": 100.0},
         {"pid": 0, "started": 100.0},
+        {"pid": 1, "started": 100.0},
+        {"pid": "1", "started": 100.0},
         {"pid": -123, "started": 100.0},
         {"pid": 2**31, "started": 100.0},
         {"pid": 123.0, "started": 100.0},

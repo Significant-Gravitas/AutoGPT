@@ -87,3 +87,42 @@ test("shell claims maintenance exclusion before profile and single-instance writ
   assert.ok(lease < source.indexOf("claim(app, install)"));
   assert.ok(lease < source.indexOf("app.requestSingleInstanceLock()"));
 });
+
+test("new launches remove only confirmed dead leases for the same data root", (t) => {
+  const f = fixture(t);
+  const prefix = `.autogpt-shell-${f.key}-`;
+  const records = new Map([
+    [`${prefix}dead.json`, '{"pid":234}'],
+    [`${prefix}live.json`, JSON.stringify({ pid: process.pid })],
+    [`${prefix}denied.json`, '{"pid":345}'],
+    [`${prefix}invalid.json`, '{"pid":"234"}'],
+    [`${prefix}malformed.json`, '{'],
+    [`${prefix}unreadable.json`, '{"pid":234}'],
+    [`${prefix}pending.json.tmp`, '{"pid":234}'],
+    ['.autogpt-shell-other-dead.json', '{"pid":234}'],
+  ]);
+  for (const [name, value] of records) fs.writeFileSync(path.join(f.temporary, name), value);
+  const read = fs.readFileSync;
+  t.mock.method(fs, "readFileSync", (file, ...args) => {
+    if (file === path.join(f.temporary, `${prefix}unreadable.json`)) throw Object.assign(new Error("denied"), { code: "EACCES" });
+    return read(file, ...args);
+  });
+  t.mock.method(process, "kill", (pid, signal) => {
+    assert.equal(signal, 0);
+    if (pid === 234) throw Object.assign(new Error("gone"), { code: "ESRCH" });
+    if (pid === 345) throw Object.assign(new Error("denied"), { code: "EPERM" });
+    assert.equal(pid, process.pid);
+  });
+  const lease = claimLaunch(f.data);
+  assert.equal(fs.existsSync(path.join(f.temporary, `${prefix}dead.json`)), false);
+  for (const name of records.keys()) {
+    if (name !== `${prefix}dead.json`) assert.equal(fs.existsSync(path.join(f.temporary, name)), true, name);
+  }
+  assert.equal(fs.existsSync(lease), true);
+});
+
+test("an unreadable lease inventory does not prevent publishing a new lease", (t) => {
+  const f = fixture(t);
+  t.mock.method(fs, "readdirSync", () => { throw Object.assign(new Error("denied"), { code: "EACCES" }); });
+  assert.equal(fs.existsSync(claimLaunch(f.data)), true);
+});

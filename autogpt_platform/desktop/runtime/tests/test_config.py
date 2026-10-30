@@ -30,6 +30,26 @@ def bundle(tmp_path: Path) -> Bundle:
     return Bundle(tmp_path / "runtime")
 
 
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ('"quoted value"', "quoted value"),
+        ("'quoted value'", "quoted value"),
+        ('" spaces inside "', " spaces inside "),
+        ('""', ""),
+        ("''", ""),
+        ('"unmatched', '"unmatched'),
+        ("'mismatched\"", "'mismatched\""),
+        ("unquoted=value#literal", "unquoted=value#literal"),
+        (r'"C:\\path\\folder"', r"C:\\path\\folder"),
+    ],
+)
+def test_settings_values_strip_one_matching_quote_pair(tmp_path, raw, expected):
+    path = tmp_path / "settings.env"
+    path.write_text(f" TEST_VALUE = {raw} \n", encoding="utf-8")
+    assert settings._read_env(path) == {"TEST_VALUE": expected}
+
+
 def test_ports_are_unique_in_range_and_remembered(tmp_path: Path):
     path = tmp_path / "ports.json"
     first = ports.allocate(path)
