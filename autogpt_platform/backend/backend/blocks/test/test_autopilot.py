@@ -155,11 +155,15 @@ class TestRunValidation:
         input_data = block.Input(prompt="do something", max_recursion_depth=3)
         ctx = _make_context()
         outputs = {}
-        async for name, value in block.run(input_data, execution_context=ctx):
-            outputs[name] = value
+        with patch(
+            "backend.blocks.autopilot._enqueue_for_recovery", new_callable=AsyncMock
+        ) as enqueue:
+            async for name, value in block.run(input_data, execution_context=ctx):
+                outputs[name] = value
 
         assert outputs["session_id"] == "sess-fail"
         assert "boom" in outputs.get("error", "")
+        enqueue.assert_awaited_once_with("sess-fail", ctx.user_id, "do something", False)
 
     @pytest.mark.asyncio
     async def test_cancelled_error_yields_error_and_reraises(self, block):

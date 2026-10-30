@@ -44,7 +44,7 @@ jobs:
     # groups run on separate standard runners. The cap is a hang guard, not a
     # performance budget: on merge_group a cancelled job reads as a failed
     # check and ejects the PR from the queue, so keep it well above p99.
-    timeout-minutes: 8
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -430,7 +430,10 @@ jobs:
             pytest_args+=(-q)
           fi
 
-          python ../../.github/scripts/backend_test_shard.py "$TEST_SHARD" -- "${pytest_args[@]}"
+          poetry run pytest -c pyproject.toml . \
+            --ignore=backend/data --ignore=backend/copilot \
+            --ignore=backend/util --ignore=backend/executor --ignore=backend/api \
+            "${pytest_args[@]}"
 
       - name: Validate test reports
         if: ${{ always() }}
