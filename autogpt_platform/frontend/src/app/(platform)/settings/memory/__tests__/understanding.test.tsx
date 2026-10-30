@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetCopilotChatRegistry } from "@/app/(platform)/copilot/copilotChatRegistry";
 import { TEST_BACKEND_BASE_URL } from "@/app/(platform)/copilot/__tests__/sse-helpers";
@@ -215,3 +215,32 @@ describe("What Otto knows about your work", () => {
 function settle() {
   return new Promise((resolve) => setTimeout(resolve, 300));
 }
+
+describe("desktop memory availability", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("keeps onboarding understanding without querying unavailable graph memory", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY", "false");
+    const graphRequest = vi.fn();
+    server.use(
+      getListMyMemoryFactsMockHandler200(() => {
+        graphRequest();
+        return { expert_id: null, items: [] };
+      }),
+      getGetMyMemoryOverviewMockHandler200(() => {
+        graphRequest();
+        return { expert_id: null, facts: 0, entities: 0, episodes: 0 };
+      }),
+      getGetMyBusinessUnderstandingMockHandler200(KEPT),
+    );
+
+    render(<SettingsMemoryPage />);
+
+    expect(
+      screen.getByText("Long-term memory is unavailable on this installation."),
+    ).toBeDefined();
+    expect(await screen.findByText("Harbor Bikes")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /erase/i })).toBeNull();
+    expect(graphRequest).not.toHaveBeenCalled();
+  });
+});

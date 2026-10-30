@@ -196,7 +196,9 @@ from backend.data.understanding import (
     upsert_business_understanding,
 )
 from backend.data.user import (
+    begin_user_credential_refresh,
     claim_welcome_email,
+    complete_user_credential_refresh,
     get_active_user_ids_in_timerange,
     get_auth_user_flag_fields,
     get_billing_email_recipient,
@@ -442,6 +444,8 @@ class DatabaseManager(AppService):
     get_near_expiry_oauth_credentials = _(get_near_expiry_oauth_credentials)
     get_user_credentials = _(get_user_credentials)
     set_user_credentials = _(set_user_credentials)
+    begin_user_credential_refresh = _(begin_user_credential_refresh)
+    complete_user_credential_refresh = _(complete_user_credential_refresh)
 
     # ============ User Comms ============ #
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
@@ -995,6 +999,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_near_expiry_oauth_credentials = d.get_near_expiry_oauth_credentials
     get_user_credentials = d.get_user_credentials
     set_user_credentials = d.set_user_credentials
+    begin_user_credential_refresh = d.begin_user_credential_refresh
+    complete_user_credential_refresh = d.complete_user_credential_refresh
 
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution

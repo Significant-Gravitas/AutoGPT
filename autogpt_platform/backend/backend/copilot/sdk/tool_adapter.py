@@ -1148,6 +1148,7 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 # security_hooks and fails cli_builtin_tools_test.py.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
+    "PowerShell",
     "WebFetch",
     "WebSearch",
     "AskUserQuestion",

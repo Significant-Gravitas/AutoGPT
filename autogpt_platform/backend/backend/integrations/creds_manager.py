@@ -1,17 +1,29 @@
+import asyncio
 import logging
 import os
 import time
+from asyncio import timeout
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from datetime import datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Coroutine
+from uuid import uuid4
 
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.data.model import Credentials, OAuth2Credentials
 from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.credential_refresh import (
+    REFRESH_CLEANUP_SECONDS,
+    REFRESH_LEASE_SECONDS,
+    REFRESH_PENDING,
+    REFRESH_REVISION,
+    CredentialRefreshRequired,
+    admitted_refresh,
+)
 from backend.integrations.credentials_store import (
     IntegrationCredentialsStore,
     provider_matches,
@@ -200,6 +212,8 @@ class IntegrationCredentialsManager:
                 raise ValueError(
                     f"Credentials #{credentials_id} for user #{user_id} not found"
                 )
+            if credentials.metadata.get(REFRESH_PENDING):
+                raise CredentialRefreshRequired()
         except BaseException:
             await self._release_owned_lock(lock)
             raise
@@ -312,6 +326,11 @@ class IntegrationCredentialsManager:
         *,
         lock_timeout: float | None = None,
     ) -> OAuth2Credentials:
+        oauth_handler = handler or await self._get_oauth_handler(credentials)
+        if oauth_handler.ROTATES_REFRESH_TOKEN is True:
+            return await self._refresh_rotating(
+                user_id, credentials, oauth_handler, lock_timeout=lock_timeout
+            )
         # Bound acquisition only: cancelling a refresh can lose a rotated token.
         async with self._locked(
             user_id, credentials.id, "refresh", blocking_timeout=lock_timeout
@@ -339,7 +358,9 @@ class IntegrationCredentialsManager:
                         or not oauth_handler.needs_refresh(credentials)
                     ):
                         return credentials
-                    fresh_credentials = await oauth_handler.refresh_tokens(credentials)
+                    fresh_credentials = await self._refresh_preserving_revision(
+                        credentials, oauth_handler
+                    )
                     await self.store.update_creds(user_id, fresh_credentials)
                     await _invoke_creds_changed_hook(
                         user_id, fresh_credentials.provider
@@ -374,6 +395,197 @@ class IntegrationCredentialsManager:
             raise RuntimeError("Credential provider changed during refresh")
         return current
 
+    async def _fresh_refresh_lock(
+        self, key: tuple[str, ...], *, blocking_timeout: float | None = None
+    ) -> AsyncRedisLock:
+        mutex = await self.locks()
+        lock = mutex.redis.lock(str(key), REFRESH_LEASE_SECONDS, thread_local=False)
+        if not await lock.acquire(blocking_timeout=blocking_timeout):
+            raise TimeoutError("Timed out waiting for a Redis lock")
+        return lock
+
+    async def _renew_refresh_locks(self, locks: list[AsyncRedisLock]) -> None:
+        for lock in locks:
+            if not await lock.extend(REFRESH_LEASE_SECONDS, replace_ttl=True):
+                raise CredentialRefreshRequired()
+        for lock in locks:
+            if not await lock.owned():
+                raise CredentialRefreshRequired()
+
+    async def _refresh_rotating(
+        self,
+        user_id: str,
+        credentials: OAuth2Credentials,
+        handler: "BaseOAuthHandler | BaseDeviceAuthHandler",
+        *,
+        lock_timeout: float | None = None,
+    ) -> OAuth2Credentials:
+        locks: list[AsyncRedisLock] = []
+        transferred = False
+        try:
+            locks.append(
+                await self._fresh_refresh_lock(
+                    self._credentials_lock_key(user_id, credentials.id, "refresh"),
+                    blocking_timeout=lock_timeout,
+                )
+            )
+            # Contention is retryable; finish preparation before its first lease
+            # expires, without spending the later token-exchange deadline.
+            async with timeout(REFRESH_LEASE_SECONDS / 2):
+                current = await self.store.get_creds_by_id(user_id, credentials.id)
+                if current is not None and current.type != "oauth2":
+                    raise TypeError(
+                        f"Credential changed type to {current.type!r} during OAuth refresh"
+                    )
+                if current is None or current.provider != credentials.provider:
+                    raise CredentialRefreshRequired()
+                if current.metadata.get(REFRESH_PENDING):
+                    raise CredentialRefreshRequired()
+                if (
+                    current.refresh_strategy == "provider_runtime"
+                    or not handler.needs_refresh(current)
+                ):
+                    return current
+                locks.append(
+                    await self._fresh_refresh_lock(
+                        self._credentials_lock_key(user_id, credentials.id),
+                        blocking_timeout=lock_timeout,
+                    )
+                )
+                locks.append(
+                    await self._fresh_refresh_lock(
+                        (f"user:{user_id}", "integrations"),
+                        blocking_timeout=lock_timeout,
+                    )
+                )
+                persisted = await self.store._get_persisted_user_creds_unlocked(user_id)
+                current = next(
+                    (item for item in persisted if item.id == credentials.id), None
+                )
+                if (
+                    current is None
+                    or current.type != "oauth2"
+                    or current.provider != credentials.provider
+                ):
+                    raise CredentialRefreshRequired()
+                if current.metadata.get(REFRESH_PENDING):
+                    raise CredentialRefreshRequired()
+                if (
+                    current.refresh_strategy == "provider_runtime"
+                    or not handler.needs_refresh(current)
+                ):
+                    return current
+                await self._renew_refresh_locks(locks)
+
+            def operation(deadline: float):
+                nonlocal transferred
+                transferred = True
+                return self._exchange_rotating(
+                    user_id, current, handler, locks, deadline
+                )
+
+            return await admitted_refresh(operation)
+        finally:
+            if not transferred:
+
+                async def cleanup(deadline: float):
+                    async with asyncio.timeout_at(deadline + REFRESH_CLEANUP_SECONDS):
+                        for lock in reversed(locks):
+                            await self._release_owned_lock(lock)
+
+                await admitted_refresh(cleanup, cleanup=True)
+
+    async def _exchange_rotating(
+        self,
+        user_id: str,
+        credentials: OAuth2Credentials,
+        handler: "BaseOAuthHandler | BaseDeviceAuthHandler",
+        locks: list[AsyncRedisLock],
+        deadline: float,
+    ) -> OAuth2Credentials:
+        loop = asyncio.get_running_loop()
+        database_deadline = time.time() + max(0.0, deadline - loop.time())
+        checkpoint: str | None = None
+        exchange_started = False
+        committed: OAuth2Credentials | None = None
+        phase = "prepare"
+        nonce = uuid4().hex
+        try:
+            async with asyncio.timeout_at(deadline):
+                await self._renew_refresh_locks(locks)
+                checkpoint = await self.store.begin_refresh(
+                    user_id, credentials, nonce, database_deadline
+                )
+                if checkpoint is None:
+                    raise CredentialRefreshRequired()
+                await self._renew_refresh_locks(locks)
+                if loop.time() >= deadline:
+                    raise TimeoutError()
+                phase = "exchange"
+                exchange_started = True
+                fresh = await handler.refresh_tokens(deepcopy(credentials))
+                if (
+                    type(fresh) is not type(credentials)
+                    or fresh.id != credentials.id
+                    or fresh.provider != credentials.provider
+                    or not set(fresh.scopes).issuperset(credentials.scopes)
+                    or fresh.metadata.get(REFRESH_PENDING)
+                ):
+                    raise CredentialRefreshRequired()
+                phase = "checkpoint"
+                fresh = fresh.model_copy(
+                    update={
+                        "metadata": {
+                            **fresh.metadata,
+                            REFRESH_REVISION: nonce + ":complete",
+                        },
+                    }
+                )
+                if loop.time() >= deadline:
+                    raise TimeoutError()
+                await self._renew_refresh_locks(locks)
+                if not await self.store.complete_refresh(
+                    user_id, fresh, checkpoint, database_deadline
+                ):
+                    raise CredentialRefreshRequired()
+                committed = fresh
+                phase = "notify"
+                try:
+                    await _invoke_creds_changed_hook(user_id, fresh.provider)
+                except Exception as error:  # noqa: BLE001 - Already committed.
+                    logger.warning(
+                        "Credential refresh notification failed: %s",
+                        type(error).__name__,
+                    )
+                return fresh
+        except BaseException as error:  # noqa: BLE001 - Never replay uncertain tokens.
+            if committed is not None:
+                return committed
+            logger.warning(
+                "Credential refresh failed during %s: %s", phase, type(error).__name__
+            )
+            if not exchange_started and checkpoint is not None:
+                try:
+                    async with asyncio.timeout_at(deadline + REFRESH_CLEANUP_SECONDS):
+                        await self.store.complete_refresh(
+                            user_id,
+                            credentials,
+                            checkpoint,
+                            database_deadline + REFRESH_CLEANUP_SECONDS,
+                        )
+                except BaseException:  # noqa: BLE001 - Rollback may be cancelled.
+                    logger.warning(
+                        "Credential refresh prepare rollback did not complete"
+                    )
+            raise CredentialRefreshRequired() from None
+        finally:
+            try:
+                async with asyncio.timeout_at(deadline + REFRESH_CLEANUP_SECONDS):
+                    for lock in reversed(locks):
+                        await self._release_owned_lock(lock)
+            except BaseException:  # noqa: BLE001 - Keep outcome if cleanup fails.
+                logger.warning("Credential refresh lock cleanup deadline expired")
+
     async def _refresh_unlocked(
         self,
         user_id: str,
@@ -392,15 +604,44 @@ class IntegrationCredentialsManager:
                 credentials.provider,
                 credentials.id,
             )
-            fresh_credentials = await oauth_handler.refresh_tokens(credentials)
+            fresh_credentials = await self._refresh_preserving_revision(
+                credentials, oauth_handler
+            )
             await self.store.update_creds(user_id, fresh_credentials)
             await _invoke_creds_changed_hook(user_id, fresh_credentials.provider)
             credentials = fresh_credentials
         return credentials
 
-    async def update(self, user_id: str, updated: Credentials) -> None:
+    async def _refresh_preserving_revision(
+        self,
+        credentials: OAuth2Credentials,
+        handler: "BaseOAuthHandler | BaseDeviceAuthHandler",
+    ) -> OAuth2Credentials:
+        revision = credentials.metadata.get(REFRESH_REVISION)
+        fresh = await handler.refresh_tokens(credentials)
+        metadata = {**fresh.metadata}
+        if revision is None:
+            metadata.pop(REFRESH_REVISION, None)
+        else:
+            metadata[REFRESH_REVISION] = revision
+        return fresh.model_copy(update={"metadata": metadata})
+
+    async def update(
+        self,
+        user_id: str,
+        updated: Credentials,
+        *,
+        reconnect_expected: OAuth2Credentials | None = None,
+    ) -> None:
         async with self._locked(user_id, updated.id):
-            await self.store.update_creds(user_id, updated)
+            if reconnect_expected is None:
+                await self.store.update_creds(user_id, updated)
+            else:
+                await self.store.update_creds(
+                    user_id,
+                    updated,
+                    reconnect_expected=reconnect_expected,
+                )
         # Notify listeners so the updated credential is picked up immediately.
         await _invoke_creds_changed_hook(user_id, updated.provider)
 
@@ -511,6 +752,21 @@ class IntegrationCredentialsManager:
             await self.store.delete_creds_by_id(user_id, credentials_id)
         if creds:
             await _invoke_creds_changed_hook(user_id, creds.provider)
+
+    async def delete_pending_refresh(
+        self, user_id: str, credentials_id: str, provider: str
+    ) -> bool:
+        async with self._locked(user_id, credentials_id):
+            current = await self.store.get_creds_by_id(user_id, credentials_id)
+            if (
+                current is None
+                or current.provider != provider
+                or not current.metadata.get(REFRESH_PENDING)
+            ):
+                return False
+            await self.store.delete_creds_by_id(user_id, credentials_id)
+        await _invoke_creds_changed_hook(user_id, provider)
+        return True
 
     # -- Locking utilities -- #
 

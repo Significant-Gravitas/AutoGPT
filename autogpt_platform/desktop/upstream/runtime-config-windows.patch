@@ -1,0 +1,113 @@
+fix(platform): let single-container/runtime_config.py run on Windows
+
+The module is run outside the container too: `make init-env` calls its
+`fill-env` on contributors' machines. `fill-env` already works on Windows
+(_replace_atomically). `ensure` does not, so a runtime.env cannot be
+generated there at all. Two things in _write_config stop it:
+
+- os.fchmod does not exist on Windows before Python 3.13 (AttributeError).
+- A directory cannot be opened as a file there, so the fsync of the parent
+  directory that persists the rename raises PermissionError. NTFS journals
+  the rename; there is nothing to fsync.
+
+Both are guarded; nothing changes on Linux or macOS. The new test fails
+without the change on every OS (it takes os.fchmod away and refuses to open
+directories) and passes with it.
+
+Apply with `git apply` (or `git am` after adding From/Subject headers) on
+Significant-Gravitas/AutoGPT `dev`.
+---
+diff --git a/autogpt_platform/single-container/runtime_config.py b/autogpt_platform/single-container/runtime_config.py
+index a337fb5..8f77de3 100755
+--- a/autogpt_platform/single-container/runtime_config.py
++++ b/autogpt_platform/single-container/runtime_config.py
+@@ -362,27 +362,36 @@ def _write_config(path: Path, values: dict[str, str]) -> None:
+             os.close(descriptor)
+             raise
+         with stream:
+-            os.fchmod(stream.fileno(), 0o600)
++            if hasattr(os, "fchmod"):
++                os.fchmod(stream.fileno(), 0o600)
+             stream.write("# Generated once by the AutoGPT all-in-one image.\n")
+             for name, value in values.items():
+                 stream.write(f"{name}={value}\n")
+             stream.flush()
+             os.fsync(stream.fileno())
+         os.replace(temporary, path)
+-        directory_flags = os.O_RDONLY
+-        if hasattr(os, "O_DIRECTORY"):
+-            directory_flags |= os.O_DIRECTORY
+-        if hasattr(os, "O_CLOEXEC"):
+-            directory_flags |= os.O_CLOEXEC
+-        directory_descriptor = os.open(path.parent, directory_flags)
+-        try:
+-            os.fsync(directory_descriptor)
+-        finally:
+-            os.close(directory_descriptor)
++        _fsync_directory(path.parent)
+     except BaseException:
+         temporary.unlink(missing_ok=True)
+         raise
+ 
+ 
++def _fsync_directory(directory: Path) -> None:
++    """Persist the rename. Windows cannot open a directory as a file and
++    commits the rename with the NTFS journal, so there is nothing to do."""
++    if os.name == "nt":
++        return
++    directory_flags = os.O_RDONLY
++    if hasattr(os, "O_DIRECTORY"):
++        directory_flags |= os.O_DIRECTORY
++    if hasattr(os, "O_CLOEXEC"):
++        directory_flags |= os.O_CLOEXEC
++    directory_descriptor = os.open(directory, directory_flags)
++    try:
++        os.fsync(directory_descriptor)
++    finally:
++        os.close(directory_descriptor)
++
++
+ if __name__ == "__main__":
+     raise SystemExit(main())
+diff --git a/autogpt_platform/single-container/tests/test_runtime_config.py b/autogpt_platform/single-container/tests/test_runtime_config.py
+index 23eec61..5e99768 100644
+--- a/autogpt_platform/single-container/tests/test_runtime_config.py
++++ b/autogpt_platform/single-container/tests/test_runtime_config.py
+@@ -128,6 +128,37 @@ class RuntimeConfigTest(unittest.TestCase):
+         self.assertLess(events.index(("fsync", False)), events.index(("replace",)))
+         self.assertLess(events.index(("replace",)), events.index(("fsync", True)))
+ 
++    def test_first_boot_works_on_windows(self) -> None:
++        """Windows has no os.fchmod before Python 3.13 and cannot open a
++        directory as a file; NTFS journals the rename, so there is nothing
++        to fsync. `fill-env` already works there; `ensure` should too."""
++        real_open = runtime_config.os.open
++        real_fchmod = getattr(runtime_config.os, "fchmod", None)
++
++        def refuse_directories(target: Path, flags: int, mode: int = 0o777) -> int:
++            if runtime_config.os.path.isdir(target):
++                raise PermissionError(13, "Permission denied", str(target))
++            return real_open(target, flags, mode)
++
++        with tempfile.TemporaryDirectory() as directory:
++            path = Path(directory) / "runtime.env"
++            if real_fchmod is not None:
++                del runtime_config.os.fchmod
++            try:
++                with (
++                    mock.patch.object(runtime_config.os, "name", "nt"),
++                    mock.patch.object(
++                        runtime_config.os, "open", side_effect=refuse_directories
++                    ),
++                ):
++                    first = runtime_config.ensure_runtime_config(path, {})
++            finally:
++                if real_fchmod is not None:
++                    runtime_config.os.fchmod = real_fchmod
++
++            self.assertEqual(first, runtime_config.ensure_runtime_config(path, {}))
++            self.assertEqual(list(Path(directory).iterdir()), [path])
++
+     def test_first_boot_closes_descriptor_when_fdopen_fails(self) -> None:
+         real_close = runtime_config.os.close
+         closed_descriptors: list[int] = []

@@ -744,6 +744,11 @@ class TestSDKDisallowedTools:
     def test_bash_tool_is_disallowed(self):
         assert "Bash" in SDK_DISALLOWED_TOOLS
 
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_powershell_tool_is_disallowed(self, use_e2b: bool):
+        assert "PowerShell" in get_sdk_disallowed_tools(use_e2b=use_e2b)
+        assert "PowerShell" in BLOCKED_TOOLS
+
     def test_webfetch_tool_is_disallowed(self):
         """WebFetch is disallowed due to SSRF risk."""
         assert "WebFetch" in SDK_DISALLOWED_TOOLS

@@ -2,46 +2,26 @@ import type { UIMessage } from "ai";
 
 import { deduplicateMessages } from "../helpers";
 
-/**
- * Strip replayed leading text from assistant messages.
- *
- * **Why this exists**: the Claude Agent SDK with `--resume` replays the
- * previous turn's assistant text at the start of the next turn's assistant
- * message. Left unchecked, the UI shows the same greeting/response twice
- * (once under Turn N−1's user bubble, again at the top of Turn N). We
- * detect and strip that replayed prefix so each turn stays anchored to its
- * own user message.
- *
- * **How** (three cases, evaluated against the longest matching earlier
- * assistant text):
- *
- * 1. earlier **equals** current → pure replay; drop the current message.
- * 2. earlier is a **strict prefix** of current → strip those leading chars
- *    from the current message's text parts (preserving non-text parts).
- * 3. current is a **strict prefix** of earlier (live-streaming catch-up) →
- *    drop the current message. Once its text grows past the earlier one,
- *    case 2 takes over.
- *
- * Comparison is by concatenated text content rather than by part index
- * because `--resume` interleaves different step-boundary part layouts, so
- * a structural prefix match is unreliable. Claude only replays TEXT at the
- * top of the next turn in practice, so text-only comparison covers the
- * cases we see.
- */
+/** Strip replayed assistant text only within its current user turn. */
 export function stripReplayPrefix(raw: UIMessage[]): UIMessage[] {
   const deduped = withoutSeededCopies(deduplicateMessages(raw));
-  const texts = deduped.map(concatText);
-  const matches = reuseReplayMatches(texts);
+  const texts = deduped.map((message) =>
+    message.role === "assistant" ? concatText(message) : "",
+  );
+  const roles = deduped.map((message) => message.role);
+  const matches = reuseReplayMatches(texts, roles);
   const out: UIMessage[] = [];
+  let turnStart = 0;
 
   for (let i = 0; i < deduped.length; i++) {
     const msg = deduped[i];
+    if (msg.role === "user") turnStart = i + 1;
     if (msg.role !== "assistant" || !texts[i]) {
       out.push(msg);
       continue;
     }
 
-    const match = (matches[i] ??= findLongestReplay(texts, i));
+    const match = (matches[i] ??= findLongestReplay(texts, i, turnStart));
     if (match.drop) continue;
     if (match.stripLen === 0) {
       out.push(msg);
@@ -104,23 +84,32 @@ interface ReplayMatch {
 
 let previousReplayScan: {
   texts: string[];
+  roles: UIMessage["role"][];
   matches: (ReplayMatch | undefined)[];
-} = { texts: [], matches: [] };
+} = { texts: [], roles: [], matches: [] };
 
 /**
- * The replay match of message `i` depends only on `texts[0..i]`. While a reply
+ * The replay match of message `i` depends on the text and roles in `[0..i]`. While a reply
  * streams, only the newest message's text changes, so the matches of the
  * longest text prefix shared with the previous call are carried over instead
  * of re-running the pairwise scan over the whole conversation. The returned
  * array is filled in by the caller and kept for the next call.
  */
-function reuseReplayMatches(texts: string[]): (ReplayMatch | undefined)[] {
+function reuseReplayMatches(
+  texts: string[],
+  roles: UIMessage["role"][],
+): (ReplayMatch | undefined)[] {
   const previous = previousReplayScan;
   const limit = Math.min(texts.length, previous.texts.length);
   let shared = 0;
-  while (shared < limit && texts[shared] === previous.texts[shared]) shared++;
+  while (
+    shared < limit &&
+    texts[shared] === previous.texts[shared] &&
+    roles[shared] === previous.roles[shared]
+  )
+    shared++;
   const matches = previous.matches.slice(0, shared);
-  previousReplayScan = { texts, matches };
+  previousReplayScan = { texts, roles, matches };
   return matches;
 }
 
@@ -135,11 +124,15 @@ function concatText(msg: UIMessage): string {
  * or `{ stripLen }` with the number of leading text chars to strip (0 =
  * keep as-is).
  */
-function findLongestReplay(texts: string[], i: number): ReplayMatch {
+function findLongestReplay(
+  texts: string[],
+  i: number,
+  turnStart: number,
+): ReplayMatch {
   const myText = texts[i];
   let stripLen = 0;
 
-  for (let j = 0; j < i; j++) {
+  for (let j = turnStart; j < i; j++) {
     const earlier = texts[j];
     if (!earlier) continue;
 

@@ -280,6 +280,7 @@ export function useCredentialsInput({
           cancelUrl: cancel_url,
           preOpenedWindow,
           timeout: provider === "codex" ? 15 * 60 * 1000 : undefined,
+          sameOriginFlow: provider === "codex",
           // Always enable BroadcastChannel + localStorage listeners — they are
           // the only path that works when the popup is blocked and we fall back
           // to a new tab (window.opener can be severed by cross-origin COOP).

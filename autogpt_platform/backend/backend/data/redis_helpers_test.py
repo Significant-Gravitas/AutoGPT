@@ -76,7 +76,7 @@ class _Fake:
             self.hashes.setdefault(pending_key, {}).pop(batch_id, None)
             return 1
 
-        if numkeys == 2:
+        if numkeys == 2 and "RPUSH" in script:
             # ``capped_rpush_if_hash_field`` shape.
             hash_key, list_key = args[0], args[1]
             field, expected, value, max_len, ttl_seconds = args[2:7]
@@ -102,10 +102,19 @@ class _Fake:
             return 1
 
         # ``hash_compare_and_set`` shape (numkeys == 1).
-        key, field, expected, new = args[0], args[1], args[2], args[3]
+        key = args[0]
+        argv = args[numkeys:]
+        field, expected, new = argv[:3]
         h = self.hashes.setdefault(key, {})
         if h.get(field) == expected:
+            guard_field, guard_value = argv[3:5]
+            if guard_field and h.get(guard_field) not in (None, "", guard_value):
+                return 0
             h[field] = new
+            h.update(zip(argv[7::2], argv[8::2]))
+            if numkeys == 2:
+                self.strings[args[1]] = argv[5]
+                self.ttls[args[1]] = int(argv[6])
             return 1
         return 0
 
@@ -361,6 +370,90 @@ async def test_string_cas_or_missing_sets_a_missing_key() -> None:
         r, "claim", expected="reserved:a", new="accepted", or_missing=True  # type: ignore[arg-type]
     )
     assert r.strings["claim"] == "accepted"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,turn_id,swapped",
+    [
+        ("running", "turn-1", True),
+        ("completed", "turn-1", False),
+        ("running", "turn-2", False),
+    ],
+)
+async def test_hash_cas_companion_fields_follow_the_guarded_transition(
+    status, turn_id, swapped
+) -> None:
+    r = _Fake()
+    r.hashes["meta"] = {"status": status, "turn_id": turn_id, "error_message": ""}
+    result = await hash_compare_and_set(
+        r,  # type: ignore[arg-type]
+        "meta",
+        "status",
+        expected="running",
+        new="failed",
+        guard=("turn_id", "turn-1"),
+        updates={"error_message": "codex_credential_busy"},
+    )
+    assert result is swapped
+    assert r.hashes["meta"] == {
+        "status": "failed" if swapped else status,
+        "turn_id": turn_id,
+        "error_message": "codex_credential_busy" if swapped else "",
+    }
+
+
+@pytest.mark.asyncio
+async def test_hash_cas_companion_cannot_override_terminal_status() -> None:
+    r = _Fake()
+    r.hashes["meta"] = {"status": "running"}
+    with pytest.raises(ValueError, match="compared field"):
+        await hash_compare_and_set(
+            r,  # type: ignore[arg-type]
+            "meta",
+            "status",
+            expected="running",
+            new="failed",
+            updates={"status": "completed"},
+        )
+    assert r.hashes["meta"] == {"status": "running"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("turn_id,swapped", [("turn-a", True), ("turn-b", False)])
+async def test_hash_cas_terminal_record_is_guarded_and_expires(turn_id, swapped):
+    r = _Fake()
+    r.hashes["{session}:meta"] = {"status": "running", "turn_id": turn_id}
+    result = await hash_compare_and_set(
+        r,  # type: ignore[arg-type]
+        "{session}:meta",
+        "status",
+        expected="running",
+        new="failed",
+        guard=("turn_id", "turn-a"),
+        record=("{session}:terminal:turn-a", "failure", 3600),
+    )
+    assert result is swapped
+    assert r.strings == ({"{session}:terminal:turn-a": "failure"} if swapped else {})
+    assert r.ttls == ({"{session}:terminal:turn-a": 3600} if swapped else {})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("key,ttl", [("meta", 30), ("terminal", 0), ("terminal", -1)])
+async def test_hash_cas_rejects_invalid_companion_record(key, ttl):
+    r = _Fake()
+    r.hashes["meta"] = {"status": "running"}
+    with pytest.raises(ValueError, match="separate key and positive TTL"):
+        await hash_compare_and_set(
+            r,  # type: ignore[arg-type]
+            "meta",
+            "status",
+            expected="running",
+            new="failed",
+            record=(key, "failure", ttl),
+        )
+    assert r.hashes["meta"] == {"status": "running"}
+    assert r.strings == {}
 
 
 # ── claim_batch_dispatch_atomic ───────────────────────────────────────

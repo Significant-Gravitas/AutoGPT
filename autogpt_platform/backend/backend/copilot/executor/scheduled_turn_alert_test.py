@@ -728,6 +728,7 @@ async def test_executor_alerts_when_the_codex_checkpoint_fails_after_a_scheduled
         entry.session_id,
         error_message="codex_credential_checkpoint_failed",
         error_code=None,
+        skip_error_publish=False,
         turn_id=entry.turn_id,
     )
     sentry.capture_message.assert_called_once_with(

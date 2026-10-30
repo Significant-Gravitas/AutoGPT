@@ -34,6 +34,15 @@ def _clear_listener_sessions():
     stream_registry._listener_sessions.clear()
 
 
+@pytest.fixture(autouse=True)
+def _no_external_completion_side_effects():
+    with (
+        patch("backend.copilot.gate.held.wake", new=AsyncMock()),
+        patch.object(stream_registry._notification_bus, "publish", new=AsyncMock()),
+    ):
+        yield
+
+
 async def _sleep_forever():
     try:
         await asyncio.sleep(3600)
@@ -254,6 +263,7 @@ class _FakeRedis:
 
     def __init__(self, meta: dict[str, str]):
         self._meta = dict(meta)
+        self.records: dict[str, str] = {}
         self.deleted_keys: list[str] = []
         self.delete = AsyncMock(side_effect=self._record_delete)
         self.expire = AsyncMock()
@@ -269,6 +279,15 @@ class _FakeRedis:
     async def hgetall(self, _key: str):
         return dict(self._meta)
 
+    async def hget(self, _key: str, field: str):
+        return self._meta.get(field)
+
+    async def get(self, key: str):
+        return self.records.get(key)
+
+    async def hmget(self, _key: str, fields: list[str]):
+        return [self._meta.get(field) for field in fields]
+
     async def hdel(self, _key: str, *fields: str) -> int:
         removed = 0
         for f in fields:
@@ -276,6 +295,304 @@ class _FakeRedis:
                 del self._meta[f]
                 removed += 1
         return removed
+
+
+@pytest.mark.asyncio
+async def test_failed_turn_reports_error_when_terminal_publication_is_delayed():
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1"})
+    fake_redis.xread = AsyncMock(return_value=[])
+    publishing_error = asyncio.Event()
+    allow_publish = asyncio.Event()
+
+    async def swap(
+        _redis, _key, field, *, expected, new, guard, updates=None, record=None
+    ):
+        assert fake_redis._meta[field] == expected
+        fake_redis._meta.update(updates or {})
+        fake_redis._meta[field] = new
+        if record:
+            fake_redis.records[record[0]] = record[1]
+        return True
+
+    async def publish(_turn_id, chunk):
+        if isinstance(chunk, stream_registry.StreamError):
+            publishing_error.set()
+            await allow_publish.wait()
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(stream_registry, "hash_compare_and_set", new=swap),
+        patch.object(stream_registry, "publish_chunk", new=publish),
+    ):
+        completion = asyncio.create_task(
+            stream_registry.mark_session_completed(
+                "sess-1", error_message="codex_credential_busy", turn_id="turn-1"
+            )
+        )
+        try:
+            await asyncio.wait_for(publishing_error.wait(), timeout=1)
+            queue = asyncio.Queue()
+            await stream_registry._stream_listener(
+                "sess-1", queue, "0-0", turn_id="turn-1"
+            )
+            delivered = []
+            while not queue.empty():
+                delivered.append(queue.get_nowait()[1])
+            assert [type(chunk) for chunk in delivered] == [
+                stream_registry.StreamError,
+                stream_registry.StreamFinish,
+            ]
+            assert delivered[0].errorText == "codex_credential_busy"
+        finally:
+            allow_publish.set()
+            await asyncio.wait_for(completion, timeout=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_message", ["codex_credential_busy", ""])
+async def test_subscribe_recovers_terminal_error_without_reporting_user_stop(
+    error_message,
+):
+    fake_redis = AsyncMock()
+    fake_redis.hget.return_value = None
+    fake_redis.get.return_value = None
+    fake_redis.hgetall.return_value = {
+        "session_id": "sess-1",
+        "turn_id": "turn-1",
+        "status": "failed",
+        "error_message": error_message,
+    }
+    fake_redis.xread.return_value = []
+
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        queue = await stream_registry.subscribe_to_session("sess-1", None)
+
+    assert queue is not None
+    delivered = []
+    while not queue.empty():
+        delivered.append(queue.get_nowait()[1])
+    expected = [stream_registry.StreamFinish]
+    if error_message:
+        expected.insert(0, stream_registry.StreamError)
+        assert delivered[0].errorText == error_message
+    assert [type(chunk) for chunk in delivered] == expected
+
+
+@pytest.mark.asyncio
+async def test_terminal_error_replay_is_not_duplicated_from_metadata():
+    fake_redis = AsyncMock()
+    fake_redis.hget.return_value = None
+    fake_redis.get.return_value = None
+    error = stream_registry.StreamError(errorText="codex_credential_busy")
+    fake_redis.hgetall.return_value = {
+        "session_id": "sess-1",
+        "turn_id": "turn-1",
+        "status": "failed",
+        "error_message": error.errorText,
+    }
+    fake_redis.xread.return_value = [
+        ("stream-key", [("1-0", {"data": error.model_dump_json()})])
+    ]
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        queue = await stream_registry.subscribe_to_session("sess-1", None)
+    assert queue is not None
+    assert [type(queue.get_nowait()[1]) for _ in range(queue.qsize())] == [
+        stream_registry.StreamError,
+        stream_registry.StreamFinish,
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["live", "replay", "racing-replay"])
+async def test_terminal_error_precedes_published_finish_when_error_chunk_was_lost(mode):
+    fake_redis = AsyncMock()
+    fake_redis.hget.return_value = None
+    fake_redis.get.return_value = None
+    fake_redis.hgetall.return_value = {
+        "session_id": "sess-1",
+        "turn_id": "turn-1",
+        "status": "failed",
+        "error_message": "codex_credential_busy",
+    }
+    if mode == "racing-replay":
+        failed = fake_redis.hgetall.return_value
+        fake_redis.hgetall.side_effect = [
+            {**failed, "status": "running", "error_message": ""},
+            failed,
+        ]
+    fake_redis.xread.return_value = [
+        (
+            "stream-key",
+            [("1-0", {"data": stream_registry.StreamFinish().model_dump_json()})],
+        )
+    ]
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        if mode != "live":
+            queue = await stream_registry.subscribe_to_session("sess-1", None)
+            assert queue is not None
+        else:
+            queue = asyncio.Queue()
+            await stream_registry._stream_listener(
+                "sess-1", queue, "0-0", turn_id="turn-1"
+            )
+    error = queue.get_nowait()[1]
+    assert isinstance(error, stream_registry.StreamError)
+    assert error.errorText == "codex_credential_busy"
+    assert isinstance(queue.get_nowait()[1], stream_registry.StreamFinish)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "recorded_turn,error_delivered",
+    [("turn-2", False), ("turn-1", True)],
+)
+async def test_listener_does_not_repeat_or_borrow_another_turns_error(
+    recorded_turn, error_delivered
+):
+    fake_redis = _FakeRedis(
+        {"status": "failed", "turn_id": recorded_turn, "error_message": "failed"}
+    )
+    fake_redis.xread = AsyncMock(return_value=[])
+    queue = asyncio.Queue()
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        await stream_registry._stream_listener(
+            "sess-1", queue, "0-0", turn_id="turn-1", error_delivered=error_delivered
+        )
+    assert [type(queue.get_nowait()[1]) for _ in range(queue.qsize())] == [
+        stream_registry.StreamFinish
+    ]
+
+
+def test_terminal_record_shares_the_session_redis_cluster_slot():
+    from redis.cluster import key_slot
+
+    meta = stream_registry._get_session_meta_key("session-a")
+    terminal = stream_registry._get_turn_terminal_key("session-a", "turn-a")
+    assert key_slot(meta.encode()) == key_slot(terminal.encode())
+    assert not terminal.startswith(stream_registry.config.session_meta_prefix)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["live", "idle", "replay"])
+@pytest.mark.parametrize(
+    "error_message,skip_error_publish,expect_error",
+    [
+        ("synthetic failure", False, True),
+        ("Operation cancelled", True, False),
+        (None, False, False),
+    ],
+)
+async def test_terminal_record_survives_the_next_turn_starting(
+    mode, error_message, skip_error_publish, expect_error
+):
+    meta = {
+        "session_id": "sess-1",
+        "user_id": "u1",
+        "turn_id": "old-turn",
+        "status": "running",
+    }
+    records = {}
+    published = []
+    fake_redis = AsyncMock()
+    fake_redis.hget.return_value = None
+    fake_redis.get.return_value = None
+    fake_redis.hgetall.side_effect = lambda _key: dict(meta)
+    fake_redis.hmget.side_effect = lambda _key, fields: [
+        meta.get(field) for field in fields
+    ]
+    fake_redis.get.side_effect = lambda key: records.get(key)
+    fake_redis.hset.side_effect = lambda _key, *args, mapping=None: (
+        meta.update(mapping) if mapping is not None else None
+    )
+
+    async def swap(_redis, _key, field, *, expected, new, guard, updates, record):
+        assert meta[field] == expected and meta[guard[0]] == guard[1]
+        meta[field] = new
+        meta.update(updates)
+        assert record[2] == stream_registry.config.stream_ttl
+        records[record[0]] = record[1]
+        return True
+
+    async def publish(turn_id, chunk):
+        assert turn_id == "old-turn"
+        if isinstance(chunk, stream_registry.StreamError):
+            raise RedisError("synthetic error publication failure")
+        published.append(chunk)
+
+    async def next_turn(_user_id, session_id):
+        await stream_registry.create_session(
+            session_id, "u1", "", "", turn_id="new-turn"
+        )
+        return True
+
+    async def complete():
+        assert await stream_registry.mark_session_completed(
+            "sess-1",
+            error_message=error_message,
+            error_code="provider_unavailable",
+            skip_error_publish=skip_error_publish,
+            turn_id="old-turn",
+        )
+        if error_message == "Operation cancelled":
+            await next_turn("u1", "sess-1")
+
+    async def read(*_args, **_kwargs):
+        if mode == "replay":
+            await complete()
+        if mode == "idle":
+            return []
+        return [
+            (
+                "old-stream",
+                [
+                    (f"{index + 1}-0", {"data": chunk.model_dump_json()})
+                    for index, chunk in enumerate(published)
+                ],
+            )
+        ]
+
+    fake_redis.xread.side_effect = read
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(stream_registry, "hash_compare_and_set", new=swap),
+        patch.object(stream_registry, "publish_chunk", new=publish),
+        patch.object(stream_registry, "release_turn_slot", new=AsyncMock()),
+        patch.object(stream_registry, "dispatch_next_for_user", new=AsyncMock()),
+        patch("backend.copilot.gate.held.wake", new=next_turn),
+    ):
+        if mode == "replay":
+            queue = await stream_registry.subscribe_to_session("sess-1", "u1")
+            assert queue is not None
+        else:
+            await complete()
+            queue = asyncio.Queue()
+            await asyncio.wait_for(
+                stream_registry._stream_listener(
+                    "sess-1", queue, "0-0", turn_id="old-turn"
+                ),
+                timeout=1,
+            )
+
+    assert meta["turn_id"] == "new-turn" and meta["status"] == "running"
+    delivered = [queue.get_nowait()[1] for _ in range(queue.qsize())]
+    expected = [stream_registry.StreamFinish]
+    if expect_error:
+        expected.insert(0, stream_registry.StreamError)
+        assert delivered[0].errorText == error_message
+        assert delivered[0].code == "provider_unavailable"
+    assert [type(chunk) for chunk in delivered] == expected
 
 
 @pytest.mark.asyncio
@@ -978,3 +1295,54 @@ class TestCompletionOnRealRedis:
             )
 
         assert closed is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("live", [False, True])
+async def test_cursor_reads_keep_only_stored_frames_when_terminal_error_is_missing(
+    live,
+):
+    redis = AsyncMock()
+    redis.hgetall.return_value = {
+        "session_id": "s",
+        "user_id": "u",
+        "turn_id": "t",
+        "status": "failed",
+        "error_message": "unpublished error",
+        "error_code": "provider_unavailable",
+    }
+    redis.xinfo_stream.return_value = {"entries-added": 1, "length": 1}
+    finish = stream_registry.StreamFinish()
+    entries = [("stream", [("1-0", {"data": finish.model_dump_json()})])]
+    redis.xread.side_effect = [[], entries] if live else [entries]
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=redis)
+    ):
+        queue = await stream_registry.subscribe_to_turn("s", "u", "t", "0-0")
+        try:
+            entry = await asyncio.wait_for(queue.get(), timeout=1)
+            assert entry == ("t:1-0", finish)
+            assert queue.empty()
+            redis.get.assert_not_awaited()
+        finally:
+            await stream_registry.unsubscribe_from_session("s", queue)
+
+
+@pytest.mark.asyncio
+async def test_terminal_error_is_not_read_for_another_users_session():
+    redis = AsyncMock()
+    redis.hgetall.return_value = {
+        "session_id": "s",
+        "user_id": "owner",
+        "turn_id": "t",
+        "status": "failed",
+        "error_message": "private failure",
+    }
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=redis)
+    ):
+        assert await stream_registry.subscribe_to_session("s", "different-user") is None
+        with pytest.raises(stream_registry.TurnStreamGone):
+            await stream_registry.subscribe_to_turn("s", "different-user", "t", "0-0")
+    redis.get.assert_not_awaited()
+    redis.xread.assert_not_awaited()

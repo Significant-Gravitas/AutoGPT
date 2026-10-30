@@ -9,6 +9,7 @@ from pydantic import SecretStr
 
 from backend.api.features.integrations.router import router
 from backend.data.model import APIKeyCredentials, OAuth2Credentials, OAuthState
+from backend.integrations.credential_refresh import REFRESH_PENDING, REFRESH_REVISION
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -862,12 +863,19 @@ class TestSystemCredentialProtection:
 class TestPreserveRefreshTokenAndUsername:
     """Incremental callbacks must not silently drop refresh_token/username."""
 
-    def test_upgrade_preserves_existing_refresh_token_when_new_is_empty(self):
+    def test_upgrade_preserves_existing_refresh_token_when_new_is_empty(
+        self, test_user_id
+    ):
         """If the new token response omits refresh_token, keep the existing one."""
         existing = _make_google_oauth2_cred(
             scopes=["https://www.googleapis.com/auth/gmail.readonly"],
         )
         existing.refresh_token = SecretStr("original-refresh")
+        existing.metadata = {
+            REFRESH_REVISION: "old-revision",
+            REFRESH_PENDING: "pending-refresh",
+        }
+        existing_metadata = existing.metadata.copy()
         # Google may omit refresh_token on incremental re-authorization.
         new_cred = _make_google_oauth2_cred(
             scopes=[
@@ -890,7 +898,7 @@ class TestPreserveRefreshTokenAndUsername:
 
         captured: dict[str, OAuth2Credentials] = {}
 
-        async def _capture_update(_user_id, creds):
+        async def _capture_update(_user_id, creds, *, reconnect_expected):
             captured["creds"] = creds
 
         with (
@@ -913,10 +921,26 @@ class TestPreserveRefreshTokenAndUsername:
         updated = captured["creds"]
         assert updated.refresh_token is not None
         assert updated.refresh_token.get_secret_value() == "original-refresh"
+        mock_mgr.update.assert_awaited_once_with(
+            test_user_id, updated, reconnect_expected=existing
+        )
+        assert mock_mgr.update.await_args.kwargs["reconnect_expected"] is existing
+        assert existing.metadata == existing_metadata
+        assert updated.provider == "google"
+        assert set(updated.scopes) == set(existing.scopes) | set(new_cred.scopes)
+        assert updated.metadata is not None
+        assert updated.metadata.get(REFRESH_REVISION)
+        assert updated.metadata[REFRESH_REVISION] != "old-revision"
+        assert REFRESH_PENDING not in updated.metadata
 
-    def test_upgrade_preserves_existing_username_when_new_is_empty(self):
+    def test_upgrade_preserves_existing_username_when_new_is_empty(self, test_user_id):
         """If the new response lacks username, keep the existing one."""
         existing = _make_google_oauth2_cred(username="alice@gmail.com")
+        existing.metadata = {
+            REFRESH_REVISION: "old-revision",
+            REFRESH_PENDING: "pending-refresh",
+        }
+        existing_metadata = existing.metadata.copy()
         new_cred = _make_google_oauth2_cred(scopes=existing.scopes)
         new_cred.username = None
 
@@ -933,7 +957,7 @@ class TestPreserveRefreshTokenAndUsername:
 
         captured: dict[str, OAuth2Credentials] = {}
 
-        async def _capture_update(_user_id, creds):
+        async def _capture_update(_user_id, creds, *, reconnect_expected):
             captured["creds"] = creds
 
         with (
@@ -953,7 +977,19 @@ class TestPreserveRefreshTokenAndUsername:
             )
 
         assert resp.status_code == 200
-        assert captured["creds"].username == "alice@gmail.com"
+        updated = captured["creds"]
+        assert updated.username == "alice@gmail.com"
+        mock_mgr.update.assert_awaited_once_with(
+            test_user_id, updated, reconnect_expected=existing
+        )
+        assert mock_mgr.update.await_args.kwargs["reconnect_expected"] is existing
+        assert existing.metadata == existing_metadata
+        assert updated.provider == "google"
+        assert set(updated.scopes) == set(existing.scopes) | set(new_cred.scopes)
+        assert updated.metadata is not None
+        assert updated.metadata.get(REFRESH_REVISION)
+        assert updated.metadata[REFRESH_REVISION] != "old-revision"
+        assert REFRESH_PENDING not in updated.metadata
 
 
 class TestImplicitMergeScopeGuard:

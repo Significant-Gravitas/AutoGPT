@@ -251,5 +251,8 @@ describe("AccountMenu", () => {
 
     expect(screen.getByTestId("account-menu-activity-trigger")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Give feedback" })).toBeNull();
+    expect(document.querySelectorAll('script[src*="tally.so"]')).toHaveLength(
+      0,
+    );
   });
 });

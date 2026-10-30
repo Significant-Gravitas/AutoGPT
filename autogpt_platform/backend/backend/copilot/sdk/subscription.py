@@ -93,16 +93,16 @@ def provision_credentials_file() -> None:
 
 
 @functools.cache
-def validate_subscription() -> None:
-    """Validate the bundled Claude CLI is reachable and authenticated.
+def validate_subscription(cli_path: str | None = None) -> None:
+    """Validate the configured Claude CLI, or the bundled/PATH fallback.
 
-    Cached so the blocking subprocess check runs at most once per process
-    lifetime.  On first call, also provisions ``~/.claude/.credentials.json``
+    Cached per configured path so the blocking subprocess check runs once
+    per process and selection. On first call, provisions ``~/.claude/.credentials.json``
     from the ``CLAUDE_CODE_OAUTH_TOKEN`` env var when available.
     """
+    cli = _configured_cli(cli_path) or find_bundled_cli()
     provision_credentials_file()
 
-    cli = find_bundled_cli()
     result = subprocess.run(
         [cli, "--version"],
         capture_output=True,
@@ -150,3 +150,19 @@ def validate_subscription() -> None:
         )
     except json.JSONDecodeError:
         logger.warning("Could not parse `claude auth status` output")
+
+
+def _configured_cli(cli_path: str | None) -> str | None:
+    configured = (
+        cli_path
+        or os.getenv("CHAT_CLAUDE_AGENT_CLI_PATH")
+        or os.getenv("CLAUDE_AGENT_CLI_PATH")
+    )
+    if not configured:
+        return None
+    path = os.path.realpath(configured)
+    if not os.path.isfile(path) or not os.access(path, os.X_OK):
+        raise RuntimeError(
+            f"Configured Claude CLI ({os.path.basename(path)}) is not an executable file"
+        )
+    return path

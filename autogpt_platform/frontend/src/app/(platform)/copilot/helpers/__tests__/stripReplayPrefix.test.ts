@@ -31,6 +31,60 @@ function textOf(m: UIMessage): string {
 }
 
 describe("stripReplayPrefix", () => {
+  it("does not reuse a cached replay decision across a changed turn boundary", () => {
+    const sameTurn: UIMessage[] = [
+      user("u1", "go"),
+      assistant("a1", "READY"),
+      {
+        id: "boundary",
+        role: "system",
+        parts: [{ type: "text", text: "next" }],
+      },
+      assistant("a2", "READY: complete"),
+    ];
+    const nextTurn: UIMessage[] = sameTurn.map((message) =>
+      message.id === "boundary" ? { ...message, role: "user" } : message,
+    );
+
+    for (let round = 0; round < 2; round++) {
+      expect(textOf(stripReplayPrefix(sameTurn)[3])).toBe(": complete");
+      expect(stripReplayPrefix(nextTurn)).toBe(nextTurn);
+    }
+  });
+
+  it.each(["READY", "READY: all tasks passed", "REA"])(
+    "preserves a separate turn with a repeated answer or prefix: %s",
+    (reply) => {
+      const secondReply: UIMessage = {
+        ...assistant("a2", reply),
+        parts: [
+          {
+            type: "tool-read_file",
+            toolCallId: "second-read",
+            input: { path: "proof.txt" },
+            state: "output-available",
+            output: "READY",
+          },
+          { type: "text", text: reply, state: "done" },
+        ],
+      };
+      const messages = [
+        user("u1", "Read the file and say READY"),
+        assistant("a1", "READY"),
+        user("u2", "Read the file and say READY"),
+        secondReply,
+      ];
+
+      expect(stripReplayPrefix(messages)).toEqual(messages);
+    },
+  );
+
+  it("preserves an assistant answer that repeats the user's text", () => {
+    const messages = [user("u1", "READY"), assistant("a1", "READY")];
+
+    expect(stripReplayPrefix(messages)).toEqual(messages);
+  });
+
   it("passes through when there is no replay", () => {
     const msgs = [
       user("u1", "hi"),
@@ -43,19 +97,16 @@ describe("stripReplayPrefix", () => {
     expect(textOf(result[3])).toBe("good thanks");
   });
 
-  it("drops an assistant that is a pure replay of an earlier one", () => {
-    // a2 has the same text as a1 — CLI --resume replayed it as the new turn's
-    // assistant before Claude emitted any new content yet.
+  it("drops an assistant that is a pure replay within the same user turn", () => {
     const msgs = [
       user("u1", "hi"),
       assistant("a1", "hello world"),
-      user("u2", "tell me more"),
       assistant("a2", "hello world"),
     ];
     const result = stripReplayPrefix(msgs);
     const ids = result.map((m) => m.id);
     expect(ids).not.toContain("a2");
-    expect(ids).toEqual(["u1", "a1", "u2"]);
+    expect(ids).toEqual(["u1", "a1"]);
   });
 
   it("strips the replayed prefix leaving only the new content", () => {
@@ -63,7 +114,6 @@ describe("stripReplayPrefix", () => {
     const msgs = [
       user("u1", "hi"),
       assistant("a1", "hello world"),
-      user("u2", "tell me more"),
       assistant("a2", "hello world\n\nAnd here is more info"),
     ];
     const result = stripReplayPrefix(msgs);
@@ -79,7 +129,6 @@ describe("stripReplayPrefix", () => {
     const msgs = [
       user("u1", "hi"),
       assistant("a1", "hello world how are you today"),
-      user("u2", "tell me more"),
       assistant("a2", "hello worl"),
     ];
     const result = stripReplayPrefix(msgs);
@@ -112,7 +161,6 @@ describe("stripReplayPrefix", () => {
     const msgs: UIMessage[] = [
       user("u1", "hi"),
       assistant("a1", "hello world"),
-      user("u2", "tell me more"),
       a2,
     ];
     const result = stripReplayPrefix(msgs);
@@ -155,7 +203,6 @@ describe("stripReplayPrefix", () => {
     const msgs: UIMessage[] = [
       user("u1", "hi"),
       assistant("a1", "hello"),
-      user("u2", "more"),
       {
         id: "a2",
         role: "assistant",
@@ -194,7 +241,6 @@ describe("stripReplayPrefix", () => {
     const dropped = [
       user("u1", "hi"),
       assistant("a1", "hello world"),
-      user("u2", "tell me more"),
       assistant("a2", "hello world"),
     ];
     expect(stripReplayPrefix(dropped)).not.toBe(dropped);
@@ -202,22 +248,19 @@ describe("stripReplayPrefix", () => {
     const trimmed = [
       user("u1", "hi"),
       assistant("a1", "hello"),
-      user("u2", "more"),
       assistant("a2", "hello", " and more"),
     ];
     const result = stripReplayPrefix(trimmed);
     expect(result).not.toBe(trimmed);
-    expect(result).toHaveLength(4);
-    expect(textOf(result[3])).toBe(" and more");
+    expect(result).toHaveLength(3);
+    expect(textOf(result[2])).toBe(" and more");
   });
 
   it("gives the same result as a fresh call while the newest reply streams", () => {
     const history = [
       user("u1", "hi"),
       assistant("a1", "hello"),
-      user("u2", "again"),
       assistant("a2", "hello and more"),
-      user("u3", "go"),
     ];
     const reply = "hello and more, then something new";
     for (let n = 1; n <= reply.length; n++) {
@@ -225,9 +268,9 @@ describe("stripReplayPrefix", () => {
       const result = stripReplayPrefix(msgs);
       const fresh = reply.slice(0, n);
       if ("hello and more".startsWith(fresh)) {
-        expect(result.map((m) => m.id)).toEqual(["u1", "a1", "u2", "a2", "u3"]);
+        expect(result.map((m) => m.id)).toEqual(["u1", "a1", "a2"]);
       } else {
-        expect(textOf(result[5])).toBe(fresh.slice("hello and more".length));
+        expect(textOf(result[3])).toBe(fresh.slice("hello and more".length));
       }
     }
   });
@@ -236,18 +279,16 @@ describe("stripReplayPrefix", () => {
     const replayed = [
       user("u1", "hi"),
       assistant("a1", "hello"),
-      user("u2", "more"),
       assistant("a2", "hello there"),
     ];
     const notReplayed = [
       user("u1", "hi"),
       assistant("a1", "goodbye"),
-      user("u2", "more"),
       assistant("a2", "hello there"),
     ];
 
     for (let round = 0; round < 2; round++) {
-      expect(textOf(stripReplayPrefix(replayed)[3])).toBe(" there");
+      expect(textOf(stripReplayPrefix(replayed)[2])).toBe(" there");
       expect(stripReplayPrefix(notReplayed)).toBe(notReplayed);
     }
   });
@@ -256,10 +297,9 @@ describe("stripReplayPrefix", () => {
     const before = [
       user("u1", "hi"),
       assistant("a1", "plan"),
-      user("u2", "next"),
       assistant("a2", "plan, step two"),
     ];
-    expect(textOf(stripReplayPrefix(before)[3])).toBe(", step two");
+    expect(textOf(stripReplayPrefix(before)[2])).toBe(", step two");
 
     const edited = [
       ...before.slice(0, 1),
@@ -344,9 +384,7 @@ describe("stripReplayPrefix", () => {
     const msgs = [
       user("u1", "hi"),
       assistant("a1", "hello"),
-      user("u2", "again"),
       assistant("a2", "hello and more"),
-      user("u3", "third turn"),
       assistant("a3", "hello and more\n\n[new content]"),
     ];
     const result = stripReplayPrefix(msgs);

@@ -18,9 +18,14 @@ from prisma.errors import RecordNotFoundError, UniqueViolationError
 from prisma.models import AuthAccount, AuthUser
 from prisma.models import User as PrismaUser
 from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput, UserWhereInput
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, SecretStr
 
-from backend.data.db import prisma, query_raw_with_schema, transaction
+from backend.data.db import (
+    execute_raw_with_schema,
+    prisma,
+    query_raw_with_schema,
+    transaction,
+)
 from backend.data.db_accessors import user_db
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
@@ -40,6 +45,7 @@ from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.product_mail_audience import product_mail_audience_where
 from backend.data.profile import ensure_profile
 from backend.data.subscription_trial import get_subscription_trial
+from backend.integrations.credential_refresh import REFRESH_PENDING, REFRESH_REVISION
 from backend.notifications.audience_enrichment import points_at_excluded_country
 from backend.notifications.posthog_audience import set_account_properties
 from backend.notifications.queue import queue_audience_change
@@ -532,7 +538,11 @@ async def get_near_expiry_oauth_credentials(
     return candidates
 
 
-async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> None:
+async def set_user_credentials(
+    user_id: str,
+    credentials: list[Credentials],
+    reconnect_revisions: dict[str, str | None] | None = None,
+) -> None:
     """Full-list replace of the user's USER-scoped credential rows.
 
     Mirrors the old blob replace semantics the credential store is built
@@ -552,12 +562,38 @@ async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> 
         existing_rows = await tx.integrationcredential.find_many(
             where={"ownerType": "USER", "ownerId": user_id},
         )
-        existing_ids = {row.id for row in existing_rows}
+        existing_by_id = {row.id: row for row in existing_rows}
+
+        if any(
+            cred.type == "oauth2" and cred.id in existing_by_id for cred in credentials
+        ):
+            await _set_credential_cas_timeouts(tx)
 
         org_id: str | None = None
         for cred in credentials:
             encrypted = cryptor.encrypt(cred.model_dump())
-            if cred.id in existing_ids:
+            row = existing_by_id.get(cred.id)
+            if row is not None:
+                if cred.type == "oauth2":
+                    current = cryptor.decrypt(row.encryptedPayload)
+                    revision = current.get("metadata", {}).get(REFRESH_REVISION)
+                    expected_revision = (reconnect_revisions or {}).get(
+                        cred.id, cred.metadata.get(REFRESH_REVISION)
+                    )
+                    if revision != expected_revision:
+                        raise ValueError("Credential changed before it could be saved")
+                    if not await _write_user_credential_cas_in_transaction(
+                        tx,
+                        user_id,
+                        cred.id,
+                        row.encryptedPayload,
+                        encrypted,
+                        time.time() + 5,
+                        expected_status=row.status,
+                        display_name=cred.title or cred.provider,
+                    ):
+                        raise ValueError("Credential changed before it could be saved")
+                    continue
                 await tx.integrationcredential.update(
                     where={"id": cred.id},
                     data={
@@ -589,6 +625,126 @@ async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> 
                     where={"id": row.id},
                     data={"status": "revoked"},
                 )
+
+
+async def begin_user_credential_refresh(
+    user_id: str, expected: OAuth2Credentials, nonce: str, deadline: float
+) -> str | None:
+    row = await prisma.integrationcredential.find_first(
+        where={
+            "id": expected.id,
+            "ownerType": "USER",
+            "ownerId": user_id,
+            "status": "active",
+        }
+    )
+    if row is None:
+        return None
+    cryptor = JSONCryptor()
+    current = CREDENTIALS_ADAPTER.validate_python(cryptor.decrypt(row.encryptedPayload))
+    if current != expected or current.metadata.get(REFRESH_PENDING):
+        return None
+    pending = expected.model_copy(
+        update={
+            "access_token": SecretStr(""),
+            "refresh_token": None,
+            "provider_state": None,
+            "access_token_expires_at": 1,
+            "metadata": {
+                **expected.metadata,
+                REFRESH_PENDING: nonce,
+                REFRESH_REVISION: nonce + ":pending",
+            },
+        }
+    )
+    checkpoint = cryptor.encrypt(pending.model_dump())
+    changed = await _write_user_credential_cas(
+        user_id, expected.id, row.encryptedPayload, checkpoint, deadline
+    )
+    return checkpoint if changed else None
+
+
+async def complete_user_credential_refresh(
+    user_id: str, updated: OAuth2Credentials, checkpoint: str, deadline: float
+) -> bool:
+    if updated.metadata.get(REFRESH_PENDING):
+        raise ValueError("A pending credential cannot complete a refresh")
+    encrypted = JSONCryptor().encrypt(updated.model_dump())
+    return await _write_user_credential_cas(
+        user_id, updated.id, checkpoint, encrypted, deadline
+    )
+
+
+async def _write_user_credential_cas(
+    user_id: str,
+    credential_id: str,
+    expected: str,
+    updated: str,
+    deadline: float,
+    *,
+    expected_status: str = "active",
+    display_name: str | None = None,
+) -> bool:
+    async with transaction(timeout=timedelta(seconds=5)) as tx:
+        await _set_credential_cas_timeouts(tx)
+        return await _write_user_credential_cas_in_transaction(
+            tx,
+            user_id,
+            credential_id,
+            expected,
+            updated,
+            deadline,
+            expected_status=expected_status,
+            display_name=display_name,
+        )
+
+
+async def _set_credential_cas_timeouts(tx: Prisma) -> None:
+    await tx.execute_raw("SET LOCAL statement_timeout = '4000ms'")
+    await tx.execute_raw("SET LOCAL lock_timeout = '3000ms'")
+
+
+async def _write_user_credential_cas_in_transaction(
+    tx: Prisma,
+    user_id: str,
+    credential_id: str,
+    expected: str,
+    updated: str,
+    deadline: float,
+    *,
+    expected_status: str = "active",
+    display_name: str | None = None,
+) -> bool:
+    rows = await query_raw_with_schema(
+        """SELECT "id" FROM {schema_prefix}"IntegrationCredential"
+           WHERE "id" = $1 AND "ownerType" = 'USER' AND "ownerId" = $2
+             AND "status" = $4 AND "encryptedPayload" = $3
+           FOR UPDATE""",
+        credential_id,
+        user_id,
+        expected,
+        expected_status,
+        client=tx,
+    )
+    if not rows:
+        return False
+    changed = await execute_raw_with_schema(
+        """UPDATE {schema_prefix}"IntegrationCredential"
+           SET "encryptedPayload" = $1, "updatedAt" = clock_timestamp(),
+               "status" = 'active', "displayName" = COALESCE($7::text, "displayName")
+           WHERE "id" = $2 AND "ownerType" = 'USER' AND "ownerId" = $3
+             AND "status" = $6 AND "encryptedPayload" = $4
+             AND clock_timestamp() < to_timestamp($5::double precision)""",
+        updated,
+        credential_id,
+        user_id,
+        expected,
+        deadline,
+        expected_status,
+        display_name,
+        client=tx,
+    )
+    return changed == 1
 
 
 async def _lock_user_credentials(tx: Prisma, user_id: str) -> None:
